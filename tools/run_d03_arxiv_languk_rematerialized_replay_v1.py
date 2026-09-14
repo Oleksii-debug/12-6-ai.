@@ -22,6 +22,7 @@ from twelve_six.data.arxiv_languk_rematerialized_replay_v1 import (
     ARXIV,
     LANGUK,
     PARENT_INTAKE_BLOB_SHA1,
+    PARENT_PR1800_HEAD,
     PARENT_RUNNER_BLOB_SHA1,
     HistoricalMaterializerSpec,
     RematerializationError,
@@ -33,8 +34,11 @@ from twelve_six.data.arxiv_languk_rematerialized_replay_v1 import (
     verify_git_blob,
 )
 
-INCUMBENT_RUNNER = ROOT / "tools/run_d03_arxiv_languk_postadmission_global_dedup_v2.py"
-INCUMBENT_INTAKE = ROOT / "src/twelve_six/data/post_admission_dedup_intake_v2.py"
+INCUMBENT_RUNNER_REL = Path("tools/run_d03_arxiv_languk_postadmission_global_dedup_v2.py")
+INCUMBENT_INTAKE_REL = Path("src/twelve_six/data/post_admission_dedup_intake_v2.py")
+WRAPPER_RUNNER_REL = Path("tools/run_d03_arxiv_languk_rematerialized_replay_v1.py")
+WRAPPER_HELPER_REL = Path("src/twelve_six/data/arxiv_languk_rematerialized_replay_v1.py")
+REPAIRED_RECEIPT_SCHEMA = "12-6.d03-arxiv-languk-rematerialized-v9-replay.v2"
 EXPECTED_PYARROW = "17.0.0"
 
 
@@ -59,6 +63,13 @@ def _run(
 def _git(repo_root: Path, *args: str, capture: bool = True) -> bytes:
     result = _run(["git", "-C", str(repo_root), *args], cwd=repo_root, capture=capture)
     return result.stdout if capture else b""
+
+
+def _git_text(repo_root: Path, *args: str) -> str:
+    try:
+        return _git(repo_root, *args).decode("utf-8", errors="strict").strip()
+    except UnicodeDecodeError as exc:
+        raise RematerializationError("git returned non-UTF-8 authority data") from exc
 
 
 def _ensure_commit(repo_root: Path, commit: str) -> None:
@@ -117,17 +128,68 @@ def _require_pyarrow() -> None:
         )
 
 
-def _verify_incumbent_checkout() -> None:
+def _require_lower_hex(value: str, *, length: int, label: str) -> None:
+    if (
+        type(value) is not str
+        or len(value) != length
+        or any(char not in "0123456789abcdef" for char in value)
+    ):
+        raise RematerializationError(f"{label} malformed")
+
+
+def _verify_wrapper_checkout(repo_root: Path) -> dict[str, str]:
+    """Bind the exact tracked wrapper/helper bytes that construct the durable receipt."""
+    source_head = _git_text(repo_root, "rev-parse", "HEAD")
+    _require_lower_hex(source_head, length=40, label="wrapper source head")
+
+    authority: dict[str, str] = {"source_head_sha": source_head}
+    for key, relative in (
+        ("runner", WRAPPER_RUNNER_REL),
+        ("helper", WRAPPER_HELPER_REL),
+    ):
+        path = repo_root / relative
+        if path.is_symlink() or not path.is_file():
+            raise RematerializationError(f"wrapper {key} must be a regular file")
+        tracked = _git_text(
+            repo_root,
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            relative.as_posix(),
+        )
+        if tracked != relative.as_posix():
+            raise RematerializationError(f"wrapper {key} is not tracked exactly")
+        expected_blob = _git_text(repo_root, "rev-parse", f"HEAD:{relative.as_posix()}")
+        observed_blob = git_blob_sha1(path.read_bytes())
+        if observed_blob != expected_blob:
+            raise RematerializationError(f"wrapper {key} working-tree blob drift")
+        authority[f"{key}_path"] = relative.as_posix()
+        authority[f"{key}_blob_sha1"] = observed_blob
+    return authority
+
+
+def _prepare_parent_execution_tree(repo_root: Path, workspace: Path) -> Path:
+    """Extract and verify the exact audited PR1800 tree used for all replay code/imports."""
+    _ensure_commit(repo_root, PARENT_PR1800_HEAD)
+    parent_root = workspace / "parent-pr1800"
+    _extract_commit(repo_root, PARENT_PR1800_HEAD, parent_root)
+    runner = parent_root / INCUMBENT_RUNNER_REL
+    intake = parent_root / INCUMBENT_INTAKE_REL
+    if runner.is_symlink() or not runner.is_file():
+        raise RematerializationError("PR1800 incumbent runner missing from exact parent tree")
+    if intake.is_symlink() or not intake.is_file():
+        raise RematerializationError("PR1800 incumbent intake missing from exact parent tree")
     verify_git_blob(
-        INCUMBENT_RUNNER.read_bytes(),
+        runner.read_bytes(),
         PARENT_RUNNER_BLOB_SHA1,
         label="PR1800 incumbent runner",
     )
     verify_git_blob(
-        INCUMBENT_INTAKE.read_bytes(),
+        intake.read_bytes(),
         PARENT_INTAKE_BLOB_SHA1,
         label="PR1800 incumbent intake",
     )
+    return parent_root
 
 
 def _run_historical_materializer(
@@ -163,9 +225,15 @@ def _run_historical_materializer(
     return candidate
 
 
+def _repo_rooted(path: Path) -> Path:
+    """Preserve the incumbent wrapper's repo-root-relative child-argument semantics."""
+    return (path if path.is_absolute() else ROOT / path).resolve()
+
+
 def _replay_command(
     args: argparse.Namespace,
     *,
+    parent_root: Path,
     arxiv_candidate: Path,
     languk_candidate: Path,
     report: Path,
@@ -173,43 +241,44 @@ def _replay_command(
 ) -> list[str]:
     return [
         sys.executable,
-        str(INCUMBENT_RUNNER),
+        "-I",
+        str(parent_root / INCUMBENT_RUNNER_REL),
         "--v7-root",
-        str(args.v7_root),
+        str(_repo_rooted(args.v7_root)),
         "--bulk-workspace",
-        str(args.bulk_workspace),
+        str(_repo_rooted(args.bulk_workspace)),
         "--v8-config",
-        str(args.v8_config),
+        str(_repo_rooted(args.v8_config)),
         "--data526-config",
-        str(args.data526_config),
+        str(_repo_rooted(args.data526_config)),
         "--v8-report",
-        str(args.v8_report),
+        str(_repo_rooted(args.v8_report)),
         "--v8-survivors",
-        str(args.v8_survivors),
+        str(_repo_rooted(args.v8_survivors)),
         "--data526-evidence",
-        str(args.data526_evidence),
+        str(_repo_rooted(args.data526_evidence)),
         "--data526-record-inventory",
-        str(args.data526_record_inventory),
+        str(_repo_rooted(args.data526_record_inventory)),
         "--rada-language-report",
-        str(args.rada_language_report),
+        str(_repo_rooted(args.rada_language_report)),
         "--rada-quality-privacy-jsonl",
-        str(args.rada_quality_privacy_jsonl),
+        str(_repo_rooted(args.rada_quality_privacy_jsonl)),
         "--rada-quality-privacy-report",
-        str(args.rada_quality_privacy_report),
+        str(_repo_rooted(args.rada_quality_privacy_report)),
         "--expected-rada-report-sha256",
         args.expected_rada_report_sha256,
         "--arxiv-authority",
-        str(args.arxiv_authority),
+        str(_repo_rooted(args.arxiv_authority)),
         "--arxiv-candidate",
-        str(arxiv_candidate),
+        str(arxiv_candidate.resolve()),
         "--languk-authority",
-        str(args.languk_authority),
+        str(_repo_rooted(args.languk_authority)),
         "--languk-candidate",
-        str(languk_candidate),
+        str(languk_candidate.resolve()),
         "--output-report",
-        str(report),
+        str(report.resolve()),
         "--output-survivors",
-        str(survivors),
+        str(survivors.resolve()),
     ]
 
 
@@ -269,6 +338,76 @@ def _remove_ephemeral_payloads(pass_root: Path) -> None:
                 pass
 
 
+def _verify_outer_output_targets(args: argparse.Namespace) -> None:
+    outputs = (
+        ("outer report", args.output_report),
+        ("outer survivors", args.output_survivors),
+        ("outer receipt", args.output_receipt),
+    )
+    resolved: set[Path] = set()
+    for label, path in outputs:
+        if path.exists() or path.is_symlink():
+            raise RematerializationError(f"refusing to overwrite {label}: {path}")
+        target = path.resolve()
+        if target in resolved:
+            raise RematerializationError("outer output targets must be distinct")
+        resolved.add(target)
+
+
+def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
+    """Publish authority bytes with exclusive-create semantics; never clobber or follow links."""
+    if path.exists() or path.is_symlink():
+        raise RematerializationError(f"refusing to overwrite {label}: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as handle:
+            handle.write(raw)
+    except FileExistsError as exc:
+        raise RematerializationError(f"refusing to overwrite {label}: {path}") from exc
+
+
+def _finalize_receipt(
+    receipt: dict[str, Any],
+    *,
+    wrapper_execution_authority: dict[str, str],
+) -> dict[str, Any]:
+    required_wrapper_keys = {
+        "source_head_sha",
+        "runner_path",
+        "runner_blob_sha1",
+        "helper_path",
+        "helper_blob_sha1",
+    }
+    if set(wrapper_execution_authority) != required_wrapper_keys:
+        raise RematerializationError("wrapper execution authority keyset drift")
+    _require_lower_hex(
+        wrapper_execution_authority["source_head_sha"],
+        length=40,
+        label="wrapper source head",
+    )
+    for key in ("runner_blob_sha1", "helper_blob_sha1"):
+        _require_lower_hex(
+            wrapper_execution_authority[key],
+            length=40,
+            label=f"wrapper {key}",
+        )
+    if wrapper_execution_authority["runner_path"] != WRAPPER_RUNNER_REL.as_posix():
+        raise RematerializationError("wrapper runner path drift")
+    if wrapper_execution_authority["helper_path"] != WRAPPER_HELPER_REL.as_posix():
+        raise RematerializationError("wrapper helper path drift")
+
+    result = dict(receipt)
+    result["schema_version"] = REPAIRED_RECEIPT_SCHEMA
+    parent = dict(result.get("parent_authority", {}))
+    if parent.get("exact_head_sha") != PARENT_PR1800_HEAD:
+        raise RematerializationError("receipt parent exact head drift")
+    parent["execution_tree_mode"] = "EXTRACTED_EXACT_GIT_TREE"
+    parent["isolated_python_mode"] = True
+    result["parent_authority"] = parent
+    result["wrapper_execution_authority"] = dict(wrapper_execution_authority)
+    return result
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
@@ -325,9 +464,11 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = _parser().parse_args()
     try:
+        _verify_outer_output_targets(args)
         _require_pyarrow()
-        _verify_incumbent_checkout()
+        wrapper_authority = _verify_wrapper_checkout(ROOT)
         workspace = args.workspace.resolve()
+        parent_root = _prepare_parent_execution_tree(ROOT, workspace)
         historical = workspace / "historical"
         for spec in (ARXIV, LANGUK):
             _verify_historical_program(ROOT, spec)
@@ -355,12 +496,13 @@ def main() -> int:
                 _run(
                     _replay_command(
                         args,
+                        parent_root=parent_root,
                         arxiv_candidate=arxiv_candidate,
                         languk_candidate=languk_candidate,
                         report=report,
                         survivors=survivors,
                     ),
-                    cwd=ROOT,
+                    cwd=parent_root,
                 )
                 results.append(
                     _pass_result(
@@ -375,18 +517,32 @@ def main() -> int:
 
         receipt = build_receipt(
             pass_results=results,
-            incumbent_runner_blob_sha1=git_blob_sha1(INCUMBENT_RUNNER.read_bytes()),
-            incumbent_intake_blob_sha1=git_blob_sha1(INCUMBENT_INTAKE.read_bytes()),
+            incumbent_runner_blob_sha1=git_blob_sha1(
+                (parent_root / INCUMBENT_RUNNER_REL).read_bytes()
+            ),
+            incumbent_intake_blob_sha1=git_blob_sha1(
+                (parent_root / INCUMBENT_INTAKE_REL).read_bytes()
+            ),
         )
-        args.output_report.parent.mkdir(parents=True, exist_ok=True)
-        args.output_survivors.parent.mkdir(parents=True, exist_ok=True)
-        args.output_receipt.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(workspace / "pass-1/postadmission-report.json", args.output_report)
-        shutil.copyfile(
-            workspace / "pass-1/postadmission-survivors.json",
+        receipt = _finalize_receipt(
+            receipt,
+            wrapper_execution_authority=wrapper_authority,
+        )
+        _write_new_bytes(
+            args.output_report,
+            (workspace / "pass-1/postadmission-report.json").read_bytes(),
+            label="outer report",
+        )
+        _write_new_bytes(
             args.output_survivors,
+            (workspace / "pass-1/postadmission-survivors.json").read_bytes(),
+            label="outer survivors",
         )
-        args.output_receipt.write_bytes(canonical_json_bytes(receipt))
+        _write_new_bytes(
+            args.output_receipt,
+            canonical_json_bytes(receipt),
+            label="outer receipt",
+        )
     except (RematerializationError, OSError, ValueError) as exc:
         print(f"BLOCKED: {exc}")
         return 2
