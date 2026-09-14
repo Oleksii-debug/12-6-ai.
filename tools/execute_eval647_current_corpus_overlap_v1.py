@@ -14,6 +14,9 @@ from twelve_six.data.eval647_current_corpus_overlap_v1 import build_report, veri
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "configs/evaluation/eval_code_reserve_v1.json"
 MATERIALIZER = ROOT / "tools/materialize_eval_code_reserve_v1.py"
+POST_G05_G06_RECORD_KEYS = frozenset(
+    {"record_id", "source_id", "family", "modality", "normalized_payload"}
+)
 
 materializer_spec = importlib.util.spec_from_file_location("eval647_materializer_for_overlap", MATERIALIZER)
 if materializer_spec is None or materializer_spec.loader is None:
@@ -29,17 +32,41 @@ def _read_json_object(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def _read_training_jsonl(path: Path) -> tuple[bytes, list[dict[str, Any]]]:
+def _project_post_g05_g06_record(
+    value: dict[str, Any], line_number: int
+) -> dict[str, str]:
+    if set(value) != POST_G05_G06_RECORD_KEYS:
+        raise RuntimeError(
+            f"training JSONL line {line_number} post-G05/G06 schema drift"
+        )
+    projected: dict[str, str] = {}
+    for source_key, matcher_key in (
+        ("record_id", "record_id"),
+        ("source_id", "source_id"),
+        ("family", "source_family"),
+        ("modality", "modality"),
+        ("normalized_payload", "text"),
+    ):
+        field = value.get(source_key)
+        if not isinstance(field, str) or not field:
+            raise RuntimeError(
+                f"training JSONL line {line_number} {source_key} must be non-empty string"
+            )
+        projected[matcher_key] = field
+    return projected
+
+
+def _read_training_jsonl(path: Path) -> tuple[bytes, list[dict[str, str]]]:
     raw = path.read_bytes()
     text = raw.decode("utf-8", errors="strict")
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, str]] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
         value = json.loads(line)
         if not isinstance(value, dict):
             raise RuntimeError(f"training JSONL line {line_number} must be an object")
-        records.append(value)
+        records.append(_project_post_g05_g06_record(value, line_number))
     if not records:
         raise RuntimeError("training JSONL must contain at least one record")
     return raw, records

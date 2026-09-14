@@ -27,9 +27,9 @@ def _fixture(tmp_path: Path) -> tuple[dict[str, Path], dict[str, bytes | str]]:
     training_record = {
         "record_id": "train:1",
         "source_id": "local:training",
-        "source_family": "local:training",
+        "family": "local:training",
         "modality": "code",
-        "text": "def train_only(value):\n    return value + 17\n",
+        "normalized_payload": "def train_only(value):\n    return value + 17\n",
     }
     training_raw = (json.dumps(training_record, sort_keys=True, separators=(",", ":")) + "\n").encode()
     training_sha = _sha(training_raw)
@@ -129,3 +129,44 @@ def test_execute_rejects_self_selected_training_identity(
             expected_materialization_identity_sha256="4" * 64,
             expected_training_jsonl_sha256="6" * 64,
         )
+
+
+def test_reader_rejects_legacy_matcher_shape_instead_of_guessing_schema(tmp_path: Path) -> None:
+    path = tmp_path / "legacy.jsonl"
+    legacy = {
+        "record_id": "train:legacy",
+        "source_id": "local:legacy",
+        "source_family": "local:legacy",
+        "modality": "code",
+        "text": "def legacy():\n    return 1\n",
+    }
+    path.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="post-G05/G06 schema drift"):
+        executor._read_training_jsonl(path)
+
+
+def test_reader_projects_exact_current_materialization_schema_without_content_change(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "current.jsonl"
+    payload = "def current(value):\n    return value + 9\n"
+    row = {
+        "record_id": "train:current",
+        "source_id": "source:current",
+        "family": "family:current",
+        "modality": "code",
+        "normalized_payload": payload,
+    }
+    raw = (json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    path.write_bytes(raw)
+    observed_raw, projected = executor._read_training_jsonl(path)
+    assert observed_raw == raw
+    assert projected == [
+        {
+            "record_id": "train:current",
+            "source_id": "source:current",
+            "source_family": "family:current",
+            "modality": "code",
+            "text": payload,
+        }
+    ]
