@@ -46,6 +46,7 @@ jobs:
       - name: Acquire and qualify exact upstream snapshot
         run: |
           rm -rf next100-047-evidence
+          mkdir -p next100-047-evidence
           .next100-047/bin/python tools/validate_next100_047_jinja_code_source.py run \
             --repo . \
             --output-dir next100-047-evidence \

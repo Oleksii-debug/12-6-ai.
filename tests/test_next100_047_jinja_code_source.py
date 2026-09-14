@@ -31,6 +31,24 @@ def test_git_blob_identity_is_content_bound() -> None:
     assert digest != mod.git_blob_sha1(data + b"# drift\n")
 
 
+def test_license_grant_matching_accepts_formatting_whitespace_only() -> None:
+    text = (
+        "Redistribution and use in source and binary forms\n"
+        "with or\n without\tmodification.\n"
+        "Neither the name of the copyright holder"
+    )
+    assert mod.missing_required_license_phrases(text) == []
+
+
+def test_license_grant_matching_rejects_semantic_drift() -> None:
+    text = (
+        "Redistribution and use in source and binary forms\n"
+        "with or without alteration.\n"
+        "Neither the name of the copyright holder"
+    )
+    assert mod.missing_required_license_phrases(text) == ["with or without modification"]
+
+
 def test_secret_scan_rejects_private_key() -> None:
     raw = b"-----BEGIN PRIVATE KEY-----\nnot-real\n"
     with pytest.raises(mod.AdmissionError, match="secret-like"):
