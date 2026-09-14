@@ -240,6 +240,41 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     return attestation
 
 
+def _remove_temp_path_strict(path: Path, *, label: str) -> None:
+    """Remove one private temporary path without following attacker-created symlinks."""
+
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        return
+
+    if stat.S_ISDIR(current.st_mode) and not stat.S_ISLNK(current.st_mode):
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+    if os.path.lexists(path):
+        raise CheckpointIntegrityError(f"{label} remained after cleanup: {path}")
+
+
+def _cleanup_temp_paths_strict(
+    paths: tuple[tuple[Path | None, str], ...],
+) -> None:
+    failures: list[tuple[str, Exception]] = []
+    for path, label in paths:
+        if path is None:
+            continue
+        try:
+            _remove_temp_path_strict(path, label=label)
+        except Exception as exc:
+            failures.append((label, exc))
+    if failures:
+        labels = ", ".join(label for label, _ in failures)
+        raise CheckpointIntegrityError(
+            f"temporary cleanup failed for: {labels}"
+        ) from failures[0][1]
+
+
 def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> Path:
     reference = Path(tempfile.mkdtemp(prefix=f".{name}.reference-", dir=parent))
     try:
@@ -254,7 +289,26 @@ def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> P
         prepare_checkpoint_load(reference)
         return reference
     except Exception:
-        shutil.rmtree(reference, ignore_errors=True)
+        _cleanup_temp_paths_strict(((reference, "verified checkpoint reference"),))
+        raise
+
+
+def _materialize_hook_candidate(
+    *,
+    parent: Path,
+    name: str,
+    weights: bytes,
+    config: bytes,
+    source_manifest: bytes,
+) -> Path:
+    candidate = Path(tempfile.mkdtemp(prefix=f".{name}.hook-candidate-", dir=parent))
+    try:
+        (candidate / EXPORTED_WEIGHTS_NAME).write_bytes(weights)
+        (candidate / EXPORTED_CONFIG_NAME).write_bytes(config)
+        (candidate / EXPORTED_SOURCE_MANIFEST_NAME).write_bytes(source_manifest)
+        return candidate
+    except Exception:
+        _cleanup_temp_paths_strict(((candidate, "HF parity hook candidate"),))
         raise
 
 
@@ -275,7 +329,13 @@ def _publish_directory_noreplace(staging: Path, destination: Path) -> None:
         renameat2 = getattr(libc, "renameat2", None)
         if renameat2 is None:
             raise RuntimeError("atomic no-replace directory publish requires libc renameat2")
-        renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        renameat2.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
         renameat2.restype = ctypes.c_int
         at_fdcwd = -100
         rename_noreplace = 1
@@ -311,9 +371,11 @@ def export_hf_directory(
     """Create an immutable, verified HF-style SafeTensors directory.
 
     Source checkpoint bytes are snapshotted and verified once through D05's
-    transactional loader, then the export is built from that exact in-memory
-    snapshot. The complete export is verified in a sibling staging directory
-    before an atomic no-replace publish.
+    transactional loader. Any external parity hook sees only disposable
+    snapshot-derived reference/candidate trees, which are strictly cleaned before
+    final publication staging is created. The final export is then built from
+    immutable in-memory bytes, verified, and atomically published with no
+    intervening untrusted callback.
 
     Existing destinations are immutable. ``overwrite=True`` is retained only for
     API compatibility and still fails closed rather than deleting prior evidence.
@@ -331,9 +393,71 @@ def export_hf_directory(
 
     destination = Path(output_dir)
     if destination.exists() or destination.is_symlink():
-        suffix = " (overwrite=True does not permit destructive replacement)" if overwrite else ""
+        suffix = (
+            " (overwrite=True does not permit destructive replacement)"
+            if overwrite
+            else ""
+        )
         raise FileExistsError(f"export destination already exists: {destination}{suffix}")
     destination.parent.mkdir(parents=True, exist_ok=True)
+
+    config_bytes = canonical_json_bytes(dict(hf_config)) + b"\n"
+    weights_sha = sha256_bytes(source_weights_bytes)
+    config_sha = sha256_bytes(config_bytes)
+    parity_request: dict[str, Any] = {
+        "schema": "12-6.export-parity-request.v2",
+        "status": "NOT_TESTED",
+        "checkpoint_id": source_manifest["checkpoint_id"],
+        "reference_weights_sha256": weights_sha,
+        "candidate_weights_sha256": weights_sha,
+        "candidate_config_sha256": config_sha,
+        "required_checks": list(_REQUIRED_PARITY_CHECKS),
+        "authority": "D07_or_independent_parity_harness",
+        "hook_result": None,
+    }
+
+    if parity_hook is not None:
+        reference: Path | None = None
+        candidate: Path | None = None
+        try:
+            reference = _materialize_verified_reference(
+                verified,
+                destination.parent,
+                destination.name,
+            )
+            candidate = _materialize_hook_candidate(
+                parent=destination.parent,
+                name=destination.name,
+                weights=source_weights_bytes,
+                config=config_bytes,
+                source_manifest=source_manifest_bytes,
+            )
+            result = parity_hook(reference, candidate)
+            if not isinstance(result, Mapping):
+                raise TypeError("parity_hook must return a mapping")
+            parity_request["hook_result"] = dict(result)
+            parity_request["status"] = "EXTERNAL_EVIDENCE_ATTACHED"
+            parity_bytes = canonical_json_bytes(parity_request) + b"\n"
+        finally:
+            _cleanup_temp_paths_strict(
+                (
+                    (candidate, "HF parity hook candidate"),
+                    (reference, "verified checkpoint reference"),
+                )
+            )
+    else:
+        parity_bytes = canonical_json_bytes(parity_request) + b"\n"
+
+    attestation = {
+        "schema": "12-6.hf-style-export.v2",
+        "checkpoint_id": source_manifest["checkpoint_id"],
+        "source_manifest_sha256": sha256_bytes(source_manifest_bytes),
+        "model_safetensors_sha256": weights_sha,
+        "config_sha256": config_sha,
+        "parity_request_sha256": sha256_bytes(parity_bytes),
+        "compatibility": dict(_COMPATIBILITY),
+    }
+    attestation_bytes = canonical_json_bytes(attestation) + b"\n"
 
     staging = Path(
         tempfile.mkdtemp(
@@ -341,50 +465,11 @@ def export_hf_directory(
             dir=destination.parent,
         )
     )
-    reference: Path | None = None
     try:
-        config_bytes = canonical_json_bytes(dict(hf_config)) + b"\n"
         (staging / EXPORTED_WEIGHTS_NAME).write_bytes(source_weights_bytes)
         (staging / EXPORTED_CONFIG_NAME).write_bytes(config_bytes)
         (staging / EXPORTED_SOURCE_MANIFEST_NAME).write_bytes(source_manifest_bytes)
-
-        weights_sha = sha256_bytes(source_weights_bytes)
-        config_sha = sha256_bytes(config_bytes)
-        parity_request: dict[str, Any] = {
-            "schema": "12-6.export-parity-request.v2",
-            "status": "NOT_TESTED",
-            "checkpoint_id": source_manifest["checkpoint_id"],
-            "reference_weights_sha256": weights_sha,
-            "candidate_weights_sha256": weights_sha,
-            "candidate_config_sha256": config_sha,
-            "required_checks": list(_REQUIRED_PARITY_CHECKS),
-            "authority": "D07_or_independent_parity_harness",
-            "hook_result": None,
-        }
-        if parity_hook is not None:
-            reference = _materialize_verified_reference(
-                verified,
-                destination.parent,
-                destination.name,
-            )
-            result = parity_hook(reference, staging)
-            if not isinstance(result, Mapping):
-                raise TypeError("parity_hook must return a mapping")
-            parity_request["hook_result"] = dict(result)
-            parity_request["status"] = "EXTERNAL_EVIDENCE_ATTACHED"
-        parity_bytes = canonical_json_bytes(parity_request) + b"\n"
         (staging / PARITY_REQUEST_NAME).write_bytes(parity_bytes)
-
-        attestation = {
-            "schema": "12-6.hf-style-export.v2",
-            "checkpoint_id": source_manifest["checkpoint_id"],
-            "source_manifest_sha256": sha256_bytes(source_manifest_bytes),
-            "model_safetensors_sha256": weights_sha,
-            "config_sha256": config_sha,
-            "parity_request_sha256": sha256_bytes(parity_bytes),
-            "compatibility": dict(_COMPATIBILITY),
-        }
-        attestation_bytes = canonical_json_bytes(attestation) + b"\n"
         (staging / EXPORT_ATTESTATION_NAME).write_bytes(attestation_bytes)
         (staging / EXPORT_CHECKSUM_NAME).write_text(
             f"{sha256_bytes(attestation_bytes)}  {EXPORT_ATTESTATION_NAME}\n",
@@ -393,9 +478,8 @@ def export_hf_directory(
 
         verify_hf_directory(staging)
         _publish_directory_noreplace(staging, destination)
+        staging = None
         return destination
     finally:
-        if reference is not None and reference.exists():
-            shutil.rmtree(reference, ignore_errors=True)
-        if staging.exists():
-            shutil.rmtree(staging, ignore_errors=True)
+        if staging is not None:
+            _cleanup_temp_paths_strict(((staging, "HF export staging"),))

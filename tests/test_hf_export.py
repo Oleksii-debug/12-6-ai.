@@ -93,13 +93,13 @@ def test_hf_export_invokes_external_parity_hook_on_verified_reference_snapshot(
     )
     calls = []
 
-    def parity_hook(reference: Path, destination: Path):
+    def parity_hook(reference: Path, candidate: Path):
         assert reference != checkpoint
         assert reference.name.startswith(".hf.reference-")
-        assert destination.name.startswith(".hf.staging-")
+        assert candidate.name.startswith(".hf.hook-candidate-")
         assert verify_checkpoint(reference)["checkpoint_id"] == checkpoint_manifest["checkpoint_id"]
-        assert (destination / "model.safetensors").is_file()
-        calls.append((reference.name, destination.name))
+        assert (candidate / "model.safetensors").is_file()
+        calls.append((reference.name, candidate.name))
         return {"status": "PASS", "evidence_ref": "test-only-d07-parity"}
 
     output = export_hf_directory(
@@ -111,6 +111,7 @@ def test_hf_export_invokes_external_parity_hook_on_verified_reference_snapshot(
 
     assert len(calls) == 1
     assert not list(tmp_path.glob(".hf.reference-*"))
+    assert not list(tmp_path.glob(".hf.hook-candidate-*"))
     parity = json.loads((output / "12-6-parity-request.json").read_text(encoding="utf-8"))
     assert parity["status"] == "EXTERNAL_EVIDENCE_ATTACHED"
     assert parity["hook_result"] == {
