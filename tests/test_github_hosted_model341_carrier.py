@@ -3,10 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from tools import verify_github_hosted_model341_carrier as carrier
 
 
-SOURCE_SHA = "a" * 40
+def _source_sha() -> str:
+    return carrier._observed_checkout_sha(carrier.ROOT)
+
+
+def _different_sha(value: str) -> str:
+    replacement = "0" if value[0] != "0" else "1"
+    return replacement + value[1:]
 
 
 def _hosted_env() -> dict[str, str]:
@@ -14,22 +21,27 @@ def _hosted_env() -> dict[str, str]:
         "GITHUB_ACTIONS": "true",
         "GITHUB_REPOSITORY": carrier.EXPECTED_REPOSITORY,
         "GITHUB_REPOSITORY_VISIBILITY": "public",
+        "RUNNER_ENVIRONMENT": carrier.EXPECTED_RUNNER_ENVIRONMENT,
         "RUNNER_OS": "Linux",
         "RUNNER_ARCH": "X64",
     }
 
 
-def test_preflight_binds_exact_worker_and_zero_effect_boundary() -> None:
+def test_preflight_binds_exact_worker_checkout_and_zero_effect_boundary() -> None:
+    source_sha = _source_sha()
     evidence = carrier.build_preflight_evidence(
-        source_sha=SOURCE_SHA,
+        source_sha=source_sha,
         mode="preflight",
         env=_hosted_env(),
     )
 
     assert evidence["result"] == "PASS"
-    assert evidence["source_sha"] == SOURCE_SHA
+    assert evidence["source_sha"] == source_sha
+    assert evidence["expected_source_sha"] == source_sha
+    assert evidence["observed_checkout_sha"] == source_sha
     assert evidence["runner"] == {
         "provider": "github-hosted",
+        "environment": "github-hosted",
         "label": "ubuntu-24.04",
         "os": "Linux",
         "arch": "X64",
@@ -53,6 +65,7 @@ def test_preflight_binds_exact_worker_and_zero_effect_boundary() -> None:
         ("GITHUB_ACTIONS", "false"),
         ("GITHUB_REPOSITORY", "example/not-canonical"),
         ("GITHUB_REPOSITORY_VISIBILITY", "private"),
+        ("RUNNER_ENVIRONMENT", "self-hosted"),
         ("RUNNER_OS", "Windows"),
         ("RUNNER_ARCH", "ARM64"),
     ],
@@ -63,10 +76,32 @@ def test_preflight_rejects_wrong_execution_authority(name: str, value: str) -> N
 
     with pytest.raises(carrier.HostedCarrierPreflightError, match=name):
         carrier.build_preflight_evidence(
-            source_sha=SOURCE_SHA,
+            source_sha=_source_sha(),
             mode="preflight",
             env=env,
         )
+
+
+def test_preflight_rejects_source_sha_not_matching_checkout() -> None:
+    source_sha = _source_sha()
+
+    with pytest.raises(
+        carrier.HostedCarrierPreflightError,
+        match="source_sha does not match checked-out Git HEAD",
+    ):
+        carrier.build_preflight_evidence(
+            source_sha=_different_sha(source_sha),
+            mode="preflight",
+            env=_hosted_env(),
+        )
+
+
+def test_checkout_sha_authentication_fails_outside_git_worktree(tmp_path: Path) -> None:
+    with pytest.raises(
+        carrier.HostedCarrierPreflightError,
+        match="unable to resolve checked-out Git HEAD",
+    ):
+        carrier._observed_checkout_sha(tmp_path)
 
 
 @pytest.mark.parametrize("name", carrier.FORBIDDEN_WORKER_AUTHORITY_ENV)
@@ -76,7 +111,7 @@ def test_preflight_rejects_worker_authority_environment(name: str) -> None:
 
     with pytest.raises(carrier.HostedCarrierPreflightError, match=name):
         carrier.build_preflight_evidence(
-            source_sha=SOURCE_SHA,
+            source_sha=_source_sha(),
             mode="preflight",
             env=env,
         )
@@ -86,7 +121,7 @@ def test_real_target_or_training_modes_do_not_exist() -> None:
     for mode in ("real-target", "train", "synthetic-mechanics"):
         with pytest.raises(carrier.HostedCarrierPreflightError, match="unsupported carrier mode"):
             carrier.build_preflight_evidence(
-                source_sha=SOURCE_SHA,
+                source_sha=_source_sha(),
                 mode=mode,
                 env=_hosted_env(),
             )
@@ -102,7 +137,7 @@ def test_preflight_rejects_external_worker_identity_drift(tmp_path: Path) -> Non
 
     with pytest.raises(carrier.HostedCarrierPreflightError, match="Git blob identity drifted"):
         carrier.build_preflight_evidence(
-            source_sha=SOURCE_SHA,
+            source_sha=_source_sha(),
             mode="preflight",
             env=_hosted_env(),
             root=tmp_path,

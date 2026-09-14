@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -20,6 +21,7 @@ SCHEMA = "twelve-six-github-hosted-carrier-preflight-v1"
 SUPPORTED_MODE = "preflight"
 EXPECTED_REPOSITORY = "Oleksii-debug/12-6-ai."
 EXPECTED_VISIBILITY = "public"
+EXPECTED_RUNNER_ENVIRONMENT = "github-hosted"
 EXPECTED_RUNNER_OS = "Linux"
 EXPECTED_RUNNER_ARCH = "X64"
 EXPECTED_WORKER_BLOB_SHA = "e29ee141062aab2e104bcf28d79deefea2306260"
@@ -75,11 +77,35 @@ def _literal_constants(path: Path) -> dict[str, object]:
     return constants
 
 
+def _observed_checkout_sha(root: Path) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise HostedCarrierPreflightError(
+            "unable to resolve checked-out Git HEAD for source_sha authentication"
+        ) from exc
+
+    observed = completed.stdout.strip()
+    if _GIT_SHA.fullmatch(observed) is None:
+        raise HostedCarrierPreflightError(
+            f"checked-out Git HEAD must resolve to a full lowercase SHA; observed {observed!r}"
+        )
+    return observed
+
+
 def _require_environment(env: Mapping[str, str]) -> None:
     required = {
         "GITHUB_ACTIONS": "true",
         "GITHUB_REPOSITORY": EXPECTED_REPOSITORY,
         "GITHUB_REPOSITORY_VISIBILITY": EXPECTED_VISIBILITY,
+        "RUNNER_ENVIRONMENT": EXPECTED_RUNNER_ENVIRONMENT,
         "RUNNER_OS": EXPECTED_RUNNER_OS,
         "RUNNER_ARCH": EXPECTED_RUNNER_ARCH,
     }
@@ -155,16 +181,25 @@ def build_preflight_evidence(
     active_env = os.environ if env is None else env
     _require_environment(active_env)
     worker_identity = _require_worker_identity(root)
+    observed_checkout_sha = _observed_checkout_sha(root)
+    if source_sha != observed_checkout_sha:
+        raise HostedCarrierPreflightError(
+            "source_sha does not match checked-out Git HEAD: "
+            f"expected {source_sha}, observed {observed_checkout_sha}"
+        )
 
     evidence: dict[str, object] = {
         "schema": SCHEMA,
         "source_sha": source_sha,
+        "expected_source_sha": source_sha,
+        "observed_checkout_sha": observed_checkout_sha,
         "result": "PASS",
         "carrier_mode": SUPPORTED_MODE,
         "repository": EXPECTED_REPOSITORY,
         "repository_visibility": EXPECTED_VISIBILITY,
         "runner": {
             "provider": "github-hosted",
+            "environment": EXPECTED_RUNNER_ENVIRONMENT,
             "label": "ubuntu-24.04",
             "os": EXPECTED_RUNNER_OS,
             "arch": EXPECTED_RUNNER_ARCH,
