@@ -11,9 +11,10 @@ import argparse
 import json
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from twelve_six.accelerated_scaling import REPOSITORY
 from twelve_six.learned20m_training_lease import validate_launch_manifest
@@ -152,7 +153,7 @@ def _read_repo_json(repo_root: Path, locator: str) -> dict[str, Any]:
         raise ValueError("manifest_path_escapes_repository") from exc
     payload = json.loads(resolved.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("manifest_root_must_be_object")
+        raise TypeError("manifest_root_must_be_object")
     return payload
 
 
@@ -179,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest = _read_repo_json(Path(args.repo_root), args.manifest)
         assessment = assess_training_execution(manifest, context)
         payload = assessment.as_dict()
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         payload = {
             "context_valid": False,
             "manifest_valid": False,
