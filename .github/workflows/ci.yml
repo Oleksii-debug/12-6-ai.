@@ -33,3 +33,127 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  d03_gutenberg_terminal_rematerialization:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 1780
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Materialize terminal payload twice and emit text-free evidence
+        env:
+          RUN_A: ${{ runner.temp }}/gutenberg-run-a
+          RUN_B: ${{ runner.temp }}/gutenberg-run-b
+          EVIDENCE: ${{ runner.temp }}/gutenberg-double-materialization-evidence.json
+          EXECUTION_HEAD: ${{ github.sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          rm -rf "$RUN_A" "$RUN_B"
+          python tools/materialize_d03_gutenberg_terminal_payload_v1.py --out "$RUN_A"
+          python tools/materialize_d03_gutenberg_terminal_payload_v1.py --out "$RUN_B"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          EXPECTED_PRODUCT_PARENT = "27383ba2a79dcd255f35809af261fe9c55467c03"
+          EXPECTED_INVENTORY = "104268737dd440bb40f69ac901e202a4a6e841262c4e0873ef553ea0a3781c97"
+          EXPECTED_RECEIPT = "e01e63b1c2f3a497f97ee67bb167cdf671c05533476e85f7a8c2da6e1d96f02a"
+          EXPECTED_ROWS = {
+              "en.project-gutenberg.37177": (66612, "533f768fa90bd6fac90951760f12b1b70777ae3c147dbb053deb86ddf04860ba"),
+              "en.project-gutenberg.37985": (1158509, "6c4cd7d1fa4ef2340fe94a3ec737c72a55658ea3fb2bb19e5f5859eb8d8e3810"),
+              "en.project-gutenberg.40652": (446989, "e0e7095ba7ac0f1478d18feb4d87be1ed21be37e472fa4203bb92b43f9e593b4"),
+          }
+
+          def canonical(value):
+              return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+          def sha256(data):
+              return hashlib.sha256(data).hexdigest()
+
+          def load_and_verify(root):
+              receipt_bytes = (root / "receipt.json").read_bytes()
+              receipt = json.loads(receipt_bytes)
+              assert receipt["receipt_sha256"] == EXPECTED_RECEIPT
+              inventory = receipt["payload_inventory"]
+              assert inventory["inventory_identity_sha256"] == EXPECTED_INVENTORY
+              assert inventory["record_count"] == 3
+              assert inventory["normalized_utf8_bytes"] == 1672110
+              rows = inventory["records"]
+              assert {row["source_id"] for row in rows} == set(EXPECTED_ROWS)
+              payload_rows = []
+              for row in sorted(rows, key=lambda item: item["source_id"]):
+                  expected_bytes, expected_hash = EXPECTED_ROWS[row["source_id"]]
+                  assert row["source_family"] == "en.project-gutenberg.public-domain-books"
+                  assert row["modality"] == "en"
+                  assert row["payload_utf8_bytes"] == expected_bytes
+                  assert row["payload_sha256"] == expected_hash
+                  payload = (root / row["payload_file"]).read_bytes()
+                  assert len(payload) == expected_bytes
+                  assert sha256(payload) == expected_hash
+                  payload_rows.append({
+                      "source_id": row["source_id"],
+                      "payload_utf8_bytes": expected_bytes,
+                      "payload_sha256": expected_hash,
+                  })
+              boundary = receipt["claim_boundary"]
+              assert boundary["canonical_corpus_capacity_credited_bytes"] == 0
+              assert boundary["training_authorized_bytes"] == 0
+              assert boundary["authorized_unique_loss_positions"] == 0
+              assert boundary["authorized_optimized_target_exposure"] == 0
+              assert boundary["tokenizer_fit_authorized"] is False
+              assert boundary["optimizer_updates_executed_on_real_targets"] == 0
+              assert boundary["training_executed"] is False
+              assert boundary["learned_weights_created"] is False
+              assert boundary["final_test_outcomes_read"] is False
+              return receipt, receipt_bytes, payload_rows
+
+          root_a = Path(os.environ["RUN_A"])
+          root_b = Path(os.environ["RUN_B"])
+          receipt_a, receipt_bytes_a, rows_a = load_and_verify(root_a)
+          receipt_b, receipt_bytes_b, rows_b = load_and_verify(root_b)
+          assert receipt_a == receipt_b
+          assert receipt_bytes_a == receipt_bytes_b
+          assert rows_a == rows_b
+
+          core = {
+              "schema_version": "12-6.d03-gutenberg-double-rematerialization-execution-evidence.v1",
+              "worker_id": "SWARM-1778-D03-GUTENBERG-TERMINAL-PAYLOAD",
+              "execution_profile": "LOCAL_FREE_GITHUB_HOSTED",
+              "execution_head_sha": os.environ["EXECUTION_HEAD"],
+              "product_semantic_parent_sha": EXPECTED_PRODUCT_PARENT,
+              "workflow_run_id": int(os.environ["WORKFLOW_RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["WORKFLOW_RUN_ATTEMPT"]),
+              "independent_materialization_count": 2,
+              "payload_inventory_identity_sha256": EXPECTED_INVENTORY,
+              "receipt_identity_sha256": EXPECTED_RECEIPT,
+              "receipt_file_sha256": sha256(receipt_bytes_a),
+              "normalized_utf8_bytes": 1672110,
+              "payload_records": rows_a,
+              "materializations_byte_identical": True,
+              "durable_payload_text_retained": False,
+              "claim_boundary": receipt_a["claim_boundary"],
+          }
+          evidence = dict(core)
+          evidence["evidence_sha256"] = sha256(canonical(core))
+          Path(os.environ["EVIDENCE"]).write_bytes(canonical(evidence))
+          print("D03 Gutenberg double rematerialization: PASS")
+          print(f"inventory_identity_sha256={EXPECTED_INVENTORY}")
+          print(f"receipt_identity_sha256={EXPECTED_RECEIPT}")
+          print(f"evidence_sha256={evidence['evidence_sha256']}")
+          PY
+      - name: Upload text-free execution evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-gutenberg-double-rematerialization-${{ github.sha }}
+          path: ${{ runner.temp }}/gutenberg-double-materialization-evidence.json
+          if-no-files-found: error
+          retention-days: 30
