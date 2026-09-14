@@ -1,0 +1,106 @@
+{
+  "acquisition": {
+    "immutable_acquisition_identity": false,
+    "map_snapshot_sha256": null,
+    "md5_is_integrity_input_not_project_identity": true,
+    "md5_snapshot_sha256": null,
+    "shard_sha256_manifest": null,
+    "successor_must_not_bulk_download_before_rights_sampling_plan": true,
+    "successor_must_preserve_pii_metadata_until_privacy_gate": true,
+    "successor_must_rehash_shards_sha256": true,
+    "successor_must_retain_record_provenance": true
+  },
+  "admission_verdict": "BLOCKED_SOURCE_RIGHTS_AND_IMMUTABLE_ACQUISITION",
+  "authority": {
+    "base_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "control_issue": 723,
+    "data_lane_issue": 4,
+    "learned20m_issue": 548,
+    "repository": "Oleksii-debug/12-6-ai.",
+    "research_parent_issue": 720,
+    "swarm_protocol": "SWARM-300-V2",
+    "worker": "SWARM-738"
+  },
+  "contract_sha256": "31c065ec8897af5f01fbf32d4fe60b6c10939c0b24a48ee4019a517bfda7fc3c",
+  "credit": {
+    "bulk_download_performed": false,
+    "downloaded_bytes": 0,
+    "final_test_payload_read": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "tokenizer_fit_permitted": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions": 0,
+    "unique_corpus_tokens": 0
+  },
+  "project_gates": {
+    "deterministic_split": "BLOCKED",
+    "evaluation_decontamination": "BLOCKED",
+    "privacy_review": "BLOCKED",
+    "project_global_dedup": "BLOCKED",
+    "source_level_rights": "BLOCKED",
+    "unique_loss_ledger": "BLOCKED"
+  },
+  "project_state": "DISCOVERED_NOT_ADMITTED",
+  "rights": {
+    "canonical_training_authorized": false,
+    "legal_compliance_owner": "DOWNSTREAM_PROJECT_REVIEW",
+    "package_license_implies_training_authority": false,
+    "packaging_license": "CC0-1.0",
+    "packaging_license_scope": "PACKAGING_ONLY",
+    "privacy_compliance_owner": "DOWNSTREAM_PROJECT_REVIEW",
+    "takedown_policy_present": true,
+    "underlying_text_owned_by_hplt": false,
+    "underlying_text_training_rights": "UNRESOLVED_SOURCE_LEVEL_REVIEW_REQUIRED"
+  },
+  "schema": "d03-hplt3-ukr-cyrl-source-audit-v1",
+  "source_id": "HPLT-3.0-ukr_Cyrl",
+  "successor_requirements": [
+    "snapshot ukr_Cyrl.map and ukr_Cyrl.md5 and record SHA-256 identities",
+    "select a bounded shard sample before any large transfer",
+    "download selected shards only under an explicit LOCAL_FREE or authorized compute/storage budget",
+    "verify HPLT MD5 and independently compute SHA-256 for every acquired shard",
+    "retain per-record crawl provenance and source URL/origin metadata",
+    "perform source-level rights classification rather than inheriting CC0 from packaging",
+    "run project privacy/PII gate independently of HPLT annotations",
+    "run project global cross-source dedup independently of HPLT within-language dedup",
+    "run reserved evaluation decontamination before tokenizer fit or training credit",
+    "materialize deterministic split/tokenizer/packing/unique-loss ledgers before training authorization"
+  ],
+  "upstream": {
+    "crawl_sources": [
+      "Common Crawl",
+      "Internet Archive"
+    ],
+    "crawl_years": [
+      2012,
+      2024
+    ],
+    "dataset_card": "https://huggingface.co/datasets/HPLT/HPLT3.0",
+    "dataset_card_commit": "3394d6ba8dae4da834e3b11771daf95028a960b1",
+    "global_dedup_reported_for_ukrainian": true,
+    "language_script": "ukr_Cyrl",
+    "map_url": "https://data.hplt-project.org/three/sorted/ukr_Cyrl.map",
+    "md5_url": "https://data.hplt-project.org/three/sorted/ukr_Cyrl.md5",
+    "official_release_page": "https://hplt-project.org/datasets/v3.0",
+    "pii_annotations_reported": true,
+    "processing": {
+      "html_extraction": "Trafilatura 2.0 family, per HPLT release documentation",
+      "language_identification": "OpenLID 2.0",
+      "pipeline": "Monotextor"
+    },
+    "provenance_metadata_reported": true,
+    "published_ukrainian_statistics": {
+      "bytes_scientific": "1.37162e+11",
+      "characters_scientific": "2.44658e+11",
+      "documents_scientific": "8.00269e+07",
+      "segments_scientific": "1.60566e+09",
+      "sorted_size_human": "137.16 GB",
+      "statistics_are_upstream_reported_not_project_capacity": true,
+      "tokens_scientific": "8.12156e+10"
+    },
+    "register_labels_reported": true,
+    "release": "HPLT Monolingual Datasets 3.0",
+    "release_completed": "2025-07"
+  }
+}
