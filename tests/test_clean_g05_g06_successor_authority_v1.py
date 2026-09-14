@@ -324,7 +324,10 @@ def test_requires_distinct_replay_run_ids() -> None:
         _replay("same-run", clean_input=clean_input, coverage=coverage),
     ]
 
-    with pytest.raises(CleanG05G06SuccessorError, match="run_ids must be distinct"):
+    with pytest.raises(
+        CleanG05G06SuccessorError,
+        match="expected replay roots must be distinct",
+    ):
         build_clean_g05_g06_successor_authority(
             clean_input_binding=clean_input,
             expected_clean_input_binding_identity_sha256=clean_input[
