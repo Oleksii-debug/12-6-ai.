@@ -489,13 +489,21 @@ def _publish_content_object_from_staging(
     recovery_root: Path,
     staging: Path,
     manifest: Mapping[str, Any],
-) -> tuple[Path, str, str]:
+) -> tuple[Path, str, str, dict[str, Any]]:
+    """Publish or authenticate one immutable content object.
+
+    ``checkpoint_id`` intentionally excludes non-identity manifest metadata such
+    as ``created_at_utc``. Therefore a repeated save can produce the same content
+    address with different manifest bytes. Once an object already exists, that
+    verified object's manifest and manifest SHA are canonical for every downstream
+    pointer/sidecar binding; the private staged manifest is not an authority.
+    """
+
     checkpoint_id = _require_sha256(manifest.get("checkpoint_id"), field="checkpoint_id")
     object_key = _content_key(checkpoint_id)
     object_root = recovery_root / CHECKPOINTS_DIR
     _ensure_real_directory(object_root)
     destination = recovery_root / object_key
-    manifest_sha256 = sha256_file(staging / MANIFEST_NAME)
 
     if destination.exists() or destination.is_symlink():
         if destination.is_symlink() or not destination.is_dir():
@@ -503,24 +511,25 @@ def _publish_content_object_from_staging(
         existing = verify_checkpoint(destination)
         if existing.get("checkpoint_id") != checkpoint_id:
             raise RecoveryLifecycleError("content-addressed checkpoint object identity mismatch")
-        _assert_manifest_sha256(destination, manifest_sha256)
-        return destination, object_key, manifest_sha256
+        canonical_manifest_sha256 = sha256_file(destination / MANIFEST_NAME)
+        _assert_manifest_sha256(destination, canonical_manifest_sha256)
+        return destination, object_key, canonical_manifest_sha256, existing
 
     try:
         _atomic_publish_directory_noreplace(staging, destination)
     except FileExistsError:
-        existing = verify_checkpoint(destination)
-        if existing.get("checkpoint_id") != checkpoint_id:
+        published = verify_checkpoint(destination)
+        if published.get("checkpoint_id") != checkpoint_id:
             raise RecoveryLifecycleError("content-addressed checkpoint publication collision")
-        _assert_manifest_sha256(destination, manifest_sha256)
     else:
         fsync_parent_directory(destination)
+        published = verify_checkpoint(destination)
 
-    published = verify_checkpoint(destination)
     if published.get("checkpoint_id") != checkpoint_id:
         raise RecoveryLifecycleError("published content-addressed checkpoint identity mismatch")
-    _assert_manifest_sha256(destination, manifest_sha256)
-    return destination, object_key, manifest_sha256
+    canonical_manifest_sha256 = sha256_file(destination / MANIFEST_NAME)
+    _assert_manifest_sha256(destination, canonical_manifest_sha256)
+    return destination, object_key, canonical_manifest_sha256, published
 
 
 def _publish_recovery_generation_unlocked(
@@ -564,14 +573,18 @@ def _publish_recovery_generation_unlocked(
     staging = staging_root / "checkpoint"
     try:
         save_generation(staging)
-        manifest = verify_checkpoint(staging)
+        staged_manifest = verify_checkpoint(staging)
+        checkpoint_id = _require_sha256(
+            staged_manifest.get("checkpoint_id"), field="checkpoint_id"
+        )
+        content_path, object_key, manifest_sha256, manifest = (
+            _publish_content_object_from_staging(
+                recovery_root, staging, staged_manifest
+            )
+        )
         identity = manifest.get("identity")
         if not isinstance(identity, Mapping):
-            raise RecoveryLifecycleError("saved recovery checkpoint identity is missing")
-        checkpoint_id = _require_sha256(manifest.get("checkpoint_id"), field="checkpoint_id")
-        content_path, object_key, manifest_sha256 = _publish_content_object_from_staging(
-            recovery_root, staging, manifest
-        )
+            raise RecoveryLifecycleError("canonical recovery checkpoint identity is missing")
     finally:
         shutil.rmtree(staging_root, ignore_errors=True)
 
