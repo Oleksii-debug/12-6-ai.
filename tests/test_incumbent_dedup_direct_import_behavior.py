@@ -87,7 +87,13 @@ def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() 
     assert Counter(["a", "a", "b"]) == Counter({"a": 2, "b": 1})
 
     original = getattr(collections, "_count_elements")
-    caught: str | None = None
+    caught_helper: str | None = None
+    caught_runtime: str | None = None
+
+    class MustNotReadV1:
+        @property
+        def v1(self) -> object:
+            raise AssertionError("v1 accessed before loader dependency attestation")
 
     def replacement(mapping: object, iterable: object) -> None:
         del mapping, iterable
@@ -99,11 +105,16 @@ def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() 
         try:
             indexed._attest_loader_frozen_runtime_dependencies()
         except indexed.IndexedExecutionError as exc:
-            caught = str(exc)
+            caught_helper = str(exc)
+        try:
+            indexed.attest_incumbent_runtime(MustNotReadV1())
+        except indexed.IndexedExecutionError as exc:
+            caught_runtime = str(exc)
     finally:
         setattr(collections, "_count_elements", original)
 
-    assert caught == "collections._count_elements runtime drift"
+    assert caught_helper == "collections._count_elements runtime drift"
+    assert caught_runtime == "collections._count_elements runtime drift"
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
