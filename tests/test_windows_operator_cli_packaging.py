@@ -166,6 +166,8 @@ def test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them(
     venv_dir = tmp_path / "installed"
     venv.EnvBuilder(with_pip=True).create(venv_dir)
     venv_python, console = _venv_paths(venv_dir)
+    clean_env = dict(os.environ)
+    clean_env.pop("PYTHONPATH", None)
     install = subprocess.run(
         [
             str(venv_python),
@@ -179,11 +181,12 @@ def test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them(
         check=False,
         capture_output=True,
         text=True,
+        env=clean_env,
     )
     assert install.returncode == 0, install.stdout + install.stderr
     assert console.is_file()
 
-    env = dict(os.environ)
+    env = dict(clean_env)
     owner_home = tmp_path / "owner-home"
     owner_home.mkdir()
     env["HOME"] = str(owner_home)
