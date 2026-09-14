@@ -1,6 +1,6 @@
 """Project exact PR #474 attrs source bytes into the incumbent D03 dedup contract.
 
-This module owns no duplicate-matching science and grants no corpus capacity.  It only
+This module owns no duplicate-matching science and grants no corpus capacity. It only
 turns the four exact attrs 26.1.0 implementation objects admitted by PR #474 into the
 source-row/payload shape consumed by the incumbent NEXT100-065 V3 dedup lineage.
 """
@@ -154,9 +154,11 @@ def _validate_payload(
 
 def _projection_receipt(
     *,
+    authorities: Sequence[FileAuthority],
     sources: Sequence[Mapping[str, Any]],
     payloads: Mapping[str, bytes],
 ) -> dict[str, Any]:
+    _require(len(authorities) == len(sources), "authority/source cardinality drift")
     source_lines = b"".join(_canonical(dict(source)) + b"\n" for source in sources)
     payload_ledger = [
         {
@@ -166,7 +168,7 @@ def _projection_receipt(
             "sha256": _sha256(payloads[source["source_id"]]),
             "git_blob_sha1": authority.git_blob_sha1,
         }
-        for authority, source in zip(FILE_AUTHORITIES, sources, strict=True)
+        for authority, source in zip(authorities, sources, strict=True)
     ]
     receipt: dict[str, Any] = {
         "schema_version": RECEIPT_SCHEMA,
@@ -248,7 +250,11 @@ def _project_payloads_for_authority(
         sources.append(row)
         projected_payloads[source_id] = payload
 
-    receipt = _projection_receipt(sources=sources, payloads=projected_payloads)
+    receipt = _projection_receipt(
+        authorities=authorities,
+        sources=sources,
+        payloads=projected_payloads,
+    )
     return AttrsDedupProjection(
         receipt=receipt,
         sources=tuple(sources),
