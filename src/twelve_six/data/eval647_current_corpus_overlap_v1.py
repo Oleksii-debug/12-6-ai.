@@ -14,7 +14,6 @@ from typing import Any
 from twelve_six.data._data232_decontamination_matching import (
     ALGORITHM,
     CODE_SKELETON,
-    DEFAULT_THRESHOLDS,
     NORMALIZATION,
     DecontaminationError,
     _blocked_pairs,
