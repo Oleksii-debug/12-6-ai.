@@ -15,27 +15,43 @@ def test_materialize_live_spaces_every_mediawiki_request() -> None:
     clock = [0.0]
     sleeps: list[float] = []
     calls: list[tuple[float, dict[str, str]]] = []
+    page_title = f"{PAGE_PREFIX}13"
 
     def fake_sleep(seconds: float) -> None:
         sleeps.append(seconds)
         clock[0] += seconds
 
+    def approved_metadata() -> dict[str, object]:
+        return {
+            "query": {
+                "pages": [
+                    {
+                        "title": page_title,
+                        "revisions": [{"revid": 560107}],
+                        "proofread": {
+                            "quality": 4,
+                            "quality_text": APPROVED_CATEGORY,
+                        },
+                    }
+                ]
+            }
+        }
+
     def fake_get_json(params: dict[str, str]) -> dict[str, object]:
         calls.append((clock[0], params))
         if params == {"action": "parse", "oldid": str(INDEX_REVISION_ID), "prop": "links"}:
-            return {"parse": {"links": [{"title": f"{PAGE_PREFIX}13"}]}}
+            return {"parse": {"links": [{"title": page_title}]}}
         if params == {
             "action": "query",
-            "titles": f"{PAGE_PREFIX}13",
-            "prop": "revisions",
+            "titles": page_title,
+            "prop": "revisions|proofread",
             "rvprop": "ids",
         }:
-            return {"query": {"pages": [{"revisions": [{"revid": 560107}]}]}}
-        if params == {"action": "parse", "oldid": "560107", "prop": "text|categories"}:
+            return approved_metadata()
+        if params == {"action": "parse", "oldid": "560107", "prop": "text|revid"}:
             return {
                 "parse": {
                     "revid": 560107,
-                    "categories": [{"category": APPROVED_CATEGORY}],
                     "text": (
                         "<p>Український літературний текст достатньої довжини для "
                         "перевіреної сторінки та контрольованого мережевого запиту.</p>"
@@ -53,9 +69,9 @@ def test_materialize_live_spaces_every_mediawiki_request() -> None:
     )
 
     assert result.report["candidate"]["page_count"] == 1
-    assert len(calls) == 3
-    assert [called_at for called_at, _ in calls] == [0.0, 0.5, 1.0]
-    assert sleeps == [0.5, 0.5]
+    assert len(calls) == 4
+    assert [called_at for called_at, _ in calls] == [0.0, 0.5, 1.0, 1.5]
+    assert sleeps == [0.5, 0.5, 0.5]
 
 
 def test_materialize_live_rejects_boolean_cadence() -> None:
