@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -94,8 +95,19 @@ def test_unrelated_clean_inventory_is_not_overclaimed_or_blocked() -> None:
 def test_self_resealed_authority_cannot_widen_cleanliness_claim() -> None:
     authority = copy.deepcopy(AUTHORITY)
     authority["enforcement"]["all_other_corpus_bytes_declared_external_llm_clean"] = True
+    core = dict(authority)
+    core.pop("quarantine_identity_sha256")
+    authority["quarantine_identity_sha256"] = hashlib.sha256(
+        json.dumps(
+            core,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    assert authority["quarantine_identity_sha256"] != EXPECTED_AUTHORITY_IDENTITY_SHA256
     with pytest.raises(
         ExternalLLMProvenanceQuarantineError,
-        match="quarantine self-hash mismatch|quarantine enforcement drift",
+        match="quarantine identity is not independently expected",
     ):
         validate_authority(authority)
