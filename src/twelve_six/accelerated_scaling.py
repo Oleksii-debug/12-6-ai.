@@ -33,6 +33,12 @@ REQUIRED_ROUTE_IDS = (
     "PRODUCT_1B",
 )
 
+TERMINAL_AUDIT_INDEPENDENCE_FIELDS = {
+    "producer_and_audit_workflow_run_ids_must_differ",
+    "producer_and_audit_evidence_sha256_must_differ",
+    "same_code_git_sha_permitted",
+}
+
 REQUIRED_TERMINAL_20M_EVIDENCE = {
     "exact_code_model_init_identity",
     "terminal_corpus_split_packing_identity",
@@ -197,6 +203,15 @@ def _valid_terminal_authority(value: Any) -> bool:
     )
 
 
+def _terminal_authorities_are_independent(producer: Any, audit: Any) -> bool:
+    if not (_valid_terminal_authority(producer) and _valid_terminal_authority(audit)):
+        return False
+    return (
+        producer["workflow_run_id"] != audit["workflow_run_id"]
+        and producer["evidence_sha256"] != audit["evidence_sha256"]
+    )
+
+
 def _route_by_id(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
     route = data.get("scale_route")
     if not isinstance(route, list):
@@ -289,6 +304,31 @@ def _validate_boundaries(errors: list[str], data: dict[str, Any]) -> None:
         "training_executed_by_this_package",
     ):
         _expect(errors, boundaries.get(key) is False, f"hard_boundaries_{key}_must_be_false")
+
+
+def _validate_terminal_audit_independence(
+    errors: list[str], data: dict[str, Any]
+) -> None:
+    contract = data.get("terminal_audit_independence")
+    _expect(
+        errors,
+        isinstance(contract, dict),
+        "terminal_audit_independence_missing",
+    )
+    if not isinstance(contract, dict):
+        return
+
+    _expect(
+        errors,
+        set(contract) == TERMINAL_AUDIT_INDEPENDENCE_FIELDS,
+        "terminal_audit_independence_keys_mismatch",
+    )
+    for field in TERMINAL_AUDIT_INDEPENDENCE_FIELDS:
+        _expect(
+            errors,
+            contract.get(field) is True,
+            f"terminal_audit_independence_{field}_must_be_true",
+        )
 
 
 def _validate_route(errors: list[str], data: dict[str, Any]) -> None:
@@ -540,16 +580,28 @@ def _validate_evidence_state(errors: list[str], data: dict[str, Any]) -> None:
                 and learned_requirements[name].issubset(set(satisfied)),
                 f"{name}_requirements_incomplete",
             )
+            terminal_authority = learned.get("terminal_authority")
+            audit_authority = learned.get("independent_audit_authority")
+            terminal_valid = _valid_terminal_authority(terminal_authority)
+            audit_valid = _valid_terminal_authority(audit_authority)
             _expect(
                 errors,
-                _valid_terminal_authority(learned.get("terminal_authority")),
+                terminal_valid,
                 f"{name}_terminal_authority_invalid",
             )
             _expect(
                 errors,
-                _valid_terminal_authority(learned.get("independent_audit_authority")),
+                audit_valid,
                 f"{name}_independent_audit_authority_invalid",
             )
+            if terminal_valid and audit_valid:
+                _expect(
+                    errors,
+                    _terminal_authorities_are_independent(
+                        terminal_authority, audit_authority
+                    ),
+                    f"{name}_independent_audit_not_distinct",
+                )
 
     feasibility_requirements = {
         "feasibility_200m": REQUIRED_200M_FEASIBILITY,
@@ -631,6 +683,7 @@ def validate_roadmap(data: dict[str, Any]) -> list[str]:
     )
     _validate_authority(errors, data)
     _validate_boundaries(errors, data)
+    _validate_terminal_audit_independence(errors, data)
     _validate_route(errors, data)
     _validate_portability(errors, data)
     _validate_requirements(errors, data)
@@ -652,10 +705,25 @@ def _terminal_evidence(
     if not isinstance(satisfied, list) or not required.issubset(set(satisfied)):
         blockers.append(f"{name}_requirements_incomplete")
         valid = False
-    for field in ("terminal_authority", "independent_audit_authority"):
-        if not _valid_terminal_authority(value.get(field)):
-            blockers.append(f"{name}_{field}_invalid")
-            valid = False
+    terminal_authority = value.get("terminal_authority")
+    audit_authority = value.get("independent_audit_authority")
+    terminal_valid = _valid_terminal_authority(terminal_authority)
+    audit_valid = _valid_terminal_authority(audit_authority)
+    if not terminal_valid:
+        blockers.append(f"{name}_terminal_authority_invalid")
+        valid = False
+    if not audit_valid:
+        blockers.append(f"{name}_independent_audit_authority_invalid")
+        valid = False
+    if (
+        terminal_valid
+        and audit_valid
+        and not _terminal_authorities_are_independent(
+            terminal_authority, audit_authority
+        )
+    ):
+        blockers.append(f"{name}_independent_audit_not_distinct")
+        valid = False
     return valid
 
 
