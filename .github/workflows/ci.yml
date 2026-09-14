@@ -39,9 +39,13 @@ jobs:
     if: github.event_name == 'pull_request' && github.head_ref == 'swarm-1485/expanded-v9-real-execution-20260912'
     needs: bootstrap
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 240
     env:
       GH_TOKEN: ${{ github.token }}
+      EXPECTED_MAIN_SHA: 2da11c62f066671a1122888ec116242502f4fb9c
+      V9_RUNNER_BLOB: f99ed7b051f006c6f212780edeab6b2250881488
+      V9_FACADE_BLOB: 2916d5d76d708300ad2e1794829f583bced7c84c
+      V9_IMPL_BLOB: b160902c0b51595828ff4b389b918b64de398c82
       V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
       V8_RUN_ID: "34159790818"
       V8_ARTIFACT_ID: "10032510626"
@@ -49,6 +53,16 @@ jobs:
       V8_ARTIFACT_DIGEST: sha256:960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385
       V8_REPORT_SHA256: 942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a
       V8_SURVIVOR_AUTHORITY_SHA256: 8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf
+      RADA_RUN_ID: "34733315129"
+      RADA_EXECUTION_HEAD: d3f619fa5b7e4d0805ee9a76f2f3aa6a6ddd4c49
+      RADA_ARTIFACT_ID: "10310591743"
+      RADA_ARTIFACT_NAME: d03-rada-trees-authoritative-no-site-isolated-current-survivors
+      RADA_ARTIFACT_DIGEST: sha256:bfb4f1aabd4b8b28fe7f1fcf05b8f5c610303aae7c2a102cc8171e2f67a8f932
+      RADA_SURVIVOR_SHA256: 9c76085e47b514ab0a49ba8ccf0b51f692859b60360275b4dd0eb5e9d78305a8
+      RADA_REPORT_SHA256: 06bc8127d5d6ad9d8712870e3942b6cce5082a43b27bd8513a01dd93fc27ab3e
+      RADA_SUMMARY_SHA256: c22c18d354cd8e7a55acd57919148d4a3e058e916c230c4229379294d85a7d6a
+      RADA_SURVIVOR_RECORDS: "4619"
+      RADA_SURVIVOR_TEXT_BYTES: "858698060"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,6 +75,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .[dev]
+      - name: Bind exact current-main V9 execution closure
+        env:
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$EXPECTED_MAIN_SHA"
+          test "$(git rev-parse HEAD^1)" = "$EXPECTED_MAIN_SHA"
+          test "$(git hash-object tools/run_d03_expanded_global_dedup_v9.py)" = "$V9_RUNNER_BLOB"
+          test "$(git hash-object src/twelve_six/data/expanded_global_dedup_v9.py)" = "$V9_FACADE_BLOB"
+          test "$(git hash-object src/twelve_six/data/_expanded_global_dedup_v9_impl.py)" = "$V9_IMPL_BLOB"
+          python tools/run_next100_065f_global_dedup_v8.py check-config --current-root .
       - name: Bind sealed V8 artifact metadata
         run: |
           set -euo pipefail
@@ -93,14 +118,161 @@ jobs:
           assert survivors["truth_boundary"]["authorized_training_exposure"] == 0
           print("PASS_SEALED_V8_AUTHORITIES")
           PY
-      - name: Validate current config and exact clean terminal V7 checkout
+      - name: Bind terminal Rada physical artifact metadata
         run: |
           set -euo pipefail
-          python tools/run_next100_065f_global_dedup_v8.py check-config --current-root .
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RADA_ARTIFACT_ID}" --jq '.name')" = "$RADA_ARTIFACT_NAME"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RADA_ARTIFACT_ID}" --jq '.workflow_run.id')" = "$RADA_RUN_ID"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RADA_ARTIFACT_ID}" --jq '.workflow_run.head_sha')" = "$RADA_EXECUTION_HEAD"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RADA_ARTIFACT_ID}" --jq '.digest')" = "$RADA_ARTIFACT_DIGEST"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${RADA_ARTIFACT_ID}" --jq '.expired')" = "false"
+      - name: Download and authenticate terminal Rada survivor authority
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rada-authority"
+          gh run download "$RADA_RUN_ID" --name "$RADA_ARTIFACT_NAME" --dir "$RUNNER_TEMP/rada-authority"
+          test -f "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl"
+          test -f "$RUNNER_TEMP/rada-authority/rada-quality-window-authoritative-report.json"
+          test -f "$RUNNER_TEMP/rada-authority/rada-authoritative-execution-summary.json"
+          test "$(sha256sum "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl" | cut -d' ' -f1)" = "$RADA_SURVIVOR_SHA256"
+          test "$(wc -l < "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl" | tr -d ' ')" = "$RADA_SURVIVOR_RECORDS"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "rada-authority"
+          report = json.loads((root / "rada-quality-window-authoritative-report.json").read_text(encoding="utf-8"))
+          summary = json.loads((root / "rada-authoritative-execution-summary.json").read_text(encoding="utf-8"))
+          assert report["report_sha256"] == os.environ["RADA_REPORT_SHA256"]
+          assert summary["summary_sha256"] == os.environ["RADA_SUMMARY_SHA256"]
+          assert str(summary["workflow_run_id"]) == os.environ["RADA_RUN_ID"]
+          assert summary["pr_head_sha"] == os.environ["RADA_EXECUTION_HEAD"]
+          assert summary["survivor_jsonl_sha256"] == os.environ["RADA_SURVIVOR_SHA256"]
+          assert str(summary["survivor_records"]) == os.environ["RADA_SURVIVOR_RECORDS"]
+          assert str(summary["survivor_text_utf8_bytes"]) == os.environ["RADA_SURVIVOR_TEXT_BYTES"]
+          assert summary["authority_report_sha256"] == os.environ["RADA_REPORT_SHA256"]
+          assert summary["authorized_optimized_target_exposure"] == 0
+          assert summary["tokenizer_fit_authorized"] is False
+          assert summary["optimizer_updates"] == 0
+          assert summary["model_training_executed"] is False
+          assert summary["learned_weights_created"] is False
+          assert summary["final_test_outcomes_read"] is False
+          assert summary["paid_compute_used"] is False
+          assert summary["foreign_pretrained_weights"] is False
+          assert summary["external_llm_or_api_data_or_intelligence"] is False
+          print("PASS_TERMINAL_RADA_AUTHORITY")
+          PY
+      - name: Materialize exact clean terminal V7 checkout
+        run: |
+          set -euo pipefail
           git cat-file -e "${V7_HEAD}^{commit}"
           git worktree add --detach "$RUNNER_TEMP/v7-root" "$V7_HEAD"
           test "$(git -C "$RUNNER_TEMP/v7-root" rev-parse HEAD)" = "$V7_HEAD"
           test -z "$(git -C "$RUNNER_TEMP/v7-root" status --porcelain --untracked-files=all)"
-          echo "EXPANDED_V9_EXECUTION_CARRIER_PREFLIGHT=PASS_ZERO_CREDIT"
-          echo "REAL_EXPANDED_V9_EXECUTED=false"
-          echo "AUTHORIZED_TRAINING_EXPOSURE=0"
+      - name: Execute real expanded V9 twice
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v9-a" "$RUNNER_TEMP/v9-b" "$RUNNER_TEMP/bulk-a" "$RUNNER_TEMP/bulk-b"
+          python tools/run_d03_expanded_global_dedup_v9.py \
+            --v7-root "$RUNNER_TEMP/v7-root" \
+            --bulk-workspace "$RUNNER_TEMP/bulk-a" \
+            --v8-report "$RUNNER_TEMP/v8-authority/v8-a.json" \
+            --v8-survivors "$RUNNER_TEMP/v8-authority/v8-survivors-a.json" \
+            --rada-quality-privacy-jsonl "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl" \
+            --rada-quality-privacy-report "$RUNNER_TEMP/rada-authority/rada-quality-window-authoritative-report.json" \
+            --expected-rada-report-sha256 "$RADA_REPORT_SHA256" \
+            --output-report "$RUNNER_TEMP/v9-a/report.json" \
+            --output-survivors "$RUNNER_TEMP/v9-a/survivors.json"
+          python tools/run_d03_expanded_global_dedup_v9.py \
+            --v7-root "$RUNNER_TEMP/v7-root" \
+            --bulk-workspace "$RUNNER_TEMP/bulk-b" \
+            --v8-report "$RUNNER_TEMP/v8-authority/v8-a.json" \
+            --v8-survivors "$RUNNER_TEMP/v8-authority/v8-survivors-a.json" \
+            --rada-quality-privacy-jsonl "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl" \
+            --rada-quality-privacy-report "$RUNNER_TEMP/rada-authority/rada-quality-window-authoritative-report.json" \
+            --expected-rada-report-sha256 "$RADA_REPORT_SHA256" \
+            --output-report "$RUNNER_TEMP/v9-b/report.json" \
+            --output-survivors "$RUNNER_TEMP/v9-b/survivors.json"
+          cmp "$RUNNER_TEMP/v9-a/report.json" "$RUNNER_TEMP/v9-b/report.json"
+          cmp "$RUNNER_TEMP/v9-a/survivors.json" "$RUNNER_TEMP/v9-b/survivors.json"
+      - name: Seal compact zero-credit V9 evidence
+        env:
+          PRODUCT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v9-evidence"
+          cp "$RUNNER_TEMP/v9-a/report.json" "$RUNNER_TEMP/v9-evidence/report.json"
+          cp "$RUNNER_TEMP/v9-a/survivors.json" "$RUNNER_TEMP/v9-evidence/survivors.json"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          evidence = root / "v9-evidence"
+          report_path = evidence / "report.json"
+          survivors_path = evidence / "survivors.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          survivors = json.loads(survivors_path.read_text(encoding="utf-8"))
+          file_sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          assert isinstance(report.get("report_sha256"), str) and len(report["report_sha256"]) == 64
+          assert isinstance(survivors.get("survivor_authority_sha256"), str) and len(survivors["survivor_authority_sha256"]) == 64
+          summary = {
+              "schema_version": "12-6.d03-expanded-global-dedup-v9-real-execution.v1",
+              "execution_profile": "LOCAL_FREE",
+              "product_head_sha": os.environ["PRODUCT_HEAD_SHA"],
+              "main_sha": os.environ["EXPECTED_MAIN_SHA"],
+              "v9_runner_git_blob": os.environ["V9_RUNNER_BLOB"],
+              "v9_facade_git_blob": os.environ["V9_FACADE_BLOB"],
+              "v9_impl_git_blob": os.environ["V9_IMPL_BLOB"],
+              "v7_head_sha": os.environ["V7_HEAD"],
+              "v8_run_id": int(os.environ["V8_RUN_ID"]),
+              "v8_artifact_id": int(os.environ["V8_ARTIFACT_ID"]),
+              "v8_artifact_digest": os.environ["V8_ARTIFACT_DIGEST"],
+              "v8_report_sha256": os.environ["V8_REPORT_SHA256"],
+              "v8_survivor_authority_sha256": os.environ["V8_SURVIVOR_AUTHORITY_SHA256"],
+              "rada_run_id": int(os.environ["RADA_RUN_ID"]),
+              "rada_execution_head_sha": os.environ["RADA_EXECUTION_HEAD"],
+              "rada_artifact_id": int(os.environ["RADA_ARTIFACT_ID"]),
+              "rada_artifact_digest": os.environ["RADA_ARTIFACT_DIGEST"],
+              "rada_survivor_jsonl_sha256": os.environ["RADA_SURVIVOR_SHA256"],
+              "rada_authority_report_sha256": os.environ["RADA_REPORT_SHA256"],
+              "rada_execution_summary_sha256": os.environ["RADA_SUMMARY_SHA256"],
+              "rada_survivor_records": int(os.environ["RADA_SURVIVOR_RECORDS"]),
+              "rada_survivor_text_utf8_bytes": int(os.environ["RADA_SURVIVOR_TEXT_BYTES"]),
+              "two_fresh_v9_reports_byte_identical": True,
+              "two_fresh_v9_survivor_authorities_byte_identical": True,
+              "v9_report_sha256": report["report_sha256"],
+              "v9_report_file_sha256": file_sha(report_path),
+              "v9_survivor_authority_sha256": survivors["survivor_authority_sha256"],
+              "v9_survivor_file_sha256": file_sha(survivors_path),
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights": False,
+              "external_llm_or_api_used_for_data_or_intelligence": False,
+          }
+          core = json.dumps(summary, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+          summary["summary_sha256"] = hashlib.sha256(core).hexdigest()
+          (evidence / "execution-summary.json").write_text(
+              json.dumps(summary, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          print("D03_EXPANDED_GLOBAL_DEDUP_V9_REAL_EXECUTION=PASS_ZERO_CREDIT")
+          print("REPORT_SHA256=" + summary["v9_report_sha256"])
+          print("SURVIVOR_AUTHORITY_SHA256=" + summary["v9_survivor_authority_sha256"])
+          print("SUMMARY_SHA256=" + summary["summary_sha256"])
+          print("AUTHORIZED_TRAINING_EXPOSURE=0")
+          PY
+      - name: Upload text-free V9 execution evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-expanded-v9-real-zero-credit-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/v9-evidence/execution-summary.json
+            ${{ runner.temp }}/v9-evidence/report.json
+            ${{ runner.temp }}/v9-evidence/survivors.json
+          if-no-files-found: error
+          retention-days: 1
