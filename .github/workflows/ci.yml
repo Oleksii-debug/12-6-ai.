@@ -128,16 +128,17 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/rada-authority"
           gh run download "$RADA_RUN_ID" --name "$RADA_ARTIFACT_NAME" --dir "$RUNNER_TEMP/rada-authority"
-          test -f "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl"
-          test -f "$RUNNER_TEMP/rada-authority/rada-quality-window-authoritative-report.json"
+          RADA_DIR="$RUNNER_TEMP/rada-authority/authoritative-a"
+          test -f "$RADA_DIR/rada-quality-window-survivors.jsonl"
+          test -f "$RADA_DIR/rada-quality-window-authoritative-report.json"
           test -f "$RUNNER_TEMP/rada-authority/rada-authoritative-execution-summary.json"
-          test "$(sha256sum "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl" | cut -d' ' -f1)" = "$RADA_SURVIVOR_SHA256"
-          test "$(wc -l < "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl" | tr -d ' ')" = "$RADA_SURVIVOR_RECORDS"
+          test "$(sha256sum "$RADA_DIR/rada-quality-window-survivors.jsonl" | cut -d' ' -f1)" = "$RADA_SURVIVOR_SHA256"
+          test "$(wc -l < "$RADA_DIR/rada-quality-window-survivors.jsonl" | tr -d ' ')" = "$RADA_SURVIVOR_RECORDS"
           python - <<'PY'
           import json, os
           from pathlib import Path
           root = Path(os.environ["RUNNER_TEMP"]) / "rada-authority"
-          report = json.loads((root / "rada-quality-window-authoritative-report.json").read_text(encoding="utf-8"))
+          report = json.loads((root / "authoritative-a" / "rada-quality-window-authoritative-report.json").read_text(encoding="utf-8"))
           summary = json.loads((root / "rada-authoritative-execution-summary.json").read_text(encoding="utf-8"))
           assert report["report_sha256"] == os.environ["RADA_REPORT_SHA256"]
           assert summary["summary_sha256"] == os.environ["RADA_SUMMARY_SHA256"]
@@ -168,14 +169,15 @@ jobs:
       - name: Execute real expanded V9 twice
         run: |
           set -euo pipefail
+          RADA_DIR="$RUNNER_TEMP/rada-authority/authoritative-a"
           mkdir -p "$RUNNER_TEMP/v9-a" "$RUNNER_TEMP/v9-b" "$RUNNER_TEMP/bulk-a" "$RUNNER_TEMP/bulk-b"
           python tools/run_d03_expanded_global_dedup_v9.py \
             --v7-root "$RUNNER_TEMP/v7-root" \
             --bulk-workspace "$RUNNER_TEMP/bulk-a" \
             --v8-report "$RUNNER_TEMP/v8-authority/v8-a.json" \
             --v8-survivors "$RUNNER_TEMP/v8-authority/v8-survivors-a.json" \
-            --rada-quality-privacy-jsonl "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl" \
-            --rada-quality-privacy-report "$RUNNER_TEMP/rada-authority/rada-quality-window-authoritative-report.json" \
+            --rada-quality-privacy-jsonl "$RADA_DIR/rada-quality-window-survivors.jsonl" \
+            --rada-quality-privacy-report "$RADA_DIR/rada-quality-window-authoritative-report.json" \
             --expected-rada-report-sha256 "$RADA_REPORT_SHA256" \
             --output-report "$RUNNER_TEMP/v9-a/report.json" \
             --output-survivors "$RUNNER_TEMP/v9-a/survivors.json"
@@ -184,8 +186,8 @@ jobs:
             --bulk-workspace "$RUNNER_TEMP/bulk-b" \
             --v8-report "$RUNNER_TEMP/v8-authority/v8-a.json" \
             --v8-survivors "$RUNNER_TEMP/v8-authority/v8-survivors-a.json" \
-            --rada-quality-privacy-jsonl "$RUNNER_TEMP/rada-authority/rada-quality-window-survivors.jsonl" \
-            --rada-quality-privacy-report "$RUNNER_TEMP/rada-authority/rada-quality-window-authoritative-report.json" \
+            --rada-quality-privacy-jsonl "$RADA_DIR/rada-quality-window-survivors.jsonl" \
+            --rada-quality-privacy-report "$RADA_DIR/rada-quality-window-authoritative-report.json" \
             --expected-rada-report-sha256 "$RADA_REPORT_SHA256" \
             --output-report "$RUNNER_TEMP/v9-b/report.json" \
             --output-survivors "$RUNNER_TEMP/v9-b/survivors.json"
