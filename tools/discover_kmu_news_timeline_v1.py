@@ -90,12 +90,25 @@ def fetch(url: str, timeout: float = 20.0) -> bytes:
         return response.read()
 
 
+def _explicit_page_vector(max_pages: int) -> list[str]:
+    """Return the exact bounded HTTP pagination vector, independent of HTML links."""
+    pages = [SEED]
+    for page_number in range(2, max_pages + 1):
+        candidate = canonical_timeline_page(f"{SEED}&page={page_number}")
+        if candidate is None:
+            raise RuntimeError("failed to construct canonical timeline pagination")
+        pages.append(candidate)
+    return pages
+
+
 def discover(max_pages: int, delay_seconds: float) -> dict[str, object]:
     if max_pages < 1 or max_pages > 20:
         raise ValueError("max_pages must be in 1..20")
     if delay_seconds < 1.0:
         raise ValueError("delay_seconds must be >=1.0")
-    pending = [SEED]
+    # Do not rely on the returned HTML to advertise pagination. The live seed can be a
+    # client-rendered shell with no links while later canonical page variants still exist.
+    pending = _explicit_page_vector(max_pages)
     visited: set[str] = set()
     news: set[str] = set()
     snapshots: list[dict[str, object]] = []

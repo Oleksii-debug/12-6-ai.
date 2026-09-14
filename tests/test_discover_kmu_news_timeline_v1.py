@@ -32,18 +32,36 @@ class TimelineDiscoveryTests(unittest.TestCase):
             "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=2",
         )
         self.assertEqual(
-            m.canonical_timeline_page("https://kmu.gov.ua/timeline?page=02&type=posts&category_id=3#x"),
+            m.canonical_timeline_page(
+                "https://kmu.gov.ua/timeline?page=02&type=posts&category_id=3#x"
+            ),
             "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=2",
         )
-        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=3&type=documents&page=2"))
-        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=3&type=posts&page=0"))
-        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=3&type=posts&page=2&lang=en"))
-        self.assertIsNone(m.canonical_timeline_page("https://evil.test/timeline?category_id=3&type=posts&page=2"))
+        self.assertIsNone(
+            m.canonical_timeline_page("/timeline?category_id=3&type=documents&page=2")
+        )
+        self.assertIsNone(
+            m.canonical_timeline_page("/timeline?category_id=3&type=posts&page=0")
+        )
+        self.assertIsNone(
+            m.canonical_timeline_page("/timeline?category_id=3&type=posts&page=2&lang=en")
+        )
+        self.assertIsNone(
+            m.canonical_timeline_page(
+                "https://evil.test/timeline?category_id=3&type=posts&page=2"
+            )
+        )
 
     def test_category_is_pinned_fail_closed(self):
         self.assertIsNone(m.canonical_timeline_page("/timeline?type=posts&page=2"))
-        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=4&type=posts&page=2"))
-        self.assertIsNone(m.canonical_timeline_page("/timeline?category_id=3&category_id=4&type=posts&page=2"))
+        self.assertIsNone(
+            m.canonical_timeline_page("/timeline?category_id=4&type=posts&page=2")
+        )
+        self.assertIsNone(
+            m.canonical_timeline_page(
+                "/timeline?category_id=3&category_id=4&type=posts&page=2"
+            )
+        )
 
     def test_fetch_rejects_same_origin_redirect_route_drift(self):
         response = MagicMock()
@@ -72,6 +90,16 @@ class TimelineDiscoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.discover(21, 1.0)
 
+    def test_explicit_page_vector_does_not_depend_on_seed_links(self):
+        self.assertEqual(
+            m._explicit_page_vector(3),
+            [
+                m.SEED,
+                "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=2",
+                "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=3",
+            ],
+        )
+
     def test_discovers_articles_and_follows_only_pinned_news_category_pagination(self):
         pages = {
             m.SEED: (
@@ -91,8 +119,11 @@ class TimelineDiscoveryTests(unittest.TestCase):
             del timeout
             return pages[url]
 
-        with patch.object(m, "fetch", side_effect=fake_fetch), patch.object(m.time, "sleep") as sleep:
-            report = m.discover(5, 1.05)
+        with (
+            patch.object(m, "fetch", side_effect=fake_fetch),
+            patch.object(m.time, "sleep") as sleep,
+        ):
+            report = m.discover(2, 1.05)
         self.assertEqual(
             report["news_urls"],
             ["https://www.kmu.gov.ua/news/a", "https://www.kmu.gov.ua/news/b"],
@@ -104,6 +135,27 @@ class TimelineDiscoveryTests(unittest.TestCase):
         self.assertEqual(report["training_authorized_bytes"], 0)
         self.assertEqual(report["family_count_credit_added"], 0)
         sleep.assert_called_once_with(1.05)
+
+    def test_direct_page_two_is_probed_even_when_seed_has_no_pagination_links(self):
+        page_two = "https://www.kmu.gov.ua/timeline?category_id=3&type=posts&page=2"
+        pages = {
+            m.SEED: b"<main>no links on seed</main>",
+            page_two: b'<a href="/news/found-only-on-page-two">article</a>',
+        }
+
+        with (
+            patch.object(m, "fetch", side_effect=lambda url: pages[url]),
+            patch.object(m.time, "sleep") as sleep,
+        ):
+            report = m.discover(2, 1.0)
+
+        self.assertEqual(report["pages_visited"], 2)
+        self.assertEqual(
+            report["news_urls"],
+            ["https://www.kmu.gov.ua/news/found-only-on-page-two"],
+        )
+        self.assertEqual(report["discovery_status"], "DISCOVERED_ARTICLE_URLS")
+        sleep.assert_called_once_with(1.0)
 
     def test_client_rendered_shell_without_articles_is_explicitly_blocked(self):
         html = "<main><h1>Таймлайн матеріалів Уряду</h1><p>Завантажуємо ще</p></main>".encode()
