@@ -1,0 +1,76 @@
+name: D03 1778 Gutenberg terminal payload real execution
+
+on:
+  push:
+    branches:
+      - exec/1778-gutenberg-rematerialization
+
+permissions:
+  contents: read
+
+jobs:
+  rematerialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact execution carrier
+        uses: actions/checkout@v4
+
+      - name: Focused adversarial tests
+        run: python -m unittest -q tests/test_materialize_d03_gutenberg_terminal_payload_v1.py
+
+      - name: Materialize exact payload A
+        run: |
+          python tools/materialize_d03_gutenberg_terminal_payload_v1.py \
+            --out /tmp/gutenberg-a
+
+      - name: Materialize exact payload B
+        run: |
+          python tools/materialize_d03_gutenberg_terminal_payload_v1.py \
+            --out /tmp/gutenberg-b
+
+      - name: Prove two byte-identical builds and frozen receipt identity
+        run: |
+          diff -r /tmp/gutenberg-a /tmp/gutenberg-b
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          expected_receipt = "71ae211ff13faba3cc6da07c533344dadcbb903204acef4b07eccee5447a131e"
+          expected_inventory = "25cdfed7f1f03ab660f4edb596eaeb2be6006db5d7d182d4fb468e33d2463c17"
+          expected_file = "b7abcc1d705f63805a1e4107febe356b0f3ea30552459c388d374079c7f15f15"
+          raw = Path("/tmp/gutenberg-a/receipt.json").read_bytes()
+          receipt = json.loads(raw)
+          assert receipt["receipt_sha256"] == expected_receipt
+          assert receipt["payload_inventory"]["inventory_identity_sha256"] == expected_inventory
+          assert hashlib.sha256(raw).hexdigest() == expected_file
+          assert receipt["payload_inventory"]["record_count"] == 3
+          assert receipt["payload_inventory"]["normalized_utf8_bytes"] == 1672110
+          assert receipt["claim_boundary"]["canonical_corpus_capacity_credited_bytes"] == 0
+          assert receipt["claim_boundary"]["authorized_optimized_target_exposure"] == 0
+          assert receipt["claim_boundary"]["training_executed"] is False
+          print(json.dumps({
+              "receipt_sha256": expected_receipt,
+              "inventory_identity_sha256": expected_inventory,
+              "receipt_file_sha256": expected_file,
+              "record_count": 3,
+              "normalized_utf8_bytes": 1672110,
+              "canonical_corpus_capacity_credited_bytes": 0,
+              "authorized_optimized_target_exposure": 0,
+          }, sort_keys=True))
+          PY
+
+      - name: Stage text-free evidence only
+        run: |
+          mkdir -p /tmp/gutenberg-evidence
+          cp /tmp/gutenberg-a/receipt.json /tmp/gutenberg-evidence/receipt-a.json
+          cp /tmp/gutenberg-b/receipt.json /tmp/gutenberg-evidence/receipt-b.json
+
+      - name: Upload text-free rematerialization receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-1778-gutenberg-terminal-rematerialization-receipts
+          path: /tmp/gutenberg-evidence
+          if-no-files-found: error
+          retention-days: 90
