@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .contracts import InferenceBackend
+from .openai_compat import CompletionRequest
 from .serving_runtime import (
     DEFAULT_COMPLETION_TIMEOUT_SECONDS,
     DEFAULT_MAX_QUEUE_DEPTH,
@@ -365,6 +366,17 @@ class CompletionRequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
+            CompletionRequest.from_payload(payload)
+        except (TypeError, ValueError) as exc:
+            self._error(
+                HTTPStatus.BAD_REQUEST,
+                str(exc),
+                "invalid_request_error",
+                code="invalid_completion_request",
+            )
+            return
+
+        try:
             response = self.server.runtime.submit(
                 payload,
                 response_id=f"cmpl-{secrets.token_hex(12)}",
@@ -401,15 +413,8 @@ class CompletionRequestHandler(BaseHTTPRequestHandler):
                 code="completion_timeout",
             )
             return
-        except (TypeError, ValueError) as exc:
-            self._error(
-                HTTPStatus.BAD_REQUEST,
-                str(exc),
-                "invalid_request_error",
-                code="invalid_completion_request",
-            )
-            return
-        except (RuntimeError, OSError) as exc:  # pragma: no cover - backend/system failure
+        except Exception as exc:  # noqa: BLE001
+            # This is the HTTP trust boundary: never expose backend/system text.
             print(
                 f"12-6-server internal_error={type(exc).__name__}",
                 file=sys.stderr,
