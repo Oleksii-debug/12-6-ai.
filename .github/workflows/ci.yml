@@ -1,12 +1,23 @@
 name: CI
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      source_git_sha:
+        description: Exact current main SHA bound by the launch manifest
+        required: true
+        type: string
+      launch_manifest_path:
+        description: Repo-relative immutable learned-20M launch-manifest JSON locator
+        required: true
+        type: string
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
@@ -33,3 +44,30 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  learned20m-authorized-training:
+    if: github.event_name == 'workflow_dispatch'
+    needs: bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Fail-closed learned-20M execution admission
+        env:
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_git_sha }}
+          LAUNCH_MANIFEST_PATH: ${{ inputs.launch_manifest_path }}
+        run: >-
+          python -m twelve_six.learned20m_training_execution
+          --manifest "$LAUNCH_MANIFEST_PATH"
+          --requested-source-sha "$REQUESTED_SOURCE_SHA"
