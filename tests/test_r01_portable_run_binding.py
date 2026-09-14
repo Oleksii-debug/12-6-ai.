@@ -12,8 +12,9 @@ from twelve_six.portable_run_binding import (
     canonical_sha256,
     validate_session_overlay_contract,
 )
+from twelve_six.preoptimizer_authority import PREOPTIMIZER_SCHEMA
 from twelve_six.readiness_trust_root import (
-    authenticated_trusted_readiness_inputs,
+    authenticated_trusted_launch_bundle,
     trusted_readiness_bundle_sha256,
 )
 
@@ -23,6 +24,8 @@ PACKET = ROOT / "configs/research/r01_portable_local_free_run_packet_v1.json"
 OVERLAY = ROOT / "configs/research/r01_portable_session_overlay_v1.json"
 SHA40 = "a" * 40
 SHA64 = "b" * 64
+MODEL341_INITSPEC_SHA256 = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
+LEARN345_POLICY_IDENTITY_SHA256 = "84152a673c4ed8fd34f4b81b03a96b4a3f5b40a22d961f436cbed11af23000e7"
 
 _SCIENTIFIC_AUTHORITIES = (
     ("code", ("code", "authority")),
@@ -117,45 +120,17 @@ def _authority_at(readiness: dict, path: tuple[str, ...]) -> object:
     return value
 
 
-def _trusted_bundle(readiness: dict) -> dict:
-    evidence = readiness["evidence"]
-    scientific: dict[str, object] = {}
-    for role, path in _SCIENTIFIC_AUTHORITIES:
-        scientific[role] = {
-            "authority": copy.deepcopy(_authority_at(readiness, path)),
-            "metadata": scientific_role_metadata(role, evidence),
-        }
-    return {
-        "schema_version": 1,
-        "scientific_authorities": scientific,
-        "verified_authorization_refs": [],
-    }
-
-
-def _verified_inputs(readiness: dict) -> tuple[set[str], set[str], dict, str]:
-    bundle = _trusted_bundle(readiness)
-    expected = trusted_readiness_bundle_sha256(bundle)
-    assert expected is not None
-    resolved = authenticated_trusted_readiness_inputs(
-        bundle,
-        expected_identity_sha256=expected,
-    )
-    assert resolved is not None
-    scientific, refs = resolved
-    return scientific, refs, bundle, expected
-
-
 def _ready_overlay() -> dict:
     data = _load(OVERLAY)
     model = _load(READINESS)["model_authority"]
     data["status"] = "READY_CANDIDATE"
     data["scientific_bindings"].update(
         {
-            "initspec_sha256": SHA64,
-            "seed": 20260907,
+            "initspec_sha256": MODEL341_INITSPEC_SHA256,
+            "seed": 20260826,
             "optimizer_scheduler_precision": {
                 "optimizer": "AdamW",
-                "scheduler": "cosine_with_warmup",
+                "scheduler": "constant",
                 "precision": "fp32",
             },
             "authorities": {
@@ -193,6 +168,126 @@ def _ready_overlay() -> dict:
     return data
 
 
+def _portable_execution(readiness: dict, overlay: dict | None = None) -> dict:
+    model = readiness["model_authority"]
+    recipe = readiness["evidence"]["training_recipe"]
+    session = copy.deepcopy(overlay if overlay is not None else _ready_overlay())
+    session.pop("schema_version")
+    session.pop("overlay_id")
+    session.pop("status")
+    return {
+        "model": {
+            "modelspec_sha256": model["modelspec_sha256"],
+            "initspec_sha256": MODEL341_INITSPEC_SHA256,
+            "parameter_count": model["parameter_count"],
+            "canonical_base": model["canonical_base"],
+        },
+        "training": {
+            "training_config_sha256": recipe["config_sha256"],
+            "stopping_policy_sha256": recipe["stopping_policy_sha256"],
+            "policy_identity_sha256": LEARN345_POLICY_IDENTITY_SHA256,
+            "optimizer": "AdamW",
+            "learning_rate": 0.00022,
+            "betas": [0.9, 0.95],
+            "eps": 1e-08,
+            "weight_decay": 0.1,
+            "gradient_clip_norm": 1.0,
+            "scheduler": "constant",
+            "warmup_steps": 0,
+            "sequence_length": 128,
+            "micro_batch_size": 1,
+            "gradient_accumulation_steps": 1,
+            "precision": "fp32",
+            "seed_vector": {
+                "model_init": 20260826,
+                "data_order": 20260826,
+                "dataloader": 20260826,
+            },
+        },
+        "session": session,
+    }
+
+
+def _preoptimizer(readiness: dict) -> dict:
+    evidence = readiness["evidence"]
+    tokenizer = evidence["tokenizer"]["identity_sha256"]
+    packing = evidence["corpus"]["packing_sha256"]
+    ledger = evidence["loss_ledger"]["identity_sha256"]
+    positions = evidence["loss_ledger"]["unique_causal_loss_positions"]
+    return {
+        "schema": PREOPTIMIZER_SCHEMA,
+        "launch_input": {
+            "schema": "12-6.learned20m-launch-input-authority.v2",
+            "authority_identity_sha256": "1" * 64,
+            "tokenizer_identity_sha256": tokenizer,
+            "packing_identity_sha256": packing,
+            "unique_loss_ledger_identity_sha256": ledger,
+            "one_pass_unique_nonignored_causal_loss_positions": positions,
+        },
+        "loss_bearing_content": {
+            "schema": "12-6.d04-loss-bearing-content-manifest.v2",
+            "manifest_identity_sha256": "2" * 64,
+            "tokenizer_identity_sha256": tokenizer,
+            "packing_identity_sha256": packing,
+            "unique_loss_ledger_identity_sha256": ledger,
+            "one_pass_unique_nonignored_causal_loss_positions": positions,
+        },
+        "tokenizer_decision": {
+            "schema": "12-6.d04-learned20m-tokenizer-decision.v1",
+            "decision": "RETAIN_BYTE_BASELINE",
+            "decision_identity_sha256": "3" * 64,
+            "tokenizer_identity_sha256": tokenizer,
+        },
+        "resource_evidence": {
+            "evidence_identity_sha256": "4" * 64,
+            "resource_class": "LOCAL_FREE",
+            "mechanics_scope": "forward+causal_ce+backward_only",
+            "median_causal_targets_per_second": 609.5197637935258,
+            "process_hwm_mib_approx": 478.56,
+            "mechanics_only_lower_bound_seconds": 32812.71779527559,
+            "cross_host_extrapolation_allowed": False,
+            "paid_compute_used": False,
+            "authorized_optimized_target_exposure": 0,
+            "optimizer_updates_executed_on_real_targets": 0,
+        },
+    }
+
+
+def _trusted_bundle(readiness: dict, overlay: dict | None = None) -> dict:
+    evidence = readiness["evidence"]
+    scientific: dict[str, object] = {}
+    for role, path in _SCIENTIFIC_AUTHORITIES:
+        scientific[role] = {
+            "authority": copy.deepcopy(_authority_at(readiness, path)),
+            "metadata": scientific_role_metadata(role, evidence),
+        }
+    return {
+        "schema_version": 3,
+        "scientific_authorities": scientific,
+        "verified_authorization_refs": [],
+        "portable_execution": _portable_execution(readiness, overlay),
+        "preoptimizer_authorities": _preoptimizer(readiness),
+    }
+
+
+def _verified_inputs(
+    readiness: dict,
+    overlay: dict | None = None,
+) -> tuple[set[str], set[str], dict, str, dict]:
+    bundle = _trusted_bundle(readiness, overlay)
+    expected = trusted_readiness_bundle_sha256(bundle)
+    assert expected is not None
+    resolved = authenticated_trusted_launch_bundle(
+        bundle,
+        expected_identity_sha256=expected,
+    )
+    assert resolved is not None
+    scientific, refs, execution, preoptimizer = resolved
+    assert execution is not None
+    assert preoptimizer is not None
+    return scientific, refs, bundle, expected, execution
+
+
 def _run_builder(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(ROOT / "tools/build_r01_portable_run_packet.py"), *args],
@@ -221,6 +316,24 @@ def test_ready_looking_packet_without_external_verification_remains_blocked() ->
     assert result.packet is None
     assert "readiness:terminal_corpus_authority_unverified" in result.blockers
     assert "readiness:training_recipe_authority_unverified" in result.blockers
+    assert "binding:authenticated_portable_execution_missing" in result.blockers
+
+
+def test_external_scientific_verification_without_execution_root_remains_blocked() -> None:
+    readiness = _ready_readiness()
+    overlay = _ready_overlay()
+    tokens, refs, _, _, _ = _verified_inputs(readiness)
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
+    )
+    assert result.readiness_ready
+    assert not result.binding_ready
+    assert result.packet is None
+    assert "binding:authenticated_portable_execution_missing" in result.blockers
 
 
 def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
@@ -228,11 +341,12 @@ def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
     template = _load(PACKET)
     overlay = _ready_overlay()
     originals = copy.deepcopy((readiness, template, overlay))
-    tokens, refs, _, _ = _verified_inputs(readiness)
+    tokens, refs, _, _, execution = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         template,
         overlay,
+        expected_portable_execution=execution,
         verified_scientific_authorities=tokens,
         verified_authorization_refs=refs,
     )
@@ -244,6 +358,7 @@ def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
     assert result.packet["identities"]["source_git_sha"] == SHA40
     assert result.packet["binding"]["readiness_sha256"] == canonical_sha256(readiness)
     assert result.packet["binding"]["session_overlay_sha256"] == canonical_sha256(overlay)
+    assert result.packet["binding"]["portable_execution_sha256"] == canonical_sha256(execution)
     assert result.packet_sha256 == canonical_sha256(result.packet)
     assert (readiness, template, overlay) == originals
 
@@ -268,11 +383,12 @@ def test_ready_cross_provider_resume_binds_parent_lineage() -> None:
     overlay["resource"].update({"resource_class": "FREE_GPU", "provider": "KAGGLE"})
     overlay["runtime"]["device_type"] = "cuda"
     overlay["output"]["artifact_store_uri"] = "https://artifacts.example/sha256"
-    tokens, refs, _, _ = _verified_inputs(readiness)
+    tokens, refs, _, _, execution = _verified_inputs(readiness, overlay)
     result = bind_portable_run_packet(
         readiness,
         _load(PACKET),
         overlay,
+        expected_portable_execution=execution,
         verified_scientific_authorities=tokens,
         verified_authorization_refs=refs,
     )
@@ -287,16 +403,18 @@ def test_authority_identity_mismatch_fails_closed() -> None:
     overlay = _ready_overlay()
     overlay["scientific_bindings"]["authorities"]["code"]["git_sha"] = "c" * 40
     overlay["scientific_bindings"]["authorities"]["model"]["modelspec_sha256"] = "d" * 64
-    tokens, refs, _, _ = _verified_inputs(readiness)
+    tokens, refs, _, _, execution = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         _load(PACKET),
         overlay,
+        expected_portable_execution=execution,
         verified_scientific_authorities=tokens,
         verified_authorization_refs=refs,
     )
     assert not result.binding_ready
     assert result.packet is None
+    assert "binding:authenticated_session_projection_mismatch" in result.blockers
     assert "binding:code_authority_git_sha_mismatch" in result.blockers
     assert "binding:model_authority_modelspec_sha256_mismatch" in result.blockers
 
@@ -307,22 +425,24 @@ def test_backend_authority_must_bind_backend_and_environment() -> None:
     authority = overlay["scientific_bindings"]["authorities"]["backend"]
     authority["backend_id"] = "LITGPT"
     authority["environment_lock_sha256"] = "c" * 64
-    tokens, refs, _, _ = _verified_inputs(readiness)
+    tokens, refs, _, _, execution = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         _load(PACKET),
         overlay,
+        expected_portable_execution=execution,
         verified_scientific_authorities=tokens,
         verified_authorization_refs=refs,
     )
     assert not result.binding_ready
+    assert "binding:authenticated_session_projection_mismatch" in result.blockers
     assert "binding:backend_authority_backend_id_mismatch" in result.blockers
     assert "binding:backend_authority_environment_lock_sha256_mismatch" in result.blockers
 
 
 def test_embedded_secret_and_overlay_drift_are_rejected() -> None:
     readiness = _ready_readiness()
-    tokens, refs, _, _ = _verified_inputs(readiness)
+    tokens, refs, _, _, execution = _verified_inputs(readiness)
 
     secret = _ready_overlay()
     secret["scientific_bindings"]["authorities"]["code"]["api_key"] = "forbidden"
@@ -330,6 +450,7 @@ def test_embedded_secret_and_overlay_drift_are_rejected() -> None:
         readiness,
         _load(PACKET),
         secret,
+        expected_portable_execution=execution,
         verified_scientific_authorities=tokens,
         verified_authorization_refs=refs,
     )
@@ -343,6 +464,7 @@ def test_embedded_secret_and_overlay_drift_are_rejected() -> None:
         readiness,
         _load(PACKET),
         drift,
+        expected_portable_execution=execution,
         verified_scientific_authorities=tokens,
         verified_authorization_refs=refs,
     )
@@ -356,11 +478,12 @@ def test_binding_does_not_relax_one_pass_unique_exposure_rule() -> None:
     recipe["requested_unique_loss_positions"] = 500
     recipe["requested_total_training_exposures"] = 1000
     recipe["max_exposures_per_unique_position"] = 2
-    tokens, refs, _, _ = _verified_inputs(readiness)
+    tokens, refs, _, _, execution = _verified_inputs(readiness)
     result = bind_portable_run_packet(
         readiness,
         _load(PACKET),
         _ready_overlay(),
+        expected_portable_execution=execution,
         verified_scientific_authorities=tokens,
         verified_authorization_refs=refs,
     )
@@ -372,7 +495,7 @@ def test_binding_does_not_relax_one_pass_unique_exposure_rule() -> None:
 
 def test_cli_writes_once_only_after_ready_binding(tmp_path: Path) -> None:
     readiness = _ready_readiness()
-    tokens, _, bundle, expected = _verified_inputs(readiness)
+    tokens, _, bundle, expected, _ = _verified_inputs(readiness)
     readiness_path = tmp_path / "readiness.json"
     template_path = tmp_path / "packet.json"
     overlay_path = tmp_path / "overlay.json"
@@ -415,7 +538,7 @@ def test_cli_writes_once_only_after_ready_binding(tmp_path: Path) -> None:
 
 def test_cli_rejects_trusted_bundle_without_external_expected_root(tmp_path: Path) -> None:
     readiness = _ready_readiness()
-    _, _, bundle, _ = _verified_inputs(readiness)
+    _, _, bundle, _, _ = _verified_inputs(readiness)
     readiness_path = tmp_path / "readiness.json"
     bindings_path = tmp_path / "trusted-bindings.json"
     readiness_path.write_text(json.dumps(readiness), encoding="utf-8")
