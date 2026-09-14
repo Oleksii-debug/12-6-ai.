@@ -622,19 +622,48 @@ def run_post_admission_global_dedup(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Execute V9 authority first, then extend that exact graph with admitted rows."""
 
+    # Snapshot every authority-bearing mutable input once. The same exact snapshots
+    # feed both the V9 proof and the post-proof reconstruction, closing TOCTOU/stateful
+    # Mapping substitutions between proof and use.
+    v8_inventory_snapshot = copy.deepcopy(dict(reconstructed_v8_inventory))
+    v8_payloads_snapshot = dict(reconstructed_v8_payloads)
+    _require(
+        all(
+            type(source_id) is str and type(raw) is bytes
+            for source_id, raw in v8_payloads_snapshot.items()
+        ),
+        "reconstructed V8 payload map must be exact str->bytes",
+    )
+    v8_survivor_snapshot = copy.deepcopy(dict(v8_survivor_authority))
+    data526_evidence_snapshot = copy.deepcopy(dict(data526_evidence))
+    data526_inventory_snapshot = copy.deepcopy(dict(data526_record_inventory))
+    rada_language_snapshot = copy.deepcopy(dict(rada_language_report))
+    rada_qp_snapshot = copy.deepcopy(dict(rada_quality_privacy_report))
+    _require(type(rada_raw_jsonl) is bytes, "Rada raw JSONL must be exact bytes")
+    rada_raw_snapshot = rada_raw_jsonl
+    _require(
+        isinstance(rada_rows, Sequence)
+        and not isinstance(rada_rows, (str, bytes, bytearray)),
+        "Rada rows must be a sequence",
+    )
+    rada_rows_snapshot: list[dict[str, Any]] = []
+    for row in rada_rows:
+        _require(isinstance(row, Mapping), "Rada row must be an object")
+        rada_rows_snapshot.append(copy.deepcopy(dict(row)))
+
     v9_report, _ = v9.run_expanded_dedup(
         matcher_audit=matcher_audit,
         matcher_verify=matcher_verify,
-        reconstructed_v8_inventory=reconstructed_v8_inventory,
-        reconstructed_v8_payloads=reconstructed_v8_payloads,
-        v8_survivor_authority=v8_survivor_authority,
-        data526_evidence=data526_evidence,
-        data526_record_inventory=data526_record_inventory,
-        rada_language_report=rada_language_report,
-        rada_quality_privacy_report=rada_quality_privacy_report,
+        reconstructed_v8_inventory=v8_inventory_snapshot,
+        reconstructed_v8_payloads=v8_payloads_snapshot,
+        v8_survivor_authority=v8_survivor_snapshot,
+        data526_evidence=data526_evidence_snapshot,
+        data526_record_inventory=data526_inventory_snapshot,
+        rada_language_report=rada_language_snapshot,
+        rada_quality_privacy_report=rada_qp_snapshot,
         expected_rada_report_sha256=expected_rada_report_sha256,
-        rada_rows=rada_rows,
-        rada_raw_jsonl=rada_raw_jsonl,
+        rada_rows=rada_rows_snapshot,
+        rada_raw_jsonl=rada_raw_snapshot,
     )
 
     v9._verify_matcher_semantic_closure(matcher_audit, matcher_verify)
@@ -646,22 +675,22 @@ def run_post_admission_global_dedup(
         languk_candidate_raw=languk_candidate_raw,
     )
     verified_rada_rows = v9.validate_rada_rows(
-        rada_rows,
-        rada_raw_jsonl,
-        rada_quality_privacy_report,
+        rada_rows_snapshot,
+        rada_raw_snapshot,
+        rada_qp_snapshot,
     )
     rada_report_sha = v9.validate_rada_quality_privacy_report(
-        rada_quality_privacy_report,
+        rada_qp_snapshot,
         expected_report_sha256=expected_rada_report_sha256,
     )
     prepared_inventory = v9._restrict_lineage_to_survivors(
-        reconstructed_v8_inventory,
-        v8_survivor_authority,
+        v8_inventory_snapshot,
+        v8_survivor_snapshot,
     )
     base_rows, base_payloads = v9.filter_v8_survivor_inputs(
         prepared_inventory,
-        reconstructed_v8_payloads,
-        v8_survivor_authority,
+        v8_payloads_snapshot,
+        v8_survivor_snapshot,
     )
     rada_inventory, rada_payloads = v9.build_rada_matcher_inputs(
         verified_rada_rows,
