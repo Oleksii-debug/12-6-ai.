@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "protocol_id": "DCLM-DATA-QUALITY-PROTOCOL-V1",
+  "status": "RESEARCH_ONLY_NON_AUTHORIZING",
+  "authority_bindings": {
+    "swarm_protocol": "SWARM-300-V2",
+    "project_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "reuse_registry": {
+      "path": "configs/research/open_source_reuse_registry_v2.json",
+      "registry_id": "OPEN-SOURCE-REUSE-REGISTRY-V2",
+      "git_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a",
+      "component_id": "DCLM",
+      "decision": "P0_DATA_QUALITY_EXPERIMENT_PROTOCOL"
+    },
+    "upstream": {
+      "repository": "mlfoundations/dclm",
+      "commit_sha": "361714bdd60bb9b7f4b2d8354cebbf0dec0c329e",
+      "license": "MIT",
+      "readme_blob_sha": "a70356ff43ad2e579b241eca3a5816dac2207f33"
+    }
+  },
+  "comparison_contract": {
+    "min_arms": 2,
+    "metric": {
+      "name": "synthetic_quality_score",
+      "direction": "maximize"
+    },
+    "budget": {
+      "unit": "synthetic_comparison_units",
+      "require_equal_across_arms": true
+    },
+    "require_identical_input_snapshot": true,
+    "required_hard_gates": [
+      "rights",
+      "provenance",
+      "privacy",
+      "contamination"
+    ],
+    "required_gate_value": "PASS",
+    "tie_epsilon": 0.0,
+    "tie_policy": "REJECT_AMBIGUOUS_TIE"
+  },
+  "authority_boundaries": {
+    "calibration_purpose": "SYNTHETIC_CALIBRATION_ONLY_NON_TRAINING",
+    "recommendation_state": "CANDIDATE_RECOMMENDATION_ONLY",
+    "training_authorized": false,
+    "automatic_adoption_allowed": false,
+    "final_test_access_allowed": false,
+    "paid_compute_authorized": false,
+    "canonical_base_weights_changed": false,
+    "foreign_pretrained_weights_allowed": false
+  }
+}

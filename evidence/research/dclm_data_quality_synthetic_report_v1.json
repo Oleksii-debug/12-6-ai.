@@ -1,0 +1,68 @@
+{
+  "authority_bindings": {
+    "project_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "reuse_registry": {
+      "component_id": "DCLM",
+      "decision": "P0_DATA_QUALITY_EXPERIMENT_PROTOCOL",
+      "git_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a",
+      "path": "configs/research/open_source_reuse_registry_v2.json",
+      "registry_id": "OPEN-SOURCE-REUSE-REGISTRY-V2"
+    },
+    "swarm_protocol": "SWARM-300-V2",
+    "upstream": {
+      "commit_sha": "361714bdd60bb9b7f4b2d8354cebbf0dec0c329e",
+      "license": "MIT",
+      "readme_blob_sha": "a70356ff43ad2e579b241eca3a5816dac2207f33",
+      "repository": "mlfoundations/dclm"
+    }
+  },
+  "automatic_adoption_allowed": false,
+  "canonical_base_weights_changed": false,
+  "comparison": {
+    "arm_count": 3,
+    "budget_unit": "synthetic_comparison_units",
+    "budget_value": 1000.0,
+    "input_snapshot_sha256": "23cd4b14f3c27b2f43687d3e630d5f10e809603390404305bfd6c7f144e2064b",
+    "metric": {"direction": "maximize", "name": "synthetic_quality_score"},
+    "runner_up_arm_id": "MIXTURE_B_SYNTHETIC",
+    "runner_up_score": 0.64,
+    "winner_arm_id": "FILTER_A_SYNTHETIC",
+    "winner_gap": 0.030000000000000027,
+    "winner_score": 0.67
+  },
+  "evidence_sha256": "c3272a44bb5ff97799091fe5fe2ec93587c7a2bbf9d5c7907bdc43d14553fabe",
+  "experiment_id": "DCLM-SYNTHETIC-CALIBRATION-V1",
+  "final_test_accessed": false,
+  "paid_compute_used": false,
+  "protocol_id": "DCLM-DATA-QUALITY-PROTOCOL-V1",
+  "protocol_sha256": "26c9d82e1bfd83562e0924a5424e9ed06c281e73293c455f12faf6a50f87d51d",
+  "purpose": "SYNTHETIC_CALIBRATION_ONLY_NON_TRAINING",
+  "recommendation_state": "CANDIDATE_RECOMMENDATION_ONLY",
+  "report_id": "DCLM-SYNTHETIC-CALIBRATION-V1-COMPARISON-REPORT",
+  "report_sha256": "e357f2484ff33759395e366971994987935f3f6dc653538bf072178bc2b24220",
+  "schema_version": 1,
+  "training_authorized": false,
+  "validated_arms": [
+    {
+      "arm_id": "BASELINE_SYNTHETIC",
+      "budget": {"unit": "synthetic_comparison_units", "value": 1000.0},
+      "config_sha256": "d2cf702fee562bfbabb17441c48e5829d6d8a35e1b07f1f4d92dd4989d74e89f",
+      "input_snapshot_sha256": "23cd4b14f3c27b2f43687d3e630d5f10e809603390404305bfd6c7f144e2064b",
+      "metric": {"direction": "maximize", "name": "synthetic_quality_score", "score": 0.61}
+    },
+    {
+      "arm_id": "FILTER_A_SYNTHETIC",
+      "budget": {"unit": "synthetic_comparison_units", "value": 1000.0},
+      "config_sha256": "4d6c5fcbd9e900f0538b24ca262e36059b9aa76619d93a856589fbdb35c1f4af",
+      "input_snapshot_sha256": "23cd4b14f3c27b2f43687d3e630d5f10e809603390404305bfd6c7f144e2064b",
+      "metric": {"direction": "maximize", "name": "synthetic_quality_score", "score": 0.67}
+    },
+    {
+      "arm_id": "MIXTURE_B_SYNTHETIC",
+      "budget": {"unit": "synthetic_comparison_units", "value": 1000.0},
+      "config_sha256": "9422967dd5be858b60a50a0b8438e3f680cf5d8752c09c41207339b94147a97a",
+      "input_snapshot_sha256": "23cd4b14f3c27b2f43687d3e630d5f10e809603390404305bfd6c7f144e2064b",
+      "metric": {"direction": "maximize", "name": "synthetic_quality_score", "score": 0.64}
+    }
+  ]
+}
