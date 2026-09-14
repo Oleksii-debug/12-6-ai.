@@ -8,6 +8,7 @@ cd "$ROOT"
 
 AUTHORITATIVE_MAIN="2da11c62f066671a1122888ec116242502f4fb9c"
 EXPECTED_MATERIALIZER_BLOB="830087f91d1fa24385c5cbc8d2f687e4cc46b419"
+EXPECTED_MATERIALIZER_V2_BLOB="a4de33f1e225ab8598197e4c1cba28480180d575"
 EXPECTED_PRIVACY_BLOB="bcc5938395724f6728ab212f98b39f2334b0f37d"
 EXPECTED_INPUT_SHA="3f60cfe55435daf53908c492be358f36d7ebbc2ebee532c921a69ba92b2f6b25"
 EXPECTED_CURRENT_SHA="b1ec0433fbd9675645b7e29c1e32b406e638fa081868cad7a56afec8f9a601cc"
@@ -18,6 +19,7 @@ REMOTE="https://github.com/Oleksii-debug/12-6-ai..git"
 # Fail closed if the execution-critical Product implementation on this branch is not the
 # exact implementation that produced the already-terminal 255-row retained corpus.
 test "$(git hash-object src/twelve_six/data/post_g05_g06_materialization_v1.py)" = "$EXPECTED_MATERIALIZER_BLOB"
+test "$(git hash-object src/twelve_six/data/post_g05_g06_materialization_v2.py)" = "$EXPECTED_MATERIALIZER_V2_BLOB"
 test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "$EXPECTED_PRIVACY_BLOB"
 
 WORK="$(mktemp -d)"
@@ -248,6 +250,7 @@ python tools/materialize_post_g05_g06_payload_v1.py \
   --privacy-source src/twelve_six/data/privacy_filter_v3.py \
   --execution-head-sha "$AUTHORITATIVE_MAIN" \
   --expected-materializer-implementation-git-blob-sha1 "$EXPECTED_MATERIALIZER_BLOB" \
+  --expected-materializer-v2-implementation-git-blob-sha1 "$EXPECTED_MATERIALIZER_V2_BLOB" \
   --output-jsonl "$WORK/post-g05-g06/records.jsonl" \
   --output-inventory "$WORK/post-g05-g06/inventory.json" \
   --output-evidence "$WORK/post-g05-g06/evidence.json"
