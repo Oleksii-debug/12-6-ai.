@@ -187,20 +187,52 @@ def _bind(overlay: dict):
     )
 
 
-def test_same_provider_fresh_process_resume_binds_and_is_separate_from_transfer() -> None:
+def test_same_provider_resume_fails_closed_without_trusted_recovery_binding() -> None:
     result = _bind(_same_provider_resume_overlay())
-    assert result.binding_ready
+    assert not result.binding_ready
     assert result.mode == "RESUME"
-    assert result.blockers == ()
-    assert result.packet is not None
+    assert result.packet is None
+    assert result.blockers == ("packet:trusted_parent_recovery_binding_missing",)
 
-    assessment = assess_portable_run_packet(result.packet)
+    fresh = _bind(_ready_overlay())
+    assert fresh.binding_ready
+    assert fresh.packet is not None
+    packet = copy.deepcopy(fresh.packet)
+    packet["checkpoint"]["mode"] = "RESUME"
+    packet["checkpoint"]["lineage"] = copy.deepcopy(
+        _same_provider_resume_overlay()["checkpoint"]["lineage"]
+    )
+    packet["authorities"]["parent_checkpoint"] = _authority()
+    assessment = assess_portable_run_packet(packet)
     assert assessment.contract_valid
-    assert assessment.ready_for_same_provider_fresh_process_resume
+    assert not assessment.ready_for_same_provider_fresh_process_resume
     assert not assessment.ready_for_cross_provider_resume
-    assert assessment.same_provider_resume_blockers == ()
+    assert assessment.same_provider_resume_blockers == (
+        "trusted_parent_recovery_binding_missing",
+    )
     assert "cross_provider_transfer_not_declared" in assessment.resume_blockers
     assert "cross_provider_source_and_target_must_differ" in assessment.resume_blockers
+
+
+def test_same_provider_resume_cannot_self_authorize_resealed_lineage() -> None:
+    overlay = _same_provider_resume_overlay()
+    overlay["checkpoint"]["lineage"].update(
+        {
+            "parent_checkpoint_sha256": "c" * 64,
+            "parent_manifest_sha256": "d" * 64,
+            "previous_run_id": "R01-RESEALED-SESSION-999",
+            "source_provider": "OTHER_FREE",
+            "resume_validated": True,
+        }
+    )
+    overlay["checkpoint"]["parent_checkpoint_authority"] = _authority(
+        git_sha="c" * 40
+    )
+
+    result = _bind(overlay)
+    assert not result.binding_ready
+    assert result.packet is None
+    assert result.blockers == ("packet:trusted_parent_recovery_binding_missing",)
 
 
 def test_same_provider_resume_rejects_provider_mismatch_and_cross_transfer_claim() -> None:
@@ -210,6 +242,7 @@ def test_same_provider_resume_rejects_provider_mismatch_and_cross_transfer_claim
     assert not result.binding_ready
     assert result.packet is None
     assert "packet:same_provider_source_and_target_must_match" in result.blockers
+    assert "packet:trusted_parent_recovery_binding_missing" in result.blockers
 
     transfer = _same_provider_resume_overlay()
     transfer["checkpoint"]["lineage"]["cross_provider_transfer"] = True
@@ -233,6 +266,7 @@ def test_same_provider_resume_requires_validated_parent_identity_and_authority()
         assert not result.binding_ready
         assert result.packet is None
         assert expected in result.blockers
+        assert "packet:trusted_parent_recovery_binding_missing" in result.blockers
 
     overlay = _same_provider_resume_overlay()
     overlay["checkpoint"]["parent_checkpoint_authority"] = None
@@ -240,6 +274,7 @@ def test_same_provider_resume_requires_validated_parent_identity_and_authority()
     assert not result.binding_ready
     assert result.packet is None
     assert "packet:parent_checkpoint_authority_invalid" in result.blockers
+    assert "packet:trusted_parent_recovery_binding_missing" in result.blockers
 
 
 def test_same_provider_resume_keeps_zero_cost_resource_boundary() -> None:
@@ -261,7 +296,8 @@ def test_same_provider_resume_keeps_zero_cost_resource_boundary() -> None:
 def test_packet_container_type_drift_fails_closed_instead_of_raising() -> None:
     assert assess_portable_run_packet([]).contract_errors == ("packet_root_must_be_object",)
 
-    ready = _bind(_same_provider_resume_overlay())
+    ready = _bind(_ready_overlay())
+    assert ready.binding_ready
     assert ready.packet is not None
     for path, replacement, expected in (
         (("status",), [], "status_invalid"),
@@ -276,8 +312,8 @@ def test_packet_container_type_drift_fails_closed_instead_of_raising() -> None:
         else:
             packet[path[0]][path[1]] = replacement
         assessment = assess_portable_run_packet(packet)
-        assert not assessment.contract_valid or not assessment.ready_for_same_provider_fresh_process_resume
-        assert expected in (assessment.contract_errors + assessment.same_provider_resume_blockers)
+        assert not assessment.contract_valid or not assessment.ready_for_initial_local_free_launch
+        assert expected in (assessment.contract_errors + assessment.launch_blockers)
 
     packet = copy.deepcopy(ready.packet)
     packet["contract_fields"][0] = {}

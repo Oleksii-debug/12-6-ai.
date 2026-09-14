@@ -468,6 +468,7 @@ def _same_provider_resume_blockers(data: dict[str, Any]) -> list[str]:
     target_provider = resource.get("provider")
     if _is_nonempty_string(source_provider) and source_provider != target_provider:
         blockers.append("same_provider_source_and_target_must_match")
+    blockers.append("trusted_parent_recovery_binding_missing")
     return sorted(set(blockers))
 
 
