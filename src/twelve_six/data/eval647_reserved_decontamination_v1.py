@@ -195,7 +195,7 @@ def execute_eval647_reserved_decontamination(
         "decontamination_execution.execution_identity_sha256",
     )
     _require(
-        execution_evidence.get("reserved_binding_identity_sha256")
+        execution_evidence.get("reserved_payload_binding_identity_sha256")
         == expected_composed,
         "decontamination execution did not consume the expected composed binding",
     )
