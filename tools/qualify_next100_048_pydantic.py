@@ -21,6 +21,8 @@ from typing import Any
 WORKER = "NEXT100-048-CODE-PYDANTIC"
 SCHEMA = "12-6.next100-048-pydantic-source-admission.v1"
 DATA227_HEAD = "8ebdb2e132ed7bae5245e9d4c140752640ab9885"
+DATA227_POLICY_BLOB = "0ce5223a1cade10031899bf27348a1a65121d4c6"
+DATA227_POLICY_PATH = Path("configs/data/data227_code_rights_policy_v1.json")
 EVAL289_HEAD = "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc"
 UPSTREAM_COMMIT = "cf67d4b3193c3fe43ede18612ed62785eee11382"
 TAG_OBJECT = "07b73712023f052c7c008c4a9c5121b4894e44ec"
@@ -94,6 +96,28 @@ def load_json(url: str, max_bytes: int = 200_000) -> dict[str, Any]:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise QualificationError(f"invalid JSON from {url}: {exc}") from exc
     require(isinstance(value, dict), f"JSON root is not an object: {url}")
+    return value
+
+
+def load_data227_policy(repo_root: Path) -> dict[str, Any]:
+    """Load the exact predecessor policy without making current-main depend on its file."""
+    local_path = repo_root / DATA227_POLICY_PATH
+    if local_path.is_file():
+        raw = local_path.read_bytes()
+    else:
+        raw = download(
+            "https://raw.githubusercontent.com/Oleksii-debug/12-6-ai./"
+            + DATA227_HEAD
+            + "/"
+            + DATA227_POLICY_PATH.as_posix(),
+            max_bytes=100_000,
+        )
+    require(git_blob_sha1(raw) == DATA227_POLICY_BLOB, "DATA-227 policy blob drift")
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise QualificationError(f"invalid DATA-227 policy JSON: {exc}") from exc
+    require(isinstance(value, dict), "DATA-227 policy root is not an object")
     return value
 
 
@@ -194,7 +218,7 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
     exact_duplicates = sorted({value for value in raw_hashes if raw_hashes.count(value) > 1})
     require(not exact_duplicates, "exact duplicate selected objects")
 
-    prior_policy = json.loads((repo_root / "configs/data/data227_code_rights_policy_v1.json").read_text(encoding="utf-8"))
+    prior_policy = load_data227_policy(repo_root)
     prior_families = sorted({row["source_family"] for row in prior_policy["decisions"]})
     require(prior_families == ["github:encode/httpx", "github:psf/requests"], "DATA-227 family drift")
     comparison_texts = dict(texts)
@@ -234,7 +258,7 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
         "worker_source_sha": source_sha,
         "predecessor_code_authority": {
             "data227_head_sha": DATA227_HEAD,
-            "policy_git_blob_sha1": "0ce5223a1cade10031899bf27348a1a65121d4c6",
+            "policy_git_blob_sha1": DATA227_POLICY_BLOB,
             "source_family_count": 2,
             "source_families": prior_families,
         },
