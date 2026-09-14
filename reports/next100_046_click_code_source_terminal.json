@@ -1,0 +1,94 @@
+{
+  "authority_sha256": "bdc95dcc687699e7b356308f719e6bd095c7a9a9d720c3b21109f9e74b330057",
+  "capacity_bytes": 52771,
+  "captured_at": "2026-08-26",
+  "completed_gates": {
+    "canonical_family_identity_bound": true,
+    "exact_license_bound": true,
+    "exact_selected_git_blobs_bound": true,
+    "exact_upstream_identity_bound": true,
+    "generated_docs_vendored_capacity_excluded": true,
+    "mixed_lineage_excluded": true,
+    "redistribution_rights_reviewed": true,
+    "training_rights_reviewed": true,
+    "upstream_exact_commit_ci_success": true
+  },
+  "concurrency_snapshot": {
+    "evaluation_selection_contract_requires_separate_purpose_specific_authority": true,
+    "newer_code_lanes_observed": [
+      "FastAPI",
+      "Rich",
+      "Typer",
+      "urllib3",
+      "SQLAlchemy",
+      "Pydantic",
+      "NumPy",
+      "pandas",
+      "attrs"
+    ],
+    "newer_lanes_are_not_implicitly_terminal_registry_entries": true,
+    "parallel_click_authority_conflict_found": false,
+    "parallel_click_branch_count": 1,
+    "terminal_code_baseline": "DATA-227",
+    "terminal_code_baseline_head": "8ebdb2e132ed7bae5245e9d4c140752640ab9885"
+  },
+  "evaluation_use": "NOT_AUTHORIZED",
+  "execution_profile": "LOCAL_FREE",
+  "family_credit_if_admitted": 1,
+  "license": {
+    "git_blob_sha1": "d12a849186982399c537c5b9a8fd77bf2edd5eab",
+    "redistribution_decision": "ALLOWED_WITH_LICENSE_CONDITIONS",
+    "spdx": "BSD-3-Clause",
+    "training_use_decision": "ALLOWED"
+  },
+  "no_paid_compute_authorized": true,
+  "no_training_executed": true,
+  "objects": [
+    {
+      "git_blob_sha1": "db6a45ebbaedfdcde339397bbfe936c9440de180",
+      "path": "src/click/decorators.py",
+      "size_bytes": 19709
+    },
+    {
+      "git_blob_sha1": "c4aa2de571a1eb17bfeb1853e315d28bc968e74c",
+      "path": "src/click/formatting.py",
+      "size_bytes": 10444
+    },
+    {
+      "git_blob_sha1": "468ee7720d934396d0a309067d800ea819af7da2",
+      "path": "src/click/shell_completion.py",
+      "size_bytes": 22618
+    }
+  ],
+  "promotion_rule": "Promote RETEST to ADMIT only after the dedicated verifier executes successfully on an exact authority head and a fresh live code/evaluation registry recheck shows no collision or reservation.",
+  "schema_version": "12-6.next100-046-click-code-source-terminal.v1",
+  "source_family": "github:pallets/click",
+  "unresolved_terminal_gate": {
+    "gate": "dedicated deterministic verifier execution",
+    "observed_status": "queued",
+    "reason_for_retest": "The exact-head verifier has not executed; fail-closed policy forbids converting intended checks or upstream CI into terminal local dedup/scan evidence.",
+    "required_before_admit": [
+      "strict UTF-8 identity verification on acquired bytes",
+      "AST parse and compile on all selected files",
+      "configured secrets/privacy scan",
+      "substantive quality metrics",
+      "exact and near cross-source dedup report"
+    ],
+    "workflow_head_sha": "5d7bd3d869e38f5f13ce8a82ad6fa19e3865a6df",
+    "workflow_run_id": 32998987925
+  },
+  "upstream_commit": "b2e30a175449cfda909ee4fbf4a29a6a071cad53",
+  "upstream_release": "8.4.2",
+  "verdict": "RETEST",
+  "worker_id": "NEXT100-046-CODE-CLICK",
+  "zero_capacity_exclusions": [
+    "docs/**",
+    "tests/**",
+    "examples/**",
+    "generated/build/dist/release artifacts",
+    "vendored/third-party copies",
+    "unlisted Click files",
+    "src/click/parser.py",
+    "src/click/_textwrap.py"
+  ]
+}
