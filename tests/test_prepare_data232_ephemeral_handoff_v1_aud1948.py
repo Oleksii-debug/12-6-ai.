@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 
 import pytest
-
 import tools.prepare_data232_ephemeral_handoff_v1 as runner
 
 
@@ -93,4 +92,50 @@ def test_self_resealed_legacy_global_external_llm_false_is_rejected() -> None:
     receipt["external_llm_or_api_used_for_data_or_intelligence"] = False
     _reseal(receipt)
     with pytest.raises(ValueError, match="execution receipt key set drift"):
+        runner.verify_receipt(receipt)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "authorized_optimized_target_exposure",
+        "optimizer_updates_executed_on_real_targets",
+    ],
+)
+def test_self_resealed_zero_truth_counter_rejects_float_zero(key: str) -> None:
+    receipt = _receipt()
+    receipt[key] = 0.0
+    _reseal(receipt)
+    with pytest.raises(ValueError, match="truth boundary widened"):
+        runner.verify_receipt(receipt)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("retained_source_count", True),
+        ("retained_source_count", "1"),
+        ("retained_source_count", 0),
+        ("retained_source_count", -1),
+        ("retained_source_count", 1.0),
+        ("retained_payload_bytes", True),
+        ("retained_payload_bytes", "1"),
+        ("retained_payload_bytes", 0),
+        ("retained_payload_bytes", -1),
+        ("retained_payload_bytes", 1.0),
+        ("training_records_file_bytes", True),
+        ("training_records_file_bytes", "1"),
+        ("training_records_file_bytes", 0),
+        ("training_records_file_bytes", -1),
+        ("training_records_file_bytes", 1.0),
+    ],
+)
+def test_self_resealed_positive_evidence_fields_require_strict_int(
+    key: str,
+    value: object,
+) -> None:
+    receipt = _receipt()
+    receipt[key] = value
+    _reseal(receipt)
+    with pytest.raises(ValueError, match="must be a positive integer"):
         runner.verify_receipt(receipt)

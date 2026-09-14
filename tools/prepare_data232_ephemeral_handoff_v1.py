@@ -450,6 +450,14 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
         "training_handoff_identity_sha256",
     ):
         _require_sha256(receipt.get(key), key)
+    for key in (
+        "retained_source_count",
+        "retained_payload_bytes",
+        "training_records_file_bytes",
+    ):
+        value = receipt.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(f"receipt {key} must be a positive integer")
     if receipt.get("payload_match_proven") is not True:
         raise ValueError("payload identity match is not proven")
     if receipt.get("durable_receipt_hash_only") is not True:
@@ -473,7 +481,7 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
         "optimizer_updates_executed_on_real_targets",
     ):
         value = receipt.get(key)
-        if isinstance(value, bool) or value != 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
             raise ValueError(f"receipt truth boundary widened: {key}")
 
 
