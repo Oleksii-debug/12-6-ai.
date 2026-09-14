@@ -35,6 +35,12 @@ UPSTREAM_FUNCTION = "prepare_ephemeral_data232_rows"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 PrepareRows = Callable[..., tuple[list[dict[str, Any]], dict[str, Any]]]
+_INPUT_FILE_SHA256_KEYS = frozenset(
+    {"retained_inventory_json", "payload_rows_jsonl"}
+)
+_OUTPUT_FILE_SHA256_KEYS = frozenset(
+    {TRAINING_RECORDS_NAME, TRAINING_HANDOFF_NAME}
+)
 
 _RECEIPT_KEYS = frozenset(
     {
@@ -61,7 +67,7 @@ _RECEIPT_KEYS = frozenset(
         "final_test_outcomes_read",
         "paid_compute_used",
         "foreign_pretrained_weights",
-        "external_llm_or_api_used_for_data_or_intelligence",
+        "current_corpus_external_llm_free_claimed_by_this_carrier",
         "receipt_identity_sha256",
     }
 )
@@ -387,7 +393,7 @@ def build_receipt(
         "final_test_outcomes_read": False,
         "paid_compute_used": False,
         "foreign_pretrained_weights": False,
-        "external_llm_or_api_used_for_data_or_intelligence": False,
+        "current_corpus_external_llm_free_claimed_by_this_carrier": False,
     }
     for key in (
         "retained_source_count",
@@ -399,6 +405,20 @@ def build_receipt(
             raise ValueError(f"receipt {key} must be a positive integer")
     receipt["receipt_identity_sha256"] = _sha256_bytes(_canonical_bytes(receipt))
     return receipt
+
+
+def _verify_hash_map(
+    receipt: Mapping[str, Any],
+    group: str,
+    expected_keys: frozenset[str],
+) -> None:
+    values = receipt.get(group)
+    if not isinstance(values, Mapping):
+        raise TypeError(f"receipt {group} must be an object")
+    if set(values) != expected_keys:
+        raise ValueError(f"receipt {group} key set drift")
+    for name in sorted(expected_keys):
+        _require_sha256(values.get(name), f"{group}.{name}")
 
 
 def verify_receipt(receipt: Mapping[str, Any]) -> None:
@@ -422,12 +442,8 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
         receipt.get("retained_inventory_implementation_git_sha"),
         "retained_inventory_implementation_git_sha",
     )
-    for group in ("input_files_sha256", "output_files_sha256"):
-        values = receipt.get(group)
-        if not isinstance(values, Mapping):
-            raise TypeError(f"receipt {group} must be an object")
-        for name, value in values.items():
-            _require_sha256(value, f"{group}.{name}")
+    _verify_hash_map(receipt, "input_files_sha256", _INPUT_FILE_SHA256_KEYS)
+    _verify_hash_map(receipt, "output_files_sha256", _OUTPUT_FILE_SHA256_KEYS)
     for key in (
         "postdedup_inventory_identity_sha256",
         "input_survivor_authority_sha256",
@@ -447,7 +463,7 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
         "final_test_outcomes_read",
         "paid_compute_used",
         "foreign_pretrained_weights",
-        "external_llm_or_api_used_for_data_or_intelligence",
+        "current_corpus_external_llm_free_claimed_by_this_carrier",
     )
     for key in required_false:
         if receipt.get(key) is not False:
@@ -622,7 +638,6 @@ def main(argv: list[str] | None = None) -> int:
         expected_carrier_git_sha=carrier_sha,
     )
     canonical_prepare = load_verified_prepare_rows(args.repo_root, upstream_sha)
-    # Code/authentication and no-overwrite gates intentionally precede payload reads.
     if args.output_dir.exists():
         raise FileExistsError(f"output workspace already exists: {args.output_dir}")
     receipt = prepare_and_publish(
