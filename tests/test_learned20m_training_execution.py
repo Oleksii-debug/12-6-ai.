@@ -7,6 +7,7 @@ from twelve_six.learned20m_training_execution import (
     ExecutionContext,
     _read_repo_json,
     assess_training_execution,
+    main,
 )
 
 SHA = "a" * 40
@@ -145,6 +146,34 @@ def test_manifest_locator_reads_repo_relative_object(tmp_path: Path):
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps({"ok": True}), encoding="utf-8")
     assert _read_repo_json(tmp_path, "manifest.json") == {"ok": True}
+
+
+def test_non_object_manifest_root_is_machine_readable_fail_closed(tmp_path: Path, capsys):
+    path = tmp_path / "manifest.json"
+    path.write_text("[]", encoding="utf-8")
+
+    rc = main(
+        [
+            "--manifest",
+            "manifest.json",
+            "--requested-source-sha",
+            SHA,
+            "--repo-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "blockers": ["carrier_input_invalid"],
+        "context_valid": False,
+        "contract_errors": ["manifest_root_must_be_object"],
+        "github_hosted_free_bound": False,
+        "manifest_valid": False,
+        "optimizer_start_permitted": False,
+        "scientific_truth_changed": False,
+    }
 
 
 def test_single_ci_workflow_contains_manual_only_training_lane():
