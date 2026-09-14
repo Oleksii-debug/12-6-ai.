@@ -262,7 +262,10 @@ def validate_snapshot(root: Path) -> dict[str, Any]:
         "paid_compute_used": False,
         "learned_20m_promoted": False,
     }
-    if truth != expected_truth:
+    if set(truth) != set(expected_truth) or any(
+        type(truth[key]) is not type(expected) or truth[key] != expected
+        for key, expected in expected_truth.items()
+    ):
         raise PortValidationError("current-main truth boundary drift")
     if manifest.get("training_executed") is not False or report.get("training_executed") is not False:
         raise PortValidationError("historical snapshot unexpectedly claims training")
