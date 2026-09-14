@@ -19,6 +19,8 @@ from twelve_six.data.loss_bearing_content_binding_v1 import CONTENT_MANIFEST_SCH
 from twelve_six.learned20m_launch_input import LAUNCH_INPUT_SCHEMA
 from twelve_six.tokenization.decision_authority import (
     DECISION as TOKENIZER_DECISION,
+)
+from twelve_six.tokenization.decision_authority import (
     SCHEMA as TOKENIZER_DECISION_SCHEMA,
 )
 
@@ -212,16 +214,16 @@ def bind_preoptimizer_to_packet(
     if not _is_sha256(trusted_readiness_bundle_sha256):
         raise ValueError("trusted readiness bundle identity must be 64 lowercase hex")
     if not isinstance(packet, dict):
-        raise ValueError("portable packet must be an object")
+        raise TypeError("portable packet must be an object")
 
     identities = packet.get("identities")
     recipe = packet.get("recipe")
     resource = packet.get("resource")
     binding = packet.get("binding")
     if not isinstance(identities, dict) or not isinstance(recipe, dict):
-        raise ValueError("portable packet identities/recipe missing")
+        raise TypeError("portable packet identities/recipe missing")
     if not isinstance(resource, dict) or not isinstance(binding, dict):
-        raise ValueError("portable packet resource/binding missing")
+        raise TypeError("portable packet resource/binding missing")
 
     launch = preoptimizer["launch_input"]
     content = preoptimizer["loss_bearing_content"]
