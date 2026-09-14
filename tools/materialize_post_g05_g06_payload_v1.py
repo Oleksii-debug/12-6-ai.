@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize a deterministic post-G05/G06 payload from exact current authorities."""
+"""Materialize deterministic post-G05/G06 payload with provenance quarantine."""
 from __future__ import annotations
 
 import argparse
@@ -8,9 +8,16 @@ import json
 from pathlib import Path
 from typing import Any
 
-from twelve_six.data.post_g05_g06_materialization_v1 import (
-    canonical_record_bytes,
-    materialize_post_g05_g06,
+from twelve_six.data.external_llm_provenance_quarantine_v1 import (
+    EXPECTED_AUTHORITY_IDENTITY_SHA256,
+)
+from twelve_six.data.post_g05_g06_materialization_v1 import canonical_record_bytes
+from twelve_six.data.post_g05_g06_materialization_v2 import (
+    materialize_post_g05_g06_v2,
+)
+
+DEFAULT_PROVENANCE_QUARANTINE = Path(
+    "configs/data/d03_external_llm_provenance_quarantine_v1.json"
 )
 
 
@@ -72,10 +79,21 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
     )
     parser.add_argument("--privacy-source", required=True, type=Path)
+    parser.add_argument(
+        "--provenance-quarantine",
+        type=Path,
+        default=DEFAULT_PROVENANCE_QUARANTINE,
+    )
     parser.add_argument("--execution-head-sha", required=True)
     parser.add_argument(
         "--expected-materializer-implementation-git-blob-sha1",
         required=True,
+        help="Exact historical V1 implementation blob consumed by the V2 transform.",
+    )
+    parser.add_argument(
+        "--expected-materializer-v2-implementation-git-blob-sha1",
+        required=True,
+        help="Exact provenance-guarded V2 implementation blob.",
     )
     parser.add_argument("--output-jsonl", required=True, type=Path)
     parser.add_argument("--output-inventory", required=True, type=Path)
@@ -87,8 +105,16 @@ def main() -> int:
     args = _parser().parse_args()
     outputs = (args.output_jsonl, args.output_inventory, args.output_evidence)
     _ensure_new(outputs)
+    records = _load_jsonl(args.input_jsonl)
     kwargs = {
-        "records": _load_jsonl(args.input_jsonl),
+        "records": records,
+        "provenance_quarantine_authority": _load_json(args.provenance_quarantine),
+        "expected_provenance_quarantine_identity_sha256": (
+            EXPECTED_AUTHORITY_IDENTITY_SHA256
+        ),
+        "expected_materializer_v2_implementation_git_blob_sha1": (
+            args.expected_materializer_v2_implementation_git_blob_sha1
+        ),
         "composition_preflight": _load_json(args.composition_preflight),
         "expected_composition_preflight_identity_sha256": (
             args.expected_composition_preflight_identity
@@ -114,8 +140,8 @@ def main() -> int:
             args.expected_materializer_implementation_git_blob_sha1
         ),
     }
-    records_a, inventory_a, evidence_a = materialize_post_g05_g06(**kwargs)
-    records_b, inventory_b, evidence_b = materialize_post_g05_g06(**kwargs)
+    records_a, inventory_a, evidence_a = materialize_post_g05_g06_v2(**kwargs)
+    records_b, inventory_b, evidence_b = materialize_post_g05_g06_v2(**kwargs)
     if canonical_record_bytes(records_a) != canonical_record_bytes(records_b):
         raise RuntimeError(
             "repeat post-G05/G06 payload materialization is not byte-identical"
