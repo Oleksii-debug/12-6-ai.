@@ -607,7 +607,7 @@ def _requested_at_utc_valid(value: Any) -> bool:
         return False
     for pattern in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
         try:
-            datetime.strptime(value, pattern)
+            datetime.strptime(value, pattern).replace(tzinfo=UTC)
         except ValueError:
             continue
         return True
