@@ -16,6 +16,8 @@ from typing import Any
 
 from twelve_six.ubuntu_irc_execution_rights_crossbind import (
     AUTHORITY_ID as CROSSBIND_AUTHORITY_ID,
+)
+from twelve_six.ubuntu_irc_execution_rights_crossbind import (
     CANDIDATE_SHA256,
     REPAIRED_EVIDENCE_BLOB,
     SOURCE_DATASET,
