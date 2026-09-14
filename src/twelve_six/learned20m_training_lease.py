@@ -1,6 +1,6 @@
 """Fail-closed learned-20M launch-manifest and local TRAINING_RUN lease contract.
 
-The local lease primitive is atomic only for processes sharing one filesystem.  It is
+The local lease primitive is atomic only for processes sharing one filesystem. It is
 not a distributed/global lock and this module never grants optimizer-start authority.
 """
 
@@ -11,10 +11,11 @@ import hashlib
 import json
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 MANIFEST_ID = "R01-LEARNED20M-LAUNCH-MANIFEST-V1"
 LEASE_CONTRACT_ID = "R01-LEARNED20M-TRAINING-RUN-LEASE-V1"
@@ -145,6 +146,11 @@ def _text(value: Any, maximum: int = 512) -> bool:
 
 def _token(value: Any) -> bool:
     return isinstance(value, str) and _TOKEN.fullmatch(value) is not None
+
+
+def _enum_member(value: Any, allowed: set[str]) -> bool:
+    """Return membership for untrusted JSON values without raising on lists/objects."""
+    return isinstance(value, str) and value in allowed
 
 
 def _expect(errors: list[str], condition: bool, message: str) -> None:
@@ -302,7 +308,7 @@ def validate_launch_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
     )
     _expect(
         errors,
-        resource.get("resource_class") in _FREE_RESOURCE_CLASSES,
+        _enum_member(resource.get("resource_class"), _FREE_RESOURCE_CLASSES),
         "resource_class_not_free_only",
     )
     _expect(
@@ -338,10 +344,10 @@ def validate_launch_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
 
 def _normalize_time(value: datetime | None) -> datetime:
     if value is None:
-        return datetime.now(timezone.utc).replace(microsecond=0)
+        return datetime.now(UTC).replace(microsecond=0)
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
-    return value.astimezone(timezone.utc).replace(microsecond=0)
+    return value.astimezone(UTC).replace(microsecond=0)
 
 
 def _format_time(value: datetime) -> str:
@@ -353,7 +359,7 @@ def _parse_time(value: Any, field: str, errors: list[str]) -> datetime | None:
         errors.append(f"{field}_invalid")
         return None
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except ValueError:
         errors.append(f"{field}_invalid")
         return None
@@ -435,7 +441,8 @@ def validate_training_run_lease(
             )
     _expect(errors, _token(lease.get("run_id")), "run_id_invalid")
     _expect(errors, _token(lease.get("holder_id")), "holder_id_invalid")
-    _expect(errors, lease.get("status") in _STATUSES, "lease_status_invalid")
+    status = lease.get("status")
+    _expect(errors, _enum_member(status, _STATUSES), "lease_status_invalid")
     _expect(errors, _integer(lease.get("renewal_sequence")), "renewal_sequence_invalid")
 
     acquired = _parse_time(lease.get("acquired_at_utc"), "acquired_at_utc", errors)
@@ -452,9 +459,9 @@ def validate_training_run_lease(
         )
 
     terminal = lease.get("terminal_at_utc")
-    if lease.get("status") == "RUNNING":
+    if status == "RUNNING":
         _expect(errors, terminal is None, "running_lease_has_terminal_time")
-    elif lease.get("status") in _TERMINAL:
+    elif _enum_member(status, _TERMINAL):
         parsed_terminal = _parse_time(terminal, "terminal_at_utc", errors)
         if parsed_terminal and renewed:
             _expect(errors, parsed_terminal >= renewed, "terminal_before_renewal")
@@ -477,12 +484,17 @@ def assess_training_run_lease(
     else:
         lease_errors = validate_training_run_lease(lease, manifest)
         if not lease_errors:
-            expires = datetime.strptime(
-                lease["expires_at_utc"], "%Y-%m-%dT%H:%M:%SZ"
-            ).replace(tzinfo=timezone.utc)
+            time_errors: list[str] = []
+            acquired = _parse_time(lease.get("acquired_at_utc"), "acquired_at_utc", time_errors)
+            renewed = _parse_time(lease.get("renewed_at_utc"), "renewed_at_utc", time_errors)
+            expires = _parse_time(lease.get("expires_at_utc"), "expires_at_utc", time_errors)
             if lease.get("status") != "RUNNING":
                 blockers.append("training_run_lease_not_running")
-            elif current >= expires:
+            elif acquired is not None and current < acquired:
+                blockers.append("training_run_lease_not_yet_active")
+            elif renewed is not None and current < renewed:
+                blockers.append("training_run_lease_renewed_in_future")
+            elif expires is not None and current >= expires:
                 blockers.append("training_run_lease_expired")
     errors = tuple(dict.fromkeys((*manifest_errors, *lease_errors)))
     lease_valid = lease is not None and not lease_errors
@@ -507,12 +519,8 @@ def renew_training_run_lease(
     if not _integer(ttl_seconds, positive=True) or ttl_seconds > MAX_LEASE_SECONDS:
         raise ValueError("ttl_seconds_out_of_range")
     current = _normalize_time(now)
-    renewed = datetime.strptime(previous.renewed_at_utc, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc
-    )
-    expires = datetime.strptime(previous.expires_at_utc, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc
-    )
+    renewed = datetime.strptime(previous.renewed_at_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    expires = datetime.strptime(previous.expires_at_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     if current <= renewed:
         raise ValueError("renewal_time_must_advance")
     if current >= expires:
@@ -528,14 +536,15 @@ def renew_training_run_lease(
 def terminate_training_run_lease(
     previous: TrainingLease, *, status: str, now: datetime | None = None
 ) -> TrainingLease:
-    if previous.status != "RUNNING" or status not in _TERMINAL:
+    if previous.status != "RUNNING" or not _enum_member(status, _TERMINAL):
         raise ValueError("invalid_terminal_transition")
     current = _normalize_time(now)
-    renewed = datetime.strptime(previous.renewed_at_utc, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc
-    )
+    renewed = datetime.strptime(previous.renewed_at_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    expires = datetime.strptime(previous.expires_at_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     if current < renewed:
         raise ValueError("terminal_time_before_last_renewal")
+    if status == "COMPLETED" and current >= expires:
+        raise ValueError("completed_after_lease_expiry")
     return replace(previous, status=status, terminal_at_utc=_format_time(current))
 
 
@@ -566,11 +575,13 @@ def validate_lease_transition(
             previous.get(field) == candidate.get(field),
             f"lease_transition_changes_immutable_field:{field}",
         )
-    if previous.get("status") in _TERMINAL:
+    previous_status = previous.get("status")
+    candidate_status = candidate.get("status")
+    if _enum_member(previous_status, _TERMINAL):
         errors.append("terminal_lease_cannot_transition")
-    elif previous.get("status") != "RUNNING":
+    elif previous_status != "RUNNING":
         errors.append("previous_lease_not_running")
-    elif candidate.get("status") == "RUNNING":
+    elif candidate_status == "RUNNING":
         _expect(
             errors,
             _integer(previous.get("renewal_sequence"))
@@ -578,16 +589,28 @@ def validate_lease_transition(
             "renewal_sequence_must_increment_by_one",
         )
         old = _parse_time(previous.get("renewed_at_utc"), "old_renewed_at_utc", errors)
+        previous_expires = _parse_time(
+            previous.get("expires_at_utc"), "old_expires_at_utc", errors
+        )
         new = _parse_time(candidate.get("renewed_at_utc"), "new_renewed_at_utc", errors)
         if old and new:
             _expect(errors, new > old, "renewal_time_must_advance")
-    elif candidate.get("status") in _TERMINAL:
+        if previous_expires and new:
+            _expect(errors, new < previous_expires, "expired_lease_cannot_be_renewed")
+    elif _enum_member(candidate_status, _TERMINAL):
         for field in ("renewal_sequence", "renewed_at_utc", "expires_at_utc"):
             _expect(
                 errors,
                 candidate.get(field) == previous.get(field),
                 f"terminal_transition_changes:{field}",
             )
+        if candidate_status == "COMPLETED":
+            previous_expires = _parse_time(
+                previous.get("expires_at_utc"), "old_expires_at_utc", errors
+            )
+            terminal = _parse_time(candidate.get("terminal_at_utc"), "terminal_at_utc", errors)
+            if previous_expires and terminal:
+                _expect(errors, terminal < previous_expires, "completed_after_lease_expiry")
     else:
         errors.append("lease_transition_status_invalid")
     return tuple(dict.fromkeys(errors))
