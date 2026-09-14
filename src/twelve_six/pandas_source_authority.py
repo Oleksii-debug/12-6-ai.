@@ -62,6 +62,22 @@ def _exact_int(value: Any, expected: int) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value == expected
 
 
+def _strict_json_equal(actual: Any, expected: Any) -> bool:
+    """Compare JSON-shaped values without Python bool/int/float aliasing."""
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return set(actual) == set(expected) and all(
+            _strict_json_equal(actual[key], expected[key]) for key in expected
+        )
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _strict_json_equal(actual_item, expected_item)
+            for actual_item, expected_item in zip(actual, expected, strict=True)
+        )
+    return actual == expected
+
+
 def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[str]:
     """Return fail-closed blockers for the current-main convergence authority."""
     if not isinstance(config, dict):
@@ -84,9 +100,9 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
         errors.append("schema_version_mismatch")
     if config.get("execution_profile") != "LOCAL_FREE":
         errors.append("execution_profile_must_be_local_free")
-    if config.get("bounded_source") != SOURCE:
+    if not _strict_json_equal(config.get("bounded_source"), SOURCE):
         errors.append("bounded_source_identity_mismatch")
-    if config.get("license") != LICENSE:
+    if not _strict_json_equal(config.get("license"), LICENSE):
         errors.append("license_identity_or_use_boundary_mismatch")
 
     project = config.get("project_authority")
@@ -97,7 +113,7 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
         "source_audit_issue": 1959,
         "source_audit_verdict": "PASS_FOR_INTEGRATION_SOURCE_AUTHORITY",
     }
-    if project != expected_project:
+    if not _strict_json_equal(project, expected_project):
         errors.append("project_authority_mismatch")
 
     historical = config.get("historical_execution")
@@ -120,11 +136,12 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
                 "5c08d522a12e2bc9f9ed096f07739c06d455f30287340d9f096781cf76032602"
             ),
         }
+        expected_historical_keys = set(expected_scalars) | {"receipt_path"}
+        if set(historical) != expected_historical_keys:
+            errors.append("historical_execution_keys_mismatch")
         for key, expected in expected_scalars.items():
             actual = historical.get(key)
-            valid = (
-                _exact_int(actual, expected) if isinstance(expected, int) else actual == expected
-            )
+            valid = _strict_json_equal(actual, expected)
             if not valid:
                 errors.append(f"historical_{key}_mismatch")
         receipt_path = historical.get("receipt_path")
@@ -153,7 +170,7 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
         receipt_upstream = receipt.get("upstream")
         receipt_license = receipt.get("license")
         if not isinstance(receipt_source, dict) or any(
-            receipt_source.get(key) != SOURCE[key]
+            not _strict_json_equal(receipt_source.get(key), SOURCE[key])
             for key in (
                 "source_id",
                 "source_family",
@@ -167,12 +184,12 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
         ):
             errors.append("historical_receipt_source_identity_mismatch")
         if not isinstance(receipt_upstream, dict) or any(
-            receipt_upstream.get(key) != SOURCE[key]
+            not _strict_json_equal(receipt_upstream.get(key), SOURCE[key])
             for key in ("repository", "repository_url", "commit")
         ):
             errors.append("historical_receipt_upstream_identity_mismatch")
         if not isinstance(receipt_license, dict) or any(
-            receipt_license.get(key) != LICENSE[key]
+            not _strict_json_equal(receipt_license.get(key), LICENSE[key])
             for key in ("license_id", "path", "git_blob_sha1", "sha256")
         ):
             errors.append("historical_receipt_license_identity_mismatch")
@@ -197,7 +214,7 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
         "comparison_families": ["github:encode/httpx", "github:psf/requests"],
         "current_global_authority": False,
     }
-    if dedup != expected_dedup:
+    if not _strict_json_equal(dedup, expected_dedup):
         errors.append("historical_dedup_boundary_mismatch")
 
     composition = config.get("current_composition")
@@ -210,14 +227,17 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
             "current_retained_corpus_cleanliness": "NOT_PROVEN_BY_THIS_AUTHORITY",
             "source_authority_status": "VERIFIED_BOUNDED_SOURCE_AUTHORITY",
         }
-        for key, expected in expected_strings.items():
-            if composition.get(key) != expected:
-                errors.append(f"current_composition_{key}_mismatch")
-        for key in (
+        zero_credit_keys = {
             "canonical_capacity_credit_bytes",
             "canonical_family_credit",
             "canonical_files_credit",
-        ):
+        }
+        if set(composition) != set(expected_strings) | zero_credit_keys:
+            errors.append("current_composition_keys_mismatch")
+        for key, expected in expected_strings.items():
+            if not _strict_json_equal(composition.get(key), expected):
+                errors.append(f"current_composition_{key}_mismatch")
+        for key in zero_credit_keys:
             if not _exact_int(composition.get(key), 0):
                 errors.append(f"current_composition_{key}_must_be_exact_int_zero")
 

@@ -92,3 +92,47 @@ def test_unknown_top_level_authority_is_rejected() -> None:
     mutated = copy.deepcopy(config)
     mutated["legacy_registry_authority"] = True
     assert "config_top_level_keys_mismatch" in validate_pandas_source_authority(mutated, receipt)
+
+
+def test_unknown_historical_execution_authority_is_rejected() -> None:
+    config, receipt = _load()
+    mutated = copy.deepcopy(config)
+    mutated["historical_execution"]["replacement_authority"] = "PASS"
+    assert "historical_execution_keys_mismatch" in validate_pandas_source_authority(
+        mutated, receipt
+    )
+
+
+def test_unknown_current_composition_authority_is_rejected() -> None:
+    config, receipt = _load()
+    mutated = copy.deepcopy(config)
+    mutated["current_composition"]["training_ready"] = True
+    assert "current_composition_keys_mismatch" in validate_pandas_source_authority(
+        mutated, receipt
+    )
+
+
+def test_exact_authority_objects_reject_python_numeric_aliases() -> None:
+    config, receipt = _load()
+
+    mutated = copy.deepcopy(config)
+    mutated["project_authority"]["swarm_control_issue"] = 723.0
+    assert "project_authority_mismatch" in validate_pandas_source_authority(mutated, receipt)
+
+    mutated = copy.deepcopy(config)
+    mutated["bounded_source"]["size_bytes"] = 15837.0
+    assert "bounded_source_identity_mismatch" in validate_pandas_source_authority(
+        mutated, receipt
+    )
+
+    mutated = copy.deepcopy(config)
+    mutated["historical_dedup"]["historical_only"] = 1
+    assert "historical_dedup_boundary_mismatch" in validate_pandas_source_authority(
+        mutated, receipt
+    )
+
+    mutated = copy.deepcopy(config)
+    mutated["historical_dedup"]["exact_duplicate"] = 0
+    assert "historical_dedup_boundary_mismatch" in validate_pandas_source_authority(
+        mutated, receipt
+    )
