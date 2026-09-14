@@ -1,0 +1,22 @@
+{
+  "schema": "12-6.r01-byte-token-unit-firewall.v1",
+  "status": "FAIL_CLOSED",
+  "parent_campaign": "R01-20M-TO-100M-SCALING-V1",
+  "canonical_byte_exposure_unit": "UNIQUE_AUTHORIZED_UTF8_BYTE_LOSS_POSITIONS",
+  "source_reported_token_ratios_are_execution_budgets": false,
+  "source_reported_token_ratios_may_be_converted_to_byte_positions": false,
+  "source_reported_tokens_per_parameter_reference_only": [10, 20, 40],
+  "engineering_early_learning_pilot_unique_loss_positions": 20000000,
+  "engineering_pilot_is_science_complete_budget": false,
+  "science_complete_20m_byte_position_budget": null,
+  "science_complete_budget_status": "UNDEFINED_PENDING_TOKENIZER_AND_FLOP_CALIBRATION",
+  "required_calibrations": [
+    "tokenizer_efficiency_by_ua_en_code",
+    "semantic_context_span_calibration",
+    "flop_normalized_byte_vs_subword_ablation",
+    "heldout_learning_curves"
+  ],
+  "promotion_to_100m_allowed_from_reference_ratio_alone": false,
+  "long_training_authorized": false,
+  "paid_compute_authorized": false
+}
