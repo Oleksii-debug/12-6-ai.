@@ -46,8 +46,12 @@ _canonical = _impl._canonical
 _require = _impl._require
 _sha256 = _impl._sha256
 
-_LEGACY_VALIDATE_RADA_ROWS = _impl.validate_rada_rows
-_LEGACY_RUN_EXPANDED_DEDUP = _impl.run_expanded_dedup
+_FROZEN_PRIVATE_IMPL_MODULE = _impl
+_FROZEN_PRIVATE_ERROR_CLASS = _impl.ExpandedDedupError
+_FROZEN_PRIVATE_VALIDATE_RADA_ROWS = _impl.validate_rada_rows
+_FROZEN_PRIVATE_RUN_EXPANDED_DEDUP = _impl.run_expanded_dedup
+_LEGACY_VALIDATE_RADA_ROWS = _FROZEN_PRIVATE_VALIDATE_RADA_ROWS
+_LEGACY_RUN_EXPANDED_DEDUP = _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP
 
 # Freeze the behavior-bearing stdlib primitives at facade import.  Fresh execution
 # of the pinned matcher source is not an independent reference for these objects:
@@ -84,6 +88,12 @@ _FROZEN_BUILTIN_CALLABLES = tuple(
 )
 
 _FROZEN_COPY_DEEPCOPY = copy.deepcopy
+_FROZEN_COPY_DEEPCOPY_DISPATCH = getattr(copy, "_deepcopy_dispatch", None)
+_FROZEN_COPY_DEEPCOPY_DISPATCH_ITEMS = (
+    tuple(_FROZEN_COPY_DEEPCOPY_DISPATCH.items())
+    if isinstance(_FROZEN_COPY_DEEPCOPY_DISPATCH, dict)
+    else ()
+)
 _FROZEN_HASHLIB_SHA1 = hashlib.sha1
 _FROZEN_HASHLIB_SHA256 = hashlib.sha256
 _FROZEN_HTML_UNESCAPE = html.unescape
@@ -118,6 +128,7 @@ _EXPECTED_MATCHER_BLOBS = {
     "twelve_six.data.cross_source_capacity_audit": "84cdf00b2d468d2709a542ac3ee2ea372aae5716",
     "twelve_six.data._data232_decontamination_matching": "dab5da98dfc43133aa8f3c2e3c78c809252b741b",
 }
+_EXPECTED_PRIVATE_IMPL_BLOB = "b160902c0b51595828ff4b389b918b64de398c82"
 _V3_RUNTIME_FUNCTIONS = (
     "_validate_inventory",
     "_as_v1_inventory",
@@ -147,6 +158,57 @@ _V1_RUNTIME_FUNCTIONS = (
 _DATA232_RUNTIME_FUNCTIONS = (
     "normalize_for_contamination",
     "code_skeleton_tokens",
+)
+_PRIVATE_IMPL_RUNTIME_FUNCTIONS = (
+    "_require",
+    "_sha256",
+    "_canonical",
+    "_is_sha256",
+    "_is_git_sha",
+    "_mapping",
+    "_verify_self_hash",
+    "validate_data526_authority",
+    "validate_language_authority",
+    "validate_rada_quality_privacy_report",
+    "validate_rada_rows",
+    "build_rada_matcher_inputs",
+    "validate_v8_survivor_authority",
+    "filter_v8_survivor_inputs",
+    "_derive_survivors",
+    "run_expanded_dedup",
+)
+_PRIVATE_IMPL_VALUE_GLOBALS = (
+    "REPORT_SCHEMA",
+    "SURVIVOR_SCHEMA",
+    "RADA_QP_SCHEMA",
+    "RADA_QP_SAFE_RESULT",
+    "RADA_LANGUAGE_SCHEMA",
+    "RADA_LANGUAGE_REPORT_SHA256",
+    "RADA_RIGHTS_INVENTORY_SHA256",
+    "RADA_DATASET",
+    "RADA_REVISION",
+    "RADA_FAMILY",
+    "RADA_INPUT_RECORDS",
+    "RADA_SOURCE_BYTES",
+    "V8_REPORT_SHA256",
+    "V8_NESTED_V3_SHA256",
+    "V8_SURVIVOR_SHA256",
+    "DATA526_EVIDENCE_SHA256",
+    "DATA526_RECORD_INVENTORY_SHA256",
+    "DATA526_PAYLOAD_INVENTORY_SHA256",
+    "DATA526_RECORDS",
+    "DATA526_SOURCES",
+    "DATA526_BYTES",
+    "SELECTION_RULE",
+)
+_PRIVATE_IMPL_IDENTITY_GLOBALS = (
+    "copy",
+    "hashlib",
+    "json",
+    "re",
+    "Callable",
+    "Mapping",
+    "Sequence",
 )
 _DATA232_VALUE_GLOBALS = (
     "DEFAULT_THRESHOLDS",
@@ -241,6 +303,22 @@ def _verify_stdlib_runtime_semantic_closure() -> None:
         _require(
             _FROZEN_BUILTINS_MODULE.__dict__.get(name) is expected,
             f"stdlib runtime builtin replaced: builtins.{name}",
+        )
+
+    dispatch = getattr(_FROZEN_COPY_MODULE, "_deepcopy_dispatch", None)
+    _require(
+        dispatch is _FROZEN_COPY_DEEPCOPY_DISPATCH,
+        "copy deepcopy dispatch object replaced",
+    )
+    _require(isinstance(dispatch, dict), "copy deepcopy dispatch missing")
+    _require(
+        len(dispatch) == len(_FROZEN_COPY_DEEPCOPY_DISPATCH_ITEMS),
+        "copy deepcopy dispatch cardinality changed",
+    )
+    for value_type, expected_handler in _FROZEN_COPY_DEEPCOPY_DISPATCH_ITEMS:
+        _require(
+            dispatch.get(value_type) is expected_handler,
+            f"copy deepcopy dispatch handler replaced: {value_type.__name__}",
         )
 
     member_checks = (
@@ -486,6 +564,62 @@ def _verify_identity_globals(
         )
 
 
+def _verify_private_runtime_semantic_closure() -> None:
+    """Bind legacy V9 delegates to the exact private executable closure."""
+
+    _verify_stdlib_runtime_semantic_closure()
+    module_name = "twelve_six.data._expanded_global_dedup_v9_impl"
+    _require(
+        sys.modules.get(module_name) is _FROZEN_PRIVATE_IMPL_MODULE,
+        "V9 private implementation module binding replaced",
+    )
+    _require(_impl is _FROZEN_PRIVATE_IMPL_MODULE, "V9 private implementation alias replaced")
+    _require(
+        _module_source_blob(_impl) == _EXPECTED_PRIVATE_IMPL_BLOB,
+        "V9 private implementation source authority drift",
+    )
+    _require(
+        _impl.ExpandedDedupError is _FROZEN_PRIVATE_ERROR_CLASS,
+        "V9 private error class replaced",
+    )
+    _require(
+        _LEGACY_VALIDATE_RADA_ROWS is _FROZEN_PRIVATE_VALIDATE_RADA_ROWS,
+        "V9 legacy validate delegate replaced",
+    )
+    _require(
+        _LEGACY_RUN_EXPANDED_DEDUP is _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP,
+        "V9 legacy run delegate replaced",
+    )
+    _require(
+        _impl.validate_rada_rows is _FROZEN_PRIVATE_VALIDATE_RADA_ROWS,
+        "V9 private validate delegate replaced",
+    )
+    _require(
+        _impl.run_expanded_dedup is _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP,
+        "V9 private run delegate replaced",
+    )
+
+    reference = _load_reference_module(_impl, label="v9_impl")
+    _verify_runtime_functions(
+        _impl,
+        reference,
+        _PRIVATE_IMPL_RUNTIME_FUNCTIONS,
+        label="V9 private",
+    )
+    _verify_runtime_values(
+        _impl,
+        reference,
+        _PRIVATE_IMPL_VALUE_GLOBALS,
+        label="V9 private",
+    )
+    _verify_identity_globals(
+        _impl,
+        reference,
+        _PRIVATE_IMPL_IDENTITY_GLOBALS,
+        label="V9 private",
+    )
+
+
 def _verify_matcher_semantic_closure(
     matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
     matcher_verify: Callable[[Mapping[str, Any]], None],
@@ -609,6 +743,7 @@ def validate_rada_rows(
 ) -> list[dict[str, Any]]:
     """Return only rows proven to be the exact semantic parse of authenticated bytes."""
 
+    _verify_private_runtime_semantic_closure()
     parsed = _parse_authenticated_rada_jsonl(raw_jsonl)
     _require(
         isinstance(rows, Sequence) and not isinstance(rows, (str, bytes, bytearray)),
@@ -624,7 +759,7 @@ def validate_rada_rows(
     )
     # Reuse all incumbent row/hash/byte/privacy/partial-unit invariants, but run them
     # over the rows parsed from the authenticated bytes rather than caller objects.
-    _LEGACY_VALIDATE_RADA_ROWS(parsed, raw_jsonl, report)
+    _FROZEN_PRIVATE_VALIDATE_RADA_ROWS(parsed, raw_jsonl, report)
     return parsed
 
 
@@ -785,7 +920,8 @@ def run_expanded_dedup(
         reconstructed_v8_inventory,
         v8_survivor_authority,
     )
-    report, survivors = _LEGACY_RUN_EXPANDED_DEDUP(
+    _verify_private_runtime_semantic_closure()
+    report, survivors = _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP(
         matcher_audit=matcher_audit,
         matcher_verify=matcher_verify,
         reconstructed_v8_inventory=prepared_inventory,
@@ -815,9 +951,11 @@ def run_expanded_dedup(
         "data232_matching_git_blob_sha1": _EXPECTED_MATCHER_BLOBS[
             "twelve_six.data._data232_decontamination_matching"
         ],
+        "private_v9_impl_git_blob_sha1": _EXPECTED_PRIVATE_IMPL_BLOB,
         "authenticated_rada_rows_only": True,
         "sealed_v8_semantic_preflight_required": True,
         "stdlib_runtime_semantic_closure_required": True,
+        "private_v9_runtime_semantic_closure_required": True,
     }
     core = dict(report)
     core.pop("report_sha256", None)
