@@ -62,9 +62,12 @@ def trusted_readiness_bundle_sha256(bindings: Any) -> str | None:
     readiness_projection = _readiness_projection(bindings)
     if readiness_projection is None or trusted_readiness_inputs(readiness_projection) is None:
         return None
-    if isinstance(bindings, dict) and bindings.get("schema_version") == 3:
-        if validate_preoptimizer_authorities(bindings.get("preoptimizer_authorities")):
-            return None
+    if (
+        isinstance(bindings, dict)
+        and bindings.get("schema_version") == 3
+        and validate_preoptimizer_authorities(bindings.get("preoptimizer_authorities"))
+    ):
+        return None
     try:
         payload = json.dumps(
             bindings,
