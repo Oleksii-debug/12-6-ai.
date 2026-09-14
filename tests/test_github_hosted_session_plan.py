@@ -25,6 +25,43 @@ def _profile() -> dict:
     return json.loads(PROFILE.read_text(encoding="utf-8"))
 
 
+def _handoff(plan: dict) -> dict:
+    return {
+        "plan_sha256": plan["plan_sha256"],
+        "session_index": 1,
+        "run_id": "run-1",
+        "checkpoint_sha256": "b" * 64,
+        "checkpoint_manifest_sha256": "c" * 64,
+        "checkpoint_uri": "file:///tmp/checkpoint-1",
+    }
+
+
+def _packet(handoff: dict | None = None, *, limit: int = 360) -> dict:
+    mode = "RESUME" if handoff else "FRESH_START"
+    checkpoint = {
+        "mode": mode,
+        "session_time_limit_minutes": limit,
+        "first_checkpoint_deadline_minutes": min(60, limit - 1),
+    }
+    if handoff:
+        checkpoint["lineage"] = {
+            "source_provider": "OTHER_FREE",
+            "cross_provider_transfer": False,
+            "parent_checkpoint_sha256": handoff["checkpoint_sha256"],
+            "parent_manifest_sha256": handoff["checkpoint_manifest_sha256"],
+            "previous_run_id": handoff["run_id"],
+        }
+    return {
+        "resource": {
+            "resource_class": "LOCAL_FREE",
+            "provider": "OTHER_FREE",
+            "maximum_cost_usd": 0,
+            "materially_paid": False,
+        },
+        "checkpoint": checkpoint,
+    }
+
+
 def test_profile_and_deterministic_session_slicing_are_fail_closed() -> None:
     profile = _profile()
     assert validate_profile(profile) == []
@@ -47,7 +84,11 @@ def test_profile_and_deterministic_session_slicing_are_fail_closed() -> None:
     ("field", "replacement", "expected"),
     [
         ("configured_job_budget_minutes", True, "profile_configured_job_budget_minutes_invalid"),
-        ("checkpoint_safety_margin_minutes", True, "profile_checkpoint_safety_margin_minutes_invalid"),
+        (
+            "checkpoint_safety_margin_minutes",
+            True,
+            "profile_checkpoint_safety_margin_minutes_invalid",
+        ),
         ("max_session_work_minutes", True, "profile_max_session_work_minutes_invalid"),
         ("maximum_cost_usd", True, "profile_maximum_cost_usd_must_be_zero"),
         ("materially_paid", 0, "profile_materially_paid_must_be_false"),
@@ -108,26 +149,16 @@ def test_build_rejects_bool_and_nonpositive_runtime() -> None:
 def test_initial_session_consumes_incumbent_portable_readiness(monkeypatch) -> None:
     profile = _profile()
     plan = build_session_plan(profile, 45)
-    packet = {
-        "resource": {
-            "resource_class": "LOCAL_FREE",
-            "provider": "OTHER_FREE",
-            "maximum_cost_usd": 0,
-            "materially_paid": False,
-        },
-        "checkpoint": {
-            "mode": "FRESH_START",
-            "session_time_limit_minutes": 360,
-            "first_checkpoint_deadline_minutes": 330,
-        },
-    }
+    packet = _packet()
     monkeypatch.setattr(
         session_plan,
         "assess_portable_run_packet",
         lambda _value: SimpleNamespace(
             ready_for_initial_local_free_launch=True,
+            ready_for_same_provider_fresh_process_resume=False,
             ready_for_cross_provider_resume=False,
             launch_blockers=(),
+            same_provider_resume_blockers=("not_resume",),
             resume_blockers=(),
         ),
     )
@@ -136,49 +167,126 @@ def test_initial_session_consumes_incumbent_portable_readiness(monkeypatch) -> N
     assert result.blockers == ()
 
 
-def test_github_to_github_continuation_stays_blocked_under_cross_provider_contract(
-    monkeypatch,
-) -> None:
+def test_same_provider_signal_authorizes_only_when_canonical_portable_does(monkeypatch) -> None:
     profile = _profile()
     plan = build_session_plan(profile, 700)
-    handoff = {
-        "plan_sha256": plan["plan_sha256"],
-        "session_index": 1,
-        "run_id": "run-1",
-        "checkpoint_sha256": "b" * 64,
-        "checkpoint_manifest_sha256": "c" * 64,
-        "checkpoint_uri": "file:///tmp/checkpoint-1",
-    }
-    packet = {
-        "resource": {
-            "resource_class": "LOCAL_FREE",
-            "provider": "OTHER_FREE",
-            "maximum_cost_usd": 0,
-            "materially_paid": False,
-        },
-        "checkpoint": {
-            "mode": "RESUME",
-            "session_time_limit_minutes": 360,
-            "first_checkpoint_deadline_minutes": 330,
-            "lineage": {
-                "source_provider": "OTHER_FREE",
-                "parent_checkpoint_sha256": handoff["checkpoint_sha256"],
-                "parent_manifest_sha256": handoff["checkpoint_manifest_sha256"],
-                "previous_run_id": handoff["run_id"],
-            },
-        },
-    }
+    handoff = _handoff(plan)
+    packet = _packet(handoff)
     monkeypatch.setattr(
         session_plan,
         "assess_portable_run_packet",
         lambda _value: SimpleNamespace(
             ready_for_initial_local_free_launch=False,
+            ready_for_same_provider_fresh_process_resume=True,
             ready_for_cross_provider_resume=False,
             launch_blockers=(),
+            same_provider_resume_blockers=(),
             resume_blockers=("cross_provider_source_and_target_must_differ",),
         ),
     )
-    result = assess_session_launch(plan, profile, 2, packet, previous_handoff=handoff)
+    result = assess_session_launch(
+        plan, profile, 2, packet, previous_handoff=handoff
+    )
+    assert result.ready
+    assert result.blockers == ()
+
+
+def test_cross_provider_readiness_cannot_authorize_same_provider_resume(monkeypatch) -> None:
+    profile = _profile()
+    plan = build_session_plan(profile, 700)
+    handoff = _handoff(plan)
+    packet = _packet(handoff)
+    monkeypatch.setattr(
+        session_plan,
+        "assess_portable_run_packet",
+        lambda _value: SimpleNamespace(
+            ready_for_initial_local_free_launch=False,
+            ready_for_same_provider_fresh_process_resume=False,
+            ready_for_cross_provider_resume=True,
+            launch_blockers=(),
+            same_provider_resume_blockers=("trusted_parent_recovery_binding_missing",),
+            resume_blockers=(),
+        ),
+    )
+    result = assess_session_launch(
+        plan, profile, 2, packet, previous_handoff=handoff
+    )
     assert not result.ready
     assert "canonical_same_provider_resume_authority_unavailable" in result.blockers
-    assert "portable:cross_provider_source_and_target_must_differ" in result.blockers
+    assert "portable:trusted_parent_recovery_binding_missing" in result.blockers
+
+
+def test_coherent_handoff_and_packet_reseal_stays_blocked_without_trusted_recovery(
+    monkeypatch,
+) -> None:
+    profile = _profile()
+    plan = build_session_plan(profile, 700)
+    handoff = _handoff(plan)
+    handoff["run_id"] = "attacker-resealed-run"
+    handoff["checkpoint_sha256"] = "d" * 64
+    handoff["checkpoint_manifest_sha256"] = "e" * 64
+    packet = _packet(handoff)
+    monkeypatch.setattr(
+        session_plan,
+        "assess_portable_run_packet",
+        lambda _value: SimpleNamespace(
+            ready_for_initial_local_free_launch=False,
+            ready_for_same_provider_fresh_process_resume=False,
+            ready_for_cross_provider_resume=False,
+            launch_blockers=(),
+            same_provider_resume_blockers=("trusted_parent_recovery_binding_missing",),
+            resume_blockers=(),
+        ),
+    )
+    result = assess_session_launch(
+        plan, profile, 2, packet, previous_handoff=handoff
+    )
+    assert not result.ready
+    assert "portable:trusted_parent_recovery_binding_missing" in result.blockers
+
+
+def test_bound_portable_time_limit_can_only_narrow_profile_window(monkeypatch) -> None:
+    profile = _profile()
+    plan = build_session_plan(profile, 700)
+    handoff = _handoff(plan)
+    packet = _packet(handoff, limit=300)
+    monkeypatch.setattr(
+        session_plan,
+        "assess_portable_run_packet",
+        lambda _value: SimpleNamespace(
+            ready_for_initial_local_free_launch=False,
+            ready_for_same_provider_fresh_process_resume=True,
+            ready_for_cross_provider_resume=False,
+            launch_blockers=(),
+            same_provider_resume_blockers=(),
+            resume_blockers=(),
+        ),
+    )
+    result = assess_session_launch(
+        plan, profile, 2, packet, previous_handoff=handoff
+    )
+    assert not result.ready
+    assert "planned_session_exceeds_portable_time_limit" in result.blockers
+    assert "plan_checkpoint_deadline_not_before_portable_limit" in result.blockers
+
+
+def test_missing_same_provider_signal_fails_closed(monkeypatch) -> None:
+    profile = _profile()
+    plan = build_session_plan(profile, 700)
+    handoff = _handoff(plan)
+    packet = _packet(handoff)
+    monkeypatch.setattr(
+        session_plan,
+        "assess_portable_run_packet",
+        lambda _value: SimpleNamespace(
+            ready_for_initial_local_free_launch=False,
+            ready_for_cross_provider_resume=True,
+            launch_blockers=(),
+            resume_blockers=(),
+        ),
+    )
+    result = assess_session_launch(
+        plan, profile, 2, packet, previous_handoff=handoff
+    )
+    assert not result.ready
+    assert "portable:same_provider_resume_signal_unavailable" in result.blockers
