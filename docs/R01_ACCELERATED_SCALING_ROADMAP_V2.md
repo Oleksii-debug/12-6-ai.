@@ -33,6 +33,14 @@ The current packet exits successfully because its contract is valid and prints:
 
 A blocked scientific state is expected and is not a validator failure. Structural drift—such as making learned 20M optional, requiring full 50M/100M campaigns, skipping terminal 200M before 1B, selecting an unqualified backend, dropping data identities, or authorizing compute—fails the contract.
 
+## Terminal audit independence
+
+A learned-20M or learned-200M `PASS` now requires two separately valid terminal authorities: the producer authority and the independent-audit authority. Independence is machine-bound in `terminal_audit_independence` and requires both a different `workflow_run_id` and a different `evidence_sha256`. Re-labeling the producer run, copying its evidence digest, or publishing the same execution twice cannot satisfy the audit gate.
+
+The audit is intentionally allowed to bind the **same exact `git_sha`** as the producer. An independent auditor should inspect the exact producer code/head rather than a different implementation; independence comes from a distinct audit execution and distinct evidence artifact, not from code drift. Weakening, deleting, or extending the closed-world machine contract fails validation before any learned-terminal routing transition.
+
+This rule does not make the checked-in roadmap terminal. Its current learned-20M state remains `NOT_TERMINAL`, optimized-target authority remains zero, and no training, backend promotion, stage promotion, final-test access, or paid compute is authorized by this contract hardening.
+
 ## Portable runner boundary
 
 The V2 contract defines the minimum provider-neutral run packet and qualification evidence. It does not implement or select a backend. Native PyTorch, LitGPT, Hugging Face Accelerate/Trainer, FSDP and DeepSpeed all start `UNQUALIFIED`; popularity is not parity evidence.
