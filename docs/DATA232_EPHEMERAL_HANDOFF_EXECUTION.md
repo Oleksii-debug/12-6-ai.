@@ -9,8 +9,8 @@ change DATA-232 matching policy, or grant corpus/training authority.
 
 The carrier consumes the exact text-free
 `12-6.expanded-postdedup-inventory.v1` plus the corresponding physical payload JSONL.
-It delegates all logical payload/inventory validation to canonical
-`prepare_ephemeral_data232_rows()` and emits the exact
+It delegates all logical payload/inventory validation to the exact authenticated PR #940
+`prepare_ephemeral_data232_rows()` implementation and emits the exact
 `12-6.postdedup-decontam-handoff.v1` contract consumed by the current DATA-232 adapter.
 
 ## Authority required before launch
@@ -22,11 +22,24 @@ The operator must independently retain all three identities below. Do not derive
 2. the audited PR #940 retained-inventory implementation Git SHA;
 3. the exact retained-inventory identity SHA-256 published by the upstream authority.
 
-The carrier checks the exact checkout and a clean tracked tree before reading any
-payload. The retained-inventory SHA must be an ancestor of the carrier checkout, and
-`src/twelve_six/data/expanded_postdedup_inventory_v1.py` must be byte-equivalent at
-that upstream authority. This lets the carrier add operator plumbing without silently
-forking the canonical retained-inventory semantics.
+The CLI re-executes itself under Python `-I -S` before any authoritative work. This
+removes user-site, `PYTHONPATH`, `.pth`, and site-startup import influence from the
+actual carrier process. The authenticated process then proves that its own resolved
+`__file__` is exactly `tools/prepare_data232_ephemeral_handoff_v1.py` inside the supplied
+repository and that the physical carrier bytes are exactly the bytes tracked at the
+independently expected carrier commit. A copied or tampered runner cannot point at a
+clean checkout and borrow that checkout's Git identity.
+
+The retained-inventory SHA must be an ancestor of the carrier checkout. The carrier
+also proves that `src/twelve_six/data/expanded_postdedup_inventory_v1.py` contains no
+symlink/path substitution, is unchanged from the independently expected PR #940
+authority, and is physically byte-identical to the exact tracked Git blob. Only after
+those gates pass does it compile those verified source bytes into a fresh private
+namespace and retrieve `prepare_ephemeral_data232_rows()` from that namespace. It does
+not trust a callable imported before the gate, so preloaded or monkeypatched canonical
+module state cannot mint trusted handoff evidence.
+
+All code/authentication gates run before inventory or payload bytes are read.
 
 ## Input contract
 
@@ -51,6 +64,9 @@ python tools/prepare_data232_ephemeral_handoff_v1.py \
   --expected-carrier-git-sha <40-hex> \
   --expected-retained-inventory-git-sha <40-hex>
 ```
+
+The user does not need to add `-I -S`; the tracked CLI performs one isolated re-exec
+itself and refuses authoritative `main()` execution outside that isolation boundary.
 
 The output directory must not exist. A successful run publishes the directory with a
 no-replace atomic rename and contains exactly:

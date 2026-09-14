@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
 import tools.prepare_data232_ephemeral_handoff_v1 as runner
+import twelve_six.data.expanded_postdedup_inventory_v1 as canonical_inventory
 from twelve_six.data.expanded_postdedup_inventory_v1 import (
     DATA526_RECORD_INVENTORY_SHA256,
     ZERO_TRUTH,
@@ -158,7 +160,7 @@ def test_end_to_end_workspace_matches_current_data232_consumer_contract(
     durable = _canonical(stored_receipt)
     assert b"record-a" not in durable
     assert b"record-b" not in durable
-    assert "canonical payload".encode() not in durable
+    assert b"canonical payload" not in durable
     assert stored_receipt["record_ids_persisted_in_receipt"] is False
     assert stored_receipt["raw_text_persisted_in_receipt"] is False
     assert stored_receipt["authorized_optimized_target_exposure"] == 0
@@ -274,7 +276,10 @@ def test_duplicate_json_keys_fail_closed_before_publication(tmp_path: Path) -> N
     inventory_path = tmp_path / "duplicate-inventory.json"
     inventory_path.write_text('{"schema":"x","schema":"y"}\n', encoding="utf-8")
     payload_path = tmp_path / "payload.jsonl"
-    payload_path.write_text('{"record_id":"record-a","text":"x"}\n', encoding="utf-8")
+    payload_path.write_text(
+        '{"record_id":"record-a","text":"x"}\n',
+        encoding="utf-8",
+    )
     output = tmp_path / "out"
     with pytest.raises(ValueError, match="duplicate JSON key"):
         runner.prepare_and_publish(
@@ -309,12 +314,16 @@ def _git(cwd: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-def test_exact_checkout_binds_upstream_module_and_clean_tree(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
+def _init_repo(repo: Path) -> None:
     repo.mkdir()
     _git(repo, "init")
     _git(repo, "config", "user.email", "test@example.invalid")
     _git(repo, "config", "user.name", "test")
+
+
+def test_exact_checkout_binds_upstream_module_and_clean_tree(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
     module = repo / runner.UPSTREAM_MODULE
     module.parent.mkdir(parents=True)
     module.write_text("authority = 1\n", encoding="utf-8")
@@ -339,3 +348,97 @@ def test_exact_checkout_binds_upstream_module_and_clean_tree(tmp_path: Path) -> 
             expected_carrier_git_sha=carrier,
             expected_retained_inventory_git_sha=upstream,
         )
+
+
+def test_verified_loader_ignores_preloaded_canonical_callable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    module = repo / runner.UPSTREAM_MODULE
+    module.parent.mkdir(parents=True)
+    module.write_text(
+        "def prepare_ephemeral_data232_rows(*args, **kwargs):\n"
+        "    return ([{'origin': 'fresh'}], {'origin': 'fresh'})\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "upstream")
+    upstream = _git(repo, "rev-parse", "HEAD")
+
+    def poisoned(*args: object, **kwargs: object) -> object:
+        raise AssertionError("preloaded canonical callable must not execute")
+
+    monkeypatch.setattr(
+        canonical_inventory,
+        "prepare_ephemeral_data232_rows",
+        poisoned,
+    )
+    fresh = runner.load_verified_prepare_rows(repo, upstream)
+    rows, handoff = fresh({}, [], expected_inventory_identity_sha256="0" * 64)
+    assert rows == [{"origin": "fresh"}]
+    assert handoff == {"origin": "fresh"}
+
+
+def test_copied_runner_cannot_borrow_clean_repo_authority(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    module = repo / runner.UPSTREAM_MODULE
+    module.parent.mkdir(parents=True)
+    module.write_text(
+        "def prepare_ephemeral_data232_rows(*args, **kwargs):\n"
+        "    return ([], {})\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "upstream")
+    upstream = _git(repo, "rev-parse", "HEAD")
+
+    carrier_path = repo / runner.CARRIER_MODULE
+    carrier_path.parent.mkdir(parents=True)
+    carrier_path.write_text(
+        Path(runner.__file__).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "carrier")
+    carrier = _git(repo, "rev-parse", "HEAD")
+    assert runner.require_executing_carrier(
+        repo,
+        expected_carrier_git_sha=carrier,
+        actual_path=carrier_path,
+    ) == carrier
+
+    copied = tmp_path / "copied-runner.py"
+    copied.write_bytes(carrier_path.read_bytes())
+    output = tmp_path / "must-not-publish"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(copied),
+            "--repo-root",
+            str(repo),
+            "--inventory-json",
+            str(tmp_path / "missing-inventory.json"),
+            "--payload-jsonl",
+            str(tmp_path / "missing-payload.jsonl"),
+            "--output-dir",
+            str(output),
+            "--expected-inventory-identity-sha256",
+            "0" * 64,
+            "--expected-carrier-git-sha",
+            carrier,
+            "--expected-retained-inventory-git-sha",
+            upstream,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert (
+        "executing carrier path is not the authenticated repository carrier"
+        in completed.stderr
+    )
+    assert not output.exists()

@@ -1,10 +1,11 @@
 """Prepare verified post-dedup payload rows for current DATA-232 execution.
 
 The retained-inventory logic remains authoritative in
-``expanded_postdedup_inventory_v1``.  This module is only an operator carrier: it
-checks an independently expected checkout, streams physical payload input into the
-canonical validator, serializes the canonical matcher projection deterministically,
-and publishes one fresh execution workspace plus a hash-only receipt.
+``expanded_postdedup_inventory_v1``. This module is only an operator carrier: it
+binds the actually executing carrier and exact upstream source to authenticated Git
+bytes, streams physical payload input into the canonical validator, serializes the
+canonical matcher projection deterministically, and publishes one fresh execution
+workspace plus a hash-only receipt.
 """
 from __future__ import annotations
 
@@ -17,23 +18,23 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
-
-from twelve_six.data.expanded_postdedup_inventory_v1 import (
-    prepare_ephemeral_data232_rows,
-)
 
 RECEIPT_SCHEMA = "12-6.data232-ephemeral-handoff-run-receipt.v1"
 TRAINING_RECORDS_NAME = "training_records.jsonl"
 TRAINING_HANDOFF_NAME = "training_handoff.json"
 RECEIPT_NAME = "execution_receipt.json"
+CARRIER_MODULE = "tools/prepare_data232_ephemeral_handoff_v1.py"
 UPSTREAM_MODULE = "src/twelve_six/data/expanded_postdedup_inventory_v1.py"
+UPSTREAM_FUNCTION = "prepare_ephemeral_data232_rows"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+PrepareRows = Callable[..., tuple[list[dict[str, Any]], dict[str, Any]]]
 
 _RECEIPT_KEYS = frozenset(
     {
@@ -147,10 +148,7 @@ class _StreamingPayloadRows(Iterable[dict[str, Any]]):
                         f"blank JSONL line {line_number} is forbidden: {self.path}"
                     )
                 saw_row = True
-                yield _strict_loads(
-                    raw,
-                    f"{self.path}:line {line_number}",
-                )
+                yield _strict_loads(raw, f"{self.path}:line {line_number}")
         if not saw_row:
             raise ValueError(f"payload JSONL must be non-empty: {self.path}")
         self.sha256 = digest.hexdigest()
@@ -171,6 +169,54 @@ def _git(
     )
 
 
+def _git_bytes(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+    )
+
+
+def _git_path_bytes(repo_root: Path, git_sha: str, repo_path: str) -> bytes:
+    result = _git_bytes(repo_root, ["show", f"{git_sha}:{repo_path}"])
+    if result.returncode != 0:
+        raise RuntimeError(f"unable to read authenticated Git bytes for {repo_path}")
+    return result.stdout
+
+
+def _tracked_path_bytes(
+    repo_root: Path,
+    *,
+    git_sha: str,
+    repo_path: str,
+    label: str,
+) -> tuple[Path, bytes]:
+    """Bind one physical regular file to exact bytes at ``git_sha:repo_path``."""
+
+    root = repo_root.resolve(strict=True)
+    relative = Path(repo_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise RuntimeError(f"invalid authenticated path for {label}")
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise RuntimeError(f"authenticated {label} path contains a symlink")
+    resolved = current.resolve(strict=True)
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise RuntimeError(f"authenticated {label} path escapes repository root") from exc
+    if not resolved.is_file():
+        raise RuntimeError(f"authenticated {label} path is not a regular file")
+    physical = resolved.read_bytes()
+    authoritative = _git_path_bytes(root, git_sha, repo_path)
+    if physical != authoritative:
+        raise RuntimeError(f"physical {label} bytes differ from authenticated Git bytes")
+    return resolved, physical
+
+
 def require_exact_checkout(
     repo_root: Path,
     *,
@@ -179,10 +225,7 @@ def require_exact_checkout(
 ) -> tuple[str, str]:
     """Require the independently expected carrier and exact PR940 source ancestry."""
 
-    carrier = _require_git_sha(
-        expected_carrier_git_sha,
-        "expected carrier Git SHA",
-    )
+    carrier = _require_git_sha(expected_carrier_git_sha, "expected carrier Git SHA")
     upstream = _require_git_sha(
         expected_retained_inventory_git_sha,
         "expected retained-inventory Git SHA",
@@ -212,7 +255,73 @@ def require_exact_checkout(
         raise RuntimeError("canonical retained-inventory implementation drifted")
     if source_diff.returncode != 0:
         raise RuntimeError("unable to verify retained-inventory implementation")
+    _tracked_path_bytes(
+        repo_root,
+        git_sha=upstream,
+        repo_path=UPSTREAM_MODULE,
+        label="retained-inventory implementation",
+    )
     return head, upstream
+
+
+def require_executing_carrier(
+    repo_root: Path,
+    *,
+    expected_carrier_git_sha: str,
+    actual_path: Path | None = None,
+) -> str:
+    """Prove the running carrier is the exact tracked file from the expected commit."""
+
+    carrier = _require_git_sha(expected_carrier_git_sha, "expected carrier Git SHA")
+    expected_path, _ = _tracked_path_bytes(
+        repo_root,
+        git_sha=carrier,
+        repo_path=CARRIER_MODULE,
+        label="carrier implementation",
+    )
+    running = Path(__file__) if actual_path is None else actual_path
+    if running.is_symlink():
+        raise RuntimeError("executing carrier path is a symlink")
+    if running.resolve(strict=True) != expected_path:
+        raise RuntimeError(
+            "executing carrier path is not the authenticated repository carrier"
+        )
+    return carrier
+
+
+def load_verified_prepare_rows(repo_root: Path, upstream_git_sha: str) -> PrepareRows:
+    """Compile the exact verified PR940 source into a fresh private namespace."""
+
+    upstream = _require_git_sha(upstream_git_sha, "upstream_git_sha")
+    source_path, source = _tracked_path_bytes(
+        repo_root,
+        git_sha=upstream,
+        repo_path=UPSTREAM_MODULE,
+        label="retained-inventory implementation",
+    )
+    namespace: dict[str, Any] = {
+        "__name__": f"_twelve_six_verified_data232_{upstream}",
+        "__file__": str(source_path),
+        "__package__": None,
+    }
+    code = compile(source, str(source_path), "exec", dont_inherit=True)
+    exec(code, namespace, namespace)
+    candidate = namespace.get(UPSTREAM_FUNCTION)
+    if not callable(candidate):
+        raise RuntimeError("verified retained-inventory source lacks canonical callable")
+    if getattr(candidate, "__globals__", None) is not namespace:
+        raise RuntimeError("canonical callable did not originate from fresh verified source")
+    return candidate
+
+
+def _default_prepare_rows() -> PrepareRows:
+    """Non-authoritative library convenience used by focused unit tests only."""
+
+    from twelve_six.data.expanded_postdedup_inventory_v1 import (
+        prepare_ephemeral_data232_rows,
+    )
+
+    return prepare_ephemeral_data232_rows
 
 
 def build_receipt(
@@ -280,7 +389,11 @@ def build_receipt(
         "foreign_pretrained_weights": False,
         "external_llm_or_api_used_for_data_or_intelligence": False,
     }
-    for key in ("retained_source_count", "retained_payload_bytes", "training_records_file_bytes"):
+    for key in (
+        "retained_source_count",
+        "retained_payload_bytes",
+        "training_records_file_bytes",
+    ):
         value = receipt[key]
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ValueError(f"receipt {key} must be a positive integer")
@@ -421,6 +534,7 @@ def prepare_and_publish(
     expected_inventory_identity_sha256: str,
     carrier_git_sha: str,
     upstream_git_sha: str,
+    prepare_rows: PrepareRows | None = None,
 ) -> dict[str, Any]:
     if output_dir.exists():
         raise FileExistsError(f"output workspace already exists: {output_dir}")
@@ -430,7 +544,8 @@ def prepare_and_publish(
     )
     inventory, inventory_file_sha256 = _load_json_with_sha(inventory_path)
     payload_rows = _StreamingPayloadRows(payload_path)
-    training_rows, handoff = prepare_ephemeral_data232_rows(
+    canonical_prepare = _default_prepare_rows() if prepare_rows is None else prepare_rows
+    training_rows, handoff = canonical_prepare(
         inventory,
         payload_rows,
         expected_inventory_identity_sha256=expected_inventory,
@@ -464,10 +579,7 @@ def prepare_and_publish(
             handoff=handoff,
         )
         verify_receipt(receipt)
-        _write_bytes(
-            temporary / RECEIPT_NAME,
-            _canonical_bytes(receipt, newline=True),
-        )
+        _write_bytes(temporary / RECEIPT_NAME, _canonical_bytes(receipt, newline=True))
         if output_dir.exists():
             raise FileExistsError(
                 f"output workspace appeared during publication: {output_dir}"
@@ -497,13 +609,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if not sys.flags.isolated or not sys.flags.no_site:
+        raise RuntimeError("authoritative DATA-232 carrier requires Python -I -S isolation")
     args = build_parser().parse_args(argv)
     carrier_sha, upstream_sha = require_exact_checkout(
         args.repo_root,
         expected_carrier_git_sha=args.expected_carrier_git_sha,
         expected_retained_inventory_git_sha=args.expected_retained_inventory_git_sha,
     )
-    # Exact checkout and no-overwrite gates intentionally precede payload reads.
+    require_executing_carrier(
+        args.repo_root,
+        expected_carrier_git_sha=carrier_sha,
+    )
+    canonical_prepare = load_verified_prepare_rows(args.repo_root, upstream_sha)
+    # Code/authentication and no-overwrite gates intentionally precede payload reads.
     if args.output_dir.exists():
         raise FileExistsError(f"output workspace already exists: {args.output_dir}")
     receipt = prepare_and_publish(
@@ -513,10 +632,27 @@ def main(argv: list[str] | None = None) -> int:
         expected_inventory_identity_sha256=args.expected_inventory_identity_sha256,
         carrier_git_sha=carrier_sha,
         upstream_git_sha=upstream_sha,
+        prepare_rows=canonical_prepare,
     )
     print(receipt["receipt_identity_sha256"])
     return 0
 
 
+def _isolated_entrypoint() -> int:
+    if sys.flags.isolated and sys.flags.no_site:
+        return main()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            str(Path(__file__).resolve()),
+            *sys.argv[1:],
+        ],
+        check=False,
+    )
+    return completed.returncode
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_isolated_entrypoint())
