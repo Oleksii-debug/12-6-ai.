@@ -11,15 +11,19 @@ import argparse
 import ctypes
 import hashlib
 import json
+import math
 import os
 import platform
 import shutil
 import stat
+import sys
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from twelve_six.portable_run_packet import validate_portable_run_contract
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "configs/research/r01_windows_local_free_operator_v1.json"
@@ -33,6 +37,8 @@ EXIT_OK = 0
 EXIT_BLOCKED = 2
 EXIT_ERROR = 3
 
+# Leaf-local facts only. Corpus/source provenance is deliberately not asserted
+# by this machine/operator preflight.
 _TRUTH_BOUNDARY = {
     "authorized_optimized_target_exposure": 0,
     "tokenizer_fit_authorized": False,
@@ -42,7 +48,6 @@ _TRUTH_BOUNDARY = {
     "final_test_outcomes_read": False,
     "paid_compute_used": False,
     "foreign_pretrained_weights": False,
-    "external_llm_or_api_used_for_data_or_intelligence": False,
 }
 
 
@@ -59,6 +64,9 @@ class MachineFacts:
     ram_bytes: int
     free_disk_bytes: int
     python_version: str
+    windows_version_major: int | None = None
+    windows_version_minor: int | None = None
+    windows_version_build: int | None = None
 
 
 def _strict_int(value: Any) -> bool:
@@ -70,11 +78,40 @@ def _canonical_sha256(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _json_object_no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_object_key:{key}")
+        result[key] = value
+    return result
+
+
+def _json_finite_float(token: str) -> float:
+    value = float(token)
+    if not math.isfinite(value):
+        raise ValueError(f"non_finite_number:{token}")
+    return value
+
+
+def _json_reject_constant(token: str) -> Any:
+    raise ValueError(f"non_finite_number:{token}")
+
+
+def _strict_json_loads(raw: str) -> Any:
+    return json.loads(
+        raw,
+        object_pairs_hook=_json_object_no_duplicates,
+        parse_float=_json_finite_float,
+        parse_constant=_json_reject_constant,
+    )
+
+
 def _read_json_file(path: Path) -> tuple[dict[str, Any], str]:
     try:
         raw = path.read_bytes()
-        value = json.loads(raw.decode())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = _strict_json_loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise OperatorPreflightError(f"invalid_or_unreadable_json:{path}:{exc}") from exc
     if not isinstance(value, dict):
         raise OperatorPreflightError(f"json_root_must_be_object:{path}")
@@ -130,6 +167,12 @@ def validate_operator_profile(
         "packet_schema_version_mismatch",
     )
 
+    if isinstance(packet, dict):
+        portable_errors = validate_portable_run_contract(packet)
+    else:
+        portable_errors = validate_portable_run_contract(dict(packet))
+    errors.extend(f"portable_packet_contract:{item}" for item in portable_errors)
+
     resource = packet.get("resource")
     resource = resource if isinstance(resource, Mapping) else {}
     _expect(
@@ -145,7 +188,7 @@ def validate_operator_profile(
     cost = resource.get("maximum_cost_usd")
     _expect(
         errors,
-        type(cost) in (int, float) and cost == 0,
+        type(cost) in (int, float) and math.isfinite(float(cost)) and cost == 0,
         "packet_maximum_cost_must_be_zero",
     )
 
@@ -160,8 +203,21 @@ def validate_operator_profile(
         == "OPERATOR_ADMISSION_FLOORS_NOT_FULL_TRAINING_SUFFICIENCY",
         "threshold_semantics_mismatch",
     )
+
+    version_rules = (
+        ("minimum_windows_major", 0),
+        ("minimum_windows_minor", 0),
+        ("minimum_windows_build", 1),
+    )
+    for key, minimum in version_rules:
+        value = policy.get(key)
+        _expect(
+            errors,
+            _strict_int(value) and value >= minimum,
+            f"{key}_must_be_integer_at_least_{minimum}",
+        )
+
     numeric_pairs = (
-        ("minimum_windows_release", None),
         ("minimum_logical_cpus", "warn_below_logical_cpus"),
         ("minimum_ram_bytes", "warn_below_ram_bytes"),
         ("minimum_free_disk_bytes", "warn_below_free_disk_bytes"),
@@ -173,15 +229,14 @@ def validate_operator_profile(
             _strict_int(floor) and floor > 0,
             f"{floor_key}_must_be_positive_integer",
         )
-        if warning_key is not None:
-            warning = policy.get(warning_key)
-            _expect(
-                errors,
-                _strict_int(warning) and warning > 0,
-                f"{warning_key}_must_be_positive_integer",
-            )
-            if _strict_int(floor) and _strict_int(warning):
-                _expect(errors, warning >= floor, f"{warning_key}_below_floor")
+        warning = policy.get(warning_key)
+        _expect(
+            errors,
+            _strict_int(warning) and warning > 0,
+            f"{warning_key}_must_be_positive_integer",
+        )
+        if _strict_int(floor) and _strict_int(warning):
+            _expect(errors, warning >= floor, f"{warning_key}_below_floor")
 
     targets = profile.get("targets")
     targets = targets if isinstance(targets, Mapping) else {}
@@ -250,11 +305,6 @@ def validate_operator_profile(
     return sorted(set(errors))
 
 
-def _windows_release_major(value: str) -> int | None:
-    prefix = value.strip().split(".", 1)[0]
-    return int(prefix) if prefix.isdigit() else None
-
-
 def _windows_total_ram_bytes() -> int:
     class MemoryStatusEx(ctypes.Structure):
         _fields_ = [
@@ -277,6 +327,21 @@ def _windows_total_ram_bytes() -> int:
     return int(status.ullTotalPhys)
 
 
+def _windows_native_version() -> tuple[int, int, int]:
+    getwindowsversion = getattr(sys, "getwindowsversion", None)
+    if getwindowsversion is None:
+        raise OperatorPreflightError("windows_native_version_query_unavailable")
+    version = getwindowsversion()
+    values = (
+        getattr(version, "major", None),
+        getattr(version, "minor", None),
+        getattr(version, "build", None),
+    )
+    if not all(_strict_int(value) and value >= 0 for value in values):
+        raise OperatorPreflightError("windows_native_version_invalid")
+    return int(values[0]), int(values[1]), int(values[2])
+
+
 def collect_machine_facts(disk_path: Path) -> MachineFacts:
     os_name = platform.system()
     try:
@@ -285,6 +350,9 @@ def collect_machine_facts(disk_path: Path) -> MachineFacts:
         raise OperatorPreflightError(f"disk_query_failed:{disk_path}:{exc}") from exc
     logical = os.cpu_count()
     logical = logical if _strict_int(logical) else 0
+    windows_version: tuple[int | None, int | None, int | None] = (None, None, None)
+    if os_name == "Windows":
+        windows_version = _windows_native_version()
     return MachineFacts(
         os_name=os_name,
         os_release=platform.release(),
@@ -293,6 +361,9 @@ def collect_machine_facts(disk_path: Path) -> MachineFacts:
         ram_bytes=_windows_total_ram_bytes() if os_name == "Windows" else 0,
         free_disk_bytes=free_disk,
         python_version=platform.python_version(),
+        windows_version_major=windows_version[0],
+        windows_version_minor=windows_version[1],
+        windows_version_build=windows_version[2],
     )
 
 
@@ -323,13 +394,46 @@ def assess_machine(
 
     os_ok = facts.os_name == "Windows"
     add("os", os_ok, facts.os_name, "Windows")
-    major = _windows_release_major(facts.os_release) if os_ok else None
-    min_release = policy.get("minimum_windows_release")
+
+    required_version = (
+        policy.get("minimum_windows_major"),
+        policy.get("minimum_windows_minor"),
+        policy.get("minimum_windows_build"),
+    )
+    observed_version = (
+        facts.windows_version_major,
+        facts.windows_version_minor,
+        facts.windows_version_build,
+    )
+    version_types_valid = all(_strict_int(value) and value >= 0 for value in observed_version)
+    required_types_valid = (
+        _strict_int(required_version[0])
+        and required_version[0] >= 0
+        and _strict_int(required_version[1])
+        and required_version[1] >= 0
+        and _strict_int(required_version[2])
+        and required_version[2] > 0
+    )
+    version_ok = (
+        os_ok
+        and version_types_valid
+        and required_types_valid
+        and observed_version >= required_version
+    )
     add(
-        "windows_release",
-        _strict_int(min_release) and major is not None and major >= min_release,
-        facts.os_release,
-        min_release,
+        "windows_native_version",
+        version_ok,
+        {
+            "major": facts.windows_version_major,
+            "minor": facts.windows_version_minor,
+            "build": facts.windows_version_build,
+            "display_release": facts.os_release,
+        },
+        {
+            "minimum_major": required_version[0],
+            "minimum_minor": required_version[1],
+            "minimum_build": required_version[2],
+        },
     )
 
     for name, observed, floor_key, warn_key in (
@@ -482,8 +586,8 @@ def read_stop_status(
             "errors": ["safe_stop_marker_must_be_regular_file"],
         }
     try:
-        marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        marker = _strict_json_loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return {
             "status": "INVALID",
             "marker": None,
