@@ -23,11 +23,10 @@ def _xml(texts: list[str]) -> bytes:
     for index, text in enumerate(texts, start=1):
         documents.append(
             "<document>"
-            f'<item name="id">{index}</item>'
-            f'<item name="title">Документ {index}</item>'
-            "<text><richtext>"
-            f"<par>{text}</par>"
-            "</richtext></text>"
+            f'<item name="metadata"><text>Документ {index}</text></item>'
+            '<item name="legal-text"><richtext>'
+            f'<par def="1">{text}</par>'
+            "</richtext></item>"
             "</document>"
         )
     body = "".join(documents)
@@ -35,7 +34,6 @@ def _xml(texts: list[str]) -> bytes:
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
         f"<rna><database>{body}</database></rna>"
     ).encode()
-
 
 def _zip(files: dict[str, bytes]) -> bytes:
     output = io.BytesIO()
@@ -215,3 +213,61 @@ def test_report_self_hash_is_stable() -> None:
     _, report = _materialize_texts([_uk("A")])
     claimed = report.pop("report_identity_sha256")
     assert mod.sha256(mod.cjson(report)) == claimed
+
+
+def test_rejects_legacy_guessed_text_richtext_path() -> None:
+    xml = (
+        "<rna><database><document><text><richtext>"
+        f'<par def="1">{_uk("WRONG")}</par>'
+        "</richtext></text></document></database></rna>"
+    ).encode()
+    data = _archive_from_xml(xml)
+    with pytest.raises(mod.ProbeError, match="unexpected EDRNPA richtext path"):
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+
+
+def test_requires_exactly_one_observed_richtext_item() -> None:
+    missing_xml = (
+        "<rna><database><document>"
+        '<item name="metadata"><text>Документ</text></item>'
+        "</document></database></rna>"
+    ).encode()
+    missing = _archive_from_xml(missing_xml)
+    with pytest.raises(mod.ProbeError, match="exactly one richtext"):
+        mod.materialize_archive_bytes(missing, expected_md5=mod.md5(missing))
+
+    text = _uk("TWO")
+    multiple_xml = (
+        "<rna><database><document>"
+        '<item name="one"><richtext>'
+        f'<par def="1">{text}</par></richtext></item>'
+        '<item name="two"><richtext>'
+        f'<par def="1">{text}</par></richtext></item>'
+        "</document></database></rna>"
+    ).encode()
+    multiple = _archive_from_xml(multiple_xml)
+    with pytest.raises(mod.ProbeError, match="exactly one richtext"):
+        mod.materialize_archive_bytes(multiple, expected_md5=mod.md5(multiple))
+
+
+def test_rejects_observed_schema_attribute_drift() -> None:
+    text = _uk("ATTR")
+    bad_par_xml = (
+        "<rna><database><document>"
+        '<item name="legal-text"><richtext>'
+        f'<par wrong="1">{text}</par></richtext></item>'
+        "</document></database></rna>"
+    ).encode()
+    bad_par = _archive_from_xml(bad_par_xml)
+    with pytest.raises(mod.ProbeError, match="paragraph attributes"):
+        mod.materialize_archive_bytes(bad_par, expected_md5=mod.md5(bad_par))
+
+    bad_item_xml = (
+        "<rna><database><document>"
+        '<item wrong="legal-text"><richtext>'
+        f'<par def="1">{text}</par></richtext></item>'
+        "</document></database></rna>"
+    ).encode()
+    bad_item = _archive_from_xml(bad_item_xml)
+    with pytest.raises(mod.ProbeError, match="item attributes"):
+        mod.materialize_archive_bytes(bad_item, expected_md5=mod.md5(bad_item))

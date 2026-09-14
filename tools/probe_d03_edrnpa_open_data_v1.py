@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, BinaryIO
 
-SCHEMA = "12-6.d03-edrnpa-open-data-candidate.v3"
+SCHEMA = "12-6.d03-edrnpa-open-data-candidate.v4"
 DATASET_ID = "c98e830c-e39e-4da6-a13c-f9ba32a79bec"
 RESOURCE_ID = "5616dd04-949a-489c-8efc-54004293b238"
 RESOURCE_UPDATED = "2026-09-08T15:02:00+03:00"
@@ -374,7 +374,7 @@ def _stream_documents_to_db(
     database_depth = 0
     current_chunks: list[str] | None = None
     current_chars = 0
-    current_has_par = False
+    current_richtext_items = 0
     current_ordinal = 0
 
     with nested.open(info) as raw_stream:
@@ -390,41 +390,86 @@ def _stream_documents_to_db(
                         if root_tag != "rna":
                             raise ProbeError("unexpected EDRNPA XML root")
                     if tag == "database":
+                        if stack != ["rna", "database"]:
+                            raise ProbeError("unexpected EDRNPA database path")
                         database_depth += 1
+                        if database_depth != 1:
+                            raise ProbeError("nested database elements forbidden")
                     elif tag == "document":
                         if current_chunks is not None:
                             raise ProbeError("nested document elements forbidden")
                         if database_depth < 1:
                             raise ProbeError("document outside database container")
+                        if stack != ["rna", "database", "document"]:
+                            raise ProbeError("unexpected EDRNPA document path")
                         current_chunks = []
                         current_chars = 0
-                        current_has_par = False
+                        current_richtext_items = 0
                         current_ordinal += 1
+                    elif current_chunks is not None and tag == "item":
+                        if stack != ["rna", "database", "document", "item"]:
+                            raise ProbeError("unexpected EDRNPA item path")
+                        if set(elem.attrib) != {"name"}:
+                            raise ProbeError("unexpected EDRNPA item attributes")
+                    elif current_chunks is not None and tag == "richtext":
+                        if stack != [
+                            "rna",
+                            "database",
+                            "document",
+                            "item",
+                            "richtext",
+                        ]:
+                            raise ProbeError("unexpected EDRNPA richtext path")
+                        if elem.attrib:
+                            raise ProbeError("unexpected EDRNPA richtext attributes")
+                        current_richtext_items += 1
+                        if current_richtext_items > 1:
+                            raise ProbeError(
+                                "document must contain exactly one richtext legal-text item"
+                            )
+                    elif current_chunks is not None and tag == "par":
+                        if stack != [
+                            "rna",
+                            "database",
+                            "document",
+                            "item",
+                            "richtext",
+                            "par",
+                        ]:
+                            raise ProbeError("unexpected EDRNPA paragraph path")
+                        if set(elem.attrib) != {"def"}:
+                            raise ProbeError("unexpected EDRNPA paragraph attributes")
                     continue
 
                 if not stack or stack[-1] != tag:
                     raise ProbeError("malformed XML element stack")
-                if current_chunks is not None and tag == "par" and "text" in stack:
+                if current_chunks is not None and tag == "par":
+                    if stack != [
+                        "rna",
+                        "database",
+                        "document",
+                        "item",
+                        "richtext",
+                        "par",
+                    ]:
+                        raise ProbeError("unexpected EDRNPA paragraph path")
                     chunk = "".join(elem.itertext())
                     if len(chunk) > MAX_PARAGRAPH_CHARS:
                         current_chars = MAX_DOCUMENT_CHARS + 1
                     elif current_chars <= MAX_DOCUMENT_CHARS and chunk.strip():
                         current_chunks.append(chunk)
                         current_chars += len(chunk)
-                    current_has_par = True
                     elem.clear()
-                elif current_chunks is not None and tag == "text" and not current_has_par:
-                    chunk = "".join(elem.itertext())
-                    if len(chunk) > MAX_DOCUMENT_CHARS:
-                        current_chars = MAX_DOCUMENT_CHARS + 1
-                    elif current_chars <= MAX_DOCUMENT_CHARS and chunk.strip():
-                        current_chunks.append(chunk)
-                        current_chars += len(chunk)
+                elif current_chunks is not None and tag in {"text", "richtext", "item"}:
                     elem.clear()
                 elif tag == "document":
                     counters["source_documents"] += 1
                     if current_chunks is None:
                         raise ProbeError("document finalization state missing")
+                    if current_richtext_items != 1:
+                        raise ProbeError(
+                            "document must contain exactly one richtext legal-text item"
+                        )
                     if current_chars > MAX_DOCUMENT_CHARS:
                         counters["documents_too_large"] += 1
                     else:
@@ -439,7 +484,9 @@ def _stream_documents_to_db(
                         else:
                             quality = _quality(text)
                             if quality["replacement_characters"] != 0:
-                                raise ProbeError("Unicode replacement character in candidate")
+                                raise ProbeError(
+                                    "Unicode replacement character in candidate"
+                                )
                             if quality["ukrainian_alpha_ratio"] < MIN_UKRAINIAN_ALPHA_RATIO:
                                 counters["documents_non_ukrainian"] += 1
                             elif quality["has_email"] or quality["has_phone"]:
@@ -468,7 +515,11 @@ def _stream_documents_to_db(
                                         current_ordinal,
                                         identity,
                                         len(normalized_bytes),
-                                        json.dumps(quality, sort_keys=True, separators=(",", ":")),
+                                        json.dumps(
+                                            quality,
+                                            sort_keys=True,
+                                            separators=(",", ":"),
+                                        ),
                                         text,
                                     ),
                                 )
@@ -478,7 +529,7 @@ def _stream_documents_to_db(
                                     counters["candidate_objects_after_quality"] += 1
                     current_chunks = None
                     current_chars = 0
-                    current_has_par = False
+                    current_richtext_items = 0
                     elem.clear()
                 elif tag == "database":
                     database_depth -= 1
@@ -495,7 +546,9 @@ def _stream_documents_to_db(
         if guarded.bytes_seen != info.file_size:
             raise ProbeError("nested XML was not fully consumed")
         counters["xml10_control_bytes_removed"] = guarded.removed_control_bytes
-        counters["xml10_control_removal_identity_sha256"] = guarded.removal_identity_sha256
+        counters[
+            "xml10_control_removal_identity_sha256"
+        ] = guarded.removal_identity_sha256
     if stack:
         raise ProbeError("unterminated XML element stack")
     if root_tag != "rna" or database_depth != 0:
@@ -506,7 +559,6 @@ def _stream_documents_to_db(
         raise ProbeError("no eligible Ukrainian legal-text candidates")
     conn.commit()
     return counters
-
 
 def materialize_archive_path(
     archive_path: Path,
@@ -625,7 +677,7 @@ def materialize_archive_path(
                 "training_rights_admitted_by_this_probe": False,
             },
             "selection": {
-                "policy": "EDRNPA_UK_DOCUMENT_TEXT_ZERO_CREDIT_V3",
+                "policy": "EDRNPA_UK_DOCUMENT_RICHTEXT_ZERO_CREDIT_V4",
                 "byte_cap": byte_cap,
                 **counters,
                 "selected_objects": len(selected),
