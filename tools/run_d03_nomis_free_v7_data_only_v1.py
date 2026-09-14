@@ -8,15 +8,17 @@ an empty package namespace rooted at the exact V7 checkout and then executes the
 requested local script in-process. It never stubs torch, imports model code, changes
 matcher semantics, or supplies model/data artifacts.
 
-The immutable historical fetcher performs one complete exact-source transaction per
-call, including the response read and its historical byte/hash/blob acceptance checks.
-The physical successor may retry that whole call only for bounded transient transport
-failures. Retries cannot substitute content or turn an authority mismatch into a pass.
+Before any candidate script executes, this bootstrap authenticates the Product
+checkout, complete base-main bulk closure, and exact historical V7 Git tree through
+the independent verifier on the same Product head.  After producer execution it
+independently verifies source/Data526 artifacts before returning success.
 """
 from __future__ import annotations
 
 import importlib
 import importlib.machinery
+import importlib.util
+import os
 import runpy
 import socket
 import sys
@@ -26,12 +28,65 @@ import urllib.error
 from pathlib import Path
 from typing import Any, Callable
 
+
 MAX_TRANSIENT_FETCH_ATTEMPTS = 3
 RETRY_DELAYS_SECONDS = (1.0, 2.0)
 
 
 class DataOnlyBootstrapError(RuntimeError):
     """Fail-closed terminal-V7 data-only bootstrap error."""
+
+
+def _load_authority_verifier(current_root: Path) -> Any:
+    path = current_root / "tools/verify_d03_nomis_free_execution_authority_v1.py"
+    spec = importlib.util.spec_from_file_location("_swarm2065_execution_authority", path)
+    if spec is None or spec.loader is None:
+        raise DataOnlyBootstrapError(f"cannot load execution authority verifier: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _arg_value(argv: list[str], name: str) -> str | None:
+    try:
+        index = argv.index(name)
+    except ValueError:
+        return None
+    if index + 1 >= len(argv):
+        raise DataOnlyBootstrapError(f"{name} requires a value")
+    return argv[index + 1]
+
+
+def _require_arg(argv: list[str], name: str) -> str:
+    value = _arg_value(argv, name)
+    if value is None:
+        raise DataOnlyBootstrapError(f"missing required authority argument: {name}")
+    return value
+
+
+def _authority_output_paths(script: Path, argv: list[str]) -> list[Path]:
+    if script.name == "run_d03_nomis_free_clean_successor_v1.py" and argv and argv[0] == "run":
+        return [Path(_require_arg(argv, "--report")), Path(_require_arg(argv, "--survivor"))]
+    if script.name == "materialize_d03_nomis_free_data526_successor_v1.py":
+        return [
+            Path(_require_arg(argv, "--historical-records-jsonl")),
+            Path(_require_arg(argv, "--records-jsonl")),
+            Path(_require_arg(argv, "--inventory-json")),
+            Path(_require_arg(argv, "--evidence-json")),
+        ]
+    return []
+
+
+def _require_create_only_outputs(script: Path, argv: list[str]) -> None:
+    outputs = _authority_output_paths(script, argv)
+    _seen: set[Path] = set()
+    for path in outputs:
+        resolved = path.resolve()
+        if resolved in _seen:
+            raise DataOnlyBootstrapError(f"authority outputs must be distinct: {path}")
+        _seen.add(resolved)
+        if path.exists():
+            raise DataOnlyBootstrapError(f"authority output already exists (no overwrite): {path}")
 
 
 def install_v7_namespace(v7_root: Path) -> None:
@@ -68,12 +123,7 @@ def build_bounded_exact_fetch_retry(
     *,
     sleep: Callable[[float], None] = time.sleep,
 ) -> Callable[..., Any]:
-    """Retry the immutable whole fetch call only for transient transport failures.
-
-    The wrapped historical function owns request construction, response reading, size
-    limits and exact byte/hash/blob verification. HTTP errors, certificate/DNS failures
-    and every authority/content exception remain single-attempt/fail-closed.
-    """
+    """Retry only the immutable whole exact-source transaction on transient transport."""
 
     def bounded_fetch(*args: Any, **kwargs: Any) -> Any:
         for attempt in range(MAX_TRANSIENT_FETCH_ATTEMPTS):
@@ -85,7 +135,6 @@ def build_bounded_exact_fetch_retry(
                 transient: BaseException = exc
             except (TimeoutError, socket.timeout, ConnectionResetError) as exc:
                 transient = exc
-
             if attempt + 1 >= MAX_TRANSIENT_FETCH_ATTEMPTS:
                 raise transient
             sleep(RETRY_DELAYS_SECONDS[attempt])
@@ -96,7 +145,6 @@ def build_bounded_exact_fetch_retry(
 
 def install_bounded_exact_fetch_retry() -> None:
     """Patch only terminal V7's immutable exact-source transaction entrypoint."""
-
     audit = importlib.import_module("twelve_six.data.cross_source_capacity_audit")
     original = getattr(audit, "fetch_exact_source", None)
     if not callable(original):
@@ -105,10 +153,50 @@ def install_bounded_exact_fetch_retry() -> None:
         )
     if getattr(original, "_d03_bounded_exact_fetch_retry", False):
         return
-
     wrapped = build_bounded_exact_fetch_retry(original)
     setattr(wrapped, "_d03_bounded_exact_fetch_retry", True)
     audit.fetch_exact_source = wrapped
+
+
+def _post_verify(
+    *,
+    verifier: Any,
+    current_root: Path,
+    expected_head: str,
+    script: Path,
+    script_args: list[str],
+) -> None:
+    name = script.name
+    if name == "run_d03_nomis_free_clean_successor_v1.py":
+        command = script_args[0] if script_args else ""
+        if command not in {"run", "verify"}:
+            return
+        report_path = Path(_require_arg(script_args, "--report"))
+        survivor_path = Path(_require_arg(script_args, "--survivor"))
+        verifier.verify_source_authority(
+            current_root=current_root,
+            expected_product_head=expected_head,
+            report=verifier._read_json(report_path),
+            survivor=verifier._read_json(survivor_path),
+        )
+        print("PASS_SWARM2065_BOOTSTRAP_SOURCE_POSTVERIFY")
+        return
+
+    if name == "materialize_d03_nomis_free_data526_successor_v1.py":
+        verifier.verify_data526_authority(
+            current_root=current_root,
+            expected_product_head=expected_head,
+            source_report=verifier._read_json(Path(_require_arg(script_args, "--source-report"))),
+            survivor=verifier._read_json(Path(_require_arg(script_args, "--survivor"))),
+            historical_records_path=Path(
+                _require_arg(script_args, "--historical-records-jsonl")
+            ),
+            records_path=Path(_require_arg(script_args, "--records-jsonl")),
+            inventory=verifier._read_json(Path(_require_arg(script_args, "--inventory-json"))),
+            evidence=verifier._read_json(Path(_require_arg(script_args, "--evidence-json"))),
+            pr623_root=Path(_require_arg(script_args, "--historical-materializer-root")),
+        )
+        print("PASS_SWARM2065_BOOTSTRAP_DATA526_POSTVERIFY")
 
 
 def main() -> int:
@@ -118,21 +206,51 @@ def main() -> int:
         )
     v7_root = Path(sys.argv[1])
     script = Path(sys.argv[2])
+    script_args = list(sys.argv[3:])
     if not script.is_file():
         raise DataOnlyBootstrapError(f"missing local execution script: {script}")
 
+    # Authority-producing runs must be tied to the workflow/event supplied Product
+    # head.  A caller-supplied CLI value alone is intentionally insufficient here.
+    expected_head = os.environ.get("SOURCE_SHA")
+    if expected_head is None:
+        raise DataOnlyBootstrapError("SOURCE_SHA authority is required")
+
+    current_root = Path(".").resolve()
+    verifier = _load_authority_verifier(current_root)
+    verifier.verify_product_checkout(current_root, expected_head)
+    verifier.verify_v7_checkout(v7_root)
+
+    historical_root_value = _arg_value(script_args, "--historical-materializer-root")
+    if historical_root_value is not None:
+        verifier.verify_pr623_checkout(Path(historical_root_value))
+
+    # The candidate producers historically used replace-in-place writes.  The
+    # canonical authority carrier tightens this to create-only outputs, so a
+    # second execution cannot overwrite retained evidence from the first.
+    _require_create_only_outputs(script, script_args)
+
+    # Avoid manufacturing untracked __pycache__ files in the authenticated V7 tree.
+    sys.dont_write_bytecode = True
     install_v7_namespace(v7_root)
     install_bounded_exact_fetch_retry()
-    sys.argv = [str(script), *sys.argv[3:]]
+    sys.argv = [str(script), *script_args]
     try:
         runpy.run_path(str(script), run_name="__main__")
     except SystemExit as exc:
         code = exc.code
-        if code is None:
-            return 0
-        if isinstance(code, int):
-            return code
-        raise
+        if code not in (None, 0):
+            if isinstance(code, int):
+                return code
+            raise
+
+    _post_verify(
+        verifier=verifier,
+        current_root=current_root,
+        expected_head=expected_head,
+        script=script,
+        script_args=script_args,
+    )
     return 0
 
 
