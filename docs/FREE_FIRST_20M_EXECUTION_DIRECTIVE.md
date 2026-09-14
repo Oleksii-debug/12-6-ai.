@@ -64,7 +64,16 @@ Continue the existing #1951 / lawful-successor lineage. A clean successor must r
 
 ### Global dedup executor
 
-PR #1459 is the common throughput gate. At this snapshot its current head is `fa8f9d5223fb8a4f2b56cb8f74d1940e98786dcd`, and the current repair belongs to #2058. Do not duplicate #2058 or create executor #2. Reuse the incumbent matcher semantics. Canonical physical executions wait for a repaired immutable head, terminal exact-head CI, fresh different-worker semantic audit and lawful integration/consumption.
+PR #1459 is the common throughput gate. At this snapshot its current head is `fa8f9d5223fb8a4f2b56cb8f74d1940e98786dcd`.
+
+There are at least two distinct current-head blocker classes that must not be conflated:
+
+1. #2058 lawfully owns the narrow Counter -> `collections._count_elements` transitive-global attestation repair and its directly coupled exact-head test/CI closure. Do not duplicate #2058.
+2. #2018 later reported a separate non-owning current-head HIGH: identity-only freezing of mutable Python function objects can miss same-object behavior drift through `function.__code__`, defaults and transitive globals. Examples include Python-function wrappers/attester primitives such as `re.fullmatch`, `re.sub`, `re.search`, `json.dumps`, `html.unescape`, `ast.parse`, `inspect.isclass` and `inspect.isfunction`, subject to the exact runtime closure.
+
+Therefore closing the three Ruff findings or the narrow #2058 semantic alone is **not** enough to make PR #1459 execution-ready. A lawful same-lineage owner must consume every released current-head HIGH, prove fail-closed behavior adversarially, obtain terminal exact-head CI, and then obtain a NEW fresh different-worker semantic PASS. Do not solve this by creating executor #2 or changing matcher science.
+
+Canonical physical high-yield dedup execution is forbidden from `fa8f9d...` until that full closure exists.
 
 ### Capacity
 
@@ -87,9 +96,11 @@ Keep PR #1256 in the same lineage under #1599 / lawful successor. Do not create 
 
 #2031 owns same-provider fresh-process resume composition with D05. #2032 owns exact current-run Windows stop-request to canonical StopLatch composition. Close those existing seams; do not create a second session/recovery system.
 
-### Free hosted carrier
+### Launch manifest and free hosted carrier
 
-PR #2077 is the current GitHub-hosted free execution-carrier lineage. It is useful because it is manual-only, exact-SHA/manifest-bound and requires `GITHUB_HOSTED_FREE` with zero cost. It is not itself training authority and must remain fail-closed until canonical upstream launch/lease/pre-step/real-target authorities are integrated.
+PR #2080 / #2034 already provides the canonical launch-manifest composition mechanics on exact head `23c32b6bccac1eb9c69b04068eb36335154c5f65`, with shared CI successful at the snapshot. It remains blocked on real upstream authorities/exposure and still requires the project's fresh different-worker audit. Do not create manifest subsystem #2.
+
+PR #2077 is the current GitHub-hosted free execution-carrier lineage. It is useful because it is manual-only, exact-SHA/manifest-bound and requires `GITHUB_HOSTED_FREE` with zero cost. Its newer head still requires same-lineage CI repair/integration closure. It is not itself training authority and must remain fail-closed until canonical upstream launch/lease/pre-step/real-target authorities are integrated.
 
 ## Work that is currently deprioritized
 
@@ -98,7 +109,7 @@ While a direct-path P0 package is executable, do not start:
 - new generic corpus/data frameworks;
 - another dedup matcher or alternate dedup science;
 - another Trainer or training framework;
-- another readiness/checkpoint/evaluation system;
+- another readiness/checkpoint/evaluation/manifest system;
 - broad source discovery or new source families;
 - FSDP, DeepSpeed, TorchTitan or Megatron work for the first 20M step;
 - multi-billion infrastructure;
@@ -152,11 +163,11 @@ Existing active Product owner always wins. If occupied, do not duplicate; provid
 
 Priority chain:
 1. clean physical Nomis-free successor;
-2. terminalize/reuse incumbent PR1459 indexed global-dedup executor;
+2. terminalize/reuse incumbent PR1459 indexed global-dedup executor, including ALL released current-head HIGH findings;
 3. execute already-admitted high-yield candidates, not new source discovery;
 4. finish decontam -> quality/privacy -> balance -> cluster-safe split -> tokenizer/packing -> exact unique-loss ledger;
 5. obtain positive authorized optimized-target exposure;
-6. converge PR1256 readiness + D05 resume + Windows safe-stop + immutable launch manifest;
+6. converge PR1256 readiness + D05 resume + Windows safe-stop + existing immutable launch-manifest lineage;
 7. independent pre-step PASS;
 8. one LOCAL_FREE real-target optimizer step;
 9. early checkpoint -> fresh-process resume -> bounded pilot -> independent GO/HOLD/STOP;
@@ -168,9 +179,9 @@ FREE-FIRST:
 - free/local/zero-cost execution only, with exact run evidence.
 
 DO NOT:
-- create framework #2 for data, dedup, Trainer, readiness, recovery or evaluation;
+- create framework #2 for data, dedup, Trainer, readiness, recovery, manifest or evaluation;
 - open new source families while named high-yield candidates remain pending;
-- duplicate #2058 PR1459 Product repair;
+- duplicate #2058's narrow PR1459 Product repair, while also not ignoring separate #2018 current-head HIGH evidence;
 - duplicate #1599 PR1256 Product repair;
 - reopen unchanged PR1336 audits/repair without new concrete evidence;
 - build FSDP/DeepSpeed/TorchTitan/Megatron for the first 20M step;
