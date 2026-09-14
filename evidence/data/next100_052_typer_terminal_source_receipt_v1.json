@@ -1,0 +1,83 @@
+{
+  "artifact_id": 9618793476,
+  "artifact_zip_sha256": "58b444adedf11c1b79731ee98f1e4c0f7d9469c3a6a773a76ad45390eb134f41",
+  "authority": "EXTERNAL_REAL_CODE_SOURCE_HISTORICAL_EXECUTION_LOCAL_FREE",
+  "historical_dedup": {
+    "click": {
+      "commit": "b2e30a175449cfda909ee4fbf4a29a6a071cad53",
+      "exact_blob_hits_anywhere_in_tree": [],
+      "max_skeleton_containment": 0.5634615384615385,
+      "max_skeleton_jaccard": 0.11954187544738726,
+      "repository": "pallets/click"
+    },
+    "evaluation_reservation_overlaps": [],
+    "failures": [],
+    "fastapi": {
+      "commit": "49033471594ea5d99a80abdf1043231b7791ee49",
+      "exact_blob_hits_anywhere_in_tree": [],
+      "max_skeleton_containment": 0.3,
+      "max_skeleton_jaccard": 0.1111111111111111,
+      "repository": "fastapi/fastapi"
+    }
+  },
+  "historical_evaluation": {
+    "active_reserved_code_objects": 0,
+    "authority": "EVAL-289",
+    "authority_head_sha": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
+    "current_authority": false,
+    "selected_object_overlap": false
+  },
+  "historical_inputs": {
+    "manifest_git_blob_sha1": "0960b918f26709f6ff80cf53fdb63d04fc6efdca",
+    "validator_git_blob_sha1": "1ec89d56b2fe85f53d82ef23c686541efd1264b5",
+    "workflow_git_blob_sha1": "1b9c7cae537e0aab6983bcc2b8a22b911f97a1da"
+  },
+  "job_id": 98276978124,
+  "license": {
+    "evaluation": "NOT_AUTHORIZED_BY_THIS_AUTHORITY",
+    "git_blob_sha1": "a7694736cf37716aafec14b24aa8d6316ebe07a3",
+    "license_id": "MIT",
+    "model_training": "ALLOWED",
+    "path": "LICENSE",
+    "redistribution": "ALLOWED_WITH_NOTICE",
+    "sha256": "58992cebcf8dfb6e40c4e2112ed12126c243666dca3912a3d78b7ecac4859d49",
+    "size_bytes": 1086
+  },
+  "local_free_only": true,
+  "object": {
+    "git_blob_sha1": "addf9334d4210a9cddc9e5608ae446417d372eb0",
+    "parse_valid": true,
+    "path": "typer/utils.py",
+    "privacy_hits": [],
+    "raw_sha256": "c272750d65c114c9f12c768c37f1c3627b712d16f2d0afabbb1eb76a89072272",
+    "secret_hits": [],
+    "size_bytes": 7599,
+    "source_family": "github:fastapi/typer",
+    "source_id": "code.fastapi.typer.utils"
+  },
+  "pull_request_merge_sha": "6d6dc1ce94e1e8f6f1b9e40d091f038b24ba87e1",
+  "report_sha256": "3bc54e23b63d975ff31cfbf2762679974f60ea06729ab7291e6cb765a613bf00",
+  "run_id": 32999414943,
+  "schema_version": "12-6.next100-052-typer-terminal-source-receipt.v1",
+  "scientific_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "current_retained_corpus_launch_authoritative": false,
+    "final_test_outcomes_read": false,
+    "foreign_pretrained_weights": false,
+    "learned_weights_created": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "paid_compute_used": false,
+    "tokenizer_fit_authorized": false,
+    "training_executed": false
+  },
+  "source_head_sha": "1ad3387fa21ce208c6553c2a460573ae5648eb7b",
+  "source_pr": 476,
+  "terminal": true,
+  "upstream": {
+    "commit": "fe2aa0e2f9c853de378e60ca24ec3b256144decf",
+    "release": "0.27.1",
+    "repository": "fastapi/typer",
+    "repository_id": 229937405
+  },
+  "verdict": "ADMIT"
+}
