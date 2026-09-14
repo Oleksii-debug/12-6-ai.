@@ -163,6 +163,7 @@
     "checkpoint_integrity_terminal_retest",
     "selection_validation_terminal",
     "exact_code_model_tokenizer_data_config_hashes",
+    "single_composed_candidate_head",
     "bounded_pilot_loss_and_numerics",
     "compute_authorization_for_material_cost",
     "independent_audit"
