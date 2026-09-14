@@ -7,6 +7,15 @@ on:
       - "docs/**"
       - "reports/**"
       - "**/*.md"
+  workflow_dispatch:
+    inputs:
+      learned20m_hosted_carrier_mode:
+        description: "Fail-closed MODEL-341 hosted carrier operation"
+        required: true
+        default: "preflight"
+        type: choice
+        options:
+          - preflight
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -21,6 +30,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       run_arm: ${{ steps.scope.outputs.run_arm }}
+      run_hosted_carrier: ${{ steps.scope.outputs.run_hosted_carrier }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,20 +59,30 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           run_arm=true
-          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$BASE_SHA" =~ ^0+$ ]]; then
+          run_hosted_carrier=false
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            run_arm=false
+            run_hosted_carrier=true
+          elif [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$BASE_SHA" =~ ^0+$ ]]; then
             git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-paths.txt
             if ! grep -Eq '^(requirements/|pyproject\.toml$|src/twelve_six/integration/dependency_lock\.py$|tools/verify_locked_environment\.py$|\.github/workflows/ci\.yml$)' changed-paths.txt; then
               run_arm=false
             fi
+            if grep -Eq '^(\.github/workflows/ci\.yml|tools/verify_github_hosted_model341_carrier\.py|tests/test_github_hosted_model341_carrier\.py)$' changed-paths.txt; then
+              run_hosted_carrier=true
+            fi
           fi
           echo "run_arm=$run_arm" >> "$GITHUB_OUTPUT"
+          echo "run_hosted_carrier=$run_hosted_carrier" >> "$GITHUB_OUTPUT"
           cat changed-paths.txt 2>/dev/null || true
 
   locked-x86-64:
     needs: preflight
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -97,7 +117,7 @@ jobs:
 
   locked-arm64:
     needs: preflight
-    if: needs.preflight.outputs.run_arm == 'true'
+    if: github.event_name != 'workflow_dispatch' && needs.preflight.outputs.run_arm == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 35
     steps:
@@ -119,5 +139,53 @@ jobs:
         with:
           name: locked-environment-linux-aarch64
           path: locked-environment-linux-aarch64.json
+          if-no-files-found: error
+          retention-days: 30
+
+  learned20m-hosted-carrier:
+    needs: preflight
+    if: needs.preflight.outputs.run_hosted_carrier == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - name: Verify fail-closed hosted carrier boundary
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CARRIER_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.learned20m_hosted_carrier_mode || 'preflight' }}
+          GITHUB_REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
+        run: >-
+          python tools/verify_github_hosted_model341_carrier.py
+          --mode "$CARRIER_MODE"
+          --source-sha "$SOURCE_SHA"
+          --evidence-out learned20m-hosted-carrier-preflight.json
+      - name: Verify locked execution environment for manual carrier dispatch
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: >-
+          python tools/verify_locked_environment.py
+          --profile linux-x86_64
+          --source-sha "$SOURCE_SHA"
+          --evidence-out learned20m-hosted-carrier-locked-environment.json
+      - name: Upload hosted carrier preflight evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: learned20m-hosted-carrier-preflight
+          path: learned20m-hosted-carrier-preflight.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload manual carrier locked-environment evidence
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: learned20m-hosted-carrier-locked-environment
+          path: learned20m-hosted-carrier-locked-environment.json
           if-no-files-found: error
           retention-days: 30
