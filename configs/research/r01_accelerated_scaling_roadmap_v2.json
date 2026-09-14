@@ -37,6 +37,11 @@
     "producer_and_audit_evidence_sha256_must_differ": true,
     "same_code_git_sha_permitted": true
   },
+  "terminal_evidence_crossbinding": {
+    "producer_must_attest_exact_evidence_manifest_sha256": true,
+    "audit_must_attest_exact_evidence_manifest_sha256": true,
+    "audit_must_bind_exact_producer_authority_sha256": true
+  },
   "scale_route": [
     {
       "id": "LAB_3M_10M",
