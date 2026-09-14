@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "qualification_id": "12-6.mlflow-runtime-bootstrap-stress.v1",
+  "status": "RETEST_RUNTIME_REQUIRED",
+  "project": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "parent_pr": 758,
+    "parent_head_sha": "56046888b95f4db35f9ca2f38d13dcc0c1fe11e1",
+    "parent_worker_issue": 740,
+    "control_issue": 723,
+    "registry_component_id": "MLFLOW",
+    "registry_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a"
+  },
+  "upstream": {
+    "repository": "https://github.com/mlflow/mlflow",
+    "ref_type": "immutable_commit",
+    "commit_sha": "0572b16ac9e9c98a02df9df40ad3e48ce3b7c588",
+    "package_name": "mlflow",
+    "source_version": "3.15.3.dev0",
+    "license_path": "LICENSE.txt",
+    "license_blob_sha": "db7cb10b5e330d56b40370bc178974ccabe71458",
+    "license_spdx": "Apache-2.0",
+    "notice_path": "NOTICE.txt",
+    "notice_present": false,
+    "tracking_source_path": "mlflow/tracking/_tracking_service/utils.py",
+    "tracking_source_blob_sha": "1a672b170a49b800d420127de63cfff7b394065c"
+  },
+  "install": {
+    "method": "pip_vcs_exact_commit",
+    "requirement": "mlflow @ git+https://github.com/mlflow/mlflow.git@0572b16ac9e9c98a02df9df40ad3e48ce3b7c588",
+    "global_install_permitted": false,
+    "fresh_venv_required": true,
+    "artifact_sha256": null,
+    "artifact_identity_status": "NOT_OBTAINED_NETWORK_UNAVAILABLE"
+  },
+  "runtime": {
+    "tracking_mode": "local_only",
+    "allowed_uri_schemes": ["file", "sqlite"],
+    "remote_network_tracking_forbidden": true,
+    "credentials_in_uri_forbidden": true,
+    "artifact_payload_policy": "HASH_REFERENCES_ONLY"
+  },
+  "promotion": {
+    "current_state": "RETEST_RUNTIME_REQUIRED",
+    "runtime_executed": false,
+    "benchmark_executed": false,
+    "real_parity_proven": false,
+    "adoptable": false
+  }
+}
