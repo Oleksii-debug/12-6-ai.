@@ -15,12 +15,14 @@ import json
 import marshal
 import re
 import sys
+import typing
 import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import CodeType
 from typing import Any
+from urllib.request import Request, urlopen
 
 EXPECTED_V3_GIT_BLOB_SHA1 = "11490b1803e0aa2266d8ac0053676efcfb0f91ba"
 EXPECTED_V1_GIT_BLOB_SHA1 = "84cdf00b2d468d2709a542ac3ee2ea372aae5716"
@@ -43,7 +45,101 @@ DEFAULT_MAX_PAIR_EXPANSIONS = 100_000_000
 _FROZEN_AST_PARSE = ast.parse
 _FROZEN_HASHLIB_SHA1 = hashlib.sha1
 _FROZEN_HASHLIB_SHA256 = hashlib.sha256
+_FROZEN_INSPECT_ISCLASS = inspect.isclass
+_FROZEN_INSPECT_ISFUNCTION = inspect.isfunction
 _FROZEN_MARSHAL_DUMPS = marshal.dumps
+
+
+def _loader_code_digest(code: CodeType) -> str:
+    return _FROZEN_HASHLIB_SHA256(_FROZEN_MARSHAL_DUMPS(code)).hexdigest()
+
+
+def _freeze_python_function(function: Any) -> tuple[Any, ...]:
+    kwdefaults = function.__kwdefaults__
+    return (
+        function,
+        _loader_code_digest(function.__code__),
+        function.__defaults__,
+        None if kwdefaults is None else tuple(sorted(kwdefaults.items())),
+    )
+
+
+def _freeze_behavior_member(member: Any) -> tuple[Any, ...]:
+    if _FROZEN_INSPECT_ISFUNCTION(member):
+        return ("function", *_freeze_python_function(member))
+    if isinstance(member, staticmethod):
+        return ("staticmethod", member, *_freeze_python_function(member.__func__))
+    if isinstance(member, classmethod):
+        return ("classmethod", member, *_freeze_python_function(member.__func__))
+    if isinstance(member, property):
+        return (
+            "property",
+            member,
+            None if member.fget is None else _freeze_python_function(member.fget),
+            None if member.fset is None else _freeze_python_function(member.fset),
+            None if member.fdel is None else _freeze_python_function(member.fdel),
+        )
+    return ("identity", member)
+
+
+def _freeze_direct_behavior(value: Any) -> tuple[Any, ...]:
+    if _FROZEN_INSPECT_ISCLASS(value):
+        return (
+            "class",
+            value,
+            value.__bases__,
+            tuple(
+                (name, _freeze_behavior_member(member))
+                for name, member in sorted(vars(value).items())
+            ),
+        )
+    if _FROZEN_INSPECT_ISFUNCTION(value):
+        return ("function", *_freeze_python_function(value))
+    try:
+        namespace = vars(value)
+    except TypeError:
+        return ("identity", value)
+    return (
+        "object",
+        value,
+        tuple(
+            (name, _freeze_behavior_member(member))
+            for name, member in sorted(namespace.items())
+        ),
+    )
+
+
+_DIRECT_BEHAVIOR_IMPORT_MODULES = frozenset(
+    {"collections", "collections.abc", "pathlib", "typing", "urllib.request"}
+)
+
+# Direct ``from ... import ...`` bindings are different from module-member calls such
+# as ``re.sub``: re-executing exact authority bytes in-process resolves the same class
+# or function object, so identity equality alone cannot detect an in-place mutation of
+# that object. Freeze the exact stdlib direct-import behavior used by the pinned
+# DATA232/V1/V3 closure at this module's own load time.
+_FROZEN_DIRECT_IMPORTED_BEHAVIOR = (
+    (
+        "DATA232",
+        "collections",
+        "defaultdict",
+        "defaultdict",
+        _freeze_direct_behavior(defaultdict),
+    ),
+    ("DATA232", "typing", "Mapping", "Mapping", _freeze_direct_behavior(typing.Mapping)),
+    ("DATA232", "typing", "Sequence", "Sequence", _freeze_direct_behavior(typing.Sequence)),
+    ("V1", "collections", "defaultdict", "defaultdict", _freeze_direct_behavior(defaultdict)),
+    ("V1", "collections.abc", "Mapping", "Mapping", _freeze_direct_behavior(Mapping)),
+    ("V1", "collections.abc", "Sequence", "Sequence", _freeze_direct_behavior(Sequence)),
+    ("V1", "pathlib", "Path", "Path", _freeze_direct_behavior(Path)),
+    ("V1", "urllib.request", "Request", "Request", _freeze_direct_behavior(Request)),
+    ("V1", "urllib.request", "urlopen", "urlopen", _freeze_direct_behavior(urlopen)),
+    ("V3", "collections", "Counter", "Counter", _freeze_direct_behavior(Counter)),
+    ("V3", "collections", "defaultdict", "defaultdict", _freeze_direct_behavior(defaultdict)),
+    ("V3", "collections.abc", "Mapping", "Mapping", _freeze_direct_behavior(Mapping)),
+    ("V3", "collections.abc", "Sequence", "Sequence", _freeze_direct_behavior(Sequence)),
+    ("V3", "pathlib", "Path", "Path", _freeze_direct_behavior(Path)),
+)
 
 # Freeze every direct stdlib module member used by the exact pinned executable
 # function bodies. Re-executing authority source in this process intentionally
@@ -98,6 +194,83 @@ def _module_blob_sha1(module: Any) -> str:
 
 def _code_digest(code: CodeType) -> str:
     return _FROZEN_HASHLIB_SHA256(_FROZEN_MARSHAL_DUMPS(code)).hexdigest()
+
+
+def _python_function_state_matches(function: Any, state: tuple[Any, ...]) -> bool:
+    expected, expected_code, defaults, kwdefaults = state
+    if function is not expected or not _FROZEN_INSPECT_ISFUNCTION(function):
+        return False
+    current_kwdefaults = function.__kwdefaults__
+    rendered_kwdefaults = (
+        None if current_kwdefaults is None else tuple(sorted(current_kwdefaults.items()))
+    )
+    return (
+        _code_digest(function.__code__) == expected_code
+        and function.__defaults__ == defaults
+        and rendered_kwdefaults == kwdefaults
+    )
+
+
+def _behavior_member_state_matches(member: Any, state: tuple[Any, ...]) -> bool:
+    kind = state[0]
+    if kind == "identity":
+        return member is state[1]
+    if kind == "function":
+        return _python_function_state_matches(member, state[1:])
+    if kind in {"staticmethod", "classmethod"}:
+        descriptor_type = staticmethod if kind == "staticmethod" else classmethod
+        return (
+            isinstance(member, descriptor_type)
+            and member is state[1]
+            and _python_function_state_matches(member.__func__, state[2:])
+        )
+    if kind == "property":
+        if not isinstance(member, property) or member is not state[1]:
+            return False
+        for current, expected in zip((member.fget, member.fset, member.fdel), state[2:]):
+            if expected is None:
+                if current is not None:
+                    return False
+            elif current is None or not _python_function_state_matches(current, expected):
+                return False
+        return True
+    return False
+
+
+def _direct_behavior_state_matches(value: Any, state: tuple[Any, ...]) -> bool:
+    kind = state[0]
+    if kind == "identity":
+        return value is state[1]
+    if kind == "function":
+        return _python_function_state_matches(value, state[1:])
+    if kind == "class":
+        if value is not state[1] or not _FROZEN_INSPECT_ISCLASS(value):
+            return False
+        if value.__bases__ != state[2]:
+            return False
+        expected_members = dict(state[3])
+        current_members = vars(value)
+        if set(current_members) != set(expected_members):
+            return False
+        return all(
+            _behavior_member_state_matches(current_members[name], expected_members[name])
+            for name in expected_members
+        )
+    if kind == "object":
+        if value is not state[1]:
+            return False
+        try:
+            current_members = vars(value)
+        except TypeError:
+            return False
+        expected_members = dict(state[2])
+        if set(current_members) != set(expected_members):
+            return False
+        return all(
+            _behavior_member_state_matches(current_members[name], expected_members[name])
+            for name in expected_members
+        )
+    return False
 
 
 def _canonical_namespace(module: Any, label: str) -> dict[str, Any]:
@@ -158,7 +331,7 @@ def _attest_referenced_globals(
         if name not in canonical:
             continue
         expected = canonical[name]
-        if inspect.isfunction(expected) and expected.__globals__ is canonical:
+        if _FROZEN_INSPECT_ISFUNCTION(expected) and expected.__globals__ is canonical:
             continue
         if name not in live_namespace:
             raise IndexedExecutionError(f"{label} referenced global missing: {name}")
@@ -167,9 +340,9 @@ def _attest_referenced_globals(
             continue
 
         if (
-            inspect.isclass(expected)
+            _FROZEN_INSPECT_ISCLASS(expected)
             and expected.__module__ == canonical_module_name
-            and inspect.isclass(live)
+            and _FROZEN_INSPECT_ISCLASS(live)
             and live.__module__ == getattr(module, "__name__", None)
             and live.__qualname__ == expected.__qualname__
             and live.__bases__ == expected.__bases__
@@ -255,15 +428,73 @@ def _attest_imported_behavior_members(
             )
 
 
+def _referenced_direct_behavior_imports(
+    module: Any,
+    label: str,
+    names: Sequence[str],
+) -> set[tuple[str, str, str]]:
+    """Derive behavior-bearing direct stdlib imports used by exact executable code."""
+    del label
+    referenced = set(names)
+    path = _module_path(module)
+    try:
+        source = path.read_text(encoding="utf-8")
+        tree = _FROZEN_AST_PARSE(source, filename=str(path))
+    except (OSError, SyntaxError, UnicodeError) as exc:
+        raise IndexedExecutionError("cannot derive direct imported behavior closure") from exc
+
+    required: set[tuple[str, str, str]] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom) or node.module not in _DIRECT_BEHAVIOR_IMPORT_MODULES:
+            continue
+        for alias in node.names:
+            bound_name = alias.asname or alias.name
+            if bound_name in referenced:
+                required.add((node.module, alias.name, bound_name))
+    return required
+
+
+def _attest_direct_imported_behavior(
+    module: Any,
+    label: str,
+    names: Sequence[str],
+) -> None:
+    """Reject in-place drift of directly imported stdlib classes/functions/objects."""
+    frozen = {
+        (module_name, imported_name, bound_name): state
+        for binding_label, module_name, imported_name, bound_name, state
+        in _FROZEN_DIRECT_IMPORTED_BEHAVIOR
+        if binding_label == label
+    }
+    required = _referenced_direct_behavior_imports(module, label, names)
+    missing = sorted(required - set(frozen))
+    if missing:
+        rendered = ", ".join(
+            f"{module_name}.{imported_name} as {bound_name}"
+            for module_name, imported_name, bound_name in missing
+        )
+        raise IndexedExecutionError(f"{label} direct imported behavior not frozen: {rendered}")
+
+    live_namespace = vars(module)
+    for key in sorted(required):
+        module_name, imported_name, bound_name = key
+        if bound_name not in live_namespace:
+            raise IndexedExecutionError(f"{label} direct imported behavior missing: {bound_name}")
+        if not _direct_behavior_state_matches(live_namespace[bound_name], frozen[key]):
+            raise IndexedExecutionError(
+                f"{label} direct imported behavior drift: {module_name}.{imported_name}"
+            )
+
+
 def _attest_executable_module(module: Any, label: str) -> dict[str, Any]:
     """Reconstruct source and bind its live executable global closure."""
     canonical = _canonical_namespace(module, label)
     referenced_globals: set[str] = set()
     for name, expected in canonical.items():
-        if not inspect.isfunction(expected) or expected.__globals__ is not canonical:
+        if not _FROZEN_INSPECT_ISFUNCTION(expected) or expected.__globals__ is not canonical:
             continue
         live = getattr(module, name, None)
-        if not inspect.isfunction(live):
+        if not _FROZEN_INSPECT_ISFUNCTION(live):
             raise IndexedExecutionError(f"{label} executable closure missing function {name}")
         if live.__globals__ is not vars(module):
             raise IndexedExecutionError(f"{label} callable global ownership drift: {name}")
@@ -275,6 +506,7 @@ def _attest_executable_module(module: Any, label: str) -> dict[str, Any]:
     referenced_names = tuple(referenced_globals)
     _attest_referenced_globals(module, canonical, label, referenced_names)
     _attest_imported_behavior_members(module, label, referenced_names)
+    _attest_direct_imported_behavior(module, label, referenced_names)
     return canonical
 
 
