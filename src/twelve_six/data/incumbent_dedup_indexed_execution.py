@@ -8,6 +8,7 @@ semantics remain delegated to the exact incumbent V3 module.
 from __future__ import annotations
 
 import ast
+import collections
 import hashlib
 import html
 import inspect
@@ -43,6 +44,7 @@ DEFAULT_MAX_INDEX_POSTINGS = 100_000_000
 DEFAULT_MAX_PAIR_EXPANSIONS = 100_000_000
 
 _FROZEN_AST_PARSE = ast.parse
+_FROZEN_COLLECTIONS_COUNT_ELEMENTS = getattr(collections, "_count_elements", None)
 _FROZEN_HASHLIB_SHA1 = hashlib.sha1
 _FROZEN_HASHLIB_SHA256 = hashlib.sha256
 _FROZEN_INSPECT_ISCLASS = inspect.isclass
@@ -169,6 +171,13 @@ _FROZEN_IMPORTED_BEHAVIOR_MEMBERS = (
 
 class IndexedExecutionError(RuntimeError):
     """Fail-closed indexed-execution contract error."""
+
+
+def _attest_loader_frozen_runtime_dependencies() -> None:
+    if _FROZEN_COLLECTIONS_COUNT_ELEMENTS is None:
+        raise IndexedExecutionError("collections._count_elements unavailable at loader time")
+    if getattr(collections, "_count_elements", None) is not _FROZEN_COLLECTIONS_COUNT_ELEMENTS:
+        raise IndexedExecutionError("collections._count_elements runtime drift")
 
 
 def _git_blob_sha1(payload: bytes) -> str:
@@ -520,6 +529,7 @@ def _attest_globals(module: Any, canonical: Mapping[str, Any], label: str, names
 
 def attest_incumbent_runtime(v3: Any) -> None:
     """Bind execution to exact terminal V3 + V1 + DATA-232 executable authority."""
+    _attest_loader_frozen_runtime_dependencies()
     v1 = getattr(v3, "v1", None)
     if v1 is None:
         raise IndexedExecutionError("V3 runtime does not expose incumbent v1 module")
