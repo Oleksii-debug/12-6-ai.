@@ -48,6 +48,9 @@
     "idempotent": true,
     "run_identity_required": true,
     "run_manifest_hash_semantics": "CANONICAL_SORTED_COMPACT_UTF8_JSON_SHA256",
+    "current_run_authority": "TRAIN39_RECOVERY_STORE_ROOT_V1",
+    "current_run_manifest_filename": "run-manifest.json",
+    "current_run_state_filename": "recovery-state.json",
     "does_not_claim_checkpoint_or_training_success": true
   },
   "truth_boundary": {
@@ -64,7 +67,7 @@
     "windows_version": "Windows 11 admission is derived from native NT version facts (minimum 10.0 build 22000); platform.release() is display-only and never authoritative.",
     "ram_and_disk_floors": "Conservative operator headroom policy only; measured resource-envelope evidence remains the authority for throughput/memory feasibility.",
     "gpu": "AMD or other acceleration is optional and must be separately runtime-qualified; this profile never requires GPU.",
-    "safe_stop_run_identity": "A stop request is valid only for the exact canonical current run_id plus canonical run-manifest SHA-256; stale or wrong-run markers fail closed and are never checkpoint evidence.",
+    "safe_stop_run_identity": "A stop request is valid only after the supplied run manifest is cross-bound to the separate incumbent TRAIN39 RecoveryStore root: exact self-hashed recovery-state identity plus persisted run-manifest identity must agree; stale, terminal, corrupt or wrong-run inputs fail closed and are never checkpoint evidence.",
     "corpus_provenance": "This machine-preflight leaf deliberately makes no global assertion about external-LLM/API corpus provenance; corpus authority is owned upstream."
   }
 }
