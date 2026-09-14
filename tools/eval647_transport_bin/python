@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${EVAL647_REAL_PYTHON:?EVAL647_REAL_PYTHON must bind the setup-python interpreter}"
+
+if [[ "${1:-}" != "tools/run_data526_materializer_data_only.py" ]]; then
+  exec "$EVAL647_REAL_PYTHON" "$@"
+fi
+
+exec "$EVAL647_REAL_PYTHON" -c '
+from __future__ import annotations
+
+import hashlib
+import io
+import runpy
+import sys
+import urllib.request
+import zipfile
+from pathlib import Path
+
+RADA_URL = "https://data.rada.gov.ua/ogd/zak/perv/text/d23314.htm"
+RADA_SHA256 = "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4"
+RADA_MEMBER = f"data/external/snapshots/sha256/{RADA_SHA256}/payload"
+RADA_BYTES = 332400
+
+
+def required_option(argv: list[str], option: str) -> str:
+    try:
+        index = argv.index(option)
+        return argv[index + 1]
+    except (ValueError, IndexError) as exc:
+        raise SystemExit(f"missing replay option/value: {option}") from exc
+
+
+class SnapshotResponse:
+    def __init__(self, payload: bytes) -> None:
+        self._stream = io.BytesIO(payload)
+        self.headers = {"Content-Length": str(len(payload))}
+
+    def read(self, size: int = -1) -> bytes:
+        return self._stream.read(size)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._stream.close()
+
+
+target = sys.argv[1]
+target_argv = sys.argv[2:]
+data213_zip = Path(required_option(target_argv, "--data213-zip"))
+with zipfile.ZipFile(data213_zip) as archive:
+    try:
+        rada_payload = archive.read(RADA_MEMBER)
+    except KeyError as exc:
+        raise SystemExit(f"DATA-213 artifact missing authenticated Rada snapshot: {RADA_MEMBER}") from exc
+if len(rada_payload) != RADA_BYTES:
+    raise SystemExit(f"Rada snapshot byte mismatch: expected {RADA_BYTES}, got {len(rada_payload)}")
+actual_sha = hashlib.sha256(rada_payload).hexdigest()
+if actual_sha != RADA_SHA256:
+    raise SystemExit(f"Rada snapshot SHA-256 mismatch: expected {RADA_SHA256}, got {actual_sha}")
+
+fallback_urlopen = urllib.request.urlopen
+
+
+def replay_urlopen(request, *args, **kwargs):
+    if getattr(request, "full_url", request) == RADA_URL:
+        return SnapshotResponse(rada_payload)
+    return fallback_urlopen(request, *args, **kwargs)
+
+
+urllib.request.urlopen = replay_urlopen
+sys.argv = [target, *target_argv]
+runpy.run_path(target, run_name="__main__")
+' "$@"
