@@ -18,10 +18,12 @@ from twelve_six.data.wikisource_pd_contract import (
     WikisourceIntakeError,
     normalize_rendered_text,
     validate_page_title,
+    validate_short_page_rejection_candidate,
     validate_ua_page_text,
 )
 
 VALIDATED_PROOFREAD_QUALITY = 4
+SHORT_PAGE_REJECTION_REASON = "BELOW_MINIMUM_UTF8_BYTES_AFTER_EXACT_APPROVED_RENDER"
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,31 @@ class PageSnapshot:
     normalized_text: str
     sha256: str
     utf8_bytes: int
+
+
+class RejectedPageCandidate(WikisourceIntakeError):
+    """A text-free, exactly bound page disposition that may be excluded from a candidate."""
+
+    def __init__(
+        self,
+        *,
+        page_number: int,
+        revision_id: int,
+        normalized_sha256: str,
+        normalized_utf8_bytes: int,
+    ) -> None:
+        self.page_number = page_number
+        self.revision_id = revision_id
+        self.normalized_sha256 = normalized_sha256
+        self.normalized_utf8_bytes = normalized_utf8_bytes
+        self.reason = SHORT_PAGE_REJECTION_REASON
+        super().__init__(
+            "page body is too short; "
+            f"rejection_reason={self.reason}; "
+            f"page_number={page_number}; page_revision_id={revision_id}; "
+            f"normalized_utf8_bytes={normalized_utf8_bytes}; "
+            f"normalized_sha256={normalized_sha256}"
+        )
 
 
 class _VisibleTextParser(HTMLParser):
@@ -272,9 +299,24 @@ def fetch_page_snapshot(
         raise WikisourceIntakeError("page approval changed during exact render")
     normalized = rendered_html_to_text(parse["text"])
     payload = normalized.encode("utf-8")
+    payload_sha256 = hashlib.sha256(payload).hexdigest()
     try:
         validate_ua_page_text(normalized)
     except WikisourceIntakeError as exc:
+        if str(exc) == "page body is too short":
+            try:
+                validate_short_page_rejection_candidate(normalized)
+            except WikisourceIntakeError as safety_exc:
+                raise WikisourceIntakeError(
+                    f"{safety_exc}; page_number={page_number}; "
+                    f"page_revision_id={revision_id}; normalized_utf8_bytes={len(payload)}"
+                ) from None
+            raise RejectedPageCandidate(
+                page_number=page_number,
+                revision_id=revision_id,
+                normalized_sha256=payload_sha256,
+                normalized_utf8_bytes=len(payload),
+            ) from None
         raise WikisourceIntakeError(
             f"{exc}; page_number={page_number}; page_revision_id={revision_id}; "
             f"normalized_utf8_bytes={len(payload)}"
@@ -284,6 +326,6 @@ def fetch_page_snapshot(
         title=title,
         revision_id=revision_id,
         normalized_text=normalized,
-        sha256=hashlib.sha256(payload).hexdigest(),
+        sha256=payload_sha256,
         utf8_bytes=len(payload),
     )

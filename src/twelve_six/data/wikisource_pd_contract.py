@@ -99,20 +99,33 @@ def normalize_rendered_text(text: str) -> str:
     return normalized
 
 
-def validate_ua_page_text(text: str) -> None:
-    if len(text.encode("utf-8")) < 64:
-        raise WikisourceIntakeError("page body is too short")
+def _validate_ua_content_safety(text: str, *, allow_no_letters: bool) -> None:
     lower = text.lower()
     if any(marker in lower for marker in ("<html", "mw-parser-output", "перегляд історії")):
         raise WikisourceIntakeError("page body contains site chrome or raw HTML")
     letters = [ch for ch in text if ch.isalpha()]
     if not letters:
+        if allow_no_letters:
+            return
         raise WikisourceIntakeError("page body has no alphabetic content")
     ua_alphabet = set("іїєґІЇЄҐабвгдежзиклмнопрстуфхцчшщьюяАБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЬЮЯ")
     if sum(ch in ua_alphabet for ch in letters) / len(letters) < 0.75:
         raise WikisourceIntakeError("page body is not predominantly Ukrainian Cyrillic")
     if re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", text):
         raise WikisourceIntakeError("email-like content requires downstream privacy quarantine")
+
+
+def validate_short_page_rejection_candidate(text: str) -> None:
+    """Validate that a below-minimum page can be excluded without weakening fatal gates."""
+    if len(text.encode("utf-8")) >= 64:
+        raise WikisourceIntakeError("short-page rejection requires payload below 64 bytes")
+    _validate_ua_content_safety(text, allow_no_letters=True)
+
+
+def validate_ua_page_text(text: str) -> None:
+    if len(text.encode("utf-8")) < 64:
+        raise WikisourceIntakeError("page body is too short")
+    _validate_ua_content_safety(text, allow_no_letters=False)
 
 
 def validate_page_title(title: str) -> int:

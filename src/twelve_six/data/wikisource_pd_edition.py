@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import urllib.error
 from collections.abc import Callable, Iterable
@@ -11,7 +12,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from twelve_six.data.wikisource_pd_api import (
+    SHORT_PAGE_REJECTION_REASON,
     PageSnapshot,
+    RejectedPageCandidate,
     discover_index_titles,
     fetch_page_snapshot,
     request_json,
@@ -31,6 +34,15 @@ from twelve_six.data.wikisource_pd_contract import (
 class Materialization:
     candidate_jsonl: bytes
     report: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PageRejection:
+    page_number: int
+    revision_id: int
+    normalized_sha256: str
+    normalized_utf8_bytes: int
+    reason: str = SHORT_PAGE_REJECTION_REASON
 
 
 def _sha256(data: bytes) -> str:
@@ -61,11 +73,61 @@ def _page_record(snapshot: PageSnapshot) -> dict[str, Any]:
     }
 
 
-def materialize_snapshots(snapshots: Iterable[PageSnapshot]) -> Materialization:
+def _rejection_record(rejection: PageRejection) -> dict[str, Any]:
+    return {
+        "page_number": rejection.page_number,
+        "page_revision_id": rejection.revision_id,
+        "normalized_sha256": rejection.normalized_sha256,
+        "normalized_utf8_bytes": rejection.normalized_utf8_bytes,
+        "reason": rejection.reason,
+    }
+
+
+def _validate_rejections(
+    rejections: list[PageRejection],
+    *,
+    accepted_page_numbers: set[int],
+    accepted_revision_ids: set[int],
+) -> None:
+    rejected_page_numbers = [row.page_number for row in rejections]
+    rejected_revision_ids = [row.revision_id for row in rejections]
+    if len(set(rejected_page_numbers)) != len(rejected_page_numbers):
+        raise WikisourceIntakeError("duplicate rejected page number")
+    if len(set(rejected_revision_ids)) != len(rejected_revision_ids):
+        raise WikisourceIntakeError("duplicate rejected revision id")
+    if accepted_page_numbers.intersection(rejected_page_numbers):
+        raise WikisourceIntakeError("page cannot be both accepted and rejected")
+    if accepted_revision_ids.intersection(rejected_revision_ids):
+        raise WikisourceIntakeError("revision cannot be both accepted and rejected")
+    for row in rejections:
+        if not 1 <= row.page_number <= 112:
+            raise WikisourceIntakeError("rejected page is outside the pinned edition bounds")
+        if isinstance(row.revision_id, bool) or not isinstance(row.revision_id, int):
+            raise WikisourceIntakeError("rejected page revision id is invalid")
+        if row.revision_id <= 0:
+            raise WikisourceIntakeError("rejected page revision id is invalid")
+        if row.reason != SHORT_PAGE_REJECTION_REASON:
+            raise WikisourceIntakeError("unsupported page rejection reason")
+        if (
+            isinstance(row.normalized_utf8_bytes, bool)
+            or not isinstance(row.normalized_utf8_bytes, int)
+            or not 0 < row.normalized_utf8_bytes < 64
+        ):
+            raise WikisourceIntakeError("short-page rejection byte count is outside gate")
+        if re.fullmatch(r"[0-9a-f]{64}", row.normalized_sha256) is None:
+            raise WikisourceIntakeError("rejected page hash is invalid")
+
+
+def materialize_snapshots(
+    snapshots: Iterable[PageSnapshot],
+    *,
+    rejected_pages: Iterable[PageRejection] = (),
+) -> Materialization:
     ordered = sorted(snapshots, key=lambda row: row.page_number)
+    rejected_ordered = sorted(rejected_pages, key=lambda row: row.page_number)
     if not ordered:
         raise WikisourceIntakeError("materialization requires at least one approved page")
-    if len(ordered) > 112:
+    if len(ordered) + len(rejected_ordered) > 112:
         raise WikisourceIntakeError("materialization exceeds edition page bound")
     page_numbers = [row.page_number for row in ordered]
     revisions = [row.revision_id for row in ordered]
@@ -86,6 +148,11 @@ def materialize_snapshots(snapshots: Iterable[PageSnapshot]) -> Materialization:
         payload = normalized.encode("utf-8")
         if _sha256(payload) != row.sha256 or len(payload) != row.utf8_bytes:
             raise WikisourceIntakeError("snapshot byte identity mismatch")
+    _validate_rejections(
+        rejected_ordered,
+        accepted_page_numbers=set(page_numbers),
+        accepted_revision_ids=set(revisions),
+    )
     records = [_page_record(row) for row in ordered]
     candidate_jsonl = b"".join(_canonical_json(record) for record in records)
     inventory = [
@@ -97,6 +164,11 @@ def materialize_snapshots(snapshots: Iterable[PageSnapshot]) -> Materialization:
         }
         for row in ordered
     ]
+    rejected_inventory = [_rejection_record(row) for row in rejected_ordered]
+    disposition_inventory = {
+        "accepted": inventory,
+        "rejected": rejected_inventory,
+    }
     report: dict[str, Any] = {
         "schema_version": "12-6.d03-wikisource-pd-edition-materialization.v1",
         "source_authority": {
@@ -110,6 +182,15 @@ def materialize_snapshots(snapshots: Iterable[PageSnapshot]) -> Materialization:
             "normalized_utf8_bytes": sum(row.utf8_bytes for row in ordered),
             "candidate_jsonl_sha256": _sha256(candidate_jsonl),
             "inventory": inventory,
+        },
+        "disposition": {
+            "accepted_page_count": len(ordered),
+            "rejected_page_count": len(rejected_ordered),
+            "observed_page_count": len(ordered) + len(rejected_ordered),
+            "accepted_and_rejected_inventory_sha256": _sha256(
+                _canonical_json(disposition_inventory)
+            ),
+            "rejected_inventory": rejected_inventory,
         },
         "truth_boundary": {
             "canonical_capacity_credit_bytes": 0,
@@ -201,5 +282,19 @@ def materialize_live(
         raise WikisourceIntakeError("unreachable bounded 429 retry state")
 
     titles = discover_index_titles(get_json=paced_get_json)[:max_pages]
-    snapshots = [fetch_page_snapshot(title, get_json=paced_get_json) for title in titles]
-    return materialize_snapshots(snapshots)
+    snapshots: list[PageSnapshot] = []
+    rejections: list[PageRejection] = []
+    for title in titles:
+        try:
+            snapshots.append(fetch_page_snapshot(title, get_json=paced_get_json))
+        except RejectedPageCandidate as exc:
+            rejections.append(
+                PageRejection(
+                    page_number=exc.page_number,
+                    revision_id=exc.revision_id,
+                    normalized_sha256=exc.normalized_sha256,
+                    normalized_utf8_bytes=exc.normalized_utf8_bytes,
+                    reason=exc.reason,
+                )
+            )
+    return materialize_snapshots(snapshots, rejected_pages=rejections)
