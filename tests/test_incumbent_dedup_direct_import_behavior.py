@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import importlib.util
 import sys
 from collections import Counter
@@ -72,6 +73,38 @@ def test_attestation_rejects_counter_class_member_replacement(tmp_path: Path) ->
         Counter.update = original
 
     assert caught == "V3 direct imported behavior drift: collections.Counter"
+
+
+def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() -> None:
+    counter_state = next(
+        state
+        for label, module_name, imported_name, bound_name, state
+        in indexed._FROZEN_DIRECT_IMPORTED_BEHAVIOR
+        if (label, module_name, imported_name, bound_name)
+        == ("V3", "collections", "Counter", "Counter")
+    )
+    assert indexed._direct_behavior_state_matches(Counter, counter_state)
+    assert Counter(["a", "a", "b"]) == Counter({"a": 2, "b": 1})
+
+    original = getattr(collections, "_count_elements")
+    caught: str | None = None
+
+    def replacement(mapping: object, iterable: object) -> None:
+        del mapping, iterable
+
+    try:
+        setattr(collections, "_count_elements", replacement)
+        assert indexed._direct_behavior_state_matches(Counter, counter_state)
+        assert Counter(["a", "a", "b"]) == Counter()
+        try:
+            indexed._attest_loader_frozen_runtime_dependencies()
+        except indexed.IndexedExecutionError as exc:
+            caught = str(exc)
+    finally:
+        setattr(collections, "_count_elements", original)
+
+    assert caught == "collections._count_elements runtime drift"
+    indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_attestation_rejects_unfrozen_direct_behavior_import(tmp_path: Path) -> None:
