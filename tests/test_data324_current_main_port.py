@@ -186,3 +186,57 @@ def test_current_main_family_credit_promotion_fails(tmp_path: Path) -> None:
     _mutate_port(root, mutate)
     with pytest.raises(PortValidationError, match="truth boundary drift"):
         validate_snapshot(root)
+
+
+@pytest.mark.parametrize(
+    ("field", "alias"),
+    [
+        ("source_level_training_eligible_snapshot", 1),
+        ("family_credit_authorized", 0),
+        ("corpus_admitted", 0),
+        ("training_authorized_bytes", False),
+        ("tokenizer_fit_authorized", 0),
+        ("model_training_executed", 0),
+        ("paid_compute_used", 0),
+        ("learned_20m_promoted", 0),
+    ],
+)
+def test_truth_boundary_rejects_bool_int_aliases(
+    tmp_path: Path, field: str, alias: object
+) -> None:
+    root = _copy_fixture(tmp_path)
+
+    def mutate(config: dict[str, object]) -> None:
+        truth = config["current_main_truth_boundary"]
+        assert isinstance(truth, dict)
+        truth[field] = alias
+
+    _mutate_port(root, mutate)
+    with pytest.raises(PortValidationError, match="truth boundary drift"):
+        validate_snapshot(root)
+
+
+def test_unknown_truth_boundary_field_fails_closed(tmp_path: Path) -> None:
+    root = _copy_fixture(tmp_path)
+
+    def mutate(config: dict[str, object]) -> None:
+        truth = config["current_main_truth_boundary"]
+        assert isinstance(truth, dict)
+        truth["optimizer_updates_executed"] = 1
+
+    _mutate_port(root, mutate)
+    with pytest.raises(PortValidationError, match="truth boundary drift"):
+        validate_snapshot(root)
+
+
+def test_missing_truth_boundary_field_fails_closed(tmp_path: Path) -> None:
+    root = _copy_fixture(tmp_path)
+
+    def mutate(config: dict[str, object]) -> None:
+        truth = config["current_main_truth_boundary"]
+        assert isinstance(truth, dict)
+        del truth["training_authorized_bytes"]
+
+    _mutate_port(root, mutate)
+    with pytest.raises(PortValidationError, match="truth boundary drift"):
+        validate_snapshot(root)
