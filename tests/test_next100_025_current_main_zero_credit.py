@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -24,7 +25,7 @@ class _FakeResponse:
         self.payload = payload
         self.read_called = False
 
-    def __enter__(self) -> _FakeResponse:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
