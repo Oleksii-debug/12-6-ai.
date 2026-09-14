@@ -271,8 +271,14 @@ def fetch_page_snapshot(
     if not approved_after:
         raise WikisourceIntakeError("page approval changed during exact render")
     normalized = rendered_html_to_text(parse["text"])
-    validate_ua_page_text(normalized)
     payload = normalized.encode("utf-8")
+    try:
+        validate_ua_page_text(normalized)
+    except WikisourceIntakeError as exc:
+        raise WikisourceIntakeError(
+            f"{exc}; page_number={page_number}; page_revision_id={revision_id}; "
+            f"normalized_utf8_bytes={len(payload)}"
+        ) from None
     return PageSnapshot(
         page_number=page_number,
         title=title,
