@@ -48,12 +48,34 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def _sha256_file(path: Path) -> str:
+def _load_json_with_sha(path: Path) -> tuple[dict[str, Any], str]:
+    raw = path.read_bytes()
+    digest = _sha256_bytes(raw)
+    value = json.loads(raw.decode("utf-8"))
+    if not isinstance(value, dict):
+        raise TypeError(f"JSON root must be an object: {path}")
+    return value, digest
+
+
+def _load_jsonl_with_sha(path: Path) -> tuple[list[dict[str, Any]], str]:
+    rows: list[dict[str, Any]] = []
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+        for line_number, raw in enumerate(handle, 1):
+            digest.update(raw)
+            if not raw.strip():
+                raise ValueError(
+                    f"blank JSONL line {line_number} is forbidden: {path}"
+                )
+            value = json.loads(raw.decode("utf-8"))
+            if not isinstance(value, dict):
+                raise TypeError(
+                    f"JSONL line {line_number} must be an object: {path}"
+                )
+            rows.append(value)
+    if not rows:
+        raise ValueError(f"JSONL input must be non-empty: {path}")
+    return rows, digest.hexdigest()
 
 
 def _require_sha256(value: object, name: str) -> str:
@@ -66,27 +88,6 @@ def _require_git_sha(value: object, name: str) -> str:
     if not isinstance(value, str) or _GIT_SHA_RE.fullmatch(value) is None:
         raise ValueError(f"{name} must be lowercase 40-hex Git SHA")
     return value
-
-
-def _load_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise TypeError(f"JSON root must be an object: {path}")
-    return value
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if not raw.strip():
-            raise ValueError(f"blank JSONL line {line_number} is forbidden: {path}")
-        value = json.loads(raw)
-        if not isinstance(value, dict):
-            raise TypeError(f"JSONL line {line_number} must be an object: {path}")
-        rows.append(value)
-    if not rows:
-        raise ValueError(f"JSONL input must be non-empty: {path}")
-    return rows
 
 
 def _git_head(repo_root: Path) -> str:
@@ -346,19 +347,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.output_dir.exists():
         raise FileExistsError(f"output bundle already exists: {args.output_dir}")
 
-    input_paths = {
-        "training_records_jsonl": args.training_records_jsonl,
-        "training_handoff_json": args.training_handoff_json,
-        "evaluation_records_jsonl": args.evaluation_records_jsonl,
-        "reserved_binding_json": args.reserved_binding_json,
+    training_records, training_records_sha256 = _load_jsonl_with_sha(
+        args.training_records_jsonl
+    )
+    training_handoff, training_handoff_sha256 = _load_json_with_sha(
+        args.training_handoff_json
+    )
+    evaluation_records, evaluation_records_sha256 = _load_jsonl_with_sha(
+        args.evaluation_records_jsonl
+    )
+    reserved_binding, reserved_binding_sha256 = _load_json_with_sha(
+        args.reserved_binding_json
+    )
+    input_hashes = {
+        "training_records_jsonl": training_records_sha256,
+        "training_handoff_json": training_handoff_sha256,
+        "evaluation_records_jsonl": evaluation_records_sha256,
+        "reserved_binding_json": reserved_binding_sha256,
     }
-    input_hashes = {name: _sha256_file(path) for name, path in input_paths.items()}
 
     report, evidence = execute_reserved_decontamination(
-        _load_jsonl(args.training_records_jsonl),
-        _load_jsonl(args.evaluation_records_jsonl),
-        training_handoff_evidence=_load_json(args.training_handoff_json),
-        reserved_payload_binding=_load_json(args.reserved_binding_json),
+        training_records,
+        evaluation_records,
+        training_handoff_evidence=training_handoff,
+        reserved_payload_binding=reserved_binding,
         expected_inventory_identity_sha256=args.expected_inventory_identity_sha256,
         expected_survivor_authority_sha256=args.expected_survivor_authority_sha256,
         expected_training_handoff_identity_sha256=(

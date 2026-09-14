@@ -224,6 +224,16 @@ def test_main_publishes_atomic_hash_only_bundle(tmp_path: Path, monkeypatch):
     assert receipt["authorized_training_exposure"] == 0
     assert receipt["tokenizer_fit_authorized"] is False
     assert receipt["training_executed"] is False
+    physical_inputs = {
+        "training_records_jsonl": tmp_path / "training.jsonl",
+        "training_handoff_json": tmp_path / "handoff.json",
+        "evaluation_records_jsonl": tmp_path / "evaluation.jsonl",
+        "reserved_binding_json": tmp_path / "reserved-binding.json",
+    }
+    assert receipt["input_files_sha256"] == {
+        name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for name, path in physical_inputs.items()
+    }
 
     durable = json.dumps(
         {"report": report, "evidence": evidence, "receipt": receipt},
