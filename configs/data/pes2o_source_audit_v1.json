@@ -1,0 +1,103 @@
+{
+  "schema_id": "12-6.pes2o-source-rights-audit.v1",
+  "schema_version": 1,
+  "audit_date": "2026-08-27",
+  "status": "REVIEW_REQUIRED_ZERO_TRAINING_CREDIT",
+  "project_authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "swarm_protocol": "SWARM-300-V2",
+    "swarm_control_issue": 723,
+    "worker_issue": 745,
+    "parent_issues": [720, 4, 548]
+  },
+  "upstream_identity": {
+    "code_repository": {
+      "url": "https://github.com/allenai/peS2o",
+      "commit": "cc4800ffd798bb9baa29552059b294073cf91e90",
+      "license": "Apache-2.0",
+      "license_scope": "PE_S2O_CODE_REPOSITORY_ONLY"
+    },
+    "dataset_repository": {
+      "url": "https://huggingface.co/datasets/allenai/peS2o",
+      "revision": "636a503e44a3ca1b58e01fb61eab0825cd574de0",
+      "dataset_card_license": "ODC-By-1.0",
+      "license_scope": "DATASET_LAYER_NOT_BLANKET_UNDERLYING_CONTENT_RIGHTS",
+      "contains_v3_shards_at_revision": true
+    },
+    "declared_derivation": {
+      "primary_corpus": "S2ORC",
+      "secondary_channel": "S2AG",
+      "source_field_values": ["s2orc", "s2ag"],
+      "observed_document_fields": ["added", "created", "id", "source", "text", "version"],
+      "per_document_license_field_in_observed_schema": false
+    },
+    "semantic_scholar_rights_context": {
+      "s2orc_dataset_license": "ODC-By-1.0",
+      "third_party_content_may_have_separate_terms": true,
+      "semantic_scholar_cannot_grant_publisher_or_author_permissions": true
+    }
+  },
+  "source_channels": [
+    {
+      "id": "S2ORC_FULLTEXT",
+      "pes2o_source_value": "s2orc",
+      "content_kind": "FULL_TEXT_PAPER",
+      "provenance_identifier": "SEMANTIC_SCHOLAR_CORPUS_ID",
+      "rights_status": "REVIEW_REQUIRED",
+      "source_specific_license_evidence": [],
+      "training_authorized": false,
+      "authorized_bytes": 0,
+      "reason": "Dataset-layer ODC-By and open-access status do not establish document-level training rights for every underlying paper."
+    },
+    {
+      "id": "S2AG_TITLE_ABSTRACT",
+      "pes2o_source_value": "s2ag",
+      "content_kind": "TITLE_AND_ABSTRACT",
+      "provenance_identifier": "SEMANTIC_SCHOLAR_CORPUS_ID",
+      "rights_status": "REVIEW_REQUIRED",
+      "source_specific_license_evidence": [],
+      "training_authorized": false,
+      "authorized_bytes": 0,
+      "reason": "The peS2o record schema exposes corpus identity but no document-level license field; source-specific rights remain unresolved."
+    }
+  ],
+  "rights_gate": {
+    "code_license_is_dataset_training_authority": false,
+    "dataset_package_license_is_training_authority": false,
+    "open_access_label_is_training_authority": false,
+    "source_level_rights_and_provenance_required": true,
+    "document_level_rights_evidence_required": true,
+    "ambiguous_or_missing_rights_fail_closed": true,
+    "training_authorized": false,
+    "authorized_source_bytes": 0,
+    "corpus_credit_bytes": 0
+  },
+  "contamination_gate": {
+    "upstream_train_valid_split_is_project_evaluation_clearance": false,
+    "project_reserved_evaluation_excluded": true,
+    "benchmark_or_final_test_payload_accessed": false,
+    "exact_decontamination_required_before_admission": true,
+    "near_decontamination_required_before_admission": true,
+    "decontamination_executed": false,
+    "admission_before_decontamination_allowed": false
+  },
+  "admission_requirements": [
+    "Freeze an immutable peS2o dataset revision and exact shard inventory with hashes.",
+    "Resolve source-specific or document-level rights evidence for every record admitted to training.",
+    "Retain Semantic Scholar Corpus ID and source channel in the project provenance ledger.",
+    "Reject records whose rights, origin, or license evidence is absent, ambiguous, conflicting, or restrictive for the intended use.",
+    "Run exact and near decontamination against project-reserved evaluation and final-test identities before any training admission.",
+    "Run project quality, privacy, duplication, split, and unique-loss accounting gates after rights and contamination clearance.",
+    "Obtain the normal D03 dataset-freeze and project promotion evidence before tokenizer fitting or optimizer updates."
+  ],
+  "hard_boundaries": {
+    "bulk_download_performed": false,
+    "training_data_downloaded_by_this_audit": false,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_authorized": 0,
+    "paid_compute_authorized": false,
+    "foreign_pretrained_weights_allowed": false,
+    "final_test_data_allowed_in_training": false
+  }
+}
