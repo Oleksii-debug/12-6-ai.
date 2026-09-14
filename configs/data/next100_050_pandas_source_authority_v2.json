@@ -1,0 +1,79 @@
+{
+  "schema_version": "12-6.next100-050-pandas-source-authority.v2",
+  "execution_profile": "LOCAL_FREE",
+  "project_authority": {
+    "swarm_control_issue": 723,
+    "convergence_issue": 1973,
+    "source_pr": 463,
+    "source_audit_issue": 1959,
+    "source_audit_verdict": "PASS_FOR_INTEGRATION_SOURCE_AUTHORITY"
+  },
+  "bounded_source": {
+    "repository": "pandas-dev/pandas",
+    "repository_url": "https://github.com/pandas-dev/pandas",
+    "commit": "0b54092c19202b579a1114e2d74f4b8028d5d573",
+    "source_id": "code.pandas-dev.pandas.core.accessor",
+    "source_family": "github:pandas-dev/pandas",
+    "path": "pandas/core/accessor.py",
+    "size_bytes": 15837,
+    "git_blob_sha1": "26560f84000f24aee377bc761db0d2686452f813",
+    "raw_sha256": "d737d2c0239e0693d992a26e1ee9e56f73dd07e5fa05ff6079e70d9c3677299e",
+    "normalized_sha256": "d737d2c0239e0693d992a26e1ee9e56f73dd07e5fa05ff6079e70d9c3677299e",
+    "source_manifest_sha256": "ff4b75a8d956e2d0773badfda28cffbd45a1d282b7468b475e51442ee65c53f9"
+  },
+  "license": {
+    "license_id": "BSD-3-Clause",
+    "path": "LICENSE",
+    "git_blob_sha1": "bd1cc2a30c626d0bbe43ab6ec1c4744c2e2df831",
+    "sha256": "9850f6b5bdef7346503065807b878deb8058b976c5c329f4c4d23bf4796ce9ae",
+    "model_training": "ALLOWED",
+    "redistribution": "ALLOWED",
+    "evaluation": "NOT_SEPARATELY_ADMITTED"
+  },
+  "historical_execution": {
+    "source_head_sha": "61af21e4c32bfbce124886c3c684cf85be290c19",
+    "run_id": 32998203692,
+    "job_id": 98272853739,
+    "artifact_id": 9617946687,
+    "artifact_zip_sha256": "4ed188020cd0c0a51195faad1170a0af521f15cea34ea90c8ad5e1a5dbd1a2e2",
+    "receipt_path": "evidence/data/next100_050_pandas_terminal_source_authority_v1.json",
+    "receipt_file_sha256": "3cc3ec4a8e6efc10aeddb2510e879842d63269020d6476e07906dc79b9e5ee49",
+    "receipt_report_sha256": "2293139ca1131842e754a119ec7b847e8ee7c0703ab4a4bd3a9ce7fb332f113e",
+    "historical_config_git_blob_sha1": "ecd747cfdb97e9b5cf11b895477bcb4af7f77aaf",
+    "historical_config_sha256": "5c08d522a12e2bc9f9ed096f07739c06d455f30287340d9f096781cf76032602"
+  },
+  "historical_dedup": {
+    "historical_only": true,
+    "baseline_registry_path": "configs/data/data287_external_snapshot_registry_v2.json",
+    "baseline_registry_git_blob_sha1": "d48e5281d8b4949d4c6f256d84518305033c2476",
+    "baseline_registry_sha256": "4d684ca79ac454778df7f43a8c9c710e4daac0e1e38b984c9158b9536fdc02d4",
+    "exact_duplicate": false,
+    "near_duplicate": false,
+    "near_threshold": 0.85,
+    "comparison_families": [
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "current_global_authority": false
+  },
+  "current_composition": {
+    "global_dedup": "REQUIRED_NOT_EXECUTED_BY_THIS_AUTHORITY",
+    "evaluation_firewall": "REQUIRED_AT_COMPOSITION",
+    "current_retained_corpus_cleanliness": "NOT_PROVEN_BY_THIS_AUTHORITY",
+    "source_authority_status": "VERIFIED_BOUNDED_SOURCE_AUTHORITY",
+    "canonical_capacity_credit_bytes": 0,
+    "canonical_family_credit": 0,
+    "canonical_files_credit": 0
+  },
+  "truth_boundary": {
+    "current_retained_corpus_launch_authoritative": false,
+    "tokenizer_fit_authorized": false,
+    "authorized_optimized_target_exposure": 0,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false
+  }
+}
