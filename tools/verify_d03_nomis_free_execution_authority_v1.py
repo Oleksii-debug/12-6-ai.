@@ -61,7 +61,7 @@ def verify_product_checkout(root:Path,expected:str)->dict[str,Any]:
         path_at_head(root,head,rel);req(blob((root/rel).read_bytes())==h,f"base-main binding drift: {rel}")
     return {"product_head_sha":head,"base_main_sha":BASE,"base_main_bound_blob_count":len(BASE_BLOBS)}
 def _checkout(root:Path,head:str,tree:str,label:str,blobs:Mapping[str,str]|None=None)->dict[str,str]:
-    no_replace(root);req(gtext(root,"rev-parse","HEAD")==head,f"{label} HEAD drift");req(gtext(root,"rev-parse","HEAD^{{tree}}")==tree,f"{label} tree drift")
+    no_replace(root);req(gtext(root,"rev-parse","HEAD")==head,f"{label} HEAD drift");req(gtext(root,"rev-parse","HEAD^{tree}")==tree,f"{label} tree drift")
     req(gtext(root,"status","--porcelain=v1","--untracked-files=all")=="",f"{label} worktree dirty")
     for rel,h in (blobs or {}).items():path_at_head(root,head,rel);req(blob((root/rel).read_bytes())==h,f"{label} blob drift: {rel}")
     return {"head_sha":head,"tree_sha":tree}
