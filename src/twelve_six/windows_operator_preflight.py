@@ -34,41 +34,10 @@ PROFILE_ID = "R01-WINDOWS-LOCAL-FREE-OPERATOR-V1"
 PACKET_SCHEMA_VERSION = 1
 PACKET_ID = "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1"
 SAFE_STOP_SCHEMA = "12-6.windows-local-free-safe-stop-request.v2"
-RECOVERY_STATE_SCHEMA = "12-6.training-recovery.v1"
-RECOVERY_STATE_AUTHORITY = "LOCAL_PROCESS_RECOVERY_POLICY_NOT_DISTRIBUTED_ELASTICITY"
-RECOVERY_RUN_MANIFEST_FILENAME = "run-manifest.json"
-RECOVERY_STATE_FILENAME = "recovery-state.json"
-RECOVERY_TERMINAL_FILENAME = "terminal.json"
-CURRENT_RUN_AUTHORITY = "TRAIN39_RECOVERY_STORE_ROOT_V1"
 EXIT_OK = 0
 EXIT_BLOCKED = 2
 EXIT_ERROR = 3
 _SHA256_HEX = frozenset("0123456789abcdef")
-_ACTIVE_RUN_PHASES = frozenset(
-    {"PREPARED", "RUNNING", "CHECKPOINTING", "PREEMPTED", "PAUSED", "RECOVERING"}
-)
-_RECOVERY_STATE_KEYS = frozenset(
-    {
-        "schema_version",
-        "authority",
-        "run_id",
-        "run_manifest_sha256",
-        "source_sha",
-        "topology_sha256",
-        "world_size",
-        "policy",
-        "phase",
-        "attempt",
-        "restarts_used",
-        "preemptions_seen",
-        "journal_reconstructed",
-        "last_known_good",
-        "checkpoint_count",
-        "invalid_checkpoint_directories",
-        "failure_count",
-        "state_sha256",
-    }
-)
 _SAFE_STOP_MARKER_KEYS = frozenset(
     {
         "schema",
@@ -128,15 +97,6 @@ def _canonical_sha256(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _valid_lower_hex(value: Any, *, lengths: set[int]) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) in lengths
-        and value == value.lower()
-        and all(char in _SHA256_HEX for char in value)
-    )
-
-
 def _json_object_no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -175,16 +135,6 @@ def _read_json_file(path: Path) -> tuple[dict[str, Any], str]:
     if not isinstance(value, dict):
         raise OperatorPreflightError(f"json_root_must_be_object:{path}")
     return value, hashlib.sha256(raw).hexdigest()
-
-
-def _read_regular_json_file(path: Path, *, label: str) -> tuple[dict[str, Any], str]:
-    try:
-        mode = path.lstat().st_mode
-    except OSError as exc:
-        raise OperatorPreflightError(f"{label}_missing_or_unreadable:{path}:{exc}") from exc
-    if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
-        raise OperatorPreflightError(f"{label}_must_be_regular_file:{path}")
-    return _read_json_file(path)
 
 
 def _expect(errors: list[str], condition: bool, message: str) -> None:
@@ -371,21 +321,6 @@ def validate_operator_profile(
         stop.get("run_manifest_hash_semantics")
         == "CANONICAL_SORTED_COMPACT_UTF8_JSON_SHA256",
         "safe_stop_run_manifest_hash_semantics_mismatch",
-    )
-    _expect(
-        errors,
-        stop.get("current_run_authority") == CURRENT_RUN_AUTHORITY,
-        "safe_stop_current_run_authority_mismatch",
-    )
-    _expect(
-        errors,
-        stop.get("current_run_manifest_filename") == RECOVERY_RUN_MANIFEST_FILENAME,
-        "safe_stop_current_run_manifest_filename_mismatch",
-    )
-    _expect(
-        errors,
-        stop.get("current_run_state_filename") == RECOVERY_STATE_FILENAME,
-        "safe_stop_current_run_state_filename_mismatch",
     )
 
     _expect(
@@ -606,24 +541,16 @@ def _ensure_state_dir(path: Path, *, create: bool) -> Path:
     return path
 
 
-def _ensure_recovery_root(path: Path) -> Path:
-    root = path.absolute()
-    try:
-        mode = root.lstat().st_mode
-    except OSError as exc:
-        raise OperatorPreflightError(f"current_run_recovery_root_missing:{root}:{exc}") from exc
-    if stat.S_ISLNK(mode):
-        raise OperatorPreflightError("current_run_recovery_root_must_not_be_symlink")
-    if not stat.S_ISDIR(mode):
-        raise OperatorPreflightError("current_run_recovery_root_must_be_directory")
-    return root
-
-
 def _run_identity_errors(run_id: Any, run_manifest_sha256: Any) -> list[str]:
     errors: list[str] = []
     if not isinstance(run_id, str) or not run_id.strip():
         errors.append("safe_stop_current_run_id_invalid")
-    if not _valid_lower_hex(run_manifest_sha256, lengths={64}):
+    if (
+        not isinstance(run_manifest_sha256, str)
+        or len(run_manifest_sha256) != 64
+        or run_manifest_sha256 != run_manifest_sha256.lower()
+        or any(char not in _SHA256_HEX for char in run_manifest_sha256)
+    ):
         errors.append("safe_stop_current_run_manifest_sha256_invalid")
     return errors
 
@@ -640,7 +567,12 @@ def _run_manifest_contract_errors(run_manifest: Mapping[str, Any]) -> list[str]:
         errors.append("safe_stop_run_manifest_candidate_invalid")
     else:
         git_sha = candidate.get("git_sha")
-        if not _valid_lower_hex(git_sha, lengths={40, 64}):
+        if (
+            not isinstance(git_sha, str)
+            or len(git_sha) not in {40, 64}
+            or git_sha != git_sha.lower()
+            or any(char not in _SHA256_HEX for char in git_sha)
+        ):
             errors.append("safe_stop_run_manifest_candidate_git_sha_invalid")
 
     recovery = run_manifest.get("recovery")
@@ -658,7 +590,7 @@ def _run_manifest_contract_errors(run_manifest: Mapping[str, Any]) -> list[str]:
 
 
 def _load_run_identity(run_manifest_path: Path) -> tuple[str, str]:
-    """Parse a candidate run manifest; this helper never confers current-run authority."""
+    """Load a canonical RecoveryStore-compatible manifest and bind its identity."""
     run_manifest, _raw_sha256 = _read_json_file(run_manifest_path)
     run_id = run_manifest.get("run_id")
     run_manifest_sha256 = _canonical_sha256(run_manifest)
@@ -668,173 +600,6 @@ def _load_run_identity(run_manifest_path: Path) -> tuple[str, str]:
     if errors:
         raise OperatorPreflightError("run_manifest_identity_invalid:" + ",".join(errors))
     return run_id, run_manifest_sha256
-
-
-def _recovery_state_contract_errors(state: Mapping[str, Any]) -> list[str]:
-    errors: list[str] = []
-    _expect(
-        errors,
-        frozenset(state.keys()) == _RECOVERY_STATE_KEYS,
-        "current_run_recovery_state_keys_mismatch",
-    )
-    _expect(
-        errors,
-        state.get("schema_version") == RECOVERY_STATE_SCHEMA,
-        "current_run_recovery_state_schema_mismatch",
-    )
-    _expect(
-        errors,
-        state.get("authority") == RECOVERY_STATE_AUTHORITY,
-        "current_run_recovery_state_authority_mismatch",
-    )
-    errors.extend(_run_identity_errors(state.get("run_id"), state.get("run_manifest_sha256")))
-    _expect(
-        errors,
-        _valid_lower_hex(state.get("source_sha"), lengths={40, 64}),
-        "current_run_recovery_state_source_sha_invalid",
-    )
-    _expect(
-        errors,
-        _valid_lower_hex(state.get("topology_sha256"), lengths={64}),
-        "current_run_recovery_state_topology_sha256_invalid",
-    )
-    _expect(
-        errors,
-        _strict_int(state.get("world_size")) and state.get("world_size", 0) > 0,
-        "current_run_recovery_state_world_size_invalid",
-    )
-    _expect(
-        errors,
-        state.get("phase") in _ACTIVE_RUN_PHASES,
-        "current_run_recovery_state_not_active",
-    )
-    _expect(
-        errors,
-        isinstance(state.get("policy"), Mapping) and bool(state.get("policy")),
-        "current_run_recovery_state_policy_invalid",
-    )
-    for key in (
-        "attempt",
-        "restarts_used",
-        "preemptions_seen",
-        "checkpoint_count",
-        "failure_count",
-    ):
-        value = state.get(key)
-        _expect(
-            errors,
-            _strict_int(value) and value >= 0,
-            f"current_run_recovery_state_{key}_invalid",
-        )
-    _expect(
-        errors,
-        isinstance(state.get("journal_reconstructed"), bool),
-        "current_run_recovery_state_journal_reconstructed_invalid",
-    )
-    _expect(
-        errors,
-        isinstance(state.get("invalid_checkpoint_directories"), list)
-        and all(isinstance(item, str) for item in state.get("invalid_checkpoint_directories", [])),
-        "current_run_recovery_state_invalid_checkpoint_directories_invalid",
-    )
-    _expect(
-        errors,
-        state.get("last_known_good") is None or isinstance(state.get("last_known_good"), Mapping),
-        "current_run_recovery_state_last_known_good_invalid",
-    )
-    unsigned = dict(state)
-    digest = unsigned.pop("state_sha256", None)
-    _expect(
-        errors,
-        _valid_lower_hex(digest, lengths={64}) and digest == _canonical_sha256(unsigned),
-        "current_run_recovery_state_sha256_invalid",
-    )
-    return sorted(set(errors))
-
-
-def _load_current_run_identity(recovery_root: Path) -> tuple[str, str]:
-    """Resolve current-run identity from the incumbent RecoveryStore durable root."""
-    root = _ensure_recovery_root(recovery_root)
-    terminal_path = root / RECOVERY_TERMINAL_FILENAME
-    if terminal_path.exists() or terminal_path.is_symlink():
-        raise OperatorPreflightError("current_run_authority_terminal_marker_present")
-
-    state, _state_raw_sha = _read_regular_json_file(
-        root / RECOVERY_STATE_FILENAME,
-        label="current_run_recovery_state",
-    )
-    state_errors = _recovery_state_contract_errors(state)
-    if state_errors:
-        raise OperatorPreflightError(
-            "current_run_authority_invalid:" + ",".join(state_errors)
-        )
-
-    persisted_manifest, _manifest_raw_sha = _read_regular_json_file(
-        root / RECOVERY_RUN_MANIFEST_FILENAME,
-        label="current_run_persisted_manifest",
-    )
-    errors = _run_manifest_contract_errors(persisted_manifest)
-    persisted_run_id = persisted_manifest.get("run_id")
-    persisted_manifest_sha256 = _canonical_sha256(persisted_manifest)
-    errors.extend(_run_identity_errors(persisted_run_id, persisted_manifest_sha256))
-
-    candidate = persisted_manifest.get("candidate")
-    recovery = persisted_manifest.get("recovery")
-    topology = recovery.get("topology") if isinstance(recovery, Mapping) else None
-    if not errors and isinstance(candidate, Mapping) and isinstance(topology, Mapping):
-        _expect(
-            errors,
-            state.get("run_id") == persisted_run_id,
-            "current_run_state_run_id_mismatch",
-        )
-        _expect(
-            errors,
-            state.get("run_manifest_sha256") == persisted_manifest_sha256,
-            "current_run_state_manifest_sha256_mismatch",
-        )
-        _expect(
-            errors,
-            state.get("source_sha") == candidate.get("git_sha"),
-            "current_run_state_source_sha_mismatch",
-        )
-        _expect(
-            errors,
-            state.get("topology_sha256") == _canonical_sha256(topology),
-            "current_run_state_topology_sha256_mismatch",
-        )
-        _expect(
-            errors,
-            state.get("world_size") == topology.get("world_size"),
-            "current_run_state_world_size_mismatch",
-        )
-    errors = sorted(set(errors))
-    if errors:
-        raise OperatorPreflightError(
-            "current_run_authority_manifest_mismatch:" + ",".join(errors)
-        )
-    return str(state["run_id"]), str(state["run_manifest_sha256"])
-
-
-def _load_bound_run_identity(
-    run_manifest_path: Path, *, recovery_root: Path
-) -> tuple[str, str]:
-    """Cross-bind a caller-supplied candidate to the independent RecoveryStore root."""
-    expected_run_id, expected_manifest_sha256 = _load_current_run_identity(recovery_root)
-    candidate_run_id, candidate_manifest_sha256 = _load_run_identity(run_manifest_path)
-    errors: list[str] = []
-    _expect(
-        errors,
-        candidate_run_id == expected_run_id,
-        "safe_stop_candidate_run_id_not_current",
-    )
-    _expect(
-        errors,
-        candidate_manifest_sha256 == expected_manifest_sha256,
-        "safe_stop_candidate_run_manifest_sha256_not_current",
-    )
-    if errors:
-        raise OperatorPreflightError("run_manifest_not_current_run:" + ",".join(errors))
-    return expected_run_id, expected_manifest_sha256
 
 
 def _requested_at_utc_valid(value: Any) -> bool:
@@ -1115,21 +880,12 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_argument("--target", choices=("20m", "100m"), default="20m")
         if command in {"status", "request-stop"}:
             sub.add_argument(
-                "--recovery-root",
-                type=Path,
-                required=True,
-                help=(
-                    "incumbent TRAIN39 RecoveryStore root containing authenticated "
-                    "recovery-state.json and persisted run-manifest.json"
-                ),
-            )
-            sub.add_argument(
                 "--run-manifest",
                 type=Path,
                 required=command == "request-stop",
                 help=(
-                    "candidate exact run manifest; request-stop requires it and cross-binds "
-                    "it to --recovery-root before marker creation"
+                    "exact canonical run manifest; required for request-stop and for "
+                    "authenticating an existing marker in status"
                 ),
             )
     args = parser.parse_args(argv)
@@ -1139,10 +895,7 @@ def main(argv: list[str] | None = None) -> int:
             args.profile, args.packet
         )
         if args.command == "request-stop":
-            run_id, run_manifest_sha256 = _load_bound_run_identity(
-                args.run_manifest,
-                recovery_root=args.recovery_root,
-            )
+            run_id, run_manifest_sha256 = _load_run_identity(args.run_manifest)
             result = request_safe_stop(
                 args.state_dir,
                 profile_sha256=profile_sha,
@@ -1154,7 +907,6 @@ def main(argv: list[str] | None = None) -> int:
             result.update(
                 {
                     "target": args.target,
-                    "current_run_authority": CURRENT_RUN_AUTHORITY,
                     "launch_authorized": False,
                     "training_authorized": False,
                     "truth_boundary": dict(_TRUTH_BOUNDARY),
@@ -1171,16 +923,10 @@ def main(argv: list[str] | None = None) -> int:
             target=args.target,
         )
         if args.command == "status":
+            run_id: str | None = None
+            run_manifest_sha256: str | None = None
             if args.run_manifest is not None:
-                run_id, run_manifest_sha256 = _load_bound_run_identity(
-                    args.run_manifest,
-                    recovery_root=args.recovery_root,
-                )
-            else:
-                run_id, run_manifest_sha256 = _load_current_run_identity(args.recovery_root)
-            result["current_run_authority"] = CURRENT_RUN_AUTHORITY
-            result["run_id"] = run_id
-            result["run_manifest_sha256"] = run_manifest_sha256
+                run_id, run_manifest_sha256 = _load_run_identity(args.run_manifest)
             result["safe_stop"] = (
                 read_stop_status(
                     args.state_dir,
