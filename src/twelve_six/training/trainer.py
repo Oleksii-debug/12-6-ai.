@@ -106,6 +106,23 @@ def _typed_state_equal(left: Any, right: Any) -> bool:
     return bool(left == right)
 
 
+def _numerical_state_is_finite(value: Any) -> bool:
+    """Recursively reject non-finite behavior-affecting numerical state."""
+    if isinstance(value, Tensor):
+        if value.is_floating_point() or value.is_complex():
+            return bool(torch.isfinite(value.detach()).all().item())
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, complex):
+        return math.isfinite(value.real) and math.isfinite(value.imag)
+    if isinstance(value, Mapping):
+        return all(_numerical_state_is_finite(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return all(_numerical_state_is_finite(item) for item in value)
+    return True
+
+
 def _lr_lambda(config: TrainerConfig):
     def factor(step: int) -> float:
         if config.warmup_steps and step < config.warmup_steps:
@@ -306,6 +323,12 @@ class Trainer:
                 "construct a fresh trainer and restore a verified checkpoint"
             )
 
+    def _model_state_is_finite(self) -> bool:
+        return _numerical_state_is_finite(self.model.state_dict())
+
+    def _optimizer_state_is_finite(self) -> bool:
+        return _numerical_state_is_finite(self.optimizer.state_dict())
+
     def _prepare_batch(
         self, batch: Batch
     ) -> tuple[Tensor, Tensor, Tensor | None, bool]:
@@ -457,12 +480,38 @@ class Trainer:
                     self._raise_nonfinite(
                         f"non-finite update at micro_step={self.micro_step}", diagnostics
                     )
+                if not self._optimizer_state_is_finite():
+                    diagnostics = self._diagnostics(
+                        kind="update",
+                        batch=batch,
+                        batch_tokens=tokens,
+                        gradient_norm=grad_norm_value,
+                        gradient_norm_finite=True,
+                        affected=nonfinite_update_parameters(self.model, self.optimizer),
+                    )
+                    self._raise_nonfinite(
+                        f"non-finite optimizer state at micro_step={self.micro_step}",
+                        diagnostics,
+                    )
 
                 self.optimizer_step += 1
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
                 if self.scheduler is not None:
                     self.scheduler.step()
+                if not self._optimizer_state_is_finite():
+                    diagnostics = self._diagnostics(
+                        kind="update",
+                        batch=batch,
+                        batch_tokens=tokens,
+                        gradient_norm=grad_norm_value,
+                        gradient_norm_finite=True,
+                        affected=nonfinite_update_parameters(self.model, self.optimizer),
+                    )
+                    self._raise_nonfinite(
+                        f"non-finite optimizer/scheduler state at micro_step={self.micro_step}",
+                        diagnostics,
+                    )
             except Exception:
                 self._mark_failed(
                     f"optimizer/scheduler update failed at micro_step={self.micro_step}"
@@ -559,7 +608,7 @@ class Trainer:
             )
 
     def assert_checkpoint_safe(self) -> None:
-        """Require all consumed microbatches to belong to committed optimizer steps."""
+        """Require committed, numerically finite state before checkpoint publication."""
         self._assert_trainable()
         if self.optimizer_step > self.config.max_steps:
             raise RuntimeError("optimizer_step exceeds configured max_steps")
@@ -572,6 +621,14 @@ class Trainer:
             )
         if self._pending_tokens != 0 or self._pending_loss_sum != 0.0:
             raise RuntimeError("trainer has pending accumulation statistics")
+        if not self._model_state_is_finite():
+            reason = "non-finite model state blocks checkpoint publication"
+            self._mark_failed(reason)
+            raise NonFiniteTrainingError(reason)
+        if not self._optimizer_state_is_finite():
+            reason = "non-finite optimizer state blocks checkpoint publication"
+            self._mark_failed(reason)
+            raise NonFiniteTrainingError(reason)
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
@@ -603,6 +660,13 @@ class Trainer:
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
                 "and restore the verified model + trainer checkpoint"
             )
+        if not self._model_state_is_finite() or not self._optimizer_state_is_finite():
+            reason = "non-finite live Trainer state before restore"
+            self._mark_failed(reason)
+            raise TrainingStateInvalidError(
+                "non-finite live Trainer cannot be repaired in place; construct a fresh "
+                "Trainer and restore a verified checkpoint"
+            )
         if isinstance(state, Mapping):
             state = TrainerState(**state)
 
@@ -630,6 +694,10 @@ class Trainer:
             raise ValueError("scheduler state/config mismatch")
         if (state.scaler is None) != (self.scaler is None):
             raise ValueError("scaler state/runtime mismatch")
+        if not _numerical_state_is_finite(state.optimizer):
+            raise NonFiniteTrainingError(
+                "trainer checkpoint optimizer state contains NaN/Inf"
+            )
 
         optimizer_before = copy.deepcopy(self.optimizer.state_dict())
         scheduler_before = (
@@ -654,6 +722,14 @@ class Trainer:
 
         try:
             self.optimizer.load_state_dict(state.optimizer)
+            if not self._optimizer_state_is_finite():
+                raise NonFiniteTrainingError(
+                    "restored optimizer state contains NaN/Inf"
+                )
+            if not self._model_state_is_finite():
+                raise NonFiniteTrainingError(
+                    "live model state contains NaN/Inf during trainer restore"
+                )
             if self.scheduler is not None and state.scheduler is not None:
                 self.scheduler.load_state_dict(state.scheduler)
             if self.scaler is not None and state.scaler is not None:
