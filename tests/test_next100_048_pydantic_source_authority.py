@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from pytest import MonkeyPatch
-
 from tools import qualify_next100_048_pydantic as qualifier
 
 
