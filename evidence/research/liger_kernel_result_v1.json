@@ -1,0 +1,43 @@
+{
+  "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "branch": "swarm/775-liger-kernel-parity-v1",
+  "canonical_base": {
+    "changed": false,
+    "final_test_accessed": false,
+    "foreign_pretrained_weights_used": false,
+    "paid_compute_used": false,
+    "tokenizer_changed": false,
+    "training_started": false
+  },
+  "claim_issue": 775,
+  "component": "LIGER_KERNEL",
+  "promotion_state": "RETEST_RUNTIME_REQUIRED",
+  "reason": "Exact pinned dependency could not be installed in the local free environment because PyPI DNS/network access was unavailable; no alternate version was substituted.",
+  "result_sha256": "c753e4493449e01994ccac6c516d9f603db4b3a6292da3c53d13fa9a7a3ee21a",
+  "runtime": {
+    "dependency_install": "FAILED_NETWORK_DNS",
+    "gpu_evidence": false,
+    "latency_measured": false,
+    "memory_measured": false,
+    "parity_proven": false,
+    "runtime_state": "NOT_EXECUTED_DEPENDENCY_ABSENT",
+    "throughput_measured": false
+  },
+  "schema_version": 1,
+  "tests": {
+    "compileall": "PASS",
+    "deterministic_validator_twice": true,
+    "focused_pytest": "14 passed",
+    "negative_adversarial_included": true
+  },
+  "upstream": {
+    "commit": "000be60929938fd1358e03524c6ab398b6d421bd",
+    "license": "BSD-2-Clause",
+    "license_blob_sha": "d2fcc2b1c4384d0bcd1424b7f83db8e48fa753f6",
+    "repository": "https://github.com/linkedin/Liger-Kernel",
+    "sdist": "liger_kernel-0.8.2.tar.gz",
+    "sdist_sha256": "387673ed6bf64fc8150cc8315fed578d2fc717ec3450f53489f480880223c1b8",
+    "tag": "v0.8.2"
+  },
+  "worker_id": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1"
+}
