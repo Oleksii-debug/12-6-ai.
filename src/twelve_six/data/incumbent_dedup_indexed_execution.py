@@ -7,9 +7,11 @@ semantics remain delegated to the exact incumbent V3 module.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import html
 import inspect
+import json
 import marshal
 import re
 import sys
@@ -38,16 +40,33 @@ EXPECTED_THRESHOLDS = {
 DEFAULT_MAX_INDEX_POSTINGS = 100_000_000
 DEFAULT_MAX_PAIR_EXPANSIONS = 100_000_000
 
+_FROZEN_AST_PARSE = ast.parse
+_FROZEN_HASHLIB_SHA1 = hashlib.sha1
 _FROZEN_HASHLIB_SHA256 = hashlib.sha256
 
-# Freeze the exact behavior-bearing stdlib members used by the attested incumbent
-# modules. Re-executing authority source in this process intentionally reuses
-# sys.modules, so module-object identity alone cannot detect in-place member drift.
+# Freeze every direct stdlib module member used by the exact pinned executable
+# function bodies. Re-executing authority source in this process intentionally
+# reuses sys.modules, so module-object identity alone cannot detect in-place member
+# drift. _attest_imported_behavior_members also derives the direct member accesses
+# from the pinned source and fails closed if this table ever becomes incomplete.
 _FROZEN_IMPORTED_BEHAVIOR_MEMBERS = (
-    ("DATA232", "unicodedata", "normalize", unicodedata.normalize),
+    ("DATA232", "hashlib", "sha256", _FROZEN_HASHLIB_SHA256),
+    ("DATA232", "json", "dumps", json.dumps),
+    ("DATA232", "re", "fullmatch", re.fullmatch),
     ("DATA232", "re", "sub", re.sub),
+    ("DATA232", "unicodedata", "normalize", unicodedata.normalize),
+    ("V1", "hashlib", "sha1", _FROZEN_HASHLIB_SHA1),
     ("V1", "hashlib", "sha256", _FROZEN_HASHLIB_SHA256),
+    ("V1", "json", "dumps", json.dumps),
+    ("V1", "re", "fullmatch", re.fullmatch),
     ("V3", "html", "unescape", html.unescape),
+    ("V3", "re", "S", re.S),
+    ("V3", "re", "escape", re.escape),
+    ("V3", "re", "fullmatch", re.fullmatch),
+    ("V3", "re", "match", re.match),
+    ("V3", "re", "search", re.search),
+    ("V3", "re", "sub", re.sub),
+    ("V3", "unicodedata", "normalize", unicodedata.normalize),
 )
 
 
@@ -57,7 +76,7 @@ class IndexedExecutionError(RuntimeError):
 
 def _git_blob_sha1(payload: bytes) -> str:
     prefix = b"blob " + str(len(payload)).encode("ascii") + b"\0"
-    return hashlib.sha1(prefix + payload).hexdigest()
+    return _FROZEN_HASHLIB_SHA1(prefix + payload).hexdigest()
 
 
 def _module_path(module: Any) -> Path:
@@ -165,20 +184,70 @@ def _attest_referenced_globals(
             raise IndexedExecutionError(f"{label} referenced global drift: {name}")
 
 
+def _referenced_frozen_behavior_members(
+    module: Any,
+    label: str,
+    names: Sequence[str],
+) -> set[tuple[str, str]]:
+    """Derive direct frozen-global member accesses from exact executable function bodies."""
+    frozen_globals = {
+        global_name
+        for binding_label, global_name, _member_name, _expected_member
+        in _FROZEN_IMPORTED_BEHAVIOR_MEMBERS
+        if binding_label == label
+    }
+    referenced = set(names) & frozen_globals
+    if not referenced:
+        return set()
+
+    path = _module_path(module)
+    try:
+        source = path.read_text(encoding="utf-8")
+        tree = _FROZEN_AST_PARSE(source, filename=str(path))
+    except (OSError, SyntaxError, UnicodeError) as exc:
+        raise IndexedExecutionError(
+            f"cannot derive {label} imported behavior member closure"
+        ) from exc
+
+    members: set[tuple[str, str]] = set()
+    for definition in tree.body:
+        if not isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for statement in definition.body:
+            for node in ast.walk(statement):
+                if (
+                    isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id in referenced
+                ):
+                    members.add((node.value.id, node.attr))
+    return members
+
+
 def _attest_imported_behavior_members(
     module: Any,
     label: str,
     names: Sequence[str],
 ) -> None:
-    """Bind referenced imported behavior to member identities frozen at loader import."""
-    referenced = set(names)
+    """Bind every referenced direct stdlib member to its loader-frozen identity."""
+    frozen = {
+        (global_name, member_name): expected_member
+        for binding_label, global_name, member_name, expected_member
+        in _FROZEN_IMPORTED_BEHAVIOR_MEMBERS
+        if binding_label == label
+    }
+    required = _referenced_frozen_behavior_members(module, label, names)
+    missing = sorted(required - set(frozen))
+    if missing:
+        rendered = ", ".join(f"{global_name}.{member_name}" for global_name, member_name in missing)
+        raise IndexedExecutionError(f"{label} imported behavior member not frozen: {rendered}")
+
     live_namespace = vars(module)
-    for binding_label, global_name, member_name, expected_member in _FROZEN_IMPORTED_BEHAVIOR_MEMBERS:
-        if binding_label != label or global_name not in referenced:
-            continue
+    for global_name, member_name in sorted(required):
         imported = live_namespace.get(global_name)
         if imported is None:
             raise IndexedExecutionError(f"{label} imported behavior global missing: {global_name}")
+        expected_member = frozen[(global_name, member_name)]
         if getattr(imported, member_name, None) is not expected_member:
             raise IndexedExecutionError(
                 f"{label} imported behavior drift: {global_name}.{member_name}"
