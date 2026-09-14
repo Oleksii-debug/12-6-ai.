@@ -1,0 +1,37 @@
+{
+  "backend_execution": {
+    "import_version": null,
+    "reference_parity": false,
+    "status": "NOT_EXECUTED_DEPENDENCY_ABSENT"
+  },
+  "canonical_base_changed": false,
+  "contract_sha256": "34770d1b8ba7d14980979079d7b002d2cb647c15ec8919ff29f21f17376f7f88",
+  "fixture_sha256": "bc65160937d051af8def55b45a368fa7fac65a8876eaa90ef6d8236a81f94ca2",
+  "local_faiss_probe": {
+    "missing": "faiss",
+    "status": "NOT_EXECUTED_DEPENDENCY_ABSENT"
+  },
+  "parity_proven": false,
+  "persistence": {
+    "allow_untrusted_load": false,
+    "index_sha256": null,
+    "trust_policy": "HASH_BOUND_TRUSTED_LOCAL_ONLY"
+  },
+  "promotion_state": "CANDIDATE",
+  "qualification_id": "FAISS-RETRIEVAL-QUALIFICATION-V1",
+  "reference_results": {
+    "q-near-a": [
+      {"id": "doc-a", "score": 0.019999999999999997},
+      {"id": "doc-d", "score": 0.8200000000000001},
+      {"id": "doc-b", "score": 1.62}
+    ],
+    "q-near-b": [
+      {"id": "doc-b", "score": 0.07999999999999999},
+      {"id": "doc-d", "score": 0.6800000000000002},
+      {"id": "doc-a", "score": 1.2800000000000002}
+    ]
+  },
+  "schema_version": 1,
+  "training_authorized": false,
+  "worker_issue": 751
+}
