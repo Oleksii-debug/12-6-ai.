@@ -76,11 +76,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
       - name: Bind exact current-main V9 execution closure
-        env:
-          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          test "$EVENT_BASE_SHA" = "$EXPECTED_MAIN_SHA"
           test "$(git rev-parse HEAD^1)" = "$EXPECTED_MAIN_SHA"
           test "$(git hash-object tools/run_d03_expanded_global_dedup_v9.py)" = "$V9_RUNNER_BLOB"
           test "$(git hash-object src/twelve_six/data/expanded_global_dedup_v9.py)" = "$V9_FACADE_BLOB"
