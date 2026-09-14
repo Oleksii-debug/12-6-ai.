@@ -33,13 +33,17 @@ The current packet exits successfully because its contract is valid and prints:
 
 A blocked scientific state is expected and is not a validator failure. Structural drift—such as making learned 20M optional, requiring full 50M/100M campaigns, skipping terminal 200M before 1B, selecting an unqualified backend, dropping data identities, or authorizing compute—fails the contract.
 
-## Terminal audit independence
+## Terminal audit independence and evidence crossbinding
 
-A learned-20M or learned-200M `PASS` now requires two separately valid terminal authorities: the producer authority and the independent-audit authority. Independence is machine-bound in `terminal_audit_independence` and requires both a different `workflow_run_id` and a different `evidence_sha256`. Re-labeling the producer run, copying its evidence digest, or publishing the same execution twice cannot satisfy the audit gate.
+A learned-20M or learned-200M `PASS` requires two separately valid terminal authorities: the producer authority and the independent-audit authority. Independence is machine-bound in `terminal_audit_independence` and requires both a different `workflow_run_id` and a different `evidence_sha256`. Re-labeling the producer run, copying its evidence-receipt digest, or publishing the same execution twice cannot satisfy the audit gate.
 
-The audit is intentionally allowed to bind the **same exact `git_sha`** as the producer. An independent auditor should inspect the exact producer code/head rather than a different implementation; independence comes from a distinct audit execution and distinct evidence artifact, not from code drift. Weakening, deleting, or extending the closed-world machine contract fails validation before any learned-terminal routing transition.
+Independence alone is not enough. The closed-world `terminal_evidence_crossbinding` contract requires the producer authority and the audit authority to carry `attested_evidence_manifest_sha256` equal to the learned state's exact `evidence_manifest_sha256`. The audit authority must also carry `audited_producer_authority_sha256`, the canonical JSON SHA-256 of the exact producer authority object it audited. Swapping the learned manifest, producer receipt, or audit receipt therefore breaks the chain instead of leaving three independently shape-valid but unrelated artifacts able to advance routing.
 
-This rule does not make the checked-in roadmap terminal. Its current learned-20M state remains `NOT_TERMINAL`, optimized-target authority remains zero, and no training, backend promotion, stage promotion, final-test access, or paid compute is authorized by this contract hardening.
+`evidence_sha256` remains the identity of each authority receipt; it is deliberately **not** redefined as the learned evidence-manifest digest. This keeps receipt identity distinct from the artifact being attested while still cryptographically binding the authority chain to the exact learned evidence package.
+
+The audit is intentionally allowed to bind the **same exact `git_sha`** as the producer. An independent auditor should inspect the exact producer code/head rather than a different implementation; independence comes from a distinct audit execution and distinct evidence receipt, not from code drift. Weakening, deleting, or extending either closed-world machine contract fails validation before any learned-terminal routing transition.
+
+These rules do not make the checked-in roadmap terminal. Its current learned-20M state remains `NOT_TERMINAL`, optimized-target authority remains zero, and no training, backend promotion, stage promotion, final-test access, or paid compute is authorized by this contract hardening.
 
 ## Portable runner boundary
 
