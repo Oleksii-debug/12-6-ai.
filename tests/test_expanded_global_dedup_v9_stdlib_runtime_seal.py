@@ -22,7 +22,9 @@ def _never_matcher_verify(report: Mapping[str, Any]) -> None:
     raise AssertionError("matcher verifier must not execute after runtime dependency drift")
 
 
-def test_builtin_float_substitution_fails_before_matcher_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_builtin_float_substitution_fails_before_matcher_callbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     original_float = builtins.float
 
     def substituted_float(value: object = 0.0) -> float:
