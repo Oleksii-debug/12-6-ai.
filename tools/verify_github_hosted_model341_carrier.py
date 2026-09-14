@@ -9,8 +9,8 @@ import json
 import os
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER_PATH = ROOT / "src" / "twelve_six" / "training" / "external_worker.py"

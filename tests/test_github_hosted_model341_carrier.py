@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from tools import verify_github_hosted_model341_carrier as carrier
 
 
