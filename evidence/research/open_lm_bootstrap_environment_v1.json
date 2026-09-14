@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "worker_issue": 777,
+  "project_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "python": "3.13.5",
+  "python_executable": "/opt/pyvenv/bin/python",
+  "pip": "25.1.1",
+  "uv": "available",
+  "poetry": "unavailable",
+  "pdm": "unavailable",
+  "conda": "unavailable",
+  "git": "2.47.3",
+  "os": "Linux 6.18.35 x86_64",
+  "logical_cpus": 5,
+  "cpu_model": "AMD EPYC 9V74 80-core",
+  "gpu": "none detected; nvidia-smi unavailable",
+  "global_versions": {
+    "torch": "2.10.0+cpu",
+    "pandas": "2.2.3",
+    "fsspec": "2026.4.0",
+    "tqdm": "4.67.3",
+    "boto3": "1.43.18",
+    "Pillow": "12.3.0",
+    "cloudpathlib": "0.24.0",
+    "huggingface_hub": "1.16.1",
+    "loguru": "0.7.3",
+    "ipython": "9.14.0",
+    "xformers": null,
+    "tiktoken": null,
+    "wandb": null,
+    "webdataset": null,
+    "jsonlines": null,
+    "zstandard": null,
+    "pysimdjson": null,
+    "datasets": null,
+    "multiprocess": null,
+    "dill": null,
+    "pre_commit": null,
+    "ray": null,
+    "transformers": null,
+    "s3fs": null,
+    "wikipedia": null,
+    "mosaicml": null
+  },
+  "cache": {
+    "pip_cache_usable": false,
+    "matching_wheels_observed": false,
+    "reason": "pip cache directory unavailable in worker runtime"
+  },
+  "network": {
+    "pypi": "FAILED_DNS",
+    "github": "FAILED_DNS",
+    "open_lm_git_fetch": "FAILED_DNS",
+    "github_control_plane": "AVAILABLE"
+  },
+  "isolation": {
+    "venv_created": true,
+    "command": "python -m venv /tmp/open_lm_bootstrap_stress_v1/.venv",
+    "global_packages_modified": false
+  }
+}
