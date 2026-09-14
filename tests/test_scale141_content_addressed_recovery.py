@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import torch
 from torch import nn
 
-from twelve_six.checkpoint import CheckpointIdentity, hash_json, save_trainer_checkpoint, sha256_file
+import twelve_six.checkpoint.core as checkpoint_core
+from twelve_six.checkpoint import (
+    CheckpointIdentity,
+    hash_json,
+    save_trainer_checkpoint,
+    sha256_file,
+)
 from twelve_six.scale141_recovery import (
     RecoveryLifecycleError,
     cleanup_recovery_generations,
@@ -77,11 +84,22 @@ def _save(path: Path, model: TinyLM, trainer: Trainer, cfg: TrainerConfig):
     )
 
 
-def _publish(root: Path, model: TinyLM, trainer: Trainer, cfg: TrainerConfig, *, seen=None):
+def _publish(
+    root: Path,
+    model: TinyLM,
+    trainer: Trainer,
+    cfg: TrainerConfig,
+    *,
+    seen=None,
+    staged_manifest_sha256: list[str] | None = None,
+):
     def save(path: Path):
         if seen is not None:
             seen.append(path)
-        return _save(path, model, trainer, cfg)
+        result = _save(path, model, trainer, cfg)
+        if staged_manifest_sha256 is not None:
+            staged_manifest_sha256.append(sha256_file(path / "manifest.json"))
+        return result
 
     return publish_recovery_generation(
         root,
@@ -146,23 +164,58 @@ def test_resealed_pointer_cannot_substitute_object_key_for_same_checkpoint_id(
         resolve_recovery_generation(root)
 
 
-def test_identical_content_reuses_same_derived_object_without_overwrite(tmp_path: Path) -> None:
+def test_identical_content_reuses_canonical_object_when_manifest_timestamp_differs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     model, trainer, cfg = _stack()
     root = tmp_path / "recovery"
     _step(trainer)
+    staged_hashes: list[str] = []
 
-    first = _publish(root, model, trainer, cfg)
+    class FirstClock:
+        @classmethod
+        def now(cls, tz):
+            return datetime(2026, 9, 14, 12, 0, 0, tzinfo=tz or UTC)
+
+    class SecondClock:
+        @classmethod
+        def now(cls, tz):
+            return datetime(2026, 9, 14, 12, 0, 1, tzinfo=tz or UTC)
+
+    monkeypatch.setattr(checkpoint_core, "datetime", FirstClock)
+    first = _publish(
+        root,
+        model,
+        trainer,
+        cfg,
+        staged_manifest_sha256=staged_hashes,
+    )
     first_object = root / first["object_key"]
     first_manifest = (first_object / "manifest.json").read_bytes()
     first_checksum = (first_object / "MANIFEST.sha256").read_bytes()
 
-    second = _publish(root, model, trainer, cfg)
+    monkeypatch.setattr(checkpoint_core, "datetime", SecondClock)
+    second = _publish(
+        root,
+        model,
+        trainer,
+        cfg,
+        staged_manifest_sha256=staged_hashes,
+    )
 
+    assert len(staged_hashes) == 2
+    assert staged_hashes[0] != staged_hashes[1]
     assert second["checkpoint_id"] == first["checkpoint_id"]
     assert second["object_key"] == first["object_key"]
+    assert second["manifest_sha256"] == first["manifest_sha256"] == staged_hashes[0]
     assert (first_object / "manifest.json").read_bytes() == first_manifest
     assert (first_object / "MANIFEST.sha256").read_bytes() == first_checksum
     assert [entry.name for entry in (root / "checkpoints").iterdir()] == [first["checkpoint_id"]]
+
+    resolved = resolve_recovery_generation(root, expected_reference=second)
+    assert resolved.reference["manifest_sha256"] == staged_hashes[0]
+    assert resolved.manifest["created_at_utc"] == "2026-09-14T12:00:00Z"
 
 
 def test_different_checkpoint_content_uses_different_object_key_and_cleanup_removes_orphan(
