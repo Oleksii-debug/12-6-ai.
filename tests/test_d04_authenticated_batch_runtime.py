@@ -150,7 +150,7 @@ def test_wrong_or_stale_batch_order_fails_before_durable_attempt_or_model_mutati
     ):
         gate.train_authenticated_batch(
             batch_index=1,
-            expected_next_exposure_identity_sha256=_next(guard, plan, 1),
+            expected_next_exposure_identity_sha256=_next(guard, plan, 0),
         )
     gate.close()
 
