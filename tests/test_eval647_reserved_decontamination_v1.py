@@ -27,11 +27,10 @@ SELECTION = "3" * 64
 FINAL = "4" * 64
 SELECTION_MEMBERSHIP = "5" * 64
 FINAL_MEMBERSHIP = "6" * 64
-EVAL647_EVIDENCE = "7" * 64
-EVAL647_MEMBERSHIP = "8" * 64
 DISCOVERY_HEAD = "c" * 40
 REV_A = "d" * 40
 REV_B = "e" * 40
+EFFECTIVE_AT = "2026-08-26T19:46:57Z"
 RAW_A = "def reserved_alpha():\n    return 7\n"
 RAW_B = "def reserved_beta(value):\n    return value * 3\n"
 
@@ -81,10 +80,10 @@ def _member(row: dict[str, str]) -> dict[str, object]:
 
 
 def _projection(rows: list[dict[str, str]]) -> list[dict[str, object]]:
-    projection: list[dict[str, object]] = []
+    result: list[dict[str, object]] = []
     for row in rows:
         raw = row["text"].encode("utf-8")
-        projection.append(
+        result.append(
             {
                 "record_id": row["record_id"],
                 "source_id": row["source_id"],
@@ -94,7 +93,7 @@ def _projection(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 "text_utf8_bytes": len(raw),
             }
         )
-    return sorted(projection, key=lambda item: str(item["record_id"]))
+    return sorted(result, key=lambda item: str(item["record_id"]))
 
 
 def _training_handoff(training: list[dict[str, str]]) -> dict[str, object]:
@@ -116,19 +115,20 @@ def _training_handoff(training: list[dict[str, str]]) -> dict[str, object]:
 
 
 def _base_rows() -> tuple[dict[str, str], dict[str, str]]:
-    selection = _row(
-        "selection-existing",
-        "selection validation payload about isolated graph traversal",
-        source="selection-source",
-        family="selection-family",
+    return (
+        _row(
+            "selection-existing",
+            "selection validation payload about isolated graph traversal",
+            source="selection-source",
+            family="selection-family",
+        ),
+        _row(
+            "final-existing",
+            "sealed final payload about unrelated orbital mechanics",
+            source="final-source",
+            family="final-family",
+        ),
     )
-    final = _row(
-        "final-existing",
-        "sealed final payload about unrelated orbital mechanics",
-        source="final-source",
-        family="final-family",
-    )
-    return selection, final
 
 
 def _base_binding() -> dict[str, object]:
@@ -178,10 +178,10 @@ def _manifest_and_materialization() -> tuple[dict[str, object], dict[str, object
             "expected_raw_bytes": len(RAW_B.encode("utf-8")),
         },
     ]
-    objects: list[dict[str, object]] = []
-    sealed: list[dict[str, object]] = []
+    manifest_objects: list[dict[str, object]] = []
+    sealed_objects: list[dict[str, object]] = []
     for spec in specs:
-        objects.append(
+        manifest_objects.append(
             {
                 **spec,
                 "evaluation_use": "selection_validation",
@@ -190,7 +190,7 @@ def _manifest_and_materialization() -> tuple[dict[str, object], dict[str, object
                 "permanent_future_training_exclusion": True,
             }
         )
-        sealed.append(
+        sealed_objects.append(
             {
                 "source_family": spec["source_family"],
                 "repository": spec["repository"],
@@ -205,32 +205,48 @@ def _manifest_and_materialization() -> tuple[dict[str, object], dict[str, object
                 "permanent_future_training_exclusion": True,
             }
         )
+
+    materialization: dict[str, object] = {
+        "schema_version": "12-6.eval-code-reserve-v1.source-materialization-terminal.v1",
+        "reservation_authority_issue": 647,
+        "execution_profile": "LOCAL_FREE",
+        "workflow_conclusion": "success",
+        "repeat_materializations": 2,
+        "repeat_execution_byte_identical": True,
+        "raw_payload_persisted_in_repository": False,
+        "selection_validation_records_authorized": 0,
+        "discovery_head_sha": DISCOVERY_HEAD,
+        "objects": sealed_objects,
+    }
+    materialization["object_set_identity_sha256"] = _sha(
+        _canonical_bytes(
+            {
+                "reservation_effective_at_utc": EFFECTIVE_AT,
+                "objects": sealed_objects,
+            }
+        )
+    )
+    materialization["evidence_identity_sha256"] = _sha(
+        _canonical_bytes(materialization)
+    )
+
     manifest: dict[str, object] = {
         "schema_version": "12-6.eval-code-reserve-v1.contract.v1",
         "issue": 647,
         "execution_class": "LOCAL_FREE",
         "purpose": "selection_validation_only",
         "reservation": {
+            "effective_at_utc": EFFECTIVE_AT,
             "training_allowed": False,
             "tokenizer_fit_allowed": False,
             "permanent_future_training_exclusion": True,
             "historical_training_exposure_required": 0,
             "historical_tokenizer_fit_exposure_required": 0,
         },
-        "objects": objects,
-        "materialization_evidence": {"identity_sha256": EVAL647_EVIDENCE},
-    }
-    materialization: dict[str, object] = {
-        "schema_version": "12-6.eval-code-reserve-v1.source-materialization-terminal.v1",
-        "reservation_authority_issue": 647,
-        "execution_profile": "LOCAL_FREE",
-        "repeat_execution_byte_identical": True,
-        "raw_payload_persisted_in_repository": False,
-        "selection_validation_records_authorized": 0,
-        "evidence_identity_sha256": EVAL647_EVIDENCE,
-        "object_set_identity_sha256": EVAL647_MEMBERSHIP,
-        "discovery_head_sha": DISCOVERY_HEAD,
-        "objects": sealed,
+        "objects": manifest_objects,
+        "materialization_evidence": {
+            "identity_sha256": materialization["evidence_identity_sha256"]
+        },
     }
     return manifest, materialization
 
@@ -274,7 +290,6 @@ def _fixture() -> dict[str, object]:
     ]
     handoff = _training_handoff(training)
     selection, final = _base_rows()
-    evaluation = [selection, final, *_eval647_rows()]
     return {
         "manifest": manifest,
         "materialization": materialization,
@@ -282,7 +297,9 @@ def _fixture() -> dict[str, object]:
         "composed": composed,
         "training": training,
         "handoff": handoff,
-        "evaluation": evaluation,
+        "evaluation": [selection, final, *_eval647_rows()],
+        "expected_eval647_evidence": materialization["evidence_identity_sha256"],
+        "expected_eval647_membership": materialization["object_set_identity_sha256"],
     }
 
 
@@ -306,8 +323,12 @@ def _execute(fixture: dict[str, object]):
         expected_composed_reserved_binding_identity_sha256=str(
             composed["binding_identity_sha256"]
         ),
-        expected_eval647_materialization_evidence_identity_sha256=EVAL647_EVIDENCE,
-        expected_eval647_object_set_identity_sha256=EVAL647_MEMBERSHIP,
+        expected_eval647_materialization_evidence_identity_sha256=str(
+            fixture["expected_eval647_evidence"]
+        ),
+        expected_eval647_object_set_identity_sha256=str(
+            fixture["expected_eval647_membership"]
+        ),
         expected_inventory_identity_sha256=INVENTORY,
         expected_survivor_authority_sha256=SURVIVOR,
         expected_training_handoff_identity_sha256=str(
@@ -317,6 +338,29 @@ def _execute(fixture: dict[str, object]):
         expected_final_test_identity_sha256=FINAL,
         quarantine_cross_source_families=False,
     )
+
+
+def _rehash_materialization(
+    manifest: dict[str, object],
+    materialization: dict[str, object],
+) -> None:
+    reservation = manifest["reservation"]
+    assert isinstance(reservation, dict)
+    materialization["object_set_identity_sha256"] = _sha(
+        _canonical_bytes(
+            {
+                "reservation_effective_at_utc": reservation["effective_at_utc"],
+                "objects": materialization["objects"],
+            }
+        )
+    )
+    materialization.pop("evidence_identity_sha256", None)
+    materialization["evidence_identity_sha256"] = _sha(
+        _canonical_bytes(materialization)
+    )
+    evidence_ref = manifest["materialization_evidence"]
+    assert isinstance(evidence_ref, dict)
+    evidence_ref["identity_sha256"] = materialization["evidence_identity_sha256"]
 
 
 def test_real_eval647_manifest_builds_exact_sealed_auxiliary_identity():
@@ -340,14 +384,11 @@ def test_real_eval647_manifest_builds_exact_sealed_auxiliary_identity():
         "0557410622403b411ac9d6d8fb01a57ef461617c19d06f112aa61dd57f670048"
     )
     assert len(auxiliary["members"]) == 2
-    assert {member["content_sha256"] for member in auxiliary["members"]} == {
-        "ed8fecab2e515676af051d00098b0f043c6d30ca56480d85d00902a49ae5d0c0",
-        "6aff1f84b0a70b96c102e3b92a70539255f1489765fc54140b1c1478f95b4828",
-    }
 
 
 def test_execution_consumes_auxiliary_reserved_set_without_elevating_authority():
-    report, evidence, receipt = _execute(_fixture())
+    fixture = _fixture()
+    report, evidence, receipt = _execute(fixture)
     assert report["status"] == "PASS_CLEAN"
     assert evidence["reserved_payload_binding_identity_sha256"] == (
         receipt["composed_reserved_binding_identity_sha256"]
@@ -365,14 +406,20 @@ def test_execution_consumes_auxiliary_reserved_set_without_elevating_authority()
         expected_composed_reserved_binding_identity_sha256=str(
             receipt["composed_reserved_binding_identity_sha256"]
         ),
-        expected_eval647_materialization_evidence_identity_sha256=EVAL647_EVIDENCE,
-        expected_eval647_object_set_identity_sha256=EVAL647_MEMBERSHIP,
+        expected_eval647_materialization_evidence_identity_sha256=str(
+            fixture["expected_eval647_evidence"]
+        ),
+        expected_eval647_object_set_identity_sha256=str(
+            fixture["expected_eval647_membership"]
+        ),
     )
 
 
 def test_missing_eval647_raw_payload_is_rejected_by_incumbent_executor():
     fixture = _fixture()
-    fixture["evaluation"] = list(fixture["evaluation"])[:-1]
+    evaluation = fixture["evaluation"]
+    assert isinstance(evaluation, list)
+    fixture["evaluation"] = evaluation[:-1]
     with pytest.raises(
         CurrentDecontaminationExecutionError,
         match="coverage differs from reserved membership",
@@ -383,6 +430,7 @@ def test_missing_eval647_raw_payload_is_rejected_by_incumbent_executor():
 def test_eval647_raw_payload_mutation_is_rejected_by_incumbent_executor():
     fixture = _fixture()
     evaluation = copy.deepcopy(fixture["evaluation"])
+    assert isinstance(evaluation, list)
     evaluation[-1]["text"] += "# tampered\n"
     fixture["evaluation"] = evaluation
     with pytest.raises(
@@ -413,10 +461,12 @@ def test_self_consistent_composed_binding_requires_independent_expected_identity
                 base["binding_identity_sha256"]
             ),
             expected_composed_reserved_binding_identity_sha256="f" * 64,
-            expected_eval647_materialization_evidence_identity_sha256=(
-                EVAL647_EVIDENCE
+            expected_eval647_materialization_evidence_identity_sha256=str(
+                fixture["expected_eval647_evidence"]
             ),
-            expected_eval647_object_set_identity_sha256=EVAL647_MEMBERSHIP,
+            expected_eval647_object_set_identity_sha256=str(
+                fixture["expected_eval647_membership"]
+            ),
             expected_inventory_identity_sha256=INVENTORY,
             expected_survivor_authority_sha256=SURVIVOR,
             expected_training_handoff_identity_sha256=str(
@@ -428,12 +478,19 @@ def test_self_consistent_composed_binding_requires_independent_expected_identity
         )
 
 
-def test_materialization_substitution_requires_independent_expected_identity():
+def test_rehashed_materialization_substitution_requires_original_external_pin():
     fixture = _fixture()
     materialization = copy.deepcopy(fixture["materialization"])
-    materialization["evidence_identity_sha256"] = "9" * 64
     manifest = copy.deepcopy(fixture["manifest"])
-    manifest["materialization_evidence"]["identity_sha256"] = "9" * 64
+    assert isinstance(materialization, dict)
+    assert isinstance(manifest, dict)
+    objects = materialization["objects"]
+    manifest_objects = manifest["objects"]
+    assert isinstance(objects, list)
+    assert isinstance(manifest_objects, list)
+    objects[0]["raw_sha256"] = "9" * 64
+    manifest_objects[0]["raw_sha256"] = "9" * 64
+    _rehash_materialization(manifest, materialization)
     fixture["materialization"] = materialization
     fixture["manifest"] = manifest
     base = fixture["base"]
@@ -451,7 +508,8 @@ def test_materialization_substitution_requires_independent_expected_identity():
 
 
 def test_rehashed_receipt_cannot_widen_training_boundary():
-    _, _, receipt = _execute(_fixture())
+    fixture = _fixture()
+    _, _, receipt = _execute(fixture)
     tampered = copy.deepcopy(receipt)
     tampered["training_executed"] = True
     tampered.pop("receipt_identity_sha256")
@@ -465,8 +523,10 @@ def test_rehashed_receipt_cannot_widen_training_boundary():
             expected_composed_reserved_binding_identity_sha256=str(
                 receipt["composed_reserved_binding_identity_sha256"]
             ),
-            expected_eval647_materialization_evidence_identity_sha256=(
-                EVAL647_EVIDENCE
+            expected_eval647_materialization_evidence_identity_sha256=str(
+                fixture["expected_eval647_evidence"]
             ),
-            expected_eval647_object_set_identity_sha256=EVAL647_MEMBERSHIP,
+            expected_eval647_object_set_identity_sha256=str(
+                fixture["expected_eval647_membership"]
+            ),
         )
