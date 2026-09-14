@@ -60,7 +60,7 @@ _FROZEN_IMPORTED_BEHAVIOR_MEMBERS = (
     ("V1", "json", "dumps", json.dumps),
     ("V1", "re", "fullmatch", re.fullmatch),
     ("V3", "html", "unescape", html.unescape),
-    ("V3", "re", "S", re.S),
+    ("V3", "re", "S", re.DOTALL),
     ("V3", "re", "escape", re.escape),
     ("V3", "re", "fullmatch", re.fullmatch),
     ("V3", "re", "match", re.match),
