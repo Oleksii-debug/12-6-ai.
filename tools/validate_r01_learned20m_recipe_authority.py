@@ -26,15 +26,55 @@ def main() -> int:
         default=None,
         help="Optional terminal authority bindings JSON. Omit for checked-in blocked template.",
     )
+    parser.add_argument(
+        "--trusted-authorities",
+        type=Path,
+        default=None,
+        help=(
+            "Out-of-packet role-bound tokenizer/D04/D05/D06 authority JSON. "
+            "Required whenever --bindings is supplied."
+        ),
+    )
+    parser.add_argument(
+        "--expected-trusted-authorities-identity-sha256",
+        default=None,
+        help=(
+            "Externally pinned SHA-256 identity of the trusted-authorities document. "
+            "Required whenever --bindings is supplied and must not be derived from "
+            "either JSON input by this tool."
+        ),
+    )
     args = parser.parse_args()
 
     policy = json.loads(args.policy.read_text(encoding="utf-8"))
     validate_policy(policy)
     if args.bindings is None:
+        if args.trusted_authorities is not None:
+            parser.error("--trusted-authorities requires --bindings")
+        if args.expected_trusted_authorities_identity_sha256 is not None:
+            parser.error(
+                "--expected-trusted-authorities-identity-sha256 requires --bindings"
+            )
         result = blocked_template(policy)
     else:
+        if args.trusted_authorities is None:
+            parser.error("--trusted-authorities is required with --bindings")
+        if args.expected_trusted_authorities_identity_sha256 is None:
+            parser.error(
+                "--expected-trusted-authorities-identity-sha256 is required with --bindings"
+            )
         bindings = json.loads(args.bindings.read_text(encoding="utf-8"))
-        result = bind_terminal_authorities(policy, bindings)
+        trusted_authorities = json.loads(
+            args.trusted_authorities.read_text(encoding="utf-8")
+        )
+        result = bind_terminal_authorities(
+            policy,
+            bindings,
+            trusted_authorities=trusted_authorities,
+            expected_trusted_authorities_identity_sha256=(
+                args.expected_trusted_authorities_identity_sha256
+            ),
+        )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

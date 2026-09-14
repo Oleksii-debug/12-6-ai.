@@ -318,5 +318,8 @@ def test_rejects_widened_claim_boundary_after_rehash() -> None:
     selection = _selection(raw)
     selection["claim_boundary"]["model_training_authorized"] = True
     _rehash(selection, "balanced_selection_identity_sha256")
-    with pytest.raises(BalancedSplitApplicationError, match="claim boundary widened"):
+    with pytest.raises(
+        BalancedSplitApplicationError,
+        match="balanced selection claim boundary model_training_authorized widened",
+    ):
         build_balanced_split_application(selection, raw, **_kwargs(selection))

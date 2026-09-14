@@ -1,6 +1,6 @@
 """Fail-closed learned-20M recipe authority for LEARN-345.
 
-This module freezes recipe semantics only.  It cannot authorize compute or
+This module freezes recipe semantics only. It cannot authorize compute or
 training, and it never executes an optimizer step.
 """
 
@@ -12,6 +12,9 @@ import math
 import re
 from collections.abc import Mapping
 from typing import Any
+
+from twelve_six.learned20m_evaluation_firewall import PRIMARY_SELECTION_METRIC
+from twelve_six.packing.core import DEFAULT_SEQUENCE_LENGTH, PACKING_CONFIG_HASH
 
 REPOSITORY = "Oleksii-debug/12-6-ai."
 SCHEMA = "12-6.learn345.learned20m-recipe-authority.v1"
@@ -31,6 +34,8 @@ TRAIN344B = {
 REQUESTED_TARGETS = 20_000_000
 MEANINGFUL_FLOOR = 10_000_000
 BOUNDARIES = ("0", "0.10", "0.25", "0.50", "0.75", "0.90", "1.00")
+REQUIRED_HELD_OUT_STRATA = ("ua", "en", "code")
+TRUSTED_AUTHORITY_ROLES = ("tokenizer", "d04", "d05", "d06")
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -42,6 +47,7 @@ class RecipeValidationError(ValueError):
 
 def canonical_json_bytes(value: Any) -> bytes:
     """Return deterministic canonical JSON bytes after rejecting non-finite values."""
+
     def walk(item: Any) -> None:
         if isinstance(item, bool) or item is None or isinstance(item, (str, int)):
             return
@@ -73,6 +79,11 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 def identity_sha256(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def _json_contract_equal(value: Any, expected: Any) -> bool:
+    """Compare JSON contracts without Python bool/int/float equality aliases."""
+    return canonical_json_bytes(value) == canonical_json_bytes(expected)
 
 
 def _exact_keys(value: Mapping[str, Any], expected: set[str], label: str) -> None:
@@ -155,9 +166,9 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
     if not isinstance(sources, dict):
         raise RecipeValidationError("source_authorities must be object")
     _exact_keys(sources, {"model341", "train344b"}, "source_authorities")
-    if sources["model341"] != MODEL341:
+    if not _json_contract_equal(sources["model341"], MODEL341):
         raise RecipeValidationError("MODEL-341 authority drift")
-    if sources["train344b"] != TRAIN344B:
+    if not _json_contract_equal(sources["train344b"], TRAIN344B):
         raise RecipeValidationError("TRAIN-344B authority drift")
 
     recipe = policy["recipe"]
@@ -196,7 +207,7 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
         "gradient_clip_norm": 1.0,
         "scheduler": "constant",
         "warmup_steps": 0,
-        "sequence_length": 256,
+        "sequence_length": DEFAULT_SEQUENCE_LENGTH,
         "micro_batch_size": 1,
         "gradient_accumulation_steps": 1,
         "precision": "fp32",
@@ -206,7 +217,7 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
             "dataloader": 20260826,
         },
     }
-    if recipe != frozen:
+    if not _json_contract_equal(recipe, frozen):
         raise RecipeValidationError("frozen recipe drift")
 
     budget = policy["runtime_budget"]
@@ -225,15 +236,18 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
         },
         "runtime_budget",
     )
-    if budget != {
-        "requested_unique_loss_positions": REQUESTED_TARGETS,
-        "meaningful_minimum_unique_loss_positions": MEANINGFUL_FLOOR,
-        "rule": "min(20000000, terminal_d04_unique_nonignored_causal_loss_positions)",
-        "replay_allowed": False,
-        "replacement_sampling_allowed": False,
-        "padding_counts_as_capacity": False,
-        "max_exposures_per_unique_position": 1,
-    }:
+    if not _json_contract_equal(
+        budget,
+        {
+            "requested_unique_loss_positions": REQUESTED_TARGETS,
+            "meaningful_minimum_unique_loss_positions": MEANINGFUL_FLOOR,
+            "rule": "min(20000000, terminal_d04_unique_nonignored_causal_loss_positions)",
+            "replay_allowed": False,
+            "replacement_sampling_allowed": False,
+            "padding_counts_as_capacity": False,
+            "max_exposures_per_unique_position": 1,
+        },
+    ):
         raise RecipeValidationError("runtime budget drift")
 
     cadence = policy["checkpoint_and_evaluation"]
@@ -253,35 +267,44 @@ def _validate_policy_without_identity(policy: dict[str, Any]) -> None:
         },
         "checkpoint_and_evaluation",
     )
-    if cadence != {
-        "boundaries": list(BOUNDARIES),
-        "mandatory_fresh_process_resume_fraction": "0.50",
-        "train_trace_frozen_before_step_1": True,
-        "next_exposure_identity_required_before_step_1": True,
-        "chronological_final_retained": True,
-        "best_selection_checkpoint_retained": True,
-        "final_test_sealed_until_selection_lock": True,
-        "final_test_may_influence_selection": False,
-    }:
+    if not _json_contract_equal(
+        cadence,
+        {
+            "boundaries": list(BOUNDARIES),
+            "mandatory_fresh_process_resume_fraction": "0.50",
+            "train_trace_frozen_before_step_1": True,
+            "next_exposure_identity_required_before_step_1": True,
+            "chronological_final_retained": True,
+            "best_selection_checkpoint_retained": True,
+            "final_test_sealed_until_selection_lock": True,
+            "final_test_may_influence_selection": False,
+        },
+    ):
         raise RecipeValidationError("checkpoint/evaluation cadence drift")
 
     failure = policy["failure_semantics"]
-    if failure != {
-        "nan_or_inf_loss": "STOP_FAIL_CLOSED_NO_COMMIT",
-        "nan_or_inf_gradient": "STOP_FAIL_CLOSED_NO_COMMIT",
-        "silent_replay_allowed": False,
-        "in_place_counter_repair_allowed": False,
-    }:
+    if not _json_contract_equal(
+        failure,
+        {
+            "nan_or_inf_loss": "STOP_FAIL_CLOSED_NO_COMMIT",
+            "nan_or_inf_gradient": "STOP_FAIL_CLOSED_NO_COMMIT",
+            "silent_replay_allowed": False,
+            "in_place_counter_repair_allowed": False,
+        },
+    ):
         raise RecipeValidationError("failure semantics drift")
 
     truth = policy["truth_boundary"]
-    if truth != {
-        "training_authorized": False,
-        "compute_authorized": False,
-        "authorized_optimized_targets": 0,
-        "optimizer_updates_executed": 0,
-        "final_test_payload_accessed": False,
-    }:
+    if not _json_contract_equal(
+        truth,
+        {
+            "training_authorized": False,
+            "compute_authorized": False,
+            "authorized_optimized_targets": 0,
+            "optimizer_updates_executed": 0,
+            "final_test_payload_accessed": False,
+        },
+    ):
         raise RecipeValidationError("truth boundary drift")
 
 
@@ -312,10 +335,32 @@ def validate_policy(policy: Any) -> dict[str, Any]:
     return dict(policy)
 
 
-def _validate_bindings(bindings: Any) -> dict[str, Any]:
+def _validate_trusted_authorities(value: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, dict):
+        raise RecipeValidationError("trusted_authorities must be an out-of-packet role map")
+    _exact_keys(value, set(TRUSTED_AUTHORITY_ROLES), "trusted_authorities")
+    return {
+        role: _terminal_authority(value[role], f"trusted_authorities.{role}")
+        for role in TRUSTED_AUTHORITY_ROLES
+    }
+
+
+def _require_trusted_role(
+    packet_authority: Any,
+    trusted_authorities: Mapping[str, dict[str, Any]],
+    role: str,
+) -> dict[str, Any]:
+    packet = _terminal_authority(packet_authority, f"{role}.authority")
+    if packet != trusted_authorities[role]:
+        raise RecipeValidationError(f"{role} authority is not the trusted role-bound authority")
+    return packet
+
+
+def _validate_bindings(bindings: Any, trusted_authorities: Any) -> dict[str, Any]:
     if not isinstance(bindings, dict):
         raise RecipeValidationError("bindings must be object")
     _exact_keys(bindings, {"code", "model", "tokenizer", "d04", "d05", "d06"}, "bindings")
+    trusted = _validate_trusted_authorities(trusted_authorities)
 
     code = bindings["code"]
     if not isinstance(code, dict):
@@ -337,14 +382,14 @@ def _validate_bindings(bindings: Any) -> dict[str, Any]:
         },
         "model",
     )
-    if model != MODEL341:
+    if not _json_contract_equal(model, MODEL341):
         raise RecipeValidationError("model binding does not equal exact MODEL-341 authority")
 
     tok = bindings["tokenizer"]
     if not isinstance(tok, dict):
         raise RecipeValidationError("tokenizer binding must be object")
     _exact_keys(tok, {"authority", "identity_sha256", "decision"}, "tokenizer")
-    _terminal_authority(tok["authority"], "tokenizer.authority")
+    _require_trusted_role(tok["authority"], trusted, "tokenizer")
     _sha256(tok["identity_sha256"], "tokenizer.identity_sha256")
     if tok["decision"] not in {"TRAINED_TOKENIZER", "BYTE_BASELINE_RETAINED"}:
         raise RecipeValidationError("tokenizer decision not terminal")
@@ -362,10 +407,12 @@ def _validate_bindings(bindings: Any) -> dict[str, Any]:
             "corpus_manifest_sha256",
             "split_sha256",
             "packing_sha256",
+            "sequence_length",
+            "tokenizer_identity_sha256",
         },
         "d04",
     )
-    _terminal_authority(d04["authority"], "d04.authority")
+    _require_trusted_role(d04["authority"], trusted, "d04")
     _positive_int(
         d04["unique_nonignored_causal_loss_positions"],
         "d04.unique_nonignored_causal_loss_positions",
@@ -376,8 +423,15 @@ def _validate_bindings(bindings: Any) -> dict[str, Any]:
         "corpus_manifest_sha256",
         "split_sha256",
         "packing_sha256",
+        "tokenizer_identity_sha256",
     ):
         _sha256(d04[key], f"d04.{key}")
+    if not _json_contract_equal(d04["sequence_length"], DEFAULT_SEQUENCE_LENGTH):
+        raise RecipeValidationError("d04 sequence length does not equal canonical packing contract")
+    if d04["packing_sha256"] != PACKING_CONFIG_HASH:
+        raise RecipeValidationError("d04 packing identity does not equal canonical packing contract")
+    if d04["tokenizer_identity_sha256"] != tok["identity_sha256"]:
+        raise RecipeValidationError("d04 tokenizer identity does not match terminal tokenizer")
 
     d05 = bindings["d05"]
     if not isinstance(d05, dict):
@@ -389,15 +443,26 @@ def _validate_bindings(bindings: Any) -> dict[str, Any]:
             "status",
             "checkpoint_contract_identity_sha256",
             "fresh_process_resume_equivalence",
+            "next_exposure_identity_sha256",
+            "train_trace_identity_sha256",
         },
         "d05",
     )
-    _terminal_authority(d05["authority"], "d05.authority")
+    _require_trusted_role(d05["authority"], trusted, "d05")
     if d05["status"] != "PASS":
         raise RecipeValidationError("d05 status must be PASS")
-    _sha256(d05["checkpoint_contract_identity_sha256"], "d05.checkpoint_contract_identity_sha256")
+    for key in (
+        "checkpoint_contract_identity_sha256",
+        "next_exposure_identity_sha256",
+        "train_trace_identity_sha256",
+    ):
+        _sha256(d05[key], f"d05.{key}")
     if d05["fresh_process_resume_equivalence"] is not True:
         raise RecipeValidationError("d05 fresh-process resume equivalence required")
+    if d05["next_exposure_identity_sha256"] != d04["next_exposure_identity_sha256"]:
+        raise RecipeValidationError("d05 next-exposure identity does not match d04")
+    if d05["train_trace_identity_sha256"] != d04["train_trace_identity_sha256"]:
+        raise RecipeValidationError("d05 train-trace identity does not match d04")
 
     d06 = bindings["d06"]
     if not isinstance(d06, dict):
@@ -409,17 +474,26 @@ def _validate_bindings(bindings: Any) -> dict[str, Any]:
             "status",
             "evaluation_firewall_identity_sha256",
             "selection_validation_identity_sha256",
+            "primary_selection_metric",
+            "required_held_out_strata",
             "final_test_sealed",
+            "final_test_may_influence_selection",
         },
         "d06",
     )
-    _terminal_authority(d06["authority"], "d06.authority")
+    _require_trusted_role(d06["authority"], trusted, "d06")
     if d06["status"] != "PASS":
         raise RecipeValidationError("d06 status must be PASS")
     _sha256(d06["evaluation_firewall_identity_sha256"], "d06.evaluation_firewall_identity_sha256")
     _sha256(d06["selection_validation_identity_sha256"], "d06.selection_validation_identity_sha256")
+    if d06["primary_selection_metric"] != PRIMARY_SELECTION_METRIC:
+        raise RecipeValidationError("d06 primary selection metric does not match LEARN-345")
+    if d06["required_held_out_strata"] != list(REQUIRED_HELD_OUT_STRATA):
+        raise RecipeValidationError("d06 required held-out strata must be ua/en/code")
     if d06["final_test_sealed"] is not True:
         raise RecipeValidationError("d06 final test must remain sealed")
+    if d06["final_test_may_influence_selection"] is not False:
+        raise RecipeValidationError("d06 final test may not influence selection")
 
     return dict(bindings)
 
@@ -427,11 +501,12 @@ def _validate_bindings(bindings: Any) -> dict[str, Any]:
 def blocked_template(policy: Any) -> dict[str, Any]:
     """Emit the checked-in fail-closed state without accepting any upstream authority."""
     valid = validate_policy(policy)
-    body = {
+    return {
         "schema": SESSION_SCHEMA,
         "status": "BLOCKED_TEMPLATE",
         "policy_identity_sha256": valid["policy_identity_sha256"],
         "bindings_identity_sha256": None,
+        "trusted_authorities_identity_sha256": None,
         "session_identity_sha256": None,
         "qualified_runtime_unique_loss_positions": 0,
         "training_recipe_status": "BLOCKED",
@@ -440,13 +515,28 @@ def blocked_template(policy: Any) -> dict[str, Any]:
         "authorized_optimized_targets": 0,
         "optimizer_updates_executed": 0,
     }
-    return body
 
 
-def bind_terminal_authorities(policy: Any, bindings: Any) -> dict[str, Any]:
-    """Bind terminal upstream identities and emit recipe qualification, not launch authority."""
+def bind_terminal_authorities(
+    policy: Any,
+    bindings: Any,
+    *,
+    trusted_authorities: Any,
+    expected_trusted_authorities_identity_sha256: Any,
+) -> dict[str, Any]:
+    """Bind externally anchored terminal roles and qualify only the frozen recipe."""
     valid_policy = validate_policy(policy)
-    valid_bindings = _validate_bindings(bindings)
+    validated_trusted = _validate_trusted_authorities(trusted_authorities)
+    expected_trusted_identity = _sha256(
+        expected_trusted_authorities_identity_sha256,
+        "expected_trusted_authorities_identity_sha256",
+    )
+    trusted_identity = identity_sha256(validated_trusted)
+    if trusted_identity != expected_trusted_identity:
+        raise RecipeValidationError(
+            "trusted authorities identity does not match external expectation"
+        )
+    valid_bindings = _validate_bindings(bindings, validated_trusted)
 
     available = valid_bindings["d04"]["unique_nonignored_causal_loss_positions"]
     runtime_budget = min(REQUESTED_TARGETS, available)
@@ -459,6 +549,7 @@ def bind_terminal_authorities(policy: Any, bindings: Any) -> dict[str, Any]:
         "status": "QUALIFIED_RECIPE_ONLY",
         "policy_identity_sha256": valid_policy["policy_identity_sha256"],
         "bindings_identity_sha256": bindings_identity,
+        "trusted_authorities_identity_sha256": trusted_identity,
         "qualified_runtime_unique_loss_positions": runtime_budget,
         "training_recipe_status": "QUALIFIED",
         "training_authorized": False,
@@ -471,11 +562,7 @@ def bind_terminal_authorities(policy: Any, bindings: Any) -> dict[str, Any]:
 
 
 def readiness_fragment(session: Any, authority: Any) -> dict[str, Any]:
-    """Map a qualified recipe session into the existing R01 readiness evidence shape.
-
-    The returned fragment remains non-authorizing.  The external scientific authority
-    is validated but never interpreted as compute/training authorization.
-    """
+    """Map a qualified recipe session into the existing R01 readiness evidence shape."""
     if not isinstance(session, dict):
         raise RecipeValidationError("session must be object")
     expected = {
@@ -483,6 +570,7 @@ def readiness_fragment(session: Any, authority: Any) -> dict[str, Any]:
         "status",
         "policy_identity_sha256",
         "bindings_identity_sha256",
+        "trusted_authorities_identity_sha256",
         "session_identity_sha256",
         "qualified_runtime_unique_loss_positions",
         "training_recipe_status",
@@ -494,9 +582,18 @@ def readiness_fragment(session: Any, authority: Any) -> dict[str, Any]:
     _exact_keys(session, expected, "session")
     if session["schema"] != SESSION_SCHEMA or session["status"] != "QUALIFIED_RECIPE_ONLY":
         raise RecipeValidationError("session is not a qualified recipe session")
-    _sha256(session["policy_identity_sha256"], "session.policy_identity_sha256")
-    _sha256(session["bindings_identity_sha256"], "session.bindings_identity_sha256")
-    _sha256(session["session_identity_sha256"], "session.session_identity_sha256")
+    for key in (
+        "policy_identity_sha256",
+        "bindings_identity_sha256",
+        "trusted_authorities_identity_sha256",
+        "session_identity_sha256",
+    ):
+        _sha256(session[key], f"session.{key}")
+    session_core = {
+        key: value for key, value in session.items() if key != "session_identity_sha256"
+    }
+    if identity_sha256(session_core) != session["session_identity_sha256"]:
+        raise RecipeValidationError("session identity drift")
     if session["training_recipe_status"] != "QUALIFIED":
         raise RecipeValidationError("session training recipe not qualified")
     runtime_budget = _positive_int(

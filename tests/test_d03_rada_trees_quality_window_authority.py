@@ -207,7 +207,8 @@ def test_authoritative_materialization_binds_upstream_and_exact_schema(
     assert report["authority_binding"]["executed_privacy_mechanics_pinned"] is True
     assert report["claim_boundary"]["upstream_handoff_authority_bound"] is True
     assert report["claim_boundary"]["candidate_schema_exact"] is True
-    assert report["claim_boundary"]["canonical_privacy_repair_bound"] is True
+    assert report["claim_boundary"]["privacy_filter_v3_exact_implementation_bound"] is True
+    assert report["claim_boundary"]["canonical_privacy_repair_bound"] is False
     assert report["claim_boundary"]["training_authorized_bytes"] == 0
     assert report["safe_result"] == "RADA_TREES_QUALITY_WINDOWS_AUTHORITY_BOUND_ZERO_CREDIT"
     rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]

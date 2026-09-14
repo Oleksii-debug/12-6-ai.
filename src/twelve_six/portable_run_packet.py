@@ -101,6 +101,10 @@ def _is_nonnegative_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def _is_exact_int(value: Any, expected: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == expected
+
+
 def _is_zero_number(value: Any) -> bool:
     return (
         isinstance(value, (int, float))
@@ -157,7 +161,11 @@ def _get_mapping(data: dict[str, Any], key: str, errors: list[str]) -> dict[str,
 def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     """Validate immutable safety/shape rules without claiming launch readiness."""
     errors: list[str] = []
-    _expect(errors, data.get("schema_version") == PACKET_SCHEMA_VERSION, "schema_version_mismatch")
+    _expect(
+        errors,
+        _is_exact_int(data.get("schema_version"), PACKET_SCHEMA_VERSION),
+        "schema_version_mismatch",
+    )
     _expect(errors, data.get("packet_id") == PACKET_ID, "packet_id_mismatch")
     _expect(
         errors,
@@ -254,7 +262,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     )
     _expect(
         errors,
-        identities.get("parameter_count") == MODEL341_PARAMETER_COUNT,
+        _is_exact_int(identities.get("parameter_count"), MODEL341_PARAMETER_COUNT),
         "model341_parameter_count_mismatch",
     )
 
@@ -343,7 +351,7 @@ def _launch_blockers(data: dict[str, Any]) -> list[str]:
         blockers.append("maximum_total_exposures_invalid")
     if not _is_positive_int(ledger):
         blockers.append("available_unique_loss_positions_invalid")
-    if replay_cap != 1:
+    if not _is_exact_int(replay_cap, 1):
         blockers.append("max_exposures_per_unique_position_must_be_one")
     if _is_positive_int(target) and _is_positive_int(ledger) and target > ledger:
         blockers.append("target_unique_loss_positions_exceed_ledger")

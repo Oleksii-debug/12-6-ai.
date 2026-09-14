@@ -1,0 +1,70 @@
+{
+  "artifact": {
+    "id": 10186031748,
+    "name": "d03-rada-laws-normalization-real-zero-credit",
+    "retention_expires_at": "2026-09-13T05:27:43Z",
+    "size_bytes": 1521,
+    "zip_digest": "sha256:12380c97e8b7ef3b45dc36d26411152861fe5cd44d5700613b3062e81bc0a581"
+  },
+  "environment": {
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "python": "3.11.16",
+    "runner_arch": "X64",
+    "runner_image": "ubuntu-24.04",
+    "runner_image_version": "20260907.300.1",
+    "runner_os": "Linux"
+  },
+  "evidence_identity_sha256": "e1633070beaff596ae11f4974bd9662785723618f502f382850f7e3bea27ab6a",
+  "execution_class": "LOCAL_FREE_GITHUB_HOSTED_ACTIONS",
+  "execution_head_sha": "f62670084f80041757e162743356ac16e0fd81a7",
+  "final_pr_head_requirement": "TEMPORARY_EXECUTION_WORKFLOW_ABSENT_AND_SHARED_CI_SUCCESS",
+  "observed_normalization": {
+    "nonempty_record_count": 3052,
+    "normalized_bytes_observed_not_credited": 211176449,
+    "normalized_record_inventory_sha256": "bd790b51809018950fcf8d9919f62920ab79aee64f8d73e131cbe16772554495",
+    "raw_bytes": 353426370,
+    "record_count": 3052,
+    "source_encoding_counts": {
+      "utf-8": 884,
+      "windows-1251": 2168
+    }
+  },
+  "safe_result": "NORMALIZED_CANDIDATE_ZERO_CREDIT_TWO_CLEAN_REAL_EXECUTION",
+  "schema_version": "12-6.d03-rada-bulk-normalization-real-execution-evidence.v1",
+  "source_authority": {
+    "archive_bytes": 46709153,
+    "archive_md5": "7ca9726549958ed8b8b54e6562c15da5",
+    "archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63",
+    "canonical_entry_count": 3052,
+    "canonical_raw_bytes": 353426370,
+    "entry_identity_sha256": "3939c8a407a910222173bba5a2df1b9c7d2edce1503c13b31a9c293d61c3a603",
+    "observation_artifact_digest": "sha256:dba1429ae36456a8cb080ef7f42648b643c45bbc2585fcc133051bdf79632b32",
+    "observation_artifact_id": 10175280333,
+    "observation_report_sha256": "e2ad0d8a4fce01d2da03fc93d636354253beaaf563db43968b11b600e26d0cdf",
+    "observation_run_id": 34535608294
+  },
+  "truth_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "current_corpus_eligible": false,
+    "final_test_accessed": false,
+    "foreign_pretrained_weights": false,
+    "learned_weights_created": false,
+    "model_training_executed": false,
+    "paid_compute_used": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized": false,
+    "training_authorized_bytes": 0
+  },
+  "two_clean_reproducibility": {
+    "independent_source_downloads_identical": true,
+    "manifest_file_sha256": "8923d26024ba396db14e6afeb367a5d3c54de573019252083aec88f2082bb119",
+    "manifest_identity_sha256": "ee1c59dbc481b83bffb1380f751880e5fa6e64d654b5abad266c3e2c4d18293b",
+    "manifests_identical": true,
+    "normalized_jsonl_identical": true,
+    "normalized_jsonl_sha256": "b46baa0f1c5087f4a9772ee273da459e87c0e82111dd5e51b22fc0b85cde840e",
+    "pinned_report_sha256": "9d94674323414d30f18517a71edbfee839a27a09a076eb94fe94d74cbaab53c8",
+    "pinned_reports_identical": true
+  },
+  "workflow_run_attempt": 1,
+  "workflow_run_id": 34565921713
+}

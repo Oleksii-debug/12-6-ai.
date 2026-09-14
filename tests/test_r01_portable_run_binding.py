@@ -183,6 +183,96 @@ def test_checked_in_overlay_contract_is_valid_but_deliberately_blocked() -> None
     assert "readiness:data_budget_not_qualified" in result.blockers
 
 
+def test_overlay_schema_version_rejects_boolean_integer_coercion() -> None:
+    overlay = _load(OVERLAY)
+    overlay["schema_version"] = True
+    assert validate_session_overlay_contract(overlay) == [
+        "overlay_schema_version_mismatch"
+    ]
+
+    result = bind_portable_run_packet(_load(READINESS), _load(PACKET), overlay)
+    assert not result.overlay_contract_valid
+    assert not result.binding_ready
+    assert result.packet is None
+    assert "overlay:overlay_schema_version_mismatch" in result.blockers
+
+
+def test_ready_overlay_rejects_boolean_numeric_coercions_before_packet_build() -> None:
+    readiness = _ready_readiness()
+    tokens = _verified_tokens(readiness)
+    mutations = (
+        (("scientific_bindings", "seed"), True, "overlay_seed_invalid"),
+        (
+            ("checkpoint", "session_time_limit_minutes"),
+            True,
+            "overlay_session_time_limit_minutes_invalid",
+        ),
+        (
+            ("checkpoint", "first_checkpoint_deadline_minutes"),
+            True,
+            "overlay_first_checkpoint_deadline_minutes_invalid",
+        ),
+        (
+            ("checkpoint", "checkpoint_every_steps"),
+            True,
+            "overlay_checkpoint_every_steps_invalid",
+        ),
+        (
+            ("resource", "maximum_cost_usd"),
+            False,
+            "overlay_resource_maximum_cost_usd_must_be_zero",
+        ),
+    )
+
+    for path, replacement, expected in mutations:
+        overlay = _ready_overlay()
+        overlay[path[0]][path[1]] = replacement
+        assert expected in validate_session_overlay_contract(overlay)
+        result = bind_portable_run_packet(
+            readiness,
+            _load(PACKET),
+            overlay,
+            verified_scientific_authorities=tokens,
+        )
+        assert not result.overlay_contract_valid
+        assert not result.binding_ready
+        assert result.packet is None
+        assert f"overlay:{expected}" in result.blockers
+
+
+def test_ready_overlay_requires_exact_boolean_session_flags() -> None:
+    mutations = (
+        (
+            ("checkpoint", "lineage", "cross_provider_transfer"),
+            0,
+            "overlay_lineage_cross_provider_transfer_must_be_boolean",
+        ),
+        (
+            ("checkpoint", "lineage", "resume_validated"),
+            1,
+            "overlay_lineage_resume_validated_must_be_boolean",
+        ),
+        (
+            ("resource", "materially_paid"),
+            0,
+            "overlay_resource_materially_paid_must_be_false",
+        ),
+        (
+            ("output", "content_addressed"),
+            1,
+            "overlay_output_content_addressed_must_be_true",
+        ),
+    )
+
+    for path, replacement, expected in mutations:
+        overlay = _ready_overlay()
+        if len(path) == 2:
+            overlay[path[0]][path[1]] = replacement
+        else:
+            overlay[path[0]][path[1]][path[2]] = replacement
+        assert expected in validate_session_overlay_contract(overlay)
+
+
 def test_ready_looking_packet_without_external_verification_remains_blocked() -> None:
     readiness = _ready_readiness()
     result = bind_portable_run_packet(readiness, _load(PACKET), _ready_overlay())

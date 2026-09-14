@@ -356,7 +356,7 @@ def build_split_family(
 def verify_split_family_manifest(
     records: Sequence[SplitRecord], manifest: Mapping[str, Any]
 ) -> None:
-    """Fail closed on corpus, dedup, assignment, or identity drift."""
+    """Fail closed on corpus, dedup, assignment, identity, or semantic drift."""
 
     if manifest.get("schema_version") != SPLIT_FAMILY_SCHEMA:
         raise SplitRobustnessError("unsupported split-family schema")
@@ -371,8 +371,8 @@ def verify_split_family_manifest(
         raise SplitRobustnessError("split family must contain at least two variants")
 
     actual_variant_identities: list[str] = []
-    actual_validation_union: set[str] = set()
-    for variant in variants:
+    variant_seeds: list[str] = []
+    for index, variant in enumerate(variants, start=1):
         if not isinstance(variant, Mapping):
             raise SplitRobustnessError("split variant must be an object")
         core = dict(variant)
@@ -380,16 +380,7 @@ def verify_split_family_manifest(
         if claimed != _sha256_bytes(_canonical_json_bytes(core)):
             raise SplitRobustnessError("split variant identity/content mismatch")
         actual_variant_identities.append(_require_sha256(claimed, "split_identity_sha256"))
-        train_record_ids = variant.get("train_record_ids", [])
-        validation_record_ids = variant.get("validation_record_ids", [])
-        assignments = {record_id: "train" for record_id in train_record_ids}
-        assignments.update({record_id: "validation" for record_id in validation_record_ids})
-        if set(assignments) != {record.id for record in records}:
-            raise SplitRobustnessError("split variant does not assign the exact eligible corpus")
-        leakage = audit_cluster_leakage(records, assignments)
-        if leakage:
-            raise SplitRobustnessError("near-duplicate cluster straddles train/validation")
-        actual_validation_union.update(validation_record_ids)
+        variant_seeds.append(_require_text(variant.get("seed"), f"variants[{index}].seed"))
 
     if manifest.get("variant_split_identities") != actual_variant_identities:
         raise SplitRobustnessError("split-family variant identity index mismatch")
@@ -398,19 +389,26 @@ def verify_split_family_manifest(
     claimed_family = core.pop("split_family_identity_sha256", None)
     if claimed_family != _sha256_bytes(_canonical_json_bytes(core)):
         raise SplitRobustnessError("split-family identity/content mismatch")
+    _require_sha256(claimed_family, "split_family_identity_sha256")
 
-    shared = set(manifest.get("shared_train_record_ids", []))
-    validation_union = set(manifest.get("validation_union_record_ids", []))
-    if validation_union != actual_validation_union:
-        raise SplitRobustnessError("validation union does not match variant validations")
-    if not shared or shared & validation_union:
-        raise SplitRobustnessError("shared train core is empty or contaminated")
-    if shared | validation_union != {record.id for record in records}:
-        raise SplitRobustnessError("shared-train/validation-union coverage mismatch")
-    if manifest.get("shared_train_documents") != len(shared):
-        raise SplitRobustnessError("shared-train document count mismatch")
-    if manifest.get("validation_union_documents") != len(validation_union):
-        raise SplitRobustnessError("validation-union document count mismatch")
+    validation_fraction = manifest.get("validation_fraction_requested")
+    if (
+        isinstance(validation_fraction, bool)
+        or not isinstance(validation_fraction, (int, float))
+        or not math.isfinite(float(validation_fraction))
+    ):
+        raise SplitRobustnessError("validation_fraction_requested must be a finite number")
+    algorithm = _require_text(manifest.get("algorithm"), "algorithm")
+    spec = SplitFamilySpec(
+        eligible_corpus_sha256=expected_corpus,
+        dedup_relations_sha256=expected_dedup,
+        variant_seeds=tuple(variant_seeds),
+        validation_fraction=float(validation_fraction),
+        algorithm=algorithm,
+    )
+    expected = build_split_family(records, spec)
+    if dict(manifest) != expected:
+        raise SplitRobustnessError("split-family semantic content mismatch")
 
 
 def assert_run_split_binding(

@@ -1,0 +1,98 @@
+{
+  "schema_version": "12-6.d03-common-pile-ubuntu-irc-source-rights.v1",
+  "authority_id": "D03-COMMON-PILE-UBUNTU-IRC-SOURCE-RIGHTS-V1",
+  "status": "SOURCE_SPECIFIC_RIGHTS_PROVENANCE_QUALIFIED_ZERO_CREDIT",
+  "project_authority": {
+    "swarm_protocol": "SWARM-300-V2",
+    "control_issue": 723,
+    "worker_issue": 1105,
+    "base_main_sha": "6ac04664a6a1a8e14be8ed9a8032cf99099503b0"
+  },
+  "parent_registry": {
+    "path": "configs/data/common_pile_source_rights_v1.json",
+    "registry_id": "COMMON-PILE-SOURCE-RIGHTS-V1",
+    "registry_identity_sha256": "b279c4a7404e0e501acd0c77842d1f71c43ea1dbcd611acab18163c64b060d4e",
+    "source_key": "ubuntu_irc",
+    "hf_dataset": "common-pile/ubuntu_irc",
+    "rights_basis_class": "PUBLIC_DOMAIN_ARCHIVE",
+    "rights_signal": "PUBLIC_DOMAIN",
+    "required_parent_review_status": "REVIEW_REQUIRED"
+  },
+  "upstream_collector": {
+    "repository": "https://github.com/r-three/common-pile",
+    "audited_commit": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "collector_path": "sources/ubuntu",
+    "readme_path": "sources/ubuntu/README.md",
+    "readme_blob_sha1": "98a9e0b9cfc86455955dbe4e3ef56b95659bb0a8",
+    "to_dolma_path": "sources/ubuntu/to-dolma.py",
+    "to_dolma_blob_sha1": "a15978f5a88bf8cf356893a2e0df20feb994c966"
+  },
+  "ubuntu_policy_evidence": {
+    "irc_guidelines": {
+      "url": "https://wiki.ubuntu.com/IRC/Guidelines",
+      "title": "IRC/Guidelines - Ubuntu Wiki",
+      "last_edited": "2021-09-05",
+      "evidence_role": "UBUNTU_CHANNEL_PUBLIC_DOMAIN_POLICY",
+      "observed_fact": "The published Ubuntu IRC guidelines state that Ubuntu channels are logged and their channel contents are considered public domain."
+    },
+    "community_help_irc": {
+      "url": "https://help.ubuntu.com/community/InternetRelayChat",
+      "title": "InternetRelayChat - Community Help Wiki",
+      "last_edited": "2024-03-28",
+      "evidence_role": "UBUNTU_CHANNEL_PUBLIC_DOMAIN_POLICY",
+      "observed_fact": "The Ubuntu Community Help Wiki states that Ubuntu channel content, whether officially logged or otherwise, is considered public domain."
+    },
+    "irc_terms_of_service": {
+      "url": "https://wiki.ubuntu.com/IRC/TermsOfService",
+      "title": "IRC/TermsOfService - Ubuntu Wiki",
+      "last_edited": "2025-01-24",
+      "evidence_role": "PUBLIC_LOGGING_AND_STORAGE_CONSENT",
+      "observed_fact": "The Ubuntu IRC terms state that participation in a publicly logged channel agrees to public storage or processing of messages on irclogs.ubuntu.com or other external sites."
+    }
+  },
+  "source_scope": {
+    "required_source_label": "ubuntu-chat",
+    "required_metadata_license": "Public Domain",
+    "required_metadata_url_prefix": "https://irclogs.ubuntu.com/",
+    "non_ubuntu_irc_allowed": false,
+    "website_wide_license_inference_allowed": false,
+    "dataset_metadata_alone_is_sufficient": false,
+    "policy_revalidation_required_on_drift": true
+  },
+  "real_execution_reference": {
+    "role": "SEPARATE_REQUIRED_AUTHORITY_NOT_CONSUMED_BY_THIS_RIGHTS_DECISION",
+    "product_pr": 1100,
+    "product_head_sha": "ab457e641d3ca5252cdbbd7fd5e2928d3c761521",
+    "evidence_path": "evidence/d03_common_pile_ubuntu_irc_real_execution_v1.json",
+    "evidence_blob_sha1": "23c73b36f12539200a3da97b2f177b562b62196b",
+    "source_dataset": "common-pile/ubuntu_irc",
+    "source_revision": "47d55b0534a62bf0766c621297165451969f3de9",
+    "source_file": "v0/documents/00007_ubuntu.jsonl.gz",
+    "source_sha256": "75e38bffcaceb00ed9ce9a63b1d9e74a70f5582b3e3f763a7ec573c7fd6c1e60",
+    "candidate_payload_sha256": "d6a0eaea27313e0d5146bc2a0624104541923ef06b12f01c22b3ccf6956eb6c2"
+  },
+  "decision": {
+    "source_scope_qualified": true,
+    "decision_class": "PROJECT_POLICY_SOURCE_QUALIFICATION_NOT_LEGAL_OPINION",
+    "legal_conclusion_claimed": false,
+    "formal_public_domain_waiver_equivalence_claimed": false,
+    "general_irc_public_domain_claimed": false,
+    "canonical_training_authorized": false,
+    "corpus_credit_bytes": 0,
+    "authorized_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_authorized": false,
+    "evaluation_eligible": false,
+    "final_test_accessed": false
+  },
+  "truth_boundary": {
+    "durable_evidence_contains_source_text": false,
+    "durable_evidence_contains_usernames_or_authors": false,
+    "real_data_executed_by_this_package": false,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  }
+}

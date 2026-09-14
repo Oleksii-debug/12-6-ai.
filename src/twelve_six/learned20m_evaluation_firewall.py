@@ -9,12 +9,17 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Collection
 from copy import deepcopy
 from typing import Any
+
+from twelve_six.learned20m_readiness import scientific_authority_token
 
 REPOSITORY = "Oleksii-debug/12-6-ai."
 SCHEMA_VERSION = "12-6.learned20m-evaluation-firewall.v1"
 POLICY_ID = "D06-LEARNED20M-EVALUATION-FIREWALL-V1"
+SELECTION_LOCK_AUTHORITY_ROLE = "selection_lock"
+SELECTION_LOCK_AUTHORITY_SCHEMA_VERSION = "12-6.learned20m-selection-lock-authority.v1"
 
 EVAL303_SELECTION_AUTHORITY = {
     "repository": REPOSITORY,
@@ -114,6 +119,22 @@ _SELECTION_LOCK_KEYS = {
     "optimizer_updates_after_lock_allowed",
     "final_test_payload_consumed_before_lock",
 }
+_TRUSTED_SELECTION_LOCK_KEYS = {
+    "schema_version",
+    "authority",
+    "selection_lock_identity_sha256",
+    "selected_checkpoint_sha256",
+    "selection_validation_evidence_sha256",
+    "recipe_identity_sha256",
+    "train_trace_identity_sha256",
+}
+_SELECTION_LOCK_IDENTITY_FIELDS = (
+    "selection_lock_identity_sha256",
+    "selected_checkpoint_sha256",
+    "selection_validation_evidence_sha256",
+    "recipe_identity_sha256",
+    "train_trace_identity_sha256",
+)
 
 
 class EvaluationFirewallError(ValueError):
@@ -152,7 +173,7 @@ def self_identity(policy: dict[str, Any]) -> str:
     return hashlib.sha256(_canonical_bytes(clone)).hexdigest()
 
 
-def _validate_authority_ref(value: Any, expected: dict[str, Any], label: str) -> None:
+def _validate_dynamic_authority_ref(value: Any, label: str) -> dict[str, Any]:
     ref = _require_exact_keys(value, _AUTHORITY_KEYS, label)
     _require(ref.get("repository") == REPOSITORY, f"{label} repository drift")
     _require(_is_sha1(ref.get("git_sha")), f"{label} git SHA invalid")
@@ -164,6 +185,11 @@ def _validate_authority_ref(value: Any, expected: dict[str, Any], label: str) ->
     )
     _require(ref.get("workflow_conclusion") == "success", f"{label} workflow not success")
     _require(ref.get("terminal") is True, f"{label} is not terminal")
+    return ref
+
+
+def _validate_authority_ref(value: Any, expected: dict[str, Any], label: str) -> None:
+    ref = _validate_dynamic_authority_ref(value, label)
     _require(ref == expected, f"{label} exact authority drift")
 
 
@@ -312,25 +338,10 @@ def preselection_binding(policy: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def authorize_final_test_reporting(
-    policy: dict[str, Any], selection_lock: dict[str, Any]
-) -> dict[str, Any]:
-    """Open final-test reporting only after an immutable selection lock exists.
-
-    The caller still resolves payload access outside this package. This function only
-    proves that the supplied lock cannot have been created from final-test outcomes and
-    that no post-lock reselection or optimizer update is allowed.
-    """
-    validated = validate_policy(policy)
+def _validate_selection_lock_shape(selection_lock: Any) -> dict[str, Any]:
     lock = _require_exact_keys(selection_lock, _SELECTION_LOCK_KEYS, "selection_lock")
     _require(lock.get("selection_complete") is True, "selection is not complete")
-    for key in (
-        "selection_lock_identity_sha256",
-        "selected_checkpoint_sha256",
-        "selection_validation_evidence_sha256",
-        "recipe_identity_sha256",
-        "train_trace_identity_sha256",
-    ):
+    for key in _SELECTION_LOCK_IDENTITY_FIELDS:
         _require(_is_sha256(lock.get(key)), f"selection lock identity invalid: {key}")
     for key in (
         "created_from_final_test",
@@ -339,6 +350,109 @@ def authorize_final_test_reporting(
         "final_test_payload_consumed_before_lock",
     ):
         _require(lock.get(key) is False, f"selection lock boundary weakened: {key}")
+    return lock
+
+
+def selection_lock_identity(selection_lock: dict[str, Any]) -> str:
+    """Return the canonical self-identity for an immutable selection lock."""
+    lock = _validate_selection_lock_shape(selection_lock)
+    payload = {
+        key: lock[key]
+        for key in sorted(_SELECTION_LOCK_KEYS)
+        if key != "selection_lock_identity_sha256"
+    }
+    return hashlib.sha256(_canonical_bytes(payload)).hexdigest()
+
+
+def trusted_selection_lock_evidence_identity(
+    trusted_selection_lock_authority: dict[str, Any],
+) -> str:
+    """Hash the trusted expected lock semantics that a live resolver authenticates."""
+    trusted = _require_exact_keys(
+        trusted_selection_lock_authority,
+        _TRUSTED_SELECTION_LOCK_KEYS,
+        "trusted_selection_lock_authority",
+    )
+    _require(
+        trusted.get("schema_version") == SELECTION_LOCK_AUTHORITY_SCHEMA_VERSION,
+        "trusted selection-lock schema drift",
+    )
+    for key in _SELECTION_LOCK_IDENTITY_FIELDS:
+        _require(_is_sha256(trusted.get(key)), f"trusted selection-lock identity invalid: {key}")
+    payload = {
+        "schema_version": trusted["schema_version"],
+        **{key: trusted[key] for key in _SELECTION_LOCK_IDENTITY_FIELDS},
+    }
+    return hashlib.sha256(_canonical_bytes(payload)).hexdigest()
+
+
+def _validate_trusted_selection_lock_authority(
+    trusted_selection_lock_authority: Any,
+    verified_scientific_authorities: Collection[str],
+) -> tuple[dict[str, Any], str]:
+    _require(
+        trusted_selection_lock_authority is not None,
+        "trusted selection-lock authority required",
+    )
+    trusted = _require_exact_keys(
+        trusted_selection_lock_authority,
+        _TRUSTED_SELECTION_LOCK_KEYS,
+        "trusted_selection_lock_authority",
+    )
+    expected_evidence_identity = trusted_selection_lock_evidence_identity(trusted)
+    authority = _validate_dynamic_authority_ref(
+        trusted.get("authority"),
+        "trusted selection-lock authority",
+    )
+    _require(
+        authority.get("evidence_sha256") == expected_evidence_identity,
+        "trusted selection-lock evidence identity mismatch",
+    )
+    token = scientific_authority_token(
+        SELECTION_LOCK_AUTHORITY_ROLE,
+        authority,
+        require_workflow=True,
+    )
+    verified = {
+        value.strip()
+        for value in verified_scientific_authorities
+        if isinstance(value, str) and value.strip()
+    }
+    _require(
+        token is not None and token in verified,
+        "trusted selection-lock authority unverified",
+    )
+    return trusted, token
+
+
+def authorize_final_test_reporting(
+    policy: dict[str, Any],
+    selection_lock: dict[str, Any],
+    trusted_selection_lock_authority: dict[str, Any] | None = None,
+    *,
+    verified_scientific_authorities: Collection[str] = (),
+) -> dict[str, Any]:
+    """Open final-test reporting only after an independently trusted immutable lock.
+
+    The candidate lock is never trusted merely because it is well formed or self-consistent.
+    Its canonical digest and all selection identities must match a separate authority packet
+    whose role-bound token was verified out of packet by the caller's live resolver.
+    """
+    validated = validate_policy(policy)
+    lock = _validate_selection_lock_shape(selection_lock)
+    _require(
+        lock["selection_lock_identity_sha256"] == selection_lock_identity(lock),
+        "selection lock self-identity mismatch",
+    )
+    trusted, trusted_token = _validate_trusted_selection_lock_authority(
+        trusted_selection_lock_authority,
+        verified_scientific_authorities,
+    )
+    for key in _SELECTION_LOCK_IDENTITY_FIELDS:
+        _require(
+            lock[key] == trusted[key],
+            f"trusted selection-lock mismatch: {key}",
+        )
 
     receipt = {
         "schema_version": "12-6.learned20m-final-test-reporting-authorization.v1",
@@ -350,6 +464,8 @@ def authorize_final_test_reporting(
         ],
         "recipe_identity_sha256": lock["recipe_identity_sha256"],
         "train_trace_identity_sha256": lock["train_trace_identity_sha256"],
+        "selection_lock_authority": deepcopy(trusted["authority"]),
+        "selection_lock_authority_token": trusted_token,
         "final_test_reservation_authority": deepcopy(
             EVAL233_FINAL_TEST_RESERVATION_AUTHORITY
         ),
