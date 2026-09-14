@@ -188,11 +188,10 @@ def test_attestation_rejects_every_exact_imported_member_in_place_drift(
 
     with monkeypatch.context() as patch:
         patch.setattr(imported, member_name, object())
-        with pytest.raises(
-            indexed.IndexedExecutionError,
-            match=rf"{label} imported behavior drift: {global_name}\.{member_name}",
-        ):
+        with pytest.raises(indexed.IndexedExecutionError) as exc_info:
             indexed._attest_executable_module(module, label)
+
+    assert str(exc_info.value) == f"{label} imported behavior drift: {global_name}.{member_name}"
 
 
 def test_attestation_fails_closed_on_unfrozen_direct_member_reference(tmp_path: Path) -> None:
@@ -219,3 +218,24 @@ def test_git_blob_identity_uses_loader_frozen_sha1(monkeypatch: pytest.MonkeyPat
     with monkeypatch.context() as patch:
         patch.setattr(indexed.hashlib, "sha1", explode)
         assert indexed._git_blob_sha1(payload) == expected
+
+
+def test_code_attestation_uses_loader_frozen_marshal_dumps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_source_module(
+        tmp_path,
+        "frozen_v1_marshal_digest",
+        "def behavior(value):\n    return value\n",
+    )
+    indexed._attest_executable_module(module, "V1")
+    module.behavior.__code__ = (lambda value: value + "!").__code__
+
+    with monkeypatch.context() as patch:
+        patch.setattr(indexed.marshal, "dumps", lambda _code: b"forged-equal-digest")
+        with pytest.raises(
+            indexed.IndexedExecutionError,
+            match=r"V1 callable code drift: behavior",
+        ):
+            indexed._attest_executable_module(module, "V1")

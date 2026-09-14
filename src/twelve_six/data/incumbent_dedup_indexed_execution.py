@@ -43,6 +43,7 @@ DEFAULT_MAX_PAIR_EXPANSIONS = 100_000_000
 _FROZEN_AST_PARSE = ast.parse
 _FROZEN_HASHLIB_SHA1 = hashlib.sha1
 _FROZEN_HASHLIB_SHA256 = hashlib.sha256
+_FROZEN_MARSHAL_DUMPS = marshal.dumps
 
 # Freeze every direct stdlib module member used by the exact pinned executable
 # function bodies. Re-executing authority source in this process intentionally
@@ -96,7 +97,7 @@ def _module_blob_sha1(module: Any) -> str:
 
 
 def _code_digest(code: CodeType) -> str:
-    return _FROZEN_HASHLIB_SHA256(marshal.dumps(code)).hexdigest()
+    return _FROZEN_HASHLIB_SHA256(_FROZEN_MARSHAL_DUMPS(code)).hexdigest()
 
 
 def _canonical_namespace(module: Any, label: str) -> dict[str, Any]:
