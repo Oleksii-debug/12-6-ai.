@@ -41,6 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -50,7 +51,7 @@ jobs:
           RUN_A: ${{ runner.temp }}/gutenberg-run-a
           RUN_B: ${{ runner.temp }}/gutenberg-run-b
           EVIDENCE: ${{ runner.temp }}/gutenberg-double-materialization-evidence.json
-          EXECUTION_HEAD: ${{ github.sha }}
+          EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
           WORKFLOW_RUN_ID: ${{ github.run_id }}
           WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -146,6 +147,7 @@ jobs:
           evidence["evidence_sha256"] = sha256(canonical(core))
           Path(os.environ["EVIDENCE"]).write_bytes(canonical(evidence))
           print("D03 Gutenberg double rematerialization: PASS")
+          print(f"execution_head_sha={core['execution_head_sha']}")
           print(f"inventory_identity_sha256={EXPECTED_INVENTORY}")
           print(f"receipt_identity_sha256={EXPECTED_RECEIPT}")
           print(f"evidence_sha256={evidence['evidence_sha256']}")
@@ -153,7 +155,7 @@ jobs:
       - name: Upload text-free execution evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: d03-gutenberg-double-rematerialization-${{ github.sha }}
+          name: d03-gutenberg-double-rematerialization-${{ github.event.pull_request.head.sha }}
           path: ${{ runner.temp }}/gutenberg-double-materialization-evidence.json
           if-no-files-found: error
           retention-days: 30
