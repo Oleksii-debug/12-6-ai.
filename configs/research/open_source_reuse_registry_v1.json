@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "registry_id": "OPEN-SOURCE-REUSE-REGISTRY-V1",
+  "audit_date": "2026-08-27",
+  "status": "CANDIDATE",
+  "canonical_policy": {
+    "canonical_base_random_init_only": true,
+    "foreign_pretrained_weights_allowed_in_canonical_base": false,
+    "foreign_instruct_or_aligned_weights_allowed_in_canonical_base": false,
+    "open_source_code_reuse_allowed": true,
+    "training_recipe_reuse_allowed": true,
+    "dataset_requires_separate_rights_and_decontamination_authority": true,
+    "third_party_agent_frameworks_are_postbase_only": true,
+    "code_license_does_not_authorize_model_weights_or_data": true,
+    "base_label_does_not_prove_behavioral_neutrality": true
+  },
+  "components": [
+    {
+      "id": "HF_TOKENIZERS",
+      "kind": "tokenizer_library",
+      "upstream": "https://github.com/huggingface/tokenizers",
+      "license": "Apache-2.0",
+      "decision": "INTEGRATION_CANDIDATE_NOW",
+      "allowed_surface": ["tokenizer_training", "tokenization", "normalization_alignment"],
+      "forbidden_surface": ["silent_import_of_foreign_pretrained_tokenizer"],
+      "required_evidence": ["fit_on_exact_corpus_identity", "tokenizer_hash", "roundtrip_tests", "BPB_comparison"]
+    },
+    {
+      "id": "DATATROVE",
+      "kind": "data_pipeline",
+      "upstream": "https://github.com/huggingface/datatrove",
+      "license": "Apache-2.0",
+      "decision": "P0_INTEGRATION_SPIKE",
+      "allowed_surface": ["extraction", "filtering", "stats", "dedup", "decontamination", "token_counting", "local_executor", "distributed_executor"],
+      "required_evidence": ["manifest_identity_preserved", "dedup_semantics_parity", "evaluation_firewall_preserved", "unique_loss_ledger_preserved"]
+    },
+    {
+      "id": "DOLMA_TOOLKIT",
+      "kind": "data_pipeline",
+      "upstream": "https://github.com/allenai/dolma",
+      "license": "Apache-2.0",
+      "decision": "REFERENCE_AND_ALTERNATE_CANDIDATE",
+      "allowed_surface": ["tagging", "filtering", "dedup", "mixing", "tokenization"],
+      "required_evidence": ["explicit_filter_config", "distribution_shift_measurement", "rights_pipeline_preserved"]
+    },
+    {
+      "id": "OLMO_LADDER",
+      "kind": "scaling_research",
+      "upstream": "https://github.com/allenai/OLMo-ladder",
+      "license": "Apache-2.0",
+      "decision": "P0_RESEARCH_NOW",
+      "allowed_surface": ["model_ladders", "scaling_law_fits", "data_decision_methodology"],
+      "required_evidence": ["fit_on_12_6_metrics", "no_foreign_weights_in_canonical_runs"]
+    },
+    {
+      "id": "MUP",
+      "kind": "scaling_research",
+      "upstream": "https://github.com/microsoft/mup",
+      "license": "MIT",
+      "decision": "P0_EXPERIMENTAL",
+      "allowed_surface": ["muP", "muTransfer", "hyperparameter_transfer"],
+      "required_evidence": ["GQA_compatibility", "tied_embedding_compatibility", "coord_check", "matched_control"]
+    },
+    {
+      "id": "OLMO_CORE",
+      "kind": "training_backend",
+      "upstream": "https://github.com/allenai/OLMo-core",
+      "license": "Apache-2.0",
+      "decision": "P1_ADAPTER_SPIKE",
+      "allowed_surface": ["training_loop", "optimizers", "distributed_training", "data_loading", "generation", "model_ladder"],
+      "required_evidence": ["exact_parameter_count", "forward_logits_parity", "checkpoint_lineage_parity", "random_init_proof"]
+    },
+    {
+      "id": "TORCHTITAN",
+      "kind": "training_backend",
+      "upstream": "https://github.com/pytorch/torchtitan",
+      "license": "BSD-3-Clause",
+      "decision": "P2_SCALE_BACKEND",
+      "allowed_surface": ["FSDP", "distributed_parallelism", "large_scale_pretraining"],
+      "required_evidence": ["hardware_need_demonstrated", "custom_ModelSpec_parity", "checkpoint_lineage_preserved"]
+    },
+    {
+      "id": "MEGATRON_CORE",
+      "kind": "training_backend",
+      "upstream": "https://github.com/NVIDIA/Megatron-LM",
+      "license": "Apache-2.0",
+      "decision": "P2_SCALE_BACKEND",
+      "allowed_surface": ["TP", "PP", "DP", "EP", "CP", "mixed_precision", "MoE"],
+      "required_evidence": ["hardware_need_demonstrated", "custom_ModelSpec_parity", "checkpoint_lineage_preserved"]
+    },
+    {
+      "id": "NANOTRON",
+      "kind": "training_backend",
+      "upstream": "https://github.com/huggingface/nanotron",
+      "license": "Apache-2.0",
+      "decision": "P1_ADAPTER_AND_RECIPE_CANDIDATE",
+      "allowed_surface": ["pretraining", "distributed_training", "recipe_comparison"],
+      "required_evidence": ["exact_parameter_count", "logits_parity", "checkpoint_parity", "random_init_proof"]
+    },
+    {
+      "id": "LITGPT",
+      "kind": "training_reference",
+      "upstream": "https://github.com/Lightning-AI/litgpt",
+      "license": "Apache-2.0",
+      "decision": "REFERENCE_AND_PARITY",
+      "allowed_surface": ["small_pretraining_reference", "FSDP_reference", "throughput_comparison"],
+      "required_evidence": ["do_not_force_foreign_architecture", "matched_mechanics_control"]
+    },
+    {
+      "id": "NANOCHAT",
+      "kind": "training_reference",
+      "upstream": "https://github.com/karpathy/nanochat",
+      "license": "MIT",
+      "decision": "REFERENCE_AND_PARITY",
+      "allowed_surface": ["tokenizer_reference", "base_training_reference", "checkpoint_reference", "BPB_eval_reference", "CLI_reference"],
+      "required_evidence": ["extract_ideas_not_weights", "matched_local_smoke"]
+    },
+    {
+      "id": "GPT_NEOX",
+      "kind": "training_reference",
+      "upstream": "https://github.com/EleutherAI/gpt-neox",
+      "license": "Apache-2.0",
+      "decision": "SECONDARY_REFERENCE",
+      "allowed_surface": ["distributed_training_reference", "architecture_reference"]
+    },
+    {
+      "id": "LM_EVAL_HARNESS",
+      "kind": "evaluation",
+      "upstream": "https://github.com/EleutherAI/lm-evaluation-harness",
+      "license": "MIT",
+      "decision": "P1_EVAL_ADAPTER",
+      "allowed_surface": ["evaluation_harness", "metrics", "task_adapter"],
+      "required_evidence": ["benchmark_payload_not_training_data", "reserved_eval_firewall", "exact_model_identity"]
+    },
+    {
+      "id": "LIGHTEVAL",
+      "kind": "evaluation",
+      "upstream": "https://github.com/huggingface/lighteval",
+      "license": "MIT",
+      "decision": "P1_SECOND_EVAL_IMPLEMENTATION",
+      "allowed_surface": ["evaluation_pipeline", "evaluation_tracking", "cross_check"]
+    },
+    {
+      "id": "LLAMA_CPP",
+      "kind": "inference",
+      "upstream": "https://github.com/ggml-org/llama.cpp",
+      "license": "MIT",
+      "decision": "P2_LOCAL_DEPLOYMENT_TARGET",
+      "allowed_surface": ["GGUF", "CPU_inference", "Windows_local_inference", "server"],
+      "required_evidence": ["HF_or_native_logits_parity", "converter_is_non_mutating", "architecture_support"]
+    },
+    {
+      "id": "SMOLAGENTS",
+      "kind": "agent_reference",
+      "upstream": "https://github.com/huggingface/smolagents",
+      "license": "Apache-2.0",
+      "decision": "POSTBASE_REFERENCE_ONLY",
+      "allowed_surface": ["tool_contract_reference", "sandbox_reference", "model_adapter_reference"],
+      "forbidden_surface": ["canonical_base_behavior_dependency"]
+    },
+    {
+      "id": "AUTOGEN",
+      "kind": "agent_reference",
+      "upstream": "https://github.com/microsoft/autogen",
+      "license": "MIT",
+      "decision": "POSTBASE_REFERENCE_ONLY",
+      "allowed_surface": ["multi_agent_reference", "orchestration_reference"],
+      "forbidden_surface": ["canonical_base_behavior_dependency"]
+    },
+    {
+      "id": "FINEWEB2",
+      "kind": "dataset_candidate",
+      "upstream": "https://huggingface.co/datasets/HuggingFaceFW/fineweb-2",
+      "license": "ODC-By-1.0",
+      "decision": "DATA_ACQUISITION_CANDIDATE_NOT_AUTHORIZED",
+      "canonical_training_authorized": false,
+      "required_evidence": ["source_rights_review", "language_strata_review", "family_diversity", "privacy_review", "dedup", "decontamination", "split_reservation"]
+    },
+    {
+      "id": "DOLMA_DATASET",
+      "kind": "dataset_candidate",
+      "upstream": "https://huggingface.co/datasets/allenai/dolma",
+      "license": "ODC-By-1.0",
+      "decision": "DATA_ACQUISITION_CANDIDATE_NOT_AUTHORIZED",
+      "canonical_training_authorized": false,
+      "required_evidence": ["source_rights_review", "filter_distribution_review", "privacy_review", "dedup", "decontamination", "split_reservation"]
+    },
+    {
+      "id": "SMOLLM3_3B_BASE",
+      "kind": "foreign_pretrained_checkpoint",
+      "upstream": "https://huggingface.co/HuggingFaceTB/SmolLM3-3B-Base",
+      "license": "Apache-2.0",
+      "decision": "REFERENCE_ONLY_NONCANONICAL",
+      "canonical_base_weights_allowed": false,
+      "allowed_surface": ["architecture_reference", "training_recipe_reference", "data_mixture_reference", "benchmark_baseline"],
+      "forbidden_surface": ["canonical_initialization", "silent_distillation", "silent_teacher_logits", "canonical_checkpoint_ancestry"]
+    },
+    {
+      "id": "PYTHIA",
+      "kind": "foreign_pretrained_checkpoint_family",
+      "upstream": "https://github.com/EleutherAI/pythia",
+      "license": "Apache-2.0",
+      "decision": "REFERENCE_ONLY_NONCANONICAL",
+      "canonical_base_weights_allowed": false,
+      "allowed_surface": ["scaling_reference", "checkpoint_dynamics_reference", "benchmark_baseline"],
+      "forbidden_surface": ["canonical_initialization", "canonical_checkpoint_ancestry"]
+    }
+  ],
+  "token_budget_policy": {
+    "fixed_tokens_per_parameter_rule": false,
+    "current_experimental_grid": [10, 20, 40],
+    "grid_is_prescription": false,
+    "primary_cross_tokenizer_metric": "bits_per_byte",
+    "must_measure": ["heldout_loss", "BPB", "unique_training_exposure", "data_quality", "tokenizer_efficiency", "throughput", "compute_cost", "checkpoint_resume", "contamination_safe_eval"],
+    "prohibited_shortcut": "unauthorized_replay_to_hit_target_ratio"
+  },
+  "next_actions": [
+    "P0_DATATROVE_COMPATIBILITY_SPIKE",
+    "P0_OLMO_LADDER_STYLE_SCALING_FIT",
+    "P0_MUP_MATCHED_EXPERIMENT",
+    "P0_CORPUS_BOUND_TOKENIZER_CANDIDATES_AFTER_CORPUS_FREEZE",
+    "P1_EVAL_HARNESS_ADAPTERS",
+    "P1_OLMO_CORE_AND_NANOTRON_MECHANICAL_PARITY_SPIKES",
+    "P2_SCALE_BACKENDS_WHEN_HARDWARE_REQUIRES",
+    "P2_LOCAL_INFERENCE_BACKENDS_AFTER_EXPORT_PARITY"
+  ]
+}

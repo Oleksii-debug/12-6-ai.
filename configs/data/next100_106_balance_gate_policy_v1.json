@@ -1,0 +1,59 @@
+{
+  "schema_version": "12-6.next100-106-balance-gate-policy.v1",
+  "worker_id": "NEXT100-106-EXECUTABLE-BALANCE-GATE-V3",
+  "issue": 557,
+  "execution_class": "LOCAL_FREE",
+  "lineage": {
+    "base_pr": 495,
+    "base_head_sha": "44f476abee339c06a59ca6203e2cb328111eb9bc",
+    "base_worker": "NEXT100-069-BALANCE-DIVERSITY-V2",
+    "policy_authority": "DATA-295-BALANCE-POLICY-20M-V1"
+  },
+  "policy": {
+    "target_total_source_bytes": 20000000,
+    "strata": {
+      "ua": {
+        "target_numerator": 9,
+        "target_denominator": 20
+      },
+      "en": {
+        "target_numerator": 7,
+        "target_denominator": 20
+      },
+      "code": {
+        "target_numerator": 1,
+        "target_denominator": 5
+      }
+    },
+    "minimum_independent_families_per_stratum": 2,
+    "max_family_fraction_total": {
+      "numerator": 1,
+      "denominator": 4
+    },
+    "max_family_fraction_own_stratum": {
+      "numerator": 3,
+      "denominator": 5
+    },
+    "budget_quantum_bytes": 100,
+    "replay_or_duplication_to_meet_quota": false,
+    "model_result_guided_mixture_retuning": false
+  },
+  "input_contract": {
+    "schema_version": "12-6.next100-106-post-dedup-family-vector.v1",
+    "terminal_required": true,
+    "dedup_terminal_verdict": "PASS",
+    "exact_head_required": true,
+    "evidence_identity_required": true,
+    "family_capacity_semantics": "POST_GLOBAL_DEDUP_UNIQUE_SOURCE_BYTES_NO_REPLAY"
+  },
+  "claim_boundary": {
+    "computes_source_mixture_feasibility_only": true,
+    "creates_corpus_identity": false,
+    "creates_shard_identity": false,
+    "authorizes_tokenizer_fit": false,
+    "authorizes_model_training": false,
+    "authorizes_paid_compute": false,
+    "relabels_source_bytes_as_loss_positions": false
+  },
+  "policy_identity_sha256": "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
+}

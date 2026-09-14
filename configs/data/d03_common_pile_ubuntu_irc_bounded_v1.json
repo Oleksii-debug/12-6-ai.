@@ -1,0 +1,81 @@
+{
+  "schema_version": "12-6.d03-common-pile-ubuntu-irc-bounded.v1",
+  "execution_profile": "LOCAL_FREE",
+  "claim_issue": 905,
+  "parent_rights": {
+    "merged_pr": 769,
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "source_key": "ubuntu_irc",
+    "hf_dataset": "common-pile/ubuntu_irc",
+    "required_rights_basis_class": "PUBLIC_DOMAIN_ARCHIVE",
+    "required_rights_signal": "PUBLIC_DOMAIN",
+    "required_project_review_status": "REVIEW_REQUIRED"
+  },
+  "source": {
+    "revision": "47d55b0534a62bf0766c621297165451969f3de9",
+    "file": "v0/documents/00007_ubuntu.jsonl.gz",
+    "url": "https://huggingface.co/datasets/common-pile/ubuntu_irc/resolve/47d55b0534a62bf0766c621297165451969f3de9/v0/documents/00007_ubuntu.jsonl.gz",
+    "sha256": "75e38bffcaceb00ed9ce9a63b1d9e74a70f5582b3e3f763a7ec573c7fd6c1e60",
+    "max_compressed_bytes": 180000000,
+    "compression": "gzip",
+    "expected_source_label": "ubuntu-chat",
+    "expected_row_fields": [
+      "id",
+      "text",
+      "source",
+      "added",
+      "created",
+      "metadata"
+    ],
+    "expected_metadata_license": "Public Domain",
+    "required_metadata_url_prefix": "https://irclogs.ubuntu.com/"
+  },
+  "selection": {
+    "max_scanned_records": 4096,
+    "max_retained_records": 1024,
+    "max_retained_normalized_utf8_bytes": 4800000,
+    "order": "exact_shard_file_order_after_fail_closed_filters"
+  },
+  "quality": {
+    "min_chars": 300,
+    "max_chars": 30000,
+    "min_alpha_fraction": 0.30,
+    "min_latin_alpha_ratio": 0.75,
+    "max_cyrillic_alpha_ratio": 0.05
+  },
+  "privacy": {
+    "reject_email": true,
+    "reject_phone": true,
+    "reject_ipv4": true,
+    "reject_secret_markers": true,
+    "reject_control_characters": true,
+    "metadata_authors_emitted": false,
+    "metadata_url_emitted": false,
+    "metadata_channel_emitted": false,
+    "universal_pii_absence_claimed": false
+  },
+  "downstream_required": [
+    "global_cross_source_dedup",
+    "reserved_evaluation_decontamination",
+    "final_source_rights_review",
+    "post_composition_quality_privacy",
+    "balance_and_family_caps",
+    "cluster_safe_split",
+    "deterministic_packing_two_clean_builds",
+    "positive_unique_loss_ledger"
+  ],
+  "claim_boundary": {
+    "training_authorized_bytes": 0,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "research_corpus_v1_released": false
+  }
+}

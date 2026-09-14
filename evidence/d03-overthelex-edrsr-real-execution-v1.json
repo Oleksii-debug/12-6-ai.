@@ -1,0 +1,102 @@
+{
+  "schema_version": "12-6.d03-overthelex-edrsr-real-execution.v1",
+  "execution_profile": "LOCAL_FREE",
+  "product_pr": 862,
+  "execution_head_sha": "1790b11569a71bf89a1b90e3d853fe8151155abc",
+  "specialist_workflow": {
+    "run_id": 34537415518,
+    "conclusion": "success",
+    "execution_a_job_id": 103072145274,
+    "execution_b_job_id": 103072145498,
+    "compare_job_id": 103072308130
+  },
+  "source": {
+    "dataset": "overthelex/ua-case-outcome",
+    "revision": "a175ffa122b1f5b04d25ed415a30a925d692b5a9",
+    "file": "train.parquet",
+    "split": "train",
+    "rows": 11561,
+    "bytes": 49826322,
+    "sha256": "e5706a2a35a0131224dc75eac8345296e11518688c4072dc996b25a55a5b7793",
+    "license": "CC-BY-4.0",
+    "source_family": "ua.edrsr.case-outcome.train"
+  },
+  "runtime": {
+    "runner_os": "Ubuntu 24.04.5 LTS",
+    "python": "3.11.16",
+    "pyarrow": "17.0.0"
+  },
+  "independent_execution_a": {
+    "source_sha256": "e5706a2a35a0131224dc75eac8345296e11518688c4072dc996b25a55a5b7793",
+    "source_bytes": 49826322,
+    "candidate_sha256": "1d51f614f035d31555c52a552e2dc9c8806d600ce09627d836df863560407f13",
+    "report_file_sha256": "d195f9cd07745bb1deab5dca5a52261e56f11531b1684b93434b86acf335be57",
+    "disposition_sha256": "fe3204d4db4b9f2032fe386dc0150e8c27bb52d6e3a0b86f071e1f87ebcf1075",
+    "retained_records": 827,
+    "retained_normalized_bytes": 5993276
+  },
+  "independent_execution_b": {
+    "source_sha256": "e5706a2a35a0131224dc75eac8345296e11518688c4072dc996b25a55a5b7793",
+    "source_bytes": 49826322,
+    "candidate_sha256": "1d51f614f035d31555c52a552e2dc9c8806d600ce09627d836df863560407f13",
+    "report_file_sha256": "d195f9cd07745bb1deab5dca5a52261e56f11531b1684b93434b86acf335be57",
+    "disposition_sha256": "fe3204d4db4b9f2032fe386dc0150e8c27bb52d6e3a0b86f071e1f87ebcf1075",
+    "retained_records": 827,
+    "retained_normalized_bytes": 5993276
+  },
+  "determinism": {
+    "source_identity_equal": true,
+    "candidate_identity_equal": true,
+    "report_identity_equal": true,
+    "disposition_identity_equal": true,
+    "retained_counts_equal": true,
+    "retained_bytes_equal": true
+  },
+  "observed_prefix_dispositions_before_candidate_byte_cap": {
+    "accepted": 827,
+    "phone": 122,
+    "exact_normalized_duplicate": 6,
+    "candidate_byte_cap_reached": 1
+  },
+  "selection_note": "Row-level selection is deterministic numeric-doc-id order and stops once the 6000000 normalized-byte candidate cap would be exceeded. Disposition counts therefore describe the assessed prefix through that stop, not all 11561 source rows.",
+  "evaluation_boundary": {
+    "validation_split_downloaded": false,
+    "test_split_downloaded": false,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false,
+    "reserved_evaluation_decontamination_complete": false
+  },
+  "content_boundary": {
+    "facts_column_only": true,
+    "dispositive_emitted": false,
+    "outcome_emitted": false,
+    "judge_metadata_emitted": false,
+    "universal_pii_absence_claimed": false,
+    "rejected_text_emitted": false,
+    "rejected_hashes_emitted": false,
+    "durable_candidate_text_retained_in_git": false
+  },
+  "claim_boundary": {
+    "real_data_executed": true,
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "family_credit_added": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false
+  },
+  "next_required_before_any_training_credit": [
+    "current_global_exact_near_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "canonical_quality_privacy",
+    "family_balance_caps",
+    "cluster_safe_split",
+    "deterministic_packing",
+    "two_clean_build_reproducibility",
+    "positive_unique_loss_accounting"
+  ]
+}

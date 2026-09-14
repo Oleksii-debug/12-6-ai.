@@ -1,0 +1,223 @@
+{
+  "schema_version": 2,
+  "roadmap_id": "R01-ACCELERATED-SCALING-ROADMAP-V2",
+  "status": "BLOCKED_PENDING_TERMINAL_LEARNED_20M",
+  "authority": {
+    "source_strategy": {
+      "path": "docs/TRAINING_COMPUTE_AND_SCALING_STRATEGY_2026-09-07.md",
+      "git_sha": "7cec1a1693676fc8e737400890727e94e8b46bee",
+      "sha256": "5cfaf394ff850356343679061a3bf0c2288a7975ed8c9132c5008b422bff2941"
+    },
+    "previous_roadmap": {
+      "path": "configs/research/r01_20m_to_100m_scaling_campaign_v1.json",
+      "sha256": "1a7996618e3675b66c0f65484105d93e2f952b24d48a76e8808f2925192f97e8",
+      "disposition": "SUPERSEDED_FOR_POST_20M_ROUTING_ONLY",
+      "scientific_gates_preserved": true
+    },
+    "control_issue": 548,
+    "permanent_lane_issue": 15
+  },
+  "hard_boundaries": {
+    "canonical_base": "RANDOM_INIT_PRETRAINING_ONLY",
+    "terminal_learned_20m_required": true,
+    "unique_data_must_scale_with_model": true,
+    "project_owned_scientific_contracts_authoritative": true,
+    "foreign_pretrained_or_aligned_weights_allowed": false,
+    "hidden_teacher_logits_allowed": false,
+    "evaluation_or_final_test_training_use_allowed": false,
+    "replay_or_padding_may_count_as_unique_exposure": false,
+    "paid_compute_authorized": false,
+    "material_training_authorized": false,
+    "stage_promotion_authorized": false,
+    "backend_promotion_authorized": false,
+    "training_executed_by_this_package": false
+  },
+  "scale_route": [
+    {
+      "id": "LAB_3M_10M",
+      "parameter_range": [3000000, 10000000],
+      "role": "RETAINED_LAB_EVIDENCE",
+      "mandatory": false,
+      "authorized_now": false
+    },
+    {
+      "id": "TERMINAL_LEARNED_20M",
+      "target_parameters": 20613440,
+      "role": "TERMINAL_PIPELINE_QUALIFICATION",
+      "mandatory": true,
+      "authorized_now": false
+    },
+    {
+      "id": "OPTIONAL_50M_100M_PROBES",
+      "parameter_range": [50000000, 100000000],
+      "role": "BOUNDED_RISK_REDUCTION_ONLY",
+      "mandatory": false,
+      "full_campaign_required": false,
+      "may_block_200m_by_default": false,
+      "requires_preregistered_risk_reduction_hypothesis": true,
+      "authorized_now": false
+    },
+    {
+      "id": "PRODUCT_200M",
+      "approximate_target_parameters": 200000000,
+      "role": "FIRST_SERIOUS_PRODUCT_BRAIN",
+      "requires_terminal_stage": "TERMINAL_LEARNED_20M",
+      "requires_feasibility_packet": true,
+      "modelspec_frozen": false,
+      "authorized_now": false
+    },
+    {
+      "id": "PRODUCT_1B",
+      "approximate_target_parameters": 1000000000,
+      "role": "NEXT_MEASURED_SYSTEMS_MILESTONE",
+      "requires_terminal_stage": "PRODUCT_200M",
+      "requires_feasibility_packet": true,
+      "modelspec_frozen": false,
+      "authorized_now": false
+    }
+  ],
+  "terminal_20m_evidence_requirements": [
+    "exact_code_model_init_identity",
+    "terminal_corpus_split_packing_identity",
+    "unique_post_pack_causal_loss_ledger",
+    "terminal_tokenizer_identity_or_byte_baseline_decision",
+    "checkpoint_corruption_and_fresh_process_resume",
+    "evaluation_firewall_and_selection_validation",
+    "bounded_pilot_numerics_throughput_and_loss",
+    "exact_optimized_targets_without_hidden_replay",
+    "best_and_chronological_final_checkpoint_identity",
+    "heldout_ua_en_code_metrics",
+    "first_party_inference_reload_fingerprint",
+    "memorization_and_exposure_diagnostics",
+    "independent_audit"
+  ],
+  "terminal_200m_evidence_requirements": [
+    "exact_code_model_init_identity",
+    "terminal_corpus_split_packing_identity",
+    "unique_post_pack_causal_loss_ledger",
+    "terminal_tokenizer_identity",
+    "exact_optimized_targets_without_hidden_replay",
+    "checkpoint_lineage_and_cross_provider_recovery",
+    "evaluation_firewall_and_selection_validation",
+    "heldout_ua_en_code_metrics",
+    "measured_memory_throughput_and_cost",
+    "first_party_inference_reload_fingerprint",
+    "product_utility_evaluation",
+    "memorization_and_exposure_diagnostics",
+    "independent_audit"
+  ],
+  "portable_training_runner": {
+    "provider_neutral": true,
+    "project_manifest_authoritative": true,
+    "cross_provider_resume_required": true,
+    "early_checkpoint_required_for_ephemeral_sessions": true,
+    "resource_priority": [
+      "OWNER_LAPTOP_LOCAL_FREE",
+      "FREE_GPU_KAGGLE",
+      "FREE_GPU_OTHER",
+      "PAID_ONLY_AFTER_EXPLICIT_AUTHORIZATION"
+    ],
+    "required_run_packet_fields": [
+      "source_git_sha",
+      "modelspec_sha256",
+      "initspec_sha256",
+      "tokenizer_sha256",
+      "corpus_manifest_sha256",
+      "split_sha256",
+      "packing_sha256",
+      "unique_loss_ledger_sha256",
+      "training_config_sha256",
+      "optimizer_scheduler_precision",
+      "seed",
+      "target_unique_loss_positions",
+      "maximum_total_exposures",
+      "checkpoint_lineage",
+      "stop_resume_policy_sha256",
+      "evaluation_schedule_sha256",
+      "resource_class",
+      "maximum_cost"
+    ],
+    "backend_qualification_requirements": [
+      "exact_version",
+      "license",
+      "modelspec_parity",
+      "optimizer_semantics_parity",
+      "checkpoint_save_load_resume",
+      "fresh_process_recovery",
+      "determinism_or_seed_variance_evidence",
+      "bounded_throughput_and_memory_benchmark",
+      "rollback_path"
+    ],
+    "selected_backend": null,
+    "backend_candidates": [
+      {"id": "PROJECT_NATIVE_PYTORCH", "qualification_status": "UNQUALIFIED", "canonical_now": false},
+      {"id": "LITGPT", "qualification_status": "UNQUALIFIED", "canonical_now": false},
+      {"id": "HF_ACCELERATE_OR_TRAINER", "qualification_status": "UNQUALIFIED", "canonical_now": false},
+      {"id": "PYTORCH_FSDP", "qualification_status": "UNQUALIFIED", "canonical_now": false},
+      {"id": "DEEPSPEED", "qualification_status": "UNQUALIFIED", "canonical_now": false}
+    ]
+  },
+  "measurement_contract": [
+    "tokens_per_second",
+    "step_time_seconds",
+    "peak_ram_bytes",
+    "peak_vram_bytes_or_not_applicable",
+    "checkpoint_size_bytes",
+    "checkpoint_save_seconds",
+    "checkpoint_load_seconds",
+    "estimated_wall_clock_to_target",
+    "energy_or_thermal_observation_if_available"
+  ],
+  "feasibility_200m_requirements": [
+    "candidate_architecture_and_parameter_count",
+    "weights_gradients_optimizer_activations_memory",
+    "gradient_accumulation_and_checkpointing_plan",
+    "qualified_backend_evidence",
+    "unique_data_supply_and_target_exposure",
+    "measured_20m_throughput_extrapolation",
+    "local_free_and_free_gpu_execution_plan",
+    "checkpoint_transport_and_resume_plan",
+    "evaluation_capacity",
+    "paid_compute_threshold_without_authorization"
+  ],
+  "feasibility_1b_requirements": [
+    "terminal_learned_200m_evidence",
+    "expanded_unique_corpus_budget",
+    "measured_memory_throughput_and_cost_model",
+    "distributed_or_offload_strategy",
+    "cross_provider_checkpoint_transport_and_recovery",
+    "scale_appropriate_evaluation_capacity",
+    "architecture_re_evaluation",
+    "explicit_compute_authorization_if_materially_paid"
+  ],
+  "evidence_state": {
+    "learned_20m": {
+      "status": "NOT_TERMINAL",
+      "evidence_manifest_sha256": null,
+      "requirements_satisfied": [],
+      "terminal_authority": null,
+      "independent_audit_authority": null
+    },
+    "feasibility_200m": {
+      "status": "NOT_PREPARED",
+      "packet_sha256": null,
+      "requirements_satisfied": [],
+      "terminal_authority": null,
+      "decision": "NOT_EVALUATED"
+    },
+    "learned_200m": {
+      "status": "NOT_TERMINAL",
+      "evidence_manifest_sha256": null,
+      "requirements_satisfied": [],
+      "terminal_authority": null,
+      "independent_audit_authority": null
+    },
+    "feasibility_1b": {
+      "status": "NOT_PREPARED",
+      "packet_sha256": null,
+      "requirements_satisfied": [],
+      "terminal_authority": null,
+      "decision": "NOT_EVALUATED"
+    }
+  }
+}

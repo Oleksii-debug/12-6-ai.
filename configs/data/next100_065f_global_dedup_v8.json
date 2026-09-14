@@ -1,0 +1,58 @@
+{
+  "schema_version": "12-6.next100-065f-global-dedup.v8",
+  "worker_id": "NEXT100-065F-CURRENT-MAIN-GLOBAL-DEDUP-V8",
+  "execution_profile": "LOCAL_FREE",
+  "main_authority": {
+    "sha": "4fa4839f2882984e7bf148dc38ce315d51b60957",
+    "merged_pr": 818
+  },
+  "baseline_v7": {
+    "head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+    "artifact_id": 9635595510,
+    "artifact_zip_sha256": "cca6921a2093d4e033976b23b0af180e9dc1945b624b82e218780f8d20bafd18",
+    "artifact_report_file_sha256": "a917a5f240e2eda0015fd09564b29430ca8c95a9916a03f734a4463fe458c08f",
+    "report_sha256": "80997ac88b9d604afaf652807cda2a2d9fd0f6cb75754460ae6f4aa7af6e0267",
+    "dedup_v3_report_sha256": "c33e0d06a469473aac191e9b5bf7baec23322cd3e9200f0caab2633c921afd84",
+    "source_object_count": 35,
+    "source_capacity_bytes_after_global_dedup": 2215615,
+    "source_family_counts": {"uk": 4, "en": 5, "code": 6}
+  },
+  "data_bulk_code1": {
+    "issue": 635,
+    "merged_pr": 818,
+    "execution_head_sha": "a045c602bfcead862f7852924fb78a5d78c992d6",
+    "workflow_run_id": 34155446113,
+    "artifact_id": 10030825509,
+    "artifact_digest": "sha256:9febb6e4e900df63c58b1cb0ed2a7003df56d6e9bd593e4b4adbaa54496010ac",
+    "contract_identity_sha256": "7fd2228208f928859ebe68e947a72c977cda6952035a654d12923ce3a19a7dd6",
+    "report_identity_sha256": "80f3a8f20dfb82825e6c89ac1f76f2f41233296b8a426a1cf466b0fcc0892985",
+    "eligible_file_count": 229,
+    "eligible_utf8_bytes": 3880009,
+    "source_family_ids": [
+      "github:pallets/flask",
+      "github:pallets/click",
+      "github:pallets/jinja",
+      "github:pallets/werkzeug",
+      "github:agronholm/anyio",
+      "github:pytest-dev/pytest"
+    ]
+  },
+  "expected_composed_input": {
+    "source_object_count": 264,
+    "source_capacity_bytes_before_global_dedup": 6095624,
+    "source_family_counts": {"uk": 4, "en": 5, "code": 12}
+  },
+  "claim_boundary": {
+    "corpus_released": false,
+    "decontamination_reused_as_pass_for_new_bytes": false,
+    "post_composition_quality_privacy_pass_claimed": false,
+    "balance_release_claimed": false,
+    "split_pack_complete": false,
+    "postpack_unique_loss_ledger_complete": false,
+    "authorized_training_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "final_test_payload_read": false,
+    "paid_compute_used": false
+  }
+}

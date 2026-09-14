@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "protocol_id": "SWARM-300-V1",
+  "control_issue": 723,
+  "implementation_issue": 724,
+  "repository": "Oleksii-debug/12-6-ai.",
+  "ownership_authority": "github_only",
+  "drive_role": "reports_and_backup_only_not_locking",
+  "live_truth_order": [
+    "exact_git_sha_branch_pr_actions",
+    "github_claim_control_lane_issues",
+    "independent_audit_evidence",
+    "drive_canonical_reports_research",
+    "chat_prose"
+  ],
+  "worker_registration": {
+    "initial_issue_title": "SWARM-REGISTER: autonomous worker",
+    "worker_id_template": "SWARM-{issue_number}",
+    "reuse_same_issue_for_claim_and_handoff": true
+  },
+  "diversification": {
+    "permanent_lane_issue_min": 2,
+    "permanent_lane_issue_max": 16,
+    "lane_count": 15,
+    "formula": "2 + (issue_number mod 15)",
+    "preferred_lane_is_hint_not_lock": true,
+    "rotate_when_saturated_or_blocked": true
+  },
+  "claim": {
+    "title_prefix": "[ACTIVE] SWARM-CLAIM",
+    "semantic_key_format": "<LANE>|<OBJECT-OR-SUBSYSTEM>|<WORK-KIND>",
+    "required_fields": [
+      "SWARM_PROTOCOL",
+      "SWARM_CONTROL",
+      "SWARM_WORKER_ID",
+      "SWARM_LANE_KEY",
+      "PREFERRED_LANE",
+      "PARENT_ISSUES",
+      "STATUS",
+      "BASE_SHA",
+      "CLAIMED_AT_UTC",
+      "LEASE_UNTIL_UTC",
+      "OWNED_SURFACES",
+      "AVOID_SURFACES",
+      "OBJECTIVE",
+      "ACCEPTANCE",
+      "FALLBACK"
+    ],
+    "default_lease_hours": 6,
+    "preclaim_semantic_collision_scan": true,
+    "postclaim_exact_key_scan": true,
+    "exact_key_winner": "earliest_github_issue_created_at",
+    "older_canonical_semantic_owner_beats_new_swarm_claim": true,
+    "loser_action": "mark_abandoned_duplicate_rotate_and_reclaim_same_worker_issue"
+  },
+  "stale_takeover": {
+    "allowed": true,
+    "all_required": [
+      "lease_expired",
+      "no_newer_meaningful_claim_update",
+      "no_recent_substantive_branch_or_pr_progress",
+      "no_active_ci_plausibly_owned_by_claimant",
+      "takeover_evidence_recorded"
+    ]
+  },
+  "branch": {
+    "template": "swarm/{claim_issue_number}-{short_slug}",
+    "create_only_after_claim_won": true
+  },
+  "pr_required_metadata": [
+    "SWARM_PROTOCOL",
+    "SWARM_CONTROL",
+    "SWARM_CLAIM_ISSUE",
+    "SWARM_WORKER_ID",
+    "SWARM_LANE_KEY",
+    "PARENT_ISSUES"
+  ],
+  "refresh_points": [
+    "startup",
+    "immediately_before_claim",
+    "immediately_after_claim",
+    "before_material_edits",
+    "before_pr_create_or_update",
+    "before_final_verdict"
+  ],
+  "work_selection": {
+    "priority": ["P0", "P1"],
+    "prefer_large_coherent_vertical": true,
+    "avoid_symbolic_busywork": true,
+    "fallback_categories": [
+      "independent_audit",
+      "verifier",
+      "red_team",
+      "research_comparison",
+      "source_rights_investigation",
+      "reproducibility_check",
+      "integration_analysis"
+    ],
+    "no_safe_work_state": "NO_SAFE_UNCLAIMED_WORK"
+  },
+  "ci": {
+    "shared_workflow": ".github/workflows/ci.yml",
+    "temporary_worker_workflow_creation_allowed": false,
+    "queued_or_running_equals_pass": false,
+    "machine_collision_guard_owner": "PR-575-or-successor"
+  },
+  "claim_statuses": [
+    "REGISTERING",
+    "ACTIVE",
+    "BLOCKED",
+    "TERMINAL",
+    "SUPERSEDED",
+    "REJECTED",
+    "ABANDONED_DUPLICATE",
+    "NO_SAFE_UNCLAIMED_WORK"
+  ],
+  "hard_boundaries": {
+    "canonical_base_random_init_only": true,
+    "canonical_base_pretraining_only_until_explicit_change": true,
+    "foreign_pretrained_weights_in_canonical_base": false,
+    "benchmark_or_final_test_training_leakage": false,
+    "dataset_package_license_bypasses_source_rights": false,
+    "paid_compute_without_explicit_authority": false,
+    "cpu_evidence_may_be_called_cuda_evidence": false,
+    "fabricated_ci_data_training_gpu_success": false,
+    "postbase_agent_work_may_mutate_canonical_base_lineage": false
+  },
+  "handoff_required_fields": [
+    "STATUS",
+    "BRANCH",
+    "HEAD_SHA",
+    "PR",
+    "CI",
+    "CHANGED_SURFACES",
+    "EVIDENCE",
+    "NOT_TESTED",
+    "BLOCKERS",
+    "NEXT_SAFE_ACTION",
+    "LEASE"
+  ]
+}

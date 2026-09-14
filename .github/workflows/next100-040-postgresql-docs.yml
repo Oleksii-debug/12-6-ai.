@@ -3,7 +3,7 @@ name: NEXT100-040 PostgreSQL docs qualification
 on:
   pull_request:
     branches:
-      - data287/external-snapshot-registry-v2-20260826
+      - main
   workflow_dispatch:
 
 permissions:

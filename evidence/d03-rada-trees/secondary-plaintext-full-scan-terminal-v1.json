@@ -1,0 +1,69 @@
+{
+  "claim_boundary": {
+    "candidate_bytes_are_training_credit": false,
+    "final_test_payload_accessed": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "research_corpus_v1_released": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0
+  },
+  "evidence_identity_sha256": "b25ff7e7948e2fa215ee8d059ea5594025693e105389b7095f5250808ecc3a9d",
+  "execution": {
+    "artifact_digest": "sha256:ac52bf2aaeffc166c681181ee542626d621ee9a273540a8c24b8240f4931b56c",
+    "artifact_id": 10033726682,
+    "artifact_name": "d03-rada-secondary-plaintext-2773e24f943c52caa75b15b6ab162945411a0697",
+    "conclusion": "success",
+    "extractor": "7z",
+    "extractor_version": "7-Zip 23.01 (x64) : Copyright (c) 1999-2023 Igor Pavlov : 2023-06-20",
+    "python_version": "3.11.16",
+    "two_independent_processing_passes_byte_identical": true,
+    "workflow_job": 101866579250,
+    "workflow_run": 34162348408
+  },
+  "execution_profile": "LOCAL_FREE",
+  "measurement": {
+    "exact_duplicate_byte_discount": 1047946,
+    "exact_duplicate_group_count": 6,
+    "exact_duplicate_member_discount": 6,
+    "member_metadata_identity_sha256": "9d6ba19977d91a0cd8068b7921790daa9c13e6040a797e4f5fb683d4fca40008",
+    "plain_text_candidate_bytes_after_exact_duplicate_collapse": 877983909,
+    "plain_text_candidate_bytes_before_exact_duplicate_collapse": 879031855,
+    "plain_text_candidate_exact_unique_payload_count": 4385,
+    "plain_text_candidate_members_before_exact_duplicate_collapse": 4391,
+    "raw_member_text_persisted": false,
+    "report_file_sha256": "30150f6d4c33095faf2e42c4e0723ae01983b78980c606a498096347a598b2d3",
+    "report_sha256": "689dbea2b5975c1d073dde7fefa814af694378d12a88adcb33b1caf2e0ffa291",
+    "selected_listed_bytes": 879031855,
+    "selected_member_count": 4391,
+    "selected_prefix": "texts/",
+    "selected_suffix": ".txt"
+  },
+  "next_required": [
+    "period_session_provenance",
+    "rights_scope_revalidation",
+    "language_quality_privacy",
+    "global_exact_near_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "family_cap_mix_recompute"
+  ],
+  "parent_terminal_role": {
+    "head_sha": "2773e24f943c52caa75b15b6ab162945411a0697",
+    "pr": 820,
+    "role_evidence_identity_sha256": "3c4a9446c9a737bf9b4653d703296505f797d54195b5b466f5339c5e7e84ca8e"
+  },
+  "schema_version": "12-6.d03-rada-trees-secondary-plaintext-terminal.v1",
+  "source": {
+    "archive_path": "rada_xtag_texts.7z",
+    "content_sha256": "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e",
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "expected_size_bytes": 697768591,
+    "full_archive_member_count": 8782,
+    "full_archive_uncompressed_bytes": 19711802635,
+    "listing_identity_sha256": "9e5bad28b2455a0b1682b7c91d0f81f4113a928223898570c9800cf8af7ad15a"
+  },
+  "worker_id": "D03-RADA-TREES-SECONDARY-PLAINTEXT-TERMINAL-20260907"
+}

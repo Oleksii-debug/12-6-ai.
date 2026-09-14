@@ -1,0 +1,75 @@
+{
+  "admitted_modalities": [
+    "ua",
+    "en"
+  ],
+  "authority_identity_sha256": "c7211b3e1e6a4f22463d0e6174f0d6162c2452585704efad5564a35de8de609f",
+  "blocked_modalities": {
+    "code": {
+      "authority_ref": "DATA-23 PR#216 head 5f223f9ef77762a042e966372fdf9f064b3cc9fe",
+      "status": "BLOCKED_NO_EVALUATION_USE_AUTHORITY"
+    }
+  },
+  "decision_scope": "HELDOUT_EVALUATION_ONLY_FOR_EXACT_PINNED_SNAPSHOTS",
+  "schema_version": "12-6.recover174-evaluation-use-authority.v1",
+  "source_evidence": {
+    "data21_22": {
+      "artifact_digest_sha256": "377ef800f481e61e5d30b9bdccc798278e57b689b5bb12d5b2c5029c3c3fde74",
+      "artifact_id": 9583219186,
+      "candidate_registry_identity_sha256": "678d250ac9910f58ab1b9113cf713a2fea52a6a21e7a8434e6434d95a8045214",
+      "head_sha": "dcc7dfc39299487bca5bdbfe5e6c70eaa6706278",
+      "intake_manifest_sha256": "9d50c0baf98247c1babc5fca8dead5b1fa87264ad92ea62527c34e342a7dd735",
+      "pr": 204,
+      "truth_boundary": "BOUNDED_SAMPLE_NOT_CANONICAL_TRAINING_CORPUS_FREEZE",
+      "workflow_run_id": 32900602711
+    },
+    "data23_code": {
+      "head_sha": "5f223f9ef77762a042e966372fdf9f064b3cc9fe",
+      "pr": 216,
+      "reason": "Three pilot code files have mechanical evidence but no admitted D03 evaluation-use authority; availability/license is not reinterpreted as authorization.",
+      "status": "BLOCKED_NO_EVALUATION_USE_AUTHORITY"
+    }
+  },
+  "sources": {
+    "en.standardebooks.manual": {
+      "admitted_source_snapshots_sha256": [
+        "154fb4034929714087e75150d678bf65049ddac32e79dcdf97162c8972c2be83",
+        "94eb2f529922d125b3bd40691778886f4d5d80b128b925d0274fb3d94646ec5a"
+      ],
+      "decision_basis": "Pinned Standard Ebooks manual content is CC0-1.0 in DATA-21/22; the GPL build helper is excluded. This decision is scoped only to the two exact admitted content snapshots and does not derive evaluation authority merely from model-training permission.",
+      "evaluation_status": "APPROVED_FOR_HELDOUT_EVALUATION",
+      "license_id": "CC0-1.0",
+      "modality": "en",
+      "raw_sha256": [
+        "21582c7f0e4ad39f2b0ed97bbc2c082d275e898b7a63c28e6d9badb8ee0f7860",
+        "7ac53dfb4bf6f73f178560e09f33160d0250c69fb679802f3254dc0eb4c9f509"
+      ],
+      "source_identity_sha256": "ba622171b752c4d411bd0b93a94dad14b7ff0e5ac88064678d1b91a551c01be3",
+      "source_version": "d1143a9b459b5e6f9cdda93a7c1e04676bff4f6b"
+    },
+    "ua.rada.open-data.laws-texts": {
+      "admitted_source_snapshots_sha256": [
+        "72c301db0b2539f3f7a73c9c15e2e425700a6b758a1114f1a861e2d60c704c50"
+      ],
+      "decision_basis": "Explicit publisher open-data terms permit free use, reuse and redistribution including commercial use; DATA-21/22 also records official-acts copyright exclusion. This decision is scoped only to the exact admitted snapshot and does not derive evaluation authority merely from model-training permission.",
+      "evaluation_status": "APPROVED_FOR_HELDOUT_EVALUATION",
+      "license_id": "RADA-OPEN-DATA-REUSE",
+      "modality": "ua",
+      "raw_sha256": [
+        "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4"
+      ],
+      "source_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e",
+      "source_version": "laws-texts/bounded-2026-08-25"
+    }
+  },
+  "unsupported_claims": {
+    "alignment": false,
+    "complete_ua_en_code_authority": false,
+    "external_benchmark_authority": false,
+    "instruction_following": false,
+    "intelligence": false,
+    "production_readiness": false,
+    "universal_semantic_decontamination": false
+  },
+  "worker_id": "RECOVER-174-EVAL131-REAL-CORE"
+}

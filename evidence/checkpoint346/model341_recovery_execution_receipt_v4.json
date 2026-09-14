@@ -1,0 +1,99 @@
+{
+  "artifact": {
+    "environment_file_sha256": "59ce6298fe03214a1f0e872efc379e398b40eefc975e241bbfdbd114b0a3b718",
+    "id": 10175586048,
+    "name": "checkpoint346-model341-recovery-qualification",
+    "result_file_sha256": "1835e14a037e05444208482682bb8705a01bac5eebdd790399c2842736fd2caa",
+    "zip_sha256": "ab5f91407cb4a98470dca143b35c91cbb2dbdc7897c441e14cab08d213452636"
+  },
+  "baseline_step2": {
+    "loss": 2.2995166778564453,
+    "micro_step": 2,
+    "model_state_sha256": "cf044696ffdd8ca69d81c5db53edebf19f28b334b9167227c99746d96b93d653",
+    "optimizer_state_sha256": "82e2b744787bdadd0844d6101091cf976bee0d6b4ac6c04d05a139e6b737993c",
+    "optimizer_step": 2,
+    "rng_probe_before_step": {
+      "numpy": [
+        0.9156608528511911,
+        0.22292021517272698
+      ],
+      "python": [
+        0.5111102493209799,
+        0.8162418900301913
+      ],
+      "torch_cpu": [
+        0.4091787338256836,
+        0.7866764664649963
+      ]
+    },
+    "tokens_seen": 2,
+    "trainer_state_sha256": "3b68f096627d3f54310d27e3b4d9792a685583d76fb6c6932cc1503bd099f3dd",
+    "update_loss": 2.2995166778564453
+  },
+  "environment_identity_sha256": "bd236abf8f1bdb7a53c41be029afc5c84485643e313ae3f52ccd100378f4e299",
+  "executed_head_sha": "cda305f06b90b3d17a28b3c928771f726b03eec3",
+  "executed_pr": 426,
+  "execution": {
+    "binding_mismatch_failed_closed": true,
+    "checkpoint_step": 1,
+    "device": "cpu",
+    "final_step": 2,
+    "fresh_child_pid": 2685,
+    "fresh_process_distinct": true,
+    "fresh_process_resumed_updates": 1,
+    "local_free": true,
+    "optimizer_updates_total": 3,
+    "parent_pid": 2679,
+    "parent_updates": 2,
+    "precision": "fp32",
+    "rng_scope_restored": {
+      "numpy": true,
+      "python": true,
+      "torch_cpu": true
+    },
+    "same_next_step_equal": true,
+    "synthetic_mechanics_only": true
+  },
+  "model341_carrier_sha": "133867d21a94637920b7a24dfc046dc09371ab5c",
+  "result_identity_sha256": "e47e1ac21db3a7e5528aab84f5de8b6496b2a3152b75d7dadb92c7db9db775e1",
+  "resumed_step2": {
+    "loss": 2.2995166778564453,
+    "micro_step": 2,
+    "model_state_sha256": "cf044696ffdd8ca69d81c5db53edebf19f28b334b9167227c99746d96b93d653",
+    "optimizer_state_sha256": "82e2b744787bdadd0844d6101091cf976bee0d6b4ac6c04d05a139e6b737993c",
+    "optimizer_step": 2,
+    "rng_probe_before_step": {
+      "numpy": [
+        0.9156608528511911,
+        0.22292021517272698
+      ],
+      "python": [
+        0.5111102493209799,
+        0.8162418900301913
+      ],
+      "torch_cpu": [
+        0.4091787338256836,
+        0.7866764664649963
+      ]
+    },
+    "tokens_seen": 2,
+    "trainer_state_sha256": "3b68f096627d3f54310d27e3b4d9792a685583d76fb6c6932cc1503bd099f3dd",
+    "update_loss": 2.2995166778564453
+  },
+  "runner_git_blob_sha": "524ae13a6f9ad51de50157295b7d3fb525dcbc5b",
+  "runner_path": "tools/run_checkpoint346_model341_recovery.py",
+  "schema": "checkpoint346.model341-recovery-execution-receipt.v1",
+  "scientific_credit": {
+    "final_test_read": false,
+    "foreign_pretrained_weights": false,
+    "learned_weights_created": false,
+    "model_training_credit": false,
+    "optimized_target_exposure": 0,
+    "paid_compute_used": false,
+    "real_corpus_used": false,
+    "training_authorized_corpus_used": false
+  },
+  "verdict": "PASS_MODEL341_RECOVERY_MECHANICS",
+  "workflow_job_id": 103069022528,
+  "workflow_run_id": 34536431404
+}

@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "overlay_id": "R01-LEARNED20M-PORTABLE-SESSION-OVERLAY-V1",
+  "status": "BLOCKED_TEMPLATE",
+  "scientific_bindings": {
+    "initspec_sha256": null,
+    "seed": null,
+    "optimizer_scheduler_precision": {
+      "optimizer": null,
+      "scheduler": null,
+      "precision": null
+    },
+    "authorities": {
+      "code": null,
+      "model": null,
+      "backend": null
+    }
+  },
+  "checkpoint": {
+    "mode": "FRESH_START",
+    "lineage": {
+      "parent_checkpoint_sha256": null,
+      "parent_manifest_sha256": null,
+      "previous_run_id": null,
+      "source_provider": null,
+      "cross_provider_transfer": false,
+      "resume_validated": false
+    },
+    "parent_checkpoint_authority": null,
+    "session_time_limit_minutes": null,
+    "first_checkpoint_deadline_minutes": null,
+    "checkpoint_every_steps": null
+  },
+  "evaluation": {
+    "evaluation_schedule_sha256": null
+  },
+  "runtime": {
+    "backend_id": null,
+    "python_version": null,
+    "framework_version": null,
+    "environment_lock_sha256": null,
+    "device_type": null
+  },
+  "resource": {
+    "resource_class": "LOCAL_FREE",
+    "provider": "UNBOUND",
+    "maximum_cost_usd": 0,
+    "materially_paid": false,
+    "paid_authorization_ref": null
+  },
+  "output": {
+    "artifact_store_uri": null,
+    "content_addressed": true
+  }
+}

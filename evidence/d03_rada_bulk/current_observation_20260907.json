@@ -1,0 +1,65 @@
+{
+  "archive": {
+    "bytes": 46700063,
+    "md5": "f97c8b2d6b4db59d151323c3a8bf2fcc",
+    "sha256": "9f43da3ffe0855e49ca47ddf906da9e7c40644a845b345f6c4a19b39ef5eaf22",
+    "url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip"
+  },
+  "artifact": {
+    "digest": "sha256:5d95cffacd815f2ca2afbd657d2ad04145a4e51303b63513b863eb897fa1f4dd",
+    "id": 10032567466,
+    "name": "d03-rada-bulk-current-077f45fea310ecbc50b87801ff916502aa7f11f9"
+  },
+  "evidence_identity_sha256": "fcc51ba2d25c1be7a6c4795c5930854ce05a5a341f403312a7d00c786e6acac1",
+  "execution_head_sha": "077f45fea310ecbc50b87801ff916502aa7f11f9",
+  "execution_profile": "LOCAL_FREE",
+  "gates": {
+    "balance_diversity": "NOT_RUN",
+    "canonical_normalization": "NOT_RUN",
+    "corpus_materialization": "NOT_RUN",
+    "discovery_capacity_threshold": "FAIL_BELOW_MINIMUM",
+    "evaluation_decontamination": "NOT_RUN",
+    "exact_archive_identity": "OBSERVED_UNPINNED",
+    "global_cross_source_dedup": "NOT_RUN",
+    "privacy": "NOT_RUN",
+    "quality": "NOT_RUN",
+    "safe_zip_inventory": "PASS",
+    "unique_loss_ledger": "NOT_RUN"
+  },
+  "http_response": {
+    "content_type": "application/zip",
+    "etag": "\"2c8961f-65aa8a824d7eb\"",
+    "last_modified": "Fri, 04 Sep 2026 13:58:02 GMT"
+  },
+  "inventory": {
+    "canonical_entries_ge_100k_bytes": 640,
+    "canonical_entries_ge_1m_bytes": 49,
+    "canonical_entry_count": 3052,
+    "canonical_raw_bytes": 353354780,
+    "entry_identity_sha256": "766e54cf706453de30136e02f0361c549c2b96aba9855ee0573d28b354ad077b",
+    "ignored_file_count": 0,
+    "max_canonical_raw_bytes": 14437528,
+    "median_canonical_raw_bytes": 23782.5,
+    "total_zip_uncompressed_bytes": 353354780
+  },
+  "job_id": 101858703629,
+  "next_required": "EXACT_CURRENT_ARCHIVE_SHA256_PIN_REPRODUCTION_THEN_CANONICAL_HTML_NORMALIZATION_TRIAGE",
+  "safe_result": "CURRENT_UPSTREAM_OBSERVED_BELOW_DISCOVERY_MINIMUM_SUCCESSOR_TRIAGE_REQUIRED",
+  "schema_version": "12-6.d03-rada-bulk-current-observation-terminal.v1",
+  "source_pr": 830,
+  "truth_boundary": {
+    "canonical_normalization_complete": false,
+    "current_archive_pinned_for_training": false,
+    "evaluation_decontamination_complete": false,
+    "final_test_accessed": false,
+    "global_dedup_complete_for_this_archive": false,
+    "model_training_executed": false,
+    "observation_only": true,
+    "paid_compute_used": false,
+    "quality_privacy_complete": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0
+  },
+  "workflow_conclusion": "success",
+  "workflow_run_id": 34159688896
+}

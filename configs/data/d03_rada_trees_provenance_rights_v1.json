@@ -1,0 +1,87 @@
+{
+  "schema_version": "12-6.d03-rada-trees-provenance-rights.v1",
+  "execution_profile": "LOCAL_FREE",
+  "parent_full_scan": {
+    "terminal_evidence_identity_sha256": "b25ff7e7948e2fa215ee8d059ea5594025693e105389b7095f5250808ecc3a9d",
+    "report_sha256": "689dbea2b5975c1d073dde7fefa814af694378d12a88adcb33b1caf2e0ffa291",
+    "member_metadata_identity_sha256": "9d6ba19977d91a0cd8068b7921790daa9c13e6040a797e4f5fb683d4fca40008",
+    "exact_unique_payload_count": 4385,
+    "exact_unique_bytes": 877983909
+  },
+  "source": {
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "archive_path": "rada_xtag_texts.7z",
+    "content_sha256": "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e"
+  },
+  "rights_authorities": [
+    {
+      "authority": "RADA_TREES_DATASET_CARD_AT_EXACT_REVISION",
+      "url": "https://huggingface.co/datasets/uacorpus/Rada_Trees/blob/1b994a5804dcda122721e8d33a03fd172cf8d867/README.md",
+      "observed_at_utc_date": "2026-09-07",
+      "license": "CC-BY-4.0",
+      "source_statement": "Official transcripts from plenary sessions downloaded from the Verkhovna Rada open data portal",
+      "period_statement": "1990-2024 (nine convocations)",
+      "plain_text_statement": "Plain text (original transcripts)",
+      "observation_binding": "EXACT_DATASET_REVISION_URL_PLUS_CURRENT_PRIMARY_CARD_OBSERVATION"
+    },
+    {
+      "authority": "VERKHOVNA_RADA_OPEN_DATA_STENOGRAM_PORTAL",
+      "url": "https://data.rada.gov.ua/open/data/stenogram",
+      "observed_at_utc_date": "2026-09-07",
+      "reuse_scope": "FREE_COPY_PUBLISH_DISTRIBUTE_USE_INCLUDING_COMMERCIAL_AND_COMBINE_OR_INCLUDE_IN_PRODUCT",
+      "condition": "MANDATORY_SOURCE_ATTRIBUTION",
+      "observation_binding": "CURRENT_OFFICIAL_PRIMARY_PORTAL_OBSERVATION_NON_IMMUTABLE"
+    },
+    {
+      "authority": "CABINET_RESOLUTION_835_OPEN_DATA_REUSE_TERMS",
+      "url": "https://zakon.rada.gov.ua/laws/show/835-2015-%D0%BF/ed20151021/print",
+      "observed_at_utc_date": "2026-09-07",
+      "reuse_scope": "OPEN_DATA_FREE_REUSE_AND_DISTRIBUTION_INCLUDING_COMMERCIAL",
+      "condition": "MANDATORY_SOURCE_ATTRIBUTION",
+      "observation_binding": "OFFICIAL_LEGAL_TEXT_CURRENT_OBSERVATION_NON_IMMUTABLE"
+    }
+  ],
+  "path_provenance_policy": {
+    "dated_plenary_path_regex": "^texts/(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})__.+\\.txt$",
+    "minimum_year": 1990,
+    "maximum_year": 2024,
+    "accepted_status": "RIGHTS_SCOPE_SUPPORTED_DATED_PARLIAMENT_TRANSCRIPT_CANDIDATE",
+    "held_status": "SOURCE_SCOPE_HOLD",
+    "explicit_holds": [
+      {
+        "path": "texts/stenogramy-zasidannya-rnbo-vid-28-lyutogo-2014-roku.txt",
+        "sha256": "0f199cdf0f7e24d87d78835ed4cd8d4c4d53e3e90db4d5bc9a5dfe523e9d8ffd",
+        "size_bytes": 84781,
+        "reason": "RNBO_SESSION_PATH_IS_OUTSIDE_DECLARED_PLENARY_SESSION_SCOPE_UNTIL_PRIMARY_SOURCE_IS_BOUND"
+      }
+    ]
+  },
+  "expected_result": {
+    "accepted_exact_unique_members": 4384,
+    "accepted_exact_unique_bytes": 877899128,
+    "held_exact_unique_members": 1,
+    "held_exact_unique_bytes": 84781,
+    "accepted_path_inventory_sha256": "7b93056f38fbc87c11e14df9069066e21380db1f1b8d8016314330f841bfa6fc",
+    "held_path_inventory_sha256": "566760e10157cd835ed0879abb37f052b57d31cff6af358a81ff717f4f7f59d9",
+    "minimum_date": "1990-05-15",
+    "maximum_date": "2024-01-16",
+    "unique_session_dates": 2963,
+    "year_coverage_inclusive": [1990, 2024]
+  },
+  "claim_boundary": {
+    "rights_scope_candidate_bytes_are_training_credit": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false
+  },
+  "next_required_after_rights_scope": [
+    "language_quality_privacy",
+    "global_exact_near_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "family_cap_mix_recompute"
+  ]
+}

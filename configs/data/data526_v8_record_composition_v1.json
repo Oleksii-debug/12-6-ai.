@@ -1,0 +1,84 @@
+{
+  "schema_version": "12-6.data526-v8-record-composition.v1",
+  "worker_id": "DATA-526-CURRENT-MAIN-V8-RECORD-COMPOSER",
+  "execution_profile": "LOCAL_FREE",
+  "base_main_sha": "a53279292af68dc95e4e615542b6c8c2ea7f9ee5",
+  "historical_v7_record_authority": {
+    "source_pr": 623,
+    "head_sha": "70d6ccc87396d129d00771bbf0b6b29bc673bfc4",
+    "workflow_run_id": 34069812891,
+    "workflow_conclusion": "success",
+    "artifact_id": 10000091203,
+    "artifact_digest": "sha256:9fb809ab0256d485d21a4e686e4e7d72d4c9b2d05adbc10a8b3f426ef19674ff",
+    "v7_head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+    "v7_report_sha256": "80997ac88b9d604afaf652807cda2a2d9fd0f6cb75754460ae6f4aa7af6e0267",
+    "record_payload_jsonl_sha256": "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd",
+    "record_inventory_digest_sha256": "55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
+    "payload_inventory_digest_sha256": "c3ef21cc7a73df450798e422fb1e6d034c0d17ff38ba733cd9e25b93a31a770f",
+    "record_count": 48,
+    "source_object_count": 35,
+    "total_payload_bytes": 2215615
+  },
+  "bulk_code_authority": {
+    "source_pr": 818,
+    "execution_head_sha": "a045c602bfcead862f7852924fb78a5d78c992d6",
+    "workflow_run_id": 34155446113,
+    "workflow_conclusion": "success",
+    "artifact_id": 10030825509,
+    "artifact_digest": "sha256:9febb6e4e900df63c58b1cb0ed2a7003df56d6e9bd593e4b4adbaa54496010ac",
+    "contract_identity_sha256": "7fd2228208f928859ebe68e947a72c977cda6952035a654d12923ce3a19a7dd6",
+    "report_identity_sha256": "80f3a8f20dfb82825e6c89ac1f76f2f41233296b8a426a1cf466b0fcc0892985",
+    "source_family_count": 6,
+    "eligible_file_count": 229,
+    "eligible_utf8_bytes": 3880009
+  },
+  "v8_terminal_input": {
+    "pr": 824,
+    "required_report_schema": "12-6.next100-065f-global-dedup-report.v8",
+    "required_survivor_schema": "12-6.next100-065f-post-dedup-survivors.v1",
+    "report_sha256": "942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a",
+    "nested_v3_report_sha256": "e7244cb7f6df6062dc838112b1e3e6fe87e41644a9e8b0071e93c50f1166b67d",
+    "survivor_authority_sha256": "8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf",
+    "workflow_run_id": 34159790818,
+    "workflow_conclusion": "success",
+    "artifact_id": 10032510626,
+    "artifact_digest": "sha256:960c678fdbe6245658fa69c39edf355eb7b38ef39b7f8f833155c894dbd90385",
+    "status": "TERMINAL_EXACT_V8_EVIDENCE"
+  },
+  "expected_terminal_composition": {
+    "pre_dedup_source_object_count": 264,
+    "post_dedup_survivor_source_object_count": 262,
+    "historical_record_count": 48,
+    "bulk_eligible_file_count": 229,
+    "bulk_removed_record_count": 2,
+    "post_v8_record_count": 275,
+    "post_v8_payload_bytes": 6095321,
+    "removed_bulk_source_ids": [
+      "data-bulk-code1:pallets/werkzeug:src/werkzeug/__init__.py",
+      "data-bulk-code1:pallets/werkzeug:src/werkzeug/wrappers/__init__.py"
+    ]
+  },
+  "composition_rule": {
+    "historical_records_are_selected_by_source_id": true,
+    "all_records_for_a_surviving_historical_source_are_retained": true,
+    "bulk_file_record_id_equals_v8_source_id": true,
+    "bulk_payload_is_strict_utf8_identity_preserved": true,
+    "all_v8_survivor_source_ids_must_be_covered": true,
+    "no_non_survivor_source_may_enter_record_graph": true,
+    "output_payload_bytes_must_equal_v8_survivor_capacity": true,
+    "record_sort_key": "record_id"
+  },
+  "claim_boundary": {
+    "terminal_v8_consumed": false,
+    "record_graph_materialized": false,
+    "decontamination_executed": false,
+    "tokenizer_fit_executed": false,
+    "training_executed": false,
+    "authorized_unique_optimized_targets": 0,
+    "optimizer_updates": 0,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false,
+    "raw_payloads_committed_to_repository": false,
+    "raw_payloads_uploaded_as_public_evidence": false
+  }
+}

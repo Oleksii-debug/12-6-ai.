@@ -1,0 +1,114 @@
+{
+  "schema": "12-6.d03-ecfr-acquisition-probe.v1",
+  "status": "DISCOVERY_ONLY_ZERO_CREDIT",
+  "base_authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "git_sha": "a73ab38026cb7849f478cc13ad58b93534a76e2f",
+    "issue": 672
+  },
+  "source": {
+    "source_id": "en.us.ecfr.regulations",
+    "family_id": "us.federal-regulations.ecfr",
+    "stratum": "en",
+    "publisher": "Office of the Federal Register / Government Publishing Office",
+    "portal": "https://www.ecfr.gov",
+    "api_documentation": "https://www.ecfr.gov/developers/documentation/api/v1",
+    "titles_endpoint": "https://www.ecfr.gov/api/versioner/v1/titles.json",
+    "historical_full_title_endpoint_template": "https://www.ecfr.gov/api/versioner/v1/full/{date}/title-{title}.xml",
+    "api_key_required": false,
+    "point_in_time_required": true,
+    "current_or_latest_endpoint_authority": "DISCOVERY_ONLY_NOT_MATERIALIZATION_AUTHORITY",
+    "family_accounting": "ONE_CONSERVATIVE_FAMILY_UNTIL_LINEAGE_AUDIT",
+    "title_or_agency_multiplication_allowed": false
+  },
+  "discovery_observation": {
+    "observed_on": "2026-08-26",
+    "titles_metadata_date": "2026-08-06",
+    "import_in_progress": false,
+    "title_numbers": {
+      "minimum": 1,
+      "maximum": 50,
+      "reserved": [35]
+    },
+    "non_reserved_titles_observed": 49,
+    "authority": "DISCOVERY_ONLY"
+  },
+  "rights": {
+    "decision": "REVIEW_REQUIRED_ZERO_CREDIT",
+    "us_code_anchor": "17_USC_105",
+    "public_availability_is_rights_authority": false,
+    "blanket_us_government_work_assumption_allowed": false,
+    "government_can_hold_transferred_copyrights": true,
+    "foreign_rights_not_inferred": true,
+    "must_exclude_or_separately_clear": [
+      "incorporated_by_reference_material",
+      "contractor_or_private_authorship",
+      "transferred_copyright_material",
+      "third_party_tables_images_media",
+      "provenance_ambiguous_payload"
+    ],
+    "rights_review_required_before_training_eligibility": true
+  },
+  "materialization": {
+    "executed": false,
+    "selected_title_dates": [],
+    "object_count": 0,
+    "raw_bytes": 0,
+    "normalized_bytes": 0,
+    "canonical_capacity_credit_bytes": 0,
+    "family_credit": 0,
+    "two_byte_identical_acquisitions_required": true,
+    "sha256_and_byte_ledger_required": true,
+    "deterministic_xml_parse_required": true,
+    "exact_historical_date_and_title_required": true,
+    "request_date_must_not_exceed_titles_metadata_date": true,
+    "reserved_titles_must_be_rejected": true,
+    "redirect_and_content_type_validation_required": true
+  },
+  "required_successor_gates": [
+    "PIN_EXACT_POINT_IN_TIME_TITLE_OBJECTS",
+    "TWO_BYTE_IDENTICAL_ACQUISITIONS",
+    "EXACT_SHA256_AND_BYTE_LEDGER",
+    "DETERMINISTIC_XML_TEXT_EXTRACTION",
+    "RIGHTS_AND_PROVENANCE_CLASSIFICATION",
+    "QUALITY_LANGUAGE_PRIVACY_FILTER",
+    "GLOBAL_EXACT_NEAR_FRAGMENT_LINEAGE_DEDUP",
+    "EVALUATION_RESERVATION_DECONTAMINATION",
+    "BALANCE_AND_FAMILY_CAP_RETEST",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_TOKENIZE_PACK",
+    "TWO_CLEAN_BYTE_IDENTICAL_BUILDS",
+    "POST_PACK_UNIQUE_CAUSAL_LOSS_LEDGER",
+    "TOKENIZER_FIT_AUTHORITY",
+    "D05_CHECKPOINT_REQUALIFICATION",
+    "EXPLICIT_COMPUTE_AND_TRAINING_AUTHORIZATION"
+  ],
+  "gate_state": {
+    "rights_and_provenance": "NOT_RUN",
+    "quality_language_privacy": "NOT_RUN",
+    "global_dedup": "NOT_RUN",
+    "evaluation_decontamination": "NOT_RUN",
+    "balance_family_caps": "NOT_RUN",
+    "split_pack": "NOT_RUN",
+    "unique_loss_ledger": "NOT_RUN"
+  },
+  "claims": {
+    "research_corpus_v1_released": false,
+    "training_eligible": false,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "paid_compute_authorized": false,
+    "learned_20m_claim": false,
+    "learned_100m_claim": false
+  },
+  "execution": {
+    "class": "LOCAL_FREE",
+    "bulk_download_executed": false,
+    "final_test_accessed": false,
+    "dedicated_actions_workflow_added": false
+  },
+  "contract_identity_sha256": "79dbbe041e8270bb5fb89fa34b34807ca699056aef05df85421e3c22bd133408"
+}

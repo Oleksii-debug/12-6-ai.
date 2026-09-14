@@ -1,0 +1,77 @@
+{
+  "identity_sha256": "bd236abf8f1bdb7a53c41be029afc5c84485643e313ae3f52ccd100378f4e299",
+  "packages": {
+    "Jinja2": "3.1.6",
+    "MarkupSafe": "3.0.3",
+    "filelock": "3.32.4",
+    "fsspec": "2026.7.0",
+    "mpmath": "1.3.0",
+    "networkx": "3.6.1",
+    "numpy": "2.4.6",
+    "packaging": "26.3",
+    "pip": "26.2.1",
+    "safetensors": "0.8.0",
+    "setuptools": "84.0.0",
+    "sympy": "1.14.0",
+    "torch": "2.13.0+cpu",
+    "typing_extensions": "4.16.0",
+    "wheel": "0.48.0"
+  },
+  "plan": {
+    "capabilities": [
+      "runtime"
+    ],
+    "commands": [],
+    "cuda_packages_present": false,
+    "d08_authority": {
+      "canonical_index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+      "canonical_manifest_sha256": "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf",
+      "canonical_profile": "requirements/locks/linux-x86_64/profile.json",
+      "semantics": "D08 identities remain authoritative; ENV-151 composes exact purpose layers for execution."
+    },
+    "executables": [],
+    "identity_sha256": "f835a6095d261076287e29294b95fe964b107155a83c5c60b981be8e8ab10151",
+    "imports": [
+      "numpy",
+      "safetensors",
+      "torch"
+    ],
+    "locks": [
+      {
+        "package_count": 4,
+        "path": "requirements/locks/linux-x86_64/toolchain.lock.txt",
+        "role": "toolchain",
+        "sha256": "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3"
+      },
+      {
+        "extra_index_url": "https://pypi.org/simple",
+        "index_url": "https://download.pytorch.org/whl/cpu",
+        "package_count": 12,
+        "path": "requirements/execution/linux-x86_64/cpu-runtime.lock.txt",
+        "role": "cpu_runtime",
+        "sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a"
+      }
+    ],
+    "package_count": 15,
+    "schema": "12-6.execution-plan.v1"
+  },
+  "platform": {
+    "machine": "x86_64",
+    "system": "Linux"
+  },
+  "preflight": {
+    "cuda": {
+      "hardware_claim": false,
+      "hardware_visible": false,
+      "no_gpu_preflight": false,
+      "software_capability_declared": false
+    },
+    "status": "PASS"
+  },
+  "python": {
+    "bootstrap_version": "3.11.16",
+    "implementation": "cpython",
+    "venv_executable": "/home/runner/work/12-6-ai./12-6-ai./.checkpoint346-runtime/bin/python"
+  },
+  "schema": "12-6.execution-environment-manifest.v1"
+}

@@ -1,0 +1,86 @@
+{
+  "claim_boundary": {
+    "final_test_payload_accessed": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_used": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0
+  },
+  "classification": {
+    "plain_text_candidate_bytes_after_exact_duplicate_collapse": null,
+    "plain_text_candidate_members": null,
+    "plain_text_suffix_member_count": 4391,
+    "raw_member_text_emitted": false,
+    "sampled_class_bytes": {
+      "PLAIN_TEXT_CANDIDATE": 3236160,
+      "UNKNOWN_FORMAT_HOLD": 74434667
+    },
+    "sampled_class_counts": {
+      "PLAIN_TEXT_CANDIDATE": 16,
+      "UNKNOWN_FORMAT_HOLD": 16
+    },
+    "sampled_member_count": 32
+  },
+  "decision": {
+    "content_sha256_is_first_observed_successor_authority": true,
+    "full_extraction_skipped_when_over_disk_safety_envelope": true,
+    "rerun_with_pinned_sha_required_before_any_capacity_credit": true,
+    "role_state": "PLAIN_TEXT_SUFFIX_PRESENT_BOUNDED_SAMPLE_COMPLETE_FULL_STREAM_SCAN_REQUIRED",
+    "status": "PLAIN_TEXT_ROLE_OBSERVED_FULL_STREAM_SCAN_REQUIRED",
+    "training_admission_claimed": false
+  },
+  "evidence_identity_sha256": "3c4a9446c9a737bf9b4653d703296505f797d54195b5b466f5339c5e7e84ca8e",
+  "execution": {
+    "artifact_digest": "sha256:b9e67cd6ebcc8ab7e40a2eed6e19c2dda9bc5523d6ab3c617d2ce689dd9d196a",
+    "artifact_id": 10032220704,
+    "conclusion": "success",
+    "head_sha": "66ad574e1fe8183efd88a592323e5fccce00bde0",
+    "report_sha256": "4c24e90faabbcbeeae2cd7cc431c1bff0108d67c376d78b5838888424586e14c",
+    "workflow_job": 101856189735,
+    "workflow_run": 34158830442
+  },
+  "execution_profile": "LOCAL_FREE",
+  "inventory": {
+    "full_extraction_performed": false,
+    "listing_identity_sha256": "9e5bad28b2455a0b1682b7c91d0f81f4113a928223898570c9800cf8af7ad15a",
+    "member_count": 8782,
+    "uncompressed_bytes": 19711802635
+  },
+  "next_required": [
+    "pin_observed_content_sha256",
+    "full_stream_scan_all_plain_text_suffix_members_without_full_archive_extraction",
+    "exact_duplicate_collapse",
+    "period_session_provenance",
+    "rights_scope_revalidation",
+    "language_quality_privacy",
+    "global_exact_near_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "family_cap_mix_recompute"
+  ],
+  "runtime": {
+    "accepted_extractors": [
+      "7zz",
+      "7z"
+    ],
+    "extractor_command": "7z",
+    "extractor_version": "7-Zip 23.01 (x64) : Copyright (c) 1999-2023 Igor Pavlov : 2023-06-20",
+    "python_implementation": "CPython",
+    "python_version": "3.11.16",
+    "runtime_identity_sha256": "336daf7d18be20b3c2bdf157d35d4dc41df161dd46966f0770e1d42d2402aa54",
+    "schema_version": "12-6.d03-rada-trees-secondary-runtime.v1",
+    "source_sha": "66ad574e1fe8183efd88a592323e5fccce00bde0"
+  },
+  "schema_version": "12-6.d03-rada-trees-secondary-terminal-role.v1",
+  "source": {
+    "archive_path": "rada_xtag_texts.7z",
+    "content_sha256": "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e",
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "expected_size_bytes": 697768591,
+    "git_blob_oid": "2ddd106a0140b6980c9a6152406f40f1f9bd5c30",
+    "xet_hash": "46c56a953551f3d33800c8b50fbd355104197abec45c366f245103e830b17d30"
+  },
+  "worker_id": "D03-RADA-TREES-SECONDARY-ROLE-TERMINAL-20260907"
+}

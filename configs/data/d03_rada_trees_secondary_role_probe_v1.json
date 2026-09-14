@@ -1,0 +1,44 @@
+{
+  "schema_version": "12-6.d03-rada-trees-secondary-role-probe.v1",
+  "worker_id": "D03-RADA-TREES-SECONDARY-ROLE-PROBE-20260907",
+  "execution_profile": "LOCAL_FREE",
+  "source": {
+    "dataset": "uacorpus/Rada_Trees",
+    "dataset_revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "archive_path": "rada_xtag_texts.7z",
+    "expected_size_bytes": 697768591,
+    "git_blob_oid": "2ddd106a0140b6980c9a6152406f40f1f9bd5c30",
+    "xet_hash": "46c56a953551f3d33800c8b50fbd355104197abec45c366f245103e830b17d30",
+    "content_sha256_state": "DERIVE_ONCE_FROM_EXACT_REVISION_XET_AND_SIZE_ZERO_CREDIT"
+  },
+  "inventory_policy": {
+    "accepted_extractors": ["7zz", "7z"],
+    "max_single_member_bytes": 50000000,
+    "max_listing_total_uncompressed_bytes": 50000000000,
+    "max_full_extract_total_uncompressed_bytes": 10000000000,
+    "max_stream_sample_members": 32,
+    "require_member_sha256_for_full_classification": true,
+    "reject_symlinks_and_special_files": true,
+    "require_listing_extraction_exact_match_for_full_classification": true
+  },
+  "role_question": {
+    "plain_text_original_transcripts_possible": true,
+    "annotation_derivatives_possible": true,
+    "no_role_assumed_before_member_probe": true,
+    "listing_only_may_reject_known_annotation_only_archive": true,
+    "plain_text_suffix_requires_bounded_content_sample_when_full_extract_is_unsafe": true
+  },
+  "claim_boundary": {
+    "archive_downloaded": false,
+    "content_sha256_terminal": false,
+    "members_inventoried": false,
+    "member_roles_classified": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false
+  }
+}
