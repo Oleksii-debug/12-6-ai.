@@ -85,14 +85,27 @@ committed as durable repository evidence.
 The receipt binds the exact carrier/upstream Git identities, physical input-file hashes,
 physical emitted JSONL/handoff hashes, retained inventory and survivor identities,
 handoff identity, record count, retained payload bytes, and serialized training-file
-bytes. The receipt contains neither raw text nor record IDs.
+bytes. The receipt contains neither raw text nor record IDs. Its nested physical hash
+maps are closed world: inputs must contain exactly `retained_inventory_json` and
+`payload_rows_jsonl`; outputs must contain exactly `training_records.jsonl` and
+`training_handoff.json`. Missing, renamed, or extra entries are rejected even if a
+caller recomputes the receipt self-hash.
 
 A successful carrier run proves only exact materialization of an already-selected
 post-dedup payload into the canonical decontamination input contract. It does not prove
 reserved-evaluation decontamination is complete, does not grant corpus credit or
 tokenizer-fit authority, and does not authorize or execute an optimizer step.
 
-The fail-closed receipt remains:
+The carrier also does **not** establish whether the current corpus is external-LLM
+clean. The receipt deliberately has no global
+`external_llm_or_api_used_for_data_or_intelligence=false` assertion. Instead it carries
+only the scoped fail-closed statement
+`current_corpus_external_llm_free_claimed_by_this_carrier=false`. That value is fixed by
+the verifier and cannot be changed to `true` by resealing the receipt. Any future
+positive clean-corpus statement must come from a separate independently authenticated
+physical successor authority; this carrier does not invent or infer that authority.
+
+The remaining fail-closed receipt boundary is:
 
 - authorized optimized-target exposure: `0`;
 - tokenizer fit authorized: `false`;
@@ -102,9 +115,14 @@ The fail-closed receipt remains:
 - final-test outcomes read: `false`;
 - paid compute used: `false`;
 - foreign pretrained weights: `false`;
-- external LLM/API data or intelligence use: `false`.
+- current-corpus external-LLM cleanliness claimed by this carrier: `false`.
 
-A real Rada_Trees execution must still wait for the expanded-V9 producer to publish the
-exact retained inventory/payload authority. After this bridge runs, the current reserved-
-evaluation decontamination carrier remains the next scientific gate; its final-test
-payload access is for overlap detection only, while final-test outcomes stay unread.
+The merged Nomis1864/Sonnet quarantine guard prevents known contaminated authority from
+being treated as launch-authoritative, but it does not prove all remaining corpus bytes
+clean. A physical clean successor corpus and its independently authenticated authority
+therefore remain prerequisites before any positive clean-corpus claim, tokenizer-fit
+authority, optimized-target exposure, or training launch.
+
+After this bridge runs, the current reserved-evaluation decontamination carrier remains
+the next scientific gate; its final-test payload access is for overlap detection only,
+while final-test outcomes stay unread.
