@@ -32,6 +32,11 @@
     "backend_promotion_authorized": false,
     "training_executed_by_this_package": false
   },
+  "terminal_audit_independence": {
+    "producer_and_audit_workflow_run_ids_must_differ": true,
+    "producer_and_audit_evidence_sha256_must_differ": true,
+    "same_code_git_sha_permitted": true
+  },
   "scale_route": [
     {
       "id": "LAB_3M_10M",
