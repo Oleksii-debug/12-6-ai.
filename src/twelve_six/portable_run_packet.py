@@ -63,13 +63,15 @@ ALLOWED_BACKENDS = {
 
 @dataclass(frozen=True)
 class PortableRunAssessment:
-    """Readiness is split between a fresh launch and a transferred resume."""
+    """Readiness is split across fresh, same-provider, and transferred execution."""
 
     contract_valid: bool
     ready_for_initial_local_free_launch: bool
+    ready_for_same_provider_fresh_process_resume: bool
     ready_for_cross_provider_resume: bool
     contract_errors: tuple[str, ...]
     launch_blockers: tuple[str, ...]
+    same_provider_resume_blockers: tuple[str, ...]
     resume_blockers: tuple[str, ...]
 
     def as_dict(self) -> dict[str, Any]:
@@ -78,9 +80,13 @@ class PortableRunAssessment:
             "ready_for_initial_local_free_launch": (
                 self.ready_for_initial_local_free_launch
             ),
+            "ready_for_same_provider_fresh_process_resume": (
+                self.ready_for_same_provider_fresh_process_resume
+            ),
             "ready_for_cross_provider_resume": self.ready_for_cross_provider_resume,
             "contract_errors": list(self.contract_errors),
             "launch_blockers": list(self.launch_blockers),
+            "same_provider_resume_blockers": list(self.same_provider_resume_blockers),
             "resume_blockers": list(self.resume_blockers),
         }
 
@@ -115,6 +121,10 @@ def _is_zero_number(value: Any) -> bool:
 
 def _is_nonempty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _is_allowed_string(value: Any, allowed: set[str]) -> bool:
+    return isinstance(value, str) and value in allowed
 
 
 def _expect(errors: list[str], condition: bool, message: str) -> None:
@@ -158,8 +168,11 @@ def _get_mapping(data: dict[str, Any], key: str, errors: list[str]) -> dict[str,
     return value
 
 
-def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
+def validate_portable_run_contract(data: Any) -> list[str]:
     """Validate immutable safety/shape rules without claiming launch readiness."""
+    if not isinstance(data, dict):
+        return ["packet_root_must_be_object"]
+
     errors: list[str] = []
     _expect(
         errors,
@@ -169,19 +182,26 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     _expect(errors, data.get("packet_id") == PACKET_ID, "packet_id_mismatch")
     _expect(
         errors,
-        data.get("status") in {"BLOCKED_TEMPLATE", "READY_CANDIDATE"},
+        _is_allowed_string(data.get("status"), {"BLOCKED_TEMPLATE", "READY_CANDIDATE"}),
         "status_invalid",
     )
 
     declared = data.get("contract_fields")
     _expect(errors, isinstance(declared, list), "contract_fields_missing")
     if isinstance(declared, list):
-        _expect(
-            errors,
-            set(declared) == REQUIRED_RUN_PACKET_FIELDS,
-            "contract_fields_drift_from_accelerated_roadmap",
-        )
-        _expect(errors, len(declared) == len(set(declared)), "contract_fields_not_unique")
+        if all(isinstance(item, str) for item in declared):
+            _expect(
+                errors,
+                set(declared) == REQUIRED_RUN_PACKET_FIELDS,
+                "contract_fields_drift_from_accelerated_roadmap",
+            )
+            _expect(
+                errors,
+                len(declared) == len(set(declared)),
+                "contract_fields_not_unique",
+            )
+        else:
+            errors.append("contract_fields_must_be_strings")
 
     boundaries = _get_mapping(data, "truth_boundary", errors)
     _expect(
@@ -203,13 +223,15 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     resource = _get_mapping(data, "resource", errors)
     _expect(
         errors,
-        resource.get("resource_class") in {"LOCAL_FREE", "FREE_GPU"},
+        _is_allowed_string(resource.get("resource_class"), {"LOCAL_FREE", "FREE_GPU"}),
         "resource_class_must_be_local_free_or_free_gpu",
     )
     _expect(
         errors,
-        resource.get("provider")
-        in {"UNBOUND", "OWNER_LAPTOP", "KAGGLE", "COLAB", "OTHER_FREE"},
+        _is_allowed_string(
+            resource.get("provider"),
+            {"UNBOUND", "OWNER_LAPTOP", "KAGGLE", "COLAB", "OTHER_FREE"},
+        ),
         "resource_provider_invalid",
     )
     _expect(
@@ -231,7 +253,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     checkpoint = _get_mapping(data, "checkpoint", errors)
     _expect(
         errors,
-        checkpoint.get("mode") in {"FRESH_START", "RESUME"},
+        _is_allowed_string(checkpoint.get("mode"), {"FRESH_START", "RESUME"}),
         "checkpoint_mode_invalid",
     )
     for key in (
@@ -383,7 +405,7 @@ def _launch_blockers(data: dict[str, Any]) -> list[str]:
         evaluation.get("evaluation_schedule_sha256"),
         "evaluation_schedule_sha256",
     )
-    if runtime.get("backend_id") not in ALLOWED_BACKENDS:
+    if not _is_allowed_string(runtime.get("backend_id"), ALLOWED_BACKENDS):
         blockers.append("backend_id_not_qualified_candidate")
     for name in ("python_version", "framework_version", "device_type"):
         if not _is_nonempty_string(runtime.get(name)):
@@ -404,10 +426,9 @@ def _launch_blockers(data: dict[str, Any]) -> list[str]:
     return sorted(set(blockers))
 
 
-def _resume_blockers(data: dict[str, Any]) -> list[str]:
+def _resume_common_blockers(data: dict[str, Any]) -> list[str]:
     blockers = _launch_blockers(data)
     checkpoint = data.get("checkpoint", {})
-    resource = data.get("resource", {})
     authorities = data.get("authorities", {})
     if checkpoint.get("mode") != "RESUME":
         blockers.append("checkpoint_mode_is_not_resume")
@@ -423,14 +444,8 @@ def _resume_blockers(data: dict[str, Any]) -> list[str]:
         blockers.append("previous_run_id_missing")
     if lineage.get("resume_validated") is not True:
         blockers.append("parent_checkpoint_resume_not_validated")
-    if lineage.get("cross_provider_transfer") is not True:
-        blockers.append("cross_provider_transfer_not_declared")
-    source_provider = lineage.get("source_provider")
-    target_provider = resource.get("provider")
-    if not _is_nonempty_string(source_provider):
+    if not _is_nonempty_string(lineage.get("source_provider")):
         blockers.append("source_provider_missing")
-    elif source_provider == target_provider:
-        blockers.append("cross_provider_source_and_target_must_differ")
     _require_authority(
         blockers,
         authorities.get("parent_checkpoint"),
@@ -439,7 +454,41 @@ def _resume_blockers(data: dict[str, Any]) -> list[str]:
     return sorted(set(blockers))
 
 
-def assess_portable_run_packet(data: dict[str, Any]) -> PortableRunAssessment:
+def _same_provider_resume_blockers(data: dict[str, Any]) -> list[str]:
+    blockers = _resume_common_blockers(data)
+    checkpoint = data.get("checkpoint", {})
+    resource = data.get("resource", {})
+    lineage = checkpoint.get("lineage")
+    if checkpoint.get("mode") != "RESUME" or not isinstance(lineage, dict):
+        return sorted(set(blockers))
+
+    if lineage.get("cross_provider_transfer") is not False:
+        blockers.append("same_provider_resume_must_not_declare_cross_provider_transfer")
+    source_provider = lineage.get("source_provider")
+    target_provider = resource.get("provider")
+    if _is_nonempty_string(source_provider) and source_provider != target_provider:
+        blockers.append("same_provider_source_and_target_must_match")
+    return sorted(set(blockers))
+
+
+def _cross_provider_resume_blockers(data: dict[str, Any]) -> list[str]:
+    blockers = _resume_common_blockers(data)
+    checkpoint = data.get("checkpoint", {})
+    resource = data.get("resource", {})
+    lineage = checkpoint.get("lineage")
+    if checkpoint.get("mode") != "RESUME" or not isinstance(lineage, dict):
+        return sorted(set(blockers))
+
+    if lineage.get("cross_provider_transfer") is not True:
+        blockers.append("cross_provider_transfer_not_declared")
+    source_provider = lineage.get("source_provider")
+    target_provider = resource.get("provider")
+    if _is_nonempty_string(source_provider) and source_provider == target_provider:
+        blockers.append("cross_provider_source_and_target_must_differ")
+    return sorted(set(blockers))
+
+
+def assess_portable_run_packet(data: Any) -> PortableRunAssessment:
     """Assess a packet without turning readiness into execution authority."""
     contract_errors = validate_portable_run_contract(data)
     if contract_errors:
@@ -447,22 +496,32 @@ def assess_portable_run_packet(data: dict[str, Any]) -> PortableRunAssessment:
         return PortableRunAssessment(
             contract_valid=False,
             ready_for_initial_local_free_launch=False,
+            ready_for_same_provider_fresh_process_resume=False,
             ready_for_cross_provider_resume=False,
             contract_errors=errors,
             launch_blockers=errors,
+            same_provider_resume_blockers=errors,
             resume_blockers=errors,
         )
 
     launch = _launch_blockers(data)
-    resume = _resume_blockers(data)
+    same_provider_resume = _same_provider_resume_blockers(data)
+    cross_provider_resume = _cross_provider_resume_blockers(data)
     checkpoint = data["checkpoint"]
     ready_initial = not launch and checkpoint.get("mode") == "FRESH_START"
-    ready_resume = not resume and checkpoint.get("mode") == "RESUME"
+    ready_same_provider_resume = (
+        not same_provider_resume and checkpoint.get("mode") == "RESUME"
+    )
+    ready_cross_provider_resume = (
+        not cross_provider_resume and checkpoint.get("mode") == "RESUME"
+    )
     return PortableRunAssessment(
         contract_valid=True,
         ready_for_initial_local_free_launch=ready_initial,
-        ready_for_cross_provider_resume=ready_resume,
+        ready_for_same_provider_fresh_process_resume=ready_same_provider_resume,
+        ready_for_cross_provider_resume=ready_cross_provider_resume,
         contract_errors=(),
         launch_blockers=tuple(launch),
-        resume_blockers=tuple(resume),
+        same_provider_resume_blockers=tuple(same_provider_resume),
+        resume_blockers=tuple(cross_provider_resume),
     )
