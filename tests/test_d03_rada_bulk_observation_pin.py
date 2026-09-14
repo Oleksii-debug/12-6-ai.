@@ -8,7 +8,6 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-
 import tools.pin_d03_rada_bulk_observation as mod
 
 ROOT = Path(__file__).resolve().parents[1]
