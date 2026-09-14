@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "qualification_id": "12-6.mlflow-local-tracking-qualification.v1",
+  "status": "CANDIDATE_LOCAL_ONLY_NOT_ADOPTED",
+  "project_authority": {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "base_git_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "parent_issue": 720,
+    "worker_issue": 740,
+    "registry_path": "configs/research/open_source_reuse_registry_v2.json",
+    "registry_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a",
+    "registry_component_id": "MLFLOW",
+    "registry_decision": "P1_LOCAL_TRACKING_CANDIDATE"
+  },
+  "upstream": {
+    "repository": "mlflow/mlflow",
+    "default_branch": "master",
+    "git_sha": "0572b16ac9e9c98a02df9df40ad3e48ce3b7c588",
+    "license_path": "LICENSE.txt",
+    "license_blob_sha": "db7cb10b5e330d56b40370bc178974ccabe71458",
+    "license_spdx": "Apache-2.0",
+    "tracking_source_path": "mlflow/tracking/_tracking_service/utils.py",
+    "tracking_source_blob_sha": "1a672b170a49b800d420127de63cfff7b394065c",
+    "observed_tracking_semantics": {
+      "supports_explicit_local_file_uri": true,
+      "supports_http_remote_uri": true,
+      "project_must_set_tracking_uri_explicitly": true,
+      "project_must_not_rely_on_upstream_default": true
+    }
+  },
+  "authority_policy": {
+    "execution_profile": "LOCAL_FREE",
+    "mlflow_role": "OPTIONAL_METADATA_SINK_ONLY",
+    "canonical_lineage_authority": "GIT_AND_PROJECT_MANIFESTS",
+    "canonical_checkpoint_authority": "D05_PROJECT_CHECKPOINT_MANIFEST",
+    "canonical_evaluation_authority": "PROJECT_EVALUATION_MANIFESTS",
+    "canonical_promotion_authority": "GITHUB_PROJECT_GATES",
+    "mlflow_may_authorize_training": false,
+    "mlflow_may_authorize_paid_compute": false,
+    "mlflow_may_select_or_reselect_from_final_test": false,
+    "mlflow_may_replace_project_checkpoint_manifest": false,
+    "mlflow_may_replace_git_identity": false
+  },
+  "tracking_policy": {
+    "explicit_tracking_uri_required": true,
+    "allowed_uri_schemes": ["file", "sqlite"],
+    "remote_tracking_forbidden": true,
+    "network_tracking_forbidden": true,
+    "credentials_in_tracking_uri_forbidden": true,
+    "artifact_payload_logging_policy": "HASH_REFERENCES_ONLY",
+    "secret_bearing_metadata_forbidden": true,
+    "export_required_for_project_evidence": true,
+    "deterministic_export_required": true,
+    "rollback_path": "REMOVE_OPTIONAL_MLFLOW_SINK_AND_RETAIN_PROJECT_MANIFESTS"
+  },
+  "required_run_bindings": [
+    "source_git_sha",
+    "run_manifest_sha256",
+    "checkpoint_manifest_sha256",
+    "checkpoint_id"
+  ],
+  "promotion": {
+    "current_state": "CANDIDATE",
+    "allowed_states": ["DISCOVERED", "CANDIDATE", "PARITY_PROVEN", "ADOPTED"],
+    "runtime_import_tested": false,
+    "dependency_lock_complete": false,
+    "project_parity_proven": false,
+    "measured_benefit_proven": false,
+    "adopted": false,
+    "adoption_allowed_by_this_contract": false
+  },
+  "truth_boundary": {
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "checkpoint_mutated": false,
+    "evaluation_payload_read": false,
+    "final_test_payload_read": false,
+    "gpu_provisioned": false,
+    "paid_compute_authorized": false,
+    "foreign_base_weights_used": false,
+    "mlflow_runtime_installed_or_executed": false
+  }
+}
