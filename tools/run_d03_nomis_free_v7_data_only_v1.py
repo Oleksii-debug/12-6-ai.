@@ -8,13 +8,14 @@ an empty package namespace rooted at the exact V7 checkout and then executes the
 requested local script in-process. It never stubs torch, imports model code, changes
 matcher semantics, or supplies model/data artifacts.
 
-The immutable historical fetcher performs one network attempt per exact URL. The
-physical successor may retry only transient transport failures. Every successful
-payload is still checked by the immutable V7 byte/hash authority; retries cannot
-substitute content or turn an authority mismatch into a pass.
+The immutable historical fetcher performs one complete exact-source transaction per
+call, including the response read and its historical byte/hash/blob acceptance checks.
+The physical successor may retry that whole call only for bounded transient transport
+failures. Retries cannot substitute content or turn an authority mismatch into a pass.
 """
 from __future__ import annotations
 
+import importlib
 import importlib.machinery
 import runpy
 import socket
@@ -22,7 +23,6 @@ import sys
 import time
 import types
 import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
@@ -63,19 +63,19 @@ def _is_transient_url_error(exc: urllib.error.URLError) -> bool:
     return isinstance(reason, (TimeoutError, socket.timeout, ConnectionResetError))
 
 
-def build_bounded_urlopen_retry(
+def build_bounded_exact_fetch_retry(
     original: Callable[..., Any],
     *,
     sleep: Callable[[float], None] = time.sleep,
 ) -> Callable[..., Any]:
-    """Retry exact requests only for transient timeout/reset failures.
+    """Retry the immutable whole fetch call only for transient transport failures.
 
-    HTTP errors, certificate failures, DNS failures and every non-transient URLError
-    remain single-attempt/fail-closed. The historical authority still validates the
-    bytes returned by a successful call.
+    The wrapped historical function owns request construction, response reading, size
+    limits and exact byte/hash/blob verification. HTTP errors, certificate/DNS failures
+    and every authority/content exception remain single-attempt/fail-closed.
     """
 
-    def bounded_urlopen(*args: Any, **kwargs: Any) -> Any:
+    def bounded_fetch(*args: Any, **kwargs: Any) -> Any:
         for attempt in range(MAX_TRANSIENT_FETCH_ATTEMPTS):
             try:
                 return original(*args, **kwargs)
@@ -91,11 +91,24 @@ def build_bounded_urlopen_retry(
             sleep(RETRY_DELAYS_SECONDS[attempt])
         raise AssertionError("unreachable transient-retry state")
 
-    return bounded_urlopen
+    return bounded_fetch
 
 
-def install_bounded_transport_retry() -> None:
-    urllib.request.urlopen = build_bounded_urlopen_retry(urllib.request.urlopen)
+def install_bounded_exact_fetch_retry() -> None:
+    """Patch only terminal V7's immutable exact-source transaction entrypoint."""
+
+    audit = importlib.import_module("twelve_six.data.cross_source_capacity_audit")
+    original = getattr(audit, "fetch_exact_source", None)
+    if not callable(original):
+        raise DataOnlyBootstrapError(
+            "terminal V7 exact-source fetch entrypoint is missing or non-callable"
+        )
+    if getattr(original, "_d03_bounded_exact_fetch_retry", False):
+        return
+
+    wrapped = build_bounded_exact_fetch_retry(original)
+    setattr(wrapped, "_d03_bounded_exact_fetch_retry", True)
+    audit.fetch_exact_source = wrapped
 
 
 def main() -> int:
@@ -109,7 +122,7 @@ def main() -> int:
         raise DataOnlyBootstrapError(f"missing local execution script: {script}")
 
     install_v7_namespace(v7_root)
-    install_bounded_transport_retry()
+    install_bounded_exact_fetch_retry()
     sys.argv = [str(script), *sys.argv[3:]]
     try:
         runpy.run_path(str(script), run_name="__main__")

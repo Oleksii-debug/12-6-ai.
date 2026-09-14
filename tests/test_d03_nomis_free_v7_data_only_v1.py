@@ -15,57 +15,86 @@ bootstrap = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bootstrap)
 
 
-def test_transient_timeout_retries_same_call_and_returns_unmodified_value() -> None:
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+class _Response:
+    def __init__(self, attempt: int, fail_attempts: int, payload: bytes) -> None:
+        self.attempt = attempt
+        self.fail_attempts = fail_attempts
+        self.payload = payload
+        self.headers: dict[str, str] = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc, _tb) -> None:
+        return None
+
+    def read(self, _limit: int) -> bytes:
+        if self.attempt <= self.fail_attempts:
+            raise TimeoutError("The read operation timed out")
+        return self.payload
+
+
+def test_read_timeout_retries_whole_exact_fetch_transaction() -> None:
+    open_calls = 0
     sleeps: list[float] = []
-    expected = object()
+    expected = b"exact-authority-bytes"
 
-    def flaky(*args, **kwargs):
-        calls.append((args, kwargs))
-        if len(calls) < 3:
-            raise TimeoutError("temporary exact-source read timeout")
-        return expected
+    def fake_urlopen(_request: object, *, timeout: int) -> _Response:
+        nonlocal open_calls
+        assert timeout == 30
+        open_calls += 1
+        return _Response(open_calls, 2, expected)
 
-    wrapped = bootstrap.build_bounded_urlopen_retry(flaky, sleep=sleeps.append)
-    actual = wrapped("https://example.invalid/exact", timeout=30)
+    def historical_fetch(url: str) -> bytes:
+        assert url == "https://example.invalid/exact"
+        with fake_urlopen(object(), timeout=30) as response:
+            return response.read(2_000_001)
 
-    assert actual is expected
-    assert calls == [
-        (("https://example.invalid/exact",), {"timeout": 30}),
-        (("https://example.invalid/exact",), {"timeout": 30}),
-        (("https://example.invalid/exact",), {"timeout": 30}),
-    ]
+    wrapped = bootstrap.build_bounded_exact_fetch_retry(
+        historical_fetch, sleep=sleeps.append
+    )
+    assert wrapped("https://example.invalid/exact") == expected
+    assert open_calls == 3
     assert sleeps == list(bootstrap.RETRY_DELAYS_SECONDS)
 
 
-def test_connection_reset_is_bounded_and_reraises_after_three_attempts() -> None:
-    calls = 0
+def test_read_timeout_is_bounded_and_reraises_after_three_whole_calls() -> None:
+    open_calls = 0
     sleeps: list[float] = []
 
-    def always_reset(*_args, **_kwargs):
-        nonlocal calls
-        calls += 1
-        raise ConnectionResetError("reset")
+    def fake_urlopen(_request: object, *, timeout: int) -> _Response:
+        nonlocal open_calls
+        assert timeout == 30
+        open_calls += 1
+        return _Response(open_calls, bootstrap.MAX_TRANSIENT_FETCH_ATTEMPTS, b"never")
 
-    wrapped = bootstrap.build_bounded_urlopen_retry(always_reset, sleep=sleeps.append)
-    with pytest.raises(ConnectionResetError, match="reset"):
+    def historical_fetch(_url: str) -> bytes:
+        with fake_urlopen(object(), timeout=30) as response:
+            return response.read(2_000_001)
+
+    wrapped = bootstrap.build_bounded_exact_fetch_retry(
+        historical_fetch, sleep=sleeps.append
+    )
+    with pytest.raises(TimeoutError, match="read operation timed out"):
         wrapped("https://example.invalid/exact")
 
-    assert calls == bootstrap.MAX_TRANSIENT_FETCH_ATTEMPTS
+    assert open_calls == bootstrap.MAX_TRANSIENT_FETCH_ATTEMPTS
     assert sleeps == list(bootstrap.RETRY_DELAYS_SECONDS)
 
 
-def test_urlerror_wrapping_timeout_is_retryable() -> None:
+def test_urlerror_wrapping_timeout_retries_whole_fetch() -> None:
     calls = 0
 
-    def flaky(*_args, **_kwargs):
+    def flaky(_url: str) -> bytes:
         nonlocal calls
         calls += 1
         if calls == 1:
             raise urllib.error.URLError(socket.timeout("temporary"))
         return b"exact-bytes"
 
-    wrapped = bootstrap.build_bounded_urlopen_retry(flaky, sleep=lambda _seconds: None)
+    wrapped = bootstrap.build_bounded_exact_fetch_retry(
+        flaky, sleep=lambda _seconds: None
+    )
     assert wrapped("https://example.invalid/exact") == b"exact-bytes"
     assert calls == 2
 
@@ -73,12 +102,33 @@ def test_urlerror_wrapping_timeout_is_retryable() -> None:
 def test_nontransient_urlerror_fails_without_retry() -> None:
     calls = 0
 
-    def invalid(*_args, **_kwargs):
+    def invalid(_url: str) -> bytes:
         nonlocal calls
         calls += 1
         raise urllib.error.URLError("certificate or DNS failure")
 
-    wrapped = bootstrap.build_bounded_urlopen_retry(invalid, sleep=lambda _seconds: None)
+    wrapped = bootstrap.build_bounded_exact_fetch_retry(
+        invalid, sleep=lambda _seconds: None
+    )
     with pytest.raises(urllib.error.URLError):
+        wrapped("https://example.invalid/exact")
+    assert calls == 1
+
+
+def test_authority_failure_is_never_retried_or_promoted() -> None:
+    calls = 0
+
+    class AuthorityMismatch(RuntimeError):
+        pass
+
+    def invalid(_url: str) -> bytes:
+        nonlocal calls
+        calls += 1
+        raise AuthorityMismatch("raw SHA-256 mismatch")
+
+    wrapped = bootstrap.build_bounded_exact_fetch_retry(
+        invalid, sleep=lambda _seconds: None
+    )
+    with pytest.raises(AuthorityMismatch, match="SHA-256 mismatch"):
         wrapped("https://example.invalid/exact")
     assert calls == 1
