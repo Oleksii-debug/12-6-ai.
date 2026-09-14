@@ -21,7 +21,7 @@ def test_committed_pydantic_terminal_evidence_is_self_consistent() -> None:
 
     predecessor = value["predecessor_code_authority"]
     assert predecessor["data227_head_sha"] == qualifier.DATA227_HEAD
-    assert predecessor["policy_git_blob_sha1"] == qualifier.DATA227_POLICY_BLOB
+    assert predecessor["rights_policy_git_blob_sha1"] == qualifier.DATA227_POLICY_BLOB
     assert value["upstream"]["commit"] == qualifier.UPSTREAM_COMMIT
     assert value["license"]["git_blob_sha1"] == qualifier.LICENSE_BLOB
     assert value["source_family_accounting"]["new_source_family"] == "github:pydantic/pydantic"
