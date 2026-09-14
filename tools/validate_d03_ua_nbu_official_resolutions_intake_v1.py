@@ -84,7 +84,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "source_id": "ua.nbu.official-resolutions",
         "family_id": "ua.nbu.official-resolutions",
         "stratum": "uk",
-        "catalog_url": "https://bank.gov.ua/ua/legislation",
+        "catalog_url": "https://bank.gov.ua/ua/legislation/search",
         "allowed_origin": "https://bank.gov.ua",
         "required_title_prefix": "Постанова Правління Національного банку України",
         "one_conservative_family": True,

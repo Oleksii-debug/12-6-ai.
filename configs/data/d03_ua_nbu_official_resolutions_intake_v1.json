@@ -12,7 +12,7 @@
     "family_id": "ua.nbu.official-resolutions",
     "stratum": "uk",
     "publisher": "Національний банк України",
-    "catalog_url": "https://bank.gov.ua/ua/legislation",
+    "catalog_url": "https://bank.gov.ua/ua/legislation/search",
     "allowed_origin": "https://bank.gov.ua",
     "document_path_regex": "^/ua/legislation/Resolution_[0-9]{8}_[0-9A-Za-z-]+$",
     "official_pdf_path_regex": "^/admin_uploads/law/[0-9A-Za-z_.-]+\\.pdf$",
@@ -69,5 +69,5 @@
     "paid_compute_authorized": false,
     "learned_20m_claim": false
   },
-  "contract_identity_sha256": "1885dfcdb590d15e0fc370a12d5869112832a1b66f36910d941a9704626db1b7"
+  "contract_identity_sha256": "2e04335a2e6e665167b63f392d09756ae52e4f65f5253d9a037c48f5d191d9ec"
 }

@@ -1,4 +1,4 @@
-name: D03 NBU pdftotext real execution
+name: D03 NBU pdftotext bounded real execution
 
 on:
   push:
@@ -12,28 +12,78 @@ permissions:
 jobs:
   execute-nbu-chain:
     runs-on: ubuntu-24.04
-    container: ubuntu:25.10
-    timeout-minutes: 45
+    timeout-minutes: 75
+    env:
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+      NBU_TARGET_DOCUMENTS: "40"
+      NBU_MAX_SEARCH_PAGES: "80"
     steps:
-      - name: Install exact local-free runtime
-        run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git python3 poppler-utils
-          python3 --version
-          pdftotext -v 2>&1 | tee /tmp/pdftotext-version.txt
-
       - name: Checkout incumbent successor
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Build live body-free NBU discovery evidence twice
+      - name: Install local-free build and test prerequisites
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl libfontconfig1-dev libfreetype6-dev \
+            libharfbuzz-dev libjpeg-dev liblcms2-dev libopenjp2-7-dev libpng-dev \
+            libtiff-dev ninja-build pkg-config python3 python3-pytest zlib1g-dev
+          python3 --version
+          cmake --version | head -n 1
+
+      - name: Focused fail-closed contract tests
+        run: |
+          python3 -m pytest -q \
+            tests/test_d03_ua_nbu_official_resolutions_intake_v1.py \
+            tests/test_d03_ua_nbu_official_pdf_pins_v1.py \
+            tests/test_d03_ua_nbu_pdftotext_materialization_v1.py
+
+      - name: Build exact Poppler pdftotext from pinned upstream source
+        run: |
+          set -euxo pipefail
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
+            --output /tmp/poppler.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" -B /tmp/poppler-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DENABLE_UTILS=ON \
+            -DENABLE_CPP=OFF \
+            -DENABLE_GLIB=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF \
+            -DENABLE_BOOST=OFF \
+            -DENABLE_LIBCURL=OFF \
+            -DENABLE_NSS3=OFF \
+            -DENABLE_GPGME=OFF \
+            -DBUILD_GTK_TESTS=OFF \
+            -DBUILD_QT5_TESTS=OFF \
+            -DBUILD_QT6_TESTS=OFF \
+            -DBUILD_CPP_TESTS=OFF \
+            -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-build --parallel 2
+          sudo cmake --install /tmp/poppler-build
+          sudo ldconfig
+          command -v pdftotext
+          pdftotext -v 2>&1 | tee /tmp/pdftotext-version.txt
+          grep -F "pdftotext version ${POPPLER_VERSION}" /tmp/pdftotext-version.txt
+
+      - name: Build stable bounded live NBU discovery evidence
         run: |
           python3 - <<'PY'
           from __future__ import annotations
+
+          import html
           import importlib.util
           import json
+          import os
           import sys
           import urllib.request
           from pathlib import Path
+          from urllib.parse import urljoin, urlsplit, urlunsplit
 
           root = Path.cwd()
           tool_path = root / "tools/validate_d03_ua_nbu_official_resolutions_intake_v1.py"
@@ -45,42 +95,92 @@ jobs:
           spec.loader.exec_module(module)
           config = module.load_config()
 
+          target_documents = int(os.environ["NBU_TARGET_DOCUMENTS"])
+          max_search_pages = int(os.environ["NBU_MAX_SEARCH_PAGES"])
+          if not 1 <= target_documents <= config["discovery_contract"]["hard_max_documents"]:
+              raise RuntimeError("bounded target exceeds discovery contract")
+
+          allowed = urlsplit(config["source"]["allowed_origin"])
+          search_root = config["source"]["catalog_url"]
+          search_path = urlsplit(search_root).path
+
           def fetch_text(url: str) -> str:
               request = urllib.request.Request(
                   url,
-                  headers={"User-Agent": "12-6-ai-d03-nbu-live-execution/1.0 (+source-audit)"},
+                  headers={"User-Agent": "12-6-ai-d03-nbu-live-execution/2.0 (+source-audit)"},
                   method="GET",
               )
               with urllib.request.urlopen(request, timeout=30) as response:
-                  final = response.geturl()
-                  if not final.startswith("https://bank.gov.ua/"):
-                      raise RuntimeError(f"NBU fetch escaped origin: {final}")
+                  final = urlsplit(response.geturl())
+                  if final.scheme != "https" or final.netloc.casefold() != allowed.netloc.casefold():
+                      raise RuntimeError(f"NBU fetch escaped origin: {response.geturl()}")
                   body = response.read(8_000_001)
               if len(body) > 8_000_000:
                   raise RuntimeError(f"NBU HTML response exceeded bound: {url}")
               return body.decode("utf-8", errors="strict")
 
-          catalog_url = config["source"]["catalog_url"]
-          catalog_fetches = [fetch_text(catalog_url), fetch_text(catalog_url)]
-          sets = [module.discover_resolution_urls(body, config) for body in catalog_fetches]
-          if sets[0] != sets[1]:
-              raise RuntimeError("NBU catalogue discovery changed between independent fetches")
-          urls = sets[0]
-          print(f"LIVE_DISCOVERY documents={len(urls)}")
-          if not urls:
-              raise RuntimeError("NBU catalogue yielded zero canonical resolution documents")
-          if len(urls) > config["discovery_contract"]["hard_max_documents"]:
-              raise RuntimeError(
-                  f"NBU catalogue yielded {len(urls)} documents, exceeds hard bound "
-                  f"{config['discovery_contract']['hard_max_documents']}"
-              )
+          def canonical_search_link(raw: str, base: str) -> str | None:
+              candidate = urlsplit(urljoin(base, html.unescape(raw.strip())))
+              if candidate.scheme != "https" or candidate.netloc.casefold() != allowed.netloc.casefold():
+                  return None
+              if candidate.path != search_path or candidate.fragment:
+                  return None
+              return urlunsplit(("https", allowed.netloc.casefold(), search_path, candidate.query, ""))
+
+          def crawl_catalog() -> tuple[str, tuple[str, ...]]:
+              queue = [search_root]
+              queued = {search_root}
+              visited: set[str] = set()
+              bodies: list[str] = []
+              documents: set[str] = set()
+              while queue and len(visited) < max_search_pages and len(documents) < target_documents:
+                  current = queue.pop(0)
+                  if current in visited:
+                      continue
+                  body = fetch_text(current)
+                  visited.add(current)
+                  bodies.append(body)
+                  documents.update(module.discover_resolution_urls(body, config))
+                  parser = module.parse(body)
+                  discovered_pages = set()
+                  for href in parser.hrefs:
+                      page = canonical_search_link(href, current)
+                      if page and page not in visited and page not in queued:
+                          discovered_pages.add(page)
+                  for page in sorted(discovered_pages):
+                      queued.add(page)
+                      queue.append(page)
+                  print(
+                      "CATALOG_PAGE "
+                      f"visited={len(visited)} queued={len(queue)} documents={len(documents)} url={current}"
+                  )
+              if not documents:
+                  raise RuntimeError("NBU search yielded zero canonical resolution documents")
+              if len(documents) < target_documents:
+                  raise RuntimeError(
+                      f"NBU bounded crawl found only {len(documents)} canonical resolution documents; "
+                      f"target={target_documents} visited_pages={len(visited)}"
+                  )
+              if len(documents) > config["discovery_contract"]["hard_max_documents"]:
+                  raise RuntimeError("NBU bounded crawl exceeded hard document bound")
+              return "\n".join(bodies), tuple(sorted(documents))
+
+          first_catalog, first_urls = crawl_catalog()
+          second_catalog, second_urls = crawl_catalog()
+          if first_urls != second_urls:
+              raise RuntimeError("NBU canonical document set changed between independent bounded crawls")
+          print(f"LIVE_DISCOVERY documents={len(first_urls)}")
 
           document_fetches: dict[str, list[str]] = {}
-          for index, url in enumerate(urls, start=1):
+          for index, url in enumerate(first_urls, start=1):
               document_fetches[url] = [fetch_text(url), fetch_text(url)]
-              print(f"LIVE_DOCUMENT {index}/{len(urls)} url={url}")
+              print(f"LIVE_DOCUMENT {index}/{len(first_urls)} url={url}")
 
-          evidence = module.build_body_free_discovery_evidence(config, catalog_fetches, document_fetches)
+          evidence = module.build_body_free_discovery_evidence(
+              config,
+              [first_catalog, second_catalog],
+              document_fetches,
+          )
           module.validate_evidence(evidence, config)
           Path("/tmp/nbu-discovery-evidence.json").write_text(
               json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
@@ -99,7 +199,7 @@ jobs:
             /tmp/nbu-discovery-evidence.json \
             --output /tmp/nbu-pdf-pin-evidence.json
 
-      - name: Materialize exact text twice with qualified extractor
+      - name: Materialize exact text twice with exact qualified extractor
         run: |
           python3 tools/materialize_d03_ua_nbu_pdftotext_v1.py \
             /tmp/nbu-discovery-evidence.json \
@@ -116,11 +216,11 @@ jobs:
           sha256sum /tmp/nbu-text-a.jsonl /tmp/nbu-text-b.jsonl
 
       - name: Write body-free execution summary
-        if: success()
         run: |
           python3 - <<'PY'
           import hashlib
           import json
+          import os
           from pathlib import Path
 
           discovery = json.loads(Path("/tmp/nbu-discovery-evidence.json").read_text(encoding="utf-8"))
@@ -129,7 +229,9 @@ jobs:
           summary = {
               "schema": "12-6.d03-ua-nbu-pdftotext-real-execution-summary.v1",
               "status": "REAL_TEXT_MATERIALIZED_ZERO_CREDIT",
+              "git_sha": os.environ["GITHUB_SHA"],
               "source_id": text["source_id"],
+              "catalog_url": "https://bank.gov.ua/ua/legislation/search",
               "discovered_documents": discovery["discovered_documents"],
               "pinned_pdfs": pins["pinned_pdfs"],
               "observed_pdf_bytes": pins["observed_pdf_bytes"],
@@ -140,7 +242,12 @@ jobs:
               "discovery_evidence_identity_sha256": discovery["evidence_identity_sha256"],
               "pdf_pin_evidence_identity_sha256": pins["evidence_identity_sha256"],
               "text_evidence_identity_sha256": text["evidence_identity_sha256"],
+              "extractor_backend": text["extractor_backend"],
+              "extractor_version": text["extractor_version"],
+              "extractor_source_url": "https://poppler.freedesktop.org/poppler-25.06.0.tar.xz",
+              "extractor_source_sha256": os.environ["POPPLER_TARBALL_SHA256"],
               "two_full_materializations_byte_identical": True,
+              "raw_text_persisted_in_durable_evidence": False,
               "canonical_capacity_credit_bytes": 0,
               "training_authorized_bytes": 0,
               "authorized_unique_loss_positions": 0,
@@ -150,6 +257,7 @@ jobs:
               "final_test_accessed": False,
               "paid_compute_used": False,
               "foreign_pretrained_weights_used": False,
+              "external_llm_or_api_used_for_data_or_intelligence": False,
           }
           payload = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
           summary["summary_identity_sha256"] = hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -160,9 +268,9 @@ jobs:
           print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
           PY
 
-      - name: Upload execution evidence
+      - name: Upload body-free execution evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: d03-nbu-pdftotext-real-execution-${{ github.sha }}
           if-no-files-found: warn
@@ -174,5 +282,3 @@ jobs:
             /tmp/nbu-text-evidence-a.json
             /tmp/nbu-text-evidence-b.json
             /tmp/nbu-real-execution-summary.json
-            /tmp/nbu-text-a.jsonl
-            /tmp/nbu-text-b.jsonl
