@@ -13,6 +13,7 @@ independent-audit trust-boundary findings before delegating to that implementati
 """
 from __future__ import annotations
 
+import builtins
 import copy
 import hashlib
 import html
@@ -53,6 +54,8 @@ _LEGACY_RUN_EXPANDED_DEDUP = _impl.run_expanded_dedup
 # both the live matcher and the reference import through the same process
 # ``sys.modules``.  Member-level mutation therefore has to be detected against an
 # earlier immutable reference, not merely against a freshly imported module object.
+_FROZEN_BUILTINS_MODULE = builtins
+_FROZEN_COPY_MODULE = copy
 _FROZEN_HASHLIB_MODULE = hashlib
 _FROZEN_HTML_MODULE = html
 _FROZEN_JSON_MODULE = json
@@ -64,6 +67,23 @@ _FROZEN_IMPORTLIB_MACHINERY_MODULE = importlib.machinery
 _FROZEN_PATH_CLASS = Path
 _FROZEN_COUNTER_CLASS = Counter
 
+# Matcher functions resolve Python builtins dynamically through ``__builtins__``.
+# Freeze every callable/type exported by the canonical builtins module rather than
+# chasing one threshold primitive at a time.  This covers the complete selected
+# V3/V1/DATA232 runtime call graph (including nested code objects) and future-proofs
+# the seal when an already-pinned function starts reaching another builtin name.
+_FROZEN_BUILTIN_CALLABLES = tuple(
+    builtins.sorted(
+        (
+            (name, value)
+            for name, value in builtins.__dict__.items()
+            if builtins.callable(value)
+        ),
+        key=lambda item: item[0],
+    )
+)
+
+_FROZEN_COPY_DEEPCOPY = copy.deepcopy
 _FROZEN_HASHLIB_SHA1 = hashlib.sha1
 _FROZEN_HASHLIB_SHA256 = hashlib.sha256
 _FROZEN_HTML_UNESCAPE = html.unescape
@@ -189,6 +209,8 @@ def _verify_stdlib_runtime_semantic_closure() -> None:
     """Reject shared-stdlib member drift before any matcher/reference execution."""
 
     module_checks = (
+        (builtins, _FROZEN_BUILTINS_MODULE, "builtins module"),
+        (copy, _FROZEN_COPY_MODULE, "copy module"),
         (hashlib, _FROZEN_HASHLIB_MODULE, "hashlib module"),
         (html, _FROZEN_HTML_MODULE, "html module"),
         (json, _FROZEN_JSON_MODULE, "json module"),
@@ -207,7 +229,22 @@ def _verify_stdlib_runtime_semantic_closure() -> None:
     for current, expected, label in module_checks:
         _require(current is expected, f"stdlib runtime object replaced: {label}")
 
+    _require(
+        sys.modules.get("builtins") is _FROZEN_BUILTINS_MODULE,
+        "stdlib runtime object replaced: builtins sys.modules binding",
+    )
+    _require(
+        sys.modules.get("copy") is _FROZEN_COPY_MODULE,
+        "stdlib runtime object replaced: copy sys.modules binding",
+    )
+    for name, expected in _FROZEN_BUILTIN_CALLABLES:
+        _require(
+            _FROZEN_BUILTINS_MODULE.__dict__.get(name) is expected,
+            f"stdlib runtime builtin replaced: builtins.{name}",
+        )
+
     member_checks = (
+        (copy.deepcopy, _FROZEN_COPY_DEEPCOPY, "copy.deepcopy"),
         (hashlib.sha1, _FROZEN_HASHLIB_SHA1, "hashlib.sha1"),
         (hashlib.sha256, _FROZEN_HASHLIB_SHA256, "hashlib.sha256"),
         (html.unescape, _FROZEN_HTML_UNESCAPE, "html.unescape"),
@@ -683,7 +720,7 @@ def _validate_reconstructed_v8_against_preflight(
 def _restrict_lineage_to_survivors(
     inventory: Mapping[str, Any], survivor_authority: Mapping[str, Any]
 ) -> dict[str, Any]:
-    prepared = copy.deepcopy(dict(inventory))
+    prepared = _FROZEN_COPY_DEEPCOPY(dict(inventory))
     survivor_rows = survivor_authority.get("survivors")
     _require(isinstance(survivor_rows, list) and survivor_rows, "V8 survivor rows missing")
     survivor_ids = {str(row["source_id"]) for row in survivor_rows if isinstance(row, Mapping)}
@@ -698,7 +735,7 @@ def _restrict_lineage_to_survivors(
         right = edge.get("right_source_id")
         _require(isinstance(left, str) and isinstance(right, str), "V8 lineage edge endpoints malformed")
         if left in survivor_ids and right in survivor_ids:
-            retained.append(copy.deepcopy(dict(edge)))
+            retained.append(_FROZEN_COPY_DEEPCOPY(dict(edge)))
     prepared["lineage_edges"] = retained
     return prepared
 
@@ -732,7 +769,7 @@ def run_expanded_dedup(
     # This binds stable IDs, normalization, comparison metadata, thresholds and all
     # lineage-derived matches to the already sealed nested V3 authority.
     preflight = matcher_audit(
-        copy.deepcopy(dict(reconstructed_v8_inventory)),
+        _FROZEN_COPY_DEEPCOPY(dict(reconstructed_v8_inventory)),
         dict(reconstructed_v8_payloads),
     )
     _require(isinstance(preflight, Mapping), "V8 semantic preflight returned non-object report")
@@ -765,7 +802,7 @@ def run_expanded_dedup(
 
     # Durable outer evidence now states the exact semantic authorities enforced by
     # this facade; this does not grant any additional corpus or training credit.
-    report = copy.deepcopy(report)
+    report = _FROZEN_COPY_DEEPCOPY(report)
     report["matcher_execution_authority"] = {
         "terminal_v7_head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
         "nested_v3_report_sha256": V8_NESTED_V3_SHA256,
