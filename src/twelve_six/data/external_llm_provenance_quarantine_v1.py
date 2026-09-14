@@ -141,42 +141,71 @@ def validate_authority(
     return claimed
 
 
+def reject_quarantined_inventory_rows(
+    rows: Sequence[Mapping[str, Any]],
+    authority: Mapping[str, Any],
+    *,
+    expected_identity_sha256: str = EXPECTED_AUTHORITY_IDENTITY_SHA256,
+) -> str:
+    """Reject known contamination using text-free record-inventory evidence.
+
+    Matching the blocked payload SHA is sufficient even if every identifier was
+    renamed or resealed. Matching a known authority identifier is also sufficient
+    even when the supplied payload hash differs. Passing this check does not prove
+    that unrelated corpus bytes are external-LLM clean.
+    """
+    identity = validate_authority(
+        authority,
+        expected_identity_sha256=expected_identity_sha256,
+    )
+    for index, row in enumerate(rows):
+        _need(isinstance(row, Mapping), f"inventory[{index}] must be an object")
+        payload_sha = row.get("payload_sha256")
+        _need(isinstance(payload_sha, str), f"inventory[{index}].payload_sha256 missing")
+        if payload_sha == BLOCKED_PAYLOAD_SHA256:
+            payload_bytes = row.get("payload_bytes")
+            _need(
+                payload_bytes is None or payload_bytes == BLOCKED_PAYLOAD_BYTES,
+                "blocked payload SHA matched with impossible byte-count drift",
+            )
+            raise ExternalLLMProvenanceQuarantineError(
+                f"known external-LLM payload quarantined at inventory[{index}]"
+            )
+        if (
+            row.get("family") == BLOCKED_FAMILY
+            or row.get("record_id") == BLOCKED_RECORD_ID
+            or row.get("source_id") == BLOCKED_SOURCE_ID
+        ):
+            raise ExternalLLMProvenanceQuarantineError(
+                f"known Nomis1864 authority identity quarantined at inventory[{index}]"
+            )
+    return identity
+
+
 def reject_quarantined_records(
     records: Sequence[Mapping[str, Any]],
     authority: Mapping[str, Any],
     *,
     expected_identity_sha256: str = EXPECTED_AUTHORITY_IDENTITY_SHA256,
 ) -> str:
-    """Reject the known contaminated payload even if identifiers are renamed/resealed.
-
-    The inverse is intentionally not claimed: passing this check proves only that the
-    known Nomis1864 contamination is absent. It is not a whole-corpus cleanliness
-    certificate.
-    """
-    identity = validate_authority(
-        authority,
-        expected_identity_sha256=expected_identity_sha256,
-    )
+    """Reject the known contaminated payload from raw record objects."""
+    rows: list[dict[str, Any]] = []
     for index, record in enumerate(records):
         _need(isinstance(record, Mapping), f"record[{index}] must be an object")
         payload = record.get("normalized_payload")
         _need(isinstance(payload, str), f"record[{index}].normalized_payload missing")
-        payload_raw = payload.encode("utf-8")
-        payload_sha = _sha256(payload_raw)
-        if payload_sha == BLOCKED_PAYLOAD_SHA256:
-            _need(
-                len(payload_raw) == BLOCKED_PAYLOAD_BYTES,
-                "blocked payload SHA matched with impossible byte-count drift",
-            )
-            raise ExternalLLMProvenanceQuarantineError(
-                f"known external-LLM payload quarantined at record[{index}]"
-            )
-        if (
-            record.get("family") == BLOCKED_FAMILY
-            or record.get("record_id") == BLOCKED_RECORD_ID
-            or record.get("source_id") == BLOCKED_SOURCE_ID
-        ):
-            raise ExternalLLMProvenanceQuarantineError(
-                f"known Nomis1864 authority identity quarantined at record[{index}]"
-            )
-    return identity
+        raw = payload.encode("utf-8")
+        rows.append(
+            {
+                "record_id": record.get("record_id"),
+                "source_id": record.get("source_id"),
+                "family": record.get("family"),
+                "payload_sha256": _sha256(raw),
+                "payload_bytes": len(raw),
+            }
+        )
+    return reject_quarantined_inventory_rows(
+        rows,
+        authority,
+        expected_identity_sha256=expected_identity_sha256,
+    )
