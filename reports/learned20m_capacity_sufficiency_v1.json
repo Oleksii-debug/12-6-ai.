@@ -1,0 +1,151 @@
+{
+  "schema_version": "12-6.learned20m-capacity-sufficiency.v1",
+  "report_id": "LEARNED20M-CAPACITY-SUFFICIENCY-20260914-SWARM2048-V1",
+  "source_main_sha": "fc57531f7f8e7ef03323df641d8196af6c573c8b",
+  "claim_issue": 2048,
+  "control_issues": [
+    548,
+    723,
+    2011,
+    2021
+  ],
+  "scientific_truth": {
+    "current_retained_corpus_launch_authoritative": false,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false,
+    "clean_successor_external_llm_free_authorized": false
+  },
+  "floor": {
+    "unit": "unique_causal_loss_positions",
+    "meaningful_unique_loss_positions": 10000000,
+    "requested_unique_loss_positions": 20000000,
+    "source_bytes_are_not_unique_loss_positions": true,
+    "authority_issue": 548
+  },
+  "clean_base_oracle": {
+    "authority_class": "NONAUTHORITATIVE_PHYSICAL_DERIVATIVE_ORACLE",
+    "issue": 1881,
+    "status": "PREQUAL_INVENTORY_ORACLE_READY_RAW_JSONL_ORACLE_BLOCKED",
+    "run_id": 34783440822,
+    "artifact_id": 10325234135,
+    "artifact_zip_sha256": "b65df0b4b508e2fc46679043c50426756d1d6efef8e8aaaea47010c50ef38793",
+    "records": 254,
+    "payload_bytes": 5428358,
+    "families": 18,
+    "source_objects": 241,
+    "record_inventory_digest_sha256": "0807f46418fb5a16a1c553c86a6f6967e5c2854d0016e3f6fe24c1d9c05c628b",
+    "payload_inventory_digest_sha256": "2d2f0f5695ee07dfbba2e49b2d14983ede91051644770804fb734235125353af",
+    "raw_jsonl_identity_available": false,
+    "canonical_unique_loss_positions_credited": 0,
+    "launch_authoritative": false
+  },
+  "invalidated_physical_baseline": {
+    "status": "INVALIDATED_NOMIS1864_SONNET_PROVENANCE",
+    "records": 255,
+    "payload_bytes": 5430017,
+    "source_objects": 242,
+    "record_inventory_digest_sha256": "7f936f5518db1087578ef25a964e50796ff4572c0c9b666b83df78673af3ff4a",
+    "payload_inventory_digest_sha256": "4ff5424fe95d335459f0d58a818859f89106683768decd1ed291f16f7b0012b3",
+    "retained_jsonl_sha256": "b1ec0433fbd9675645b7e29c1e32b406e638fa081868cad7a56afec8f9a601cc",
+    "contamination": "NOMIS1864_SONNET_EXTERNAL_LLM_PROVENANCE",
+    "canonical_unique_loss_positions_credited": 0,
+    "launch_authoritative": false
+  },
+  "candidates": [
+    {
+      "id": "caselaw",
+      "source_pr": 1917,
+      "exact_head": "bb1350d8821af2bebe244f8d2f32cb8ee215c9fd",
+      "authority_class": "PHYSICAL_ZERO_CREDIT_SOURCE_ADMITTED",
+      "records": 5658,
+      "physical_candidate_bytes": 5962147,
+      "global_dedup_executed": false,
+      "canonical_unique_loss_positions_credited": 0,
+      "launch_authoritative": false,
+      "blocker": "consume the source-admitted candidate through terminal incumbent global dedup"
+    },
+    {
+      "id": "pep_loc",
+      "source_pr": 1345,
+      "exact_head": "62be1740045ed4a0bffec3647f2658d4f856333a",
+      "authority_class": "PHYSICAL_ZERO_CREDIT_COMPOSED_CANDIDATE",
+      "records": 114,
+      "physical_candidate_bytes": 9487683,
+      "global_dedup_executed": false,
+      "canonical_unique_loss_positions_credited": 0,
+      "launch_authoritative": false,
+      "blocker": "lawfully converge stacked dependency and execute V10 through incumbent matcher"
+    },
+    {
+      "id": "ubuntu_irc",
+      "source_pr": 1791,
+      "exact_head": "1748c728c7d22f87fd25140b8e27c2e8c17794bc",
+      "authority_class": "PHYSICAL_ZERO_CREDIT_SOURCE_ADMITTED",
+      "records": 972,
+      "physical_candidate_bytes": 4799981,
+      "global_dedup_executed": false,
+      "canonical_unique_loss_positions_credited": 0,
+      "launch_authoritative": false,
+      "blocker": "fresh different-worker audit then deterministic rematerialization and dedup execution"
+    },
+    {
+      "id": "arxiv_languk",
+      "source_pr": 1851,
+      "exact_head": "13afb887a3c42519d8b6ba2d71b8949ac5f87d10",
+      "authority_class": "PHYSICAL_ZERO_CREDIT_REMATERIALIZATION_CANDIDATE",
+      "records": 1280,
+      "physical_candidate_bytes": 3949184,
+      "global_dedup_executed": false,
+      "canonical_unique_loss_positions_credited": 0,
+      "launch_authoritative": false,
+      "blocker": "physical rematerialization remains unexecuted; current replay head must be freshly audited"
+    }
+  ],
+  "capacity_math": {
+    "authorized_unique_loss_positions_now": 0,
+    "authorized_deficit_to_meaningful_floor": 10000000,
+    "clean_oracle_one_pass_position_ceiling": 5428358,
+    "minimum_deficit_if_oracle_becomes_exact_clean_successor": 4571642,
+    "named_candidate_raw_bytes": 24198995,
+    "clean_oracle_plus_named_candidate_raw_bytes": 29627353,
+    "post_filter_unique_loss_expected_range_authorized": null,
+    "post_filter_mathematical_lower_bound": 0,
+    "post_filter_mathematical_upper_bound": 29627353
+  },
+  "decision": {
+    "routing": "CONTINUE_ONLY_NAMED_HIGH_YIELD_EXECUTIONS",
+    "open_new_source_families": false,
+    "recommended_execution_order": [
+      "pep_loc",
+      "caselaw",
+      "ubuntu_irc",
+      "arxiv_languk"
+    ],
+    "stop_condition": "terminal post-pack unique-loss authority >= 10000000 after complete downstream gates",
+    "rationale": "Named real zero-credit supply is already large. PR1459 mechanics are released at exact head e9aeea146325e80bbbbb4e01580e5c7893a6c208 with shared CI SUCCESS but still require a fresh different-worker semantic audit and lawful integration. In parallel finish the clean successor, then execute PEP+LoC and Caselaw before opening any new source family.",
+    "immediate_triggers": [
+      "different_worker_audit_pr1459_e9aeea146325e80bbbbb4e01580e5c7893a6c208",
+      "lawful_integration_pr1459_after_terminal_audit",
+      "finish_clean_successor_issue_1951",
+      "execute_pep_loc_then_caselaw_through_incumbent_matcher"
+    ]
+  },
+  "evidence_roots": {
+    "scientific_control_issue": 548,
+    "capacity_task_issue": 2021,
+    "acceleration_board_issue": 2011,
+    "candidate_queue_issue": 2020,
+    "clean_oracle_issue": 1881,
+    "clean_successor_owner_issue": 1951,
+    "global_dedup_pr": 1459,
+    "global_dedup_released_head": "e9aeea146325e80bbbbb4e01580e5c7893a6c208",
+    "global_dedup_exact_head_ci_run": 34873834969,
+    "global_dedup_exact_head_ci_conclusion": "SUCCESS"
+  }
+}
