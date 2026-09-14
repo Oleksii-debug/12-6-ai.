@@ -393,7 +393,8 @@ def prepare_ubuntu_v9_intake(
             "final_test_accessed": False,
             "paid_compute_used": False,
             "foreign_pretrained_weights_used": False,
-            "external_llm_or_api_used_for_data_or_intelligence": False,
+            "upstream_source_evidence_external_llm_or_api_used": False,
+            "current_corpus_external_llm_free_claimed_by_this_adapter": False,
         },
     }
     return inventory_rows, payloads, receipt

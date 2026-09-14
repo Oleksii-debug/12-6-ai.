@@ -194,3 +194,23 @@ def test_authority_byte_substitution_fails_closed(monkeypatch: pytest.MonkeyPatc
             execution_evidence_bytes=EVIDENCE.read_bytes(),
             candidate_bytes=candidate,
         )
+
+
+def test_receipt_scopes_external_llm_truth_to_upstream_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = prepare(monkeypatch, [row()])
+    monkeypatch.setattr(intake, "_validate_execution_evidence", lambda *_args: None)
+    _, _, receipt = intake.prepare_ubuntu_v9_intake(
+        incumbent_v9_product_head=intake.INCUMBENT_V9_PRODUCT_HEAD,
+        incumbent_v9_facade_bytes=V9.read_bytes(),
+        crossbind_bytes=CROSSBIND.read_bytes(),
+        rights_authority_bytes=RIGHTS.read_bytes(),
+        parent_registry_bytes=PARENT.read_bytes(),
+        execution_evidence_bytes=EVIDENCE.read_bytes(),
+        candidate_bytes=candidate,
+    )
+    truth = receipt["truth_boundary"]
+    assert truth["upstream_source_evidence_external_llm_or_api_used"] is False
+    assert truth["current_corpus_external_llm_free_claimed_by_this_adapter"] is False
+    assert "external_llm_or_api_used_for_data_or_intelligence" not in truth
