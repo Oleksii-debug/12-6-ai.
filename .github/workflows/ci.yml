@@ -26,6 +26,24 @@ jobs:
         with:
           ref: 67aa1218924508d4caf4a1e999bdfb8b1b861f19
           fetch-depth: 0
+      - name: PR945 clean balance — overlay audited provenance bridge repair
+        id: bridge_repair
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        env:
+          CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          BRIDGE_PATH=src/twelve_six/data/postmaterialization_balance_projection_v1.py
+          TEST_PATH=tests/test_postmaterialization_balance_projection_v1.py
+          git cat-file -e "$CARRIER_HEAD^{commit}"
+          BRIDGE_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$BRIDGE_PATH")"
+          TEST_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$TEST_PATH")"
+          git show "$CARRIER_HEAD:$BRIDGE_PATH" > "$BRIDGE_PATH"
+          git show "$CARRIER_HEAD:$TEST_PATH" > "$TEST_PATH"
+          test "$(git hash-object "$BRIDGE_PATH")" = "$BRIDGE_BLOB_SHA"
+          test "$(git hash-object "$TEST_PATH")" = "$TEST_BLOB_SHA"
+          echo "bridge_blob_sha=$BRIDGE_BLOB_SHA" >> "$GITHUB_OUTPUT"
+          echo "test_blob_sha=$TEST_BLOB_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -45,20 +63,29 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
         env:
           CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
+          BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
+          TEST_BLOB_SHA: ${{ steps.bridge_repair.outputs.test_blob_sha }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "67aa1218924508d4caf4a1e999bdfb8b1b861f19"
-          test "$(git diff --name-only eddc498cc330b1e4b255eb4e5712f13391dd8169 "$CARRIER_HEAD")" = ".github/workflows/ci.yml"
-          test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$(git rev-parse "$CARRIER_HEAD":src/twelve_six/data/postmaterialization_balance_projection_v1.py)"
+          git diff --name-only eddc498cc330b1e4b255eb4e5712f13391dd8169 "$CARRIER_HEAD" > /tmp/pr945-carrier-files.txt
+          test "$(wc -l < /tmp/pr945-carrier-files.txt)" -eq 3
+          grep -Fxq '.github/workflows/ci.yml' /tmp/pr945-carrier-files.txt
+          grep -Fxq 'src/twelve_six/data/postmaterialization_balance_projection_v1.py' /tmp/pr945-carrier-files.txt
+          grep -Fxq 'tests/test_postmaterialization_balance_projection_v1.py' /tmp/pr945-carrier-files.txt
           test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:tools/materialize_d03_postmaterialization_balance_v1.py)" = "$(git rev-parse "$CARRIER_HEAD":tools/materialize_d03_postmaterialization_balance_v1.py)"
-          test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$(git rev-parse HEAD:src/twelve_six/data/postmaterialization_balance_projection_v1.py)"
+          test "$(git hash-object src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$BRIDGE_BLOB_SHA"
+          test "$(git hash-object tests/test_postmaterialization_balance_projection_v1.py)" = "$TEST_BLOB_SHA"
           git show "$CARRIER_HEAD":.github/workflows/ci.yml > /tmp/pr945-carrier-workflow.yml
+          git show "$CARRIER_HEAD":src/twelve_six/data/postmaterialization_balance_projection_v1.py > /tmp/pr945-carrier-bridge.py
           unsupported_field='external_llm_or_api_used_for_data_or_'
           unsupported_field="${unsupported_field}intelligence"
           scoped_nonclaim='whole_corpus_external_llm_'
           scoped_nonclaim="${scoped_nonclaim}cleanliness_claimed"
           ! grep -Fq "\"${unsupported_field}\"" /tmp/pr945-carrier-workflow.yml
+          ! grep -Fq "\"${unsupported_field}\"" /tmp/pr945-carrier-bridge.py
           test "$(grep -Fc "\"${scoped_nonclaim}\"" /tmp/pr945-carrier-workflow.yml)" -eq 2
+          test "$(grep -Fc "\"${scoped_nonclaim}\"" /tmp/pr945-carrier-bridge.py)" -eq 1
 
       - name: PR945 clean balance — resolve independently rooted clean authority
         id: clean_authority
@@ -255,6 +282,8 @@ jobs:
           AUTH_MAIN_SHA: ${{ steps.clean_authority.outputs.main_sha }}
           AUTH_PATH: ${{ steps.clean_authority.outputs.authority_path }}
           AUTH_BLOB_SHA: ${{ steps.clean_authority.outputs.authority_blob_sha }}
+          CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
+          BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -362,13 +391,15 @@ jobs:
               selection_error = str(exc)
 
           receipt = {
-              "schema": "12-6.d03-real-clean-postmaterialization-balance-execution.v2",
+              "schema": "12-6.d03-real-clean-postmaterialization-balance-execution.v3",
               "execution_profile": "LOCAL_FREE",
               "authority_main_sha": os.environ["AUTH_MAIN_SHA"],
               "authority_path": os.environ["AUTH_PATH"],
               "authority_blob_sha": os.environ["AUTH_BLOB_SHA"],
               "product_head_sha": "eddc498cc330b1e4b255eb4e5712f13391dd8169",
               "product_candidate_merge_sha": "67aa1218924508d4caf4a1e999bdfb8b1b861f19",
+              "carrier_head_sha": os.environ["CARRIER_HEAD"],
+              "postmaterialization_bridge_blob_sha": os.environ["BRIDGE_BLOB_SHA"],
               "materialization_artifact_id": authority[
                   "materialization_artifact_id"
               ],

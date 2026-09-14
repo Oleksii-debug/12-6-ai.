@@ -90,7 +90,7 @@ def _verify_zero_credit_truth(boundary: Mapping[str, Any]) -> None:
         "authorized_optimized_target_exposure": 0,
         "authorized_unique_loss_positions": 0,
         "current_corpus_eligible": False,
-        "external_llm_or_api_used_for_data_or_intelligence": False,
+        "whole_corpus_external_llm_cleanliness_claimed": False,
         "final_test_outcomes_read": False,
         "foreign_pretrained_weights": False,
         "learned_weights_created": False,

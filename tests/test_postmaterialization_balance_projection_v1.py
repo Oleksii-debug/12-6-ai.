@@ -89,7 +89,7 @@ def _truth() -> dict:
         "authorized_optimized_target_exposure": 0,
         "authorized_unique_loss_positions": 0,
         "current_corpus_eligible": False,
-        "external_llm_or_api_used_for_data_or_intelligence": False,
+        "whole_corpus_external_llm_cleanliness_claimed": False,
         "final_test_outcomes_read": False,
         "foreign_pretrained_weights": False,
         "learned_weights_created": False,
@@ -202,7 +202,7 @@ def _target_rows() -> list[dict]:
 
 
 def test_postmaterialization_vector_binds_machine_inventory() -> None:
-    vector, inventory, _ = _build(_partial_rows())
+    vector, inventory, evidence = _build(_partial_rows())
     assert vector["schema"] == FAMILY_VECTOR_SCHEMA
     assert vector["record_count"] == 6
     assert vector["total_payload_bytes"] == 6_000
@@ -210,6 +210,13 @@ def test_postmaterialization_vector_binds_machine_inventory() -> None:
     assert vector["record_inventory_digest_sha256"] == inventory[
         "record_inventory_digest_sha256"
     ]
+    assert evidence["truth_boundary"][
+        "whole_corpus_external_llm_cleanliness_claimed"
+    ] is False
+    assert (
+        "external_llm_or_api_used_for_data_or_intelligence"
+        not in evidence["truth_boundary"]
+    )
     assert vector["stratum_capacity_bytes"] == {
         "code": 2_000,
         "en": 2_000,
@@ -274,6 +281,55 @@ def test_coherently_resealed_wrong_inventory_still_fails_external_roots() -> Non
 def test_materialization_truth_drift_fails_closed() -> None:
     _, inventory, evidence = _build(_partial_rows())
     evidence["truth_boundary"]["tokenizer_fit_authorized"] = True
+    with pytest.raises(ProjectionError, match="truth boundary drift"):
+        build_postmaterialization_family_vector(
+            inventory=inventory,
+            materialization_evidence=evidence,
+            expected_execution_head_sha=GIT_SHA,
+            expected_materialization_identity_sha256=MATERIALIZATION_SHA,
+            expected_result_jsonl_sha256=JSONL_SHA,
+            expected_record_count=inventory["record_count"],
+            expected_total_payload_bytes=inventory["total_payload_bytes"],
+            expected_source_object_count=6,
+            expected_record_inventory_digest_sha256=inventory[
+                "record_inventory_digest_sha256"
+            ],
+            expected_payload_inventory_digest_sha256=inventory[
+                "payload_inventory_digest_sha256"
+            ],
+            source_git_sha=GIT_SHA,
+        )
+
+
+def test_legacy_global_external_llm_negative_is_rejected() -> None:
+    _, inventory, evidence = _build(_partial_rows())
+    del evidence["truth_boundary"]["whole_corpus_external_llm_cleanliness_claimed"]
+    evidence["truth_boundary"][
+        "external_llm_or_api_used_for_data_or_intelligence"
+    ] = False
+    with pytest.raises(ProjectionError, match="truth boundary drift"):
+        build_postmaterialization_family_vector(
+            inventory=inventory,
+            materialization_evidence=evidence,
+            expected_execution_head_sha=GIT_SHA,
+            expected_materialization_identity_sha256=MATERIALIZATION_SHA,
+            expected_result_jsonl_sha256=JSONL_SHA,
+            expected_record_count=inventory["record_count"],
+            expected_total_payload_bytes=inventory["total_payload_bytes"],
+            expected_source_object_count=6,
+            expected_record_inventory_digest_sha256=inventory[
+                "record_inventory_digest_sha256"
+            ],
+            expected_payload_inventory_digest_sha256=inventory[
+                "payload_inventory_digest_sha256"
+            ],
+            source_git_sha=GIT_SHA,
+        )
+
+
+def test_positive_whole_corpus_external_llm_cleanliness_claim_is_rejected() -> None:
+    _, inventory, evidence = _build(_partial_rows())
+    evidence["truth_boundary"]["whole_corpus_external_llm_cleanliness_claimed"] = True
     with pytest.raises(ProjectionError, match="truth boundary drift"):
         build_postmaterialization_family_vector(
             inventory=inventory,
