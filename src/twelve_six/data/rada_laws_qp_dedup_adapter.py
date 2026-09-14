@@ -1,8 +1,7 @@
-"""Authenticate/project exact PR #655 Rada-laws Q/P rows into incumbent D03 dedup.
+"""Authenticate and project exact PR #655 Rada-laws Q/P rows for canonical D03 dedup.
 
-No matching science lives here. Every accepted chunk is preserved one-for-one and
-may only be passed to the incumbent matcher (or a separately qualified
-performance-equivalent executor) through the callback seam below.
+No matching science or incumbent-base authority lives here. Every accepted chunk
+is preserved one-for-one for a separately authenticated canonical consumer.
 """
 from __future__ import annotations
 
@@ -11,7 +10,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -161,19 +160,6 @@ def _read_json(
     if expected_sha256 is not None:
         _require(_sha256(raw) == expected_sha256, f"{label} file SHA-256 drift")
     return _strict_json_bytes(raw, label=label)
-
-
-def _file_identity(path: Path) -> tuple[int, str]:
-    digest = hashlib.sha256()
-    total = 0
-    try:
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
-                total += len(block)
-                digest.update(block)
-    except OSError as exc:
-        raise RadaLawsDedupIntakeError(f"cannot read candidate JSONL: {path}") from exc
-    return total, digest.hexdigest()
 
 
 def _exact_values(
@@ -478,9 +464,7 @@ def validate_and_project_rada_laws_qp(
     """Validate exact real PR #655 output and project every accepted chunk one-to-one."""
     _require(upstream_head == UPSTREAM_FINAL_EVIDENCE_COMMIT, "upstream head drift")
     _require(type(retain_payloads) is bool, "retain_payloads must be exact bool")
-    size, candidate_sha = _file_identity(candidate_jsonl)
-    _exact_int(size, ACCEPTED_JSONL_FILE_BYTES, "candidate transport byte drift")
-    _require(candidate_sha == ACCEPTED_JSONL_SHA256, "candidate transport SHA drift")
+
     report = _read_json(
         quality_report_json,
         label="quality report",
@@ -498,13 +482,25 @@ def validate_and_project_rada_laws_qp(
     encodings: Counter[str] = Counter()
     total_bytes = 0
     inventory_hasher = hashlib.sha256()
+    transport_hasher = hashlib.sha256()
+    transport_bytes = 0
     row_count = 0
+
     try:
         handle = candidate_jsonl.open("rb")
     except OSError as exc:
-        raise RadaLawsDedupIntakeError(f"cannot reopen candidate: {candidate_jsonl}") from exc
+        raise RadaLawsDedupIntakeError(
+            f"cannot read candidate JSONL: {candidate_jsonl}"
+        ) from exc
+
     with handle:
         for line_number, line in enumerate(handle, 1):
+            # Authenticate exactly the bytes parsed below. The candidate path is
+            # opened once, so a pathname replacement cannot swap in a different
+            # stream after transport authentication.
+            transport_bytes += len(line)
+            transport_hasher.update(line)
+
             _require(bool(line.strip()), f"blank candidate row at {line_number}")
             try:
                 row = json.loads(
@@ -537,6 +533,17 @@ def validate_and_project_rada_laws_qp(
                 sources.append(matcher_row)
                 payloads[source_id] = payload
 
+    # Transport identity is checked only after EOF of the same single stream that
+    # was parsed. Nothing is returned to a downstream consumer on mismatch.
+    _exact_int(
+        transport_bytes,
+        ACCEPTED_JSONL_FILE_BYTES,
+        "candidate transport byte drift",
+    )
+    _require(
+        transport_hasher.hexdigest() == ACCEPTED_JSONL_SHA256,
+        "candidate transport SHA drift",
+    )
     _exact_int(row_count, ACCEPTED_CHUNK_COUNT, "candidate row count drift")
     _exact_int(total_bytes, ACCEPTED_TEXT_UTF8_BYTES, "candidate text byte total drift")
     _exact_int(
@@ -561,66 +568,3 @@ def validate_and_project_rada_laws_qp(
         sources=tuple(sources) if sources is not None else None,
         payloads=payloads,
     )
-
-
-def compose_with_incumbent_inventory(
-    base_inventory: Mapping[str, Any],
-    base_payloads: Mapping[str, bytes],
-    projection: RadaLawsProjection,
-) -> tuple[dict[str, Any], dict[str, bytes]]:
-    """Append authenticated rows without changing incumbent matcher semantics."""
-    _require(type(base_inventory) is dict, "base inventory must be exact object")
-    _require(
-        base_inventory.get("schema_version") == INCUMBENT_INVENTORY_SCHEMA,
-        "base inventory schema drift",
-    )
-    _require(base_inventory.get("local_free_only") is True, "base LOCAL_FREE weakened")
-    _require(
-        base_inventory.get("model_training_executed") is False,
-        "base claims model training",
-    )
-    base_sources = base_inventory.get("sources")
-    _require(type(base_sources) is list, "base sources missing")
-    base_ids: set[str] = set()
-    for index, source in enumerate(base_sources):
-        _require(type(source) is dict, f"base source {index} invalid")
-        source_id = source.get("source_id")
-        _require(type(source_id) is str and bool(source_id), f"base source {index} id invalid")
-        _require(source_id not in base_ids, f"duplicate base source id: {source_id}")
-        base_ids.add(source_id)
-    _require(set(base_payloads) == base_ids, "base payload coverage drift")
-    _require(
-        projection.sources is not None and projection.payloads is not None,
-        "retained projection required",
-    )
-    projected_ids = {source["source_id"] for source in projection.sources}
-    _require(len(projected_ids) == len(projection.sources), "duplicate projected ids")
-    _require(not (base_ids & projected_ids), "base/projection source-id collision")
-    _require(set(projection.payloads) == projected_ids, "projection payload coverage drift")
-    composed = copy.deepcopy(dict(base_inventory))
-    composed["sources"] = copy.deepcopy(base_sources) + [
-        copy.deepcopy(source) for source in projection.sources
-    ]
-    payloads = dict(base_payloads)
-    payloads.update(projection.payloads)
-    return composed, payloads
-
-
-def delegate_to_incumbent_matcher(
-    base_inventory: Mapping[str, Any],
-    base_payloads: Mapping[str, bytes],
-    projection: RadaLawsProjection,
-    *,
-    audit_payloads: Callable[[Mapping[str, Any], Mapping[str, bytes]], dict[str, Any]],
-    verify_report: Callable[[Mapping[str, Any]], Any],
-) -> dict[str, Any]:
-    """Delegate exactly once to an incumbent-equivalent matcher callback."""
-    _require(callable(audit_payloads), "audit callback missing")
-    _require(callable(verify_report), "verify callback missing")
-    inventory, payloads = compose_with_incumbent_inventory(
-        base_inventory, base_payloads, projection
-    )
-    report = audit_payloads(inventory, payloads)
-    _require(type(report) is dict, "matcher returned non-object report")
-    verify_report(report)
-    return report

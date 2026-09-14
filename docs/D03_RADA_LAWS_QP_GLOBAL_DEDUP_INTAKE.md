@@ -26,10 +26,12 @@ Observed, still-zero-credit payload:
 - execution evidence identity
   `6f4952add1a2dabaf37170fac5ec2ffae9bdd3366b0a032c6a89886a8b898e74`.
 
-The adapter verifies the candidate transport hash/size before parsing, the exact
-quality-report file hash plus self identity, and the exact execution-evidence
-self identity. Every accepted row is then cross-bound to the report metadata and
-its UTF-8 bytes/SHA are recomputed.
+The adapter opens the candidate JSONL exactly once and hashes/counts every raw
+line while parsing those same bytes. Only after EOF does it require the exact
+transport byte count and SHA-256 before returning any projection. It also verifies
+the exact quality-report file hash plus self identity and the exact
+execution-evidence self identity. Every accepted row is cross-bound to the report
+metadata and its UTF-8 bytes/SHA are recomputed.
 
 ## Projection semantics
 
@@ -57,11 +59,12 @@ Silently dropping duplicates or grouping by parent would change the science and
 is forbidden.
 
 PR #1459 / issue #1764 owns the separate performance-equivalent executor repair.
-This package therefore emits a deterministic text-free projection receipt and
-exposes `delegate_to_incumbent_matcher(...)`, but does not automatically call the
-quadratic matcher. Once the executor lineage is terminally qualified, it can be
-supplied through that callback seam without changing this adapter or the matcher
-semantics.
+This package is deliberately projection-only: it emits an authenticated
+one-to-one projection plus deterministic text-free receipt, accepts no incumbent
+base inventory, and cannot invoke a matcher. The canonical V9/matcher consumer
+must independently authenticate/reconstruct its own incumbent base and then
+consume this projection under its own authority. That closes the adapter's former
+caller-supplied-base authority gap without creating a second base-authority layer.
 
 ## Projection-only execution
 
@@ -85,7 +88,7 @@ This package does **not** assert canonical dedup completion, corpus admission,
 balance, split/packing, tokenizer-fit authority, optimized-target exposure,
 optimizer updates, training, learned weights, or final-test access.
 
-The following remain fail-closed:
+The following remain fail-closed for this Rada package:
 
 - canonical capacity credited: 0;
 - training-authorized bytes: 0;
@@ -97,7 +100,7 @@ The following remain fail-closed:
 - final-test outcomes read: false;
 - paid compute used: false;
 - foreign pretrained weights: false;
-- external LLM/API used for data or intelligence: false.
+- external LLM/API used for this package's data or intelligence: false.
 
 Fresh exact-head shared CI and a different-worker audit are required before
 integration. Real global matching must wait for terminal performance-equivalent

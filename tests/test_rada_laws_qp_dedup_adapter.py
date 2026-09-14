@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import copy
 import hashlib
-from collections.abc import Mapping
+import json
+from pathlib import Path
 
 import pytest
 
@@ -217,96 +218,108 @@ def test_exact_content_aliases_are_preserved_for_matcher() -> None:
     assert first_matcher["stable_origin_id"] != second_matcher["stable_origin_id"]
 
 
-def _tiny_projection() -> adapter.RadaLawsProjection:
-    row, metadata = _row()
-    matcher, source_id, payload = adapter._validate_project_row(
+def _install_tiny_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_bytes: bytes,
+    metadata: dict[str, object],
+    *,
+    candidate_sha256: str | None = None,
+) -> None:
+    monkeypatch.setattr(adapter, "ACCEPTED_JSONL_FILE_BYTES", len(candidate_bytes))
+    monkeypatch.setattr(
+        adapter,
+        "ACCEPTED_JSONL_SHA256",
+        candidate_sha256 or hashlib.sha256(candidate_bytes).hexdigest(),
+    )
+    monkeypatch.setattr(adapter, "ACCEPTED_CHUNK_COUNT", 1)
+    monkeypatch.setattr(
+        adapter,
+        "ACCEPTED_TEXT_UTF8_BYTES",
+        int(metadata["normalized_bytes"]),
+    )
+    monkeypatch.setattr(adapter, "EXACT_DUPLICATE_ACCEPTED_HASHES", 0)
+    monkeypatch.setattr(adapter, "ACCEPTED_SOURCE_ENCODING_COUNTS", {"utf-8": 1})
+    monkeypatch.setattr(adapter, "_read_json", lambda *args, **kwargs: {})
+    monkeypatch.setattr(adapter, "_validate_quality_report", lambda report: [metadata])
+    monkeypatch.setattr(adapter, "_validate_execution_evidence", lambda evidence: None)
+
+
+def test_candidate_transport_is_authenticated_and_parsed_from_one_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row, metadata = _row(parent="d100.htm", chunk=0)
+    candidate_bytes = json.dumps(
         row,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8") + b"\n"
+    candidate = tmp_path / "candidate.jsonl"
+    candidate.write_bytes(candidate_bytes)
+    _install_tiny_authority(monkeypatch, candidate_bytes, metadata)
+
+    real_open = Path.open
+    candidate_opens = 0
+
+    def counted_open(path: Path, *args: object, **kwargs: object):
+        nonlocal candidate_opens
+        if path == candidate:
+            candidate_opens += 1
+            if candidate_opens > 1:
+                raise AssertionError("candidate JSONL was reopened")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", counted_open)
+
+    projection = adapter.validate_and_project_rada_laws_qp(
+        candidate,
+        tmp_path / "quality.json",
+        tmp_path / "evidence.json",
+        upstream_head=adapter.UPSTREAM_FINAL_EVIDENCE_COMMIT,
+    )
+    assert candidate_opens == 1
+    assert projection.sources is not None
+    assert len(projection.sources) == 1
+    assert projection.payloads is not None
+    assert set(projection.payloads) == {f"rada-laws-qp:{row['record_id']}"}
+
+
+def test_candidate_transport_hash_mismatch_returns_no_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row, metadata = _row(parent="d100.htm", chunk=0)
+    candidate_bytes = json.dumps(
+        row,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8") + b"\n"
+    candidate = tmp_path / "candidate.jsonl"
+    candidate.write_bytes(candidate_bytes)
+    _install_tiny_authority(
+        monkeypatch,
+        candidate_bytes,
         metadata,
-        line_number=1,
-    )
-    return adapter.RadaLawsProjection(
-        receipt={"schema_version": adapter.RECEIPT_SCHEMA},
-        sources=(matcher,),
-        payloads={source_id: payload},
+        candidate_sha256="0" * 64,
     )
 
-
-def _base() -> tuple[dict[str, object], dict[str, bytes]]:
-    payload = b"base text"
-    source = {
-        "source_id": "base:1",
-        "source_family": "base.family",
-        "stable_origin_id": "base-origin",
-        "stable_object_id": "sha256:" + hashlib.sha256(payload).hexdigest(),
-        "modality": "en",
-        "evidence_status": "DEDICATED_TERMINAL",
-        "authority_ref": "base",
-        "declared_capacity_bytes": len(payload),
-        "expected_raw_bytes": len(payload),
-        "expected_raw_sha256": hashlib.sha256(payload).hexdigest(),
-        "acquisition_url": "https://example.invalid/base",
-        "origin_key": "base:1",
-    }
-    inventory: dict[str, object] = {
-        "schema_version": adapter.INCUMBENT_INVENTORY_SCHEMA,
-        "local_free_only": True,
-        "model_training_executed": False,
-        "sources": [source],
-        "lineage_edges": [],
-    }
-    return inventory, {"base:1": payload}
-
-
-def test_compose_preserves_base_and_appends_projection_without_mutation() -> None:
-    inventory, payloads = _base()
-    original = copy.deepcopy(inventory)
-    composed, composed_payloads = adapter.compose_with_incumbent_inventory(
-        inventory,
-        payloads,
-        _tiny_projection(),
-    )
-    assert inventory == original
-    assert len(composed["sources"]) == 2
-    assert set(composed_payloads) == {"base:1", "rada-laws-qp:d100.htm.q00003"}
-
-
-def test_compose_rejects_base_payload_coverage_drift() -> None:
-    inventory, _ = _base()
     with pytest.raises(
         adapter.RadaLawsDedupIntakeError,
-        match="base payload coverage",
+        match="candidate transport SHA drift",
     ):
-        adapter.compose_with_incumbent_inventory(
-            inventory,
-            {},
-            _tiny_projection(),
+        adapter.validate_and_project_rada_laws_qp(
+            candidate,
+            tmp_path / "quality.json",
+            tmp_path / "evidence.json",
+            upstream_head=adapter.UPSTREAM_FINAL_EVIDENCE_COMMIT,
         )
 
 
-def test_delegate_calls_matcher_and_verifier_exactly_once() -> None:
-    inventory, payloads = _base()
-    calls: list[tuple[str, int]] = []
-
-    def audit(
-        composed: Mapping[str, object],
-        composed_payloads: Mapping[str, bytes],
-    ) -> dict[str, object]:
-        calls.append(("audit", len(composed["sources"])))
-        assert len(composed_payloads) == 2
-        return {"report_sha256": "x"}
-
-    def verify(report: Mapping[str, object]) -> None:
-        calls.append(("verify", len(report)))
-
-    report = adapter.delegate_to_incumbent_matcher(
-        inventory,
-        payloads,
-        _tiny_projection(),
-        audit_payloads=audit,
-        verify_report=verify,
-    )
-    assert report == {"report_sha256": "x"}
-    assert calls == [("audit", 2), ("verify", 1)]
+def test_projection_api_exposes_no_caller_supplied_base_or_matcher_seam() -> None:
+    assert not hasattr(adapter, "compose_with_incumbent_inventory")
+    assert not hasattr(adapter, "delegate_to_incumbent_matcher")
 
 
 def test_projection_receipt_remains_zero_credit_and_match_blocked() -> None:
