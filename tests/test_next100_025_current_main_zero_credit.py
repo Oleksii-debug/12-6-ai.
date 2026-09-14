@@ -255,14 +255,14 @@ def test_csv_records_fail_closed_on_duplicate_headers() -> None:
 
 
 def test_csv_records_fail_closed_on_ragged_extra_columns() -> None:
-    payload = "name,description\nРеєстр,Опис,EXTRA\n".encode()
+    payload = 'name,"descr,iption"\nРеєстр,Опис,EXTRA\n'.encode()
 
     with pytest.raises(RuntimeError, match="CSV row has unexpected extra columns"):
         snapshot.load_csv_records(payload)
 
 
 def test_csv_records_fail_closed_on_ragged_missing_columns() -> None:
-    payload = "name,description,format\nРеєстр,Опис\n".encode()
+    payload = 'name,description,format\nРеєстр,"Опис, тут"\n'.encode()
 
     with pytest.raises(RuntimeError, match="CSV row has missing columns"):
         snapshot.load_csv_records(payload)
