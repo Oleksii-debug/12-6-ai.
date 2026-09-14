@@ -50,7 +50,7 @@ def test_private_helper_substitution_fails_closed(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(v9._impl, "_mapping", replacement)
     with pytest.raises(
         v9.ExpandedDedupError,
-        match="V9 private runtime function code replaced: _mapping",
+        match=r"V9 private runtime function (globals|code) replaced: _mapping",
     ):
         v9._verify_private_runtime_semantic_closure()
 
