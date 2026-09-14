@@ -7,7 +7,6 @@ from pytest import MonkeyPatch
 
 from tools import qualify_next100_048_pydantic as qualifier
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
