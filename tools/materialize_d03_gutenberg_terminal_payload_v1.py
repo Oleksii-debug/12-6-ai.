@@ -293,6 +293,19 @@ def _runtime_record(
             "NEXT100-107 / PR#1130; historical real run 32998859164 "
             f"source={record['source_id']}"
         ),
+        # These names intentionally match the incumbent DATA-298 / NEXT100-065
+        # matcher row contract. They describe the exact bytes passed to the
+        # matcher (the terminal normalized body), not the pre-normalization
+        # GITenberg transport object retained separately below.
+        "declared_capacity_bytes": len(normalized),
+        "expected_raw_bytes": len(normalized),
+        "expected_raw_sha256": _sha256(normalized),
+        "acquisition_url": f"terminal-rematerialization://next100-107/{record['source_id']}",
+        "origin_key": (
+            f"project-gutenberg:{record['ebook_id']}:"
+            f"normalized-sha256:{record['normalized_sha256']}"
+        ),
+        "normalizer_id": NORMALIZER_ID,
         "transport_repo": record["transport_repo"],
         "transport_commit": record["transport_commit"],
         "transport_path": record["transport_path"],
