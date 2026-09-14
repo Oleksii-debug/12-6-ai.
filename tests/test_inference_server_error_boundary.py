@@ -8,7 +8,7 @@ from http.client import HTTPConnection
 
 import pytest
 
-from twelve_six.inference.server import CompletionHTTPServer, make_server
+from twelve_six.inference.server import make_server
 
 
 _INTERNAL_SECRET = "BACKEND_INTERNAL_SECRET_5f8d67"
@@ -39,7 +39,7 @@ class SecretFailingBackend:
 @contextmanager
 def running_server(
     backend: SecretFailingBackend,
-) -> Iterator[tuple[CompletionHTTPServer, tuple[str, int]]]:
+) -> Iterator[tuple[object, tuple[str, int]]]:
     server = make_server(
         backend,
         host="127.0.0.1",
@@ -103,7 +103,7 @@ def test_invalid_client_request_is_rejected_before_runtime_admission() -> None:
             address,
             {"prompt": "x", "max_tokens": "not-an-integer"},
         )
-        runtime_status = server.runtime.status()
+        runtime_status = server.runtime.status()  # type: ignore[attr-defined]
 
     assert status == 400
     assert payload["error"]["code"] == "invalid_completion_request"  # type: ignore[index]
