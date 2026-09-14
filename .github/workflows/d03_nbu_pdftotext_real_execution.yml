@@ -17,7 +17,7 @@ jobs:
       POPPLER_VERSION: "25.06.0"
       POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
       NBU_TARGET_DOCUMENTS: "40"
-      NBU_MAX_SEARCH_PAGES: "80"
+      NBU_SEARCH_PER_PAGE: "100"
     steps:
       - name: Checkout incumbent successor
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -76,14 +76,13 @@ jobs:
           python3 - <<'PY'
           from __future__ import annotations
 
-          import html
           import importlib.util
           import json
           import os
           import sys
           import urllib.request
           from pathlib import Path
-          from urllib.parse import urljoin, urlsplit, urlunsplit
+          from urllib.parse import urlencode, urlsplit, urlunsplit
 
           root = Path.cwd()
           tool_path = root / "tools/validate_d03_ua_nbu_official_resolutions_intake_v1.py"
@@ -96,79 +95,68 @@ jobs:
           config = module.load_config()
 
           target_documents = int(os.environ["NBU_TARGET_DOCUMENTS"])
-          max_search_pages = int(os.environ["NBU_MAX_SEARCH_PAGES"])
-          if not 1 <= target_documents <= config["discovery_contract"]["hard_max_documents"]:
+          per_page = int(os.environ["NBU_SEARCH_PER_PAGE"])
+          hard_max = config["discovery_contract"]["hard_max_documents"]
+          if not 1 <= target_documents <= hard_max:
               raise RuntimeError("bounded target exceeds discovery contract")
+          if not target_documents <= per_page <= hard_max:
+              raise RuntimeError("search page size outside discovery hard bound")
 
           allowed = urlsplit(config["source"]["allowed_origin"])
           search_root = config["source"]["catalog_url"]
           search_path = urlsplit(search_root).path
+          search_query = urlencode(
+              {
+                  "from": "",
+                  "metaKeywords": "",
+                  "number": "",
+                  "page": "1",
+                  "perPage": str(per_page),
+                  "publicationDate": "",
+                  "title": "",
+                  "to": "",
+                  "type": "",
+              }
+          )
+          search_url = urlunsplit(("https", allowed.netloc.casefold(), search_path, search_query, ""))
 
           def fetch_text(url: str) -> str:
               request = urllib.request.Request(
                   url,
-                  headers={"User-Agent": "12-6-ai-d03-nbu-live-execution/2.0 (+source-audit)"},
+                  headers={"User-Agent": "12-6-ai-d03-nbu-live-execution/3.0 (+source-audit)"},
                   method="GET",
               )
               with urllib.request.urlopen(request, timeout=30) as response:
                   final = urlsplit(response.geturl())
                   if final.scheme != "https" or final.netloc.casefold() != allowed.netloc.casefold():
                       raise RuntimeError(f"NBU fetch escaped origin: {response.geturl()}")
+                  if final.path != search_path and url == search_url:
+                      raise RuntimeError(f"NBU search escaped canonical path: {response.geturl()}")
                   body = response.read(8_000_001)
               if len(body) > 8_000_000:
                   raise RuntimeError(f"NBU HTML response exceeded bound: {url}")
               return body.decode("utf-8", errors="strict")
 
-          def canonical_search_link(raw: str, base: str) -> str | None:
-              candidate = urlsplit(urljoin(base, html.unescape(raw.strip())))
-              if candidate.scheme != "https" or candidate.netloc.casefold() != allowed.netloc.casefold():
-                  return None
-              if candidate.path != search_path or candidate.fragment:
-                  return None
-              return urlunsplit(("https", allowed.netloc.casefold(), search_path, candidate.query, ""))
-
-          def crawl_catalog() -> tuple[str, tuple[str, ...]]:
-              queue = [search_root]
-              queued = {search_root}
-              visited: set[str] = set()
-              bodies: list[str] = []
-              documents: set[str] = set()
-              while queue and len(visited) < max_search_pages and len(documents) < target_documents:
-                  current = queue.pop(0)
-                  if current in visited:
-                      continue
-                  body = fetch_text(current)
-                  visited.add(current)
-                  bodies.append(body)
-                  documents.update(module.discover_resolution_urls(body, config))
-                  parser = module.parse(body)
-                  discovered_pages = set()
-                  for href in parser.hrefs:
-                      page = canonical_search_link(href, current)
-                      if page and page not in visited and page not in queued:
-                          discovered_pages.add(page)
-                  for page in sorted(discovered_pages):
-                      queued.add(page)
-                      queue.append(page)
-                  print(
-                      "CATALOG_PAGE "
-                      f"visited={len(visited)} queued={len(queue)} documents={len(documents)} url={current}"
-                  )
-              if not documents:
-                  raise RuntimeError("NBU search yielded zero canonical resolution documents")
+          def catalog_snapshot() -> tuple[str, tuple[str, ...]]:
+              body = fetch_text(search_url)
+              documents = module.discover_resolution_urls(body, config)
+              print(
+                  "CATALOG_SNAPSHOT "
+                  f"documents={len(documents)} per_page={per_page} url={search_url}"
+              )
               if len(documents) < target_documents:
                   raise RuntimeError(
-                      f"NBU bounded crawl found only {len(documents)} canonical resolution documents; "
-                      f"target={target_documents} visited_pages={len(visited)}"
+                      f"NBU bounded search found only {len(documents)} canonical resolution documents; "
+                      f"target={target_documents} per_page={per_page}"
                   )
-              if len(documents) > config["discovery_contract"]["hard_max_documents"]:
-                  raise RuntimeError("NBU bounded crawl exceeded hard document bound")
-              return "\n".join(bodies), tuple(sorted(documents))
+              if len(documents) > hard_max:
+                  raise RuntimeError("NBU bounded search exceeded hard document bound")
+              return body, documents
 
-          first_catalog, first_urls = crawl_catalog()
-          second_catalog, second_urls = crawl_catalog()
+          first_catalog, first_urls = catalog_snapshot()
+          second_catalog, second_urls = catalog_snapshot()
           if first_urls != second_urls:
-              raise RuntimeError("NBU canonical document set changed between independent bounded crawls")
+              raise RuntimeError("NBU canonical document set changed between independent bounded snapshots")
           print(f"LIVE_DISCOVERY documents={len(first_urls)}")
 
           document_fetches: dict[str, list[str]] = {}
