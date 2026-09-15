@@ -39,6 +39,31 @@ _G06_QUALIFICATION_SCHEMA = "12-6.g06-exact-byte-terminal-qualification.v1"
 _REPOSITORY = "Oleksii-debug/12-6-ai."
 _HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+
+# Immutable release root for the integrated #2136/#2147 clean G05/G06 replay.
+# These are not launch-time choices. A caller may restate them for CLI
+# transparency, but any substitution is rejected before a positive terminal
+# qualification is derived. The terminal-summary byte hash binds the replay
+# receipt byte hashes/identities and scientific projection to the retained
+# physical artifact rather than to a coherently re-sealed caller document.
+_RELEASE_AUTHORITY = {
+    "target_pr_number": 2136,
+    "target_head_git_sha": "4d3d9f12ce8136d73da8343015acb9e79925dc44",
+    "real_replay_head_git_sha": "fee405d02f7d4bc62e9371b80243c749597ca592",
+    "real_replay_run_id": 34918860094,
+    "real_replay_job_id": 104222729218,
+    "final_head_ci_run_id": 34919192773,
+    "final_head_ci_job_id": 104223268857,
+    "artifact_id": 10377640986,
+    "artifact_zip_sha256": "01f883c10c59ad641d65320a6b763c7f230137700bb154866ca77b6cf083a5bf",
+    "terminal_summary_sha256": "b7681384256ddae629b392a4f1f899cee9841865cc6a52c99d3f85af521440d1",
+    "independent_audit_issue_number": 2147,
+    "independent_audit_terminal_comment_id": 5673631398,
+    "independent_audit_status": "PASS_FOR_INTEGRATION_RELEASED",
+}
+_RELEASE_AUTHORITY_IDENTITY_SHA256 = (
+    "465e98fc6f18d3a3fa2b4d350d6edf6efe09616a6a697d1366984e1ef0ccc1e2"
+)
 _REPLAY_KEYS = {
     "schema_version",
     "execution_profile",
@@ -138,6 +163,49 @@ def _contains_key(value: Any, forbidden: str) -> bool:
     if isinstance(value, list):
         return any(_contains_key(item, forbidden) for item in value)
     return False
+
+
+def _validate_release_binding(
+    terminal_summary: Mapping[str, Any],
+    *,
+    target_pr: int,
+    target_head: str,
+    replay_head: str,
+    replay_run: int,
+    replay_job: int,
+    final_run: int,
+    final_job: int,
+    artifact_id: int,
+    artifact_zip_sha256: str,
+    audit_issue: int,
+) -> Mapping[str, Any]:
+    expected = _RELEASE_AUTHORITY
+    _need(
+        _sha256(_cjson(expected)) == _RELEASE_AUTHORITY_IDENTITY_SHA256,
+        "immutable release authority identity drift",
+    )
+    supplied = {
+        "target_pr_number": target_pr,
+        "target_head_git_sha": target_head,
+        "real_replay_head_git_sha": replay_head,
+        "real_replay_run_id": replay_run,
+        "real_replay_job_id": replay_job,
+        "final_head_ci_run_id": final_run,
+        "final_head_ci_job_id": final_job,
+        "artifact_id": artifact_id,
+        "artifact_zip_sha256": artifact_zip_sha256,
+        "terminal_summary_sha256": _sha256(_cjson(terminal_summary)),
+        "independent_audit_issue_number": audit_issue,
+    }
+    for field, value in supplied.items():
+        _need(value == expected[field], f"release authority drift: {field}")
+    # These release facts are deliberately code-bound, not caller-authored.
+    _positive_int(expected["independent_audit_terminal_comment_id"], "audit terminal comment")
+    _need(
+        expected["independent_audit_status"] == "PASS_FOR_INTEGRATION_RELEASED",
+        "bound audit release status drift",
+    )
+    return expected
 
 
 def _self_hash(document: Mapping[str, Any], field: str, label: str) -> str:
@@ -296,7 +364,7 @@ def build_bridge(
     audit_issue: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return a dependency-bound G06 envelope and zero-credit qualification."""
-    _positive_int(target_pr, "target PR")
+    target_pr = _positive_int(target_pr, "target PR")
     target_head = _hash40(target_head, "target head")
     replay_head = _hash40(replay_head, "replay head")
     replay_run = _positive_int(replay_run, "replay run")
@@ -306,6 +374,19 @@ def build_bridge(
     artifact_id = _positive_int(artifact_id, "artifact id")
     artifact_zip_sha256 = _hash64(artifact_zip_sha256, "artifact ZIP")
     audit_issue = _positive_int(audit_issue, "audit issue")
+    release = _validate_release_binding(
+        terminal_summary,
+        target_pr=target_pr,
+        target_head=target_head,
+        replay_head=replay_head,
+        replay_run=replay_run,
+        replay_job=replay_job,
+        final_run=final_run,
+        final_job=final_job,
+        artifact_id=artifact_id,
+        artifact_zip_sha256=artifact_zip_sha256,
+        audit_issue=audit_issue,
+    )
 
     identity_a, projection_a, job_a = _validate_replay(
         replay_a, label="A", replay_head=replay_head, replay_run=replay_run
@@ -376,24 +457,24 @@ def build_bridge(
     qualification_core = {
         "schema": _G06_QUALIFICATION_SCHEMA,
         "status": "PASS_FOR_G06_TERMINAL_CONSUMPTION",
-        "target_pr_number": target_pr,
-        "target_head_git_sha": target_head,
-        "real_replay_head_git_sha": replay_head,
-        "real_replay_run_id": replay_run,
-        "real_replay_job_id": replay_job,
-        "final_head_ci_run_id": final_run,
-        "final_head_ci_job_id": final_job,
+        "target_pr_number": release["target_pr_number"],
+        "target_head_git_sha": release["target_head_git_sha"],
+        "real_replay_head_git_sha": release["real_replay_head_git_sha"],
+        "real_replay_run_id": release["real_replay_run_id"],
+        "real_replay_job_id": release["real_replay_job_id"],
+        "final_head_ci_run_id": release["final_head_ci_run_id"],
+        "final_head_ci_job_id": release["final_head_ci_job_id"],
         "g06_envelope_identity_sha256": envelope["evidence_identity_sha256"],
         "g06_execution_identity_sha256": _hash64(g06.get("execution_identity_sha256"), "G06 identity"),
         "input_rows_sha256": _hash64(g06.get("input_rows_sha256"), "G06 input rows root"),
         "repeated_execution_evidence_sha256": envelope["evidence_identity_sha256"],
-        "artifact_id": artifact_id,
-        "artifact_zip_sha256": artifact_zip_sha256,
+        "artifact_id": release["artifact_id"],
+        "artifact_zip_sha256": release["artifact_zip_sha256"],
         "replay_record_count": dependency["survivor_record_count"],
         "replay_utf8_bytes": dependency["survivor_total_payload_bytes"],
         "replay_count": 2,
-        "independent_audit_issue_number": audit_issue,
-        "independent_audit_status": "PASS_FOR_INTEGRATION_RELEASED",
+        "independent_audit_issue_number": release["independent_audit_issue_number"],
+        "independent_audit_status": release["independent_audit_status"],
         "local_free_only": True,
         "head_change_invalidates": True,
         "truth_boundary": dict(_OUTPUT_ZERO_CREDIT),
