@@ -44,7 +44,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      PRODUCT_SHA: ${{ github.event.pull_request.head.sha }}
+      CLEAN_SOURCE_SHA: 3d7dd363f6b1701694c00c76c6353077f80d1492
       TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
       GITHUB_TOKEN: ${{ github.token }}
     outputs:
@@ -56,32 +57,40 @@ jobs:
       receipt_sha256: ${{ steps.emit.outputs.receipt_sha256 }}
       physical_job: ${{ steps.emit.outputs.physical_job }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout exact replay Product head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.SOURCE_SHA }}
+          ref: ${{ env.PRODUCT_SHA }}
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
       - run: pip install -e .
-      - name: Prove exact Product checkout
+      - name: Prove exact replay Product checkout
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
           python -m py_compile tools/run_d03_clean_g05_g06_replay_v1.py
-      - name: Checkout exact terminal V7 implementation
+      - name: Checkout immutable clean DATA526 authority head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.CLEAN_SOURCE_SHA }}
+          path: _clean_authority
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact terminal V7 under clean authority
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: d3333ec1b4a508df232a5aefccd6686adda745fb
-          path: _terminal_v7
+          path: _clean_authority/_terminal_v7
           fetch-depth: 1
           persist-credentials: false
-      - name: Checkout exact historical PR623 DATA526 materializer
+      - name: Checkout exact historical PR623 materializer under clean authority
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
-          path: _pr623
+          path: _clean_authority/_pr623
           fetch-depth: 1
           persist-credentials: false
       - name: Install deterministic PDF extractor
@@ -104,8 +113,10 @@ jobs:
           raw = (Path(os.environ["RUNNER_TEMP"]) / "data213.zip").read_bytes()
           assert hashlib.sha256(raw).hexdigest() == "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
           PY
-      - name: Reconstruct exact clean source authority
+      - name: Reconstruct exact retained clean source authority
+        working-directory: _clean_authority
         run: >-
+          SOURCE_SHA="$CLEAN_SOURCE_SHA"
           python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
           tools/run_d03_nomis_free_clean_successor_v1.py run
           --current-root .
@@ -113,12 +124,14 @@ jobs:
           --workspace "$RUNNER_TEMP/source-work"
           --report "$RUNNER_TEMP/source.json"
           --survivor "$RUNNER_TEMP/survivor.json"
-      - name: Reconstruct exact clean DATA526 payload
+      - name: Reconstruct exact retained clean DATA526 payload
+        working-directory: _clean_authority
         run: >-
+          SOURCE_SHA="$CLEAN_SOURCE_SHA"
           python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
           tools/materialize_d03_nomis_free_data526_successor_v1.py
           --current-root .
-          --execution-head-sha "$SOURCE_SHA"
+          --execution-head-sha "$CLEAN_SOURCE_SHA"
           --v7-root _terminal_v7
           --historical-materializer-root _pr623
           --data213-zip "$RUNNER_TEMP/data213.zip"
@@ -131,7 +144,7 @@ jobs:
           --evidence-json "$RUNNER_TEMP/evidence.json"
       - name: Execute incumbent G05/G06 on physical clean payload
         run: >-
-          GITHUB_SHA="$SOURCE_SHA"
+          GITHUB_SHA="$PRODUCT_SHA"
           python tools/run_d03_clean_g05_g06_replay_v1.py
           --records-jsonl "$RUNNER_TEMP/records.jsonl"
           --inventory-json "$RUNNER_TEMP/inventory.json"
@@ -153,7 +166,7 @@ jobs:
               "replay_identity": receipt["replay_identity_sha256"],
               "g05_identity": receipt["g05"]["execution_identity_sha256"],
               "g06_identity": receipt["g06"]["execution_identity_sha256"],
-              "data526_identity": receipt["fresh_clean_reconstruction"]["evidence_identity_sha256"],
+              "data526_identity": receipt["physical_clean_reconstruction"]["evidence_identity_sha256"],
               "receipt_sha256": hashlib.sha256(raw).hexdigest(),
               "physical_job": receipt["physical_identity"]["workflow_job"],
           }
@@ -172,7 +185,7 @@ jobs:
       - name: Retain text-free replay receipt A
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: d03-clean-g05-g06-replay-a-${{ env.SOURCE_SHA }}
+          name: d03-clean-g05-g06-replay-a-${{ env.PRODUCT_SHA }}
           if-no-files-found: error
           retention-days: 90
           path: ${{ runner.temp }}/receipt-a.json
@@ -186,7 +199,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      PRODUCT_SHA: ${{ github.event.pull_request.head.sha }}
+      CLEAN_SOURCE_SHA: 3d7dd363f6b1701694c00c76c6353077f80d1492
       TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
       GITHUB_TOKEN: ${{ github.token }}
     outputs:
@@ -198,32 +212,40 @@ jobs:
       receipt_sha256: ${{ steps.emit.outputs.receipt_sha256 }}
       physical_job: ${{ steps.emit.outputs.physical_job }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout exact replay Product head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.SOURCE_SHA }}
+          ref: ${{ env.PRODUCT_SHA }}
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.16"
       - run: pip install -e .
-      - name: Prove exact Product checkout
+      - name: Prove exact replay Product checkout
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
           python -m py_compile tools/run_d03_clean_g05_g06_replay_v1.py
-      - name: Checkout exact terminal V7 implementation
+      - name: Checkout immutable clean DATA526 authority head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.CLEAN_SOURCE_SHA }}
+          path: _clean_authority
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact terminal V7 under clean authority
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: d3333ec1b4a508df232a5aefccd6686adda745fb
-          path: _terminal_v7
+          path: _clean_authority/_terminal_v7
           fetch-depth: 1
           persist-credentials: false
-      - name: Checkout exact historical PR623 DATA526 materializer
+      - name: Checkout exact historical PR623 materializer under clean authority
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
-          path: _pr623
+          path: _clean_authority/_pr623
           fetch-depth: 1
           persist-credentials: false
       - name: Install deterministic PDF extractor
@@ -246,8 +268,10 @@ jobs:
           raw = (Path(os.environ["RUNNER_TEMP"]) / "data213.zip").read_bytes()
           assert hashlib.sha256(raw).hexdigest() == "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
           PY
-      - name: Reconstruct exact clean source authority
+      - name: Reconstruct exact retained clean source authority
+        working-directory: _clean_authority
         run: >-
+          SOURCE_SHA="$CLEAN_SOURCE_SHA"
           python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
           tools/run_d03_nomis_free_clean_successor_v1.py run
           --current-root .
@@ -255,12 +279,14 @@ jobs:
           --workspace "$RUNNER_TEMP/source-work"
           --report "$RUNNER_TEMP/source.json"
           --survivor "$RUNNER_TEMP/survivor.json"
-      - name: Reconstruct exact clean DATA526 payload
+      - name: Reconstruct exact retained clean DATA526 payload
+        working-directory: _clean_authority
         run: >-
+          SOURCE_SHA="$CLEAN_SOURCE_SHA"
           python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
           tools/materialize_d03_nomis_free_data526_successor_v1.py
           --current-root .
-          --execution-head-sha "$SOURCE_SHA"
+          --execution-head-sha "$CLEAN_SOURCE_SHA"
           --v7-root _terminal_v7
           --historical-materializer-root _pr623
           --data213-zip "$RUNNER_TEMP/data213.zip"
@@ -273,7 +299,7 @@ jobs:
           --evidence-json "$RUNNER_TEMP/evidence.json"
       - name: Execute incumbent G05/G06 on physical clean payload
         run: >-
-          GITHUB_SHA="$SOURCE_SHA"
+          GITHUB_SHA="$PRODUCT_SHA"
           python tools/run_d03_clean_g05_g06_replay_v1.py
           --records-jsonl "$RUNNER_TEMP/records.jsonl"
           --inventory-json "$RUNNER_TEMP/inventory.json"
@@ -295,7 +321,7 @@ jobs:
               "replay_identity": receipt["replay_identity_sha256"],
               "g05_identity": receipt["g05"]["execution_identity_sha256"],
               "g06_identity": receipt["g06"]["execution_identity_sha256"],
-              "data526_identity": receipt["fresh_clean_reconstruction"]["evidence_identity_sha256"],
+              "data526_identity": receipt["physical_clean_reconstruction"]["evidence_identity_sha256"],
               "receipt_sha256": hashlib.sha256(raw).hexdigest(),
               "physical_job": receipt["physical_identity"]["workflow_job"],
           }
@@ -314,7 +340,7 @@ jobs:
       - name: Retain text-free replay receipt B
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: d03-clean-g05-g06-replay-b-${{ env.SOURCE_SHA }}
+          name: d03-clean-g05-g06-replay-b-${{ env.PRODUCT_SHA }}
           if-no-files-found: error
           retention-days: 90
           path: ${{ runner.temp }}/receipt-b.json
@@ -324,7 +350,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      PRODUCT_SHA: ${{ github.event.pull_request.head.sha }}
       A_PROJECTION: ${{ needs.d03_replay_a.outputs.projection }}
       B_PROJECTION: ${{ needs.d03_replay_b.outputs.projection }}
       A_REPLAY: ${{ needs.d03_replay_a.outputs.replay_identity }}
@@ -374,7 +400,8 @@ jobs:
           assert a_data526 == b_data526
           summary = {
               "schema_version": "12-6.d03-clean-g05-g06-two-replay-terminal.v1",
-              "execution_head_sha": os.environ["SOURCE_SHA"],
+              "product_execution_head_sha": os.environ["PRODUCT_SHA"],
+              "corpus_materialization_authority_head_sha": "3d7dd363f6b1701694c00c76c6353077f80d1492",
               "execution_profile": "LOCAL_FREE",
               "physical_jobs": [os.environ["A_JOB"], os.environ["B_JOB"]],
               "replay_identity_a_sha256": a_replay,
@@ -384,7 +411,7 @@ jobs:
               "deterministic_replay_projection_sha256": a_projection,
               "g05_execution_identity_sha256": a_g05,
               "g06_execution_identity_sha256": a_g06,
-              "fresh_data526_evidence_identity_sha256": a_data526,
+              "data526_evidence_identity_sha256": a_data526,
               "two_distinct_physical_replay_identities": True,
               "deterministic_scientific_projection_agrees": True,
               "current_corpus_eligible": False,
@@ -407,7 +434,7 @@ jobs:
       - name: Retain text-free terminal replay summary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: d03-clean-g05-g06-terminal-${{ env.SOURCE_SHA }}
+          name: d03-clean-g05-g06-terminal-${{ env.PRODUCT_SHA }}
           if-no-files-found: error
           retention-days: 90
           path: ${{ runner.temp }}/terminal-summary.json
