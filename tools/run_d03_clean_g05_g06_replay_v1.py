@@ -63,6 +63,14 @@ RETAINED_ARTIFACT_ZIP_SHA256 = (
     "663eec03d04252b6de574bf97ea0975703e0ba25779ca27340cb3acea941943a"
 )
 
+NOMIS_RECORD_ID = "ua.verba.nomis1864.bounded24"
+NOMIS_PAYLOAD_SHA256 = (
+    "1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598"
+)
+PR462_AUTHORITY_SHA256 = (
+    "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7"
+)
+
 QUALITY_MODULE = Path("src/twelve_six/data/quality_execution_authority.py")
 QUALITY_MODULE_BLOB_SHA1 = "c8963d2d697f3cd124a5b511d2883a93f8caf34d"
 PRIVACY_MODULE = Path("src/twelve_six/data/privacy_execution_authority.py")
@@ -290,6 +298,19 @@ def _validate_data526_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
         is True,
         "clean DATA526 physical-materialization claim missing",
     )
+    claimed_identity = value.get("evidence_identity_sha256")
+    _require(
+        type(claimed_identity) is str
+        and len(claimed_identity) == 64
+        and all(ch in "0123456789abcdef" for ch in claimed_identity),
+        "clean DATA526 evidence identity malformed",
+    )
+    evidence_core = dict(value)
+    del evidence_core["evidence_identity_sha256"]
+    _require(
+        _sha256(_canonical(evidence_core)) == claimed_identity,
+        "clean DATA526 evidence self-hash mismatch",
+    )
     return dict(clean)
 
 
@@ -323,6 +344,14 @@ def _validate_inventory(path: Path) -> tuple[list[dict[str, Any]], str]:
             len(row["payload_sha256"]) == 64
             and all(ch in "0123456789abcdef" for ch in row["payload_sha256"]),
             f"inventory[{index}].payload_sha256 malformed",
+        )
+        _require(
+            row["record_id"] != NOMIS_RECORD_ID and row["source_id"] != NOMIS_RECORD_ID,
+            "Nomis quarantined identity reappeared in clean inventory",
+        )
+        _require(
+            row["payload_sha256"] != NOMIS_PAYLOAD_SHA256,
+            "Nomis quarantined payload reappeared in clean inventory",
         )
         row["payload_bytes"] = _strict_int(
             row["payload_bytes"], f"inventory[{index}].payload_bytes"
@@ -472,6 +501,10 @@ def execute(
 
     data526_evidence = _read_json(data526_evidence_json)
     clean = _validate_data526_evidence(data526_evidence)
+    _require(
+        data526_evidence.get("execution_head_sha") == execution_head,
+        "fresh clean DATA526 evidence was not produced on this execution head",
+    )
     inventory, expected_g06_root = _validate_inventory(inventory_json)
     raw, records = _load_records(records_jsonl)
     independent_raw, independent_records = _load_records(independent_records_jsonl)
@@ -554,6 +587,9 @@ def execute(
             "record_payload_jsonl_sha256": EXPECTED_RECORDS_JSONL_SHA256,
             "record_inventory_digest_sha256": EXPECTED_RECORD_INVENTORY_SHA256,
             "payload_inventory_digest_sha256": EXPECTED_PAYLOAD_INVENTORY_SHA256,
+            "nomis_record_id_rejected": NOMIS_RECORD_ID,
+            "nomis_payload_sha256_rejected": NOMIS_PAYLOAD_SHA256,
+            "pr462_authority_sha256_not_admitted": PR462_AUTHORITY_SHA256,
         },
         "fresh_clean_reconstruction": {
             "execution_head_sha": data526_evidence["execution_head_sha"],
