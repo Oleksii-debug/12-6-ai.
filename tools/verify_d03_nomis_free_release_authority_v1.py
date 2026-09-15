@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Verify the workflow-free SWARM-2065 release lineage without rerunning science.
 
-The physical clean-successor execution happened on PHYSICAL_EXECUTION_HEAD.  A
-terminal Product release is allowed to delete only that temporary execution
-workflow and add this release verifier plus its regression tests.  The three
-physical producers and the evidence verifier must remain byte-identical to the
-executed head.
+The physical clean-successor execution happened on PHYSICAL_EXECUTION_HEAD. A
+terminal Product release may delete the temporary execution workflow, carry the
+exact post-run Ruff-only regression repairs, and add this release verifier plus
+its tests. The physical producers and evidence verifier must remain byte-exact.
 
 This checker intentionally does not turn retained execution evidence into
-corpus/tokenizer/training authority.  It only proves that a later workflow-free
+corpus/tokenizer/training authority. It only proves that a later workflow-free
 release still denotes the exact Product science that was physically executed.
 """
 from __future__ import annotations
@@ -57,10 +56,23 @@ PHYSICAL_SCIENCE_BLOBS = {
     ),
 }
 
+RELEASE_TEST_REPAIR_BLOBS = {
+    "tests/test_d03_nomis_free_clean_successor_v1.py": (
+        "0beb4d8e1c0bbae21448fe66caf81af0406b60a4"
+    ),
+    "tests/test_d03_nomis_free_data526_successor_v1.py": (
+        "f122662c952aeeb2cad09e9adc485f430b39884e"
+    ),
+    "tests/test_d03_nomis_free_v7_data_only_v1.py": (
+        "5fdfdf7fcebef6c27287603c3d557eb88a04cbf5"
+    ),
+}
+
 EXPECTED_RELEASE_DELTA = {
     TEMP_WORKFLOW: "D",
     RELEASE_VERIFIER: "A",
     RELEASE_TEST: "A",
+    **{rel: "M" for rel in RELEASE_TEST_REPAIR_BLOBS},
 }
 
 TRUTH_BOUNDARY = {
@@ -182,6 +194,12 @@ def verify_release_checkout(root: Path, expected_release_head: str) -> dict[str,
             f"release science blob drift: {rel}",
         )
 
+    for rel, expected_blob in RELEASE_TEST_REPAIR_BLOBS.items():
+        req(
+            _blob_sha(root, expected_release_head, rel) == expected_blob,
+            f"release Ruff-only test blob drift: {rel}",
+        )
+
     return {
         "schema_version": "12-6.d03-nomis-free-release-authority.v1",
         "physical_execution_head_sha": PHYSICAL_EXECUTION_HEAD,
@@ -196,6 +214,7 @@ def verify_release_checkout(root: Path, expected_release_head: str) -> dict[str,
             PHYSICAL_DATA526_EVIDENCE_IDENTITY_SHA256
         ),
         "physical_science_blob_count": len(PHYSICAL_SCIENCE_BLOBS),
+        "release_test_repair_blob_count": len(RELEASE_TEST_REPAIR_BLOBS),
         "temporary_execution_workflow_removed": True,
         "physical_science_bytes_unchanged": True,
         "truth_boundary": dict(TRUTH_BOUNDARY),
