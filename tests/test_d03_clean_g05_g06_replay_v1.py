@@ -154,7 +154,8 @@ def test_receipt_source_has_no_training_upgrade_or_global_provenance_upgrade() -
     assert '"whole_corpus_external_llm_cleanliness_claimed": False' in source
     assert '"tokenizer_fit_authorized": False' in source
     assert '"training_executed": False' in source
-    assert "normalized_payload leaked into replay receipt" in source
+    assert 'b"normalized_payload" not in serialized' in source
+    assert "raw normalized payload leaked into replay receipt" in source
 
 
 def test_fresh_evidence_self_hash_is_not_self_sealable_after_mutation() -> None:
