@@ -7,6 +7,8 @@ import pytest
 
 from twelve_six.data import (
     privacy_execution_authority as g06,
+)
+from twelve_six.data import (
     quality_execution_authority as g05,
 )
 
