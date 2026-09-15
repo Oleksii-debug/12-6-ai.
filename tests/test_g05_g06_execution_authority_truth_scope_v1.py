@@ -86,7 +86,7 @@ def test_g05_emits_scoped_nonclaim_and_rejects_legacy_global_negative() -> None:
         )
 
 
-@pytest.mark.parametrize("widened", [0, True])
+@pytest.mark.parametrize("widened", [0, 0.0, True])
 def test_g05_scoped_nonclaim_is_type_sensitive_and_cannot_widen(widened: object) -> None:
     records = _g05_records()
     input_rows_sha256 = _g05_input_rows_sha256(records)
@@ -139,7 +139,7 @@ def test_g06_emits_scoped_nonclaim_and_rejects_legacy_global_negative() -> None:
         )
 
 
-@pytest.mark.parametrize("widened", [0, True])
+@pytest.mark.parametrize("widened", [0, 0.0, True])
 def test_g06_scoped_nonclaim_is_type_sensitive_and_cannot_widen(widened: object) -> None:
     records = _g06_records()
     input_rows_sha256 = g06.input_rows_sha256(records)
