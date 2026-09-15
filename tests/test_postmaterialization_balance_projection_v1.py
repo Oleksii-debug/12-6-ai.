@@ -89,7 +89,7 @@ def _truth() -> dict:
         "authorized_optimized_target_exposure": 0,
         "authorized_unique_loss_positions": 0,
         "current_corpus_eligible": False,
-        "external_llm_or_api_used_for_data_or_intelligence": False,
+        "whole_corpus_external_llm_cleanliness_claimed": False,
         "final_test_outcomes_read": False,
         "foreign_pretrained_weights": False,
         "learned_weights_created": False,
@@ -202,7 +202,7 @@ def _target_rows() -> list[dict]:
 
 
 def test_postmaterialization_vector_binds_machine_inventory() -> None:
-    vector, inventory, _ = _build(_partial_rows())
+    vector, inventory, evidence = _build(_partial_rows())
     assert vector["schema"] == FAMILY_VECTOR_SCHEMA
     assert vector["record_count"] == 6
     assert vector["total_payload_bytes"] == 6_000
@@ -210,6 +210,13 @@ def test_postmaterialization_vector_binds_machine_inventory() -> None:
     assert vector["record_inventory_digest_sha256"] == inventory[
         "record_inventory_digest_sha256"
     ]
+    assert evidence["truth_boundary"][
+        "whole_corpus_external_llm_cleanliness_claimed"
+    ] is False
+    assert (
+        "external_llm_or_api_used_for_data_or_intelligence"
+        not in evidence["truth_boundary"]
+    )
     assert vector["stratum_capacity_bytes"] == {
         "code": 2_000,
         "en": 2_000,
@@ -274,6 +281,55 @@ def test_coherently_resealed_wrong_inventory_still_fails_external_roots() -> Non
 def test_materialization_truth_drift_fails_closed() -> None:
     _, inventory, evidence = _build(_partial_rows())
     evidence["truth_boundary"]["tokenizer_fit_authorized"] = True
+    with pytest.raises(ProjectionError, match="truth boundary drift"):
+        build_postmaterialization_family_vector(
+            inventory=inventory,
+            materialization_evidence=evidence,
+            expected_execution_head_sha=GIT_SHA,
+            expected_materialization_identity_sha256=MATERIALIZATION_SHA,
+            expected_result_jsonl_sha256=JSONL_SHA,
+            expected_record_count=inventory["record_count"],
+            expected_total_payload_bytes=inventory["total_payload_bytes"],
+            expected_source_object_count=6,
+            expected_record_inventory_digest_sha256=inventory[
+                "record_inventory_digest_sha256"
+            ],
+            expected_payload_inventory_digest_sha256=inventory[
+                "payload_inventory_digest_sha256"
+            ],
+            source_git_sha=GIT_SHA,
+        )
+
+
+def test_legacy_global_external_llm_negative_is_rejected() -> None:
+    _, inventory, evidence = _build(_partial_rows())
+    del evidence["truth_boundary"]["whole_corpus_external_llm_cleanliness_claimed"]
+    evidence["truth_boundary"][
+        "external_llm_or_api_used_for_data_or_intelligence"
+    ] = False
+    with pytest.raises(ProjectionError, match="truth boundary drift"):
+        build_postmaterialization_family_vector(
+            inventory=inventory,
+            materialization_evidence=evidence,
+            expected_execution_head_sha=GIT_SHA,
+            expected_materialization_identity_sha256=MATERIALIZATION_SHA,
+            expected_result_jsonl_sha256=JSONL_SHA,
+            expected_record_count=inventory["record_count"],
+            expected_total_payload_bytes=inventory["total_payload_bytes"],
+            expected_source_object_count=6,
+            expected_record_inventory_digest_sha256=inventory[
+                "record_inventory_digest_sha256"
+            ],
+            expected_payload_inventory_digest_sha256=inventory[
+                "payload_inventory_digest_sha256"
+            ],
+            source_git_sha=GIT_SHA,
+        )
+
+
+def test_positive_whole_corpus_external_llm_cleanliness_claim_is_rejected() -> None:
+    _, inventory, evidence = _build(_partial_rows())
+    evidence["truth_boundary"]["whole_corpus_external_llm_cleanliness_claimed"] = True
     with pytest.raises(ProjectionError, match="truth boundary drift"):
         build_postmaterialization_family_vector(
             inventory=inventory,
@@ -379,3 +435,72 @@ def test_balance_result_substitution_fails_binding() -> None:
             expected_policy_identity_sha256=policy["policy_identity_sha256"],
             expected_result_identity_sha256=balance["result_identity_sha256"],
         )
+
+
+def _rebuild_documents(inventory: dict, evidence: dict) -> dict:
+    expected = _inventory(inventory["records"])
+    return build_postmaterialization_family_vector(
+        inventory=inventory,
+        materialization_evidence=evidence,
+        expected_execution_head_sha=GIT_SHA,
+        expected_materialization_identity_sha256=MATERIALIZATION_SHA,
+        expected_result_jsonl_sha256=JSONL_SHA,
+        expected_record_count=expected["record_count"],
+        expected_total_payload_bytes=expected["total_payload_bytes"],
+        expected_source_object_count=len(
+            {row["source_id"] for row in expected["records"]}
+        ),
+        expected_record_inventory_digest_sha256=expected[
+            "record_inventory_digest_sha256"
+        ],
+        expected_payload_inventory_digest_sha256=expected[
+            "payload_inventory_digest_sha256"
+        ],
+        source_git_sha=GIT_SHA,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "alias"),
+    [
+        ("whole_corpus_external_llm_cleanliness_claimed", 0),
+        ("authorized_optimized_target_exposure", False),
+        ("authorized_optimized_target_exposure", 0.0),
+    ],
+)
+def test_zero_credit_truth_rejects_scalar_type_aliases(
+    field: str,
+    alias: object,
+) -> None:
+    _, inventory, evidence = _build(_partial_rows())
+    evidence = copy.deepcopy(evidence)
+    evidence["truth_boundary"][field] = alias
+    with pytest.raises(ProjectionError, match="truth boundary drift"):
+        _rebuild_documents(inventory, evidence)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["record_count", "total_payload_bytes", "source_object_count"],
+)
+def test_materialization_result_rejects_integer_to_float_aliases(field: str) -> None:
+    _, inventory, evidence = _build(_partial_rows())
+    evidence = copy.deepcopy(evidence)
+    evidence["result"][field] = float(evidence["result"][field])
+    with pytest.raises(
+        ProjectionError,
+        match=rf"materialization result\.{field} does not match independently expected value",
+    ):
+        _rebuild_documents(inventory, evidence)
+
+
+@pytest.mark.parametrize("field", ["record_count", "total_payload_bytes"])
+def test_inventory_totals_reject_integer_to_float_aliases(field: str) -> None:
+    _, inventory, evidence = _build(_partial_rows())
+    inventory = copy.deepcopy(inventory)
+    inventory[field] = float(inventory[field])
+    with pytest.raises(
+        ProjectionError,
+        match=rf"post-materialization inventory {field} drift",
+    ):
+        _rebuild_documents(inventory, evidence)

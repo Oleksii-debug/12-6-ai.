@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -19,6 +20,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: PR945 clean balance — checkout exact Product candidate
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        uses: actions/checkout@v4
+        with:
+          ref: 67aa1218924508d4caf4a1e999bdfb8b1b861f19
+          fetch-depth: 0
+      - name: PR945 clean balance — overlay audited provenance bridge repair
+        id: bridge_repair
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        env:
+          CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          BRIDGE_PATH=src/twelve_six/data/postmaterialization_balance_projection_v1.py
+          TEST_PATH=tests/test_postmaterialization_balance_projection_v1.py
+          git cat-file -e "$CARRIER_HEAD^{commit}"
+          BRIDGE_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$BRIDGE_PATH")"
+          TEST_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$TEST_PATH")"
+          git show "$CARRIER_HEAD:$BRIDGE_PATH" > "$BRIDGE_PATH"
+          git show "$CARRIER_HEAD:$TEST_PATH" > "$TEST_PATH"
+          test "$(git hash-object "$BRIDGE_PATH")" = "$BRIDGE_BLOB_SHA"
+          test "$(git hash-object "$TEST_PATH")" = "$TEST_BLOB_SHA"
+          echo "bridge_blob_sha=$BRIDGE_BLOB_SHA" >> "$GITHUB_OUTPUT"
+          echo "test_blob_sha=$TEST_BLOB_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -33,3 +58,408 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+      - name: PR945 clean balance — prove execution-only carrier
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        env:
+          CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
+          BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
+          TEST_BLOB_SHA: ${{ steps.bridge_repair.outputs.test_blob_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "67aa1218924508d4caf4a1e999bdfb8b1b861f19"
+          git diff --name-only eddc498cc330b1e4b255eb4e5712f13391dd8169 "$CARRIER_HEAD" > /tmp/pr945-carrier-files.txt
+          test "$(wc -l < /tmp/pr945-carrier-files.txt)" -eq 3
+          grep -Fxq '.github/workflows/ci.yml' /tmp/pr945-carrier-files.txt
+          grep -Fxq 'src/twelve_six/data/postmaterialization_balance_projection_v1.py' /tmp/pr945-carrier-files.txt
+          grep -Fxq 'tests/test_postmaterialization_balance_projection_v1.py' /tmp/pr945-carrier-files.txt
+          test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:tools/materialize_d03_postmaterialization_balance_v1.py)" = "$(git rev-parse "$CARRIER_HEAD":tools/materialize_d03_postmaterialization_balance_v1.py)"
+          test "$(git hash-object src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$BRIDGE_BLOB_SHA"
+          test "$(git hash-object tests/test_postmaterialization_balance_projection_v1.py)" = "$TEST_BLOB_SHA"
+          git show "$CARRIER_HEAD":.github/workflows/ci.yml > /tmp/pr945-carrier-workflow.yml
+          git show "$CARRIER_HEAD":src/twelve_six/data/postmaterialization_balance_projection_v1.py > /tmp/pr945-carrier-bridge.py
+          unsupported_field='external_llm_or_api_used_for_data_or_'
+          unsupported_field="${unsupported_field}intelligence"
+          scoped_nonclaim='whole_corpus_external_llm_'
+          scoped_nonclaim="${scoped_nonclaim}cleanliness_claimed"
+          ! grep -Fq "\"${unsupported_field}\"" /tmp/pr945-carrier-workflow.yml
+          ! grep -Fq "\"${unsupported_field}\"" /tmp/pr945-carrier-bridge.py
+          test "$(grep -Fc "\"${scoped_nonclaim}\"" /tmp/pr945-carrier-workflow.yml)" -eq 2
+          test "$(grep -Fc "\"${scoped_nonclaim}\"" /tmp/pr945-carrier-bridge.py)" -eq 1
+
+      - name: PR945 clean balance — resolve independently rooted clean authority
+        id: clean_authority
+        if: github.event_name == 'pull_request' && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
+        env:
+          AUTH_PATH: reports/d03/clean_post_g05_g06_balance_authority_v1.json
+          FORBIDDEN_LEGACY_ARTIFACT_ID: "10325234135"
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          AUTH_MAIN_SHA="$(git rev-parse origin/main)"
+          echo "main_sha=$AUTH_MAIN_SHA" >> "$GITHUB_OUTPUT"
+          echo "authority_path=$AUTH_PATH" >> "$GITHUB_OUTPUT"
+
+          if ! git cat-file -e "$AUTH_MAIN_SHA:$AUTH_PATH" 2>/dev/null; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "CLEAN_BALANCE_STATE=WAITING_FOR_INTEGRATED_CLEAN_AUTHORITY"
+            exit 0
+          fi
+
+          git show "$AUTH_MAIN_SHA:$AUTH_PATH" > /tmp/clean-balance-authority.json
+          AUTH_BLOB_SHA="$(git rev-parse "$AUTH_MAIN_SHA:$AUTH_PATH")"
+          echo "authority_blob_sha=$AUTH_BLOB_SHA" >> "$GITHUB_OUTPUT"
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          authority = json.loads(
+              Path("/tmp/clean-balance-authority.json").read_text(encoding="utf-8")
+          )
+          if not isinstance(authority, dict):
+              raise SystemExit("clean balance authority must be an object")
+
+          required = {
+              "schema",
+              "status",
+              "materialization_artifact_id",
+              "artifact_zip_sha256",
+              "inventory_json_sha256",
+              "evidence_json_sha256",
+              "repeat_proof_json_sha256",
+              "expected_execution_head_sha",
+              "expected_materialization_identity_sha256",
+              "expected_result_jsonl_sha256",
+              "expected_record_count",
+              "expected_total_payload_bytes",
+              "expected_source_object_count",
+              "expected_record_inventory_digest_sha256",
+              "expected_payload_inventory_digest_sha256",
+              "dedup_worker_id",
+              "dedup_head_sha",
+              "dedup_evidence_identity_sha256",
+              "dedup_terminal_verdict",
+              "current_corpus_launch_authoritative",
+              "authorized_optimized_target_exposure",
+              "tokenizer_fit_authorized",
+              "optimizer_updates_executed_on_real_targets",
+              "training_executed",
+              "learned_weights_created",
+              "final_test_outcomes_read",
+              "paid_compute_used",
+              "foreign_pretrained_weights",
+              "whole_corpus_external_llm_cleanliness_claimed",
+          }
+          if set(authority) != required:
+              missing = sorted(required - set(authority))
+              extra = sorted(set(authority) - required)
+              raise SystemExit(
+                  f"clean authority fields drift: missing={missing} extra={extra}"
+              )
+
+          def require_hex(value, field, length):
+              if (
+                  not isinstance(value, str)
+                  or len(value) != length
+                  or any(ch not in "0123456789abcdef" for ch in value)
+              ):
+                  raise SystemExit(f"{field} must be {length} lowercase hex")
+              return value
+
+          def require_pos_int(value, field):
+              if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                  raise SystemExit(f"{field} must be a positive integer")
+              return value
+
+          if authority["schema"] != "12-6.d03-clean-post-g05-g06-balance-authority.v1":
+              raise SystemExit("unsupported clean balance authority schema")
+          if authority["status"] != "AUTHORIZED_FOR_REAL_BALANCE_EXECUTION":
+              raise SystemExit("clean balance authority is not terminal for balance")
+          artifact_id = require_pos_int(
+              authority["materialization_artifact_id"], "materialization_artifact_id"
+          )
+          if str(artifact_id) == os.environ["FORBIDDEN_LEGACY_ARTIFACT_ID"]:
+              raise SystemExit("obsolete contaminated #1630 artifact is forbidden")
+          for field in (
+              "artifact_zip_sha256",
+              "inventory_json_sha256",
+              "evidence_json_sha256",
+              "repeat_proof_json_sha256",
+              "expected_materialization_identity_sha256",
+              "expected_result_jsonl_sha256",
+              "expected_record_inventory_digest_sha256",
+              "expected_payload_inventory_digest_sha256",
+              "dedup_evidence_identity_sha256",
+          ):
+              require_hex(authority[field], field, 64)
+          for field in ("expected_execution_head_sha", "dedup_head_sha"):
+              require_hex(authority[field], field, 40)
+          for field in (
+              "expected_record_count",
+              "expected_total_payload_bytes",
+              "expected_source_object_count",
+          ):
+              require_pos_int(authority[field], field)
+          if (
+              not isinstance(authority["dedup_worker_id"], str)
+              or not authority["dedup_worker_id"].strip()
+          ):
+              raise SystemExit("dedup_worker_id must be non-empty")
+          if authority["dedup_terminal_verdict"] != "PASS":
+              raise SystemExit("dedup authority is nonterminal")
+          expected_truth = {
+              "current_corpus_launch_authoritative": False,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights": False,
+              "whole_corpus_external_llm_cleanliness_claimed": False,
+          }
+          for field, expected in expected_truth.items():
+              value = authority[field]
+              if type(value) is not type(expected) or value != expected:
+                  raise SystemExit(f"{field} truth boundary drift")
+          Path("/tmp/clean-artifact-id").write_text(
+              str(artifact_id), encoding="utf-8"
+          )
+          Path("/tmp/clean-artifact-zip-sha256").write_text(
+              authority["artifact_zip_sha256"], encoding="utf-8"
+          )
+          PY
+
+          echo "artifact_id=$(cat /tmp/clean-artifact-id)" >> "$GITHUB_OUTPUT"
+          echo "artifact_zip_sha256=$(cat /tmp/clean-artifact-zip-sha256)" >> "$GITHUB_OUTPUT"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "CLEAN_BALANCE_STATE=AUTHORITY_READY"
+
+      - name: PR945 clean balance — retrieve authenticated clean machine evidence
+        if: steps.clean_authority.outputs.ready == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.clean_authority.outputs.artifact_id }}
+          ARTIFACT_ZIP_SHA256: ${{ steps.clean_authority.outputs.artifact_zip_sha256 }}
+        run: |
+          set -euo pipefail
+          test "$ARTIFACT_ID" != "10325234135"
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/${ARTIFACT_ID}/zip" \
+            -o /tmp/postg.zip
+          test "$(sha256sum /tmp/postg.zip | cut -d' ' -f1)" = "$ARTIFACT_ZIP_SHA256"
+          rm -rf /tmp/postg /tmp/balance-out
+          mkdir -p /tmp/postg /tmp/balance-out
+          unzip -q /tmp/postg.zip -d /tmp/postg
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          authority = json.loads(
+              Path("/tmp/clean-balance-authority.json").read_text(encoding="utf-8")
+          )
+          required_files = {
+              "inventory.json": authority["inventory_json_sha256"],
+              "evidence.json": authority["evidence_json_sha256"],
+              "repeat-proof.json": authority["repeat_proof_json_sha256"],
+          }
+          for name, expected in required_files.items():
+              payload = (Path("/tmp/postg") / name).read_bytes()
+              actual = hashlib.sha256(payload).hexdigest()
+              if actual != expected:
+                  raise SystemExit(f"{name} hash mismatch")
+          PY
+
+      - name: PR945 clean balance — execute family vector and canonical NEXT100-106
+        if: steps.clean_authority.outputs.ready == 'true'
+        env:
+          AUTH_MAIN_SHA: ${{ steps.clean_authority.outputs.main_sha }}
+          AUTH_PATH: ${{ steps.clean_authority.outputs.authority_path }}
+          AUTH_BLOB_SHA: ${{ steps.clean_authority.outputs.authority_blob_sha }}
+          CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
+          BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          import tools.next100_106_balance_gate as gate
+          from twelve_six.data.postmaterialization_balance_projection_v1 import (
+              adapt_postmaterialization_family_vector_to_next100_106,
+              build_balance_result_binding,
+              build_postmaterialization_family_vector,
+              require_balanced_selection_ready,
+          )
+
+          def load(path):
+              value = json.loads(Path(path).read_text(encoding="utf-8"))
+              if not isinstance(value, dict):
+                  raise SystemExit(f"{path} must contain an object")
+              return value
+
+          def dump(path, value):
+              Path(path).write_text(
+                  json.dumps(
+                      value,
+                      ensure_ascii=False,
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  )
+                  + "\n",
+                  encoding="utf-8",
+              )
+
+          authority = load("/tmp/clean-balance-authority.json")
+          inventory = load("/tmp/postg/inventory.json")
+          evidence = load("/tmp/postg/evidence.json")
+          vector = build_postmaterialization_family_vector(
+              inventory=inventory,
+              materialization_evidence=evidence,
+              expected_execution_head_sha=authority["expected_execution_head_sha"],
+              expected_materialization_identity_sha256=(
+                  authority["expected_materialization_identity_sha256"]
+              ),
+              expected_result_jsonl_sha256=authority["expected_result_jsonl_sha256"],
+              expected_record_count=authority["expected_record_count"],
+              expected_total_payload_bytes=authority["expected_total_payload_bytes"],
+              expected_source_object_count=authority["expected_source_object_count"],
+              expected_record_inventory_digest_sha256=(
+                  authority["expected_record_inventory_digest_sha256"]
+              ),
+              expected_payload_inventory_digest_sha256=(
+                  authority["expected_payload_inventory_digest_sha256"]
+              ),
+              source_git_sha=os.environ["AUTH_MAIN_SHA"],
+          )
+          dedup = {
+              "worker_id": authority["dedup_worker_id"],
+              "head_sha": authority["dedup_head_sha"],
+              "evidence_identity_sha256": authority[
+                  "dedup_evidence_identity_sha256"
+              ],
+              "terminal_verdict": authority["dedup_terminal_verdict"],
+          }
+          adapted = adapt_postmaterialization_family_vector_to_next100_106(
+              vector,
+              expected_family_vector_identity_sha256=vector[
+                  "family_vector_identity_sha256"
+              ],
+              dedup_authority=dedup,
+              expected_dedup_worker_id=dedup["worker_id"],
+              expected_dedup_head_sha=dedup["head_sha"],
+              expected_dedup_evidence_identity_sha256=dedup[
+                  "evidence_identity_sha256"
+              ],
+          )
+          policy = gate.load_json(gate.POLICY_PATH)
+          if (
+              policy["policy_identity_sha256"]
+              != "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
+          ):
+              raise SystemExit("canonical NEXT100-106 policy identity drift")
+          gate.validate_vector(adapted)
+          balance = gate.evaluate(policy, adapted)
+          binding = build_balance_result_binding(
+              family_vector=vector,
+              expected_family_vector_identity_sha256=vector[
+                  "family_vector_identity_sha256"
+              ],
+              next100_input=adapted,
+              balance_result=balance,
+              expected_policy_identity_sha256=policy["policy_identity_sha256"],
+              expected_result_identity_sha256=balance["result_identity_sha256"],
+          )
+          selection_ready = True
+          selection_error = None
+          try:
+              require_balanced_selection_ready(
+                  binding,
+                  expected_binding_identity_sha256=binding[
+                      "binding_identity_sha256"
+                  ],
+              )
+          except Exception as exc:
+              selection_ready = False
+              selection_error = str(exc)
+
+          receipt = {
+              "schema": "12-6.d03-real-clean-postmaterialization-balance-execution.v3",
+              "execution_profile": "LOCAL_FREE",
+              "authority_main_sha": os.environ["AUTH_MAIN_SHA"],
+              "authority_path": os.environ["AUTH_PATH"],
+              "authority_blob_sha": os.environ["AUTH_BLOB_SHA"],
+              "product_head_sha": "eddc498cc330b1e4b255eb4e5712f13391dd8169",
+              "product_candidate_merge_sha": "67aa1218924508d4caf4a1e999bdfb8b1b861f19",
+              "carrier_head_sha": os.environ["CARRIER_HEAD"],
+              "postmaterialization_bridge_blob_sha": os.environ["BRIDGE_BLOB_SHA"],
+              "materialization_artifact_id": authority[
+                  "materialization_artifact_id"
+              ],
+              "family_vector_identity_sha256": vector[
+                  "family_vector_identity_sha256"
+              ],
+              "next100_input_identity_sha256": binding[
+                  "next100_input_identity_sha256"
+              ],
+              "balance_policy_identity_sha256": policy[
+                  "policy_identity_sha256"
+              ],
+              "balance_result_identity_sha256": balance[
+                  "result_identity_sha256"
+              ],
+              "balance_binding_identity_sha256": binding[
+                  "binding_identity_sha256"
+              ],
+              "balance_status": balance["status"],
+              "maximum_feasible_total_source_bytes": balance[
+                  "maximum_feasible_total_source_bytes"
+              ],
+              "maximum_feasible_stratum_bytes": balance[
+                  "maximum_feasible_stratum_bytes"
+              ],
+              "raw_capacity_by_stratum": balance["raw_capacity_by_stratum"],
+              "raw_gap_to_target_by_stratum": balance[
+                  "raw_gap_to_target_by_stratum"
+              ],
+              "deterministic_maximum_allocation": balance[
+                  "deterministic_maximum_allocation"
+              ],
+              "balanced_selection_ready": selection_ready,
+              "selection_blocker": selection_error,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "optimizer_updates": 0,
+          }
+          dump("/tmp/balance-out/family-vector.json", vector)
+          dump("/tmp/balance-out/next100-input.json", adapted)
+          dump("/tmp/balance-out/balance-result.json", balance)
+          dump("/tmp/balance-out/balance-binding.json", binding)
+          dump("/tmp/balance-out/execution-receipt.json", receipt)
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+          ! grep -R -q 'normalized_payload' /tmp/balance-out
+
+      - name: PR945 clean balance — upload text-free evidence
+        if: steps.clean_authority.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr945-real-clean-balance-${{ github.event.pull_request.head.sha }}
+          path: /tmp/balance-out
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: PR945 clean balance — explicit waiting state
+        if: steps.clean_authority.outputs.ready == 'false'
+        run: |
+          echo "No integrated clean balance authority is present on current main."
+          echo "This green carrier run is PREPARED/WAITING only: no balance execution occurred."
+          echo "No corpus, tokenizer, optimized-target exposure, optimizer, training, or learned-weight credit is granted."
