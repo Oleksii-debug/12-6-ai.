@@ -1,0 +1,100 @@
+{
+  "schema_version": "12-6.d03-languk-supreme-court-real-execution-evidence.v2",
+  "swarm_control_issue": 723,
+  "execution_owner_issue": 1265,
+  "product_pr": 833,
+  "predecessor_finding": "AUD1175-001 HIGH",
+  "repaired_product_semantic_head": "d8136e07e5bcdd81b889a3211c7f40521af97b5c",
+  "execution_head": "75121d8408bbb2413013063829ea6ad43451719a",
+  "execution_head_delta_from_product": {
+    "commit_count": 1,
+    "only_file": ".github/workflows/d03-languk-supreme-court-retest-temporary.yml",
+    "product_code_config_tests_changed": false
+  },
+  "execution_profile": "LOCAL_FREE",
+  "workflow_run": 34601996401,
+  "workflow_job": 103271308318,
+  "workflow_conclusion": "success",
+  "runner": {
+    "os": "Ubuntu 24.04.5 LTS",
+    "runner_image": "ubuntu-24.04",
+    "runner_image_version": "20260907.300.1",
+    "python_implementation": "CPython",
+    "python_version": "3.11.16",
+    "pyarrow_version": "17.0.0",
+    "focused_adversarial_tests": 28,
+    "focused_adversarial_tests_result": "pass"
+  },
+  "source": {
+    "dataset": "lang-uk/court-decisions-uk",
+    "revision": "2dcac4c941b87bf9c242bdc919cef4b40f4a4813",
+    "file": "2024-5K-supreme-court-decisions-deduplicated.parquet",
+    "bytes": 20220778,
+    "sha256": "9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597",
+    "excluded_file": "250-deanonymized-court-cases.parquet"
+  },
+  "two_clean_execution": {
+    "acquisition_a": "success",
+    "materialization_a": "success",
+    "acquisition_b": "success",
+    "materialization_b": "success",
+    "report_a_equals_report_b_byte_for_byte": true,
+    "retained_jsonl_a_equals_b_byte_for_byte": true
+  },
+  "measured_result": {
+    "parquet_rows": 5125,
+    "rows_scanned": 343,
+    "rows_not_scanned_after_selection_cap": 4782,
+    "retained_records": 256,
+    "retained_normalized_bytes": 2809632,
+    "retained_jsonl_sha256": "03bf5089bb6ff4c304e3a299e2480b263a161aad8abe831db0b196af7c585db3",
+    "report_identity_sha256": "91c83f200293695c6f28085712b8398246af2422e48d26ca43a62a50568ed479",
+    "config_identity_sha256": "d9e826f3d316426807aa57f381edf200970086a5d688e5b94f6da3124648421b",
+    "disposition_counts": {
+      "accepted": 256,
+      "annotation_contract_inconsistent": 13,
+      "phone": 74
+    },
+    "anonymization_marker_prefix_consistency_validated_for_retained_rows": true,
+    "universal_pii_absence_claimed": false,
+    "rejected_text_emitted": false,
+    "rejected_hashes_emitted": false,
+    "safe_result": "LANGUK_SUPREME_COURT_PRIVACY_FILTERED_CANDIDATE_ONLY_DOWNSTREAM_DEDUP_DECONTAM_REQUIRED"
+  },
+  "artifact": {
+    "id": 10264349195,
+    "name": "d03-languk-supreme-retest-75121d8408bbb2413013063829ea6ad43451719a",
+    "zip_bytes": 1091,
+    "zip_sha256": "f1ffe1517302faa9d766d8b9427f4df9e7768cc98cd134272b65088bc14dc966",
+    "sole_member": "report-a.json",
+    "member_bytes": 1896,
+    "member_sha256": "fdf925ff230697b2a2ab07a808651feb8addd7a03001cee60828768307ffe856",
+    "text_free": true,
+    "independently_redownloaded_and_rehashed": true
+  },
+  "historical_pre_repair_comparison": {
+    "historical_retained_records": 256,
+    "historical_retained_normalized_bytes": 2813635,
+    "historical_annotation_contract_inconsistent": 12,
+    "repaired_retained_records": 256,
+    "repaired_retained_normalized_bytes": 2809632,
+    "repaired_annotation_contract_inconsistent": 13,
+    "interpretation": "privacy hardening changed the measured candidate; old execution does not certify repaired bytes"
+  },
+  "claim_boundary": {
+    "current_corpus_eligible": false,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "next_required_authority": "fresh independent exact-final-head audit before integration; downstream global dedup, reserved-evaluation decontamination, rights/provenance, balance, split/packing gates remain required before any training credit"
+}

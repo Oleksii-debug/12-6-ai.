@@ -1,0 +1,26 @@
+{
+  "dedup_decision": "PASS",
+  "evaluation_decision": "NOT_ADMITTED_REQUIRE_SEPARATE_AUTHORITY",
+  "language_decision": "PASS",
+  "license_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+  "local_free_only": true,
+  "materialized_snapshot": true,
+  "normalized_sha256": "12abd14eff9018602ebb8ebb76ee2f60d1a178a2a6b5648d77e08d5e16f2e0b1",
+  "prior_failure_classification": "ENVIRONMENT_BOOTSTRAP_FAILURE_NOT_RIGHTS_REJECTION",
+  "privacy_decision": "PASS",
+  "raw_sha256": "5c35e78f0a5f14210734e85778f13bd658ee4ea0640e356c99bb0b88eddd6e75",
+  "recovered_from": {
+    "failure_class": "ENVIRONMENT_BOOTSTRAP_MISSING_TORCH_BEFORE_SOURCE_MATERIALIZATION",
+    "rights_rejection": false,
+    "source_sha": "46a70c990dab6ff72bb84ddb54cff1156b491b40",
+    "worker_id": "DATA-228-REAL-UA-EN-DIVERSITY-V2",
+    "workflow_run": 32957120454
+  },
+  "report_identity_sha256": "a35cd748527f81675b106d07659446d489be9ac184fb2118e5b4fbf79cc125e7",
+  "rights_decision": "PASS_WITH_CC_BY_4_0_ATTRIBUTION_AND_MODIFICATION_NOTICE",
+  "schema_version": "12-6.data324-kubernetes-ua-recovery-report.v1",
+  "snapshot_manifest_identity_sha256": "b957ab7f8d628ff1e71ae6c49c2297866fdb8de32cd322e5d0ad4ebccdbc7c38",
+  "training_executed": false,
+  "verdict": "ADMIT",
+  "worker_id": "NEXT100-024-DATA-UA-KUBERNETES-RECOVERY"
+}

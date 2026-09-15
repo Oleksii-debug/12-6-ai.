@@ -165,6 +165,20 @@ def _binding(target_count: int = 0, generation: str = "g000") -> dict:
     }
 
 
+def _guard(
+    ledger: dict,
+    *,
+    authorized_budget: int = 8,
+    trainer_state_binding: dict | None = None,
+) -> ExposureReplayGuard:
+    return ExposureReplayGuard(
+        ledger,
+        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        authorized_budget=authorized_budget,
+        trainer_state_binding=trainer_state_binding or _binding(),
+    )
+
+
 def test_builds_exact_text_and_code_ledger_without_counting_source_bytes() -> None:
     materialization = _materialization()
     ledger = build_ledger(materialization)
@@ -245,13 +259,44 @@ def test_incomplete_packing_is_reportable_but_not_terminal_by_default() -> None:
     assert ledger["eligible_targets_not_packed"] == 4
 
 
+def test_guard_rejects_resealed_capacity_substitution_against_external_identity() -> None:
+    ledger = build_ledger(_materialization())
+    expected = ledger["ledger_identity_sha256"]
+    tampered = deepcopy(ledger)
+    tampered["one_pass_unique_nonignored_causal_loss_positions"] = 80
+    tampered["segments"][0]["loss_position_count"] = 74
+    tampered["ledger_identity_sha256"] = _identity(
+        tampered, "ledger_identity_sha256"
+    )
+
+    with pytest.raises(LedgerError, match="does not match expected authority"):
+        ExposureReplayGuard(
+            tampered,
+            expected_ledger_identity_sha256=expected,
+            authorized_budget=8,
+            trainer_state_binding=_binding(),
+        )
+
+
+def test_guard_rejects_self_hashed_unknown_ledger_field() -> None:
+    ledger = build_ledger(_materialization())
+    tampered = deepcopy(ledger)
+    tampered["future_replay_semantics"] = {"extra_capacity": True}
+    tampered["ledger_identity_sha256"] = _identity(
+        tampered, "ledger_identity_sha256"
+    )
+    with pytest.raises(LedgerError, match="fields do not match"):
+        ExposureReplayGuard(
+            tampered,
+            expected_ledger_identity_sha256=tampered["ledger_identity_sha256"],
+            authorized_budget=8,
+            trainer_state_binding=_binding(),
+        )
+
+
 def test_replay_guard_binds_exact_positions_loss_mask_and_resume() -> None:
     ledger = build_ledger(_materialization())
-    guard = ExposureReplayGuard(
-        ledger,
-        authorized_budget=8,
-        trainer_state_binding=_binding(),
-    )
+    guard = _guard(ledger)
     first = ledger["segments"][0]
     second = ledger["segments"][1]
     guard.authorize_loss_mask(
@@ -287,29 +332,62 @@ def test_replay_guard_binds_exact_positions_loss_mask_and_resume() -> None:
     guard.bind_checkpoint_state(checkpoint_binding)
     state = guard.state_dict()
 
-    resumed = ExposureReplayGuard(
-        ledger,
-        authorized_budget=8,
-        trainer_state_binding=_binding(),
-    )
+    resumed = _guard(ledger)
     resumed.load_state_dict(
-        state, expected_trainer_state_binding=checkpoint_binding
+        state,
+        expected_state_identity_sha256=state["state_identity_sha256"],
+        expected_trainer_state_binding=checkpoint_binding,
     )
     assert resumed.consumed_loss_positions == 4
 
     bad_binding = dict(checkpoint_binding)
     bad_binding["checkpoint_generation"] = "g051"
     with pytest.raises(LedgerError, match="trainer/checkpoint state binding mismatch"):
-        resumed.load_state_dict(state, expected_trainer_state_binding=bad_binding)
+        resumed.load_state_dict(
+            state,
+            expected_state_identity_sha256=state["state_identity_sha256"],
+            expected_trainer_state_binding=bad_binding,
+        )
+
+
+def test_resume_rejects_equal_count_claim_relocation_against_external_state_identity() -> None:
+    ledger = build_ledger(_materialization())
+    source = _guard(ledger)
+    segment = ledger["segments"][0]
+    source.authorize_batch(
+        [
+            {
+                "segment_identity_sha256": segment["segment_identity_sha256"],
+                "offset_start": 0,
+                "offset_end": 1,
+            }
+        ],
+        actual_nonignored_targets=1,
+    )
+    checkpoint_binding = _binding(target_count=1, generation="g001")
+    source.bind_checkpoint_state(checkpoint_binding)
+    state = source.state_dict()
+
+    tampered = deepcopy(state)
+    tampered["claims"] = {segment["segment_identity_sha256"]: [[1, 2]]}
+    tampered["state_identity_sha256"] = _identity(
+        tampered, "state_identity_sha256"
+    )
+
+    resumed = _guard(ledger)
+    before = resumed.state_dict()
+    with pytest.raises(LedgerError, match="exposure state identity mismatch"):
+        resumed.load_state_dict(
+            tampered,
+            expected_state_identity_sha256=state["state_identity_sha256"],
+            expected_trainer_state_binding=checkpoint_binding,
+        )
+    assert resumed.state_dict() == before
 
 
 def test_guard_rejects_claim_count_different_from_actual_loss_mask() -> None:
     ledger = build_ledger(_materialization())
-    guard = ExposureReplayGuard(
-        ledger,
-        authorized_budget=8,
-        trainer_state_binding=_binding(),
-    )
+    guard = _guard(ledger)
     segment = ledger["segments"][0]
     with pytest.raises(LedgerError, match="does not match actual"):
         guard.authorize_loss_mask(
@@ -327,11 +405,7 @@ def test_guard_rejects_claim_count_different_from_actual_loss_mask() -> None:
 
 def test_guard_rejects_claim_schema_smuggling_without_mutation() -> None:
     ledger = build_ledger(_materialization())
-    guard = ExposureReplayGuard(
-        ledger,
-        authorized_budget=8,
-        trainer_state_binding=_binding(),
-    )
+    guard = _guard(ledger)
     before = guard.state_dict()
     segment = ledger["segments"][0]
     with pytest.raises(LedgerError, match="must contain exactly"):
@@ -352,11 +426,7 @@ def test_guard_rejects_claim_schema_smuggling_without_mutation() -> None:
 def test_resume_rejects_self_hashed_unknown_state_field_without_mutation() -> None:
     ledger = build_ledger(_materialization())
     checkpoint_binding = _binding(target_count=0, generation="g000")
-    source = ExposureReplayGuard(
-        ledger,
-        authorized_budget=8,
-        trainer_state_binding=checkpoint_binding,
-    )
+    source = _guard(ledger, trainer_state_binding=checkpoint_binding)
     state = source.state_dict()
     tampered = deepcopy(state)
     tampered["future_semantics"] = {"replay_allowed": True}
@@ -364,15 +434,12 @@ def test_resume_rejects_self_hashed_unknown_state_field_without_mutation() -> No
         tampered, "state_identity_sha256"
     )
 
-    resumed = ExposureReplayGuard(
-        ledger,
-        authorized_budget=8,
-        trainer_state_binding=checkpoint_binding,
-    )
+    resumed = _guard(ledger, trainer_state_binding=checkpoint_binding)
     before = resumed.state_dict()
     with pytest.raises(LedgerError, match="fields do not match"):
         resumed.load_state_dict(
             tampered,
+            expected_state_identity_sha256=state["state_identity_sha256"],
             expected_trainer_state_binding=checkpoint_binding,
         )
     assert resumed.state_dict() == before

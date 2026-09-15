@@ -2,7 +2,8 @@
 
 This module does not tokenize, pack, count source bytes as loss positions, authorize
 training, or inspect final-test payloads. It binds independently expected identities
-from the canonical D03/D04/D10 authorities and the canonical V2 two-clean verifier.
+from the canonical D03/D04/D10 authorities, the authenticated deterministic-double-
+pack proof, and the canonical V2 two-clean verifier.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from twelve_six.data.deterministic_double_pack import DOUBLE_PACK_PROOF_SCHEMA
 from twelve_six.data.unique_loss_ledger_v2 import (
     LEDGER_SCHEMA,
     POSITION_POLICY,
@@ -21,7 +23,7 @@ from twelve_six.data.unique_loss_ledger_v2 import (
 from twelve_six.packing.two_clean_build import TwoCleanBuildError, verify_proof
 
 REPOSITORY = "Oleksii-debug/12-6-ai."
-LAUNCH_INPUT_SCHEMA = "12-6.learned20m-launch-input-authority.v1"
+LAUNCH_INPUT_SCHEMA = "12-6.learned20m-launch-input-authority.v2"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -39,6 +41,13 @@ _DATA_SPINE_KEYS = frozenset(
     {
         "terminal_corpus_authority_identity_sha256",
         "stage_bindings",
+        "deterministic_double_pack_proof_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "canonical_build_sha256",
         "two_clean_proof_identity_sha256",
         "two_clean_input_packet_identity_sha256",
         "two_clean_runtime_identity_sha256",
@@ -48,6 +57,33 @@ _DATA_SPINE_KEYS = frozenset(
         "packing_identity_sha256",
         "one_pass_unique_nonignored_causal_loss_positions",
         "requested_unique_loss_positions",
+    }
+)
+_DOUBLE_PACK_PROOF_KEYS = frozenset(
+    {
+        "schema_version",
+        "terminal_corpus_authority_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "stage_bindings",
+        "tokenizer_identity_sha256",
+        "materialization_identity_sha256",
+        "packing_identity_sha256",
+        "ledger_identity_sha256",
+        "canonical_build_sha256",
+        "build_a_canonical_sha256",
+        "build_b_canonical_sha256",
+        "one_pass_unique_nonignored_causal_loss_positions",
+        "retained_train_records_matched_to_terminal_inventory",
+        "retained_train_record_membership_verified",
+        "retained_document_isolation_verified",
+        "heldout_reservation_verified",
+        "independent_builds_byte_identical",
+        "training_authorized_by_this_proof",
+        "proof_identity_sha256",
     }
 )
 _CARRIER_OUTPUT_KEYS = frozenset(
@@ -161,7 +197,7 @@ def _verify_two_clean_proof(
     expected_packing_identity_sha256: str,
     expected_runtime_identity_sha256: str,
 ) -> dict[str, Any]:
-    """Delegate the V2 closed-world contract to its canonical verifier."""
+    """Delegate the V2 closed-world freshness contract to its canonical verifier."""
     try:
         return verify_proof(
             proof,
@@ -200,6 +236,7 @@ def _verify_ledger(
         raise LaunchInputAuthorityError("unexpected unique-loss ledger schema")
     if value.get("position_policy") != POSITION_POLICY:
         raise LaunchInputAuthorityError("unique-loss position policy drift")
+
     materialization = _require_sha256(
         value.get("materialization_identity_sha256"),
         "ledger.materialization_identity_sha256",
@@ -210,6 +247,7 @@ def _verify_ledger(
     )
     if materialization != expected_materialization:
         raise LaunchInputAuthorityError("ledger materialization substitution")
+
     expected_bindings = _normalize_stage_bindings(
         expected_stage_bindings, "expected_stage_bindings"
     )
@@ -243,6 +281,7 @@ def _verify_ledger(
     )
     if packing_identity != expected_packing:
         raise LaunchInputAuthorityError("packing authority substitution")
+
     if value.get("complete_one_pass") is not True:
         raise LaunchInputAuthorityError(
             "unique-loss ledger is not a complete one-pass ledger"
@@ -273,6 +312,7 @@ def _verify_ledger(
     segments = value.get("segments")
     if not isinstance(segments, list) or not segments:
         raise LaunchInputAuthorityError("ledger segments must be a non-empty list")
+
     counted = 0
     segment_ids: set[str] = set()
     logical_ranges: set[tuple[str, int, int]] = set()
@@ -289,6 +329,7 @@ def _verify_ledger(
                 "duplicate segment identity in unique-loss ledger"
             )
         segment_ids.add(segment_id)
+
         document_id = raw_segment.get("document_id")
         start = raw_segment.get("target_start")
         end = raw_segment.get("target_end")
@@ -307,6 +348,7 @@ def _verify_ledger(
             raise LaunchInputAuthorityError(
                 f"segments[{index}] target range is invalid"
             )
+
         logical_range = (document_id, start, end)
         if logical_range in logical_ranges:
             raise LaunchInputAuthorityError(
@@ -314,6 +356,7 @@ def _verify_ledger(
             )
         logical_ranges.add(logical_range)
         ranges_by_document.setdefault(document_id, []).append((start, end))
+
         count = _require_positive_int(
             raw_segment.get("loss_position_count"),
             f"segments[{index}].loss_position_count",
@@ -323,6 +366,7 @@ def _verify_ledger(
                 "segment loss count does not match target range"
             )
         counted += count
+
     for document_ranges in ranges_by_document.values():
         document_ranges.sort()
         previous_end: int | None = None
@@ -332,11 +376,180 @@ def _verify_ledger(
                     "overlapping logical ranges in unique-loss ledger"
                 )
             previous_end = end
+
     if counted != positions:
         raise LaunchInputAuthorityError(
             "segment counts do not match unique-loss capacity"
         )
     return value, positions
+
+
+def _verify_deterministic_double_pack_proof(
+    proof: Any,
+    *,
+    expected_identity_sha256: Any,
+    expected_terminal_corpus_identity_sha256: str,
+    expected_stage_bindings: Mapping[str, str],
+    expected_tokenizer_identity_sha256: str,
+    expected_packing_identity_sha256: str,
+    expected_materialization_identity_sha256: str,
+    expected_ledger_identity_sha256: str,
+    expected_unique_positions: int,
+) -> dict[str, Any]:
+    """Verify the canonical D04 proof and cross-bind it to the live D10 chain.
+
+    D10 does not possess the producer's raw builds/split application, so it cannot
+    rerun ``verify_deterministic_double_pack``. Instead it verifies the producer's
+    closed-world proof self-hash against an independently supplied proof identity,
+    then binds every behavior-bearing root to the already-authenticated launch
+    inputs. A self-consistent replacement proof therefore cannot authorize itself.
+    """
+    if not isinstance(proof, Mapping):
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack proof is required for launch binding"
+        )
+    value = dict(proof)
+    if set(value) != set(_DOUBLE_PACK_PROOF_KEYS):
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack proof has unexpected or missing fields"
+        )
+    if value.get("schema_version") != DOUBLE_PACK_PROOF_SCHEMA:
+        raise LaunchInputAuthorityError(
+            "unexpected deterministic double-pack proof schema"
+        )
+
+    expected_identity = _require_sha256(
+        expected_identity_sha256,
+        "expected_deterministic_double_pack_proof_identity_sha256",
+    )
+    observed_identity = _require_sha256(
+        value.get("proof_identity_sha256"),
+        "deterministic_double_pack_proof.proof_identity_sha256",
+    )
+    body = dict(value)
+    body.pop("proof_identity_sha256", None)
+    if _sha256_obj(body) != observed_identity:
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack proof self-identity mismatch"
+        )
+    if observed_identity != expected_identity:
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack proof does not match independently expected identity"
+        )
+
+    corpus_identity = _require_sha256(
+        value.get("terminal_corpus_authority_identity_sha256"),
+        "deterministic_double_pack_proof.terminal_corpus_authority_identity_sha256",
+    )
+    expected_corpus = _require_sha256(
+        expected_terminal_corpus_identity_sha256,
+        "expected_terminal_corpus_authority_identity_sha256",
+    )
+    if corpus_identity != expected_corpus:
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack terminal corpus substitution"
+        )
+
+    observed_bindings = _normalize_stage_bindings(
+        value.get("stage_bindings"),
+        "deterministic_double_pack_proof.stage_bindings",
+    )
+    expected_bindings = _normalize_stage_bindings(
+        expected_stage_bindings, "expected_stage_bindings"
+    )
+    if observed_bindings != expected_bindings:
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack stage authority substitution"
+        )
+
+    crossbinds = (
+        (
+            "tokenizer_identity_sha256",
+            expected_tokenizer_identity_sha256,
+            "tokenizer",
+        ),
+        (
+            "packing_identity_sha256",
+            expected_packing_identity_sha256,
+            "packing",
+        ),
+        (
+            "materialization_identity_sha256",
+            expected_materialization_identity_sha256,
+            "materialization",
+        ),
+        (
+            "ledger_identity_sha256",
+            expected_ledger_identity_sha256,
+            "unique-loss ledger",
+        ),
+    )
+    for field, expected_value, label in crossbinds:
+        observed = _require_sha256(
+            value.get(field), f"deterministic_double_pack_proof.{field}"
+        )
+        expected = _require_sha256(
+            expected_value, f"expected_deterministic_double_pack_{field}"
+        )
+        if observed != expected:
+            raise LaunchInputAuthorityError(
+                f"deterministic double-pack {label} substitution"
+            )
+
+    for field in (
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "canonical_build_sha256",
+        "build_a_canonical_sha256",
+        "build_b_canonical_sha256",
+    ):
+        _require_sha256(value.get(field), f"deterministic_double_pack_proof.{field}")
+
+    canonical_build = value["canonical_build_sha256"]
+    if (
+        value["build_a_canonical_sha256"] != canonical_build
+        or value["build_b_canonical_sha256"] != canonical_build
+    ):
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack canonical build hashes differ"
+        )
+
+    proof_positions = _require_positive_int(
+        value.get("one_pass_unique_nonignored_causal_loss_positions"),
+        (
+            "deterministic_double_pack_proof."
+            "one_pass_unique_nonignored_causal_loss_positions"
+        ),
+    )
+    if proof_positions != expected_unique_positions:
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack unique-loss capacity substitution"
+        )
+    _require_positive_int(
+        value.get("retained_train_records_matched_to_terminal_inventory"),
+        (
+            "deterministic_double_pack_proof."
+            "retained_train_records_matched_to_terminal_inventory"
+        ),
+    )
+    for field in (
+        "retained_train_record_membership_verified",
+        "retained_document_isolation_verified",
+        "heldout_reservation_verified",
+        "independent_builds_byte_identical",
+    ):
+        if value.get(field) is not True:
+            raise LaunchInputAuthorityError(
+                f"deterministic double-pack {field} must be exact true boolean"
+            )
+    if value.get("training_authorized_by_this_proof") is not False:
+        raise LaunchInputAuthorityError(
+            "deterministic double-pack proof cannot authorize training"
+        )
+    return value
 
 
 def _verify_carrier(
@@ -439,9 +652,11 @@ def build_launch_input_authority(
     expected_carrier_workflow_run_id: int,
     expected_carrier_evidence_sha256: str,
     requested_unique_loss_positions: int,
+    deterministic_double_pack_proof: Mapping[str, Any] | None = None,
+    expected_deterministic_double_pack_proof_identity_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Bind terminal upstream identities without authorizing an optimizer step."""
-    proof = _verify_two_clean_proof(
+    freshness_proof = _verify_two_clean_proof(
         two_clean_proof,
         expected_identity_sha256=expected_two_clean_proof_identity_sha256,
         expected_input_packet_identity_sha256=(
@@ -459,12 +674,30 @@ def build_launch_input_authority(
         unique_loss_ledger,
         expected_identity_sha256=expected_unique_loss_ledger_identity_sha256,
         expected_materialization_identity_sha256=(
-            proof["materialization_identity_sha256"]
+            freshness_proof["materialization_identity_sha256"]
         ),
         expected_stage_bindings=expected_stage_bindings,
         expected_tokenizer_identity_sha256=expected_tokenizer_identity_sha256,
         expected_packing_identity_sha256=expected_packing_identity_sha256,
     )
+    membership_proof = _verify_deterministic_double_pack_proof(
+        deterministic_double_pack_proof,
+        expected_identity_sha256=(
+            expected_deterministic_double_pack_proof_identity_sha256
+        ),
+        expected_terminal_corpus_identity_sha256=(
+            expected_terminal_corpus_authority_identity_sha256
+        ),
+        expected_stage_bindings=expected_stage_bindings,
+        expected_tokenizer_identity_sha256=expected_tokenizer_identity_sha256,
+        expected_packing_identity_sha256=expected_packing_identity_sha256,
+        expected_materialization_identity_sha256=(
+            freshness_proof["materialization_identity_sha256"]
+        ),
+        expected_ledger_identity_sha256=ledger["ledger_identity_sha256"],
+        expected_unique_positions=one_pass_capacity,
+    )
+
     requested = _require_positive_int(
         requested_unique_loss_positions, "requested_unique_loss_positions"
     )
@@ -472,6 +705,7 @@ def build_launch_input_authority(
         raise LaunchInputAuthorityError(
             "requested unique optimized-target exposure exceeds one-pass unique capacity"
         )
+
     carrier = _verify_carrier(
         carrier_authority,
         expected_git_sha=expected_carrier_git_sha,
@@ -483,6 +717,7 @@ def build_launch_input_authority(
     stage_bindings = _normalize_stage_bindings(
         expected_stage_bindings, "expected_stage_bindings"
     )
+
     authority: dict[str, Any] = {
         "schema_version": LAUNCH_INPUT_SCHEMA,
         "binding_status": "READY_FOR_READINESS_BINDING",
@@ -491,14 +726,37 @@ def build_launch_input_authority(
                 expected_terminal_corpus_authority_identity_sha256
             ),
             "stage_bindings": stage_bindings,
-            "two_clean_proof_identity_sha256": proof["proof_identity_sha256"],
-            "two_clean_input_packet_identity_sha256": (
-                proof["input_packet_identity_sha256"]
-            ),
-            "two_clean_runtime_identity_sha256": proof["runtime_identity_sha256"],
-            "materialization_identity_sha256": (
-                proof["materialization_identity_sha256"]
-            ),
+            "deterministic_double_pack_proof_identity_sha256": membership_proof[
+                "proof_identity_sha256"
+            ],
+            "terminal_record_inventory_digest_sha256": membership_proof[
+                "terminal_record_inventory_digest_sha256"
+            ],
+            "terminal_payload_inventory_digest_sha256": membership_proof[
+                "terminal_payload_inventory_digest_sha256"
+            ],
+            "terminal_split_application_identity_sha256": membership_proof[
+                "terminal_split_application_identity_sha256"
+            ],
+            "terminal_split_spec_identity_sha256": membership_proof[
+                "terminal_split_spec_identity_sha256"
+            ],
+            "terminal_split_train_record_membership_sha256": membership_proof[
+                "terminal_split_train_record_membership_sha256"
+            ],
+            "canonical_build_sha256": membership_proof["canonical_build_sha256"],
+            "two_clean_proof_identity_sha256": freshness_proof[
+                "proof_identity_sha256"
+            ],
+            "two_clean_input_packet_identity_sha256": freshness_proof[
+                "input_packet_identity_sha256"
+            ],
+            "two_clean_runtime_identity_sha256": freshness_proof[
+                "runtime_identity_sha256"
+            ],
+            "materialization_identity_sha256": freshness_proof[
+                "materialization_identity_sha256"
+            ],
             "unique_loss_ledger_identity_sha256": ledger[
                 "ledger_identity_sha256"
             ],
@@ -558,6 +816,13 @@ def verify_launch_input_authority(
         )
     for field in (
         "terminal_corpus_authority_identity_sha256",
+        "deterministic_double_pack_proof_identity_sha256",
+        "terminal_record_inventory_digest_sha256",
+        "terminal_payload_inventory_digest_sha256",
+        "terminal_split_application_identity_sha256",
+        "terminal_split_spec_identity_sha256",
+        "terminal_split_train_record_membership_sha256",
+        "canonical_build_sha256",
         "two_clean_proof_identity_sha256",
         "two_clean_input_packet_identity_sha256",
         "two_clean_runtime_identity_sha256",
@@ -567,7 +832,10 @@ def verify_launch_input_authority(
         "packing_identity_sha256",
     ):
         _require_sha256(data_spine.get(field), f"data_spine.{field}")
-    _normalize_stage_bindings(data_spine.get("stage_bindings"), "data_spine.stage_bindings")
+
+    _normalize_stage_bindings(
+        data_spine.get("stage_bindings"), "data_spine.stage_bindings"
+    )
     capacity = _require_positive_int(
         data_spine.get("one_pass_unique_nonignored_causal_loss_positions"),
         "data_spine.one_pass_unique_nonignored_causal_loss_positions",
@@ -597,16 +865,24 @@ def verify_launch_input_authority(
         "carrier.initialization_identity_sha256",
     )
     if carrier.get("canonical_base") != "random_init":
-        raise LaunchInputAuthorityError("launch-input carrier is not random initialization")
+        raise LaunchInputAuthorityError(
+            "launch-input carrier is not random initialization"
+        )
     if carrier.get("foreign_pretrained_weights_used") is not False:
-        raise LaunchInputAuthorityError("launch-input carrier foreign pretrained drift")
+        raise LaunchInputAuthorityError(
+            "launch-input carrier foreign pretrained drift"
+        )
     if carrier.get("terminal") is not True:
         raise LaunchInputAuthorityError("launch-input carrier terminality drift")
     _require_positive_int(carrier.get("workflow_run_id"), "carrier.workflow_run_id")
     if carrier.get("workflow_status") != "completed":
-        raise LaunchInputAuthorityError("launch-input carrier workflow is not completed")
+        raise LaunchInputAuthorityError(
+            "launch-input carrier workflow is not completed"
+        )
     if carrier.get("workflow_conclusion") != "success":
-        raise LaunchInputAuthorityError("launch-input carrier workflow is not success")
+        raise LaunchInputAuthorityError(
+            "launch-input carrier workflow is not success"
+        )
     workflow_head = _require_git_sha(
         carrier.get("workflow_head_sha"), "carrier.workflow_head_sha"
     )

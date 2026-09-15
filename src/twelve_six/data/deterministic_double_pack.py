@@ -9,6 +9,8 @@ from twelve_six.data.unique_loss_ledger_v2 import LedgerError, build_ledger, ver
 
 DOUBLE_PACK_PROOF_SCHEMA = "12-6.d04-deterministic-double-pack-proof.v1"
 _TERMINAL_RECORD_INVENTORY_SCHEMA = "12-6.data526-record-inventory.v1"
+_TERMINAL_SPLIT_APPLICATION_SCHEMA = "12-6.d03-balanced-split-application.v1"
+_TERMINAL_SPLIT_FAMILY_SCHEMA = "12-6.validation-split-family.v1"
 _REQUIRED_STAGE_BINDINGS = (
     "normalization",
     "evaluation_reservations",
@@ -26,6 +28,36 @@ _RECORD_KEYS = frozenset(
         "payload_bytes",
     }
 )
+_SPLIT_APPLICATION_FIELDS = frozenset(
+    {
+        "schema",
+        "status",
+        "balanced_selection_identity_sha256",
+        "retained_inventory_identity_sha256",
+        "decontamination_authority_sha256",
+        "dedup_authority_sha256",
+        "balance_policy_identity_sha256",
+        "balance_result_identity_sha256",
+        "canonical_split_git_blob_sha1",
+        "split_spec_identity_sha256",
+        "selected_record_count",
+        "selected_source_bytes",
+        "selected_family_source_bytes",
+        "selected_stratum_source_bytes",
+        "split_family",
+        "claim_boundary",
+        "application_identity_sha256",
+    }
+)
+_ZERO_CREDIT_SPLIT_CLAIM_BOUNDARY = {
+    "training_eligible": False,
+    "evaluation_eligible": False,
+    "tokenizer_fit_authorized": False,
+    "model_training_authorized": False,
+    "paid_compute_authorized": False,
+    "final_test_outcomes_read": False,
+    "authorized_optimized_target_exposure": 0,
+}
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -84,6 +116,114 @@ def _normalize_expected_stage_bindings(value: Mapping[str, Any]) -> dict[str, st
         name: _require_sha256(value[name], f"expected_stage_bindings.{name}")
         for name in _REQUIRED_STAGE_BINDINGS
     }
+
+
+def _normalize_record_ids(value: Sequence[Any], *, label: str) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise LedgerError(f"{label} must be a sequence")
+
+    normalized = tuple(
+        _require_nonempty_string(item, f"{label}[{index}]")
+        for index, item in enumerate(value)
+    )
+    if not normalized:
+        raise LedgerError(f"{label} must not be empty")
+    if len(set(normalized)) != len(normalized):
+        raise LedgerError(f"{label} contains duplicate record_id")
+    if normalized != tuple(sorted(normalized)):
+        raise LedgerError(f"{label} must be in canonical record_id order")
+    return normalized
+
+
+def _validate_terminal_split_application(
+    application: Mapping[str, Any],
+    *,
+    expected_terminal_split_application_identity_sha256: str,
+) -> tuple[str, str, tuple[str, ...]]:
+    """Authenticate a text-free terminal split application and derive train IDs.
+
+    The expected application identity is an independent trust root. The application
+    may self-hash its own bytes, but a caller cannot replace the canonical shared
+    train core and authorize that replacement by merely recomputing the self-hash.
+    Raw records are intentionally not consumed at D04: the already-reviewed D03
+    split application is the sealed authority passed across this stage boundary.
+    """
+    if not isinstance(application, Mapping):
+        raise LedgerError("terminal_split_application must be an object")
+    if set(application) != set(_SPLIT_APPLICATION_FIELDS):
+        raise LedgerError("terminal split application fields are not closed-world")
+    if application.get("schema") != _TERMINAL_SPLIT_APPLICATION_SCHEMA:
+        raise LedgerError("unsupported terminal split application schema")
+    if application.get("status") != "PASS_ZERO_CREDIT":
+        raise LedgerError("terminal split application is not PASS_ZERO_CREDIT")
+
+    expected_identity = _require_sha256(
+        expected_terminal_split_application_identity_sha256,
+        "expected_terminal_split_application_identity_sha256",
+    )
+    observed_identity = _require_sha256(
+        application.get("application_identity_sha256"),
+        "terminal_split_application.application_identity_sha256",
+    )
+    application_core = dict(application)
+    application_core.pop("application_identity_sha256", None)
+    computed_identity = _sha256_bytes(_canonical_json_bytes_no_lf(application_core))
+    if observed_identity != computed_identity:
+        raise LedgerError("terminal split application self-hash mismatch")
+    if observed_identity != expected_identity:
+        raise LedgerError("terminal split application does not match expected identity")
+    if application.get("claim_boundary") != _ZERO_CREDIT_SPLIT_CLAIM_BOUNDARY:
+        raise LedgerError("terminal split application claim boundary widened")
+
+    split_spec_identity = _require_sha256(
+        application.get("split_spec_identity_sha256"),
+        "terminal_split_application.split_spec_identity_sha256",
+    )
+    split_family = application.get("split_family")
+    if not isinstance(split_family, Mapping):
+        raise LedgerError("terminal split application split_family must be an object")
+    if split_family.get("schema_version") != _TERMINAL_SPLIT_FAMILY_SCHEMA:
+        raise LedgerError("unsupported terminal split-family schema")
+
+    split_family_core = dict(split_family)
+    claimed_family_identity = _require_sha256(
+        split_family_core.pop("split_family_identity_sha256", None),
+        "terminal_split_application.split_family.split_family_identity_sha256",
+    )
+    if claimed_family_identity != _sha256_obj(split_family_core):
+        raise LedgerError("terminal split-family identity/content mismatch")
+    if split_family.get("training_policy") != (
+        "optimize_shared_train_core_only_excluding_validation_union"
+    ):
+        raise LedgerError("terminal split-family training policy drift")
+    if split_family.get("cluster_straddles_across_variants") != 0:
+        raise LedgerError("terminal split-family reports cluster straddles")
+
+    train_record_ids = _normalize_record_ids(
+        split_family.get("shared_train_record_ids"),
+        label="terminal_split_application.split_family.shared_train_record_ids",
+    )
+    shared_train_documents = _require_nonnegative_int(
+        split_family.get("shared_train_documents"),
+        "terminal_split_application.split_family.shared_train_documents",
+    )
+    if shared_train_documents != len(train_record_ids):
+        raise LedgerError("terminal split-family shared train count mismatch")
+
+    validation_union = _normalize_record_ids(
+        split_family.get("validation_union_record_ids"),
+        label="terminal_split_application.split_family.validation_union_record_ids",
+    )
+    validation_union_documents = _require_nonnegative_int(
+        split_family.get("validation_union_documents"),
+        "terminal_split_application.split_family.validation_union_documents",
+    )
+    if validation_union_documents != len(validation_union):
+        raise LedgerError("terminal split-family validation union count mismatch")
+    if set(train_record_ids) & set(validation_union):
+        raise LedgerError("terminal split-family shared train overlaps validation union")
+
+    return observed_identity, split_spec_identity, train_record_ids
 
 
 def _validate_terminal_record_inventory(
@@ -265,13 +405,14 @@ def _validate_train_record_membership(
     record_by_id: Mapping[str, Mapping[str, Any]],
     *,
     label: str,
-) -> int:
-    """Require every retained train document to derive from the terminal D03 inventory."""
+) -> tuple[str, ...]:
+    """Validate present train records against D03 and return their canonical IDs."""
     documents = materialization.get("documents")
     if not isinstance(documents, Sequence) or isinstance(documents, (str, bytes)):
         raise LedgerError(f"{label}.documents must be a sequence")
 
-    matched = 0
+    matched_ids: list[str] = []
+    seen_ids: set[str] = set()
     for index, document in enumerate(documents):
         if not isinstance(document, Mapping):
             raise LedgerError(f"{label}.documents[{index}] must be an object")
@@ -281,6 +422,10 @@ def _validate_train_record_membership(
         record_id = _require_nonempty_string(
             document.get("document_id"), f"{label}.documents[{index}].document_id"
         )
+        if record_id in seen_ids:
+            raise LedgerError("duplicate retained train document_id")
+        seen_ids.add(record_id)
+
         authority = record_by_id.get(record_id)
         if authority is None:
             raise LedgerError("retained train document is absent from terminal D03 inventory")
@@ -312,9 +457,9 @@ def _validate_train_record_membership(
             raise LedgerError("train document payload does not match terminal D03 inventory")
         if source_bytes != authority["payload_bytes"]:
             raise LedgerError("train document byte count does not match terminal D03 inventory")
-        matched += 1
+        matched_ids.append(record_id)
 
-    return matched
+    return tuple(sorted(matched_ids))
 
 
 def _validate_build(
@@ -325,6 +470,7 @@ def _validate_build(
     expected_stage_bindings: Mapping[str, str],
     expected_tokenizer_identity_sha256: str,
     terminal_record_by_id: Mapping[str, Mapping[str, Any]],
+    expected_train_record_ids: tuple[str, ...],
 ) -> tuple[dict[str, Any], bytes, int]:
     observed_terminal_corpus_identity = _require_sha256(
         materialization.get("terminal_corpus_authority_identity_sha256"),
@@ -350,14 +496,20 @@ def _validate_build(
         raise LedgerError(f"{label} tokenizer identity does not match terminal handoff")
 
     _validate_retained_document_isolation(materialization, label=label)
-    matched_train_records = _validate_train_record_membership(
+    matched_train_record_ids = _validate_train_record_membership(
         materialization,
         terminal_record_by_id,
         label=label,
     )
+    if matched_train_record_ids != expected_train_record_ids:
+        raise LedgerError(
+            f"{label} retained train record membership does not match "
+            "authenticated terminal split authority"
+        )
+
     ledger = build_ledger(materialization)
     verify_ledger(materialization, ledger)
-    return ledger, _canonical_json_bytes(materialization), matched_train_records
+    return ledger, _canonical_json_bytes(materialization), len(matched_train_record_ids)
 
 
 def verify_deterministic_double_pack(
@@ -368,15 +520,18 @@ def verify_deterministic_double_pack(
     terminal_record_inventory: Mapping[str, Any],
     expected_record_inventory_digest_sha256: str,
     expected_payload_inventory_digest_sha256: str,
+    terminal_split_application: Mapping[str, Any],
+    expected_terminal_split_application_identity_sha256: str,
     expected_stage_bindings: Mapping[str, Any],
     expected_tokenizer_identity_sha256: str,
 ) -> dict[str, Any]:
     """Bind two independent post-pack builds to one immutable terminal handoff.
 
-    The proof consumes the existing text-free DATA-526 record inventory and requires
-    every retained train document to be a payload/source/family/modality/byte-exact
-    member of it. This prevents two mutually identical, self-rehashed builds from
-    manufacturing a different training corpus behind a copied corpus identity.
+    D04 consumes the text-free DATA-526 record inventory plus an independently
+    identity-pinned D03 split application. The exact shared train record set is
+    derived internally from that authenticated split authority, so a caller cannot
+    omit a record from both builds and authorize the smaller universe by resealing
+    a candidate membership list/digest.
     """
     terminal_corpus_identity = _require_sha256(
         terminal_corpus_authority_identity_sha256,
@@ -389,6 +544,17 @@ def verify_deterministic_double_pack(
     if not isinstance(expected_stage_bindings, Mapping):
         raise LedgerError("expected_stage_bindings must be an object")
     stage_bindings = _normalize_expected_stage_bindings(expected_stage_bindings)
+    (
+        split_application_identity,
+        split_spec_identity,
+        train_record_ids,
+    ) = _validate_terminal_split_application(
+        terminal_split_application,
+        expected_terminal_split_application_identity_sha256=(
+            expected_terminal_split_application_identity_sha256
+        ),
+    )
+    train_membership_digest = _sha256_obj(list(train_record_ids))
 
     if not isinstance(build_a, Mapping) or not isinstance(build_b, Mapping):
         raise LedgerError("independent builds must be mapping materializations")
@@ -398,6 +564,12 @@ def verify_deterministic_double_pack(
         expected_record_inventory_digest_sha256=expected_record_inventory_digest_sha256,
         expected_payload_inventory_digest_sha256=expected_payload_inventory_digest_sha256,
     )
+    for record_id in train_record_ids:
+        if record_id not in record_by_id:
+            raise LedgerError(
+                "authenticated terminal split train record is absent from terminal D03 inventory"
+            )
+
     record_inventory_digest = _require_sha256(
         terminal_record_inventory.get("record_inventory_digest_sha256"),
         "terminal_record_inventory.record_inventory_digest_sha256",
@@ -414,6 +586,7 @@ def verify_deterministic_double_pack(
         expected_stage_bindings=stage_bindings,
         expected_tokenizer_identity_sha256=tokenizer_identity,
         terminal_record_by_id=record_by_id,
+        expected_train_record_ids=train_record_ids,
     )
     ledger_b, bytes_b, matched_b = _validate_build(
         build_b,
@@ -422,6 +595,7 @@ def verify_deterministic_double_pack(
         expected_stage_bindings=stage_bindings,
         expected_tokenizer_identity_sha256=tokenizer_identity,
         terminal_record_by_id=record_by_id,
+        expected_train_record_ids=train_record_ids,
     )
 
     if bytes_a != bytes_b:
@@ -458,6 +632,9 @@ def verify_deterministic_double_pack(
         "terminal_corpus_authority_identity_sha256": terminal_corpus_identity,
         "terminal_record_inventory_digest_sha256": record_inventory_digest,
         "terminal_payload_inventory_digest_sha256": payload_inventory_digest,
+        "terminal_split_application_identity_sha256": split_application_identity,
+        "terminal_split_spec_identity_sha256": split_spec_identity,
+        "terminal_split_train_record_membership_sha256": train_membership_digest,
         "stage_bindings": stage_bindings,
         "tokenizer_identity_sha256": tokenizer_identity,
         "materialization_identity_sha256": materialization_identity,
