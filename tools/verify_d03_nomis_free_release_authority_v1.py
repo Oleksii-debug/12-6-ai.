@@ -136,7 +136,8 @@ def _release_delta(root: Path, release_head: str) -> dict[str, str]:
     return result
 
 
-def _require_release_delta(actual: dict[str, str]) -> None:
+def require_release_delta(actual: dict[str, str]) -> None:
+    """Require the exact workflow-free release-only Product delta."""
     req(actual == EXPECTED_RELEASE_DELTA, f"release delta drift: {actual!r}")
 
 
@@ -160,7 +161,7 @@ def verify_release_checkout(root: Path, expected_release_head: str) -> dict[str,
         "physical execution head is not an ancestor of release head",
     )
 
-    _require_release_delta(_release_delta(root, expected_release_head))
+    require_release_delta(_release_delta(root, expected_release_head))
 
     req(
         _blob_sha(root, PHYSICAL_EXECUTION_HEAD, TEMP_WORKFLOW) == TEMP_WORKFLOW_BLOB,
