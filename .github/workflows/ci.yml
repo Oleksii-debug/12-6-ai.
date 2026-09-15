@@ -10,6 +10,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   bootstrap:
@@ -33,3 +34,189 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  d03_clean_g05_g06_replay:
+    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2131-clean-g05-g06-replay-v1'
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove exact checkout and replay bindings
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python tools/run_d03_clean_g05_g06_replay_v1.py check-bindings
+          python -m py_compile tools/run_d03_clean_g05_g06_replay_v1.py
+
+      - name: Checkout exact terminal V7 implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: d3333ec1b4a508df232a5aefccd6686adda745fb
+          path: _terminal_v7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact historical PR623 DATA526 materializer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
+          path: _pr623
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install deterministic PDF extractor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Retrieve immutable DATA-213 normalized artifact twice
+        run: |
+          set -euo pipefail
+          for build in a b; do
+            curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9600107886/zip" \
+              -o "$RUNNER_TEMP/data213-${build}.zip"
+          done
+          cmp "$RUNNER_TEMP/data213-a.zip" "$RUNNER_TEMP/data213-b.zip"
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          raw = (Path(os.environ["RUNNER_TEMP"]) / "data213-a.zip").read_bytes()
+          assert hashlib.sha256(raw).hexdigest() == "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          PY
+
+      - name: Reconstruct clean source successor A
+        run: >-
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/run_d03_nomis_free_clean_successor_v1.py run
+          --current-root . --v7-root _terminal_v7
+          --workspace "$RUNNER_TEMP/source-work-a"
+          --report "$RUNNER_TEMP/source-a.json"
+          --survivor "$RUNNER_TEMP/survivor-a.json"
+
+      - name: Reconstruct clean source successor B
+        run: >-
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/run_d03_nomis_free_clean_successor_v1.py run
+          --current-root . --v7-root _terminal_v7
+          --workspace "$RUNNER_TEMP/source-work-b"
+          --report "$RUNNER_TEMP/source-b.json"
+          --survivor "$RUNNER_TEMP/survivor-b.json"
+
+      - name: Require clean source byte identity
+        run: |
+          set -euo pipefail
+          cmp "$RUNNER_TEMP/source-a.json" "$RUNNER_TEMP/source-b.json"
+          cmp "$RUNNER_TEMP/survivor-a.json" "$RUNNER_TEMP/survivor-b.json"
+
+      - name: Reconstruct clean DATA526 A
+        run: >-
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/materialize_d03_nomis_free_data526_successor_v1.py
+          --current-root . --execution-head-sha "$SOURCE_SHA"
+          --v7-root _terminal_v7 --historical-materializer-root _pr623
+          --data213-zip "$RUNNER_TEMP/data213-a.zip"
+          --bulk-workspace "$RUNNER_TEMP/data526-bulk-a"
+          --source-report "$RUNNER_TEMP/source-a.json"
+          --survivor "$RUNNER_TEMP/survivor-a.json"
+          --historical-records-jsonl "$RUNNER_TEMP/historical-a.jsonl"
+          --records-jsonl "$RUNNER_TEMP/records-a.jsonl"
+          --inventory-json "$RUNNER_TEMP/inventory-a.json"
+          --evidence-json "$RUNNER_TEMP/evidence-a.json"
+
+      - name: Reconstruct clean DATA526 B
+        run: >-
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/materialize_d03_nomis_free_data526_successor_v1.py
+          --current-root . --execution-head-sha "$SOURCE_SHA"
+          --v7-root _terminal_v7 --historical-materializer-root _pr623
+          --data213-zip "$RUNNER_TEMP/data213-b.zip"
+          --bulk-workspace "$RUNNER_TEMP/data526-bulk-b"
+          --source-report "$RUNNER_TEMP/source-b.json"
+          --survivor "$RUNNER_TEMP/survivor-b.json"
+          --historical-records-jsonl "$RUNNER_TEMP/historical-b.jsonl"
+          --records-jsonl "$RUNNER_TEMP/records-b.jsonl"
+          --inventory-json "$RUNNER_TEMP/inventory-b.json"
+          --evidence-json "$RUNNER_TEMP/evidence-b.json"
+
+      - name: Require independent clean DATA526 identity
+        run: |
+          set -euo pipefail
+          cmp "$RUNNER_TEMP/records-a.jsonl" "$RUNNER_TEMP/records-b.jsonl"
+          cmp "$RUNNER_TEMP/inventory-a.json" "$RUNNER_TEMP/inventory-b.json"
+
+      - name: Execute canonical G05/G06 replay A
+        run: >-
+          python tools/run_d03_clean_g05_g06_replay_v1.py run
+          --run-id "${SOURCE_SHA}:A"
+          --records-jsonl "$RUNNER_TEMP/records-a.jsonl"
+          --inventory-json "$RUNNER_TEMP/inventory-a.json"
+          --data526-evidence-json "$RUNNER_TEMP/evidence-a.json"
+          --output-g05 "$RUNNER_TEMP/g05-a.json"
+          --output-g06 "$RUNNER_TEMP/g06-a.json"
+          --output-replay "$RUNNER_TEMP/replay-a.json"
+
+      - name: Execute canonical G05/G06 replay B
+        run: >-
+          python tools/run_d03_clean_g05_g06_replay_v1.py run
+          --run-id "${SOURCE_SHA}:B"
+          --records-jsonl "$RUNNER_TEMP/records-b.jsonl"
+          --inventory-json "$RUNNER_TEMP/inventory-b.json"
+          --data526-evidence-json "$RUNNER_TEMP/evidence-b.json"
+          --output-g05 "$RUNNER_TEMP/g05-b.json"
+          --output-g06 "$RUNNER_TEMP/g06-b.json"
+          --output-replay "$RUNNER_TEMP/replay-b.json"
+
+      - name: Verify two replay executions agree
+        run: >-
+          python tools/run_d03_clean_g05_g06_replay_v1.py verify-pair
+          --replay-a "$RUNNER_TEMP/replay-a.json"
+          --replay-b "$RUNNER_TEMP/replay-b.json"
+          --g05-a "$RUNNER_TEMP/g05-a.json"
+          --g05-b "$RUNNER_TEMP/g05-b.json"
+          --g06-a "$RUNNER_TEMP/g06-a.json"
+          --g06-b "$RUNNER_TEMP/g06-b.json"
+          --output "$RUNNER_TEMP/replay-pair.json"
+
+      - name: Delete raw payload products before retention
+        run: |
+          rm -f "$RUNNER_TEMP/historical-a.jsonl" "$RUNNER_TEMP/historical-b.jsonl"
+          rm -f "$RUNNER_TEMP/records-a.jsonl" "$RUNNER_TEMP/records-b.jsonl"
+
+      - name: Upload text-free clean G05/G06 replay evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-clean-g05-g06-replay-${{ env.SOURCE_SHA }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            ${{ runner.temp }}/source-a.json
+            ${{ runner.temp }}/survivor-a.json
+            ${{ runner.temp }}/inventory-a.json
+            ${{ runner.temp }}/evidence-a.json
+            ${{ runner.temp }}/g05-a.json
+            ${{ runner.temp }}/g06-a.json
+            ${{ runner.temp }}/replay-a.json
+            ${{ runner.temp }}/g05-b.json
+            ${{ runner.temp }}/g06-b.json
+            ${{ runner.temp }}/replay-b.json
+            ${{ runner.temp }}/replay-pair.json
