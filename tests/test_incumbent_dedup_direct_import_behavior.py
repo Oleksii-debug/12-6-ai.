@@ -86,7 +86,7 @@ def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() 
     assert indexed._direct_behavior_state_matches(Counter, counter_state)
     assert Counter(["a", "a", "b"]) == Counter({"a": 2, "b": 1})
 
-    original = getattr(collections, "_count_elements")
+    original = collections._count_elements
     caught_helper: str | None = None
     caught_runtime: str | None = None
 
@@ -99,7 +99,7 @@ def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() 
         del mapping, iterable
 
     try:
-        setattr(collections, "_count_elements", replacement)
+        collections._count_elements = replacement
         assert indexed._direct_behavior_state_matches(Counter, counter_state)
         assert Counter(["a", "a", "b"]) == Counter()
         try:
@@ -111,7 +111,7 @@ def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() 
         except indexed.IndexedExecutionError as exc:
             caught_runtime = str(exc)
     finally:
-        setattr(collections, "_count_elements", original)
+        collections._count_elements = original
 
     assert caught_helper == "collections._count_elements runtime drift"
     assert caught_runtime == "collections._count_elements runtime drift"

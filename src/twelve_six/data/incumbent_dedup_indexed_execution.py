@@ -66,6 +66,27 @@ def _freeze_python_function(function: Any) -> tuple[Any, ...]:
     )
 
 
+def _bootstrap_python_function_state_matches(function: Any, state: tuple[Any, ...]) -> bool:
+    """Check a Python function without trusting the mutable inspect predicates."""
+    expected, expected_code, defaults, kwdefaults = state
+    if function is not expected:
+        return False
+    try:
+        code = function.__code__
+        current_defaults = function.__defaults__
+        current_kwdefaults = function.__kwdefaults__
+    except AttributeError:
+        return False
+    rendered_kwdefaults = (
+        None if current_kwdefaults is None else tuple(sorted(current_kwdefaults.items()))
+    )
+    return (
+        _loader_code_digest(code) == expected_code
+        and current_defaults == defaults
+        and rendered_kwdefaults == kwdefaults
+    )
+
+
 def _freeze_behavior_member(member: Any) -> tuple[Any, ...]:
     if _FROZEN_INSPECT_ISFUNCTION(member):
         return ("function", *_freeze_python_function(member))
@@ -110,6 +131,22 @@ def _freeze_direct_behavior(value: Any) -> tuple[Any, ...]:
         ),
     )
 
+
+_FROZEN_BOOTSTRAP_PYTHON_FUNCTIONS = (
+    ("ast.parse", ast, "parse", _freeze_python_function(_FROZEN_AST_PARSE)),
+    (
+        "inspect.isclass",
+        inspect,
+        "isclass",
+        _freeze_python_function(_FROZEN_INSPECT_ISCLASS),
+    ),
+    (
+        "inspect.isfunction",
+        inspect,
+        "isfunction",
+        _freeze_python_function(_FROZEN_INSPECT_ISFUNCTION),
+    ),
+)
 
 _DIRECT_BEHAVIOR_IMPORT_MODULES = frozenset(
     {"collections", "collections.abc", "pathlib", "typing", "urllib.request"}
@@ -168,16 +205,41 @@ _FROZEN_IMPORTED_BEHAVIOR_MEMBERS = (
     ("V3", "unicodedata", "normalize", unicodedata.normalize),
 )
 
+# A raw object alias is not enough for Python functions because ``__code__`` and
+# defaults can change in place while identity remains stable. Freeze executable state
+# once, while the loader bootstrap is still pristine, and compare against that state.
+_FROZEN_IMPORTED_BEHAVIOR_STATES = tuple(
+    (label, global_name, member_name, _freeze_direct_behavior(member))
+    for label, global_name, member_name, member in _FROZEN_IMPORTED_BEHAVIOR_MEMBERS
+)
+
+# Public stdlib wrappers can preserve their own identity/code while execution-relevant
+# module globals are rebound. Bind the two concrete transitive pivots used by the exact
+# incumbent closure that were demonstrated during current-head prequalification.
+_FROZEN_TRANSITIVE_BEHAVIOR = (
+    ("re", "_compile", re, _freeze_direct_behavior(re._compile)),
+    ("json", "JSONEncoder", json, _freeze_direct_behavior(json.JSONEncoder)),
+)
+
 
 class IndexedExecutionError(RuntimeError):
     """Fail-closed indexed-execution contract error."""
 
 
 def _attest_loader_frozen_runtime_dependencies() -> None:
+    for label, module, member_name, state in _FROZEN_BOOTSTRAP_PYTHON_FUNCTIONS:
+        if not _bootstrap_python_function_state_matches(getattr(module, member_name, None), state):
+            raise IndexedExecutionError(f"{label} runtime drift")
     if _FROZEN_COLLECTIONS_COUNT_ELEMENTS is None:
         raise IndexedExecutionError("collections._count_elements unavailable at loader time")
     if getattr(collections, "_count_elements", None) is not _FROZEN_COLLECTIONS_COUNT_ELEMENTS:
         raise IndexedExecutionError("collections._count_elements runtime drift")
+    for module_name, member_name, module, state in _FROZEN_TRANSITIVE_BEHAVIOR:
+        member = getattr(module, member_name, None)
+        if not _direct_behavior_state_matches(member, state):
+            raise IndexedExecutionError(
+                f"transitive behavior drift: {module_name}.{member_name}"
+            )
 
 
 def _git_blob_sha1(payload: bytes) -> str:
@@ -412,11 +474,11 @@ def _attest_imported_behavior_members(
     label: str,
     names: Sequence[str],
 ) -> None:
-    """Bind every referenced direct stdlib member to its loader-frozen identity."""
+    """Bind every referenced direct stdlib member to loader-frozen behavior state."""
     frozen = {
-        (global_name, member_name): expected_member
-        for binding_label, global_name, member_name, expected_member
-        in _FROZEN_IMPORTED_BEHAVIOR_MEMBERS
+        (global_name, member_name): state
+        for binding_label, global_name, member_name, state
+        in _FROZEN_IMPORTED_BEHAVIOR_STATES
         if binding_label == label
     }
     required = _referenced_frozen_behavior_members(module, label, names)
@@ -430,8 +492,8 @@ def _attest_imported_behavior_members(
         imported = live_namespace.get(global_name)
         if imported is None:
             raise IndexedExecutionError(f"{label} imported behavior global missing: {global_name}")
-        expected_member = frozen[(global_name, member_name)]
-        if getattr(imported, member_name, None) is not expected_member:
+        state = frozen[(global_name, member_name)]
+        if not _direct_behavior_state_matches(getattr(imported, member_name, None), state):
             raise IndexedExecutionError(
                 f"{label} imported behavior drift: {global_name}.{member_name}"
             )
@@ -497,6 +559,7 @@ def _attest_direct_imported_behavior(
 
 def _attest_executable_module(module: Any, label: str) -> dict[str, Any]:
     """Reconstruct source and bind its live executable global closure."""
+    _attest_loader_frozen_runtime_dependencies()
     canonical = _canonical_namespace(module, label)
     referenced_globals: set[str] = set()
     for name, expected in canonical.items():

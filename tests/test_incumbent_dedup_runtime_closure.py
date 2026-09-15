@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
+import inspect
+import json
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -10,6 +14,7 @@ import pytest
 from twelve_six.data.incumbent_dedup_indexed_execution import (
     IndexedExecutionError,
     _attest_executable_module,
+    _attest_loader_frozen_runtime_dependencies,
 )
 
 
@@ -155,6 +160,110 @@ def test_attestation_rejects_imported_behavior_member_in_place_mutation(
             match=rf"{label} imported behavior drift: {global_name}\.{member_name}",
         ):
             _attest_executable_module(module, label)
+
+
+@pytest.mark.parametrize(
+    ("label", "module", "member_name"),
+    (
+        ("ast.parse", ast, "parse"),
+        ("inspect.isclass", inspect, "isclass"),
+        ("inspect.isfunction", inspect, "isfunction"),
+    ),
+)
+def test_loader_bootstrap_rejects_python_function_code_drift(
+    label: str,
+    module: ModuleType,
+    member_name: str,
+) -> None:
+    function = getattr(module, member_name)
+    original_code = function.__code__
+    caught: str | None = None
+
+    def replacement(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    try:
+        function.__code__ = replacement.__code__
+        try:
+            _attest_loader_frozen_runtime_dependencies()
+        except IndexedExecutionError as exc:
+            caught = str(exc)
+    finally:
+        function.__code__ = original_code
+
+    assert caught == f"{label} runtime drift"
+    _attest_loader_frozen_runtime_dependencies()
+
+
+def test_imported_python_member_code_drift_is_rejected_without_rebinding(
+    tmp_path: Path,
+) -> None:
+    module = _load_source_module(
+        tmp_path,
+        "synthetic_v1_json_dumps_in_place",
+        "import json\ndef encode(value):\n    return json.dumps(value)\n",
+    )
+    _attest_executable_module(module, "V1")
+    original_code = json.dumps.__code__
+    caught: str | None = None
+
+    def replacement(*args: object, **kwargs: object) -> str:
+        del args, kwargs
+        return "drifted"
+
+    try:
+        json.dumps.__code__ = replacement.__code__
+        assert module.json.dumps is json.dumps
+        try:
+            _attest_executable_module(module, "V1")
+        except IndexedExecutionError as exc:
+            caught = str(exc)
+    finally:
+        json.dumps.__code__ = original_code
+
+    assert caught == "V1 imported behavior drift: json.dumps"
+    _attest_executable_module(module, "V1")
+
+
+def test_loader_rejects_re_compile_transitive_rebinding() -> None:
+    original = re._compile
+    caught: str | None = None
+
+    def replacement(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return object()
+
+    try:
+        re._compile = replacement
+        try:
+            _attest_loader_frozen_runtime_dependencies()
+        except IndexedExecutionError as exc:
+            caught = str(exc)
+    finally:
+        re._compile = original
+
+    assert caught == "transitive behavior drift: re._compile"
+    _attest_loader_frozen_runtime_dependencies()
+
+
+def test_loader_rejects_json_encoder_transitive_rebinding() -> None:
+    original = json.JSONEncoder
+    caught: str | None = None
+
+    class ReplacementEncoder:
+        pass
+
+    try:
+        json.JSONEncoder = ReplacementEncoder
+        try:
+            _attest_loader_frozen_runtime_dependencies()
+        except IndexedExecutionError as exc:
+            caught = str(exc)
+    finally:
+        json.JSONEncoder = original
+
+    assert caught == "transitive behavior drift: json.JSONEncoder"
+    _attest_loader_frozen_runtime_dependencies()
 
 
 def test_verifier_attests_before_reference_callable(
