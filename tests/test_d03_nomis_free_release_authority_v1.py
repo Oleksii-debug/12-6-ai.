@@ -42,7 +42,7 @@ def test_release_delta_rejects_extra_product_mutation() -> None:
     mutated = dict(verifier.EXPECTED_RELEASE_DELTA)
     mutated["tools/run_d03_nomis_free_clean_successor_v1.py"] = "M"
     with pytest.raises(verifier.ReleaseAuthorityError, match="release delta drift"):
-        verifier._require_release_delta(mutated)
+        verifier.require_release_delta(mutated)
 
 
 def test_release_delta_rejects_restored_temporary_workflow() -> None:
@@ -50,7 +50,7 @@ def test_release_delta_rejects_restored_temporary_workflow() -> None:
     mutated = dict(verifier.EXPECTED_RELEASE_DELTA)
     mutated.pop(verifier.TEMP_WORKFLOW)
     with pytest.raises(verifier.ReleaseAuthorityError, match="release delta drift"):
-        verifier._require_release_delta(mutated)
+        verifier.require_release_delta(mutated)
 
 
 def test_release_verifier_rejects_coherently_changed_science_blob(
