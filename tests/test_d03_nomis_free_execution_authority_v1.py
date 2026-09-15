@@ -139,3 +139,10 @@ def test_complete_survivor_projection_binds_row_hash_fields() -> None:
     mutated["survivor_authority_sha256"] = verifier.sha(verifier.canon(mutated_core))
     with pytest.raises(verifier.AuthorityError):
         verifier._require_exact_json(mutated, survivor, "complete survivor authority")
+
+
+def test_stale_expected_product_head_fails_closed() -> None:
+    verifier = _load_verifier()
+    stale_head = "0" * 40
+    with pytest.raises(verifier.AuthorityError, match="Product HEAD drift"):
+        verifier.verify_product_checkout(ROOT, stale_head)
