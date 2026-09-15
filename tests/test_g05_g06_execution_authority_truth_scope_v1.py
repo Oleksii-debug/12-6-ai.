@@ -10,7 +10,6 @@ from twelve_six.data import (
     quality_execution_authority as g05,
 )
 
-
 _G05_INPUT_MANIFEST_SHA256 = "a" * 64
 _SCOPED_KEY = "whole_corpus_external_llm_cleanliness_claimed"
 _LEGACY_KEY = "external_llm_or_api_used_for_data_or_intelligence"
