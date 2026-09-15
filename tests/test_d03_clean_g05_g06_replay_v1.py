@@ -141,11 +141,59 @@ def test_physical_identity_is_runner_derived_and_sha_bound(
         replay._physical_identity(head)
 
 
-def test_bound_incumbent_engine_blobs_match_current_tree() -> None:
+def test_bound_repaired_engine_blobs_match_integrated_tree() -> None:
+    assert replay.QUALITY_MODULE_BLOB_SHA1 == "4659a9d4aba49908f372250904a54361c8d8cf46"
+    assert replay.PRIVACY_MODULE_BLOB_SHA1 == "9215287e81c0a82f05ec8405dc4f34c60313c193"
     observed = replay._verify_engine_bindings(ROOT)
     assert observed[str(replay.QUALITY_MODULE)] == replay.QUALITY_MODULE_BLOB_SHA1
     assert observed[str(replay.PRIVACY_MODULE)] == replay.PRIVACY_MODULE_BLOB_SHA1
     assert observed[str(replay.CLEAN_MATERIALIZER)] == replay.CLEAN_MATERIALIZER_BLOB_SHA1
+
+
+def test_g05_manifest_anchor_is_complete_retained_evidence_identity() -> None:
+    retained = {
+        "execution_head_sha": replay.RETAINED_EXECUTION_HEAD,
+        "evidence_identity_sha256": replay.RETAINED_DATA526_EVIDENCE_IDENTITY_SHA256,
+    }
+    assert replay._g05_manifest_authority(retained) == (
+        replay.RETAINED_DATA526_EVIDENCE_IDENTITY_SHA256
+    )
+
+    inventory_alias = dict(retained)
+    inventory_alias["evidence_identity_sha256"] = replay.EXPECTED_RECORD_INVENTORY_SHA256
+    with pytest.raises(replay.CleanG05G06ReplayError, match="retained evidence identity drift"):
+        replay._g05_manifest_authority(inventory_alias)
+
+
+def test_shared_g05_g06_input_root_is_anchored_to_text_free_inventory() -> None:
+    text = "clean payload"
+    raw_records = [{"id": "r1", "text": text, "mode": "en"}]
+    inventory = [
+        {
+            "record_id": "r1",
+            "source_id": "s1",
+            "family": "fixture",
+            "modality": "en",
+            "payload_sha256": replay._sha256(text.encode("utf-8")),
+            "payload_bytes": len(text.encode("utf-8")),
+        }
+    ]
+    expected = replay.input_rows_sha256_from_text_free_inventory(inventory)
+    assert replay._verify_shared_input_root(raw_records, expected) == expected
+
+    changed = [{"id": "r1", "text": text + "!", "mode": "en"}]
+    with pytest.raises(replay.CleanG05G06ReplayError, match="raw/inventory input root mismatch"):
+        replay._verify_shared_input_root(changed, expected)
+
+
+def test_authenticated_json_rejects_duplicate_object_members(tmp_path: Path) -> None:
+    path = tmp_path / "ambiguous.json"
+    path.write_text(
+        '{"schema_version":"first","schema_version":"second"}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(replay.CleanG05G06ReplayError, match="duplicate JSON object key"):
+        replay._read_json(path)
 
 
 def test_receipt_source_has_no_training_upgrade_or_global_provenance_upgrade() -> None:

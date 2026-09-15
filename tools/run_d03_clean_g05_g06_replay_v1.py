@@ -3,7 +3,7 @@
 
 The corpus bytes are reconstructed under the immutable #2107 physical authority
 head, while this tracked carrier and the unchanged G05/G06 engines execute from
-the current Product head.  The two identities are deliberately distinct: a new
+the current Product head. The two identities are deliberately distinct: a new
 Product commit must not pretend it rematerialized the corpus historically.
 
 Durable output is text-free and grants no corpus/training/tokenizer authority.
@@ -72,9 +72,9 @@ PR462_AUTHORITY_SHA256 = (
 )
 
 QUALITY_MODULE = Path("src/twelve_six/data/quality_execution_authority.py")
-QUALITY_MODULE_BLOB_SHA1 = "c8963d2d697f3cd124a5b511d2883a93f8caf34d"
+QUALITY_MODULE_BLOB_SHA1 = "4659a9d4aba49908f372250904a54361c8d8cf46"
 PRIVACY_MODULE = Path("src/twelve_six/data/privacy_execution_authority.py")
-PRIVACY_MODULE_BLOB_SHA1 = "e798adf593b4bd4475acb47f017b4acc36a439a9"
+PRIVACY_MODULE_BLOB_SHA1 = "9215287e81c0a82f05ec8405dc4f34c60313c193"
 CLEAN_MATERIALIZER = Path("tools/materialize_d03_nomis_free_data526_successor_v1.py")
 CLEAN_MATERIALIZER_BLOB_SHA1 = "d183bb83df73ca4ca528d4360048c9ccc031cf33"
 
@@ -162,9 +162,20 @@ def _strict_bool(value: Any, field: str) -> bool:
     return value
 
 
+def _strict_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        _require(key not in value, f"duplicate JSON object key: {key}")
+        value[key] = item
+    return value
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_strict_object_pairs,
+        )
     except (OSError, json.JSONDecodeError) as exc:
         raise CleanG05G06ReplayError(f"cannot read JSON {path}: {exc}") from exc
     _require(type(value) is dict, f"{path} root must be object")
@@ -322,6 +333,13 @@ def _validate_retained_materialization_authority(value: Mapping[str, Any]) -> No
     )
 
 
+def _g05_manifest_authority(value: Mapping[str, Any]) -> str:
+    _validate_retained_materialization_authority(value)
+    identity = value.get("evidence_identity_sha256")
+    _require(type(identity) is str, "DATA526 retained evidence identity malformed")
+    return identity
+
+
 def _validate_inventory(path: Path) -> tuple[list[dict[str, Any]], str]:
     value = _read_json(path)
     _require(set(value) == _INVENTORY_KEYS, "clean inventory top-level schema drift")
@@ -414,7 +432,10 @@ def _load_records(path: Path) -> list[dict[str, str]]:
     for line_number, line in enumerate(raw.splitlines(), start=1):
         _require(bool(line.strip()), f"blank JSONL line {line_number}")
         try:
-            value = json.loads(line.decode("utf-8"))
+            value = json.loads(
+                line.decode("utf-8"),
+                object_pairs_hook=_strict_object_pairs,
+            )
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise CleanG05G06ReplayError(f"invalid JSONL line {line_number}: {exc}") from exc
         _require(
@@ -466,6 +487,24 @@ def _quality_input_root(records: list[dict[str, str]]) -> str:
     return _sha256(_cjson(projection))
 
 
+def _verify_shared_input_root(records: list[dict[str, str]], expected_root: str) -> str:
+    observed_g06_root = input_rows_sha256(records)
+    _require(observed_g06_root == expected_root, "G06 raw/inventory input root mismatch")
+    quality_records = [
+        {
+            "record_id": row["id"],
+            "source_id": "",
+            "family": "",
+            "modality": row["mode"],
+            "normalized_payload": row["text"],
+        }
+        for row in records
+    ]
+    observed_g05_root = _quality_input_root(quality_records)
+    _require(observed_g05_root == expected_root, "G05 raw/inventory input root mismatch")
+    return expected_root
+
+
 def _physical_identity(execution_head: str) -> dict[str, Any]:
     repository = os.environ.get("GITHUB_REPOSITORY", "")
     sha = os.environ.get("GITHUB_SHA", "")
@@ -503,8 +542,8 @@ def execute(
 
     data526_evidence = _read_json(data526_evidence_json)
     clean = _validate_data526_evidence(data526_evidence)
-    _validate_retained_materialization_authority(data526_evidence)
-    inventory, expected_g06_root = _validate_inventory(inventory_json)
+    input_manifest = _g05_manifest_authority(data526_evidence)
+    inventory, expected_input_root = _validate_inventory(inventory_json)
     records = _load_records(records_jsonl)
     _bind_records_to_inventory(records, inventory)
 
@@ -512,21 +551,18 @@ def execute(
         {"id": row["record_id"], "text": row["normalized_payload"], "mode": row["modality"]}
         for row in records
     ]
-    observed_g06_root = input_rows_sha256(g_records)
-    _require(observed_g06_root == expected_g06_root, "G06 raw/inventory input root mismatch")
+    shared_input_root = _verify_shared_input_root(g_records, expected_input_root)
 
-    g05_root = _quality_input_root(records)
-    input_manifest = EXPECTED_RECORD_INVENTORY_SHA256
     g05 = build_quality_execution_authority(
         g_records,
         input_manifest_sha256=input_manifest,
-        expected_input_rows_sha256=g05_root,
+        expected_input_rows_sha256=shared_input_root,
     )
     g05_identity = verify_quality_execution_authority(
         g05,
         g_records,
         expected_input_manifest_sha256=input_manifest,
-        expected_input_rows_sha256=g05_root,
+        expected_input_rows_sha256=shared_input_root,
         expected_execution_identity_sha256=g05["execution_identity_sha256"],
     )
     _require(g05["counts"]["records"] == EXPECTED_RECORDS, "G05 coverage drift")
@@ -542,18 +578,18 @@ def execute(
 
     g06 = build_privacy_execution_authority(
         g_records,
-        expected_input_rows_sha256=expected_g06_root,
+        expected_input_rows_sha256=shared_input_root,
     )
     g06_identity = g06["execution_identity_sha256"]
     verify_privacy_execution_root(
         g06,
-        expected_input_rows_sha256=expected_g06_root,
+        expected_input_rows_sha256=shared_input_root,
         expected_execution_identity_sha256=g06_identity,
     )
     verify_privacy_execution_authority(
         g06,
         g_records,
-        expected_input_rows_sha256=expected_g06_root,
+        expected_input_rows_sha256=shared_input_root,
         expected_execution_identity_sha256=g06_identity,
     )
     _require(g06["counts"]["records"] == EXPECTED_RECORDS, "G06 coverage drift")
@@ -570,6 +606,8 @@ def execute(
         "record_payload_jsonl_sha256": EXPECTED_RECORDS_JSONL_SHA256,
         "record_inventory_digest_sha256": EXPECTED_RECORD_INVENTORY_SHA256,
         "payload_inventory_digest_sha256": EXPECTED_PAYLOAD_INVENTORY_SHA256,
+        "g05_input_manifest_sha256": input_manifest,
+        "shared_input_rows_sha256": shared_input_root,
         "g05_execution_identity_sha256": g05_identity,
         "g05_execution_rows_sha256": g05["execution_rows_sha256"],
         "g05_counts": g05["counts"],
@@ -613,7 +651,7 @@ def execute(
         },
         "g05": {
             "input_manifest_sha256": input_manifest,
-            "input_rows_sha256": g05_root,
+            "input_rows_sha256": shared_input_root,
             "execution_identity_sha256": g05_identity,
             "execution_rows_sha256": g05["execution_rows_sha256"],
             "counts": g05["counts"],
@@ -621,7 +659,7 @@ def execute(
             "authority": g05,
         },
         "g06": {
-            "input_rows_sha256": expected_g06_root,
+            "input_rows_sha256": shared_input_root,
             "execution_identity_sha256": g06_identity,
             "execution_rows_sha256": g06["execution_rows_sha256"],
             "counts": g06["counts"],
@@ -631,8 +669,8 @@ def execute(
         },
         "truth_boundary": dict(_ZERO_FALSE_BOUNDARY),
         "scope_note": (
-            "Nested incumbent engine provenance flags are pipeline-local mechanics only; "
-            "this replay explicitly makes no whole-corpus external-LLM cleanliness claim."
+            "Canonical G05/G06 authorities use the scoped whole-corpus non-claim; "
+            "this replay makes no whole-corpus external-LLM cleanliness claim."
         ),
     }
     receipt = {**core, "replay_identity_sha256": _sha256(_cjson(core))}

@@ -68,7 +68,7 @@ _TRUTH_BOUNDARY = {
     "final_test_outcomes_read": False,
     "paid_compute_used": False,
     "foreign_pretrained_weights": False,
-    "external_llm_or_api_used_for_data_or_intelligence": False,
+    "whole_corpus_external_llm_cleanliness_claimed": False,
     "source_text_retained_in_authority": False,
     "text_previews_retained_in_authority": False,
     "matched_values_retained_in_authority": False,
@@ -611,7 +611,14 @@ def verify_privacy_execution_root(
         raise PrivacyExecutionAuthorityError(
             "privacy implementation/policy binding drift"
         )
-    if authority["truth_boundary"] != _TRUTH_BOUNDARY:
+    truth_boundary = authority["truth_boundary"]
+    if not isinstance(truth_boundary, Mapping) or set(truth_boundary) != set(
+        _TRUTH_BOUNDARY
+    ):
+        raise PrivacyExecutionAuthorityError(
+            "privacy execution truth boundary drift"
+        )
+    if _cjson(truth_boundary) != _cjson(_TRUTH_BOUNDARY):
         raise PrivacyExecutionAuthorityError(
             "privacy execution truth boundary drift"
         )
