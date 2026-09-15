@@ -215,16 +215,11 @@ def _verify_integrated_source_anchor(document: Mapping[str, Any]) -> None:
     for key, value in expected.items():
         if key == "source_anchor_identity_sha256":
             continue
-        if type(value) is bool:
-            _require(
-                type(document.get(key)) is bool and document.get(key) is value,
-                f"integrated source anchor drift: {key}",
-            )
-        else:
-            _require(
-                document.get(key) == value,
-                f"integrated source anchor drift: {key}",
-            )
+        actual = document.get(key)
+        _require(
+            type(actual) is type(value) and actual == value,
+            f"integrated source anchor drift: {key}",
+        )
     _require(
         document.get("source_anchor_identity_sha256")
         == _self_hash(document, "source_anchor_identity_sha256"),
