@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -33,3 +34,380 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+
+  d03_replay_a:
+    needs: bootstrap
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 2136 &&
+      github.event.pull_request.head.ref == 'work/2131-clean-g05-g06-replay-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+    outputs:
+      projection: ${{ steps.emit.outputs.projection }}
+      replay_identity: ${{ steps.emit.outputs.replay_identity }}
+      g05_identity: ${{ steps.emit.outputs.g05_identity }}
+      g06_identity: ${{ steps.emit.outputs.g06_identity }}
+      data526_identity: ${{ steps.emit.outputs.data526_identity }}
+      receipt_sha256: ${{ steps.emit.outputs.receipt_sha256 }}
+      physical_job: ${{ steps.emit.outputs.physical_job }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - run: pip install -e .
+      - name: Prove exact Product checkout
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python -m py_compile tools/run_d03_clean_g05_g06_replay_v1.py
+      - name: Checkout exact terminal V7 implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d3333ec1b4a508df232a5aefccd6686adda745fb
+          path: _terminal_v7
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact historical PR623 DATA526 materializer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
+          path: _pr623
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install deterministic PDF extractor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+      - name: Retrieve immutable DATA-213 normalized artifact
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9600107886/zip" \
+            -o "$RUNNER_TEMP/data213.zip"
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          raw = (Path(os.environ["RUNNER_TEMP"]) / "data213.zip").read_bytes()
+          assert hashlib.sha256(raw).hexdigest() == "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          PY
+      - name: Reconstruct exact clean source authority
+        run: >-
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/run_d03_nomis_free_clean_successor_v1.py run
+          --current-root .
+          --v7-root _terminal_v7
+          --workspace "$RUNNER_TEMP/source-work"
+          --report "$RUNNER_TEMP/source.json"
+          --survivor "$RUNNER_TEMP/survivor.json"
+      - name: Reconstruct exact clean DATA526 payload
+        run: >-
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/materialize_d03_nomis_free_data526_successor_v1.py
+          --current-root .
+          --execution-head-sha "$SOURCE_SHA"
+          --v7-root _terminal_v7
+          --historical-materializer-root _pr623
+          --data213-zip "$RUNNER_TEMP/data213.zip"
+          --bulk-workspace "$RUNNER_TEMP/data526-bulk"
+          --source-report "$RUNNER_TEMP/source.json"
+          --survivor "$RUNNER_TEMP/survivor.json"
+          --historical-records-jsonl "$RUNNER_TEMP/historical.jsonl"
+          --records-jsonl "$RUNNER_TEMP/records.jsonl"
+          --inventory-json "$RUNNER_TEMP/inventory.json"
+          --evidence-json "$RUNNER_TEMP/evidence.json"
+      - name: Execute incumbent G05/G06 on physical clean payload
+        run: >-
+          GITHUB_SHA="$SOURCE_SHA"
+          python tools/run_d03_clean_g05_g06_replay_v1.py
+          --records-jsonl "$RUNNER_TEMP/records.jsonl"
+          --inventory-json "$RUNNER_TEMP/inventory.json"
+          --data526-evidence-json "$RUNNER_TEMP/evidence.json"
+          --output "$RUNNER_TEMP/receipt-a.json"
+      - name: Emit hash-only replay identity
+        id: emit
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "receipt-a.json"
+          raw = path.read_bytes()
+          receipt = json.loads(raw)
+          values = {
+              "projection": receipt["replay_projection_sha256"],
+              "replay_identity": receipt["replay_identity_sha256"],
+              "g05_identity": receipt["g05"]["execution_identity_sha256"],
+              "g06_identity": receipt["g06"]["execution_identity_sha256"],
+              "data526_identity": receipt["fresh_clean_reconstruction"]["evidence_identity_sha256"],
+              "receipt_sha256": hashlib.sha256(raw).hexdigest(),
+              "physical_job": receipt["physical_identity"]["workflow_job"],
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              for key, value in values.items():
+                  output.write(f"{key}={value}\n")
+          PY
+      - name: Delete raw payload-bearing execution products
+        run: |
+          rm -rf \
+            "$RUNNER_TEMP/source-work" "$RUNNER_TEMP/data526-bulk" \
+            "$RUNNER_TEMP/data213.zip" "$RUNNER_TEMP/historical.jsonl" \
+            "$RUNNER_TEMP/records.jsonl" "$RUNNER_TEMP/source.json" \
+            "$RUNNER_TEMP/survivor.json" "$RUNNER_TEMP/inventory.json" \
+            "$RUNNER_TEMP/evidence.json"
+      - name: Retain text-free replay receipt A
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-clean-g05-g06-replay-a-${{ env.SOURCE_SHA }}
+          if-no-files-found: error
+          retention-days: 90
+          path: ${{ runner.temp }}/receipt-a.json
+
+  d03_replay_b:
+    needs: bootstrap
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 2136 &&
+      github.event.pull_request.head.ref == 'work/2131-clean-g05-g06-replay-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+    outputs:
+      projection: ${{ steps.emit.outputs.projection }}
+      replay_identity: ${{ steps.emit.outputs.replay_identity }}
+      g05_identity: ${{ steps.emit.outputs.g05_identity }}
+      g06_identity: ${{ steps.emit.outputs.g06_identity }}
+      data526_identity: ${{ steps.emit.outputs.data526_identity }}
+      receipt_sha256: ${{ steps.emit.outputs.receipt_sha256 }}
+      physical_job: ${{ steps.emit.outputs.physical_job }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+      - run: pip install -e .
+      - name: Prove exact Product checkout
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python -m py_compile tools/run_d03_clean_g05_g06_replay_v1.py
+      - name: Checkout exact terminal V7 implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d3333ec1b4a508df232a5aefccd6686adda745fb
+          path: _terminal_v7
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout exact historical PR623 DATA526 materializer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 70d6ccc87396d129d00771bbf0b6b29bc673bfc4
+          path: _pr623
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install deterministic PDF extractor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+      - name: Retrieve immutable DATA-213 normalized artifact
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/9600107886/zip" \
+            -o "$RUNNER_TEMP/data213.zip"
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          raw = (Path(os.environ["RUNNER_TEMP"]) / "data213.zip").read_bytes()
+          assert hashlib.sha256(raw).hexdigest() == "927e10ccb83f919d57a8b78e3ea9cae72f9d4e0232401043234a35eec150074d"
+          PY
+      - name: Reconstruct exact clean source authority
+        run: >-
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/run_d03_nomis_free_clean_successor_v1.py run
+          --current-root .
+          --v7-root _terminal_v7
+          --workspace "$RUNNER_TEMP/source-work"
+          --report "$RUNNER_TEMP/source.json"
+          --survivor "$RUNNER_TEMP/survivor.json"
+      - name: Reconstruct exact clean DATA526 payload
+        run: >-
+          python tools/run_d03_nomis_free_v7_data_only_v1.py _terminal_v7
+          tools/materialize_d03_nomis_free_data526_successor_v1.py
+          --current-root .
+          --execution-head-sha "$SOURCE_SHA"
+          --v7-root _terminal_v7
+          --historical-materializer-root _pr623
+          --data213-zip "$RUNNER_TEMP/data213.zip"
+          --bulk-workspace "$RUNNER_TEMP/data526-bulk"
+          --source-report "$RUNNER_TEMP/source.json"
+          --survivor "$RUNNER_TEMP/survivor.json"
+          --historical-records-jsonl "$RUNNER_TEMP/historical.jsonl"
+          --records-jsonl "$RUNNER_TEMP/records.jsonl"
+          --inventory-json "$RUNNER_TEMP/inventory.json"
+          --evidence-json "$RUNNER_TEMP/evidence.json"
+      - name: Execute incumbent G05/G06 on physical clean payload
+        run: >-
+          GITHUB_SHA="$SOURCE_SHA"
+          python tools/run_d03_clean_g05_g06_replay_v1.py
+          --records-jsonl "$RUNNER_TEMP/records.jsonl"
+          --inventory-json "$RUNNER_TEMP/inventory.json"
+          --data526-evidence-json "$RUNNER_TEMP/evidence.json"
+          --output "$RUNNER_TEMP/receipt-b.json"
+      - name: Emit hash-only replay identity
+        id: emit
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "receipt-b.json"
+          raw = path.read_bytes()
+          receipt = json.loads(raw)
+          values = {
+              "projection": receipt["replay_projection_sha256"],
+              "replay_identity": receipt["replay_identity_sha256"],
+              "g05_identity": receipt["g05"]["execution_identity_sha256"],
+              "g06_identity": receipt["g06"]["execution_identity_sha256"],
+              "data526_identity": receipt["fresh_clean_reconstruction"]["evidence_identity_sha256"],
+              "receipt_sha256": hashlib.sha256(raw).hexdigest(),
+              "physical_job": receipt["physical_identity"]["workflow_job"],
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              for key, value in values.items():
+                  output.write(f"{key}={value}\n")
+          PY
+      - name: Delete raw payload-bearing execution products
+        run: |
+          rm -rf \
+            "$RUNNER_TEMP/source-work" "$RUNNER_TEMP/data526-bulk" \
+            "$RUNNER_TEMP/data213.zip" "$RUNNER_TEMP/historical.jsonl" \
+            "$RUNNER_TEMP/records.jsonl" "$RUNNER_TEMP/source.json" \
+            "$RUNNER_TEMP/survivor.json" "$RUNNER_TEMP/inventory.json" \
+            "$RUNNER_TEMP/evidence.json"
+      - name: Retain text-free replay receipt B
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-clean-g05-g06-replay-b-${{ env.SOURCE_SHA }}
+          if-no-files-found: error
+          retention-days: 90
+          path: ${{ runner.temp }}/receipt-b.json
+
+  d03_replay_compare:
+    needs: [d03_replay_a, d03_replay_b]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      A_PROJECTION: ${{ needs.d03_replay_a.outputs.projection }}
+      B_PROJECTION: ${{ needs.d03_replay_b.outputs.projection }}
+      A_REPLAY: ${{ needs.d03_replay_a.outputs.replay_identity }}
+      B_REPLAY: ${{ needs.d03_replay_b.outputs.replay_identity }}
+      A_G05: ${{ needs.d03_replay_a.outputs.g05_identity }}
+      B_G05: ${{ needs.d03_replay_b.outputs.g05_identity }}
+      A_G06: ${{ needs.d03_replay_a.outputs.g06_identity }}
+      B_G06: ${{ needs.d03_replay_b.outputs.g06_identity }}
+      A_DATA526: ${{ needs.d03_replay_a.outputs.data526_identity }}
+      B_DATA526: ${{ needs.d03_replay_b.outputs.data526_identity }}
+      A_RECEIPT_SHA: ${{ needs.d03_replay_a.outputs.receipt_sha256 }}
+      B_RECEIPT_SHA: ${{ needs.d03_replay_b.outputs.receipt_sha256 }}
+      A_JOB: ${{ needs.d03_replay_a.outputs.physical_job }}
+      B_JOB: ${{ needs.d03_replay_b.outputs.physical_job }}
+    steps:
+      - name: Require two distinct physical identities with identical deterministic science
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          def require_hash(name: str) -> str:
+              value = os.environ[name]
+              assert len(value) == 64 and all(ch in "0123456789abcdef" for ch in value), name
+              return value
+          a_projection = require_hash("A_PROJECTION")
+          b_projection = require_hash("B_PROJECTION")
+          a_replay = require_hash("A_REPLAY")
+          b_replay = require_hash("B_REPLAY")
+          a_g05 = require_hash("A_G05")
+          b_g05 = require_hash("B_G05")
+          a_g06 = require_hash("A_G06")
+          b_g06 = require_hash("B_G06")
+          a_data526 = require_hash("A_DATA526")
+          b_data526 = require_hash("B_DATA526")
+          a_receipt = require_hash("A_RECEIPT_SHA")
+          b_receipt = require_hash("B_RECEIPT_SHA")
+          assert os.environ["A_JOB"] == "d03_replay_a"
+          assert os.environ["B_JOB"] == "d03_replay_b"
+          assert os.environ["A_JOB"] != os.environ["B_JOB"]
+          assert a_replay != b_replay
+          assert a_receipt != b_receipt
+          assert a_projection == b_projection
+          assert a_g05 == b_g05
+          assert a_g06 == b_g06
+          assert a_data526 == b_data526
+          summary = {
+              "schema_version": "12-6.d03-clean-g05-g06-two-replay-terminal.v1",
+              "execution_head_sha": os.environ["SOURCE_SHA"],
+              "execution_profile": "LOCAL_FREE",
+              "physical_jobs": [os.environ["A_JOB"], os.environ["B_JOB"]],
+              "replay_identity_a_sha256": a_replay,
+              "replay_identity_b_sha256": b_replay,
+              "receipt_a_sha256": a_receipt,
+              "receipt_b_sha256": b_receipt,
+              "deterministic_replay_projection_sha256": a_projection,
+              "g05_execution_identity_sha256": a_g05,
+              "g06_execution_identity_sha256": a_g06,
+              "fresh_data526_evidence_identity_sha256": a_data526,
+              "two_distinct_physical_replay_identities": True,
+              "deterministic_scientific_projection_agrees": True,
+              "current_corpus_eligible": False,
+              "training_authorized_bytes": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+              "whole_corpus_external_llm_cleanliness_claimed": False,
+              "raw_payloads_retained_in_output": False,
+          }
+          path = Path(os.environ["RUNNER_TEMP"]) / "terminal-summary.json"
+          path.write_text(json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n")
+          print(json.dumps(summary, sort_keys=True))
+          PY
+      - name: Retain text-free terminal replay summary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-clean-g05-g06-terminal-${{ env.SOURCE_SHA }}
+          if-no-files-found: error
+          retention-days: 90
+          path: ${{ runner.temp }}/terminal-summary.json
