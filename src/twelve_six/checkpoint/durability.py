@@ -13,18 +13,34 @@ from typing import Any
 
 _AT_FDCWD = -100
 _RENAME_NOREPLACE = 1
+_POSIX_FD_ALIAS_ROOTS = (Path("/proc/self/fd"), Path("/dev/fd"))
 
 
 def _same_object(left: os.stat_result, right: os.stat_result) -> bool:
     return (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
 
 
+def _is_posix_process_fd_alias(path: Path) -> bool:
+    """Return whether *path* is one exact process-owned POSIX fd alias."""
+
+    return (
+        os.name == "posix"
+        and path.name.isdecimal()
+        and path.parent in _POSIX_FD_ALIAS_ROOTS
+    )
+
+
 def _require_existing_real_parent(destination: Path) -> os.stat_result:
-    """Require an already-existing real parent before claiming local durability.
+    """Require an existing real parent or an exact process-owned fd alias.
 
     Creating missing ancestors here would require separately fsyncing every new
     directory entry in that ancestor chain. Checkpoint-v1 deliberately avoids that
     wider claim: callers must establish the destination parent first.
+
+    POSIX pinned-directory recovery intentionally addresses the already-opened
+    directory object through ``/proc/self/fd/<N>`` or ``/dev/fd/<N>``. Those
+    kernel-owned aliases are the sole symlink-shaped exception; arbitrary symlink
+    parents remain rejected.
     """
 
     parent = destination.parent
@@ -36,6 +52,22 @@ def _require_existing_real_parent(destination: Path) -> os.stat_result:
             "checkpoint destination parent must already exist",
             str(parent),
         ) from exc
+    if stat.S_ISLNK(observed.st_mode) and _is_posix_process_fd_alias(parent):
+        try:
+            followed = parent.stat()
+        except OSError as exc:
+            raise OSError(
+                errno.ENOTDIR,
+                "checkpoint destination parent fd alias is not usable",
+                str(parent),
+            ) from exc
+        if not stat.S_ISDIR(followed.st_mode):
+            raise OSError(
+                errno.ENOTDIR,
+                "checkpoint destination parent fd alias must resolve to a directory",
+                str(parent),
+            )
+        return followed
     if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
         raise OSError(
             errno.ENOTDIR,
@@ -91,10 +123,13 @@ def fsync_checkpoint_tree(directory: str | Path, *, expected_names: frozenset[st
 
 
 def fsync_parent_directory(path: str | Path) -> None:
-    """Flush the exact real parent after atomic publication of a checkpoint."""
+    """Flush the exact parent after atomic publication of a checkpoint."""
     parent = Path(path).parent
+    process_fd_alias = _is_posix_process_fd_alias(parent)
     before = _require_existing_real_parent(Path(path))
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    if not process_fd_alias:
+        flags |= getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(parent, flags)
     try:
         opened = os.fstat(fd)

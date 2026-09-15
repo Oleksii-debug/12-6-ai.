@@ -13,6 +13,10 @@ from twelve_six.checkpoint import hash_json, recovery_lock
 from twelve_six.scale141_recovery import RecoveryLifecycleError
 from twelve_six.scale141_resume_sidecar import ResumeSidecarError, _read_payload
 
+_VALID_CHECKPOINT_ID = "a" * 64
+_REPLACEMENT_CHECKPOINT_ID = "b" * 64
+_VALID_MANIFEST_SHA256 = "4" * 64
+
 
 def _write(path: Path, payload: dict[str, object]) -> str:
     data = (
@@ -28,7 +32,9 @@ def _write_recovery_pointer(path: Path, *, checkpoint_id: str) -> dict[str, obje
         "schema": recovery.POINTER_SCHEMA,
         "generation": 1,
         "directory": "generations/generation-00000001",
+        "object_key": f"{recovery.CHECKPOINTS_DIR}/{checkpoint_id}",
         "checkpoint_id": checkpoint_id,
+        "manifest_sha256": _VALID_MANIFEST_SHA256,
         "source_sha": "2" * 40,
         "run_manifest_hash": "3" * 64,
         "optimizer_step": 1,
@@ -157,9 +163,9 @@ def test_recovery_pointer_uses_exact_opened_snapshot_when_path_changes_after_ope
     root = tmp_path / "recovery"
     root.mkdir()
     path = root / recovery.CURRENT_NAME
-    expected = _write_recovery_pointer(path, checkpoint_id="verified")
+    expected = _write_recovery_pointer(path, checkpoint_id=_VALID_CHECKPOINT_ID)
     replacement = tmp_path / "replacement-current.json"
-    _write_recovery_pointer(replacement, checkpoint_id="tampered")
+    _write_recovery_pointer(replacement, checkpoint_id=_REPLACEMENT_CHECKPOINT_ID)
     real_open = recovery.os.open
     swapped = False
 
@@ -177,7 +183,10 @@ def test_recovery_pointer_uses_exact_opened_snapshot_when_path_changes_after_ope
 
     assert swapped is True
     assert observed == expected
-    assert json.loads(path.read_text(encoding="utf-8"))["checkpoint_id"] == "tampered"
+    assert (
+        json.loads(path.read_text(encoding="utf-8"))["checkpoint_id"]
+        == _REPLACEMENT_CHECKPOINT_ID
+    )
 
 
 def test_recovery_pointer_rejects_path_swap_between_lstat_and_open(
@@ -186,9 +195,9 @@ def test_recovery_pointer_rejects_path_swap_between_lstat_and_open(
     root = tmp_path / "recovery"
     root.mkdir()
     path = root / recovery.CURRENT_NAME
-    _write_recovery_pointer(path, checkpoint_id="verified")
+    _write_recovery_pointer(path, checkpoint_id=_VALID_CHECKPOINT_ID)
     replacement = tmp_path / "replacement-current.json"
-    _write_recovery_pointer(replacement, checkpoint_id="tampered")
+    _write_recovery_pointer(replacement, checkpoint_id=_REPLACEMENT_CHECKPOINT_ID)
     real_open = recovery.os.open
     swapped = False
 
@@ -210,7 +219,7 @@ def test_recovery_pointer_rejects_symlink_even_when_target_is_valid(tmp_path: Pa
     root = tmp_path / "recovery"
     root.mkdir()
     target = tmp_path / "valid-current.json"
-    _write_recovery_pointer(target, checkpoint_id="verified")
+    _write_recovery_pointer(target, checkpoint_id=_VALID_CHECKPOINT_ID)
     link = root / recovery.CURRENT_NAME
     try:
         link.symlink_to(target)

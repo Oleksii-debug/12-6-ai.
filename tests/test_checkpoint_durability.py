@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -76,6 +77,30 @@ def test_fsync_parent_directory_rejects_symlink_parent(tmp_path: Path) -> None:
 
     with pytest.raises(OSError, match="real non-symlink directory"):
         fsync_parent_directory(linked_parent / "checkpoint")
+
+
+def test_fsync_parent_directory_accepts_process_fd_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if os.name != "posix":
+        pytest.skip("process directory-fd aliases are POSIX-specific")
+
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    fd = os.open(real_parent, flags)
+    try:
+        aliases = (Path(f"/proc/self/fd/{fd}"), Path(f"/dev/fd/{fd}"))
+        alias = next((candidate for candidate in aliases if candidate.exists()), None)
+        if alias is None:
+            pytest.skip("platform exposes no process directory-fd alias")
+
+        calls: list[int] = []
+        monkeypatch.setattr("twelve_six.checkpoint.durability.os.fsync", calls.append)
+        fsync_parent_directory(alias / "checkpoint")
+        assert len(calls) == 1
+    finally:
+        os.close(fd)
 
 
 def test_atomic_publish_noreplace_preserves_existing_destination(tmp_path: Path) -> None:
