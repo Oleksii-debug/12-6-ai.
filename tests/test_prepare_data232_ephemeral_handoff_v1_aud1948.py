@@ -6,7 +6,6 @@ import pytest
 
 import tools.prepare_data232_ephemeral_handoff_v1 as runner
 
-
 HEX_A = "a" * 40
 HEX_B = "b" * 40
 HEX_1 = "1" * 64
