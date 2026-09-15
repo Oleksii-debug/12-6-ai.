@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
-import subprocess
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 VERIFIER_PATH = ROOT / "tools/verify_d03_nomis_free_release_authority_v1.py"
+RELEASE_HEAD = "07754c5a1d61669061e608323ea35ddc093bb946"
 
 
 def _load_verifier():
@@ -18,19 +18,11 @@ def _load_verifier():
     return module
 
 
-def _head() -> str:
-    return subprocess.run(
-        ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-
-
 def test_workflow_free_release_binds_exact_physical_science() -> None:
     verifier = _load_verifier()
-    result = verifier.verify_release_checkout(ROOT, _head())
+    result = verifier.verify_release_checkout(ROOT, RELEASE_HEAD)
     assert result["physical_execution_head_sha"] == verifier.PHYSICAL_EXECUTION_HEAD
+    assert result["release_head_sha"] == RELEASE_HEAD
     assert result["temporary_execution_workflow_removed"] is True
     assert result["physical_science_bytes_unchanged"] is True
     assert result["physical_science_blob_count"] == 4
@@ -62,7 +54,7 @@ def test_release_verifier_rejects_coherently_changed_science_blob(
     mutated[path] = "0" * 40
     monkeypatch.setattr(verifier, "PHYSICAL_SCIENCE_BLOBS", mutated)
     with pytest.raises(verifier.ReleaseAuthorityError, match="physical science blob drift"):
-        verifier.verify_release_checkout(ROOT, _head())
+        verifier.verify_release_checkout(ROOT, RELEASE_HEAD)
 
 
 def test_physical_execution_head_is_not_mislabeled_as_release() -> None:
