@@ -6,8 +6,10 @@ on:
       - "tools/run_d03_nomis_free_clean_successor_v1.py"
       - "tools/materialize_d03_nomis_free_data526_successor_v1.py"
       - "tools/run_d03_nomis_free_v7_data_only_v1.py"
+      - "tools/verify_d03_nomis_free_execution_authority_v1.py"
       - "tests/test_d03_nomis_free_clean_successor_v1.py"
       - "tests/test_d03_nomis_free_data526_successor_v1.py"
+      - "tests/test_d03_nomis_free_execution_authority_v1.py"
       - ".github/workflows/d03-nomis-free-clean-successor-v1.yml"
   workflow_dispatch:
 
@@ -44,8 +46,10 @@ jobs:
             tools/run_d03_nomis_free_clean_successor_v1.py \
             tools/materialize_d03_nomis_free_data526_successor_v1.py \
             tools/run_d03_nomis_free_v7_data_only_v1.py \
+            tools/verify_d03_nomis_free_execution_authority_v1.py \
             tests/test_d03_nomis_free_clean_successor_v1.py \
-            tests/test_d03_nomis_free_data526_successor_v1.py
+            tests/test_d03_nomis_free_data526_successor_v1.py \
+            tests/test_d03_nomis_free_execution_authority_v1.py
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
