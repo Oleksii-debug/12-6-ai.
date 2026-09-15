@@ -5,8 +5,10 @@ import hashlib
 
 import pytest
 
-from twelve_six.data import privacy_execution_authority as g06
-from twelve_six.data import quality_execution_authority as g05
+from twelve_six.data import (
+    privacy_execution_authority as g06,
+    quality_execution_authority as g05,
+)
 
 
 _G05_INPUT_MANIFEST_SHA256 = "a" * 64
