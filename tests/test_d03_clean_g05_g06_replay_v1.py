@@ -14,7 +14,7 @@ SPEC.loader.exec_module(replay)
 
 
 def _valid_data526_evidence() -> dict[str, object]:
-    return {
+    evidence: dict[str, object] = {
         "schema_version": replay._DATA526_SCHEMA,
         "worker_id": "test",
         "execution_profile": replay.EXECUTION_PROFILE,
@@ -52,8 +52,9 @@ def _valid_data526_evidence() -> dict[str, object]:
             "raw_payloads_uploaded_as_public_evidence": False,
         },
         "remaining_blockers": [],
-        "evidence_identity_sha256": "3" * 64,
     }
+    evidence["evidence_identity_sha256"] = replay._sha256(replay._canonical(evidence))
+    return evidence
 
 
 def test_retained_clean_roots_are_exactly_pinned() -> None:
@@ -154,3 +155,47 @@ def test_receipt_source_has_no_training_upgrade_or_global_provenance_upgrade() -
     assert '"tokenizer_fit_authorized": False' in source
     assert '"training_executed": False' in source
     assert "normalized_payload leaked into replay receipt" in source
+
+
+def test_fresh_evidence_self_hash_is_not_self_sealable_after_mutation() -> None:
+    evidence = _valid_data526_evidence()
+    evidence["worker_id"] = "mutated-after-hash"
+    with pytest.raises(replay.CleanG05G06ReplayError):
+        replay._validate_data526_evidence(evidence)
+
+
+def test_nomis_identity_and_payload_are_rejected_before_root_acceptance(
+    tmp_path: Path,
+) -> None:
+    inventory = {
+        "schema_version": replay._INVENTORY_SCHEMA,
+        "record_count": replay.EXPECTED_RECORDS,
+        "total_payload_bytes": replay.EXPECTED_PAYLOAD_BYTES,
+        "record_inventory_digest_sha256": replay.EXPECTED_RECORD_INVENTORY_SHA256,
+        "payload_inventory_digest_sha256": replay.EXPECTED_PAYLOAD_INVENTORY_SHA256,
+        "records": [
+            {
+                "record_id": replay.NOMIS_RECORD_ID,
+                "source_id": replay.NOMIS_RECORD_ID,
+                "family": "ua.verba.public-domain.nomis1864",
+                "modality": "uk",
+                "payload_sha256": replay.NOMIS_PAYLOAD_SHA256,
+                "payload_bytes": 1,
+            }
+        ],
+    }
+    path = tmp_path / "inventory.json"
+    path.write_text(replay._canonical(inventory).decode("utf-8"), encoding="utf-8")
+    with pytest.raises(
+        replay.CleanG05G06ReplayError,
+        match="Nomis quarantined identity",
+    ):
+        replay._validate_inventory(path)
+
+
+def test_pr462_authority_is_not_promoted_by_replay_contract() -> None:
+    assert replay.PR462_AUTHORITY_SHA256 == (
+        "85f596e79b0ec6479d2ef815e2a6a9bdbfaa55993c797309c1ea4d93b1d9b0e7"
+    )
+    source = TOOL.read_text(encoding="utf-8")
+    assert '"pr462_authority_sha256_not_admitted": PR462_AUTHORITY_SHA256' in source
