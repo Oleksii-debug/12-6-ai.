@@ -81,7 +81,7 @@ def _require_nonnegative_int(value: Any, field: str) -> int:
 
 
 def _expect(value: Any, expected: Any, field: str) -> None:
-    if value != expected:
+    if type(value) is not type(expected) or value != expected:
         raise ProjectionError(f"{field} does not match independently expected value")
 
 
@@ -100,8 +100,12 @@ def _verify_zero_credit_truth(boundary: Mapping[str, Any]) -> None:
         "training_authorized_bytes": 0,
         "training_executed": False,
     }
-    if dict(boundary) != expected:
+    if set(boundary) != set(expected):
         raise ProjectionError("materialization zero-credit truth boundary drift")
+    for field, expected_value in expected.items():
+        value = boundary[field]
+        if type(value) is not type(expected_value) or value != expected_value:
+            raise ProjectionError("materialization zero-credit truth boundary drift")
 
 
 def _verify_inventory(
@@ -178,7 +182,8 @@ def _verify_inventory(
         "payload_inventory_digest_sha256": payload_digest,
     }
     for field, actual in declared_checks.items():
-        if inventory.get(field) != actual:
+        declared = inventory.get(field)
+        if type(declared) is not type(actual) or declared != actual:
             raise ProjectionError(f"post-materialization inventory {field} drift")
 
     independent_checks = {
@@ -201,8 +206,7 @@ def _verify_inventory(
         "source_object_count": (source_object_count, expected_source_object_count),
     }
     for field, (actual, expected) in independent_checks.items():
-        if actual != expected:
-            raise ProjectionError(f"{field} does not match independently expected value")
+        _expect(actual, expected, field)
     return normalized
 
 
@@ -255,6 +259,15 @@ def build_postmaterialization_family_vector(
     )
     expected_result_jsonl_sha256 = _require_sha256(
         expected_result_jsonl_sha256, "expected_result_jsonl_sha256"
+    )
+    expected_record_count = _require_nonnegative_int(
+        expected_record_count, "expected_record_count"
+    )
+    expected_total_payload_bytes = _require_nonnegative_int(
+        expected_total_payload_bytes, "expected_total_payload_bytes"
+    )
+    expected_source_object_count = _require_nonnegative_int(
+        expected_source_object_count, "expected_source_object_count"
     )
 
     if materialization_evidence.get("schema_version") != MATERIALIZATION_SCHEMA:
@@ -315,9 +328,16 @@ def build_postmaterialization_family_vector(
         ),
         expected_source_object_count=expected_source_object_count,
     )
-    if inventory.get("record_count") != result.get("record_count"):
+    if (
+        type(inventory.get("record_count")) is not type(result.get("record_count"))
+        or inventory.get("record_count") != result.get("record_count")
+    ):
         raise ProjectionError("inventory/result record-count cross-bind mismatch")
-    if inventory.get("total_payload_bytes") != result.get("total_payload_bytes"):
+    if (
+        type(inventory.get("total_payload_bytes"))
+        is not type(result.get("total_payload_bytes"))
+        or inventory.get("total_payload_bytes") != result.get("total_payload_bytes")
+    ):
         raise ProjectionError("inventory/result payload-byte cross-bind mismatch")
     if (
         inventory.get("record_inventory_digest_sha256")
