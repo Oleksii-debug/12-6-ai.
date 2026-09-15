@@ -119,25 +119,57 @@ def _terminal(a, b):
     }
 
 
-def _build(a=None, b=None, terminal=None):
+def _build(
+    a=None,
+    b=None,
+    terminal=None,
+    *,
+    release_terminal=None,
+    release_overrides=None,
+):
     a = _receipt("a") if a is None else a
     b = _receipt("b") if b is None else b
     terminal = _terminal(a, b) if terminal is None else terminal
-    return m.build_bridge(
-        a,
-        b,
-        terminal,
-        target_pr=2136,
-        target_head="e" * 40,
-        replay_head=REPLAY_HEAD,
-        replay_run=11,
-        replay_job=12,
-        final_run=13,
-        final_job=14,
-        artifact_id=15,
-        artifact_zip_sha256="f" * 64,
-        audit_issue=2147,
-    )
+    release_terminal = terminal if release_terminal is None else release_terminal
+    synthetic_release = {
+        "target_pr_number": 2136,
+        "target_head_git_sha": "e" * 40,
+        "real_replay_head_git_sha": REPLAY_HEAD,
+        "real_replay_run_id": 11,
+        "real_replay_job_id": 12,
+        "final_head_ci_run_id": 13,
+        "final_head_ci_job_id": 14,
+        "artifact_id": 15,
+        "artifact_zip_sha256": "f" * 64,
+        "terminal_summary_sha256": _sha256(_cjson(release_terminal)),
+        "independent_audit_issue_number": 2147,
+        "independent_audit_terminal_comment_id": 123456,
+        "independent_audit_status": "PASS_FOR_INTEGRATION_RELEASED",
+    }
+    call_args = {
+        "target_pr": 2136,
+        "target_head": "e" * 40,
+        "replay_head": REPLAY_HEAD,
+        "replay_run": 11,
+        "replay_job": 12,
+        "final_run": 13,
+        "final_job": 14,
+        "artifact_id": 15,
+        "artifact_zip_sha256": "f" * 64,
+        "audit_issue": 2147,
+    }
+    if release_overrides:
+        call_args.update(release_overrides)
+
+    old_release = m._RELEASE_AUTHORITY
+    old_identity = m._RELEASE_AUTHORITY_IDENTITY_SHA256
+    m._RELEASE_AUTHORITY = synthetic_release
+    m._RELEASE_AUTHORITY_IDENTITY_SHA256 = _sha256(_cjson(synthetic_release))
+    try:
+        return m.build_bridge(a, b, terminal, **call_args)
+    finally:
+        m._RELEASE_AUTHORITY = old_release
+        m._RELEASE_AUTHORITY_IDENTITY_SHA256 = old_identity
 
 
 def test_builds_zero_credit_terminal_binding():
@@ -149,6 +181,8 @@ def test_builds_zero_credit_terminal_binding():
     assert qualification["replay_utf8_bytes"] == 6093662
     assert qualification["g06_envelope_identity_sha256"] == envelope["evidence_identity_sha256"]
     assert qualification["truth_boundary"] == m._OUTPUT_ZERO_CREDIT
+    assert qualification["independent_audit_issue_number"] == 2147
+    assert qualification["independent_audit_status"] == "PASS_FOR_INTEGRATION_RELEASED"
 
 
 def test_same_physical_replay_identity_fails_closed():
@@ -234,6 +268,84 @@ def test_terminal_truth_widening_fails_closed():
     terminal["training_authorized_bytes"] = 1
     with pytest.raises(m.BridgeError, match="zero-credit truth drift"):
         _build(a=a, b=b, terminal=terminal)
+
+
+def test_terminal_artifact_substitution_fails_closed_before_reseal():
+    a = _receipt("a")
+    b = _receipt("b")
+    release_terminal = _terminal(a, b)
+    substituted = deepcopy(release_terminal)
+    substituted["data526_evidence_identity_sha256"] = "0" * 64
+    with pytest.raises(m.BridgeError, match="release authority drift: terminal_summary_sha256"):
+        _build(
+            a=a,
+            b=b,
+            terminal=substituted,
+            release_terminal=release_terminal,
+        )
+
+
+def test_coherent_release_metadata_substitution_fails_closed():
+    with pytest.raises(m.BridgeError, match="release authority drift"):
+        _build(
+            release_overrides={
+                "target_pr": 9999,
+                "target_head": "0" * 40,
+                "replay_head": "1" * 40,
+                "replay_run": 99,
+                "replay_job": 98,
+                "final_run": 97,
+                "final_job": 96,
+                "artifact_id": 95,
+                "artifact_zip_sha256": "2" * 64,
+                "audit_issue": 94,
+            }
+        )
+
+
+def test_immutable_release_identity_drift_fails_closed():
+    a = _receipt("a")
+    b = _receipt("b")
+    terminal = _terminal(a, b)
+    old_release = m._RELEASE_AUTHORITY
+    old_identity = m._RELEASE_AUTHORITY_IDENTITY_SHA256
+    synthetic_release = {
+        "target_pr_number": 2136,
+        "target_head_git_sha": "e" * 40,
+        "real_replay_head_git_sha": REPLAY_HEAD,
+        "real_replay_run_id": 11,
+        "real_replay_job_id": 12,
+        "final_head_ci_run_id": 13,
+        "final_head_ci_job_id": 14,
+        "artifact_id": 15,
+        "artifact_zip_sha256": "f" * 64,
+        "terminal_summary_sha256": _sha256(_cjson(terminal)),
+        "independent_audit_issue_number": 2147,
+        "independent_audit_terminal_comment_id": 123456,
+        "independent_audit_status": "PASS_FOR_INTEGRATION_RELEASED",
+    }
+    m._RELEASE_AUTHORITY = synthetic_release
+    m._RELEASE_AUTHORITY_IDENTITY_SHA256 = "0" * 64
+    try:
+        with pytest.raises(m.BridgeError, match="immutable release authority identity drift"):
+            m.build_bridge(
+                a,
+                b,
+                terminal,
+                target_pr=2136,
+                target_head="e" * 40,
+                replay_head=REPLAY_HEAD,
+                replay_run=11,
+                replay_job=12,
+                final_run=13,
+                final_job=14,
+                artifact_id=15,
+                artifact_zip_sha256="f" * 64,
+                audit_issue=2147,
+            )
+    finally:
+        m._RELEASE_AUTHORITY = old_release
+        m._RELEASE_AUTHORITY_IDENTITY_SHA256 = old_identity
 
 
 def test_output_paths_must_be_distinct(tmp_path):
