@@ -58,6 +58,9 @@ def _write_json(path: Path, value: object) -> None:
 
 
 def _ensure_new(paths: tuple[Path, ...]) -> None:
+    resolved = tuple(path.resolve(strict=False) for path in paths)
+    if len(set(resolved)) != len(resolved):
+        raise FileExistsError("refusing aliased output paths: outputs must be distinct")
     for path in paths:
         if path.exists() or path.is_symlink():
             raise FileExistsError(f"refusing to overwrite output: {path}")
