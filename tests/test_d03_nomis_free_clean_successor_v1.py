@@ -141,17 +141,16 @@ def test_duplicate_quarantined_root_fails_closed() -> None:
     inventory, payloads = _synthetic_graph(blocked_payload)
     inventory["sources"].append(dict(inventory["sources"][7]))
     stub = _QuarantineStub(hashlib.sha256(blocked_payload).hexdigest())
-    with mock.patch.object(clean, "BLOCKED_SHA256", stub.blocked_sha):
-        with pytest.raises(
-            clean.CleanSuccessorError,
-            match="exactly one authenticated Nomis source is required",
-        ):
-            clean.deauthorize_exact_nomis(
-                inventory,
-                payloads,
-                {"authority": "ok"},
-                stub,
-            )
+    with mock.patch.object(clean, "BLOCKED_SHA256", stub.blocked_sha), pytest.raises(
+        clean.CleanSuccessorError,
+        match="exactly one authenticated Nomis source is required",
+    ):
+        clean.deauthorize_exact_nomis(
+            inventory,
+            payloads,
+            {"authority": "ok"},
+            stub,
+        )
 
 
 def test_clean_composed_oracle_is_exact_and_zero_credit() -> None:

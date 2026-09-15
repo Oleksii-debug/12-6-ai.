@@ -70,7 +70,7 @@ def test_historical_aggregate_keeps_multi_record_source_capacity() -> None:
     ]
     aggregates = data526._historical_source_aggregates(records)
     assert aggregates["a"] == ("fa", "code", 5)
-    assert aggregates["b"] == ("fb", "uk", len("ж".encode("utf-8")))
+    assert aggregates["b"] == ("fb", "uk", len("ж".encode()))
 
 
 def test_historical_aggregate_rejects_mixed_family_for_same_source() -> None:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import socket
 import urllib.error
 from pathlib import Path
 
@@ -89,7 +88,7 @@ def test_urlerror_wrapping_timeout_retries_whole_fetch() -> None:
         nonlocal calls
         calls += 1
         if calls == 1:
-            raise urllib.error.URLError(socket.timeout("temporary"))
+            raise urllib.error.URLError(TimeoutError("temporary"))
         return b"exact-bytes"
 
     wrapped = bootstrap.build_bounded_exact_fetch_retry(
