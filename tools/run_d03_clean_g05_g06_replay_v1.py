@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Physically replay incumbent G05/G06 on the exact clean DATA526 successor.
+"""Replay incumbent G05/G06 on the physically reconstructed clean DATA526 graph.
 
-The clean payload is reconstructed job-locally by the already integrated
-Nomis-free DATA526 materializer. This carrier independently authenticates the
-retained clean roots from PR #2107, rejects any payload/inventory drift, then
-runs the unchanged canonical G05 quality and G06 privacy engines.
+The corpus bytes are reconstructed under the immutable #2107 physical authority
+head, while this tracked carrier and the unchanged G05/G06 engines execute from
+the current Product head.  The two identities are deliberately distinct: a new
+Product commit must not pretend it rematerialized the corpus historically.
 
 Durable output is text-free and grants no corpus/training/tokenizer authority.
 """
@@ -145,9 +145,8 @@ def _sha256(raw: bytes) -> str:
 
 
 def _git_blob_sha1(raw: bytes) -> str:
-    return hashlib.sha1(  # noqa: S324 - Git object identity
-        f"blob {len(raw)}\0".encode("ascii") + raw
-    ).hexdigest()
+    header = f"blob {len(raw)}\0".encode("ascii")
+    return hashlib.sha1(header + raw, usedforsecurity=False).hexdigest()
 
 
 def _strict_int(value: Any, field: str) -> int:
@@ -215,21 +214,18 @@ def _verify_engine_bindings(root: Path) -> dict[str, str]:
         CLEAN_MATERIALIZER: CLEAN_MATERIALIZER_BLOB_SHA1,
     }
     observed: dict[str, str] = {}
-    for path, blob in expected.items():
+    for path, expected_blob in expected.items():
         actual = _git_blob_sha1((root / path).read_bytes())
-        _require(actual == blob, f"bound Git blob drift: {path}")
+        _require(actual == expected_blob, f"bound Git blob drift: {path}")
         observed[str(path)] = actual
     return observed
 
 
 def _validate_data526_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
-    _require(
-        value.get("schema_version") == _DATA526_SCHEMA,
-        "clean DATA526 evidence schema drift",
-    )
+    _require(value.get("schema_version") == _DATA526_SCHEMA, "DATA526 evidence schema drift")
     _require(
         value.get("execution_profile") == EXECUTION_PROFILE,
-        "clean DATA526 execution profile drift",
+        "DATA526 execution profile drift",
     )
     _require(
         value.get("source_report_sha256") == EXPECTED_SOURCE_REPORT_SHA256,
@@ -264,8 +260,8 @@ def _validate_data526_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
         "raw text durable-evidence boundary widened",
     )
     boundary = value.get("truth_boundary")
-    _require(type(boundary) is dict, "clean DATA526 truth boundary missing")
-    exact_false = (
+    _require(type(boundary) is dict, "DATA526 truth boundary missing")
+    for key in (
         "corpus_released",
         "decontamination_executed_for_successor",
         "post_composition_quality_privacy_passed",
@@ -279,16 +275,15 @@ def _validate_data526_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
         "foreign_pretrained_weights",
         "raw_payloads_committed_to_repository",
         "raw_payloads_uploaded_as_public_evidence",
-    )
-    for key in exact_false:
+    ):
         _require(
             _strict_bool(boundary.get(key), f"truth_boundary.{key}") is False,
-            f"{key} widened",
+            f"truth boundary widened: {key}",
         )
     for key in ("authorized_training_exposure", "optimizer_updates"):
         _require(
             _strict_int(boundary.get(key), f"truth_boundary.{key}") == 0,
-            f"{key} widened",
+            f"truth boundary widened: {key}",
         )
     _require(
         _strict_bool(
@@ -296,22 +291,35 @@ def _validate_data526_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
             "truth_boundary.clean_data526_record_graph_materialized",
         )
         is True,
-        "clean DATA526 physical-materialization claim missing",
+        "clean DATA526 physical materialization claim missing",
     )
+
     claimed_identity = value.get("evidence_identity_sha256")
     _require(
         type(claimed_identity) is str
         and len(claimed_identity) == 64
         and all(ch in "0123456789abcdef" for ch in claimed_identity),
-        "clean DATA526 evidence identity malformed",
+        "DATA526 evidence identity malformed",
     )
-    evidence_core = dict(value)
-    del evidence_core["evidence_identity_sha256"]
+    core = dict(value)
+    del core["evidence_identity_sha256"]
     _require(
-        _sha256(_canonical(evidence_core)) == claimed_identity,
-        "clean DATA526 evidence self-hash mismatch",
+        _sha256(_canonical(core)) == claimed_identity,
+        "DATA526 evidence self-hash mismatch",
     )
     return dict(clean)
+
+
+def _validate_retained_materialization_authority(value: Mapping[str, Any]) -> None:
+    _require(
+        value.get("execution_head_sha") == RETAINED_EXECUTION_HEAD,
+        "DATA526 reconstruction did not execute on retained #2107 authority head",
+    )
+    _require(
+        value.get("evidence_identity_sha256")
+        == RETAINED_DATA526_EVIDENCE_IDENTITY_SHA256,
+        "DATA526 retained evidence identity drift",
+    )
 
 
 def _validate_inventory(path: Path) -> tuple[list[dict[str, Any]], str]:
@@ -335,10 +343,7 @@ def _validate_inventory(path: Path) -> tuple[list[dict[str, Any]], str]:
                 type(row[field]) is str and bool(row[field]),
                 f"inventory[{index}].{field} malformed",
             )
-        _require(
-            row["record_id"] not in seen,
-            f"duplicate inventory record_id: {row['record_id']}",
-        )
+        _require(row["record_id"] not in seen, f"duplicate inventory id: {row['record_id']}")
         _require(row["modality"] in _MODES, f"inventory[{index}].modality drift")
         _require(
             len(row["payload_sha256"]) == 64
@@ -361,7 +366,7 @@ def _validate_inventory(path: Path) -> tuple[list[dict[str, Any]], str]:
         source_ids.add(row["source_id"])
 
     normalized.sort(key=lambda row: row["record_id"])
-    full_root = _sha256(_canonical(normalized))
+    inventory_root = _sha256(_canonical(normalized))
     payload_projection = [
         {
             "record_id": row["record_id"],
@@ -371,7 +376,6 @@ def _validate_inventory(path: Path) -> tuple[list[dict[str, Any]], str]:
         for row in normalized
     ]
     payload_root = _sha256(_canonical(payload_projection))
-
     _require(
         _strict_int(value["record_count"], "inventory.record_count") == EXPECTED_RECORDS,
         "clean inventory record-count drift",
@@ -386,21 +390,21 @@ def _validate_inventory(path: Path) -> tuple[list[dict[str, Any]], str]:
         sum(row["payload_bytes"] for row in normalized) == EXPECTED_PAYLOAD_BYTES,
         "clean inventory byte accounting mismatch",
     )
-    _require(len(source_ids) == EXPECTED_SOURCE_OBJECTS, "clean inventory source-object count drift")
-    _require(full_root == EXPECTED_RECORD_INVENTORY_SHA256, "clean inventory root mismatch")
+    _require(len(source_ids) == EXPECTED_SOURCE_OBJECTS, "clean source-object count drift")
+    _require(inventory_root == EXPECTED_RECORD_INVENTORY_SHA256, "inventory root mismatch")
     _require(
-        value["record_inventory_digest_sha256"] == full_root,
-        "clean inventory self-root mismatch",
+        value["record_inventory_digest_sha256"] == inventory_root,
+        "inventory self-root mismatch",
     )
-    _require(payload_root == EXPECTED_PAYLOAD_INVENTORY_SHA256, "clean payload inventory root mismatch")
+    _require(payload_root == EXPECTED_PAYLOAD_INVENTORY_SHA256, "payload root mismatch")
     _require(
         value["payload_inventory_digest_sha256"] == payload_root,
-        "clean payload inventory self-root mismatch",
+        "payload inventory self-root mismatch",
     )
     return normalized, input_rows_sha256_from_text_free_inventory(normalized)
 
 
-def _load_records(path: Path) -> tuple[bytes, list[dict[str, str]]]:
+def _load_records(path: Path) -> list[dict[str, str]]:
     raw = path.read_bytes()
     _require(_sha256(raw) == EXPECTED_RECORDS_JSONL_SHA256, "clean record JSONL hash drift")
     rows: list[dict[str, str]] = []
@@ -409,7 +413,10 @@ def _load_records(path: Path) -> tuple[bytes, list[dict[str, str]]]:
     payload_bytes = 0
     for line_number, line in enumerate(raw.splitlines(), start=1):
         _require(bool(line.strip()), f"blank JSONL line {line_number}")
-        value = json.loads(line.decode("utf-8"))
+        try:
+            value = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise CleanG05G06ReplayError(f"invalid JSONL line {line_number}: {exc}") from exc
         _require(
             type(value) is dict and set(value) == _RECORD_KEYS,
             f"record row {line_number} schema drift",
@@ -429,8 +436,7 @@ def _load_records(path: Path) -> tuple[bytes, list[dict[str, str]]]:
     _require(len(rows) == EXPECTED_RECORDS, "clean record count drift")
     _require(payload_bytes == EXPECTED_PAYLOAD_BYTES, "clean payload byte drift")
     _require(len(source_ids) == EXPECTED_SOURCE_OBJECTS, "clean source-object count drift")
-    rows.sort(key=lambda row: row["record_id"])
-    return raw, rows
+    return sorted(rows, key=lambda row: row["record_id"])
 
 
 def _bind_records_to_inventory(
@@ -443,11 +449,8 @@ def _bind_records_to_inventory(
         _require(record["record_id"] == item["record_id"], "record/inventory id mismatch")
         for key in ("source_id", "family", "modality"):
             _require(record[key] == item[key], f"record/inventory {key} mismatch")
-        _require(
-            _sha256(payload) == item["payload_sha256"],
-            "record/inventory payload hash mismatch",
-        )
-        _require(len(payload) == item["payload_bytes"], "record/inventory payload byte mismatch")
+        _require(_sha256(payload) == item["payload_sha256"], "payload hash mismatch")
+        _require(len(payload) == item["payload_bytes"], "payload byte mismatch")
 
 
 def _quality_input_root(records: list[dict[str, str]]) -> str:
@@ -470,7 +473,7 @@ def _physical_identity(execution_head: str) -> dict[str, Any]:
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
     job = os.environ.get("GITHUB_JOB", "")
     _require(repository == "Oleksii-debug/12-6-ai.", "GITHUB_REPOSITORY authority drift")
-    _require(sha == execution_head, "GITHUB_SHA does not match checkout HEAD")
+    _require(sha == execution_head, "GitHub Product SHA does not match checkout HEAD")
     _require(run_id.isdigit() and int(run_id) > 0, "GITHUB_RUN_ID missing/malformed")
     _require(
         run_attempt.isdigit() and int(run_attempt) > 0,
@@ -500,12 +503,9 @@ def execute(
 
     data526_evidence = _read_json(data526_evidence_json)
     clean = _validate_data526_evidence(data526_evidence)
-    _require(
-        data526_evidence.get("execution_head_sha") == execution_head,
-        "fresh clean DATA526 evidence was not produced on this execution head",
-    )
+    _validate_retained_materialization_authority(data526_evidence)
     inventory, expected_g06_root = _validate_inventory(inventory_json)
-    _, records = _load_records(records_jsonl)
+    records = _load_records(records_jsonl)
     _bind_records_to_inventory(records, inventory)
 
     g_records = [
@@ -529,10 +529,10 @@ def execute(
         expected_input_rows_sha256=g05_root,
         expected_execution_identity_sha256=g05["execution_identity_sha256"],
     )
-    _require(g05["counts"]["records"] == EXPECTED_RECORDS, "G05 coverage count drift")
+    _require(g05["counts"]["records"] == EXPECTED_RECORDS, "G05 coverage drift")
     _require(
         g05["bytes"]["input_utf8_bytes"] == EXPECTED_PAYLOAD_BYTES,
-        "G05 input bytes drift",
+        "G05 input byte drift",
     )
     _require(
         g05["bytes"]["retained_utf8_bytes"] + g05["bytes"]["rejected_utf8_bytes"]
@@ -556,20 +556,20 @@ def execute(
         expected_input_rows_sha256=expected_g06_root,
         expected_execution_identity_sha256=g06_identity,
     )
-    _require(g06["counts"]["records"] == EXPECTED_RECORDS, "G06 coverage count drift")
+    _require(g06["counts"]["records"] == EXPECTED_RECORDS, "G06 coverage drift")
     _require(
         g06["total_input_utf8_bytes"] == EXPECTED_PAYLOAD_BYTES,
-        "G06 input bytes drift",
+        "G06 input byte drift",
     )
 
     deterministic_projection = {
+        "product_execution_head_sha": execution_head,
         "engine_bindings": bindings,
-        "retained_record_payload_jsonl_sha256": EXPECTED_RECORDS_JSONL_SHA256,
-        "retained_record_inventory_digest_sha256": EXPECTED_RECORD_INVENTORY_SHA256,
-        "retained_payload_inventory_digest_sha256": EXPECTED_PAYLOAD_INVENTORY_SHA256,
-        "fresh_data526_evidence_identity_sha256": data526_evidence[
-            "evidence_identity_sha256"
-        ],
+        "corpus_materialization_authority_head_sha": RETAINED_EXECUTION_HEAD,
+        "data526_evidence_identity_sha256": RETAINED_DATA526_EVIDENCE_IDENTITY_SHA256,
+        "record_payload_jsonl_sha256": EXPECTED_RECORDS_JSONL_SHA256,
+        "record_inventory_digest_sha256": EXPECTED_RECORD_INVENTORY_SHA256,
+        "payload_inventory_digest_sha256": EXPECTED_PAYLOAD_INVENTORY_SHA256,
         "g05_execution_identity_sha256": g05_identity,
         "g05_execution_rows_sha256": g05["execution_rows_sha256"],
         "g05_counts": g05["counts"],
@@ -580,14 +580,14 @@ def execute(
         "g06_total_input_utf8_bytes": g06["total_input_utf8_bytes"],
         "g06_detector_counts": g06["detector_counts"],
     }
-    replay_projection_sha256 = _sha256(_cjson(deterministic_projection))
+    projection_sha256 = _sha256(_cjson(deterministic_projection))
 
     core = {
         "schema_version": SCHEMA_VERSION,
         "execution_profile": EXECUTION_PROFILE,
         "status": "PHYSICAL_REPLAY_EXECUTED_ZERO_CREDIT",
         "physical_identity": physical,
-        "replay_projection_sha256": replay_projection_sha256,
+        "replay_projection_sha256": projection_sha256,
         "engine_bindings": bindings,
         "retained_clean_authority": {
             "execution_head_sha": RETAINED_EXECUTION_HEAD,
@@ -605,8 +605,8 @@ def execute(
             "nomis_payload_sha256_rejected": NOMIS_PAYLOAD_SHA256,
             "pr462_authority_sha256_not_admitted": PR462_AUTHORITY_SHA256,
         },
-        "fresh_clean_reconstruction": {
-            "execution_head_sha": data526_evidence["execution_head_sha"],
+        "physical_clean_reconstruction": {
+            "materialization_authority_head_sha": data526_evidence["execution_head_sha"],
             "evidence_identity_sha256": data526_evidence["evidence_identity_sha256"],
             **clean,
             "physical_reconstruction_verified": True,
