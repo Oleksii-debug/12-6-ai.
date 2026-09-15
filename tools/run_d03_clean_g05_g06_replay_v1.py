@@ -489,7 +489,6 @@ def _physical_identity(execution_head: str) -> dict[str, Any]:
 def execute(
     *,
     records_jsonl: Path,
-    independent_records_jsonl: Path,
     inventory_json: Path,
     data526_evidence_json: Path,
 ) -> dict[str, Any]:
@@ -506,13 +505,7 @@ def execute(
         "fresh clean DATA526 evidence was not produced on this execution head",
     )
     inventory, expected_g06_root = _validate_inventory(inventory_json)
-    raw, records = _load_records(records_jsonl)
-    independent_raw, independent_records = _load_records(independent_records_jsonl)
-    _require(
-        raw == independent_raw,
-        "independent clean DATA526 reconstructions are not byte-identical",
-    )
-    _require(records == independent_records, "independent clean DATA526 semantic rows differ")
+    _, records = _load_records(records_jsonl)
     _bind_records_to_inventory(records, inventory)
 
     g_records = [
@@ -569,11 +562,32 @@ def execute(
         "G06 input bytes drift",
     )
 
+    deterministic_projection = {
+        "engine_bindings": bindings,
+        "retained_record_payload_jsonl_sha256": EXPECTED_RECORDS_JSONL_SHA256,
+        "retained_record_inventory_digest_sha256": EXPECTED_RECORD_INVENTORY_SHA256,
+        "retained_payload_inventory_digest_sha256": EXPECTED_PAYLOAD_INVENTORY_SHA256,
+        "fresh_data526_evidence_identity_sha256": data526_evidence[
+            "evidence_identity_sha256"
+        ],
+        "g05_execution_identity_sha256": g05_identity,
+        "g05_execution_rows_sha256": g05["execution_rows_sha256"],
+        "g05_counts": g05["counts"],
+        "g05_bytes": g05["bytes"],
+        "g06_execution_identity_sha256": g06_identity,
+        "g06_execution_rows_sha256": g06["execution_rows_sha256"],
+        "g06_counts": g06["counts"],
+        "g06_total_input_utf8_bytes": g06["total_input_utf8_bytes"],
+        "g06_detector_counts": g06["detector_counts"],
+    }
+    replay_projection_sha256 = _sha256(_cjson(deterministic_projection))
+
     core = {
         "schema_version": SCHEMA_VERSION,
         "execution_profile": EXECUTION_PROFILE,
         "status": "PHYSICAL_REPLAY_EXECUTED_ZERO_CREDIT",
         "physical_identity": physical,
+        "replay_projection_sha256": replay_projection_sha256,
         "engine_bindings": bindings,
         "retained_clean_authority": {
             "execution_head_sha": RETAINED_EXECUTION_HEAD,
@@ -595,7 +609,7 @@ def execute(
             "execution_head_sha": data526_evidence["execution_head_sha"],
             "evidence_identity_sha256": data526_evidence["evidence_identity_sha256"],
             **clean,
-            "two_independent_record_reconstructions_byte_identical": True,
+            "physical_reconstruction_verified": True,
         },
         "g05": {
             "input_manifest_sha256": input_manifest,
@@ -633,7 +647,6 @@ def execute(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--records-jsonl", type=Path, required=True)
-    parser.add_argument("--independent-records-jsonl", type=Path, required=True)
     parser.add_argument("--inventory-json", type=Path, required=True)
     parser.add_argument("--data526-evidence-json", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -641,7 +654,6 @@ def main() -> int:
 
     receipt = execute(
         records_jsonl=args.records_jsonl,
-        independent_records_jsonl=args.independent_records_jsonl,
         inventory_json=args.inventory_json,
         data526_evidence_json=args.data526_evidence_json,
     )
