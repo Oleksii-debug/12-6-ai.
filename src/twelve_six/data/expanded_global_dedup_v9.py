@@ -13,12 +13,18 @@ independent-audit trust-boundary findings before delegating to that implementati
 """
 from __future__ import annotations
 
+import builtins
 import copy
 import hashlib
+import html
+import importlib.machinery
 import importlib.util
 import json
 import marshal
+import re
 import sys
+import unicodedata
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from types import FunctionType, ModuleType
@@ -40,8 +46,79 @@ _canonical = _impl._canonical
 _require = _impl._require
 _sha256 = _impl._sha256
 
-_LEGACY_VALIDATE_RADA_ROWS = _impl.validate_rada_rows
-_LEGACY_RUN_EXPANDED_DEDUP = _impl.run_expanded_dedup
+_FROZEN_PRIVATE_IMPL_MODULE = _impl
+_FROZEN_PRIVATE_ERROR_CLASS = _impl.ExpandedDedupError
+_FROZEN_PRIVATE_VALIDATE_RADA_ROWS = _impl.validate_rada_rows
+_FROZEN_PRIVATE_RUN_EXPANDED_DEDUP = _impl.run_expanded_dedup
+_LEGACY_VALIDATE_RADA_ROWS = _FROZEN_PRIVATE_VALIDATE_RADA_ROWS
+_LEGACY_RUN_EXPANDED_DEDUP = _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP
+
+# Freeze the behavior-bearing stdlib primitives at facade import.  Fresh execution
+# of the pinned matcher source is not an independent reference for these objects:
+# both the live matcher and the reference import through the same process
+# ``sys.modules``.  Member-level mutation therefore has to be detected against an
+# earlier immutable reference, not merely against a freshly imported module object.
+_FROZEN_BUILTINS_MODULE = builtins
+_FROZEN_COPY_MODULE = copy
+_FROZEN_HASHLIB_MODULE = hashlib
+_FROZEN_HTML_MODULE = html
+_FROZEN_JSON_MODULE = json
+_FROZEN_MARSHAL_MODULE = marshal
+_FROZEN_RE_MODULE = re
+_FROZEN_UNICODEDATA_MODULE = unicodedata
+_FROZEN_IMPORTLIB_UTIL_MODULE = importlib.util
+_FROZEN_IMPORTLIB_MACHINERY_MODULE = importlib.machinery
+_FROZEN_PATH_CLASS = Path
+_FROZEN_COUNTER_CLASS = Counter
+
+# Matcher functions resolve Python builtins dynamically through ``__builtins__``.
+# Freeze every callable/type exported by the canonical builtins module rather than
+# chasing one threshold primitive at a time.  This covers the complete selected
+# V3/V1/DATA232 runtime call graph (including nested code objects) and future-proofs
+# the seal when an already-pinned function starts reaching another builtin name.
+_FROZEN_BUILTIN_CALLABLES = tuple(
+    builtins.sorted(
+        (
+            (name, value)
+            for name, value in builtins.__dict__.items()
+            if builtins.callable(value)
+        ),
+        key=lambda item: item[0],
+    )
+)
+
+_FROZEN_COPY_DEEPCOPY = copy.deepcopy
+_FROZEN_COPY_DEEPCOPY_DISPATCH = getattr(copy, "_deepcopy_dispatch", None)
+_FROZEN_COPY_DEEPCOPY_DISPATCH_ITEMS = (
+    tuple(_FROZEN_COPY_DEEPCOPY_DISPATCH.items())
+    if isinstance(_FROZEN_COPY_DEEPCOPY_DISPATCH, dict)
+    else ()
+)
+_FROZEN_HASHLIB_SHA1 = hashlib.sha1
+_FROZEN_HASHLIB_SHA256 = hashlib.sha256
+_FROZEN_HTML_UNESCAPE = html.unescape
+_FROZEN_JSON_DUMPS = json.dumps
+_FROZEN_JSON_LOADS = json.loads
+_FROZEN_MARSHAL_DUMPS = marshal.dumps
+_FROZEN_RE_COMPILE = re.compile
+_FROZEN_RE_FULLMATCH = re.fullmatch
+_FROZEN_RE_SEARCH = re.search
+_FROZEN_RE_SUB = re.sub
+_FROZEN_UNICODEDATA_NORMALIZE = unicodedata.normalize
+_FROZEN_COUNTER_INIT = Counter.__init__
+_FROZEN_COUNTER_UPDATE = Counter.update
+_FROZEN_SPEC_FROM_FILE_LOCATION = importlib.util.spec_from_file_location
+_FROZEN_MODULE_FROM_SPEC = importlib.util.module_from_spec
+_FROZEN_SOURCE_FILE_LOADER = importlib.machinery.SourceFileLoader
+_FROZEN_SOURCE_FILE_LOADER_EXEC_MODULE = importlib.machinery.SourceFileLoader.exec_module
+_FROZEN_SOURCE_FILE_LOADER_GET_CODE = importlib.machinery.SourceFileLoader.get_code
+_FROZEN_SOURCE_FILE_LOADER_GET_DATA = importlib.machinery.SourceFileLoader.get_data
+_FROZEN_SOURCE_FILE_LOADER_GET_FILENAME = importlib.machinery.SourceFileLoader.get_filename
+_FROZEN_SOURCE_FILE_LOADER_PATH_STATS = importlib.machinery.SourceFileLoader.path_stats
+_FROZEN_SOURCE_FILE_LOADER_SOURCE_TO_CODE = importlib.machinery.SourceFileLoader.source_to_code
+_FROZEN_PATH_IS_FILE = Path.is_file
+_FROZEN_PATH_IS_SYMLINK = Path.is_symlink
+_FROZEN_PATH_READ_BYTES = Path.read_bytes
 
 # Exact Git blob identities from terminal V7 head
 # d3333ec1b4a508df232a5aefccd6686adda745fb.  Together these files are the
@@ -51,6 +128,7 @@ _EXPECTED_MATCHER_BLOBS = {
     "twelve_six.data.cross_source_capacity_audit": "84cdf00b2d468d2709a542ac3ee2ea372aae5716",
     "twelve_six.data._data232_decontamination_matching": "dab5da98dfc43133aa8f3c2e3c78c809252b741b",
 }
+_EXPECTED_PRIVATE_IMPL_BLOB = "b160902c0b51595828ff4b389b918b64de398c82"
 _V3_RUNTIME_FUNCTIONS = (
     "_validate_inventory",
     "_as_v1_inventory",
@@ -80,6 +158,57 @@ _V1_RUNTIME_FUNCTIONS = (
 _DATA232_RUNTIME_FUNCTIONS = (
     "normalize_for_contamination",
     "code_skeleton_tokens",
+)
+_PRIVATE_IMPL_RUNTIME_FUNCTIONS = (
+    "_require",
+    "_sha256",
+    "_canonical",
+    "_is_sha256",
+    "_is_git_sha",
+    "_mapping",
+    "_verify_self_hash",
+    "validate_data526_authority",
+    "validate_language_authority",
+    "validate_rada_quality_privacy_report",
+    "validate_rada_rows",
+    "build_rada_matcher_inputs",
+    "validate_v8_survivor_authority",
+    "filter_v8_survivor_inputs",
+    "_derive_survivors",
+    "run_expanded_dedup",
+)
+_PRIVATE_IMPL_VALUE_GLOBALS = (
+    "REPORT_SCHEMA",
+    "SURVIVOR_SCHEMA",
+    "RADA_QP_SCHEMA",
+    "RADA_QP_SAFE_RESULT",
+    "RADA_LANGUAGE_SCHEMA",
+    "RADA_LANGUAGE_REPORT_SHA256",
+    "RADA_RIGHTS_INVENTORY_SHA256",
+    "RADA_DATASET",
+    "RADA_REVISION",
+    "RADA_FAMILY",
+    "RADA_INPUT_RECORDS",
+    "RADA_SOURCE_BYTES",
+    "V8_REPORT_SHA256",
+    "V8_NESTED_V3_SHA256",
+    "V8_SURVIVOR_SHA256",
+    "DATA526_EVIDENCE_SHA256",
+    "DATA526_RECORD_INVENTORY_SHA256",
+    "DATA526_PAYLOAD_INVENTORY_SHA256",
+    "DATA526_RECORDS",
+    "DATA526_SOURCES",
+    "DATA526_BYTES",
+    "SELECTION_RULE",
+)
+_PRIVATE_IMPL_IDENTITY_GLOBALS = (
+    "copy",
+    "hashlib",
+    "json",
+    "re",
+    "Callable",
+    "Mapping",
+    "Sequence",
 )
 _DATA232_VALUE_GLOBALS = (
     "DEFAULT_THRESHOLDS",
@@ -138,38 +267,176 @@ _V8_SURVIVOR_BINDING_FIELDS = (
 )
 
 
+def _verify_stdlib_runtime_semantic_closure() -> None:
+    """Reject shared-stdlib member drift before any matcher/reference execution."""
+
+    module_checks = (
+        (builtins, _FROZEN_BUILTINS_MODULE, "builtins module"),
+        (copy, _FROZEN_COPY_MODULE, "copy module"),
+        (hashlib, _FROZEN_HASHLIB_MODULE, "hashlib module"),
+        (html, _FROZEN_HTML_MODULE, "html module"),
+        (json, _FROZEN_JSON_MODULE, "json module"),
+        (marshal, _FROZEN_MARSHAL_MODULE, "marshal module"),
+        (re, _FROZEN_RE_MODULE, "re module"),
+        (unicodedata, _FROZEN_UNICODEDATA_MODULE, "unicodedata module"),
+        (importlib.util, _FROZEN_IMPORTLIB_UTIL_MODULE, "importlib.util module"),
+        (
+            importlib.machinery,
+            _FROZEN_IMPORTLIB_MACHINERY_MODULE,
+            "importlib.machinery module",
+        ),
+        (Path, _FROZEN_PATH_CLASS, "pathlib.Path class"),
+        (Counter, _FROZEN_COUNTER_CLASS, "collections.Counter class"),
+    )
+    for current, expected, label in module_checks:
+        _require(current is expected, f"stdlib runtime object replaced: {label}")
+
+    _require(
+        sys.modules.get("builtins") is _FROZEN_BUILTINS_MODULE,
+        "stdlib runtime object replaced: builtins sys.modules binding",
+    )
+    _require(
+        sys.modules.get("copy") is _FROZEN_COPY_MODULE,
+        "stdlib runtime object replaced: copy sys.modules binding",
+    )
+    for name, expected in _FROZEN_BUILTIN_CALLABLES:
+        _require(
+            _FROZEN_BUILTINS_MODULE.__dict__.get(name) is expected,
+            f"stdlib runtime builtin replaced: builtins.{name}",
+        )
+
+    dispatch = getattr(_FROZEN_COPY_MODULE, "_deepcopy_dispatch", None)
+    _require(
+        dispatch is _FROZEN_COPY_DEEPCOPY_DISPATCH,
+        "copy deepcopy dispatch object replaced",
+    )
+    _require(isinstance(dispatch, dict), "copy deepcopy dispatch missing")
+    _require(
+        len(dispatch) == len(_FROZEN_COPY_DEEPCOPY_DISPATCH_ITEMS),
+        "copy deepcopy dispatch cardinality changed",
+    )
+    for value_type, expected_handler in _FROZEN_COPY_DEEPCOPY_DISPATCH_ITEMS:
+        _require(
+            dispatch.get(value_type) is expected_handler,
+            f"copy deepcopy dispatch handler replaced: {value_type.__name__}",
+        )
+
+    member_checks = (
+        (copy.deepcopy, _FROZEN_COPY_DEEPCOPY, "copy.deepcopy"),
+        (hashlib.sha1, _FROZEN_HASHLIB_SHA1, "hashlib.sha1"),
+        (hashlib.sha256, _FROZEN_HASHLIB_SHA256, "hashlib.sha256"),
+        (html.unescape, _FROZEN_HTML_UNESCAPE, "html.unescape"),
+        (json.dumps, _FROZEN_JSON_DUMPS, "json.dumps"),
+        (json.loads, _FROZEN_JSON_LOADS, "json.loads"),
+        (marshal.dumps, _FROZEN_MARSHAL_DUMPS, "marshal.dumps"),
+        (re.compile, _FROZEN_RE_COMPILE, "re.compile"),
+        (re.fullmatch, _FROZEN_RE_FULLMATCH, "re.fullmatch"),
+        (re.search, _FROZEN_RE_SEARCH, "re.search"),
+        (re.sub, _FROZEN_RE_SUB, "re.sub"),
+        (
+            unicodedata.normalize,
+            _FROZEN_UNICODEDATA_NORMALIZE,
+            "unicodedata.normalize",
+        ),
+        (Counter.__init__, _FROZEN_COUNTER_INIT, "Counter.__init__"),
+        (Counter.update, _FROZEN_COUNTER_UPDATE, "Counter.update"),
+        (
+            importlib.util.spec_from_file_location,
+            _FROZEN_SPEC_FROM_FILE_LOCATION,
+            "importlib.util.spec_from_file_location",
+        ),
+        (
+            importlib.util.module_from_spec,
+            _FROZEN_MODULE_FROM_SPEC,
+            "importlib.util.module_from_spec",
+        ),
+        (
+            importlib.machinery.SourceFileLoader,
+            _FROZEN_SOURCE_FILE_LOADER,
+            "importlib.machinery.SourceFileLoader",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.exec_module,
+            _FROZEN_SOURCE_FILE_LOADER_EXEC_MODULE,
+            "SourceFileLoader.exec_module",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.get_code,
+            _FROZEN_SOURCE_FILE_LOADER_GET_CODE,
+            "SourceFileLoader.get_code",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.get_data,
+            _FROZEN_SOURCE_FILE_LOADER_GET_DATA,
+            "SourceFileLoader.get_data",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.get_filename,
+            _FROZEN_SOURCE_FILE_LOADER_GET_FILENAME,
+            "SourceFileLoader.get_filename",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.path_stats,
+            _FROZEN_SOURCE_FILE_LOADER_PATH_STATS,
+            "SourceFileLoader.path_stats",
+        ),
+        (
+            importlib.machinery.SourceFileLoader.source_to_code,
+            _FROZEN_SOURCE_FILE_LOADER_SOURCE_TO_CODE,
+            "SourceFileLoader.source_to_code",
+        ),
+        (Path.is_file, _FROZEN_PATH_IS_FILE, "Path.is_file"),
+        (Path.is_symlink, _FROZEN_PATH_IS_SYMLINK, "Path.is_symlink"),
+        (Path.read_bytes, _FROZEN_PATH_READ_BYTES, "Path.read_bytes"),
+    )
+    for current, expected, label in member_checks:
+        _require(current is expected, f"stdlib runtime member replaced: {label}")
+
+
 def _git_blob_sha1(raw: bytes) -> str:
     prefix = f"blob {len(raw)}\0".encode("ascii")
-    return hashlib.sha1(prefix + raw).hexdigest()
+    return _FROZEN_HASHLIB_SHA1(prefix + raw).hexdigest()
 
 
 def _module_source_blob(module: ModuleType) -> str:
     source = getattr(module, "__file__", None)
     _require(isinstance(source, str) and source, f"matcher module has no source: {module.__name__}")
-    path = Path(source)
-    _require(path.is_file() and not path.is_symlink(), f"matcher module source is not a regular file: {path}")
-    return _git_blob_sha1(path.read_bytes())
+    path = _FROZEN_PATH_CLASS(source)
+    _require(
+        _FROZEN_PATH_IS_FILE(path) and not _FROZEN_PATH_IS_SYMLINK(path),
+        f"matcher module source is not a regular file: {path}",
+    )
+    return _git_blob_sha1(_FROZEN_PATH_READ_BYTES(path))
 
 
 def _load_reference_module(module: ModuleType, *, label: str) -> ModuleType:
     """Execute verified source bytes in a fresh namespace for runtime-code comparison."""
 
+    _verify_stdlib_runtime_semantic_closure()
     source = getattr(module, "__file__", None)
     _require(isinstance(source, str) and source, f"{label} module has no source")
-    path = Path(source)
-    _require(path.is_file() and not path.is_symlink(), f"{label} source is not a regular file")
-    spec = importlib.util.spec_from_file_location(f"_twelve_six_{label}_reference", path)
+    path = _FROZEN_PATH_CLASS(source)
+    _require(
+        _FROZEN_PATH_IS_FILE(path) and not _FROZEN_PATH_IS_SYMLINK(path),
+        f"{label} source is not a regular file",
+    )
+    spec = _FROZEN_SPEC_FROM_FILE_LOCATION(f"_twelve_six_{label}_reference", path)
     _require(spec is not None and spec.loader is not None, f"cannot load {label} reference module")
-    reference = importlib.util.module_from_spec(spec)
+    _require(
+        type(spec.loader) is _FROZEN_SOURCE_FILE_LOADER,
+        f"unexpected {label} reference loader",
+    )
+    reference = _FROZEN_MODULE_FROM_SPEC(spec)
     try:
-        spec.loader.exec_module(reference)
+        _FROZEN_SOURCE_FILE_LOADER_EXEC_MODULE(spec.loader, reference)
     except Exception as exc:
         raise ExpandedDedupError(f"cannot execute {label} reference module: {exc}") from exc
     return reference
 
 
 def _runtime_code_identity(function: FunctionType) -> str:
-    return hashlib.sha256(marshal.dumps(function.__code__)).hexdigest()
+    raw = _FROZEN_MARSHAL_DUMPS(function.__code__)
+    return _FROZEN_HASHLIB_SHA256(raw).hexdigest()
 
 
 def _verify_runtime_functions(
@@ -297,12 +564,69 @@ def _verify_identity_globals(
         )
 
 
+def _verify_private_runtime_semantic_closure() -> None:
+    """Bind legacy V9 delegates to the exact private executable closure."""
+
+    _verify_stdlib_runtime_semantic_closure()
+    module_name = "twelve_six.data._expanded_global_dedup_v9_impl"
+    _require(
+        sys.modules.get(module_name) is _FROZEN_PRIVATE_IMPL_MODULE,
+        "V9 private implementation module binding replaced",
+    )
+    _require(_impl is _FROZEN_PRIVATE_IMPL_MODULE, "V9 private implementation alias replaced")
+    _require(
+        _module_source_blob(_impl) == _EXPECTED_PRIVATE_IMPL_BLOB,
+        "V9 private implementation source authority drift",
+    )
+    _require(
+        _impl.ExpandedDedupError is _FROZEN_PRIVATE_ERROR_CLASS,
+        "V9 private error class replaced",
+    )
+    _require(
+        _LEGACY_VALIDATE_RADA_ROWS is _FROZEN_PRIVATE_VALIDATE_RADA_ROWS,
+        "V9 legacy validate delegate replaced",
+    )
+    _require(
+        _LEGACY_RUN_EXPANDED_DEDUP is _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP,
+        "V9 legacy run delegate replaced",
+    )
+    _require(
+        _impl.validate_rada_rows is _FROZEN_PRIVATE_VALIDATE_RADA_ROWS,
+        "V9 private validate delegate replaced",
+    )
+    _require(
+        _impl.run_expanded_dedup is _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP,
+        "V9 private run delegate replaced",
+    )
+
+    reference = _load_reference_module(_impl, label="v9_impl")
+    _verify_runtime_functions(
+        _impl,
+        reference,
+        _PRIVATE_IMPL_RUNTIME_FUNCTIONS,
+        label="V9 private",
+    )
+    _verify_runtime_values(
+        _impl,
+        reference,
+        _PRIVATE_IMPL_VALUE_GLOBALS,
+        label="V9 private",
+    )
+    _verify_identity_globals(
+        _impl,
+        reference,
+        _PRIVATE_IMPL_IDENTITY_GLOBALS,
+        label="V9 private",
+    )
+
+
 def _verify_matcher_semantic_closure(
     matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
     matcher_verify: Callable[[Mapping[str, Any]], None],
 ) -> None:
     """Bind executable matcher callbacks to the exact terminal #824/V3 closure."""
 
+    _verify_stdlib_runtime_semantic_closure()
     audit_module_name = getattr(matcher_audit, "__module__", None)
     verify_module_name = getattr(matcher_verify, "__module__", None)
     _require(
@@ -346,11 +670,10 @@ def _verify_matcher_semantic_closure(
             f"matcher implementation authority drift: {module_name}",
         )
 
-    # AUDIT1055-003: file identity is not executable-object identity.  Re-execute
-    # only the already hash-verified source files in fresh private namespaces and
-    # compare the complete V3/V1 runtime closure that can affect audit_payloads()
-    # or verify_report().  This adds no matcher behavior; it rejects in-memory
-    # monkeypatches before the sealed-V8 preflight or any Rada-containing pair.
+    # File identity is not executable-object identity.  Re-execute only the already
+    # hash-verified source files in fresh private namespaces and compare the complete
+    # V3/V1 runtime closure that can affect audit_payloads() or verify_report().
+    # The stdlib member seal above runs before this shared-sys.modules reference.
     reference_data232 = _load_reference_module(canonical_data232, label="data232")
     reference_v1 = _load_reference_module(canonical_v1, label="v1")
     reference_v3 = _load_reference_module(v3, label="v3")
@@ -406,7 +729,7 @@ def _parse_authenticated_rada_jsonl(raw_jsonl: bytes) -> list[dict[str, Any]]:
         _require(bool(raw_line.strip()), f"blank authenticated Rada JSONL line: {line_no}")
         try:
             text = raw_line.decode("utf-8", errors="strict")
-            value = json.loads(text)
+            value = _FROZEN_JSON_LOADS(text)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ExpandedDedupError(f"invalid authenticated Rada JSONL row {line_no}: {exc}") from exc
         _require(isinstance(value, dict), f"authenticated Rada JSONL row {line_no} must be object")
@@ -420,6 +743,7 @@ def validate_rada_rows(
 ) -> list[dict[str, Any]]:
     """Return only rows proven to be the exact semantic parse of authenticated bytes."""
 
+    _verify_private_runtime_semantic_closure()
     parsed = _parse_authenticated_rada_jsonl(raw_jsonl)
     _require(
         isinstance(rows, Sequence) and not isinstance(rows, (str, bytes, bytearray)),
@@ -435,7 +759,7 @@ def validate_rada_rows(
     )
     # Reuse all incumbent row/hash/byte/privacy/partial-unit invariants, but run them
     # over the rows parsed from the authenticated bytes rather than caller objects.
-    _LEGACY_VALIDATE_RADA_ROWS(parsed, raw_jsonl, report)
+    _FROZEN_PRIVATE_VALIDATE_RADA_ROWS(parsed, raw_jsonl, report)
     return parsed
 
 
@@ -531,7 +855,7 @@ def _validate_reconstructed_v8_against_preflight(
 def _restrict_lineage_to_survivors(
     inventory: Mapping[str, Any], survivor_authority: Mapping[str, Any]
 ) -> dict[str, Any]:
-    prepared = copy.deepcopy(dict(inventory))
+    prepared = _FROZEN_COPY_DEEPCOPY(dict(inventory))
     survivor_rows = survivor_authority.get("survivors")
     _require(isinstance(survivor_rows, list) and survivor_rows, "V8 survivor rows missing")
     survivor_ids = {str(row["source_id"]) for row in survivor_rows if isinstance(row, Mapping)}
@@ -546,7 +870,7 @@ def _restrict_lineage_to_survivors(
         right = edge.get("right_source_id")
         _require(isinstance(left, str) and isinstance(right, str), "V8 lineage edge endpoints malformed")
         if left in survivor_ids and right in survivor_ids:
-            retained.append(copy.deepcopy(dict(edge)))
+            retained.append(_FROZEN_COPY_DEEPCOPY(dict(edge)))
     prepared["lineage_edges"] = retained
     return prepared
 
@@ -568,6 +892,7 @@ def run_expanded_dedup(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Hardened V9 entry point; no expanded matcher call occurs before authority proof."""
 
+    _verify_stdlib_runtime_semantic_closure()
     verified_rada_rows = validate_rada_rows(
         rada_rows,
         rada_raw_jsonl,
@@ -579,7 +904,7 @@ def run_expanded_dedup(
     # This binds stable IDs, normalization, comparison metadata, thresholds and all
     # lineage-derived matches to the already sealed nested V3 authority.
     preflight = matcher_audit(
-        copy.deepcopy(dict(reconstructed_v8_inventory)),
+        _FROZEN_COPY_DEEPCOPY(dict(reconstructed_v8_inventory)),
         dict(reconstructed_v8_payloads),
     )
     _require(isinstance(preflight, Mapping), "V8 semantic preflight returned non-object report")
@@ -595,7 +920,8 @@ def run_expanded_dedup(
         reconstructed_v8_inventory,
         v8_survivor_authority,
     )
-    report, survivors = _LEGACY_RUN_EXPANDED_DEDUP(
+    _verify_private_runtime_semantic_closure()
+    report, survivors = _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP(
         matcher_audit=matcher_audit,
         matcher_verify=matcher_verify,
         reconstructed_v8_inventory=prepared_inventory,
@@ -612,7 +938,7 @@ def run_expanded_dedup(
 
     # Durable outer evidence now states the exact semantic authorities enforced by
     # this facade; this does not grant any additional corpus or training credit.
-    report = copy.deepcopy(report)
+    report = _FROZEN_COPY_DEEPCOPY(report)
     report["matcher_execution_authority"] = {
         "terminal_v7_head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
         "nested_v3_report_sha256": V8_NESTED_V3_SHA256,
@@ -625,8 +951,11 @@ def run_expanded_dedup(
         "data232_matching_git_blob_sha1": _EXPECTED_MATCHER_BLOBS[
             "twelve_six.data._data232_decontamination_matching"
         ],
+        "private_v9_impl_git_blob_sha1": _EXPECTED_PRIVATE_IMPL_BLOB,
         "authenticated_rada_rows_only": True,
         "sealed_v8_semantic_preflight_required": True,
+        "stdlib_runtime_semantic_closure_required": True,
+        "private_v9_runtime_semantic_closure_required": True,
     }
     core = dict(report)
     core.pop("report_sha256", None)
