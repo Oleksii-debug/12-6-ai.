@@ -738,7 +738,12 @@ def _build_receipt(
     return receipt
 
 
-def verify_clean_retained_receipt(receipt: Mapping[str, Any]) -> None:
+def verify_clean_retained_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    expected_training_handoff_identity_sha256: str,
+    expected_matcher_input_projection_sha256: str,
+) -> None:
     _require(isinstance(receipt, Mapping), "clean retained receipt must be an object")
     _require(set(receipt) == _RECEIPT_KEYS, "clean retained receipt key set drift")
     _require(receipt.get("schema_version") == RECEIPT_SCHEMA, "clean retained receipt schema drift")
@@ -765,6 +770,22 @@ def verify_clean_retained_receipt(receipt: Mapping[str, Any]) -> None:
     )
     _require(receipt.get("record_count") == OUTPUT_RECORD_COUNT, "receipt record count drift")
     _require(receipt.get("payload_bytes") == OUTPUT_PAYLOAD_BYTES, "receipt payload bytes drift")
+    _require(
+        receipt.get("training_handoff_identity_sha256")
+        == _sha256(
+            expected_training_handoff_identity_sha256,
+            "expected_training_handoff_identity_sha256",
+        ),
+        "training handoff identity is not independently expected",
+    )
+    _require(
+        receipt.get("matcher_input_projection_sha256")
+        == _sha256(
+            expected_matcher_input_projection_sha256,
+            "expected_matcher_input_projection_sha256",
+        ),
+        "matcher input projection is not independently expected",
+    )
     for key in (
         "known_nomis_pr462_payload_absent",
         "provenance_trace_bound",
@@ -827,5 +848,11 @@ def prepare_current_clean_retained_data232_rows(
         proof_json,
         release=_RELEASE,
     )
-    verify_clean_retained_receipt(receipt)
+    verify_clean_retained_receipt(
+        receipt,
+        expected_training_handoff_identity_sha256=handoff["handoff_identity_sha256"],
+        expected_matcher_input_projection_sha256=handoff[
+            "matcher_input_projection_sha256"
+        ],
+    )
     return rows, handoff, receipt
