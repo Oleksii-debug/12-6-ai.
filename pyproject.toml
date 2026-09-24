@@ -10,7 +10,16 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.12"]
+dev = ["pytest>=8", "ruff>=0.12", "setuptools>=75", "wheel"]
+
+[project.scripts]
+twelve-six-windows = "twelve_six.windows_operator_cli:main"
+
+[tool.setuptools.data-files]
+"share/twelve-six-ai/configs/research" = [
+    "configs/research/r01_windows_local_free_operator_v1.json",
+    "configs/research/r01_portable_local_free_run_packet_v1.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
