@@ -129,6 +129,7 @@ class GlobalLeaseOperation:
     run_id: str | None
     lease_status: str | None
     blockers: tuple[str, ...]
+    remote_write_outcome_unknown: bool = False
     mechanics_scope: str = MECHANICS_SCOPE
     cooperative_git_ref_cas_mechanics_verified: bool = False
     provider_backend_global_exclusivity_proven: bool = False
@@ -152,6 +153,7 @@ class GlobalLeaseOperation:
             "run_id": self.run_id,
             "lease_status": self.lease_status,
             "blockers": list(self.blockers),
+            "remote_write_outcome_unknown": self.remote_write_outcome_unknown,
             "mechanics_scope": self.mechanics_scope,
             "cooperative_git_ref_cas_mechanics_verified": (
                 self.cooperative_git_ref_cas_mechanics_verified
@@ -287,13 +289,31 @@ def decode_global_lease_state(
     except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError("global_lease_state_json_invalid") from exc
     if not isinstance(parsed, Mapping):
-        raise ValueError("global_lease_state_not_object")
+        raise TypeError("global_lease_state_not_object")
     canonical = canonical_json_bytes(parsed)
     if canonical != raw:
         raise ValueError("global_lease_state_not_canonical")
     errors = validate_global_lease_state(parsed, manifest)
     if errors:
         raise ValueError("invalid_global_lease_state:" + ";".join(errors))
+    return dict(parsed)
+
+
+def _snapshot_mapping(value: Mapping[str, Any], *, field: str) -> dict[str, Any]:
+    """Freeze one caller-owned mapping into private canonical JSON state."""
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{field}_not_object")
+    try:
+        raw = canonical_json_bytes(value)
+        parsed = json.loads(
+            raw,
+            object_pairs_hook=_pairs_without_duplicates,
+            parse_constant=_reject_json_constant,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ValueError(f"{field}_snapshot_invalid") from exc
+    if not isinstance(parsed, Mapping):
+        raise TypeError(f"{field}_not_object")
     return dict(parsed)
 
 
@@ -323,8 +343,7 @@ def _run_git(
             cwd=os.fspath(repo_root),
             env=_git_env(),
             input=input_bytes,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             check=False,
             timeout=60,
         )
@@ -517,6 +536,59 @@ def _operation_failure(
     )
 
 
+def _operation_committed_unverified(
+    operation: str,
+    ref: str,
+    manifest_sha256: str,
+    *,
+    written_remote_tip: str,
+    blocker: str,
+    expected_remote_tip: str | None = None,
+    observed_remote_tip: str | None = None,
+    run_id: str | None = None,
+    lease_status: str | None = None,
+) -> GlobalLeaseOperation:
+    return GlobalLeaseOperation(
+        operation=operation,
+        committed=True,
+        post_write_reread_verified=False,
+        ref=ref,
+        launch_manifest_sha256=manifest_sha256,
+        expected_remote_tip=expected_remote_tip,
+        observed_remote_tip=observed_remote_tip,
+        written_remote_tip=written_remote_tip,
+        run_id=run_id,
+        lease_status=lease_status,
+        blockers=(blocker,),
+    )
+
+
+def _operation_write_outcome_unknown(
+    operation: str,
+    ref: str,
+    manifest_sha256: str,
+    *,
+    blocker: str,
+    expected_remote_tip: str | None = None,
+    run_id: str | None = None,
+    lease_status: str | None = None,
+) -> GlobalLeaseOperation:
+    return GlobalLeaseOperation(
+        operation=operation,
+        committed=False,
+        post_write_reread_verified=False,
+        ref=ref,
+        launch_manifest_sha256=manifest_sha256,
+        expected_remote_tip=expected_remote_tip,
+        observed_remote_tip=None,
+        written_remote_tip=None,
+        run_id=run_id,
+        lease_status=lease_status,
+        blockers=(blocker,),
+        remote_write_outcome_unknown=True,
+    )
+
+
 def inspect_global_training_run_lease(
     repo_root: str | Path,
     remote: str,
@@ -524,9 +596,10 @@ def inspect_global_training_run_lease(
 ) -> GlobalLeaseInspection:
     _validate_transport(remote)
     try:
-        ref = global_training_run_lease_ref(manifest)
-        digest = launch_manifest_sha256(manifest)
-    except ValueError as exc:
+        manifest_snapshot = _snapshot_mapping(manifest, field="launch_manifest")
+        ref = global_training_run_lease_ref(manifest_snapshot)
+        digest = launch_manifest_sha256(manifest_snapshot)
+    except (TypeError, ValueError) as exc:
         return GlobalLeaseInspection(
             present=False,
             valid=False,
@@ -539,7 +612,7 @@ def inspect_global_training_run_lease(
             blockers=(str(exc),),
         )
     try:
-        snapshot = _read_snapshot(repo_root, remote, manifest)
+        snapshot = _read_snapshot(repo_root, remote, manifest_snapshot)
     except _GlobalLeaseFailure as exc:
         return GlobalLeaseInspection(
             present=True,
@@ -588,23 +661,30 @@ def acquire_global_training_run_lease(
     """Atomically create the manifest-derived remote ref once, never overwrite it."""
     _validate_transport(remote)
     try:
-        ref = global_training_run_lease_ref(manifest)
-        digest = launch_manifest_sha256(manifest)
-    except ValueError as exc:
+        manifest_snapshot = _snapshot_mapping(manifest, field="launch_manifest")
+        lease_snapshot = _snapshot_mapping(lease, field="training_run_lease")
+        ref = global_training_run_lease_ref(manifest_snapshot)
+        digest = launch_manifest_sha256(manifest_snapshot)
+    except (TypeError, ValueError) as exc:
         return _operation_failure("ACQUIRE", "", None, blocker=str(exc))
-    run_id = str(lease.get("run_id", "")) if isinstance(lease, Mapping) else None
-    status = str(lease.get("status", "")) if isinstance(lease, Mapping) else None
-    assessment = assess_training_run_lease(manifest, lease, now=_normalize_now(now))
+
+    run_id = str(lease_snapshot.get("run_id", ""))
+    status = str(lease_snapshot.get("status", ""))
+    assessment = assess_training_run_lease(
+        manifest_snapshot,
+        lease_snapshot,
+        now=_normalize_now(now),
+    )
     blockers = tuple(dict.fromkeys((*assessment.contract_errors, *assessment.blockers)))
     if blockers:
         return _operation_failure(
             "ACQUIRE", ref, digest, blocker=blockers[0], run_id=run_id, lease_status=status
         )
     if (
-        lease.get("status") != "RUNNING"
-        or lease.get("renewal_sequence") != 0
-        or lease.get("terminal_at_utc") is not None
-        or lease.get("acquired_at_utc") != lease.get("renewed_at_utc")
+        lease_snapshot.get("status") != "RUNNING"
+        or lease_snapshot.get("renewal_sequence") != 0
+        or lease_snapshot.get("terminal_at_utc") is not None
+        or lease_snapshot.get("acquired_at_utc") != lease_snapshot.get("renewed_at_utc")
     ):
         return _operation_failure(
             "ACQUIRE",
@@ -614,6 +694,9 @@ def acquire_global_training_run_lease(
             run_id=run_id,
             lease_status=status,
         )
+
+    write_committed = False
+    candidate_tip: str | None = None
     try:
         existing_tip = _remote_tip(repo_root, remote, ref)
         if existing_tip is not None:
@@ -626,58 +709,89 @@ def acquire_global_training_run_lease(
                 run_id=run_id,
                 lease_status=status,
             )
-        state = build_global_lease_state(manifest, lease)
+        state = build_global_lease_state(manifest_snapshot, lease_snapshot)
         candidate_tip = _write_state_commit(
             repo_root, state, parent_tip=None, operation="acquire"
         )
-        if not _push_candidate(repo_root, remote, candidate_tip, ref):
-            observed = _remote_tip(repo_root, remote, ref)
-            return _operation_failure(
-                "ACQUIRE",
-                ref,
-                digest,
-                blocker="global_lease_ref_create_rejected",
-                observed_remote_tip=observed,
-                run_id=run_id,
-                lease_status=status,
-            )
+        pushed = _push_candidate(repo_root, remote, candidate_tip, ref)
+        if not pushed:
+            try:
+                observed_push = _remote_tip(repo_root, remote, ref)
+            except _GlobalLeaseFailure as exc:
+                return _operation_write_outcome_unknown(
+                    "ACQUIRE",
+                    ref,
+                    digest,
+                    blocker=f"global_lease_push_outcome_unknown:{exc.blocker}",
+                    run_id=run_id,
+                    lease_status=status,
+                )
+            if observed_push != candidate_tip:
+                return _operation_failure(
+                    "ACQUIRE",
+                    ref,
+                    digest,
+                    blocker="global_lease_ref_create_rejected",
+                    observed_remote_tip=observed_push,
+                    run_id=run_id,
+                    lease_status=status,
+                )
+        write_committed = True
+
         observed_after = _remote_tip(repo_root, remote, ref)
         if observed_after != candidate_tip:
-            return _operation_failure(
+            return _operation_committed_unverified(
                 "ACQUIRE",
                 ref,
                 digest,
+                written_remote_tip=candidate_tip,
                 blocker="global_lease_post_write_tip_mismatch",
                 observed_remote_tip=observed_after,
                 run_id=run_id,
                 lease_status=status,
             )
-        reread = _read_snapshot(repo_root, remote, manifest)
-        if reread is None or reread.remote_tip != candidate_tip or reread.lease != dict(lease):
-            return _operation_failure(
+        reread = _read_snapshot(repo_root, remote, manifest_snapshot)
+        if (
+            reread is None
+            or reread.remote_tip != candidate_tip
+            or reread.lease != lease_snapshot
+        ):
+            return _operation_committed_unverified(
                 "ACQUIRE",
                 ref,
                 digest,
+                written_remote_tip=candidate_tip,
                 blocker="global_lease_post_write_reread_mismatch",
                 observed_remote_tip=None if reread is None else reread.remote_tip,
                 run_id=run_id,
                 lease_status=status,
             )
     except _GlobalLeaseFailure as exc:
+        if write_committed and candidate_tip is not None:
+            return _operation_committed_unverified(
+                "ACQUIRE",
+                ref,
+                digest,
+                written_remote_tip=candidate_tip,
+                blocker=exc.blocker,
+                run_id=run_id,
+                lease_status=status,
+            )
         return _operation_failure(
             "ACQUIRE", ref, digest, blocker=exc.blocker, run_id=run_id, lease_status=status
         )
+
     return GlobalLeaseOperation(
         operation="ACQUIRE",
         committed=True,
         post_write_reread_verified=True,
         ref=ref,
-        launch_manifest_sha256=digest,
+        launch_manifest_sha256=reread.launch_manifest_sha256,
         expected_remote_tip=None,
-        observed_remote_tip=candidate_tip,
+        observed_remote_tip=reread.remote_tip,
         written_remote_tip=candidate_tip,
-        run_id=run_id,
-        lease_status=status,
+        run_id=str(reread.lease["run_id"]),
+        lease_status=str(reread.lease["status"]),
         blockers=(),
         cooperative_git_ref_cas_mechanics_verified=True,
     )
@@ -696,16 +810,22 @@ def _transition_global_training_run_lease(
 ) -> GlobalLeaseOperation:
     _validate_transport(remote)
     try:
-        ref = global_training_run_lease_ref(manifest)
-        digest = launch_manifest_sha256(manifest)
-    except ValueError as exc:
+        manifest_snapshot = _snapshot_mapping(manifest, field="launch_manifest")
+        ref = global_training_run_lease_ref(manifest_snapshot)
+        digest = launch_manifest_sha256(manifest_snapshot)
+    except (TypeError, ValueError) as exc:
         return _operation_failure(operation, "", None, blocker=str(exc))
     if _GIT_SHA.fullmatch(expected_remote_tip) is None:
         return _operation_failure(
             operation, ref, digest, blocker="expected_remote_tip_invalid"
         )
+
+    write_committed = False
+    candidate_tip: str | None = None
+    run_id: str | None = None
+    lease_status: str | None = None
     try:
-        snapshot = _read_snapshot(repo_root, remote, manifest)
+        snapshot = _read_snapshot(repo_root, remote, manifest_snapshot)
         if snapshot is None:
             return _operation_failure(
                 operation,
@@ -726,6 +846,8 @@ def _transition_global_training_run_lease(
                 lease_status=str(snapshot.lease["status"]),
             )
         previous = TrainingLease(**snapshot.lease)
+        run_id = previous.run_id
+        lease_status = previous.status
         current = _normalize_now(now)
         if operation == "RENEW":
             if ttl_seconds is None:
@@ -736,10 +858,14 @@ def _transition_global_training_run_lease(
                     blocker="ttl_seconds_missing",
                     expected_remote_tip=expected_remote_tip,
                     observed_remote_tip=snapshot.remote_tip,
-                    run_id=previous.run_id,
-                    lease_status=previous.status,
+                    run_id=run_id,
+                    lease_status=lease_status,
                 )
-            candidate = renew_training_run_lease(previous, ttl_seconds=ttl_seconds, now=current)
+            candidate = renew_training_run_lease(
+                previous,
+                ttl_seconds=ttl_seconds,
+                now=current,
+            )
         elif operation == "TERMINATE":
             if terminal_status is None:
                 return _operation_failure(
@@ -749,14 +875,20 @@ def _transition_global_training_run_lease(
                     blocker="terminal_status_missing",
                     expected_remote_tip=expected_remote_tip,
                     observed_remote_tip=snapshot.remote_tip,
-                    run_id=previous.run_id,
-                    lease_status=previous.status,
+                    run_id=run_id,
+                    lease_status=lease_status,
                 )
-            candidate = terminate_training_run_lease(previous, status=terminal_status, now=current)
+            candidate = terminate_training_run_lease(
+                previous,
+                status=terminal_status,
+                now=current,
+            )
         else:
             raise AssertionError("unreachable operation")
         transition_errors = validate_lease_transition(
-            previous.as_dict(), candidate.as_dict(), manifest
+            previous.as_dict(),
+            candidate.as_dict(),
+            manifest_snapshot,
         )
         if transition_errors:
             return _operation_failure(
@@ -766,57 +898,74 @@ def _transition_global_training_run_lease(
                 blocker=transition_errors[0],
                 expected_remote_tip=expected_remote_tip,
                 observed_remote_tip=snapshot.remote_tip,
-                run_id=previous.run_id,
-                lease_status=previous.status,
+                run_id=run_id,
+                lease_status=lease_status,
             )
-        state = build_global_lease_state(manifest, candidate.as_dict())
+        state = build_global_lease_state(manifest_snapshot, candidate.as_dict())
         candidate_tip = _write_state_commit(
             repo_root,
             state,
             parent_tip=snapshot.remote_tip,
             operation=operation.lower(),
         )
-        if not _push_candidate(repo_root, remote, candidate_tip, ref):
-            observed = _remote_tip(repo_root, remote, ref)
-            return _operation_failure(
-                operation,
-                ref,
-                digest,
-                blocker="global_lease_transition_push_rejected",
-                expected_remote_tip=expected_remote_tip,
-                observed_remote_tip=observed,
-                run_id=previous.run_id,
-                lease_status=previous.status,
-            )
+        pushed = _push_candidate(repo_root, remote, candidate_tip, ref)
+        if not pushed:
+            try:
+                observed_push = _remote_tip(repo_root, remote, ref)
+            except _GlobalLeaseFailure as exc:
+                return _operation_write_outcome_unknown(
+                    operation,
+                    ref,
+                    digest,
+                    blocker=f"global_lease_push_outcome_unknown:{exc.blocker}",
+                    expected_remote_tip=expected_remote_tip,
+                    run_id=run_id,
+                    lease_status=lease_status,
+                )
+            if observed_push != candidate_tip:
+                return _operation_failure(
+                    operation,
+                    ref,
+                    digest,
+                    blocker="global_lease_transition_push_rejected",
+                    expected_remote_tip=expected_remote_tip,
+                    observed_remote_tip=observed_push,
+                    run_id=run_id,
+                    lease_status=lease_status,
+                )
+        write_committed = True
+
         observed_after = _remote_tip(repo_root, remote, ref)
         if observed_after != candidate_tip:
-            return _operation_failure(
+            return _operation_committed_unverified(
                 operation,
                 ref,
                 digest,
+                written_remote_tip=candidate_tip,
                 blocker="global_lease_post_write_tip_mismatch",
                 expected_remote_tip=expected_remote_tip,
                 observed_remote_tip=observed_after,
                 run_id=candidate.run_id,
                 lease_status=candidate.status,
             )
-        reread = _read_snapshot(repo_root, remote, manifest)
+        reread = _read_snapshot(repo_root, remote, manifest_snapshot)
         if (
             reread is None
             or reread.remote_tip != candidate_tip
             or reread.lease != candidate.as_dict()
         ):
-            return _operation_failure(
+            return _operation_committed_unverified(
                 operation,
                 ref,
                 digest,
+                written_remote_tip=candidate_tip,
                 blocker="global_lease_post_write_reread_mismatch",
                 expected_remote_tip=expected_remote_tip,
                 observed_remote_tip=None if reread is None else reread.remote_tip,
                 run_id=candidate.run_id,
                 lease_status=candidate.status,
             )
-    except (ValueError, TypeError) as exc:
+    except (TypeError, ValueError) as exc:
         return _operation_failure(
             operation,
             ref,
@@ -825,6 +974,17 @@ def _transition_global_training_run_lease(
             expected_remote_tip=expected_remote_tip,
         )
     except _GlobalLeaseFailure as exc:
+        if write_committed and candidate_tip is not None:
+            return _operation_committed_unverified(
+                operation,
+                ref,
+                digest,
+                written_remote_tip=candidate_tip,
+                blocker=exc.blocker,
+                expected_remote_tip=expected_remote_tip,
+                run_id=run_id,
+                lease_status=lease_status,
+            )
         return _operation_failure(
             operation,
             ref,
@@ -832,17 +992,18 @@ def _transition_global_training_run_lease(
             blocker=exc.blocker,
             expected_remote_tip=expected_remote_tip,
         )
+
     return GlobalLeaseOperation(
         operation=operation,
         committed=True,
         post_write_reread_verified=True,
         ref=ref,
-        launch_manifest_sha256=digest,
+        launch_manifest_sha256=reread.launch_manifest_sha256,
         expected_remote_tip=expected_remote_tip,
-        observed_remote_tip=candidate_tip,
+        observed_remote_tip=reread.remote_tip,
         written_remote_tip=candidate_tip,
-        run_id=candidate.run_id,
-        lease_status=candidate.status,
+        run_id=str(reread.lease["run_id"]),
+        lease_status=str(reread.lease["status"]),
         blockers=(),
         cooperative_git_ref_cas_mechanics_verified=True,
     )

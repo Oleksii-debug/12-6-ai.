@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.learned20m_global_training_lease as global_lease_module
 from twelve_six.learned20m_global_training_lease import (
     CANONICAL_LOCK_DOMAIN,
     CANONICAL_REPOSITORY,
@@ -97,8 +98,7 @@ def _git(*args: str, cwd: Path | None = None) -> str:
         ["git", *args],
         cwd=cwd,
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
     )
     return result.stdout.strip()
@@ -118,6 +118,7 @@ def git_pair(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 
 def _assert_no_authority_widening(result: GlobalLeaseOperation) -> None:
+    assert result.remote_write_outcome_unknown is False
     assert result.provider_backend_global_exclusivity_proven is False
     assert result.global_exclusivity_proven is False
     assert result.renewal_authority_granted is False
@@ -205,6 +206,163 @@ def test_acquire_is_single_winner_and_reread_verified(
     assert inspection.run_id == "run-a"
     assert inspection.global_exclusivity_proven is False
     assert inspection.optimizer_start_permitted_by_this_module is False
+
+
+def test_acquire_freezes_manifest_and_lease_before_assessment(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    original_manifest = deepcopy(manifest)
+    lease = _lease(manifest).as_dict()
+    original_lease = deepcopy(lease)
+    real_assess = global_lease_module.assess_training_run_lease
+
+    def mutating_assess(manifest_arg, lease_arg, *, now):
+        result = real_assess(manifest_arg, lease_arg, now=now)
+        manifest["recipe"]["seed"] = 9999
+        lease["run_id"] = "mutated-run"
+        lease["holder_id"] = "mutated-holder"
+        return result
+
+    monkeypatch.setattr(
+        global_lease_module,
+        "assess_training_run_lease",
+        mutating_assess,
+    )
+    result = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease,
+        now=NOW,
+    )
+
+    assert result.committed is True
+    assert result.post_write_reread_verified is True
+    assert result.launch_manifest_sha256 == launch_manifest_sha256(original_manifest)
+    assert result.run_id == original_lease["run_id"]
+    inspection = inspect_global_training_run_lease(
+        writer_a,
+        str(remote),
+        original_manifest,
+    )
+    assert inspection.valid is True
+    assert inspection.run_id == original_lease["run_id"]
+    assert launch_manifest_sha256(manifest) != launch_manifest_sha256(original_manifest)
+
+
+def test_acquire_recovers_when_push_reports_failure_after_remote_commit(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    real_push = global_lease_module._push_candidate
+
+    def push_then_report_failure(repo_root, remote_arg, candidate_tip, ref):
+        assert real_push(repo_root, remote_arg, candidate_tip, ref) is True
+        return False
+
+    monkeypatch.setattr(global_lease_module, "_push_candidate", push_then_report_failure)
+    result = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        _lease(manifest).as_dict(),
+        now=NOW,
+    )
+
+    assert result.committed is True
+    assert result.post_write_reread_verified is True
+    assert result.remote_write_outcome_unknown is False
+    assert result.written_remote_tip is not None
+    assert (
+        _git("--git-dir", str(remote), "rev-parse", global_training_run_lease_ref(manifest))
+        == result.written_remote_tip
+    )
+
+
+def test_acquire_reports_committed_unverified_after_post_write_transport_failure(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    real_remote_tip = global_lease_module._remote_tip
+    calls = 0
+
+    def fail_after_write(repo_root, remote_arg, ref):
+        nonlocal calls
+        calls += 1
+        if calls >= 2:
+            raise global_lease_module._GlobalLeaseFailure("simulated_post_write_failure")
+        return real_remote_tip(repo_root, remote_arg, ref)
+
+    monkeypatch.setattr(global_lease_module, "_remote_tip", fail_after_write)
+    result = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        _lease(manifest).as_dict(),
+        now=NOW,
+    )
+
+    assert result.committed is True
+    assert result.post_write_reread_verified is False
+    assert result.remote_write_outcome_unknown is False
+    assert result.written_remote_tip is not None
+    assert result.blockers == ("simulated_post_write_failure",)
+    assert (
+        _git("--git-dir", str(remote), "rev-parse", global_training_run_lease_ref(manifest))
+        == result.written_remote_tip
+    )
+
+
+def test_renew_freezes_manifest_before_post_write_reread(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    original_manifest = _manifest()
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        original_manifest,
+        _lease(original_manifest).as_dict(),
+        now=NOW,
+    )
+    assert acquired.written_remote_tip is not None
+
+    mutable_manifest = deepcopy(original_manifest)
+    real_push = global_lease_module._push_candidate
+
+    def push_then_mutate(repo_root, remote_arg, candidate_tip, ref):
+        pushed = real_push(repo_root, remote_arg, candidate_tip, ref)
+        mutable_manifest["recipe"]["seed"] = 424242
+        return pushed
+
+    monkeypatch.setattr(global_lease_module, "_push_candidate", push_then_mutate)
+    renewed = renew_global_training_run_lease(
+        writer_b,
+        str(remote),
+        mutable_manifest,
+        expected_remote_tip=acquired.written_remote_tip,
+        ttl_seconds=3600,
+        now=NOW + timedelta(minutes=10),
+    )
+
+    assert renewed.committed is True
+    assert renewed.post_write_reread_verified is True
+    assert renewed.launch_manifest_sha256 == launch_manifest_sha256(original_manifest)
+    inspection = inspect_global_training_run_lease(
+        writer_b,
+        str(remote),
+        original_manifest,
+    )
+    assert inspection.valid is True
+    assert inspection.renewal_sequence == 1
 
 
 def test_renew_is_fast_forward_and_stale_tip_cannot_retry_itself_into_authority(

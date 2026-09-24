@@ -26,8 +26,15 @@ or the bytes are not exactly canonical JSON. The embedded lease must pass the in
 First acquisition is a normal non-force ref creation. Renewal and terminal transitions are child
 commits of the exact expected remote tip and are pushed non-force. A stale/sibling writer fails;
 there is no auto-rebase or retry that could manufacture a newly-authorized transition. Every
-successful write is followed by a remote-tip reread and full state reread. Existing active,
-expired, or terminal lineage is never silently replaced by a fresh run.
+authority-relevant caller mappings are frozen once into private canonical JSON snapshots before
+validation. Ref/digest derivation, assessment, state construction, push verification, reread, and
+returned metadata all use those exact snapshots; later caller mutation cannot change the operation.
+
+Every successful write is followed by a remote-tip reread and full state reread. A successful
+remote mutation followed by failed verification is reported as committed-but-unverified, never as
+a clean pre-write failure. If Git reports push failure and the remote outcome cannot itself be
+observed, the result sets remote_write_outcome_unknown and callers must inspect before retrying.
+Existing active, expired, or terminal lineage is never silently replaced by a fresh run.
 
 ## Authority boundary
 
@@ -50,7 +57,9 @@ evaluation, compute, and training authorities before optimizer step 1.
 
 The operator emits one compact JSON object and uses exit code 0 only for a committed+reread
 mutation or a valid present inspection. Exit 2 is malformed local input; exit 3 is a fail-closed
-remote/contract blocker.
+remote/contract blocker. Exit 3 may still carry committed=true when the remote write succeeded but
+post-write verification failed, or remote_write_outcome_unknown=true when the write outcome cannot
+be established; automation must inspect those fields and must not blindly retry.
 
 ```text
 python tools/operate_learned20m_global_training_lease.py \
