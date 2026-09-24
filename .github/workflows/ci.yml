@@ -41,6 +41,9 @@ jobs:
           AUTHORITATIVE_MAIN_SHA: eb2e0395d41518f5039541587c28a6318e761b14
         run: |
           set -euo pipefail
+          # actions/checkout uses the synthetic PR merge ref by default. Detach to the
+          # immutable PR head before proving the execution-only carrier boundary.
+          git checkout --detach "${{ github.event.pull_request.head.sha }}"
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
           test "$(git diff --name-only "$AUTHORITATIVE_MAIN_SHA" HEAD)" = ".github/workflows/ci.yml"
           git merge-base --is-ancestor 4d3d9f12ce8136d73da8343015acb9e79925dc44 "$AUTHORITATIVE_MAIN_SHA"
