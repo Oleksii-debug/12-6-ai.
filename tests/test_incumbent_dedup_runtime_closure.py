@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import html
 import importlib.util
 import inspect
 import json
@@ -304,3 +305,85 @@ def test_verifier_attests_before_reference_callable(
     with pytest.raises(IndexedExecutionError, match="synthetic runtime drift"):
         verifier.main()
     assert events == ["attest"]
+
+def test_loader_rejects_html_replace_charref_transitive_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frozen_unescape = html.unescape
+
+    def replacement(_match: object) -> str:
+        return "drifted"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(html, "_replace_charref", replacement)
+        assert html.unescape is frozen_unescape
+        assert html.unescape("&amp;") == "drifted"
+        with pytest.raises(
+            IndexedExecutionError,
+            match=r"transitive behavior drift: html\._replace_charref",
+        ):
+            _attest_loader_frozen_runtime_dependencies()
+
+    _attest_loader_frozen_runtime_dependencies()
+
+
+def test_loader_rejects_html_charref_transitive_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with monkeypatch.context() as patch:
+        patch.setattr(html, "_charref", re.compile(r"never-match"))
+        with pytest.raises(
+            IndexedExecutionError,
+            match=r"transitive behavior drift: html\._charref",
+        ):
+            _attest_loader_frozen_runtime_dependencies()
+
+    _attest_loader_frozen_runtime_dependencies()
+
+
+def test_loader_rejects_html_invalid_charrefs_in_place_mutation() -> None:
+    original = dict(html._invalid_charrefs)
+    try:
+        html._invalid_charrefs[-1] = "drifted"
+        with pytest.raises(
+            IndexedExecutionError,
+            match=r"transitive behavior drift: html\._invalid_charrefs",
+        ):
+            _attest_loader_frozen_runtime_dependencies()
+    finally:
+        html._invalid_charrefs.clear()
+        html._invalid_charrefs.update(original)
+
+    _attest_loader_frozen_runtime_dependencies()
+
+
+def test_loader_rejects_html_invalid_codepoints_in_place_mutation() -> None:
+    original = set(html._invalid_codepoints)
+    try:
+        html._invalid_codepoints.add(-1)
+        with pytest.raises(
+            IndexedExecutionError,
+            match=r"transitive behavior drift: html\._invalid_codepoints",
+        ):
+            _attest_loader_frozen_runtime_dependencies()
+    finally:
+        html._invalid_codepoints.clear()
+        html._invalid_codepoints.update(original)
+
+    _attest_loader_frozen_runtime_dependencies()
+
+
+def test_loader_rejects_html5_in_place_mutation() -> None:
+    original = dict(html._html5)
+    try:
+        html._html5["__swarm_transitive_probe__"] = "drifted"
+        with pytest.raises(
+            IndexedExecutionError,
+            match=r"transitive behavior drift: html\._html5",
+        ):
+            _attest_loader_frozen_runtime_dependencies()
+    finally:
+        html._html5.clear()
+        html._html5.update(original)
+
+    _attest_loader_frozen_runtime_dependencies()
