@@ -214,12 +214,21 @@ _FROZEN_IMPORTED_BEHAVIOR_STATES = tuple(
 )
 
 # Public stdlib wrappers can preserve their own identity/code while execution-relevant
-# module globals are rebound. Bind the two concrete transitive pivots used by the exact
-# incumbent closure that were demonstrated during current-head prequalification.
+# module globals are rebound. Bind the concrete transitive pivots used by the exact
+# incumbent closure. html.unescape needs both its regex/callback and the mutable tables
+# consumed by the callback; wrapper identity/code alone is not sufficient.
 _FROZEN_TRANSITIVE_BEHAVIOR = (
     ("re", "_compile", re, _freeze_direct_behavior(re._compile)),
     ("json", "JSONEncoder", json, _freeze_direct_behavior(json.JSONEncoder)),
+    ("html", "_charref", html, _freeze_direct_behavior(html._charref)),
+    ("html", "_replace_charref", html, _freeze_direct_behavior(html._replace_charref)),
 )
+_FROZEN_HTML_INVALID_CHARREFS = html._invalid_charrefs
+_FROZEN_HTML_INVALID_CHARREFS_ITEMS = tuple(sorted(html._invalid_charrefs.items()))
+_FROZEN_HTML_INVALID_CODEPOINTS = html._invalid_codepoints
+_FROZEN_HTML_INVALID_CODEPOINTS_ITEMS = frozenset(html._invalid_codepoints)
+_FROZEN_HTML5 = html._html5
+_FROZEN_HTML5_ITEMS = tuple(sorted(html._html5.items()))
 
 
 class IndexedExecutionError(RuntimeError):
@@ -240,6 +249,30 @@ def _attest_loader_frozen_runtime_dependencies() -> None:
             raise IndexedExecutionError(
                 f"transitive behavior drift: {module_name}.{member_name}"
             )
+
+    invalid_charrefs = getattr(html, "_invalid_charrefs", None)
+    if (
+        type(invalid_charrefs) is not dict
+        or invalid_charrefs is not _FROZEN_HTML_INVALID_CHARREFS
+        or tuple(sorted(invalid_charrefs.items())) != _FROZEN_HTML_INVALID_CHARREFS_ITEMS
+    ):
+        raise IndexedExecutionError("transitive behavior drift: html._invalid_charrefs")
+
+    invalid_codepoints = getattr(html, "_invalid_codepoints", None)
+    if (
+        type(invalid_codepoints) is not set
+        or invalid_codepoints is not _FROZEN_HTML_INVALID_CODEPOINTS
+        or frozenset(invalid_codepoints) != _FROZEN_HTML_INVALID_CODEPOINTS_ITEMS
+    ):
+        raise IndexedExecutionError("transitive behavior drift: html._invalid_codepoints")
+
+    html5 = getattr(html, "_html5", None)
+    if (
+        type(html5) is not dict
+        or html5 is not _FROZEN_HTML5
+        or tuple(sorted(html5.items())) != _FROZEN_HTML5_ITEMS
+    ):
+        raise IndexedExecutionError("transitive behavior drift: html._html5")
 
 
 def _git_blob_sha1(payload: bytes) -> str:
