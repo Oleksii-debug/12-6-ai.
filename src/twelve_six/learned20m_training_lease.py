@@ -60,6 +60,7 @@ _BASE_MANIFEST_FIELDS = {
 _TERMINAL_AUTHORITY_FIELDS = {
     "schema",
     "authority_identity_sha256",
+    "base_manifest_sha256",
     "source_git_sha",
     "carrier_authority_sha256",
     "modelspec_sha256",
@@ -313,6 +314,13 @@ def terminal_authority_sha256(authority: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json_bytes(body)).hexdigest()
 
 
+def base_launch_manifest_sha256(manifest: Mapping[str, Any]) -> str:
+    """Hash the complete behavior-affecting base manifest without terminal authority."""
+    body = dict(manifest)
+    body.pop("terminal_authority", None)
+    return hashlib.sha256(canonical_json_bytes(body)).hexdigest()
+
+
 def _validate_manifest_core(
     manifest: Mapping[str, Any],
     errors: list[str],
@@ -486,6 +494,7 @@ def _validate_terminal_authority(
         )
 
     hash_fields = (
+        "base_manifest_sha256",
         "carrier_authority_sha256",
         "modelspec_sha256",
         "initspec_sha256",
@@ -612,6 +621,12 @@ def _validate_terminal_authority(
         errors,
         authority.get("materially_paid") is False,
         "terminal_materially_paid_must_be_false",
+    )
+
+    _expect(
+        errors,
+        authority.get("base_manifest_sha256") == base_launch_manifest_sha256(manifest),
+        "terminal_authority_manifest_mismatch:base_manifest_sha256",
     )
 
     identities = manifest.get("identities")
@@ -878,21 +893,25 @@ def build_authorized_training_run_lease(
     ttl_seconds: int,
     now: datetime | None = None,
 ) -> TrainingLease:
-    """Build the same lease only after the external terminal-authority gate passes."""
+    """Build one lease from the exact private snapshot authenticated in this call."""
+    snapshot = json.loads(canonical_json_bytes(manifest))
     assessment = assess_terminal_launch_authority(
-        manifest,
+        snapshot,
         expected_terminal_authority_sha256=expected_terminal_authority_sha256,
     )
     if not assessment.ready_for_training_run_lease:
         blockers = (*assessment.contract_errors, *assessment.blockers)
         raise ValueError("launch authority blocked:" + ";".join(blockers))
-    return build_training_run_lease(
-        manifest,
+    lease = build_training_run_lease(
+        snapshot,
         run_id=run_id,
         holder_id=holder_id,
         ttl_seconds=ttl_seconds,
         now=now,
     )
+    if assessment.manifest_sha256 is None or lease.manifest_sha256 != assessment.manifest_sha256:
+        raise ValueError("authorized_lease_manifest_snapshot_mismatch")
+    return lease
 
 
 def validate_training_run_lease(
