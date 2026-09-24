@@ -9,7 +9,7 @@ import twelve_six.s0_candidate_evaluation as candidate_eval
 
 
 class _DummyModel:
-    def eval(self) -> "_DummyModel":
+    def eval(self) -> _DummyModel:
         return self
 
     def __call__(self, input_ids: torch.Tensor) -> SimpleNamespace:
