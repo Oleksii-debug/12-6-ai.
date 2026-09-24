@@ -5,8 +5,10 @@ from datetime import UTC, datetime
 
 import pytest
 
+import twelve_six.learned20m_training_lease as lease_module
 from twelve_six.learned20m_training_lease import (
     TERMINAL_AUTHORITY_SCHEMA,
+    base_launch_manifest_sha256,
     assess_terminal_launch_authority,
     build_authorized_training_run_lease,
     finalize_launch_manifest,
@@ -74,6 +76,7 @@ def _terminal_authority(manifest: dict, *, exposure: int = 0) -> dict:
     value = {
         "schema": TERMINAL_AUTHORITY_SCHEMA,
         "authority_identity_sha256": "0" * 64,
+        "base_manifest_sha256": base_launch_manifest_sha256(manifest),
         "source_git_sha": identities["source_git_sha"],
         "carrier_authority_sha256": "0" * 64,
         "modelspec_sha256": identities["modelspec_sha256"],
@@ -265,3 +268,69 @@ def test_wrong_or_malformed_external_root_never_authenticates_candidate():
     assert malformed.external_authority_verified is False
     assert malformed.ready_for_training_run_lease is False
     assert "expected_terminal_authority_sha256_invalid" in malformed.blockers
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement"),
+    [
+        ("recipe", "optimizer_scheduler_precision", "AdamW|cosine|fp32"),
+        ("recipe", "seed", 20260827),
+        ("checkpoint", "lineage", "learned20m-v2-substituted"),
+    ],
+)
+def test_external_terminal_root_authenticates_complete_base_behavior(
+    section: str,
+    field: str,
+    replacement: object,
+):
+    manifest, authority = _finalized(exposure=1_000)
+    expected = authority["authority_identity_sha256"]
+    candidate = deepcopy(manifest)
+    candidate[section][field] = replacement
+
+    errors = validate_launch_manifest(candidate)
+    assert "terminal_authority_manifest_mismatch:base_manifest_sha256" in errors
+
+    assessment = assess_terminal_launch_authority(
+        candidate,
+        expected_terminal_authority_sha256=expected,
+    )
+    assert assessment.external_authority_verified is False
+    assert assessment.ready_for_training_run_lease is False
+
+
+def test_authorized_lease_uses_one_authenticated_private_manifest_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    manifest, authority = _finalized(exposure=1_000)
+    expected = authority["authority_identity_sha256"]
+    authenticated_manifest_sha256 = launch_manifest_sha256(manifest)
+    real_assess = lease_module.assess_terminal_launch_authority
+
+    def assess_then_mutate_original(snapshot, *, expected_terminal_authority_sha256):
+        assessment = real_assess(
+            snapshot,
+            expected_terminal_authority_sha256=expected_terminal_authority_sha256,
+        )
+        manifest["terminal_authority"]["loss_bearing_manifest_sha256"] = "f" * 64
+        manifest["terminal_authority"]["authority_identity_sha256"] = terminal_authority_sha256(
+            manifest["terminal_authority"]
+        )
+        return assessment
+
+    monkeypatch.setattr(
+        lease_module,
+        "assess_terminal_launch_authority",
+        assess_then_mutate_original,
+    )
+    lease = lease_module.build_authorized_training_run_lease(
+        manifest,
+        expected_terminal_authority_sha256=expected,
+        run_id="run-snapshot",
+        holder_id="runner-snapshot",
+        ttl_seconds=60,
+        now=NOW,
+    )
+
+    assert lease.manifest_sha256 == authenticated_manifest_sha256
+    assert lease.manifest_sha256 != launch_manifest_sha256(manifest)
+
