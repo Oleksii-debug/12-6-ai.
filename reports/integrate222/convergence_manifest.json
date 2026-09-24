@@ -1,0 +1,209 @@
+{
+  "schema": "12-6.integrate222-convergence-ledger.v1",
+  "worker_id": "INTEGRATE-222-LEARNED-EXECUTION-SPINE",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "branch": "integrate222/learned-execution-spine-20260826",
+  "composition_date": "2026-08-26",
+  "mode": "LOCAL_FREE",
+  "policy": {
+    "allowed_classifications": [
+      "ABSORB",
+      "ALREADY_PRESENT",
+      "SUPERSEDED",
+      "HOLD",
+      "COLLISION",
+      "REJECT"
+    ],
+    "unknown_or_nonterminal_default": "HOLD",
+    "scientific_rule": "Failed, queued, mechanics-only, stale, or unlike-budget scientific conclusions do not become code authority.",
+    "branch_rule": "Never mutate an in-flight scientific worker branch; compose only on the isolated INTEGRATE-222 branch.",
+    "model_math_rule": "Selective integration must not change ModelSpec math, optimizer recipe, corpus/tokenizer identity, or learned checkpoint semantics."
+  },
+  "accepted_execution_layers": [
+    {
+      "worker": "ENV-151",
+      "classification": "ABSORB",
+      "source_sha": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+      "evidence": "terminal exact-head execution-bootstrap self-green",
+      "role": "first-parent universal bootstrap authority"
+    },
+    {
+      "worker": "INTEGRATE-163",
+      "classification": "ABSORB",
+      "source_sha": "e700acaed7963d641ecabc7d4f0e1017be272300",
+      "role": "four-blob precision runtime seam only"
+    },
+    {
+      "worker": "CI-161",
+      "classification": "ABSORB",
+      "source_sha": "7c58eca3dad0c30f2f5593da43902645086c79e3",
+      "role": "failure-classification core; historical failed workflow is not PASS authority"
+    },
+    {
+      "worker": "CI-162",
+      "classification": "ABSORB",
+      "source_sha": "c245e929bca796166377a647f1eb3a558d2e4ad6",
+      "role": "durable evidence finalizer core only"
+    },
+    {
+      "worker": "CI-165",
+      "classification": "ABSORB",
+      "source_sha": "9d0c65fd4810f4abd0eabfab517ace9d8b4f946d",
+      "terminal_evidence_parent": "e28b2f37ac420b0417cb57b6b7ec9a638e838496",
+      "role": "fail-closed launch gate without producer workflow rewrites"
+    },
+    {
+      "worker": "CHECKPOINT-211",
+      "classification": "ABSORB",
+      "source_sha": "349e6db94d4aca81c2d1a0ccc3368a98b6058392",
+      "run_id": 32951984562,
+      "role": "immutable recovery generation/pointer lifecycle only; learned-10M runtime remains held"
+    }
+  ],
+  "accepted_learned_evidence": [
+    {
+      "worker": "MILESTONE-150",
+      "classification": "ALREADY_PRESENT",
+      "producer_sha": "5838cd16869dcfcf762368d8673eddf52d51b7e3",
+      "run_id": 32937411703,
+      "artifact_id": 9595677772,
+      "artifact_name": "milestone150-learned-base-ladder-v1",
+      "corpus_identity_sha256": "422f545da93526ceba2c0ff738e0b9deac65f35bfb31d87d2aab068cda091fc8",
+      "rungs": {
+        "100k": 95568,
+        "500k": 467808,
+        "1m": 1037696
+      },
+      "optimized_tokens_each": 948504,
+      "role": "terminal learned ladder; naturally ancestral to the convergence spine"
+    },
+    {
+      "worker": "LEARN-191",
+      "classification": "ABSORB",
+      "producer_sha": "a75920cef8bde37a8c590e34095be83c97b75f1d",
+      "run_id": 32940842372,
+      "artifact_id": 9597788382,
+      "artifact_name": "learn191-real-3m-a75920cef8bde37a8c590e34095be83c97b75f1d",
+      "artifact_digest_sha256_prefix": "f57bf361",
+      "parameter_count": 3213120,
+      "role": "terminal learned ~3M evidence ancestry only; divergent scientific code not imported"
+    },
+    {
+      "worker": "VERIFY-218 / learned-10M",
+      "classification": "HOLD",
+      "role": "No published terminal independent learned-10M verification at composition time; no 10M learned admission."
+    }
+  ],
+  "accepted_evaluator_evidence": [
+    {
+      "worker": "RECOVER-175-UA",
+      "classification": "ABSORB",
+      "source_sha": "82e837c1053d6a77c4d1eb86cfaa7dfb521e2e63",
+      "role": "frozen first-party UA diagnostic core and minimal suite payload only"
+    },
+    {
+      "worker": "RECOVER-176-EN",
+      "classification": "ABSORB",
+      "source_sha": "de19adf253c19ba077a6b3af7c88c291249ed7aa",
+      "run_id": 32951302310,
+      "role": "frozen first-party EN diagnostic core and minimal suite payload only"
+    },
+    {
+      "worker": "RECOVER-177-CODE",
+      "classification": "ABSORB",
+      "source_sha": "4cb4767ba7002383c9ec6f31f1fcea1014105259",
+      "role": "frozen first-party code diagnostic core and minimal suite payload only"
+    }
+  ],
+  "worker_intake_151_221": {
+    "151": {"classification": "ABSORB", "candidate": "ENV-151", "basis": "terminal exact-head universal bootstrap authority"},
+    "152": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "153": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "154": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "155": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "156": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "157": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "158": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "159": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "160": {"classification": "HOLD", "basis": "no distinct terminal durable candidate reconstructed that supersedes accepted layers"},
+    "161": {"classification": "ABSORB", "candidate": "CI-161", "basis": "classifier/tests/tools absorbed; failed historical workflow not treated as PASS"},
+    "162": {"classification": "ABSORB", "candidate": "CI-162", "basis": "durable failure-artifact finalizer core absorbed without producer rewrites"},
+    "163": {"classification": "ABSORB", "candidate": "INTEGRATE-163", "basis": "accepted four-blob precision runtime seam"},
+    "164": {"classification": "HOLD", "basis": "no distinct terminal durable candidate admitted over the accepted execution stack"},
+    "165": {"classification": "ABSORB", "candidate": "CI-165", "basis": "fail-closed launch gate and focused contracts absorbed selectively"},
+    "166": {"classification": "HOLD", "basis": "no terminal candidate needed by the convergence mission was established"},
+    "167": {"classification": "HOLD", "basis": "no terminal candidate needed by the convergence mission was established"},
+    "168": {"classification": "HOLD", "basis": "no terminal candidate needed by the convergence mission was established"},
+    "169": {"classification": "HOLD", "basis": "no terminal candidate needed by the convergence mission was established"},
+    "170": {"classification": "HOLD", "basis": "no terminal candidate needed by the convergence mission was established"},
+    "171": {"classification": "HOLD", "basis": "no terminal candidate needed by the convergence mission was established"},
+    "172": {"classification": "HOLD", "basis": "no terminal candidate needed by the convergence mission was established"},
+    "173": {"classification": "HOLD", "basis": "no terminal candidate needed by the convergence mission was established"},
+    "174": {"classification": "HOLD", "basis": "older/nonterminal diagnostic orchestration not imported over terminal recovery heads"},
+    "175": {"classification": "ABSORB", "candidate": "RECOVER-175-UA", "basis": "terminal dedicated UA evaluator evidence; primitive/suite only"},
+    "176": {"classification": "ABSORB", "candidate": "RECOVER-176-EN", "basis": "terminal dedicated EN evaluator evidence; primitive/suite only"},
+    "177": {"classification": "ABSORB", "candidate": "RECOVER-177-CODE", "basis": "terminal dedicated code evaluator evidence; primitive/suite only"},
+    "178": {"classification": "HOLD", "basis": "no additional code authority required beyond retained diagnostic/evidence ancestry"},
+    "179": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "180": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "181": {"classification": "HOLD", "basis": "real-snapshot promotion recovery not terminally admitted into learned execution spine"},
+    "182": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "183": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "184": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "185": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "186": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "187": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "188": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "189": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "190": {"classification": "HOLD", "basis": "no terminal candidate required for this spine"},
+    "191": {"classification": "ABSORB", "candidate": "LEARN-191", "basis": "terminal learned 3,213,120-parameter artifact admitted as evidence-only ancestry"},
+    "192": {"classification": "HOLD", "basis": "fixed-recipe scaling preparation did not establish a terminal executed comparison authority"},
+    "193": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "194": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "195": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "196": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "197": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "198": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "199": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "200": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "201": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "202": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "203": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "204": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "205": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "206": {"classification": "HOLD", "basis": "no terminal scientific result admitted"},
+    "207": {"classification": "REJECT", "basis": "explicit non-convergence/negative authority is not imported into the accepted execution spine"},
+    "208": {"classification": "HOLD", "basis": "learned-10M execution path is non-authoritative without terminal independent verification"},
+    "209": {"classification": "HOLD", "basis": "failed or incomplete learned-10M scientific evidence is not code/scientific authority"},
+    "210": {"classification": "SUPERSEDED", "candidate": "MILESTONE-210", "basis": "its M150 evidence remains valid through the exact producer, but its pre-LEARN-191 statement that 3M was not admitted is temporally stale"},
+    "211": {"classification": "ABSORB", "candidate": "CHECKPOINT-211", "basis": "terminal immutable recovery lifecycle absorbed; 10M trainer stack excluded"},
+    "212": {"classification": "HOLD", "basis": "contract/preflight work does not itself establish learned scaling terminal evidence"},
+    "213": {"classification": "HOLD", "basis": "DATA-213 recovery was not used as learned-model/execution authority in this spine"},
+    "214": {"classification": "HOLD", "candidate": "DATA-214", "basis": "observed in-flight on isolated branch; explicitly not mutated or merged"},
+    "215": {"classification": "HOLD", "candidate": "ENV-215", "basis": "no newer terminal durable head was admitted over ENV-151 exact terminal authority at composition cutoff"},
+    "216": {"classification": "HOLD", "candidate": "EVAL-216", "basis": "terminal EN evaluator authority is represented by the exact recovery producer; no separate 216 tree imported"},
+    "217": {"classification": "HOLD", "candidate": "LEARN-217", "basis": "no independently verified terminal learned-10M artifact admitted"},
+    "218": {"classification": "HOLD", "candidate": "VERIFY-218", "basis": "no published terminal independent learned-10M verifier authority at composition cutoff"},
+    "219": {"classification": "HOLD", "candidate": "VERIFY-219", "basis": "LEARN-191 exact terminal artifact is admitted directly; no separate 219 terminal record imported"},
+    "220": {"classification": "HOLD", "candidate": "RESEARCH-220", "basis": "fixed-recipe 1M→3M→10M comparison had no terminal executed authority at composition cutoff"},
+    "221": {"classification": "HOLD", "candidate": "MILESTONE-221", "basis": "report regeneration is downstream of terminal verification and not execution/code authority"
+  },
+  "composed_merge_commits": [
+    "eca1dfab402db709daf38e377779f381532ce767",
+    "cb52551841bcca6d75959a7f81d7d81d6686823d",
+    "bb7d1643dec74e1b5ec032c9ea70d86d3b118a6d",
+    "a304761852536f1c2d486730bb80ed62ffbb2431",
+    "091ce731509fdfa0c5ed7002f1cb40652b5826e7",
+    "5d8585514041c5cb09bd31dcca50fa65b22a0904",
+    "0e5329340498819cdef464d9218b433293da78df"
+  ],
+  "required_composed_head_proof": [
+    "universal bootstrap",
+    "focused Trainer tests",
+    "D05 save/load",
+    "M150 100K fresh load plus one real optimizer continuation update",
+    "LEARN-191 3M fresh D05 load plus finite first-party logits",
+    "learned 10M load only after independent terminal verification",
+    "UA/EN/code frozen evaluator smoke with model-state non-mutation"
+  ]
+}

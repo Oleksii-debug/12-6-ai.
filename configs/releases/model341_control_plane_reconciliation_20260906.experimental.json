@@ -1,0 +1,26 @@
+{
+  "schema_version": "12-6.d10.control-plane-reconciliation.v1",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "live_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "candidate_sha": "67ad5277e7a8b1f73dc11e4e6b71d4d4e5aaf355",
+  "merge_base_sha": "f2e94c7212888cdb960bb66154d56d210e9b27ab",
+  "ahead_by": 798,
+  "behind_by": 33,
+  "live_main_is_ancestor": false,
+  "release_parent": {
+    "pr": 442,
+    "head_sha": "3883d6a6519b44a5a0a0fd9cb45a9db73c9071f5",
+    "exact_green_runs": [34003469442, 34003469443, 34003469455, 34003469490]
+  },
+  "exact_candidate_ci": {
+    "source_sha": "67ad5277e7a8b1f73dc11e4e6b71d4d4e5aaf355",
+    "run_id": null,
+    "status": "absent",
+    "conclusion": null
+  },
+  "historical_parent_green_promoted": false,
+  "training_authorized": false,
+  "stage_promoted": false,
+  "status": "BLOCKED_NEEDS_CONTROL_PLANE_RECONCILIATION",
+  "next_action": "Reconcile the 33 live-main control-plane commits into the Product candidate without weakening candidate CI, then require fresh exact-candidate CI before any mainline/promotion verdict."
+}

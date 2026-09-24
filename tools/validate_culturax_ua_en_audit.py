@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 AUDIT_ID = "AUDIT-B-CULTURAX-UA-EN-RIGHTS-PROVENANCE-V1"
 LANE_KEY = "AUDIT-B|CULTURAX|INDEPENDENT-VERIFY|UA-EN-RIGHTS-PROVENANCE-V1"
 BASE_MAIN_SHA = "5020afd671a3885c1b738c8b4eafe7525f630546"
@@ -59,7 +58,7 @@ def _require(condition: bool, message: str) -> None:
 
 def _git_blob_sha(raw: bytes) -> str:
     header = f"blob {len(raw)}\0".encode("ascii")
-    return hashlib.sha1(header + raw).hexdigest()  # noqa: S324 - Git object identity.
+    return hashlib.sha1(header + raw).hexdigest()
 
 
 def _component_by_id(registry: dict[str, Any], component_id: str) -> dict[str, Any]:

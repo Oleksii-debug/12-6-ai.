@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "candidate_id": "D02-SCHEDULEFREE-ADAMW-MATCHED-V1",
+  "status": "CANDIDATE_MECHANICS_ONLY",
+  "worker_issue": 736,
+  "control_issue": 723,
+  "parent_issues": [720, 3, 548],
+  "swarm_protocol": "SWARM-300-V2",
+  "product_parent_sha": "e4ff486fd90802fc123bebf60eed4e59196a98df",
+  "observed_control_plane_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "model_identity": {
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "parameter_count": 20613440
+  },
+  "upstream_optimizer": {
+    "package": "schedulefree",
+    "package_version": "1.4.1",
+    "source_repo": "facebookresearch/schedule_free",
+    "source_commit": "70785b53e778d0e872c0bbb75ff4ee54ee10c291",
+    "license": "Apache-2.0",
+    "optimizer_class": "AdamWScheduleFree",
+    "inner_momentum": 0.0,
+    "foreach": false
+  },
+  "adamw_control_provenance": {
+    "pr": 583,
+    "head_sha": "630e4cbbac1ba8fbdb12a4df701793047e068f29",
+    "scoped_workflow_run": 33009390991,
+    "scoped_workflow_conclusion": "success",
+    "shared_ci_run": 33009391022,
+    "shared_ci_conclusion": "failure"
+  },
+  "matched_variables": {
+    "learning_rate_grid": [0.00016, 0.00022, 0.00026],
+    "betas": [0.9, 0.95],
+    "eps": 1e-8,
+    "weight_decay": 0.1,
+    "gradient_clip_norm": 1.0,
+    "scheduler": "constant",
+    "warmup_steps": 0,
+    "precision": "fp32",
+    "seed": 1337,
+    "sequence_length": 256,
+    "micro_batch_size": 1,
+    "gradient_accumulation_steps": 1,
+    "optimizer_updates": 32,
+    "target_tokens_per_arm": 8160,
+    "data_scope": "synthetic_local_mechanical_fixture_only"
+  },
+  "arms": [
+    {
+      "arm_id": "adamw_control",
+      "optimizer_kind": "torch_adamw",
+      "learning_rate_grid": [0.00016, 0.00022, 0.00026]
+    },
+    {
+      "arm_id": "schedulefree_candidate",
+      "optimizer_kind": "schedulefree_adamw",
+      "learning_rate_grid": [0.00016, 0.00022, 0.00026],
+      "package": "schedulefree",
+      "package_version": "1.4.1",
+      "inner_momentum": 0.0,
+      "foreach": false
+    }
+  ],
+  "forbidden_claims": {
+    "paid_compute": false,
+    "gpu_execution": false,
+    "long_training": false,
+    "learned_corpus": false,
+    "stage_promotion": false,
+    "optimizer_superiority": false
+  },
+  "scientific_conclusion": "not_run_no_winner",
+  "experiment_identity_sha256": "a947b79552d7c864a6e7e9d27e8620e7fb26f8bbfcef3efab18cfd6bb4ab7d91"
+}

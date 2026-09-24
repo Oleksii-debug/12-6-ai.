@@ -1,0 +1,31 @@
+{
+  "schema": "12-6.data232-decontamination-config.v3",
+  "worker_id": "DATA-232-DECONTAMINATION-AUTHORITY-V2",
+  "training_corpus_identity": "a33baaa3a7ff7a9622dc420c1d61b0d113ab0f11588a39674996bd198845efb6",
+  "training_record_inventory_identity": "55f01d2027057f30cfc43d4ebe668779fc48413781d8146402dd53f81e2dbf31",
+  "training_record_payload_jsonl_sha256": "2f21f7655c9287bbc7424b410788f431f20f0936f445fefd26fcf6114b772dbd",
+  "selection_validation_identity": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+  "selection_validation_membership_sha256": "e4bb39dd7aa6a20c7ed34e093f563b5f4896ac16828151c6b375a83cd8a068c6",
+  "final_test_identity": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+  "quarantine_cross_source_families": true,
+  "thresholds": {
+    "natural_shingle_tokens": 3,
+    "natural_near_jaccard": 0.8,
+    "natural_fragment_containment": 0.88,
+    "natural_fragment_min_tokens": 18,
+    "code_shingle_tokens": 7,
+    "code_near_jaccard": 0.86,
+    "code_fragment_containment": 0.9,
+    "code_fragment_min_tokens": 16,
+    "code_copy_jaccard": 0.82,
+    "code_copy_min_tokens": 16
+  },
+  "policy": {
+    "ordering": "evaluation decontamination before split",
+    "cluster": "exclude every training node connected to any reserved selection-validation record",
+    "cross_source_family": "quarantine implicated training source family for mirror/copy evidence",
+    "final_test": "bind immutable hash/source authority only; never fetch final-test payloads or outcomes",
+    "public_evidence": "hash-only"
+  },
+  "execution_profile": "LOCAL_FREE"
+}

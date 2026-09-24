@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "claim_issue": 960,
+  "parent_carrier_pr": 802,
+  "carrier_parent_sha": "c4f4f4e588d4e5f7cb227b8d0525180747824337",
+  "implementation_commit_sha": "654694180fb1b0e553d5df7fe87a89fc0244ba11",
+  "scope": "finite_semantic_identity_hardening",
+  "model341": {
+    "model_spec_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "trainable_parameters": 20613440,
+    "finite_encoding_bytes_unchanged": true
+  },
+  "guards": {
+    "canonical_json_allow_nan": false,
+    "model_spec_rope_theta_requires_finite": true,
+    "model_spec_norm_eps_requires_finite": true,
+    "init_spec_std_requires_finite": true
+  },
+  "adversarial_values": ["NaN", "+Infinity", "-Infinity"],
+  "local_identity_recompute": {
+    "status": "PASS",
+    "model_spec_hash_unchanged": true,
+    "init_spec_hash_unchanged": true,
+    "parameter_count_unchanged": true
+  },
+  "shared_ci": {
+    "required": true,
+    "status": "PENDING"
+  },
+  "truth_boundary": {
+    "training_authorized": false,
+    "authorized_optimized_targets": 0,
+    "learned_weights_produced": false,
+    "tokenizer_fit": false,
+    "final_test_access": false,
+    "paid_compute": false
+  }
+}

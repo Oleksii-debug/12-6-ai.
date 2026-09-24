@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 REPORT_SCHEMA = "12-6.data-bulk-code1-permissive-python-bundle-report.v1"
 EXPECTED_SECURITY_STATUS = "PASS_NO_HIGH_CONFIDENCE_HITS"

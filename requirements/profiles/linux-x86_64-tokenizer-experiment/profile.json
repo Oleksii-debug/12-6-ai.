@@ -1,0 +1,41 @@
+{
+  "base_profile": {
+    "file_sha256": "94c8ae86932e894bbf5f39960ae32da0e2e4358935d098fce5937f096b8d74ba",
+    "manifest_sha256": "d2f4864500743922965ccd2ec1df51aa599f7c657129e55c5d184cddc7c14a0b",
+    "path": "requirements/locks/linux-x86_64/profile.json",
+    "profile_id": "linux-x86_64"
+  },
+  "canonical_lock": {
+    "file_sha256": "c50841c05f66ae2f3f2bbf08f407de5ac484b0ce83113989bfec19077a0fd268",
+    "index_sha256": "977dc42d00d03e766c34edc8467aaa7d462e32e6bbafdab1bdc89a02388f47fa",
+    "path": "requirements/locks/index.json"
+  },
+  "direct_requirements": [
+    "tokenizers==0.23.1"
+  ],
+  "kind": "linux-overlay",
+  "locks": {
+    "overlay": {
+      "package_count": 13,
+      "path": "requirements/profiles/linux-x86_64-tokenizer-experiment/overlay.lock.txt",
+      "sha256": "11f27613ee7c15585796af39accde71b1e7c2791c24ff98d74c395262ee68544"
+    }
+  },
+  "platform": {
+    "machine": "x86_64",
+    "system": "Linux"
+  },
+  "profile_id": "linux-x86_64-tokenizer-experiment",
+  "profile_sha256": "b2db5661f23666923f20baa77b037f86ae90369e66ffec9195f3581cb93b45c3",
+  "purpose": "D04 tokenizer experiment training and fertility/round-trip evidence",
+  "python": {
+    "implementation": "cpython",
+    "version": "3.11.16"
+  },
+  "reused_base_distributions": {
+    "filelock": "3.32.4",
+    "fsspec": "2026.7.0",
+    "typing-extensions": "4.16.0"
+  },
+  "schema_version": "12-6.purpose-environment-profile.v1"
+}

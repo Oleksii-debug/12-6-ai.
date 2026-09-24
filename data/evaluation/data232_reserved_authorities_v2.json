@@ -1,0 +1,22 @@
+{
+  "schema": "12-6.data232-reserved-authorities.v2",
+  "worker_id": "DATA-232-DECONTAMINATION-AUTHORITY-V2",
+  "authorities": [
+    {
+      "authority_id": "EVAL-303-SELECTION-VALIDATION-COMPOSITE",
+      "identity_sha256": "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd",
+      "role": "selection_validation",
+      "source_sha": "5e5a1de3b594cee5612e63d3d4c2a70499740ac7"
+    },
+    {
+      "authority_id": "EVAL-233-REAL-HOLDOUT-V2-DATA232-FINAL-TEST",
+      "identity_sha256": "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116",
+      "role": "final_test",
+      "source_sha": "b5512b4648cb09dd052b08884dc53f291e1ce935"
+    }
+  ],
+  "payload_contract": {
+    "selection_validation": "resolve only EVAL-290/EVAL-291 component payloads bound by EVAL-303 membership",
+    "final_test": "hash/source authority only; payload access forbidden; evaluation measurements are not represented in this metadata"
+  }
+}

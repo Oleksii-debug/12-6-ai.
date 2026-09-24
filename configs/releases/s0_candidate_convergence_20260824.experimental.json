@@ -1,0 +1,70 @@
+{
+  "schema_version": 2,
+  "run_id": "12-6-AI-SWARM-EXP-01",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "stage": "S0",
+  "status": "experimental",
+  "canonical_base": "random_init_pretraining_only",
+  "composition_complete": true,
+  "promotion_eligible": false,
+  "integration_branch": "d01/s0-candidate-convergence-20260824-b",
+  "integration_base_sha": "fa5e8365ae56c22da761e2183a4c71a0212a2aef",
+  "candidate_sha_policy": "exact git HEAD at validation time; manifest does not self-reference its containing commit",
+  "model_spec_sha256": "86c75b31dff05b7b5db9f6ed068c571a6ead01ba663412fe630f5e52b09d9b6b",
+  "init_spec_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+  "tokenizer_config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+  "tokenizer_vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+  "dataset_manifest_sha256": "b085a7ab56510575a11a80824fcff3a95a17f237d46d1be820e59d1289f220c2",
+  "environment_lock_index_sha256": "61fa31fbb5da7a4289cccce5abfcebde943664f5318b0ce3d69ae9bb3db852ac",
+  "required_git_ancestry": [
+    "fa5e8365ae56c22da761e2183a4c71a0212a2aef",
+    "403831cf623120da18f0f4c62e830a352afcef91",
+    "9a1a6f8494b5d5dd9346afb644fc84de2e39d5e0",
+    "89fa0b2c17ef78ba202d019a8959aa1a19377391"
+  ],
+  "components": [
+    {"lane":"D01","source_sha":"d646d417feca3409269518af6d66ac3455d9f2f3","disposition":"accepted","component_kind":"random_init_model","pr_number":35,"ci_runs":[32646829442],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D02","source_sha":"403831cf623120da18f0f4c62e830a352afcef91","disposition":"accepted","component_kind":"training_engine_plus_real_s0_training_evidence","pr_number":60,"ci_runs":[32745954583,32745954611],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D03","source_sha":"f0e31d4200cb348f770346be9ab22ad450227f2d","disposition":"accepted","component_kind":"controlled_s0_data","pr_number":27,"ci_runs":[32643041174],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D04","source_sha":"967ed1e8ab1c227139e6a03e50f5d8ed180380ed","disposition":"accepted","component_kind":"byte_tokenizer_and_packing","pr_number":23,"ci_runs":[32646641453],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D05","source_sha":"fa5e8365ae56c22da761e2183a4c71a0212a2aef","disposition":"accepted","component_kind":"strict_run_bound_checkpoint_resume","pr_number":61,"ci_runs":[32745892911],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false},
+    {"lane":"D06","source_sha":"89fa0b2c17ef78ba202d019a8959aa1a19377391","disposition":"accepted_selective","component_kind":"evaluation_and_integrated_stage_gates","pr_number":65,"ci_runs":[32747051335,32747051338],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false,"integration_note":"evaluation.py, stage_gates.py, gate policy, fixture and core gate tests accepted; stale pre-D05-strict collector/workflow/test bridge held and replaced by D01 strict-contract integration oracle"},
+    {"lane":"D07","source_sha":"9a1a6f8494b5d5dd9346afb644fc84de2e39d5e0","disposition":"accepted_selective","component_kind":"first_party_checkpoint_inference","pr_number":63,"ci_runs":[32745879308],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false,"integration_note":"production inference adapter/CLI/parity accepted; stale test helper using pre-D05-strict checkpoint binding held and replaced by D01 strict-contract integration oracle"},
+    {"lane":"D08","source_sha":"b8e01a38bfba18176e36c34b1530839ccaea4b21","disposition":"accepted","component_kind":"distributed_scale_readiness","pr_number":20,"ci_runs":[32646152647],"ci_conclusion":"success","contains_behavioral_weights":false,"contains_foreign_pretrained_weights":false}
+  ],
+  "integration_infrastructure": [
+    {"source_sha":"3d5d2332577d1ccb2b6ecbb5197b1d95a4baba6f","kind":"D08 hash_locked_environment_and_packaging","pr_number":58,"ci_runs":[32742220948],"ci_conclusion":"success"},
+    {"source_sha":"4f76ebecbb106e44f357a2e2387a6ede029e3e4e","kind":"D10 CI supply_chain_hardening_accepted_ancestor","ci_runs":[32647291105],"ci_conclusion":"success"},
+    {"source_sha":"3c819579a3aa6991456c75ebef2e58e26361c972","kind":"C01 tokenizer_vocabulary_run_manifest_binding","pr_number":55,"ci_runs":[32736159775],"ci_conclusion":"success"}
+  ],
+  "selective_intake": {
+    "accepted": [
+      "PR #60 all D02 real-training evidence files",
+      "PR #63 D07 production inference files and documentation",
+      "PR #65 D06 evaluation.py, stage_gates.py, s0_eval_gate.json, fixture, core gate tests and evaluation documentation"
+    ],
+    "held": [
+      {"surface":"PR #63 tests/test_first_party_inference.py","reason":"standalone-green helper calls pre-D05-strict bind_checkpoint_identity signature; production adapter retained; equivalent strict-contract coverage is integration-owned"},
+      {"surface":"PR #65 src/twelve_six/s0_candidate_evaluation.py + its workflow/test/runbook","reason":"standalone-green collector calls pre-D05-strict bind_checkpoint_identity and omits InitSpec/packing/environment lock; D05 fail-closed contract is authoritative and is not weakened"},
+      {"surface":"PR #65 historical reports/d06/s0_live_preintegration_*.json","reason":"pre-integration evidence is stale for this exact composition"}
+    ]
+  },
+  "package_reconciliation": {
+    "pyproject_source": "D05/D08 locked lineage unchanged",
+    "requires_python": ">=3.11,<3.12",
+    "dependencies": ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"],
+    "scripts": {"twelve-six-generate":"twelve_six.inference.cli:main"},
+    "note": "No new dependency or floating environment was introduced by convergence. D06 core gates require no package addition."
+  },
+  "audits": {
+    "AUDIT-A": {"verdict":"CHANGES_REQUIRED","candidate_sha":"not_retested_on_this_composition"},
+    "AUDIT-B": {"verdict":"CHANGES_REQUIRED","candidate_sha":"not_retested_on_this_composition"}
+  },
+  "promotion_blockers": [
+    "exact convergence head CI must complete successfully",
+    "AUDIT-A must retest the exact convergence head",
+    "AUDIT-B must retest the exact convergence head",
+    "governance/release authority remains separate from evaluation completeness"
+  ],
+  "next_handoff": "Run LOCAL_FREE exact-head train -> strict checkpoint -> reload/resume -> D06 evaluation -> D07 first-party inference; retain artifacts and bind subsequent audit evidence to that exact head."
+}
