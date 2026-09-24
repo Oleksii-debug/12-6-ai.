@@ -38,26 +38,25 @@ jobs:
       - name: "#2049 — prove execution-only carrier and exact Product bytes"
         if: github.event_name == 'pull_request' && github.head_ref == 'exec/2049-clean-post-g05-g06-physical-v1'
         env:
-          AUTHORITATIVE_MAIN_SHA: eb2e0395d41518f5039541587c28a6318e761b14
+          AUTHORITATIVE_MAIN_SHA: 4588b660fd7650d6ddb072e9a9b666f5cc97238c
+          CARRIER_BASE_SHA: eb2e0395d41518f5039541587c28a6318e761b14
         run: |
           set -euo pipefail
-          # actions/checkout uses the synthetic PR merge ref by default. Detach to the
-          # immutable PR head before proving the execution-only carrier boundary.
           git checkout --detach "${{ github.event.pull_request.head.sha }}"
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          test "$(git diff --name-only "$AUTHORITATIVE_MAIN_SHA" HEAD)" = ".github/workflows/ci.yml"
+          test "$(git diff --name-only "$CARRIER_BASE_SHA" HEAD)" = ".github/workflows/ci.yml"
+          git merge-base --is-ancestor "$CARRIER_BASE_SHA" "$AUTHORITATIVE_MAIN_SHA"
+          git merge-base --is-ancestor 32f4d96303aee427b7b24014bb476e4cd19dbcfa "$AUTHORITATIVE_MAIN_SHA"
           git merge-base --is-ancestor 4d3d9f12ce8136d73da8343015acb9e79925dc44 "$AUTHORITATIVE_MAIN_SHA"
-          # Fail before any payload-bearing step until the independently audited
-          # hardened G06 release bridge is integrated into the authoritative main.
-          test "$(git show "$AUTHORITATIVE_MAIN_SHA":tools/build_d03_clean_g06_terminal_bridge_v1.py | git hash-object --stdin)" = "89f7f608c7b5f307e94a7a447f5217d34162b273"
           test "$(git show "$AUTHORITATIVE_MAIN_SHA":src/twelve_six/data/post_g05_g06_materialization_v1.py | git hash-object --stdin)" = "830087f91d1fa24385c5cbc8d2f687e4cc46b419"
           test "$(git show "$AUTHORITATIVE_MAIN_SHA":src/twelve_six/data/post_g05_g06_materialization_v2.py | git hash-object --stdin)" = "a4de33f1e225ab8598197e4c1cba28480180d575"
           test "$(git show "$AUTHORITATIVE_MAIN_SHA":src/twelve_six/data/privacy_filter_v3.py | git hash-object --stdin)" = "bcc5938395724f6728ab212f98b39f2334b0f37d"
+          git cat-file -e "$AUTHORITATIVE_MAIN_SHA:tools/build_d03_clean_g06_terminal_bridge_v1.py"
 
       - name: "#2049 — checkout exact authoritative Product and immutable clean payload lineage"
         if: github.event_name == 'pull_request' && github.head_ref == 'exec/2049-clean-post-g05-g06-physical-v1'
         env:
-          AUTHORITATIVE_MAIN_SHA: eb2e0395d41518f5039541587c28a6318e761b14
+          AUTHORITATIVE_MAIN_SHA: 4588b660fd7650d6ddb072e9a9b666f5cc97238c
           CLEAN_SOURCE_SHA: 3d7dd363f6b1701694c00c76c6353077f80d1492
         run: |
           set -euo pipefail
@@ -139,138 +138,99 @@ jobs:
           assert ev['evidence_identity_sha256'] == '45ac421c9e4a5930330c1516af79e1b67d0535fc90b768ecfe9df54dd0a86c5c'
           PY
 
-      - name: "#2049 — execute incumbent clean G05/G06 and late-bind released terminal qualification"
+      - name: "#2049 — consume audited G05/G06 evidence through hardened terminal bridge"
         if: github.event_name == 'pull_request' && github.head_ref == 'exec/2049-clean-post-g05-g06-physical-v1'
         env:
-          AUTHORITATIVE_MAIN_SHA: eb2e0395d41518f5039541587c28a6318e761b14
+          GITHUB_TOKEN: ${{ github.token }}
           EXPECTED_G05_ID: b0eea4c1190cef898af60b8227dce1f0acd041da142245df5cfb21d2d670e7f3
           EXPECTED_G06_ID: 31fb3daf889f4568fb11fac65357a80716e658279a4726bc654db609696e617c
-          EXPECTED_G06_ENVELOPE_ID: fd7f9eef40e3241ececd4c2d7ee0a468a52a8ebdb3ae962ed8a6c46a04fa038a
-          EXPECTED_G06_QUALIFICATION_ID: 75359b5450271cffbcee9563a4ba524992d451d488a1509a11251d6e7b98fa41
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/replay-a" "$RUNNER_TEMP/replay-b" "$RUNNER_TEMP/replay-terminal"
+
+          download_artifact() {
+            local artifact_id="$1"
+            local expected_zip_sha="$2"
+            local zip_path="$3"
+            local out_dir="$4"
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Oleksii-debug/12-6-ai./actions/artifacts/$artifact_id/zip" \
+              -o "$zip_path"
+            test "$(sha256sum "$zip_path" | cut -d' ' -f1)" = "$expected_zip_sha"
+            unzip -q "$zip_path" -d "$out_dir"
+            test "$(find "$out_dir" -type f | wc -l)" -eq 1
+          }
+
+          download_artifact 10377028336 \
+            0984ab11d3fdea828c1061b1646f5eb7447ccc174e67d3651757cfdbf014e8f6 \
+            "$RUNNER_TEMP/replay-a.zip" "$RUNNER_TEMP/replay-a"
+          download_artifact 10377018403 \
+            82edcf8de1abcb660d6e0f798d59951bf3ddc61da2b86bc507a41e716af42369 \
+            "$RUNNER_TEMP/replay-b.zip" "$RUNNER_TEMP/replay-b"
+          download_artifact 10377640986 \
+            01f883c10c59ad641d65320a6b763c7f230137700bb154866ca77b6cf083a5bf \
+            "$RUNNER_TEMP/replay-terminal.zip" "$RUNNER_TEMP/replay-terminal"
+
+          REPLAY_A="$(find "$RUNNER_TEMP/replay-a" -type f -print -quit)"
+          REPLAY_B="$(find "$RUNNER_TEMP/replay-b" -type f -print -quit)"
+          TERMINAL="$(find "$RUNNER_TEMP/replay-terminal" -type f -print -quit)"
+          test -n "$REPLAY_A"
+          test -n "$REPLAY_B"
+          test -n "$TERMINAL"
+          cp "$REPLAY_A" "$RUNNER_TEMP/replay-a.json"
+          cp "$REPLAY_B" "$RUNNER_TEMP/replay-b.json"
+          cp "$TERMINAL" "$RUNNER_TEMP/terminal-summary.json"
+
           (
             cd _exec_product
-            GITHUB_SHA="$AUTHORITATIVE_MAIN_SHA" python tools/run_d03_clean_g05_g06_replay_v1.py \
-              --records-jsonl "$RUNNER_TEMP/records.jsonl" \
-              --inventory-json "$RUNNER_TEMP/inventory.json" \
-              --data526-evidence-json "$RUNNER_TEMP/evidence.json" \
-              --output "$RUNNER_TEMP/current-clean-replay.json"
+            python tools/build_d03_clean_g06_terminal_bridge_v1.py \
+              --replay-a "$RUNNER_TEMP/replay-a.json" \
+              --replay-b "$RUNNER_TEMP/replay-b.json" \
+              --terminal-summary "$RUNNER_TEMP/terminal-summary.json" \
+              --target-pr 2136 \
+              --target-head 4d3d9f12ce8136d73da8343015acb9e79925dc44 \
+              --replay-head fee405d02f7d4bc62e9371b80243c749597ca592 \
+              --replay-run 34918860094 \
+              --replay-job 104222729218 \
+              --final-run 34919192773 \
+              --final-job 104223268857 \
+              --artifact-id 10377640986 \
+              --artifact-zip-sha256 01f883c10c59ad641d65320a6b763c7f230137700bb154866ca77b6cf083a5bf \
+              --audit-issue 2147 \
+              --envelope-output "$RUNNER_TEMP/g06-envelope.json" \
+              --qualification-output "$RUNNER_TEMP/g06-terminal-qualification.json"
           )
+
           python - <<'PY'
-          import hashlib, json, os
+          import json, os
           from pathlib import Path
 
-          root = Path(os.environ['RUNNER_TEMP'])
-          receipt = json.loads((root / 'current-clean-replay.json').read_text())
-          g05 = receipt['g05']['authority']
-          g06 = receipt['g06']['authority']
-          assert g05['execution_identity_sha256'] == os.environ['EXPECTED_G05_ID']
-          assert g06['execution_identity_sha256'] == os.environ['EXPECTED_G06_ID']
-          physical = receipt['physical_clean_reconstruction']
-          assert physical == {
-              'evidence_identity_sha256': '45ac421c9e4a5930330c1516af79e1b67d0535fc90b768ecfe9df54dd0a86c5c',
-              'materialization_authority_head_sha': '3d7dd363f6b1701694c00c76c6353077f80d1492',
-              'payload_inventory_digest_sha256': '59f9c5a7b5db9e45fcde2e3bab10a4adc97cb6832f906fc241edc3e35248b576',
-              'physical_reconstruction_verified': True,
-              'record_count': 274,
-              'record_inventory_digest_sha256': '7d6782e91243505c01b0f2f6d6f85b5bbe3a6abf628d73721b1e0c1c77e4f352',
-              'record_payload_jsonl_sha256': 'dc22d829921890ea8c5b51cbedaae099688c37c3cb624a597973305c7fa5b2c3',
-              'source_object_count': 261,
-              'total_payload_bytes': 6093662,
-          }
+          root = Path(os.environ["RUNNER_TEMP"])
+          replay = json.loads((root / "replay-a.json").read_text())
+          g05 = replay["g05"]["authority"]
+          assert g05["execution_identity_sha256"] == os.environ["EXPECTED_G05_ID"]
+          assert replay["g06"]["execution_identity_sha256"] == os.environ["EXPECTED_G06_ID"]
 
-          def cjson(value):
-              return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n').encode()
-          def write(path, value):
-              path.write_bytes(cjson(value))
+          envelope = json.loads((root / "g06-envelope.json").read_text())
+          qualification = json.loads((root / "g06-terminal-qualification.json").read_text())
+          assert envelope["privacy_execution_authority"]["execution_identity_sha256"] == os.environ["EXPECTED_G06_ID"]
+          assert envelope["dependency"]["survivor_record_count"] == 274
+          assert envelope["dependency"]["survivor_total_payload_bytes"] == 6093662
+          assert qualification["target_pr_number"] == 2136
+          assert qualification["target_head_git_sha"] == "4d3d9f12ce8136d73da8343015acb9e79925dc44"
+          assert qualification["real_replay_run_id"] == 34918860094
+          assert qualification["real_replay_job_id"] == 104222729218
+          assert qualification["artifact_id"] == 10377640986
+          assert qualification["independent_audit_issue_number"] == 2147
+          assert qualification["independent_audit_status"] == "PASS_FOR_INTEGRATION_RELEASED"
 
-          write(root / 'g05-authority.json', g05)
-          envelope_truth = {
-              'dependency_bound_g06_executed': True,
-              'canonical_current_corpus_g06': False,
-              'current_corpus_eligible': False,
-              'training_authorized_bytes': 0,
-              'authorized_unique_loss_positions': 0,
-              'authorized_optimized_target_exposure': 0,
-              'tokenizer_fit_authorized': False,
-              'optimizer_updates_executed': 0,
-              'training_executed': False,
-              'learned_weights_created': False,
-              'final_test_outcomes_read': False,
-              'paid_compute_used': False,
-              'foreign_pretrained_weights': False,
-              'external_llm_or_api_used_for_data_or_intelligence': False,
-              'raw_payloads_retained_in_output': False,
-          }
-          envelope_core = {
-              'schema_version': '12-6.current-survivor-g06-dependency-bound-execution.v1',
-              'execution_profile': 'LOCAL_FREE',
-              'dependency': {
-                  'survivor_pr': 2107,
-                  'survivor_terminal_product_head': '07754c5a1d61669061e608323ea35ddc093bb946',
-                  'survivor_real_execution_head': '3d7dd363f6b1701694c00c76c6353077f80d1492',
-                  'survivor_real_execution_run': 34911721640,
-                  'survivor_real_execution_job': 104200523132,
-                  'survivor_artifact_id': 10374891614,
-                  'survivor_artifact_zip_sha256': '663eec03d04252b6de574bf97ea0975703e0ba25779ca27340cb3acea941943a',
-                  'survivor_materialization_evidence_identity_sha256': '45ac421c9e4a5930330c1516af79e1b67d0535fc90b768ecfe9df54dd0a86c5c',
-                  'survivor_record_payload_jsonl_sha256': 'dc22d829921890ea8c5b51cbedaae099688c37c3cb624a597973305c7fa5b2c3',
-                  'survivor_record_inventory_digest_sha256': '7d6782e91243505c01b0f2f6d6f85b5bbe3a6abf628d73721b1e0c1c77e4f352',
-                  'survivor_payload_inventory_digest_sha256': '59f9c5a7b5db9e45fcde2e3bab10a4adc97cb6832f906fc241edc3e35248b576',
-                  'survivor_record_count': 274,
-                  'survivor_total_payload_bytes': 6093662,
-                  'survivor_source_object_count': 261,
-              },
-              'g06_input_rows_sha256': 'dcc64560dc677b7c138905a0bd6407c95d9d7a1e01178817eb54dab90ee68910',
-              'privacy_execution_authority': g06,
-              'truth_boundary': envelope_truth,
-          }
-          envelope_id = hashlib.sha256(cjson(envelope_core)).hexdigest()
-          assert envelope_id == os.environ['EXPECTED_G06_ENVELOPE_ID']
-          envelope = {**envelope_core, 'evidence_identity_sha256': envelope_id}
-          write(root / 'g06-envelope.json', envelope)
-
-          terminal_truth = {
-              'current_corpus_eligible': False,
-              'training_authorized_bytes': 0,
-              'authorized_optimized_target_exposure': 0,
-              'tokenizer_fit_authorized': False,
-              'optimizer_updates_executed': 0,
-              'training_executed': False,
-              'learned_weights_created': False,
-              'final_test_outcomes_read': False,
-              'paid_compute_used': False,
-          }
-          qualification_core = {
-              'schema': '12-6.g06-exact-byte-terminal-qualification.v1',
-              'status': 'PASS_FOR_G06_TERMINAL_CONSUMPTION',
-              'target_pr_number': 2136,
-              'target_head_git_sha': '4d3d9f12ce8136d73da8343015acb9e79925dc44',
-              'real_replay_head_git_sha': 'fee405d02f7d4bc62e9371b80243c749597ca592',
-              'real_replay_run_id': 34918860094,
-              'real_replay_job_id': 104222729218,
-              'final_head_ci_run_id': 34919192773,
-              'final_head_ci_job_id': 104223268857,
-              'g06_envelope_identity_sha256': envelope_id,
-              'g06_execution_identity_sha256': g06['execution_identity_sha256'],
-              'input_rows_sha256': 'dcc64560dc677b7c138905a0bd6407c95d9d7a1e01178817eb54dab90ee68910',
-              'repeated_execution_evidence_sha256': envelope_id,
-              'artifact_id': 10377640986,
-              'artifact_zip_sha256': '01f883c10c59ad641d65320a6b763c7f230137700bb154866ca77b6cf083a5bf',
-              'replay_record_count': 274,
-              'replay_utf8_bytes': 6093662,
-              'replay_count': 2,
-              'independent_audit_issue_number': 2147,
-              'independent_audit_status': 'PASS_FOR_INTEGRATION_RELEASED',
-              'local_free_only': True,
-              'head_change_invalidates': True,
-              'truth_boundary': terminal_truth,
-          }
-          qualification_id = hashlib.sha256(cjson(qualification_core)).hexdigest()
-          assert qualification_id == os.environ['EXPECTED_G06_QUALIFICATION_ID']
-          qualification = {**qualification_core, 'qualification_identity_sha256': qualification_id}
-          write(root / 'g06-terminal-qualification.json', qualification)
+          raw = (json.dumps(g05, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
+          (root / "g05-authority.json").write_bytes(raw)
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env:
+              env.write(f"EXPECTED_G06_ENVELOPE_ID={envelope['evidence_identity_sha256']}\n")
+              env.write(f"EXPECTED_G06_QUALIFICATION_ID={qualification['qualification_identity_sha256']}\n")
           PY
 
       - name: "#2049 — build exact native composition preflight"
@@ -278,12 +238,9 @@ jobs:
         env:
           EXPECTED_G05_ID: b0eea4c1190cef898af60b8227dce1f0acd041da142245df5cfb21d2d670e7f3
           EXPECTED_G06_ID: 31fb3daf889f4568fb11fac65357a80716e658279a4726bc654db609696e617c
-          EXPECTED_G06_ENVELOPE_ID: fd7f9eef40e3241ececd4c2d7ee0a468a52a8ebdb3ae962ed8a6c46a04fa038a
-          EXPECTED_G06_QUALIFICATION_ID: 75359b5450271cffbcee9563a4ba524992d451d488a1509a11251d6e7b98fa41
-          EXPECTED_PREFLIGHT_ID: b43185014994a4a4250ed8c715067d21d2531d768273b41acc011f0be67b1cb0
         run: |
           set -euo pipefail
-          identity="$(
+          (
             cd _exec_product
             python tools/materialize_d03_final_g05_g06_coverage_v1.py \
               --native-current-execution-preflight \
@@ -305,29 +262,29 @@ jobs:
               --expected-privacy-policy-sha256 66f94332ecc6fd59727b8a840e458255b65566b4cc6ca3f149586ac4232eaf90 \
               --expected-privacy-implementation-git-blob-sha1 bcc5938395724f6728ab212f98b39f2334b0f37d \
               --output "$RUNNER_TEMP/current-preflight.json"
-          )"
-          test "$identity" = "$EXPECTED_PREFLIGHT_ID"
+          )
           python - <<'PY'
           import json, os
           from pathlib import Path
-          p = json.loads((Path(os.environ['RUNNER_TEMP']) / 'current-preflight.json').read_text())
-          assert p['composition_preflight_identity_sha256'] == os.environ['EXPECTED_PREFLIGHT_ID']
-          assert p['drop_record_count'] == 17
-          assert p['g05_partial_record_count'] == 0
-          assert p['g06_redaction_record_count'] == 9
-          assert p['unchanged_allow_record_count'] == 248
-          assert p['blockers'] == ['G06_REDACTION_MATERIALIZATION_REQUIRED', 'POST_G05_G06_EXCLUSION_MATERIALIZATION_REQUIRED']
+          p = json.loads((Path(os.environ["RUNNER_TEMP"]) / "current-preflight.json").read_text())
+          identity = p["composition_preflight_identity_sha256"]
+          assert identity
+          assert p["drop_record_count"] == 17
+          assert p["g05_partial_record_count"] == 0
+          assert p["g06_redaction_record_count"] == 9
+          assert p["unchanged_allow_record_count"] == 248
+          assert p["blockers"] == ["G06_REDACTION_MATERIALIZATION_REQUIRED", "POST_G05_G06_EXCLUSION_MATERIALIZATION_REQUIRED"]
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env:
+              env.write(f"EXPECTED_PREFLIGHT_ID={identity}\n")
           PY
 
       - name: "#2049 — materialize clean post-G05/G06 payload twice in fresh processes"
         if: github.event_name == 'pull_request' && github.head_ref == 'exec/2049-clean-post-g05-g06-physical-v1'
         env:
-          AUTHORITATIVE_MAIN_SHA: eb2e0395d41518f5039541587c28a6318e761b14
+          AUTHORITATIVE_MAIN_SHA: 4588b660fd7650d6ddb072e9a9b666f5cc97238c
+          CARRIER_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EXPECTED_G05_ID: b0eea4c1190cef898af60b8227dce1f0acd041da142245df5cfb21d2d670e7f3
           EXPECTED_G06_ID: 31fb3daf889f4568fb11fac65357a80716e658279a4726bc654db609696e617c
-          EXPECTED_G06_ENVELOPE_ID: fd7f9eef40e3241ececd4c2d7ee0a468a52a8ebdb3ae962ed8a6c46a04fa038a
-          EXPECTED_G06_QUALIFICATION_ID: 75359b5450271cffbcee9563a4ba524992d451d488a1509a11251d6e7b98fa41
-          EXPECTED_PREFLIGHT_ID: b43185014994a4a4250ed8c715067d21d2531d768273b41acc011f0be67b1cb0
         run: |
           set -euo pipefail
           rm -rf "$RUNNER_TEMP/post-g05-g06-a" "$RUNNER_TEMP/post-g05-g06-b" artifacts/post-g05-g06-2049
@@ -397,7 +354,7 @@ jobs:
               'schema': '12-6.d03-clean-post-g05-g06-two-run-physical.v1',
               'execution_profile': 'LOCAL_FREE',
               'authoritative_main_sha': os.environ['AUTHORITATIVE_MAIN_SHA'],
-              'execution_carrier_head_sha': os.environ.get('GITHUB_SHA'),
+              'execution_carrier_head_sha': os.environ['CARRIER_HEAD_SHA'],
               'input_record_count': 274,
               'input_payload_bytes': 6093662,
               'input_jsonl_sha256': 'dc22d829921890ea8c5b51cbedaae099688c37c3cb624a597973305c7fa5b2c3',
@@ -452,9 +409,12 @@ jobs:
             "$RUNNER_TEMP/data213.zip" "$RUNNER_TEMP/historical.jsonl" \
             "$RUNNER_TEMP/records.jsonl" "$RUNNER_TEMP/source.json" \
             "$RUNNER_TEMP/survivor.json" "$RUNNER_TEMP/inventory.json" \
-            "$RUNNER_TEMP/evidence.json" "$RUNNER_TEMP/current-clean-replay.json" \
+            "$RUNNER_TEMP/evidence.json" \
             "$RUNNER_TEMP/g05-authority.json" "$RUNNER_TEMP/g06-envelope.json" \
             "$RUNNER_TEMP/g06-terminal-qualification.json" "$RUNNER_TEMP/current-preflight.json" \
+            "$RUNNER_TEMP/replay-a.zip" "$RUNNER_TEMP/replay-b.zip" "$RUNNER_TEMP/replay-terminal.zip" \
+            "$RUNNER_TEMP/replay-a.json" "$RUNNER_TEMP/replay-b.json" "$RUNNER_TEMP/terminal-summary.json" \
+            "$RUNNER_TEMP/replay-a" "$RUNNER_TEMP/replay-b" "$RUNNER_TEMP/replay-terminal" \
             "$RUNNER_TEMP/post-g05-g06-a" "$RUNNER_TEMP/post-g05-g06-b"
 
       - name: "#2049 — retain canonical downstream payload pair and text-free proof"
