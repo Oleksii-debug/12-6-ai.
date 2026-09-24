@@ -269,6 +269,7 @@ def test_wrong_or_malformed_external_root_never_authenticates_candidate():
     assert malformed.ready_for_training_run_lease is False
     assert "expected_terminal_authority_sha256_invalid" in malformed.blockers
 
+
 @pytest.mark.parametrize(
     ("section", "field", "replacement"),
     [
