@@ -24,6 +24,57 @@ MODEL341_AUTHORITY = {
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_METADATA_UNSET = object()
+
+_SCIENTIFIC_ROLE_WORKFLOW_REQUIRED = {
+    "code": True,
+    "corpus": True,
+    "tokenizer": True,
+    "loss_ledger": True,
+    "data_budget": True,
+    "checkpoint_integrity": True,
+    "evaluation_firewall": True,
+    "selection_validation": True,
+    "training_recipe": True,
+    "bounded_pilot": True,
+    "learned_3m": True,
+    "learned_10m": True,
+    "cost_envelope": False,
+    "independent_audit": True,
+}
+
+_SCIENTIFIC_METADATA_KEYS = {
+    "code": frozenset({"git_sha"}),
+    "corpus": frozenset(
+        {"manifest_sha256", "split_sha256", "packing_sha256", "two_clean_builds_identical"}
+    ),
+    "tokenizer": frozenset({"identity_sha256", "decision"}),
+    "loss_ledger": frozenset({"identity_sha256", "unique_causal_loss_positions"}),
+    "data_budget": frozenset(
+        {"ledger_identity_sha256", "unique_causal_loss_positions", "data_budget_status"}
+    ),
+    "checkpoint_integrity": frozenset({"status"}),
+    "evaluation_firewall": frozenset({"status"}),
+    "selection_validation": frozenset({"status"}),
+    "training_recipe": frozenset(
+        {
+            "status",
+            "seed_count",
+            "config_sha256",
+            "stopping_policy_sha256",
+            "requested_unique_loss_positions",
+            "requested_total_training_exposures",
+            "max_exposures_per_unique_position",
+        }
+    ),
+    "bounded_pilot": frozenset(
+        {"status", "numerics_finite", "resume_equivalent", "loss_trajectory_acceptable"}
+    ),
+    "learned_3m": frozenset({"status"}),
+    "learned_10m": frozenset({"status"}),
+    "cost_envelope": frozenset({"status", "maximum_cost_usd"}),
+    "independent_audit": frozenset({"status"}),
+}
 
 
 @dataclass(frozen=True)
@@ -74,10 +125,21 @@ def _is_finite_positive_number(value: Any) -> bool:
     return _is_finite_number(value) and value > 0
 
 
-def _valid_authority_ref(value: Any, *, require_workflow: bool = False) -> bool:
+def _valid_authority_ref(
+    value: Any,
+    *,
+    require_workflow: bool = False,
+    strict: bool = False,
+) -> bool:
     """Require a machine-addressable exact-head GitHub evidence reference."""
     if not isinstance(value, dict):
         return False
+    if strict:
+        expected = {"repository", "git_sha", "evidence_sha256", "terminal"}
+        if require_workflow:
+            expected.update({"workflow_run_id", "workflow_conclusion"})
+        if set(value) != expected:
+            return False
     if value.get("repository") != REPOSITORY:
         return False
     if not _is_git_sha(value.get("git_sha")):
@@ -95,16 +157,156 @@ def _valid_authority_ref(value: Any, *, require_workflow: bool = False) -> bool:
     return True
 
 
+def _canonicalize_scientific_metadata(value: Any) -> Any:
+    """Normalize readiness metadata without decimal-size or bool/int ambiguity."""
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, int):
+        sign = "-" if value < 0 else ""
+        return {"__int_hex__": sign + format(abs(value), "x")}
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("scientific metadata floats must be finite")
+        return {"__float_hex__": value.hex()}
+    if isinstance(value, dict):
+        if any(not isinstance(key, str) for key in value):
+            raise TypeError("scientific metadata keys must be strings")
+        return {
+            key: _canonicalize_scientific_metadata(item)
+            for key, item in sorted(value.items())
+        }
+    if isinstance(value, (list, tuple)):
+        return [_canonicalize_scientific_metadata(item) for item in value]
+    raise TypeError(f"unsupported scientific metadata type: {type(value).__name__}")
+
+
+def scientific_metadata_sha256(metadata: Any) -> str | None:
+    """Return a deterministic digest for exact readiness-consumed metadata."""
+    try:
+        canonical = _canonicalize_scientific_metadata(metadata)
+        encoded = json.dumps(
+            canonical,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def scientific_role_metadata(role: str, evidence: Any) -> dict[str, Any] | None:
+    """Project exactly the packet metadata consumed for one scientific role.
+
+    This projection is not trust. A caller must compare a token derived from an
+    independently trusted copy of this metadata against the externally verified
+    token supplied to :func:`assess_learned20m_readiness`.
+    """
+    if not isinstance(role, str) or not role.strip() or not isinstance(evidence, dict):
+        return None
+    normalized_role = role.strip()
+
+    def block(name: str) -> dict[str, Any]:
+        value = evidence.get(name)
+        return value if isinstance(value, dict) else {}
+
+    if normalized_role == "code":
+        item = block("code")
+        return {"git_sha": item.get("git_sha")}
+    if normalized_role == "corpus":
+        item = block("corpus")
+        return {
+            "manifest_sha256": item.get("manifest_sha256"),
+            "split_sha256": item.get("split_sha256"),
+            "packing_sha256": item.get("packing_sha256"),
+            "two_clean_builds_identical": item.get("two_clean_builds_identical"),
+        }
+    if normalized_role == "tokenizer":
+        item = block("tokenizer")
+        return {
+            "identity_sha256": item.get("identity_sha256"),
+            "decision": item.get("decision"),
+        }
+    if normalized_role == "loss_ledger":
+        item = block("loss_ledger")
+        return {
+            "identity_sha256": item.get("identity_sha256"),
+            "unique_causal_loss_positions": item.get("unique_causal_loss_positions"),
+        }
+    if normalized_role == "data_budget":
+        item = block("loss_ledger")
+        return {
+            "ledger_identity_sha256": item.get("identity_sha256"),
+            "unique_causal_loss_positions": item.get("unique_causal_loss_positions"),
+            "data_budget_status": item.get("data_budget_status"),
+        }
+    if normalized_role == "checkpoint_integrity":
+        item = block("checkpoint_integrity")
+        return {"status": item.get("status")}
+    if normalized_role in {"evaluation_firewall", "selection_validation"}:
+        item = block("evaluation")
+        return {"status": item.get("status")}
+    if normalized_role == "training_recipe":
+        item = block("training_recipe")
+        return {
+            "status": item.get("status"),
+            "seed_count": item.get("seed_count"),
+            "config_sha256": item.get("config_sha256"),
+            "stopping_policy_sha256": item.get("stopping_policy_sha256"),
+            "requested_unique_loss_positions": item.get("requested_unique_loss_positions"),
+            "requested_total_training_exposures": item.get(
+                "requested_total_training_exposures"
+            ),
+            "max_exposures_per_unique_position": item.get(
+                "max_exposures_per_unique_position"
+            ),
+        }
+    if normalized_role == "bounded_pilot":
+        item = block("bounded_pilot")
+        return {
+            "status": item.get("status"),
+            "numerics_finite": item.get("numerics_finite"),
+            "resume_equivalent": item.get("resume_equivalent"),
+            "loss_trajectory_acceptable": item.get("loss_trajectory_acceptable"),
+        }
+    if normalized_role in {"learned_3m", "learned_10m"}:
+        scale = block("learned_scale_evidence")
+        item = scale.get(normalized_role)
+        item = item if isinstance(item, dict) else {}
+        return {"status": item.get("status")}
+    if normalized_role == "cost_envelope":
+        item = block("cost_envelope")
+        return {
+            "status": item.get("status"),
+            "maximum_cost_usd": item.get("maximum_cost_usd"),
+        }
+    if normalized_role == "independent_audit":
+        item = block("independent_audit")
+        return {"status": item.get("status")}
+    return None
+
+
 def scientific_authority_token(
     role: str,
     authority: Any,
     *,
+    metadata: Any = _METADATA_UNSET,
     require_workflow: bool = False,
 ) -> str | None:
-    """Return the role-bound digest a trusted live resolver may verify out of packet."""
+    """Return a role-bound digest a trusted live resolver may verify out of packet.
+
+    ``metadata`` is optional only for compatibility with non-readiness consumers of
+    this helper. The learned-20M readiness evaluator always supplies the exact
+    role projection, so legacy authority-only tokens cannot satisfy readiness.
+    """
     if not isinstance(role, str) or not role.strip():
         return None
-    if not _valid_authority_ref(authority, require_workflow=require_workflow):
+    if not _valid_authority_ref(
+        authority,
+        require_workflow=require_workflow,
+        strict=metadata is not _METADATA_UNSET,
+    ):
         return None
 
     payload = {
@@ -118,6 +320,11 @@ def scientific_authority_token(
             authority.get("workflow_conclusion") if require_workflow else None
         ),
     }
+    if metadata is not _METADATA_UNSET:
+        metadata_sha256 = scientific_metadata_sha256(metadata)
+        if metadata_sha256 is None:
+            return None
+        payload["metadata_sha256"] = metadata_sha256
     encoded = json.dumps(
         payload,
         sort_keys=True,
@@ -125,6 +332,62 @@ def scientific_authority_token(
         ensure_ascii=True,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def trusted_readiness_inputs(
+    bindings: Any,
+) -> tuple[set[str], set[str]] | None:
+    """Resolve a separate trusted-binding bundle into evaluator inputs.
+
+    The bundle is intentionally independent from the candidate readiness packet.
+    It contains trusted copies of role authority + role metadata; the evaluator
+    separately derives candidate-side tokens and therefore detects any drift.
+    """
+    if not isinstance(bindings, dict):
+        return None
+    if set(bindings) != {
+        "schema_version",
+        "scientific_authorities",
+        "verified_authorization_refs",
+    }:
+        return None
+    if bindings.get("schema_version") != 1:
+        return None
+
+    scientific = bindings.get("scientific_authorities")
+    refs = bindings.get("verified_authorization_refs")
+    if not isinstance(scientific, dict) or not isinstance(refs, list):
+        return None
+
+    verified_tokens: set[str] = set()
+    for role, record in scientific.items():
+        if role not in _SCIENTIFIC_ROLE_WORKFLOW_REQUIRED:
+            return None
+        if not isinstance(record, dict) or set(record) != {"authority", "metadata"}:
+            return None
+        metadata = record.get("metadata")
+        if not isinstance(metadata, dict) or set(metadata) != _SCIENTIFIC_METADATA_KEYS[role]:
+            return None
+        token = scientific_authority_token(
+            role,
+            record.get("authority"),
+            metadata=metadata,
+            require_workflow=_SCIENTIFIC_ROLE_WORKFLOW_REQUIRED[role],
+        )
+        if token is None:
+            return None
+        verified_tokens.add(token)
+
+    verified_refs: set[str] = set()
+    for ref in refs:
+        if not isinstance(ref, str) or not ref.strip():
+            return None
+        normalized = ref.strip()
+        if normalized in verified_refs:
+            return None
+        verified_refs.add(normalized)
+
+    return verified_tokens, verified_refs
 
 
 def _require_identity(blockers: list[str], value: Any, name: str) -> None:
@@ -145,15 +408,21 @@ def _require_scientific_authority(
     name: str,
     role: str,
     verified_authorities: set[str],
+    metadata: Any,
     *,
     require_workflow: bool = False,
 ) -> None:
-    if not _valid_authority_ref(value, require_workflow=require_workflow):
+    if not _valid_authority_ref(
+        value,
+        require_workflow=require_workflow,
+        strict=True,
+    ):
         blockers.append(name)
         return
     token = scientific_authority_token(
         role,
         value,
+        metadata=metadata,
         require_workflow=require_workflow,
     )
     if token is None or token not in verified_authorities:
@@ -239,6 +508,15 @@ def assess_learned20m_readiness(
     code = evidence.get("code") if isinstance(evidence.get("code"), dict) else {}
     if not _is_git_sha(code.get("git_sha")):
         local.append("exact_code_sha_missing")
+    _require_scientific_authority(
+        local,
+        code.get("authority"),
+        "exact_code_authority_missing",
+        "code",
+        verified_scientific,
+        scientific_role_metadata("code", evidence),
+        require_workflow=True,
+    )
 
     corpus = evidence.get("corpus") if isinstance(evidence.get("corpus"), dict) else {}
     _require_identity(local, corpus.get("manifest_sha256"), "corpus_manifest_missing")
@@ -252,6 +530,7 @@ def assess_learned20m_readiness(
         "terminal_corpus_authority_missing",
         "corpus",
         verified_scientific,
+        scientific_role_metadata("corpus", evidence),
         require_workflow=True,
     )
 
@@ -267,6 +546,7 @@ def assess_learned20m_readiness(
         "terminal_tokenizer_authority_missing",
         "tokenizer",
         verified_scientific,
+        scientific_role_metadata("tokenizer", evidence),
         require_workflow=True,
     )
 
@@ -281,6 +561,7 @@ def assess_learned20m_readiness(
         "terminal_unique_loss_ledger_authority_missing",
         "loss_ledger",
         verified_scientific,
+        scientific_role_metadata("loss_ledger", evidence),
         require_workflow=True,
     )
     _require_scientific_authority(
@@ -289,6 +570,7 @@ def assess_learned20m_readiness(
         "data_budget_authority_missing",
         "data_budget",
         verified_scientific,
+        scientific_role_metadata("data_budget", evidence),
         require_workflow=True,
     )
     if ledger.get("data_budget_status") != "QUALIFIED":
@@ -305,6 +587,7 @@ def assess_learned20m_readiness(
         "checkpoint_integrity_authority_missing",
         "checkpoint_integrity",
         verified_scientific,
+        scientific_role_metadata("checkpoint_integrity", evidence),
         require_workflow=True,
     )
     if checkpoint.get("status") != "PASS":
@@ -319,6 +602,7 @@ def assess_learned20m_readiness(
         "evaluation_firewall_authority_missing",
         "evaluation_firewall",
         verified_scientific,
+        scientific_role_metadata("evaluation_firewall", evidence),
         require_workflow=True,
     )
     _require_scientific_authority(
@@ -327,6 +611,7 @@ def assess_learned20m_readiness(
         "selection_validation_authority_missing",
         "selection_validation",
         verified_scientific,
+        scientific_role_metadata("selection_validation", evidence),
         require_workflow=True,
     )
     if evaluation.get("status") != "PASS":
@@ -343,6 +628,7 @@ def assess_learned20m_readiness(
         "training_recipe_authority_missing",
         "training_recipe",
         verified_scientific,
+        scientific_role_metadata("training_recipe", evidence),
         require_workflow=True,
     )
     if recipe.get("status") != "QUALIFIED":
@@ -384,6 +670,7 @@ def assess_learned20m_readiness(
         "bounded_pilot_authority_missing",
         "bounded_pilot",
         verified_scientific,
+        scientific_role_metadata("bounded_pilot", evidence),
         require_workflow=True,
     )
     if pilot.get("status") != "PASS":
@@ -405,6 +692,7 @@ def assess_learned20m_readiness(
             f"{label}_authority_missing",
             label,
             verified_scientific,
+            scientific_role_metadata(label, evidence),
             require_workflow=True,
         )
         if item.get("status") != "PASS":
@@ -417,6 +705,7 @@ def assess_learned20m_readiness(
         "cost_envelope_authority_missing",
         "cost_envelope",
         verified_scientific,
+        scientific_role_metadata("cost_envelope", evidence),
     )
     if cost.get("status") != "ESTIMATED":
         compute.append("cost_envelope_not_estimated")
@@ -439,6 +728,7 @@ def assess_learned20m_readiness(
         "independent_audit_authority_missing",
         "independent_audit",
         verified_scientific,
+        scientific_role_metadata("independent_audit", evidence),
         require_workflow=True,
     )
     if audit.get("status") not in {"PASS", "PASS_WITH_NOTES"}:

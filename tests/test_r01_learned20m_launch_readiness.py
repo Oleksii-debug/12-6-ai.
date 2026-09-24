@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +13,11 @@ from twelve_six.learned20m_readiness import (
 )
 from twelve_six.learned20m_readiness import (
     scientific_authority_token,
+    scientific_metadata_sha256,
+    scientific_role_metadata,
+    trusted_readiness_inputs,
 )
+from twelve_six.readiness_trust_root import trusted_readiness_bundle_sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
@@ -20,6 +27,7 @@ COMPUTE_REF = "issue:1#compute-authorized-example"
 TRAINING_REF = "issue:1#training-authorized-example"
 
 _SCIENTIFIC_AUTHORITIES = (
+    ("code", ("code", "authority"), True),
     ("corpus", ("corpus", "authority"), True),
     ("tokenizer", ("tokenizer", "authority"), True),
     ("loss_ledger", ("loss_ledger", "authority"), True),
@@ -55,21 +63,47 @@ def _authority(*, workflow: bool = True) -> dict[str, Any]:
 def _authority_at(data: dict[str, Any], path: tuple[str, ...]) -> Any:
     value: Any = data["evidence"]
     for key in path:
-        value = value[key]
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
     return value
 
 
 def _verified_scientific(data: dict[str, Any]) -> set[str]:
     verified: set[str] = set()
+    evidence = data["evidence"]
     for role, path, require_workflow in _SCIENTIFIC_AUTHORITIES:
         token = scientific_authority_token(
             role,
             _authority_at(data, path),
+            metadata=scientific_role_metadata(role, evidence),
             require_workflow=require_workflow,
         )
         if token is not None:
             verified.add(token)
     return verified
+
+
+def _trusted_bundle(
+    data: dict[str, Any],
+    *,
+    verified_authorization_refs: tuple[str, ...] | list[str] = (),
+) -> dict[str, Any]:
+    evidence = data["evidence"]
+    scientific: dict[str, Any] = {}
+    for role, path, _require_workflow in _SCIENTIFIC_AUTHORITIES:
+        authority = _authority_at(data, path)
+        if authority is None:
+            continue
+        scientific[role] = {
+            "authority": copy.deepcopy(authority),
+            "metadata": scientific_role_metadata(role, evidence),
+        }
+    return {
+        "schema_version": 1,
+        "scientific_authorities": scientific,
+        "verified_authorization_refs": list(verified_authorization_refs),
+    }
 
 
 def _assess(
@@ -87,7 +121,7 @@ def _assess(
 def _make_local_pilot_ready() -> dict[str, Any]:
     data = _load()
     evidence = data["evidence"]
-    evidence["code"]["git_sha"] = SHA40
+    evidence["code"].update({"git_sha": SHA40, "authority": _authority()})
     evidence["corpus"].update(
         {
             "manifest_sha256": SHA64,
@@ -414,15 +448,18 @@ def test_structural_scientific_authorities_cannot_self_verify() -> None:
 def test_scientific_authority_tokens_are_role_and_payload_bound() -> None:
     data = _make_local_pilot_ready()
     verified = _verified_scientific(data)
-    tokenizer = data["evidence"]["tokenizer"]["authority"]
+    evidence = data["evidence"]
+    tokenizer = evidence["tokenizer"]["authority"]
     tokenizer_token = scientific_authority_token(
         "tokenizer",
         tokenizer,
+        metadata=scientific_role_metadata("tokenizer", evidence),
         require_workflow=True,
     )
     corpus_token = scientific_authority_token(
         "corpus",
-        data["evidence"]["corpus"]["authority"],
+        evidence["corpus"]["authority"],
+        metadata=scientific_role_metadata("corpus", evidence),
         require_workflow=True,
     )
     assert tokenizer_token is not None
@@ -438,6 +475,9 @@ def test_scientific_authority_tokens_are_role_and_payload_bound() -> None:
     assert not result.ready_for_local_free_pilot
     assert "terminal_tokenizer_authority_unverified" in result.local_free_pilot_blockers
 
+
+def test_authority_payload_mutation_invalidates_verified_token() -> None:
+    data = _make_local_pilot_ready()
     verified = _verified_scientific(data)
     data["evidence"]["tokenizer"]["authority"]["evidence_sha256"] = "c" * 64
     result = _assess_impl(
@@ -489,3 +529,247 @@ def test_extreme_integer_costs_remain_deterministic_and_do_not_crash() -> None:
         verified_authorization_refs={COMPUTE_REF, TRAINING_REF},
     )
     assert result.material_training_authorized
+
+
+def test_legacy_authority_only_tokens_cannot_satisfy_readiness() -> None:
+    data = _make_local_pilot_ready()
+    legacy: set[str] = set()
+    for role, path, require_workflow in _SCIENTIFIC_AUTHORITIES:
+        authority = _authority_at(data, path)
+        if authority is None:
+            continue
+        token = scientific_authority_token(
+            role,
+            authority,
+            require_workflow=require_workflow,
+        )
+        assert token is not None
+        legacy.add(token)
+
+    result = _assess_impl(data, verified_scientific_authorities=legacy)
+    assert not result.ready_for_local_free_pilot
+    assert "exact_code_authority_unverified" in result.local_free_pilot_blockers
+    assert "terminal_corpus_authority_unverified" in result.local_free_pilot_blockers
+
+
+def test_fixed_verified_code_token_rejects_valid_sha_substitution() -> None:
+    data = _make_local_pilot_ready()
+    verified = _verified_scientific(data)
+    data["evidence"]["code"]["git_sha"] = "c" * 40
+
+    result = _assess_impl(data, verified_scientific_authorities=verified)
+    assert not result.ready_for_local_free_pilot
+    assert "exact_code_authority_unverified" in result.local_free_pilot_blockers
+
+
+def test_fixed_verified_tokens_reject_consumed_local_metadata_mutation() -> None:
+    mutations = (
+        (("corpus", "manifest_sha256"), "c" * 64, "terminal_corpus_authority_unverified"),
+        (("tokenizer", "identity_sha256"), "c" * 64, "terminal_tokenizer_authority_unverified"),
+        (
+            ("loss_ledger", "unique_causal_loss_positions"),
+            999_999_999_999,
+            "terminal_unique_loss_ledger_authority_unverified",
+        ),
+        (("checkpoint_integrity", "status"), "PASS_WITH_NOTES", "checkpoint_integrity_authority_unverified"),
+        (("evaluation", "status"), "PASS_WITH_NOTES", "evaluation_firewall_authority_unverified"),
+        (("training_recipe", "seed_count"), 3, "training_recipe_authority_unverified"),
+    )
+    for path, replacement, expected in mutations:
+        data = _make_local_pilot_ready()
+        verified = _verified_scientific(data)
+        data["evidence"][path[0]][path[1]] = replacement
+        result = _assess_impl(data, verified_scientific_authorities=verified)
+        assert not result.ready_for_local_free_pilot
+        assert expected in result.local_free_pilot_blockers
+
+
+def test_unique_loss_inflation_bypass_is_closed_by_fixed_bindings() -> None:
+    data = _make_local_pilot_ready()
+    verified = _verified_scientific(data)
+    inflated = 10**120
+    data["evidence"]["loss_ledger"]["unique_causal_loss_positions"] = inflated
+    recipe = data["evidence"]["training_recipe"]
+    recipe["requested_unique_loss_positions"] = inflated
+    recipe["requested_total_training_exposures"] = inflated
+    recipe["max_exposures_per_unique_position"] = 1
+
+    result = _assess_impl(data, verified_scientific_authorities=verified)
+    assert not result.ready_for_local_free_pilot
+    assert "terminal_unique_loss_ledger_authority_unverified" in result.local_free_pilot_blockers
+    assert "data_budget_authority_unverified" in result.local_free_pilot_blockers
+    assert "training_recipe_authority_unverified" in result.local_free_pilot_blockers
+
+
+def test_fixed_verified_tokens_reject_consumed_compute_metadata_mutation() -> None:
+    mutations = (
+        (("bounded_pilot", "resume_equivalent"), False, "bounded_pilot_authority_unverified"),
+        (
+            ("learned_scale_evidence", "learned_3m", "status"),
+            "PASS_WITH_NOTES",
+            "learned_3m_authority_unverified",
+        ),
+        (("cost_envelope", "maximum_cost_usd"), 51.0, "cost_envelope_authority_unverified"),
+        (("independent_audit", "status"), "PASS_WITH_NOTES", "independent_audit_authority_unverified"),
+    )
+    for path, replacement, expected in mutations:
+        data = _make_compute_request_ready()
+        verified = _verified_scientific(data)
+        target: Any = data["evidence"]
+        for key in path[:-1]:
+            target = target[key]
+        target[path[-1]] = replacement
+        result = _assess_impl(data, verified_scientific_authorities=verified)
+        assert not result.ready_for_compute_authorization_request
+        assert expected in result.compute_request_blockers
+
+
+def test_scientific_metadata_digest_handles_huge_int_and_bool_int_distinctly() -> None:
+    huge = 10**10_000
+    digest = scientific_metadata_sha256({"value": huge})
+    assert digest is not None
+    assert digest == scientific_metadata_sha256({"value": huge})
+    assert scientific_metadata_sha256({"value": True}) != scientific_metadata_sha256(
+        {"value": 1}
+    )
+
+
+def test_scientific_authority_record_is_closed_world() -> None:
+    data = _make_local_pilot_ready()
+    data["evidence"]["corpus"]["authority"]["unexpected"] = "ignored-before-repair"
+    result = _assess(data)
+    assert not result.ready_for_local_free_pilot
+    assert "terminal_corpus_authority_missing" in result.local_free_pilot_blockers
+
+
+def test_trusted_binding_bundle_is_separate_closed_world_input() -> None:
+    data = _make_compute_request_ready()
+    _add_material_authorizations(data)
+    bundle = _trusted_bundle(
+        data,
+        verified_authorization_refs=(COMPUTE_REF, TRAINING_REF),
+    )
+    resolved = trusted_readiness_inputs(bundle)
+    assert resolved is not None
+    verified_scientific, verified_refs = resolved
+    result = _assess_impl(
+        data,
+        verified_scientific_authorities=verified_scientific,
+        verified_authorization_refs=verified_refs,
+    )
+    assert result.material_training_authorized
+
+    stale = copy.deepcopy(data)
+    stale["evidence"]["training_recipe"]["config_sha256"] = "c" * 64
+    stale_result = _assess_impl(
+        stale,
+        verified_scientific_authorities=verified_scientific,
+        verified_authorization_refs=verified_refs,
+    )
+    assert not stale_result.ready_for_local_free_pilot
+    assert "training_recipe_authority_unverified" in stale_result.local_free_pilot_blockers
+
+
+def test_trusted_binding_bundle_rejects_unknown_fields_and_duplicate_refs() -> None:
+    data = _make_compute_request_ready()
+    bundle = _trusted_bundle(data)
+    bundle["unexpected"] = True
+    assert trusted_readiness_inputs(bundle) is None
+
+    bundle = _trusted_bundle(data, verified_authorization_refs=(COMPUTE_REF, COMPUTE_REF))
+    assert trusted_readiness_inputs(bundle) is None
+
+    bundle = _trusted_bundle(data)
+    bundle["scientific_authorities"]["corpus"]["metadata"]["unexpected"] = True
+    assert trusted_readiness_inputs(bundle) is None
+
+
+def test_canonical_cli_accepts_separate_trusted_binding_bundle(tmp_path: Path) -> None:
+    data = _make_compute_request_ready()
+    _add_material_authorizations(data)
+    packet_path = tmp_path / "packet.json"
+    bindings_path = tmp_path / "bindings.json"
+    bundle = _trusted_bundle(
+        data,
+        verified_authorization_refs=(COMPUTE_REF, TRAINING_REF),
+    )
+    expected = trusted_readiness_bundle_sha256(bundle)
+    assert expected is not None
+    packet_path.write_text(json.dumps(data), encoding="utf-8")
+    bindings_path.write_text(json.dumps(bundle), encoding="utf-8")
+    tool = ROOT / "tools/assess_r01_learned20m_launch_readiness.py"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(tool),
+            str(packet_path),
+            "--trusted-bindings",
+            str(bindings_path),
+            "--expected-trusted-bindings-sha256",
+            expected,
+        ],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    output = json.loads(completed.stdout)
+    assert output["material_training_authorized"] is True
+
+
+def test_canonical_cli_rejects_unpinned_trusted_binding_bundle(tmp_path: Path) -> None:
+    data = _make_compute_request_ready()
+    _add_material_authorizations(data)
+    packet_path = tmp_path / "packet.json"
+    bindings_path = tmp_path / "bindings.json"
+    bundle = _trusted_bundle(
+        data,
+        verified_authorization_refs=(COMPUTE_REF, TRAINING_REF),
+    )
+    packet_path.write_text(json.dumps(data), encoding="utf-8")
+    bindings_path.write_text(json.dumps(bundle), encoding="utf-8")
+    tool = ROOT / "tools/assess_r01_learned20m_launch_readiness.py"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(tool),
+            str(packet_path),
+            "--trusted-bindings",
+            str(bindings_path),
+        ],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 2
+    assert "--expected-trusted-bindings-sha256" in completed.stdout
+
+
+def test_canonical_cli_without_trusted_bindings_remains_fail_closed(tmp_path: Path) -> None:
+    data = _make_compute_request_ready()
+    _add_material_authorizations(data)
+    packet_path = tmp_path / "packet.json"
+    packet_path.write_text(json.dumps(data), encoding="utf-8")
+    tool = ROOT / "tools/assess_r01_learned20m_launch_readiness.py"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
+    completed = subprocess.run(
+        [sys.executable, str(tool), str(packet_path)],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 1
+    output = json.loads(completed.stdout)
+    assert output["ready_for_local_free_pilot"] is False
+    assert "exact_code_authority_unverified" in output["local_free_pilot_blockers"]

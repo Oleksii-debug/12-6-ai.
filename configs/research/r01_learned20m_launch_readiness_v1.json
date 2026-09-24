@@ -10,7 +10,10 @@
     "canonical_base": "random_init"
   },
   "evidence": {
-    "code": {"git_sha": null},
+    "code": {
+      "git_sha": null,
+      "authority": null
+    },
     "corpus": {
       "manifest_sha256": null,
       "split_sha256": null,
@@ -30,7 +33,10 @@
       "data_budget_authority": null,
       "data_budget_status": "BLOCKED"
     },
-    "checkpoint_integrity": {"authority": null, "status": "RETEST_REQUIRED"},
+    "checkpoint_integrity": {
+      "authority": null,
+      "status": "RETEST_REQUIRED"
+    },
     "evaluation": {
       "firewall_authority": null,
       "selection_validation_authority": null,
@@ -82,7 +88,10 @@
       "status": "NOT_ESTIMATED",
       "maximum_cost_usd": null
     },
-    "independent_audit": {"authority": null, "status": "NOT_RUN"},
+    "independent_audit": {
+      "authority": null,
+      "status": "NOT_RUN"
+    },
     "compute_authorization": {
       "authority": null,
       "status": "NOT_AUTHORIZED",
