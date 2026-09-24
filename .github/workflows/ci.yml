@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -33,3 +34,19 @@ jobs:
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
       - run: pytest -q
+      - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
+        if: github.event_name == 'pull_request' && github.head_ref == 'd06/eval647-code-selection-1640'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          export EVAL647_REAL_PYTHON="$(command -v python)"
+          export PATH="$GITHUB_WORKSPACE/tools/eval647_transport_bin:$PATH"
+          bash tools/run_eval647_real_overlap_ci_v1.sh
+      - name: "#1801 — upload hash-only EVAL-647 overlap evidence"
+        if: always() && github.event_name == 'pull_request' && github.head_ref == 'd06/eval647-code-selection-1640'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval647-current-corpus-overlap-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: artifacts/eval647/current_corpus_overlap_v1.json
