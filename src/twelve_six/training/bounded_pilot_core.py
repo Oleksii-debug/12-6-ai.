@@ -298,7 +298,7 @@ def _optimizer_state_projection(value: Any) -> Any:
             "dtype": str(tensor.dtype),
             "shape": list(tensor.shape),
             "sha256": hashlib.sha256(
-                tensor.view(torch.uint8).numpy().tobytes()
+                tensor.reshape(-1).view(torch.uint8).numpy().tobytes()
             ).hexdigest(),
         }
     if isinstance(value, Mapping):
