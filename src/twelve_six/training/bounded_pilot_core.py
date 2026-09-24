@@ -288,6 +288,70 @@ def _model_state_sha256(model: torch.nn.Module) -> str:
     return digest.hexdigest()
 
 
+def _optimizer_state_projection(value: Any) -> Any:
+    """Return a type-preserving, tensor-content-addressed optimizer projection."""
+
+    if isinstance(value, Tensor):
+        tensor = value.detach().contiguous().cpu()
+        return {
+            "kind": "tensor",
+            "dtype": str(tensor.dtype),
+            "shape": list(tensor.shape),
+            "sha256": hashlib.sha256(
+                tensor.view(torch.uint8).numpy().tobytes()
+            ).hexdigest(),
+        }
+    if isinstance(value, Mapping):
+        items = [
+            [_optimizer_state_projection(key), _optimizer_state_projection(child)]
+            for key, child in value.items()
+        ]
+        items.sort(key=lambda item: _canonical_json_bytes(item[0]))
+        return {"kind": "mapping", "items": items}
+    if isinstance(value, list):
+        return {
+            "kind": "list",
+            "items": [_optimizer_state_projection(child) for child in value],
+        }
+    if isinstance(value, tuple):
+        return {
+            "kind": "tuple",
+            "items": [_optimizer_state_projection(child) for child in value],
+        }
+    if value is None:
+        return {"kind": "none"}
+    if isinstance(value, bool):
+        return {"kind": "bool", "value": value}
+    if isinstance(value, int):
+        return {"kind": "int", "value": value}
+    if isinstance(value, float):
+        return {"kind": "float", "value": value.hex()}
+    if isinstance(value, str):
+        return {"kind": "str", "value": value}
+    raise BoundedPilotAuthorizationError(
+        "BLOCKED_PRE_STEP_1: optimizer state contains unsupported value type "
+        f"{type(value).__name__}"
+    )
+
+
+def _optimizer_state_sha256(optimizer: torch.optim.Optimizer) -> str:
+    projection = _optimizer_state_projection(optimizer.state_dict())
+    digest = hashlib.sha256(b"12-6.optimizer-state.v1\x00")
+    digest.update(_canonical_json_bytes(projection))
+    return digest.hexdigest()
+
+
+def _require_fresh_start_optimizer_state(trainer: Trainer) -> str:
+    reference = build_optimizer(trainer.model, trainer.config)
+    expected = _optimizer_state_sha256(reference)
+    observed = _optimizer_state_sha256(trainer.optimizer)
+    if observed != expected:
+        raise BoundedPilotAuthorizationError(
+            "BLOCKED_PRE_STEP_1: live optimizer state differs from canonical fresh optimizer"
+        )
+    return observed
+
+
 def _require_fresh_start_model_state(trainer: Trainer) -> str:
     model = trainer.model
     if type(model) is not TwelveSixDecoder:
@@ -679,6 +743,9 @@ class BoundedPilotStepRunner:
             raise BoundedPilotAuthorizationError("BLOCKED_PRE_STEP_1: D04 budget differs")
         _require_live_replay_state_consistency(self.trainer, replay_guard)
         self._expected_model_state_sha256 = _require_fresh_start_model_state(self.trainer)
+        self._expected_optimizer_state_sha256 = _require_fresh_start_optimizer_state(
+            self.trainer
+        )
 
         register = getattr(self.trainer.optimizer, "register_step_pre_hook", None)
         if register is None:
@@ -721,6 +788,12 @@ class BoundedPilotStepRunner:
         if observed_state != self._expected_model_state_sha256:
             raise BoundedPilotAuthorizationError(
                 "BLOCKED_PRE_STEP_1: live model state changed outside authorized optimizer chain"
+            )
+        observed_optimizer_state = _optimizer_state_sha256(self.trainer.optimizer)
+        if observed_optimizer_state != self._expected_optimizer_state_sha256:
+            raise BoundedPilotAuthorizationError(
+                "BLOCKED_PRE_STEP_1: live optimizer state changed outside "
+                "authorized optimizer chain"
             )
 
     def _verify_live_content(self, batch: Batch, *, batch_index: int) -> str:
@@ -831,6 +904,9 @@ class BoundedPilotStepRunner:
             self._poison(f"post-step D04 state binding failed: {exc}")
             self._raise_recovery_required()
         self._expected_model_state_sha256 = _model_state_sha256(self.trainer.model)
+        self._expected_optimizer_state_sha256 = _optimizer_state_sha256(
+            self.trainer.optimizer
+        )
 
     def train_authorized_microbatch(
         self,
