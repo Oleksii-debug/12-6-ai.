@@ -33,9 +33,27 @@ PROFILE_SCHEMA_VERSION = 1
 PROFILE_ID = "R01-WINDOWS-LOCAL-FREE-OPERATOR-V1"
 PACKET_SCHEMA_VERSION = 1
 PACKET_ID = "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1"
+SAFE_STOP_SCHEMA = "12-6.windows-local-free-safe-stop-request.v2"
 EXIT_OK = 0
 EXIT_BLOCKED = 2
 EXIT_ERROR = 3
+_SHA256_HEX = frozenset("0123456789abcdef")
+_SAFE_STOP_MARKER_KEYS = frozenset(
+    {
+        "schema",
+        "request",
+        "target",
+        "profile_sha256",
+        "portable_packet_sha256",
+        "run_id",
+        "run_manifest_sha256",
+        "requested_at_utc",
+        "consumer",
+        "checkpoint_or_training_success_claimed",
+        "truth_boundary",
+        "marker_sha256",
+    }
+)
 
 # Leaf-local facts only. Corpus/source provenance is deliberately not asserted
 # by this machine/operator preflight.
@@ -74,6 +92,7 @@ def _strict_int(value: Any) -> bool:
 
 
 def _canonical_sha256(value: Mapping[str, Any]) -> str:
+    """Hash canonical JSON exactly like checkpoint.core.hash_json."""
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -294,8 +313,15 @@ def validate_operator_profile(
         "content_authenticated",
         "idempotent",
         "does_not_claim_checkpoint_or_training_success",
+        "run_identity_required",
     ):
         _expect(errors, stop.get(key) is True, f"safe_stop_{key}_must_be_true")
+    _expect(
+        errors,
+        stop.get("run_manifest_hash_semantics")
+        == "CANONICAL_SORTED_COMPACT_UTF8_JSON_SHA256",
+        "safe_stop_run_manifest_hash_semantics_mismatch",
+    )
 
     _expect(
         errors,
@@ -515,19 +541,101 @@ def _ensure_state_dir(path: Path, *, create: bool) -> Path:
     return path
 
 
+def _run_identity_errors(run_id: Any, run_manifest_sha256: Any) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(run_id, str) or not run_id.strip():
+        errors.append("safe_stop_current_run_id_invalid")
+    if (
+        not isinstance(run_manifest_sha256, str)
+        or len(run_manifest_sha256) != 64
+        or run_manifest_sha256 != run_manifest_sha256.lower()
+        or any(char not in _SHA256_HEX for char in run_manifest_sha256)
+    ):
+        errors.append("safe_stop_current_run_manifest_sha256_invalid")
+    return errors
+
+
+def _run_manifest_contract_errors(run_manifest: Mapping[str, Any]) -> list[str]:
+    """Mirror RecoveryStore's canonical run-identity admission invariants."""
+    errors: list[str] = []
+    run_id = run_manifest.get("run_id")
+    if not isinstance(run_id, str) or not run_id.strip():
+        errors.append("safe_stop_current_run_id_invalid")
+
+    candidate = run_manifest.get("candidate")
+    if not isinstance(candidate, Mapping):
+        errors.append("safe_stop_run_manifest_candidate_invalid")
+    else:
+        git_sha = candidate.get("git_sha")
+        if (
+            not isinstance(git_sha, str)
+            or len(git_sha) not in {40, 64}
+            or git_sha != git_sha.lower()
+            or any(char not in _SHA256_HEX for char in git_sha)
+        ):
+            errors.append("safe_stop_run_manifest_candidate_git_sha_invalid")
+
+    recovery = run_manifest.get("recovery")
+    if not isinstance(recovery, Mapping):
+        errors.append("safe_stop_run_manifest_recovery_invalid")
+        return sorted(set(errors))
+    topology = recovery.get("topology")
+    if not isinstance(topology, Mapping) or not topology:
+        errors.append("safe_stop_run_manifest_topology_invalid")
+        return sorted(set(errors))
+    world_size = topology.get("world_size")
+    if not _strict_int(world_size) or world_size <= 0:
+        errors.append("safe_stop_run_manifest_world_size_invalid")
+    return sorted(set(errors))
+
+
+def _load_run_identity(run_manifest_path: Path) -> tuple[str, str]:
+    """Load a canonical RecoveryStore-compatible manifest and bind its identity."""
+    run_manifest, _raw_sha256 = _read_json_file(run_manifest_path)
+    run_id = run_manifest.get("run_id")
+    run_manifest_sha256 = _canonical_sha256(run_manifest)
+    errors = _run_manifest_contract_errors(run_manifest)
+    errors.extend(_run_identity_errors(run_id, run_manifest_sha256))
+    errors = sorted(set(errors))
+    if errors:
+        raise OperatorPreflightError("run_manifest_identity_invalid:" + ",".join(errors))
+    return run_id, run_manifest_sha256
+
+
+def _requested_at_utc_valid(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    for pattern in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
+        try:
+            datetime.strptime(value, pattern).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        return True
+    return False
+
+
 def _marker_payload(
     *,
     profile_sha256: str,
     packet_sha256: str,
     target: str,
+    run_id: str,
+    run_manifest_sha256: str,
     requested_at_utc: str,
 ) -> dict[str, Any]:
+    errors = _run_identity_errors(run_id, run_manifest_sha256)
+    if errors:
+        raise OperatorPreflightError("run_manifest_identity_invalid:" + ",".join(errors))
+    if not _requested_at_utc_valid(requested_at_utc):
+        raise OperatorPreflightError("safe_stop_requested_at_utc_invalid")
     payload: dict[str, Any] = {
-        "schema": "12-6.windows-local-free-safe-stop-request.v1",
+        "schema": SAFE_STOP_SCHEMA,
         "request": "SAFE_STOP_AT_NEXT_CHECKPOINT",
         "target": target,
         "profile_sha256": profile_sha256,
         "portable_packet_sha256": packet_sha256,
+        "run_id": run_id,
+        "run_manifest_sha256": run_manifest_sha256,
         "requested_at_utc": requested_at_utc,
         "consumer": "CANONICAL_TRAINER_ONLY",
         "checkpoint_or_training_success_claimed": False,
@@ -543,8 +651,15 @@ def _validate_existing_marker(
     profile_sha256: str,
     packet_sha256: str,
     target: str,
+    run_id: str | None = None,
+    run_manifest_sha256: str | None = None,
 ) -> list[str]:
     errors: list[str] = []
+    _expect(
+        errors,
+        frozenset(marker.keys()) == _SAFE_STOP_MARKER_KEYS,
+        "safe_stop_marker_keys_mismatch",
+    )
     unsigned = dict(marker)
     digest = unsigned.pop("marker_sha256", None)
     _expect(
@@ -553,7 +668,7 @@ def _validate_existing_marker(
         "safe_stop_marker_sha256_invalid",
     )
     expected = {
-        "schema": "12-6.windows-local-free-safe-stop-request.v1",
+        "schema": SAFE_STOP_SCHEMA,
         "request": "SAFE_STOP_AT_NEXT_CHECKPOINT",
         "target": target,
         "profile_sha256": profile_sha256,
@@ -564,6 +679,21 @@ def _validate_existing_marker(
     }
     for key, value in expected.items():
         _expect(errors, marker.get(key) == value, f"safe_stop_{key}_mismatch")
+    _expect(
+        errors,
+        _requested_at_utc_valid(marker.get("requested_at_utc")),
+        "safe_stop_requested_at_utc_invalid",
+    )
+
+    identity_errors = _run_identity_errors(run_id, run_manifest_sha256)
+    errors.extend(identity_errors)
+    if not identity_errors:
+        _expect(errors, marker.get("run_id") == run_id, "safe_stop_run_id_mismatch")
+        _expect(
+            errors,
+            marker.get("run_manifest_sha256") == run_manifest_sha256,
+            "safe_stop_run_manifest_sha256_mismatch",
+        )
     return sorted(set(errors))
 
 
@@ -573,6 +703,8 @@ def read_stop_status(
     profile_sha256: str,
     packet_sha256: str,
     target: str,
+    run_id: str | None = None,
+    run_manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
     state = _ensure_state_dir(state_dir, create=False)
     marker_path = state / "STOP_REQUEST.json"
@@ -604,6 +736,8 @@ def read_stop_status(
         profile_sha256=profile_sha256,
         packet_sha256=packet_sha256,
         target=target,
+        run_id=run_id,
+        run_manifest_sha256=run_manifest_sha256,
     )
     return {
         "status": "REQUESTED" if not errors else "INVALID",
@@ -618,16 +752,25 @@ def request_safe_stop(
     profile_sha256: str,
     packet_sha256: str,
     target: str,
+    run_id: str,
+    run_manifest_sha256: str,
     requested_at_utc: str | None = None,
 ) -> dict[str, Any]:
+    errors = _run_identity_errors(run_id, run_manifest_sha256)
+    if errors:
+        raise OperatorPreflightError("run_manifest_identity_invalid:" + ",".join(errors))
+    timestamp = requested_at_utc or datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    if not _requested_at_utc_valid(timestamp):
+        raise OperatorPreflightError("safe_stop_requested_at_utc_invalid")
     state = _ensure_state_dir(state_dir, create=True)
     marker_path = state / "STOP_REQUEST.json"
     payload = _marker_payload(
         profile_sha256=profile_sha256,
         packet_sha256=packet_sha256,
         target=target,
-        requested_at_utc=requested_at_utc
-        or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        run_id=run_id,
+        run_manifest_sha256=run_manifest_sha256,
+        requested_at_utc=timestamp,
     )
     raw = (
         json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False).encode()
@@ -642,6 +785,8 @@ def request_safe_stop(
             profile_sha256=profile_sha256,
             packet_sha256=packet_sha256,
             target=target,
+            run_id=run_id,
+            run_manifest_sha256=run_manifest_sha256,
         )
         if existing["status"] != "REQUESTED":
             raise OperatorPreflightError(
@@ -651,6 +796,8 @@ def request_safe_stop(
             "status": "ALREADY_REQUESTED",
             "marker_path": str(marker_path),
             "marker_sha256": existing["marker"]["marker_sha256"],
+            "run_id": run_id,
+            "run_manifest_sha256": run_manifest_sha256,
         }
     except OSError as exc:
         raise OperatorPreflightError(f"safe_stop_create_failed:{exc}") from exc
@@ -668,6 +815,8 @@ def request_safe_stop(
         "status": "REQUESTED",
         "marker_path": str(marker_path),
         "marker_sha256": payload["marker_sha256"],
+        "run_id": run_id,
+        "run_manifest_sha256": run_manifest_sha256,
     }
 
 
@@ -686,6 +835,8 @@ def _render_text(result: Mapping[str, Any]) -> str:
     lines = [f"OPERATOR_STATUS: {result.get('status')}"]
     for key, label in (
         ("target", "TARGET"),
+        ("run_id", "RUN_ID"),
+        ("run_manifest_sha256", "RUN_MANIFEST_SHA256"),
         ("launch_authorized", "LAUNCH_AUTHORIZED"),
         ("training_authorized", "TRAINING_AUTHORIZED"),
     ):
@@ -727,6 +878,16 @@ def main(argv: list[str] | None = None) -> int:
     for command in ("verify", "status", "request-stop"):
         sub = subs.add_parser(command)
         sub.add_argument("--target", choices=("20m", "100m"), default="20m")
+        if command in {"status", "request-stop"}:
+            sub.add_argument(
+                "--run-manifest",
+                type=Path,
+                required=command == "request-stop",
+                help=(
+                    "exact canonical run manifest; required for request-stop and for "
+                    "authenticating an existing marker in status"
+                ),
+            )
     args = parser.parse_args(argv)
 
     try:
@@ -734,11 +895,14 @@ def main(argv: list[str] | None = None) -> int:
             args.profile, args.packet
         )
         if args.command == "request-stop":
+            run_id, run_manifest_sha256 = _load_run_identity(args.run_manifest)
             result = request_safe_stop(
                 args.state_dir,
                 profile_sha256=profile_sha,
                 packet_sha256=packet_sha,
                 target=args.target,
+                run_id=run_id,
+                run_manifest_sha256=run_manifest_sha256,
             )
             result.update(
                 {
@@ -759,12 +923,18 @@ def main(argv: list[str] | None = None) -> int:
             target=args.target,
         )
         if args.command == "status":
+            run_id: str | None = None
+            run_manifest_sha256: str | None = None
+            if args.run_manifest is not None:
+                run_id, run_manifest_sha256 = _load_run_identity(args.run_manifest)
             result["safe_stop"] = (
                 read_stop_status(
                     args.state_dir,
                     profile_sha256=profile_sha,
                     packet_sha256=packet_sha,
                     target=args.target,
+                    run_id=run_id,
+                    run_manifest_sha256=run_manifest_sha256,
                 )
                 if args.state_dir.exists() or args.state_dir.is_symlink()
                 else {"status": "NOT_REQUESTED", "marker": None, "errors": []}
