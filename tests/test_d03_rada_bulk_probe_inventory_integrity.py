@@ -8,7 +8,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
 from tools.normalize_d03_rada_bulk_html import (
     NormalizationError,
     materialize_normalized_records,
