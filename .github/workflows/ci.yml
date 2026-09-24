@@ -47,6 +47,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
           test "$(git diff --name-only "$AUTHORITATIVE_MAIN_SHA" HEAD)" = ".github/workflows/ci.yml"
           git merge-base --is-ancestor 4d3d9f12ce8136d73da8343015acb9e79925dc44 "$AUTHORITATIVE_MAIN_SHA"
+          # Fail before any payload-bearing step until the independently audited
+          # hardened G06 release bridge is integrated into the authoritative main.
+          test "$(git show "$AUTHORITATIVE_MAIN_SHA":tools/build_d03_clean_g06_terminal_bridge_v1.py | git hash-object --stdin)" = "89f7f608c7b5f307e94a7a447f5217d34162b273"
           test "$(git show "$AUTHORITATIVE_MAIN_SHA":src/twelve_six/data/post_g05_g06_materialization_v1.py | git hash-object --stdin)" = "830087f91d1fa24385c5cbc8d2f687e4cc46b419"
           test "$(git show "$AUTHORITATIVE_MAIN_SHA":src/twelve_six/data/post_g05_g06_materialization_v2.py | git hash-object --stdin)" = "a4de33f1e225ab8598197e4c1cba28480180d575"
           test "$(git show "$AUTHORITATIVE_MAIN_SHA":src/twelve_six/data/privacy_filter_v3.py | git hash-object --stdin)" = "bcc5938395724f6728ab212f98b39f2334b0f37d"
