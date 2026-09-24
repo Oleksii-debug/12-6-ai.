@@ -85,6 +85,15 @@ def _trainer(*, max_steps: int = 2, seed: int = 1333) -> Trainer:
     )
 
 
+def _inject_finite_nonfresh_adamw_state(trainer: Trainer) -> None:
+    parameter = next(trainer.model.parameters())
+    trainer.optimizer.state[parameter] = {
+        "step": torch.tensor(1.0),
+        "exp_avg": torch.zeros_like(parameter),
+        "exp_avg_sq": torch.zeros_like(parameter),
+    }
+
+
 def _materialization() -> dict:
     value = {
         "schema_version": "12-6.postpack-loss-materialization.v2",
@@ -420,6 +429,71 @@ def test_fresh_start_rejects_same_architecture_mutated_weights() -> None:
         next(trainer.model.parameters()).view(-1)[0].add_(0.25)
     with pytest.raises(BoundedPilotAuthorizationError, match="canonical random initialization"):
         _gate(trainer, guard, plan, manifest)
+
+
+def test_fresh_start_rejects_finite_nonfresh_optimizer_state() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    _inject_finite_nonfresh_adamw_state(trainer)
+    with pytest.raises(
+        BoundedPilotAuthorizationError,
+        match="canonical fresh optimizer",
+    ):
+        _gate(trainer, guard, plan, manifest)
+    assert trainer.optimizer_step == 0
+    assert trainer.tokens_seen == 0
+    assert guard.consumed_loss_positions == 0
+
+
+def test_finite_optimizer_state_injection_before_step1_fails_closed() -> None:
+    guard, plan, manifest = _authority(batch_count=1)
+    trainer = _trainer(max_steps=1)
+    gate = _gate(trainer, guard, plan, manifest)
+    _inject_finite_nonfresh_adamw_state(trainer)
+    before = [parameter.detach().clone() for parameter in trainer.model.parameters()]
+    with pytest.raises(
+        BoundedPilotAuthorizationError,
+        match="optimizer state changed outside authorized optimizer chain",
+    ):
+        gate.train_authorized_microbatch(
+            _batch(0),
+            batch_index=0,
+            expected_next_exposure_identity_sha256=_next(guard, plan, 0),
+        )
+    gate.close()
+    assert trainer.optimizer_step == 0
+    assert trainer.tokens_seen == 0
+    assert guard.consumed_loss_positions == 0
+    assert all(
+        torch.equal(left, right)
+        for left, right in zip(before, trainer.model.parameters(), strict=True)
+    )
+
+
+def test_finite_optimizer_state_mutation_between_steps_fails_closed() -> None:
+    guard, plan, manifest = _authority(batch_count=2)
+    trainer = _trainer(max_steps=2)
+    gate = _gate(trainer, guard, plan, manifest)
+    gate.train_authorized_microbatch(
+        _batch(0),
+        batch_index=0,
+        expected_next_exposure_identity_sha256=_next(guard, plan, 0),
+    )
+    state = next(iter(trainer.optimizer.state.values()))
+    state["exp_avg"].add_(0.125)
+    with pytest.raises(
+        BoundedPilotAuthorizationError,
+        match="optimizer state changed outside authorized optimizer chain",
+    ):
+        gate.train_authorized_microbatch(
+            _batch(1),
+            batch_index=1,
+            expected_next_exposure_identity_sha256=_next(guard, plan, 1),
+        )
+    gate.close()
+    assert trainer.optimizer_step == 1
+    assert trainer.tokens_seen == 2
+    assert guard.consumed_loss_positions == 2
 
 
 def test_out_of_band_model_mutation_between_steps_fails_closed() -> None:
