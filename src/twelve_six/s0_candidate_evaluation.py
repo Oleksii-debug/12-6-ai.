@@ -120,15 +120,27 @@ def _make_batches(
 def _mean_loss(
     model: TwelveSixDecoder, batches: list[dict[str, torch.Tensor]]
 ) -> float:
+    if not batches:
+        raise ValueError("candidate evaluation requires at least one batch")
+
     model.eval()
-    values: list[float] = []
+    total_nll = 0.0
+    total_targets = 0
     for batch in batches:
-        loss = causal_lm_loss(model(batch["input_ids"]).logits, batch["labels"])
+        labels = batch["labels"]
+        loss = causal_lm_loss(model(batch["input_ids"]).logits, labels)
+        target_count = int(labels[:, 1:].ne(-100).sum().item())
+        if target_count <= 0:
+            raise ValueError(
+                "candidate evaluation batch requires at least one unmasked causal target"
+            )
         value = float(loss.detach().cpu().item())
         if not math.isfinite(value) or value < 0:
             raise FloatingPointError("candidate evaluation produced invalid token NLL")
-        values.append(value)
-    return sum(values) / len(values)
+        total_nll += value * target_count
+        total_targets += target_count
+
+    return total_nll / total_targets
 
 
 def _train_range(
