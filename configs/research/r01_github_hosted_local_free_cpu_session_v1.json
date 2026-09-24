@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "profile_id": "D08-GITHUB-HOSTED-LOCAL-FREE-CPU-V1",
+  "provider": "GITHUB_HOSTED_STANDARD",
+  "portable_resource_provider": "OTHER_FREE",
+  "resource_class": "LOCAL_FREE",
+  "runner_label": "ubuntu-24.04",
+  "maximum_cost_usd": 0,
+  "materially_paid": false,
+  "configured_job_budget_minutes": 360,
+  "checkpoint_safety_margin_minutes": 30,
+  "max_session_work_minutes": 330,
+  "checkpoint_early_required": true,
+  "fresh_process_resume_required": true,
+  "content_addressed_checkpoint_required": true
+}
