@@ -770,6 +770,23 @@ def verify_clean_retained_receipt(
     )
     _require(receipt.get("record_count") == OUTPUT_RECORD_COUNT, "receipt record count drift")
     _require(receipt.get("payload_bytes") == OUTPUT_PAYLOAD_BYTES, "receipt payload bytes drift")
+    exact_roots = {
+        "authoritative_main_sha": AUTHORITATIVE_MAIN_SHA,
+        "execution_carrier_head_sha": EXECUTION_CARRIER_HEAD_SHA,
+        "record_inventory_digest_sha256": OUTPUT_RECORD_INVENTORY_DIGEST_SHA256,
+        "payload_inventory_digest_sha256": OUTPUT_PAYLOAD_INVENTORY_DIGEST_SHA256,
+        "materialization_identity_sha256": MATERIALIZATION_IDENTITY_SHA256,
+        "clean_data526_evidence_identity_sha256": CLEAN_DATA526_EVIDENCE_IDENTITY_SHA256,
+        "g05_execution_identity_sha256": G05_EXECUTION_IDENTITY_SHA256,
+        "g06_execution_identity_sha256": G06_EXECUTION_IDENTITY_SHA256,
+        "g06_envelope_identity_sha256": G06_ENVELOPE_IDENTITY_SHA256,
+        "g06_terminal_qualification_identity_sha256": (
+            G06_TERMINAL_QUALIFICATION_IDENTITY_SHA256
+        ),
+        "composition_preflight_identity_sha256": COMPOSITION_PREFLIGHT_IDENTITY_SHA256,
+    }
+    for key, expected_value in exact_roots.items():
+        _require(receipt.get(key) == expected_value, f"receipt released root drift: {key}")
     _require(
         receipt.get("training_handoff_identity_sha256")
         == _sha256(
