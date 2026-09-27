@@ -193,10 +193,10 @@ def test_current_run_identity_is_closed_world_and_self_hashed() -> None:
 
 
 
-
 def test_terminal_authority_crossbind_matches_safe_stop_identity_without_cycle() -> None:
     identity = _identity()
     terminal = {
+        "base_manifest_sha256": identity["base_launch_manifest_sha256"],
         "recovery_run_id": identity["run_id"],
         "recovery_run_manifest_sha256": identity["recovery_run_manifest_sha256"],
         "recovery_attempt_authority_sha256": identity[
@@ -221,6 +221,7 @@ def test_terminal_authority_crossbind_matches_safe_stop_identity_without_cycle()
             substituted,
         )
         assert blockers == (f"terminal_current_run_binding_mismatch:{field}",)
+
 
 def test_pointer_state_binds_incumbent_manifest_global_lease_and_run() -> None:
     manifest = _manifest()
