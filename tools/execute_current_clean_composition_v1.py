@@ -22,6 +22,12 @@ from typing import Any
 
 CARRIER_PATH = "tools/execute_current_clean_composition_v1.py"
 MODULE_PATH = "src/twelve_six/data/current_clean_execution_v1.py"
+PRODUCTION_TRAINING_RECORDS_SHA256 = (
+    "3458afe0380ea45d328ad3f004b21845a188ca69f2f7a83c24999e9e53268e53"
+)
+PRODUCTION_TRAINING_HANDOFF_SHA256 = (
+    "80bcf2dd28f0d13795ceea01b358c7149b636f55f17b29575d14313b5cee99ee"
+)
 AUTHENTICATED_DEPENDENCY_PATHS = (
     "src/twelve_six/data/current_reserved_decontamination_v1.py",
     "src/twelve_six/data/eval647_reserved_decontamination_v1.py",
@@ -211,8 +217,25 @@ def load_authenticated_executor(
         raise RuntimeError("authenticated composition executor is unavailable")
     return executor
 
-def _load_json(path: Path, label: str) -> dict[str, Any]:
+def _require_raw_sha256(raw: bytes, expected: str, label: str) -> None:
+    if (
+        len(expected) != 64
+        or any(ch not in "0123456789abcdef" for ch in expected)
+    ):
+        raise RuntimeError(f"{label} expected SHA-256 is malformed")
+    if hashlib.sha256(raw).hexdigest() != expected:
+        raise RuntimeError(f"{label} raw file identity drift")
+
+
+def _load_json(
+    path: Path,
+    label: str,
+    *,
+    expected_raw_sha256: str | None = None,
+) -> dict[str, Any]:
     raw = path.read_bytes()
+    if expected_raw_sha256 is not None:
+        _require_raw_sha256(raw, expected_raw_sha256, label)
     try:
         decoded = raw.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
@@ -223,22 +246,29 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def _load_jsonl(path: Path, label: str) -> list[dict[str, Any]]:
+def _load_jsonl(
+    path: Path,
+    label: str,
+    *,
+    expected_raw_sha256: str | None = None,
+) -> list[dict[str, Any]]:
+    raw_file = path.read_bytes()
+    if expected_raw_sha256 is not None:
+        _require_raw_sha256(raw_file, expected_raw_sha256, label)
     rows: list[dict[str, Any]] = []
-    with path.open("rb") as stream:
-        for line_number, raw in enumerate(stream, 1):
-            try:
-                decoded = raw.decode("utf-8", errors="strict")
-            except UnicodeDecodeError as exc:
-                raise ValueError(
-                    f"{label} line {line_number} is not strict UTF-8"
-                ) from exc
-            if not decoded.strip():
-                raise ValueError(f"{label} line {line_number} is blank")
-            value = json.loads(decoded)
-            if type(value) is not dict:
-                raise ValueError(f"{label} line {line_number} must be a JSON object")
-            rows.append(value)
+    for line_number, raw in enumerate(raw_file.splitlines(), 1):
+        try:
+            decoded = raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                f"{label} line {line_number} is not strict UTF-8"
+            ) from exc
+        if not decoded.strip():
+            raise ValueError(f"{label} line {line_number} is blank")
+        value = json.loads(decoded)
+        if type(value) is not dict:
+            raise ValueError(f"{label} line {line_number} must be a JSON object")
+        rows.append(value)
     if not rows:
         raise ValueError(f"{label} must not be empty")
     return rows
@@ -410,9 +440,17 @@ def execute_and_publish(
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"refusing to overwrite output: {output_dir}")
 
-    training_records = _load_jsonl(args.training_records_jsonl, "training records")
+    training_records = _load_jsonl(
+        args.training_records_jsonl,
+        "training records",
+        expected_raw_sha256=PRODUCTION_TRAINING_RECORDS_SHA256,
+    )
     evaluation_records = _load_jsonl(args.evaluation_records_jsonl, "evaluation records")
-    training_handoff = _load_json(args.training_handoff_json, "training handoff")
+    training_handoff = _load_json(
+        args.training_handoff_json,
+        "training handoff",
+        expected_raw_sha256=PRODUCTION_TRAINING_HANDOFF_SHA256,
+    )
     base_reserved_binding = _load_json(
         args.base_reserved_binding_json,
         "base reserved binding",
