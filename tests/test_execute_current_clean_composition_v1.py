@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -104,9 +105,7 @@ def _executor(*args, **kwargs):
     composition = {
         "receipt_identity_sha256": "a" * 64,
         "durable_evidence_hash_only": True,
-        "survivor_jsonl_sha256": __import__("hashlib").sha256(
-            survivor_raw
-        ).hexdigest(),
+        "survivor_jsonl_sha256": hashlib.sha256(survivor_raw).hexdigest(),
         "survivor_records": 1,
         "survivor_payload_bytes": payload_bytes,
     }
