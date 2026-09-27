@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 CONFIG_PATH = Path("configs/data/next100_050_pandas_source_authority_v2.json")
+RECEIPT_PATH = Path("evidence/data/next100_050_pandas_terminal_source_authority_v1.json")
 SCHEMA_VERSION = "12-6.next100-050-pandas-source-authority.v2"
 SOURCE_HEAD_SHA = "61af21e4c32bfbce124886c3c684cf85be290c19"
 RECEIPT_FILE_SHA256 = "3cc3ec4a8e6efc10aeddb2510e879842d63269020d6476e07906dc79b9e5ee49"
@@ -78,6 +80,37 @@ def _strict_json_equal(actual: Any, expected: Any) -> bool:
     return actual == expected
 
 
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object member: {key}")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(token: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {token}")
+
+
+def _finite_json_float(token: str) -> float:
+    value = float(token)
+    if not math.isfinite(value):
+        raise ValueError(f"non-finite JSON number: {token}")
+    return value
+
+
+def _strict_json_loads(data: bytes) -> Any:
+    """Decode strict UTF-8 JSON without duplicate or non-finite values."""
+    text = data.decode("utf-8", errors="strict")
+    return json.loads(
+        text,
+        object_pairs_hook=_strict_object,
+        parse_constant=_reject_json_constant,
+        parse_float=_finite_json_float,
+    )
+
+
 def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[str]:
     """Return fail-closed blockers for the current-main convergence authority."""
     if not isinstance(config, dict):
@@ -141,11 +174,10 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
             errors.append("historical_execution_keys_mismatch")
         for key, expected in expected_scalars.items():
             actual = historical.get(key)
-            valid = _strict_json_equal(actual, expected)
-            if not valid:
+            if not _strict_json_equal(actual, expected):
                 errors.append(f"historical_{key}_mismatch")
         receipt_path = historical.get("receipt_path")
-        if receipt_path != "evidence/data/next100_050_pandas_terminal_source_authority_v1.json":
+        if not _strict_json_equal(receipt_path, RECEIPT_PATH.as_posix()):
             errors.append("historical_receipt_path_mismatch")
 
     if _sha256(receipt_bytes) != RECEIPT_FILE_SHA256:
@@ -153,8 +185,8 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
         receipt: Any = None
     else:
         try:
-            receipt = json.loads(receipt_bytes)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            receipt = _strict_json_loads(receipt_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             receipt = None
             errors.append("historical_receipt_json_invalid")
     if isinstance(receipt, dict):
@@ -258,8 +290,21 @@ def validate_pandas_source_authority(config: Any, receipt_bytes: bytes) -> list[
 
 
 def validate_pandas_source_authority_files(repo_root: str | Path = ".") -> list[str]:
-    """Load the repository-bound config and receipt and return blockers."""
+    """Load fixed repository authority paths and return deterministic blockers."""
     root = Path(repo_root)
-    config = json.loads((root / CONFIG_PATH).read_text(encoding="utf-8"))
-    receipt_path = Path(config["historical_execution"]["receipt_path"])
-    return validate_pandas_source_authority(config, (root / receipt_path).read_bytes())
+    try:
+        config_bytes = (root / CONFIG_PATH).read_bytes()
+    except OSError:
+        return ["config_file_unreadable"]
+    try:
+        config = _strict_json_loads(config_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return ["config_json_invalid"]
+    if not isinstance(config, dict):
+        return ["config_root_must_be_object"]
+
+    try:
+        receipt_bytes = (root / RECEIPT_PATH).read_bytes()
+    except OSError:
+        return ["historical_receipt_file_unreadable"]
+    return validate_pandas_source_authority(config, receipt_bytes)
