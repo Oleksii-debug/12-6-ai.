@@ -5,18 +5,29 @@ import hashlib
 import html
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "configs/data/d03_ua_nbu_official_resolutions_intake_v1.json"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_SEARCH_QUERY_KEYS = (
+    "from",
+    "metaKeywords",
+    "number",
+    "page",
+    "perPage",
+    "publicationDate",
+    "title",
+    "to",
+    "type",
+)
 
 
 class NbuIntakeError(ValueError):
@@ -190,6 +201,125 @@ def discover_resolution_urls(catalog_html: str, config: Mapping[str, Any]) -> tu
         except NbuIntakeError:
             pass
     return tuple(sorted(found))
+
+
+def _bounded_int(value: Any, name: str, *, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise NbuIntakeError(f"{name} must be an exact integer")
+    if not minimum <= value <= maximum:
+        raise NbuIntakeError(f"{name} outside bounded range")
+    return value
+
+
+def catalog_search_url(
+    config: Mapping[str, Any], *, page: int, per_page: int
+) -> str:
+    """Build one exact bounded NBU catalog search URL."""
+    validate_config(config)
+    hard_max = config["discovery_contract"]["hard_max_documents"]
+    page = _bounded_int(page, "page", minimum=1, maximum=hard_max)
+    per_page = _bounded_int(per_page, "per_page", minimum=1, maximum=hard_max)
+    catalog = urlsplit(config["source"]["catalog_url"])
+    allowed = urlsplit(config["source"]["allowed_origin"])
+    if (
+        catalog.scheme != "https"
+        or catalog.netloc.casefold() != allowed.netloc.casefold()
+        or catalog.username
+        or catalog.password
+        or catalog.port not in (None, 443)
+        or catalog.query
+        or catalog.fragment
+    ):
+        raise NbuIntakeError("catalog URL authority drift")
+    query_values = {
+        "from": "",
+        "metaKeywords": "",
+        "number": "",
+        "page": str(page),
+        "perPage": str(per_page),
+        "publicationDate": "",
+        "title": "",
+        "to": "",
+        "type": "",
+    }
+    query = urlencode([(key, query_values[key]) for key in _SEARCH_QUERY_KEYS])
+    return urlunsplit(("https", allowed.netloc.casefold(), catalog.path, query, ""))
+
+
+def validate_catalog_response_url(
+    final_url: str, expected_url: str, config: Mapping[str, Any]
+) -> None:
+    """Require a response to remain on the exact requested catalog query."""
+    expected = urlsplit(expected_url)
+    final = urlsplit(final_url)
+    allowed = urlsplit(config["source"]["allowed_origin"])
+    if (
+        final.scheme != "https"
+        or final.netloc.casefold() != allowed.netloc.casefold()
+        or final.username
+        or final.password
+        or final.port not in (None, 443)
+        or final.path != expected.path
+        or final.fragment
+    ):
+        raise NbuIntakeError("catalog response escaped canonical origin/path")
+    try:
+        expected_pairs = parse_qsl(expected.query, keep_blank_values=True, strict_parsing=True)
+        final_pairs = parse_qsl(final.query, keep_blank_values=True, strict_parsing=True)
+    except ValueError as exc:
+        raise NbuIntakeError("catalog response query malformed") from exc
+    if len(final_pairs) != len(_SEARCH_QUERY_KEYS):
+        raise NbuIntakeError("catalog response query field count drift")
+    final_keys = [key for key, _ in final_pairs]
+    if len(set(final_keys)) != len(final_keys) or set(final_keys) != set(_SEARCH_QUERY_KEYS):
+        raise NbuIntakeError("catalog response query key drift")
+    if dict(final_pairs) != dict(expected_pairs):
+        raise NbuIntakeError("catalog response query value drift")
+
+
+def crawl_resolution_catalog(
+    config: Mapping[str, Any],
+    fetch_page: Callable[[str], tuple[str, str]],
+    *,
+    target_documents: int,
+    per_page: int,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Traverse deterministic numbered search pages until a bounded target is met."""
+    validate_config(config)
+    hard_max = config["discovery_contract"]["hard_max_documents"]
+    target_documents = _bounded_int(
+        target_documents, "target_documents", minimum=1, maximum=hard_max
+    )
+    per_page = _bounded_int(per_page, "per_page", minimum=target_documents, maximum=hard_max)
+    requested_urls: list[str] = []
+    found: set[str] = set()
+    seen_page_sets: set[tuple[str, ...]] = set()
+    for page in range(1, hard_max + 1):
+        url = catalog_search_url(config, page=page, per_page=per_page)
+        result = fetch_page(url)
+        if (
+            not isinstance(result, tuple)
+            or len(result) != 2
+            or not isinstance(result[0], str)
+            or not isinstance(result[1], str)
+        ):
+            raise NbuIntakeError("catalog fetch result malformed")
+        body, final_url = result
+        validate_catalog_response_url(final_url, url, config)
+        page_documents = discover_resolution_urls(body, config)
+        if page_documents in seen_page_sets:
+            raise NbuIntakeError("catalog page document tuple repeated")
+        seen_page_sets.add(page_documents)
+        before = len(found)
+        found.update(page_documents)
+        requested_urls.append(url)
+        if len(found) == before:
+            raise NbuIntakeError("catalog page made no canonical-document progress")
+        if len(found) > hard_max:
+            raise NbuIntakeError("catalog discovery exceeded hard document bound")
+        if len(found) >= target_documents:
+            return tuple(requested_urls), tuple(sorted(found))
+    raise NbuIntakeError("catalog target not reached within hard page bound")
 
 
 def inspect_resolution_page(document_html: str, document_url: str, config: Mapping[str, Any]) -> ResolutionPage:
