@@ -246,6 +246,20 @@ def test_authenticated_git_finder_executes_git_bytes_not_physical_file(
     assert module.__file__ == f"git:{carrier_sha}:src/twelve_six/demo.py"
 
 
+def test_authenticated_git_finder_never_falls_back_to_physical_project_module(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_git_bytes_optional",
+        lambda repo_root, git_sha, repo_path: None,
+    )
+    finder = cli._AuthenticatedGitFinder(tmp_path, "b" * 40)
+    with pytest.raises(ImportError, match="authenticated Git module is unavailable"):
+        finder.find_spec("twelve_six.data.untrusted_fallback")
+
+
 def test_main_reexecutes_in_isolated_child_before_project_import(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
