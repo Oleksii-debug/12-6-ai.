@@ -257,10 +257,14 @@ def test_reconstructed_exact_component_bytes_match_selection_authority(
     en_data_path.write_bytes(en_data)
     en_authority_path.write_bytes(en_authority)
 
-    artifact_rows, artifact_reserved, _ = module.resolve_eval303_selection_payloads(
+    artifact_rows, artifact_reserved, artifact_evidence = (
+        module.resolve_eval303_selection_payloads(
         ua_zip,
         en_zip,
-        membership,
+            ua_zip,
+            en_zip,
+            membership,
+        )
     )
     rows, reserved, evidence = (
         module.resolve_eval303_selection_payloads_from_reconstructed(
@@ -273,8 +277,7 @@ def test_reconstructed_exact_component_bytes_match_selection_authority(
     )
     assert rows == artifact_rows
     assert reserved == artifact_reserved
-    assert evidence["eval290_payload_resolution"] == "EXACT_HEAD_RECONSTRUCTION"
-    assert evidence["eval291_payload_resolution"] == "EXACT_HEAD_RECONSTRUCTION"
+    assert evidence == artifact_evidence
     assert evidence["raw_text_persisted_in_evidence"] is False
     assert evidence["authorized_training_exposure"] == 0
 
