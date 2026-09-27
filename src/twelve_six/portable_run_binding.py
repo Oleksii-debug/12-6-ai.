@@ -11,6 +11,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from twelve_six.learned20m_readiness import assess_learned20m_readiness
+from twelve_six.preoptimizer_authority import (
+    bind_preoptimizer_to_packet,
+    canonical_sha256 as preoptimizer_sha256,
+)
 from twelve_six.portable_run_packet import (
     PortableRunAssessment,
     assess_portable_run_packet,
@@ -150,6 +154,9 @@ class PortableRunBinding:
     portable_execution_sha256: str | None
     packet_sha256: str | None
     packet: dict[str, Any] | None
+    trusted_readiness_bundle_sha256: str | None = None
+    preoptimizer_authorities_sha256: str | None = None
+    launch_input_authority_identity_sha256: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -163,6 +170,11 @@ class PortableRunBinding:
             "overlay_sha256": self.overlay_sha256,
             "portable_execution_sha256": self.portable_execution_sha256,
             "packet_sha256": self.packet_sha256,
+            "trusted_readiness_bundle_sha256": self.trusted_readiness_bundle_sha256,
+            "preoptimizer_authorities_sha256": self.preoptimizer_authorities_sha256,
+            "launch_input_authority_identity_sha256": (
+                self.launch_input_authority_identity_sha256
+            ),
         }
 
 
@@ -713,4 +725,88 @@ def bind_portable_run_packet(
         portable_execution_sha256=execution_hash,
         packet_sha256=canonical_sha256(candidate) if ready and candidate else None,
         packet=exposed_packet,
+    )
+
+
+def bind_preoptimizer_to_run_binding(
+    binding: PortableRunBinding,
+    preoptimizer_authorities: Any,
+    *,
+    trusted_readiness_bundle_sha256: Any,
+) -> PortableRunBinding:
+    """Finalize a preliminary runnable binding with independently rooted D10/D04 data.
+
+    The preliminary binding is never mutated.  The returned object hashes and exposes
+    the exact post-preoptimizer packet consumed by the bounded runtime, including the
+    D10 launch-input root.  This prevents a caller from appending launch-critical
+    authority fields after the canonical PortableRunBinding packet root was frozen.
+    """
+    if not isinstance(binding, PortableRunBinding):
+        raise TypeError("preoptimizer finalization requires PortableRunBinding")
+    if (
+        not binding.binding_ready
+        or binding.packet is None
+        or binding.packet_sha256 is None
+        or binding.mode not in {"FRESH_START", "RESUME"}
+    ):
+        raise ValueError("preoptimizer finalization requires a runnable preliminary binding")
+    if not _is_sha256(trusted_readiness_bundle_sha256):
+        raise ValueError("trusted readiness bundle identity must be 64 lowercase hex")
+
+    final_packet = bind_preoptimizer_to_packet(
+        binding.packet,
+        preoptimizer_authorities,
+        trusted_readiness_bundle_sha256=trusted_readiness_bundle_sha256,
+    )
+    final_assessment = assess_portable_run_packet(final_packet)
+    relevant = (
+        final_assessment.resume_blockers
+        if binding.mode == "RESUME"
+        else final_assessment.launch_blockers
+    )
+    blockers = tuple(sorted({f"packet:{item}" for item in relevant}))
+    desired_ready = bool(
+        final_assessment.contract_valid
+        and (
+            (
+                binding.mode == "FRESH_START"
+                and final_assessment.ready_for_initial_local_free_launch
+            )
+            or (
+                binding.mode == "RESUME"
+                and final_assessment.ready_for_cross_provider_resume
+            )
+        )
+    )
+    packet_binding = _mapping(final_packet.get("binding"))
+    launch_root = packet_binding.get("launch_input_authority_identity_sha256")
+    preoptimizer_root = preoptimizer_sha256(preoptimizer_authorities)
+    if not _is_sha256(launch_root):
+        blockers = tuple(sorted(set(blockers) | {"binding:launch_input_authority_root_missing"}))
+        desired_ready = False
+    if packet_binding.get("trusted_readiness_bundle_sha256") != trusted_readiness_bundle_sha256:
+        blockers = tuple(sorted(set(blockers) | {"binding:trusted_readiness_bundle_root_mismatch"}))
+        desired_ready = False
+    if packet_binding.get("preoptimizer_authorities_sha256") != preoptimizer_root:
+        blockers = tuple(sorted(set(blockers) | {"binding:preoptimizer_authorities_root_mismatch"}))
+        desired_ready = False
+
+    exposed_packet = final_packet if desired_ready else None
+    return PortableRunBinding(
+        binding_ready=desired_ready,
+        mode=binding.mode,
+        readiness_ready=binding.readiness_ready,
+        overlay_contract_valid=binding.overlay_contract_valid,
+        packet_contract_valid=final_assessment.contract_valid,
+        blockers=blockers,
+        readiness_sha256=binding.readiness_sha256,
+        overlay_sha256=binding.overlay_sha256,
+        portable_execution_sha256=binding.portable_execution_sha256,
+        packet_sha256=canonical_sha256(final_packet) if desired_ready else None,
+        packet=exposed_packet,
+        trusted_readiness_bundle_sha256=trusted_readiness_bundle_sha256,
+        preoptimizer_authorities_sha256=preoptimizer_root,
+        launch_input_authority_identity_sha256=(
+            launch_root if _is_sha256(launch_root) else None
+        ),
     )

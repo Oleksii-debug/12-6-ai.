@@ -11,10 +11,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from twelve_six.portable_run_binding import bind_portable_run_packet, canonical_sha256
-from twelve_six.portable_run_packet import assess_portable_run_packet
+from twelve_six.portable_run_binding import (
+    bind_portable_run_packet,
+    bind_preoptimizer_to_run_binding,
+    canonical_sha256,
+)
 from twelve_six.preoptimizer_authority import (
-    bind_preoptimizer_to_packet,
     canonical_sha256 as preoptimizer_sha256,
 )
 from twelve_six.readiness_trust_root import authenticated_trusted_launch_bundle
@@ -118,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
                 preoptimizer_authorities,
             ) = resolved
 
-        result = bind_portable_run_packet(
+        preliminary = bind_portable_run_packet(
             readiness,
             template,
             overlay,
@@ -126,11 +128,8 @@ def main(argv: list[str] | None = None) -> int:
             verified_scientific_authorities=verified_scientific,
             verified_authorization_refs=verified_refs,
         )
-        report = result.as_dict()
-        report["output_written"] = False
-        packet_to_write: dict[str, Any] | None = None
-
-        if result.binding_ready:
+        result = preliminary
+        if preliminary.binding_ready:
             if (
                 preoptimizer_authorities is None
                 or args.expected_trusted_bindings_sha256 is None
@@ -139,25 +138,20 @@ def main(argv: list[str] | None = None) -> int:
                     "ready portable launch requires schema-v3 trusted bindings with "
                     "preoptimizer authorities"
                 )
-            assert result.packet is not None
-            packet_to_write = bind_preoptimizer_to_packet(
-                result.packet,
+            result = bind_preoptimizer_to_run_binding(
+                preliminary,
                 preoptimizer_authorities,
                 trusted_readiness_bundle_sha256=args.expected_trusted_bindings_sha256,
             )
-            assessment = assess_portable_run_packet(packet_to_write)
-            packet_ready = (
-                result.mode == "FRESH_START"
-                and assessment.ready_for_initial_local_free_launch
-            ) or (
-                result.mode == "RESUME"
-                and assessment.ready_for_cross_provider_resume
-            )
-            if not assessment.contract_valid or not packet_ready:
-                raise ValueError(
-                    "preoptimizer-bound packet failed the existing portable run contract"
-                )
-            report["packet_sha256"] = canonical_sha256(packet_to_write)
+
+        report = result.as_dict()
+        report["output_written"] = False
+        packet_to_write: dict[str, Any] | None = None
+
+        if result.binding_ready:
+            assert result.packet is not None
+            packet_to_write = result.packet
+            report["packet_sha256"] = result.packet_sha256
             report["preoptimizer_authorities_sha256"] = preoptimizer_sha256(
                 preoptimizer_authorities
             )

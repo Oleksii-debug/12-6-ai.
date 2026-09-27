@@ -10,6 +10,8 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 
+from twelve_six.tokenization.decision_authority import DECISION as TOKENIZER_DECISION
+
 REPOSITORY = "Oleksii-debug/12-6-ai."
 CAMPAIGN_ID = "R01-LEARNED-20M-LAUNCH-V1"
 R01_CAMPAIGN_BLOB_SHA1 = "c50154db609d41eceb2ffc97912360df567bcc04"
@@ -538,7 +540,7 @@ def assess_learned20m_readiness(
         evidence.get("tokenizer") if isinstance(evidence.get("tokenizer"), dict) else {}
     )
     _require_identity(local, tokenizer.get("identity_sha256"), "tokenizer_identity_missing")
-    if tokenizer.get("decision") not in {"TRAINED_TOKENIZER", "BYTE_BASELINE_RETAINED"}:
+    if tokenizer.get("decision") != TOKENIZER_DECISION:
         local.append("tokenizer_decision_not_terminal")
     _require_scientific_authority(
         local,

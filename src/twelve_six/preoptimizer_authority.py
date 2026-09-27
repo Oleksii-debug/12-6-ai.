@@ -264,4 +264,7 @@ def bind_preoptimizer_to_packet(
     result_binding["trusted_readiness_bundle_sha256"] = trusted_readiness_bundle_sha256
     result_binding["preoptimizer_authorities_sha256"] = canonical_sha256(preoptimizer)
     result_binding["preoptimizer_authorities"] = copy.deepcopy(preoptimizer)
+    result_binding["launch_input_authority_identity_sha256"] = launch[
+        "authority_identity_sha256"
+    ]
     return result

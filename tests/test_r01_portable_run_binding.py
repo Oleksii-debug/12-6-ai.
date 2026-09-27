@@ -9,10 +9,12 @@ from pathlib import Path
 from twelve_six.learned20m_readiness import scientific_role_metadata
 from twelve_six.portable_run_binding import (
     bind_portable_run_packet,
+    bind_preoptimizer_to_run_binding,
     canonical_sha256,
     validate_session_overlay_contract,
 )
 from twelve_six.preoptimizer_authority import PREOPTIMIZER_SCHEMA
+from twelve_six.tokenization.decision_authority import DECISION as TOKENIZER_DECISION
 from twelve_six.readiness_trust_root import (
     authenticated_trusted_launch_bundle,
     trusted_readiness_bundle_sha256,
@@ -73,7 +75,7 @@ def _ready_readiness() -> dict:
     evidence["tokenizer"].update(
         {
             "identity_sha256": SHA64,
-            "decision": "BYTE_BASELINE_RETAINED",
+            "decision": TOKENIZER_DECISION,
             "authority": _authority(),
         }
     )
@@ -234,7 +236,7 @@ def _preoptimizer(readiness: dict) -> dict:
         },
         "tokenizer_decision": {
             "schema": "12-6.d04-learned20m-tokenizer-decision.v1",
-            "decision": "RETAIN_BYTE_BASELINE",
+            "decision": TOKENIZER_DECISION,
             "decision_identity_sha256": "3" * 64,
             "tokenizer_identity_sha256": tokenizer,
         },
@@ -580,3 +582,38 @@ def test_cli_never_writes_current_blocked_inputs(tmp_path: Path) -> None:
     result = _run_builder(args)
     assert result.returncode == 1, result.stderr or result.stdout
     assert not output_path.exists()
+
+
+def test_preoptimizer_finalization_rehashes_exact_runtime_packet_and_binds_d10_root() -> None:
+    readiness = _ready_readiness()
+    overlay = _ready_overlay()
+    tokens, refs, _, expected, execution = _verified_inputs(readiness, overlay)
+    preliminary = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        expected_portable_execution=execution,
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
+    )
+    assert preliminary.binding_ready
+    assert preliminary.packet is not None
+    assert "launch_input_authority_identity_sha256" not in preliminary.packet["binding"]
+
+    final = bind_preoptimizer_to_run_binding(
+        preliminary,
+        _preoptimizer(readiness),
+        trusted_readiness_bundle_sha256=expected,
+    )
+    assert final.binding_ready
+    assert final.packet is not None
+    assert final.packet is not preliminary.packet
+    assert final.packet["binding"]["launch_input_authority_identity_sha256"] == "1" * 64
+    assert final.launch_input_authority_identity_sha256 == "1" * 64
+    assert final.trusted_readiness_bundle_sha256 == expected
+    assert final.preoptimizer_authorities_sha256 == final.packet["binding"][
+        "preoptimizer_authorities_sha256"
+    ]
+    assert final.packet_sha256 == canonical_sha256(final.packet)
+    assert final.packet_sha256 != preliminary.packet_sha256
+

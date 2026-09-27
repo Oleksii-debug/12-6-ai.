@@ -18,6 +18,7 @@ from twelve_six.learned20m_readiness import (
     trusted_readiness_inputs,
 )
 from twelve_six.readiness_trust_root import trusted_readiness_bundle_sha256
+from twelve_six.tokenization.decision_authority import DECISION as TOKENIZER_DECISION
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
@@ -134,7 +135,7 @@ def _make_local_pilot_ready() -> dict[str, Any]:
     evidence["tokenizer"].update(
         {
             "identity_sha256": SHA64,
-            "decision": "BYTE_BASELINE_RETAINED",
+            "decision": TOKENIZER_DECISION,
             "authority": _authority(),
         }
     )
@@ -773,3 +774,13 @@ def test_canonical_cli_without_trusted_bindings_remains_fail_closed(tmp_path: Pa
     output = json.loads(completed.stdout)
     assert output["ready_for_local_free_pilot"] is False
     assert "exact_code_authority_unverified" in output["local_free_pilot_blockers"]
+
+
+def test_tokenizer_decision_requires_exact_canonical_authority_vocabulary() -> None:
+    for legacy in ("BYTE_BASELINE_RETAINED", "TRAINED_TOKENIZER"):
+        data = _make_local_pilot_ready()
+        data["evidence"]["tokenizer"]["decision"] = legacy
+        result = _assess(data)
+        assert not result.ready_for_local_free_pilot
+        assert "tokenizer_decision_not_terminal" in result.local_free_pilot_blockers
+
