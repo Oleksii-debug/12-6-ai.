@@ -124,7 +124,7 @@ jobs:
               "schema",
               "status",
               "composition_artifact_id",
-              "artifact_zip_sha256",
+              "artifact_digest_sha256",
               "composition_receipt_json_sha256",
               "survivor_inventory_json_sha256",
               "survivor_records_jsonl_sha256",
@@ -184,7 +184,7 @@ jobs:
               authority["composition_artifact_id"], "composition_artifact_id"
           )
           for field in (
-              "artifact_zip_sha256",
+              "artifact_digest_sha256",
               "composition_receipt_json_sha256",
               "survivor_inventory_json_sha256",
               "survivor_records_jsonl_sha256",
@@ -229,13 +229,13 @@ jobs:
           Path("/tmp/current-clean-artifact-id").write_text(
               str(artifact_id), encoding="utf-8"
           )
-          Path("/tmp/current-clean-artifact-zip-sha256").write_text(
-              authority["artifact_zip_sha256"], encoding="utf-8"
+          Path("/tmp/current-clean-artifact-digest-sha256").write_text(
+              authority["artifact_digest_sha256"], encoding="utf-8"
           )
           PY
 
           echo "artifact_id=$(cat /tmp/current-clean-artifact-id)" >> "$GITHUB_OUTPUT"
-          echo "artifact_zip_sha256=$(cat /tmp/current-clean-artifact-zip-sha256)" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest_sha256=$(cat /tmp/current-clean-artifact-digest-sha256)" >> "$GITHUB_OUTPUT"
           echo "ready=true" >> "$GITHUB_OUTPUT"
           echo "CLEAN_BALANCE_STATE=CURRENT_CLEAN_AUTHORITY_READY"
 
@@ -244,16 +244,51 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ARTIFACT_ID: ${{ steps.clean_authority.outputs.artifact_id }}
-          ARTIFACT_ZIP_SHA256: ${{ steps.clean_authority.outputs.artifact_zip_sha256 }}
+          ARTIFACT_DIGEST_SHA256: ${{ steps.clean_authority.outputs.artifact_digest_sha256 }}
         run: |
           set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}" \
+            -o /tmp/current-clean-artifact.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metadata = json.loads(
+              Path("/tmp/current-clean-artifact.json").read_text(encoding="utf-8")
+          )
+          authority = json.loads(
+              Path("/tmp/clean-balance-authority.json").read_text(encoding="utf-8")
+          )
+          artifact_id = int(os.environ["ARTIFACT_ID"])
+          expected_digest = "sha256:" + os.environ["ARTIFACT_DIGEST_SHA256"]
+          expected_head = authority["expected_execution_head_sha"]
+          expected_name = f"d03-2023-current-clean-physical-{expected_head}"
+          if metadata.get("id") != artifact_id:
+              raise SystemExit("current-clean artifact ID metadata mismatch")
+          if metadata.get("name") != expected_name:
+              raise SystemExit("current-clean artifact name/head mismatch")
+          if metadata.get("expired") is not False:
+              raise SystemExit("current-clean artifact is expired")
+          if metadata.get("digest") != expected_digest:
+              raise SystemExit("current-clean artifact server digest mismatch")
+          workflow_run = metadata.get("workflow_run")
+          if not isinstance(workflow_run, dict):
+              raise SystemExit("current-clean artifact workflow metadata missing")
+          if workflow_run.get("head_sha") != expected_head:
+              raise SystemExit("current-clean artifact execution-head mismatch")
+          PY
           curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
             -o /tmp/current-clean.zip
-          test "$(sha256sum /tmp/current-clean.zip | cut -d' ' -f1)" = "$ARTIFACT_ZIP_SHA256"
+          test "$(sha256sum /tmp/current-clean.zip | cut -d' ' -f1)" = "$ARTIFACT_DIGEST_SHA256"
           rm -rf /tmp/current-clean /tmp/balance-out
           mkdir -p /tmp/current-clean /tmp/balance-out
           python - <<'PY'
