@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -27,6 +28,7 @@ from twelve_six.learned20m_current_run_authority import (
 from twelve_six.learned20m_global_training_lease import (
     GlobalLeaseInspection,
     acquire_global_training_run_lease,
+    build_global_lease_state,
     global_training_run_lease_ref,
     renew_global_training_run_lease,
 )
@@ -129,6 +131,23 @@ def _global_inspection(
     )
 
 
+def _global_state_sha256(
+    manifest: dict,
+    *,
+    run_id: str = "run-a",
+    acquired_at: datetime = NOW,
+) -> str:
+    lease = build_training_run_lease(
+        manifest,
+        run_id=run_id,
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=acquired_at,
+    )
+    state = build_global_lease_state(manifest, lease.as_dict())
+    return hashlib.sha256(canonical_json_bytes(state)).hexdigest()
+
+
 def _git(*args: str, cwd: Path | None = None) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -207,6 +226,7 @@ def test_pointer_state_binds_incumbent_manifest_global_lease_and_run() -> None:
     global_lease = _global_inspection(manifest)
     state = build_current_run_pointer_state(
         manifest, global_lease, identity, generation=1,
+        global_lease_state_sha256=_global_state_sha256(manifest),
         global_lease_expires_at_utc="2026-09-27T14:00:00Z",
     )
 
@@ -222,6 +242,7 @@ def test_pointer_state_binds_incumbent_manifest_global_lease_and_run() -> None:
             wrong_run,
             identity,
             generation=1,
+            global_lease_state_sha256=_global_state_sha256(manifest),
             global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
@@ -233,6 +254,7 @@ def test_pointer_state_binds_incumbent_manifest_global_lease_and_run() -> None:
             wrong_ref,
             identity,
             generation=1,
+            global_lease_state_sha256=_global_state_sha256(manifest),
             global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
@@ -249,6 +271,7 @@ def test_base_manifest_substitution_fails_under_fixed_run_identity() -> None:
             _global_inspection(substituted),
             identity,
             generation=1,
+            global_lease_state_sha256=_global_state_sha256(substituted),
             global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
@@ -257,6 +280,7 @@ def test_pointer_decoder_rejects_noncanonical_and_unknown_fields() -> None:
     manifest = _manifest()
     state = build_current_run_pointer_state(
         manifest, _global_inspection(manifest), _identity(), generation=1,
+        global_lease_state_sha256=_global_state_sha256(manifest),
         global_lease_expires_at_utc="2026-09-27T14:00:00Z",
     )
     assert decode_current_run_pointer_state(canonical_json_bytes(state)) == state
@@ -277,6 +301,7 @@ def test_candidate_b_cannot_self_select_namespace_when_a_is_current() -> None:
     identity_a = _identity()
     state_a = build_current_run_pointer_state(
         manifest_a, _global_inspection(manifest_a), identity_a, generation=1,
+        global_lease_state_sha256=_global_state_sha256(manifest),
         global_lease_expires_at_utc="2026-09-27T14:00:00Z",
     )
     inspection = CurrentRunAuthorityInspection(
@@ -290,6 +315,7 @@ def test_candidate_b_cannot_self_select_namespace_when_a_is_current() -> None:
         launch_manifest_sha256=state_a["launch_manifest_sha256"],
         global_lease_ref=state_a["global_lease_ref"],
         global_lease_remote_tip=state_a["global_lease_remote_tip"],
+        global_lease_state_sha256=state_a["global_lease_state_sha256"],
         global_lease_expires_at_utc=state_a["global_lease_expires_at_utc"],
         run_id="run-a",
         recovery_run_manifest_sha256="1" * 64,
@@ -481,6 +507,7 @@ def test_boolean_generation_and_source_or_binding_substitution_fail_closed() -> 
     with pytest.raises(ValueError, match="generation_must_be_positive_integer"):
         build_current_run_pointer_state(
             manifest, _global_inspection(manifest), identity, generation=True,
+            global_lease_state_sha256=_global_state_sha256(manifest),
             global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
@@ -491,6 +518,7 @@ def test_boolean_generation_and_source_or_binding_substitution_fail_closed() -> 
             _global_inspection(manifest),
             wrong_source,
             generation=1,
+            global_lease_state_sha256=_global_state_sha256(manifest),
             global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
@@ -501,6 +529,7 @@ def test_boolean_generation_and_source_or_binding_substitution_fail_closed() -> 
             _global_inspection(manifest),
             wrong_binding,
             generation=1,
+            global_lease_state_sha256=_global_state_sha256(manifest),
             global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
