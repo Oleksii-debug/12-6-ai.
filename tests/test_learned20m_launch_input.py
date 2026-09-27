@@ -559,6 +559,20 @@ def test_expected_implementation_manifest_is_closed_world(mutation: str) -> None
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
 
+def test_launch_authority_runtime_root_tamper_fails_frozen_identity() -> None:
+    authority = _build()
+    frozen_identity = authority["authority_identity_sha256"]
+    authority["data_spine"][
+        "two_clean_runtime_dependency_manifest_identity_sha256"
+    ] = _sha("other-runtime-dependency-root")
+    _rehash(authority, "authority_identity_sha256")
+    with pytest.raises(
+        LaunchInputAuthorityError,
+        match="does not match independently expected identity",
+    ):
+        _verify_authority(authority, expected_identity=frozen_identity)
+
+
 def test_launch_authority_implementation_root_tamper_fails_frozen_identity() -> None:
     authority = _build()
     frozen_identity = authority["authority_identity_sha256"]
