@@ -52,7 +52,11 @@ jobs:
           path: artifacts/eval647/current_corpus_overlap_v1.json
 
   d03-current-clean-physical:
-    if: github.event_name == 'pull_request' && github.head_ref == 'd03/2023-clean-current-main-execution-2210'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 2211 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'd03/2023-clean-current-main-execution-2210'
     needs: bootstrap
     env:
       D03_EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
