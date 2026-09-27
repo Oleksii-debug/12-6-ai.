@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from twelve_six.ci_workflow_policy import parse_name_status, policy_violations
 
 
@@ -33,3 +35,21 @@ def test_blocks_removing_canonical_ci():
     )
     assert policy_violations(deletion) == ["canonical CI workflow may not be deleted"]
     assert "canonical CI workflow may not be renamed" in policy_violations(rename)
+
+
+def test_d03_artifact_job_is_same_repo_and_pr_pinned():
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    job_start = workflow.index("  d03-current-clean-physical:\n")
+    job = workflow[job_start:]
+    assert "github.event.pull_request.number == 2211" in job
+    assert (
+        "github.event.pull_request.head.repo.full_name == github.repository"
+        in job
+    )
+    assert (
+        "github.head_ref == 'd03/2023-clean-current-main-execution-2210'"
+        in job
+    )
+    assert "pull_request_target" not in job
