@@ -42,6 +42,9 @@ _AUTHORITY_KEYS = frozenset(
         "indexed_module",
         "indexed_module_git_blob_sha1",
         "v3_module",
+        "incumbent_base_authority_ref",
+        "incumbent_base_inventory_sha256",
+        "incumbent_base_payload_map_sha256",
         "max_candidate_pairs",
         "max_index_postings",
         "max_pair_expansions",
@@ -199,6 +202,21 @@ def validate_dependency_authority(
     _require(
         type(authority["v3_module"]) is str and bool(authority["v3_module"]),
         "v3_module missing",
+    )
+    _require(
+        type(authority["incumbent_base_authority_ref"]) is str
+        and bool(authority["incumbent_base_authority_ref"]),
+        "incumbent_base_authority_ref missing",
+    )
+    _require_hex(
+        authority["incumbent_base_inventory_sha256"],
+        64,
+        "incumbent_base_inventory_sha256",
+    )
+    _require_hex(
+        authority["incumbent_base_payload_map_sha256"],
+        64,
+        "incumbent_base_payload_map_sha256",
     )
     _exact_positive_int(authority["max_candidate_pairs"], "max_candidate_pairs")
     _exact_positive_int(authority["max_index_postings"], "max_index_postings")
@@ -435,6 +453,15 @@ def execute_once(
     authority = validate_dependency_authority(
         dependency_authority_path,
         expected_raw_sha256=expected_dependency_authority_sha256,
+    )
+    _require(
+        expected_inventory_sha256 == authority["incumbent_base_inventory_sha256"],
+        "combined inventory SHA differs from dependency authority",
+    )
+    _require(
+        expected_base_payload_map_sha256
+        == authority["incumbent_base_payload_map_sha256"],
+        "base payload map SHA differs from dependency authority",
     )
     inventory = _read_exact_json(inventory_path, expected_inventory_sha256, "V3 inventory")
     base_payload_map = _read_exact_json(
