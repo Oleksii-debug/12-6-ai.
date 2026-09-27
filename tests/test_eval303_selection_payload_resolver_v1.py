@@ -236,6 +236,38 @@ def test_artifact_zip_mutation_fails_exact_outer_identity(
         module.resolve_eval303_selection_payloads(ua_zip, en_zip, membership)
 
 
+def test_strict_json_rejects_duplicate_members() -> None:
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="duplicate JSON object member: identity",
+    ):
+        module._parse_json_object(
+            b'{"identity":"first","nested":{"identity":"a","identity":"b"}}',
+            "candidate authority",
+        )
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_strict_json_rejects_nonfinite_constants(constant: str) -> None:
+    raw = f'{{"value":{constant}}}'.encode("utf-8")
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="non-finite JSON constant rejected",
+    ):
+        module._parse_json_object(raw, "candidate authority")
+
+
+def test_strict_jsonl_rejects_nested_duplicate_members() -> None:
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="duplicate JSON object member: root",
+    ):
+        module._parse_jsonl(
+            b'{"record_id":"r1","authority":{"root":"a","root":"b"}}\n',
+            "candidate rows",
+        )
+
+
 def test_reconstructed_exact_component_bytes_match_selection_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
