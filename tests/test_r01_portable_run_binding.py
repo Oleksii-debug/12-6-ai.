@@ -13,6 +13,7 @@ from twelve_six.portable_run_binding import (
     canonical_sha256,
     validate_session_overlay_contract,
 )
+from twelve_six.portable_run_packet import validate_portable_run_contract
 from twelve_six.preoptimizer_authority import PREOPTIMIZER_SCHEMA
 from twelve_six.readiness_trust_root import (
     authenticated_trusted_launch_bundle,
@@ -305,6 +306,58 @@ def _run_builder(args: list[str]) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         check=False,
     )
+
+
+def test_portable_template_is_closed_world_for_final_test_adjacent_fields() -> None:
+    template = _load(PACKET)
+    assert validate_portable_run_contract(template) == []
+
+    root_extra = copy.deepcopy(template)
+    root_extra["final_test_manifest"] = {"sha256": SHA64}
+    assert "packet_top_level_fields_mismatch" in validate_portable_run_contract(root_extra)
+
+    evaluation_extra = copy.deepcopy(template)
+    evaluation_extra["evaluation"]["final_test_payload_sha256"] = SHA64
+    assert "evaluation_fields_mismatch" in validate_portable_run_contract(evaluation_extra)
+
+    truth_extra = copy.deepcopy(template)
+    truth_extra["truth_boundary"]["final_test_payload_count"] = 0
+    assert "truth_boundary_fields_mismatch" in validate_portable_run_contract(truth_extra)
+
+
+def test_portable_template_rejects_unknown_nested_runtime_and_recipe_fields() -> None:
+    template = _load(PACKET)
+
+    runtime_extra = copy.deepcopy(template)
+    runtime_extra["runtime"]["environment_override"] = "caller-selected"
+    assert "runtime_fields_mismatch" in validate_portable_run_contract(runtime_extra)
+
+    recipe_extra = copy.deepcopy(template)
+    recipe_extra["recipe"]["teacher_logits_sha256"] = SHA64
+    assert "recipe_fields_mismatch" in validate_portable_run_contract(recipe_extra)
+
+    optimizer_extra = copy.deepcopy(template)
+    optimizer_extra["recipe"]["optimizer_scheduler_precision"]["loss_scaler"] = "caller"
+    assert (
+        "optimizer_scheduler_precision_fields_mismatch"
+        in validate_portable_run_contract(optimizer_extra)
+    )
+
+
+def test_parent_checkpoint_authority_slot_exists_only_for_resume() -> None:
+    fresh = _load(PACKET)
+    assert fresh["checkpoint"]["mode"] == "FRESH_START"
+    assert "parent_checkpoint" not in fresh["authorities"]
+    assert validate_portable_run_contract(fresh) == []
+
+    invalid_fresh = copy.deepcopy(fresh)
+    invalid_fresh["authorities"]["parent_checkpoint"] = None
+    assert "authority_slots_mismatch" in validate_portable_run_contract(invalid_fresh)
+
+    resume = copy.deepcopy(fresh)
+    resume["checkpoint"]["mode"] = "RESUME"
+    resume["authorities"]["parent_checkpoint"] = None
+    assert validate_portable_run_contract(resume) == []
 
 
 def test_checked_in_overlay_contract_is_valid_but_deliberately_blocked() -> None:
