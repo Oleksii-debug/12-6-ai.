@@ -525,8 +525,10 @@ def inspect_current_run_authority(
                 remote,
                 str(state["global_lease_ref"]),
             )
-        except Exception as exc:
-            blockers.append(f"current_run_global_lease_tip_read_failed:{exc}")
+        except _GlobalLeaseFailure as exc:
+            blockers.append(
+                f"current_run_global_lease_tip_read_failed:{exc.blocker}"
+            )
         else:
             if observed_global_tip != state["global_lease_remote_tip"]:
                 blockers.append("current_run_global_lease_tip_changed")
