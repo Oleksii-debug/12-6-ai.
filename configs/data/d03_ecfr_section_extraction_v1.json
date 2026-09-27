@@ -1,0 +1,62 @@
+{
+  "schema_version": "12-6.d03-ecfr-section-extraction.v1",
+  "execution_profile": "LOCAL_FREE",
+  "project_authority": {
+    "swarm_control_issue": 723,
+    "ownership_issue": 1121,
+    "parent_issue": 672,
+    "source_request_pr": 707,
+    "request_path": "configs/data/d03_ecfr_point_in_time_request_v1.json",
+    "request_git_blob_sha1": "92fb471260020dffc3b9d53ca98581cf700b0916"
+  },
+  "source_binding": {
+    "request_identity_sha256": "d9955ff11713a358164513d912d39ba107f0073c75bed15be64afe2cc8c3a2e4",
+    "date": "2026-09-03",
+    "title": 1,
+    "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-09-03/title-1.xml",
+    "source_id": "en.us.ecfr.regulations",
+    "family_id": "us.federal-regulations.ecfr"
+  },
+  "xml_contract": {
+    "official_guide_url": "https://www.govinfo.gov/bulkdata/ECFR/resources/ECFR-XML-User-Guide.pdf",
+    "root_tag": "DLPSTEXTCLASS",
+    "section_tag": "DIV8",
+    "section_type": "SECTION",
+    "required_section_attributes": [
+      "N",
+      "NODE"
+    ],
+    "ancestor_tags": [
+      "DIV1",
+      "DIV2",
+      "DIV3",
+      "DIV4",
+      "DIV5",
+      "DIV6",
+      "DIV7"
+    ],
+    "max_input_bytes": 8388608,
+    "forbid_dtd_or_entity_declarations": true
+  },
+  "output_contract": {
+    "record_schema": "12-6.d03-ecfr-section-record.v1",
+    "summary_schema": "12-6.d03-ecfr-section-extraction-summary.v1",
+    "order": "DOCUMENT_ORDER",
+    "json": "UTF8_CANONICAL_JSONL"
+  },
+  "truth_boundary": {
+    "real_data_executed": false,
+    "payload_extracted": false,
+    "source_rights_decision_made": false,
+    "canonical_capacity_credit_bytes": 0,
+    "family_credit": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "tokenizer_fit_authorized": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false
+  }
+}
