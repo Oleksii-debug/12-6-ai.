@@ -83,7 +83,8 @@ def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     assert (
         'python "$eval290_src/tools/execution_bootstrap.py" bootstrap '
         '--repo-root "$eval290_src" --capabilities "runtime,tests" '
-        '--venv "$eval290_venv" --manifest "$eval290_environment"'
+        '--venv "$eval290_venv" --manifest "$eval290_environment" '
+        '--command "python -m pytest -q tests/test_eval290_ua_selection.py"'
         in compact_job
     )
     assert (
