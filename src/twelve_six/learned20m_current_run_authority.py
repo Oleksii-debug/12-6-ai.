@@ -24,10 +24,12 @@ from twelve_six.learned20m_global_training_lease import (
     GlobalLeaseInspection,
     _GlobalLeaseFailure,
     _delete_local_ref,
+    _fetch_remote_commit,
     _read_snapshot,
     _remote_tip,
     _run_git,
     _validate_transport,
+    build_global_lease_state,
     global_training_run_lease_ref,
     inspect_global_training_run_lease,
 )
@@ -67,6 +69,7 @@ _POINTER_FIELDS = {
     "launch_manifest_sha256",
     "global_lease_ref",
     "global_lease_remote_tip",
+    "global_lease_state_sha256",
     "global_lease_expires_at_utc",
     "current_run_identity",
 }
@@ -89,6 +92,7 @@ class CurrentRunAuthorityInspection:
     launch_manifest_sha256: str | None
     global_lease_ref: str | None
     global_lease_remote_tip: str | None
+    global_lease_state_sha256: str | None
     global_lease_expires_at_utc: str | None
     run_id: str | None
     recovery_run_manifest_sha256: str | None
@@ -272,6 +276,7 @@ def build_current_run_pointer_state(
     current_run_identity: Mapping[str, Any],
     *,
     generation: int,
+    global_lease_state_sha256: str,
     global_lease_expires_at_utc: str,
     status: str = "ACTIVE",
 ) -> dict[str, Any]:
@@ -299,6 +304,8 @@ def build_current_run_pointer_state(
         raise ValueError("global_lease_remote_tip_invalid")
     if global_lease.run_id != current_run_identity.get("run_id"):
         raise ValueError("global_lease_run_id_mismatch")
+    if not _sha256(global_lease_state_sha256):
+        raise ValueError("global_lease_state_sha256_invalid")
     if _parse_utc_second(global_lease_expires_at_utc) is None:
         raise ValueError("global_lease_expires_at_utc_invalid")
     identities = manifest.get("identities")
@@ -335,6 +342,7 @@ def build_current_run_pointer_state(
         "launch_manifest_sha256": digest,
         "global_lease_ref": expected_ref,
         "global_lease_remote_tip": global_lease.remote_tip,
+        "global_lease_state_sha256": global_lease_state_sha256,
         "global_lease_expires_at_utc": global_lease_expires_at_utc,
         "current_run_identity": dict(current_run_identity),
     }
@@ -368,6 +376,8 @@ def validate_current_run_pointer_state(state: Mapping[str, Any]) -> tuple[str, .
         errors.append("current_run_pointer_global_lease_ref_invalid")
     if not _git_sha(state.get("global_lease_remote_tip")):
         errors.append("current_run_pointer_global_lease_tip_invalid")
+    if not _sha256(state.get("global_lease_state_sha256")):
+        errors.append("current_run_pointer_global_lease_state_sha256_invalid")
     if _parse_utc_second(state.get("global_lease_expires_at_utc")) is None:
         errors.append("current_run_pointer_global_lease_expiry_invalid")
     digest = state.get("launch_manifest_sha256")
@@ -465,6 +475,46 @@ def _read_pointer_state(
     return tip, decode_current_run_pointer_state(raw)
 
 
+def _global_lease_binding_blockers(
+    repo_root: str | Path,
+    remote: str,
+    state: Mapping[str, Any],
+) -> tuple[str, ...]:
+    ref = str(state["global_lease_ref"])
+    tip = str(state["global_lease_remote_tip"])
+    try:
+        raw = _fetch_remote_commit(repo_root, remote, ref, tip)
+    except _GlobalLeaseFailure as exc:
+        return (f"current_run_global_lease_read_failed:{exc.blocker}",)
+    if hashlib.sha256(raw).hexdigest() != state["global_lease_state_sha256"]:
+        return ("current_run_global_lease_state_sha256_mismatch",)
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ("current_run_global_lease_state_json_invalid",)
+    if not isinstance(parsed, Mapping) or canonical_json_bytes(parsed) != raw:
+        return ("current_run_global_lease_state_not_canonical",)
+    blockers: list[str] = []
+    if parsed.get("repository") != CANONICAL_REPOSITORY:
+        blockers.append("current_run_global_lease_repository_mismatch")
+    if parsed.get("lock_domain") != CANONICAL_LOCK_DOMAIN:
+        blockers.append("current_run_global_lease_lock_domain_mismatch")
+    if parsed.get("launch_manifest_sha256") != state["launch_manifest_sha256"]:
+        blockers.append("current_run_global_lease_manifest_mismatch")
+    lease = parsed.get("lease")
+    identity = state["current_run_identity"]
+    if not isinstance(lease, Mapping):
+        blockers.append("current_run_global_lease_payload_missing")
+    else:
+        if lease.get("run_id") != identity["run_id"]:
+            blockers.append("current_run_global_lease_run_id_mismatch")
+        if lease.get("status") != "RUNNING":
+            blockers.append("current_run_global_lease_not_running")
+        if lease.get("expires_at_utc") != state["global_lease_expires_at_utc"]:
+            blockers.append("current_run_global_lease_expiry_mismatch")
+    return tuple(blockers)
+
+
 def inspect_current_run_authority(
     repo_root: str | Path,
     remote: str,
@@ -486,6 +536,7 @@ def inspect_current_run_authority(
             launch_manifest_sha256=None,
             global_lease_ref=None,
             global_lease_remote_tip=None,
+            global_lease_state_sha256=None,
             global_lease_expires_at_utc=None,
             run_id=None,
             recovery_run_manifest_sha256=None,
@@ -504,6 +555,7 @@ def inspect_current_run_authority(
             launch_manifest_sha256=None,
             global_lease_ref=None,
             global_lease_remote_tip=None,
+            global_lease_state_sha256=None,
             global_lease_expires_at_utc=None,
             run_id=None,
             recovery_run_manifest_sha256=None,
@@ -528,6 +580,10 @@ def inspect_current_run_authority(
         else:
             if observed_global_tip != state["global_lease_remote_tip"]:
                 blockers.append("current_run_global_lease_tip_changed")
+            else:
+                blockers.extend(
+                    _global_lease_binding_blockers(repo_root, remote, state)
+                )
         expiry = _parse_utc_second(state["global_lease_expires_at_utc"])
         current = _normalized_now(now)
         if expiry is None or current >= expiry:
@@ -544,6 +600,7 @@ def inspect_current_run_authority(
         launch_manifest_sha256=str(state["launch_manifest_sha256"]),
         global_lease_ref=str(state["global_lease_ref"]),
         global_lease_remote_tip=str(state["global_lease_remote_tip"]),
+        global_lease_state_sha256=str(state["global_lease_state_sha256"]),
         global_lease_expires_at_utc=str(state["global_lease_expires_at_utc"]),
         run_id=str(identity["run_id"]),
         recovery_run_manifest_sha256=str(identity["recovery_run_manifest_sha256"]),
@@ -787,6 +844,14 @@ def activate_current_run_authority(
             global_lease,
             identity_snapshot,
             generation=generation,
+            global_lease_state_sha256=hashlib.sha256(
+                canonical_json_bytes(
+                    build_global_lease_state(
+                        manifest_snapshot,
+                        global_snapshot.lease,
+                    )
+                )
+            ).hexdigest(),
             global_lease_expires_at_utc=str(
                 global_snapshot.lease["expires_at_utc"]
             ),
