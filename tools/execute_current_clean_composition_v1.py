@@ -40,7 +40,9 @@ OUTPUT_FILES = {
     "eval647_execution_receipt": "eval647_execution_receipt.json",
     "quality_execution": "quality_execution.json",
     "privacy_execution": "privacy_execution.json",
+    "survivor_inventory": "survivor_inventory.json",
 }
+SURVIVOR_RECORDS_NAME = "survivor_records.jsonl"
 
 ISOLATED_CHILD_BOOTSTRAP = r"""
 import subprocess
@@ -244,6 +246,20 @@ def _write_json(path: Path, value: Any) -> None:
     )
 
 
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    with path.open("w", encoding="utf-8", newline="\n") as stream:
+        for row in rows:
+            stream.write(
+                json.dumps(
+                    row,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
+
+
 def _rename_directory_no_replace(source: Path, destination: Path) -> None:
     if os.name == "nt":
         os.rename(source, destination)
@@ -306,6 +322,8 @@ def execute_and_publish(
         eval647_receipt,
         quality,
         privacy,
+        survivor_records,
+        survivor_inventory,
     ) = executor(
         training_records,
         evaluation_records,
@@ -348,9 +366,11 @@ def execute_and_publish(
             "eval647_execution_receipt": eval647_receipt,
             "quality_execution": quality,
             "privacy_execution": privacy,
+            "survivor_inventory": survivor_inventory,
         }
         for key, filename in OUTPUT_FILES.items():
             _write_json(temporary / filename, values[key])
+        _write_jsonl(temporary / SURVIVOR_RECORDS_NAME, survivor_records)
         _rename_directory_no_replace(temporary, output_dir)
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
