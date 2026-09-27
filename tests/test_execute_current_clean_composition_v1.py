@@ -250,17 +250,18 @@ def test_authenticated_import_rejects_any_preloaded_project_module(
         cli.load_authenticated_executor(tmp_path, carrier_sha)
 
 
-def test_authenticated_git_finder_executes_git_bytes_not_physical_file(
+def test_authenticated_git_finder_uses_verified_physical_source_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     carrier_sha = "a" * 40
+    payload = b"VALUE = 'authenticated'\n"
     physical = tmp_path / "src" / "twelve_six" / "demo.py"
     physical.parent.mkdir(parents=True, exist_ok=True)
-    physical.write_text("raise RuntimeError('physical code executed')\n", encoding="utf-8")
+    physical.write_bytes(payload)
     sources = {
         "src/twelve_six/__init__.py": b"",
-        "src/twelve_six/demo.py": b"VALUE = 'authenticated'\n",
+        "src/twelve_six/demo.py": payload,
     }
     monkeypatch.setattr(
         cli,
@@ -274,7 +275,30 @@ def test_authenticated_git_finder_executes_git_bytes_not_physical_file(
     module.__spec__ = spec
     finder.exec_module(module)
     assert module.VALUE == "authenticated"
-    assert module.__file__ == f"git:{carrier_sha}:src/twelve_six/demo.py"
+    assert module.__file__ == str(physical.resolve(strict=True))
+
+
+def test_authenticated_git_finder_rejects_physical_source_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    carrier_sha = "c" * 40
+    physical = tmp_path / "src" / "twelve_six" / "demo.py"
+    physical.parent.mkdir(parents=True, exist_ok=True)
+    physical.write_text("VALUE = 'tampered'\n", encoding="utf-8")
+    sources = {
+        "src/twelve_six/__init__.py": b"",
+        "src/twelve_six/demo.py": b"VALUE = 'authenticated'\n",
+    }
+    monkeypatch.setattr(
+        cli,
+        "_git_bytes_optional",
+        lambda repo_root, git_sha, repo_path: sources.get(repo_path),
+    )
+    finder = cli._AuthenticatedGitFinder(tmp_path, carrier_sha)
+    module = types.ModuleType("twelve_six.demo")
+    with pytest.raises(ImportError, match="physical source drift"):
+        finder.exec_module(module)
 
 
 def test_authenticated_git_finder_never_falls_back_to_physical_project_module(
