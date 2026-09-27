@@ -580,6 +580,19 @@ def test_receipt_verifier_accepts_exact_independent_roots() -> None:
     assert _verify_receipt(receipt) == receipt["receipt_identity_sha256"]
 
 
+def test_resealed_survivor_source_count_above_records_fails_closed() -> None:
+    receipt = _synthetic_receipt()
+    receipt["survivor_source_objects"] = receipt["survivor_records"] + 1
+    body = dict(receipt)
+    body.pop("receipt_identity_sha256")
+    receipt["receipt_identity_sha256"] = runner._sha256(runner._cjson(body))
+    with pytest.raises(
+        runner.CurrentCleanExecutionError,
+        match="source-object count exceeds survivor records",
+    ):
+        _verify_receipt(receipt)
+
+
 @pytest.mark.parametrize(
     ("field", "delta", "match"),
     [
