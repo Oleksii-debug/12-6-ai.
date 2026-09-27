@@ -214,6 +214,7 @@ def test_execute_and_publish_rejects_inventory_substitution(
 
 def test_execute_and_publish_rejects_receipt_inventory_root_drift(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     args = _args(tmp_path, monkeypatch)
 
@@ -300,7 +301,7 @@ def test_require_exact_checkout_authenticates_carrier_and_module(
         cli.CARRIER_PATH: b"carrier bytes",
         cli.MODULE_PATH: b"module bytes",
         **{
-            path: f"dependency:{path}".encode("utf-8")
+            path: f"dependency:{path}".encode()
             for path in cli.AUTHENTICATED_DEPENDENCY_PATHS
         },
     }
@@ -358,7 +359,7 @@ def test_require_exact_checkout_rejects_tampered_execution_dependency(
         cli.CARRIER_PATH: b"carrier bytes",
         cli.MODULE_PATH: b"module bytes",
         **{
-            path: f"dependency:{path}".encode("utf-8")
+            path: f"dependency:{path}".encode()
             for path in cli.AUTHENTICATED_DEPENDENCY_PATHS
         },
     }
