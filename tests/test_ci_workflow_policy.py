@@ -79,7 +79,17 @@ def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     assert 'eval290_out_a="$RUNNER_TEMP/eval290-out-a"' in job
     assert 'eval290_out_b="$RUNNER_TEMP/eval290-out-b"' in job
     assert 'diff -ru "$eval290_out_a" "$eval290_out_b"' in job
-    assert "python -m twelve_six.eval291_en_selection_validation \\" in job
+    compact_job = " ".join(job.split())
+    assert (
+        'PYTHONPATH="$eval291_src/src" python -m '
+        'twelve_six.eval291_en_selection_validation build --repo-root "$eval291_src"'
+        in compact_job
+    )
+    assert (
+        'PYTHONPATH="$eval291_src/src" python -m '
+        'twelve_six.eval291_en_selection_validation verify --repo-root "$eval291_src"'
+        in compact_job
+    )
     assert 'cmp "$RUNNER_TEMP/eval291-en.jsonl"' in job
     assert "resolve_eval303_selection_payloads_from_reconstructed" in job
     assert "Fetch immutable selection-validation payload artifacts" not in job
