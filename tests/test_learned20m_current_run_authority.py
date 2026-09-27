@@ -91,13 +91,17 @@ def _manifest(*, source_git_sha: str = "b" * 40, binding: str = "a" * 64) -> dic
 
 def _identity(
     *,
+    manifest: dict | None = None,
     run_id: str = "run-a",
     recovery_manifest: str = "1" * 64,
     binding: str = "a" * 64,
     source_git_sha: str = "b" * 40,
 ) -> dict:
+    if manifest is None:
+        manifest = _manifest(source_git_sha=source_git_sha, binding=binding)
     return build_current_run_identity(
         run_id=run_id,
+        base_launch_manifest_sha256=current_run._base_manifest_digest(manifest),
         recovery_run_manifest_sha256=recovery_manifest,
         recovery_attempt_authority_sha256="2" * 64,
         portable_run_binding_sha256=binding,
@@ -241,6 +245,22 @@ def test_pointer_state_binds_incumbent_manifest_global_lease_and_run() -> None:
         build_current_run_pointer_state(manifest, wrong_ref, identity, generation=1)
 
 
+
+
+def test_base_manifest_substitution_fails_under_fixed_run_identity() -> None:
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    substituted = deepcopy(manifest)
+    substituted["recipe"]["seed"] += 1
+
+    with pytest.raises(ValueError, match="current_run_base_manifest_mismatch"):
+        build_current_run_pointer_state(
+            substituted,
+            _global_inspection(substituted),
+            identity,
+            generation=1,
+        )
+
 def test_pointer_decoder_rejects_noncanonical_and_unknown_fields() -> None:
     manifest = _manifest()
     state = build_current_run_pointer_state(
@@ -338,6 +358,7 @@ def test_fixed_pointer_activation_retirement_and_generation(
         manifest_a,
         identity_a,
         expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity_a["identity_sha256"],
         now=NOW,
     )
     assert first.committed is True
@@ -357,6 +378,7 @@ def test_fixed_pointer_activation_retirement_and_generation(
         manifest_a,
         identity_a,
         expected_pointer_tip=first.written_remote_tip,
+        expected_current_run_identity_sha256=identity_a["identity_sha256"],
         now=NOW,
     )
     assert duplicate.committed is False
@@ -378,6 +400,7 @@ def test_fixed_pointer_activation_retirement_and_generation(
         manifest_a,
         identity_a,
         expected_pointer_tip=first.written_remote_tip,
+        expected_current_run_identity_sha256=identity_a["identity_sha256"],
         now=NOW,
     )
     assert stale.committed is False
@@ -418,6 +441,7 @@ def test_retired_pointer_can_advance_only_from_exact_latest_tip(
         manifest_a,
         identity_a,
         expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity_a["identity_sha256"],
         now=NOW,
     )
     retired = retire_current_run_authority(
@@ -434,6 +458,7 @@ def test_retired_pointer_can_advance_only_from_exact_latest_tip(
         manifest_b,
         identity_b,
         expected_pointer_tip=retired.written_remote_tip,
+        expected_current_run_identity_sha256=identity_b["identity_sha256"],
         now=NOW,
     )
     assert second.committed is True
@@ -466,6 +491,29 @@ def test_boolean_generation_and_source_or_binding_substitution_fail_closed() -> 
         )
 
 
+
+
+def test_activation_rejects_candidate_selected_current_run_identity_root(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+
+    result = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256="f" * 64,
+        now=NOW,
+    )
+
+    assert result.committed is False
+    assert result.blockers == ("expected_current_run_identity_sha256_mismatch",)
+    assert inspect_current_run_authority(writer_a, str(remote)).present is False
+
 def test_activation_rejects_expired_running_global_lease(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
@@ -495,6 +543,7 @@ def test_activation_rejects_expired_running_global_lease(
         manifest,
         identity,
         expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
         now=NOW,
     )
 
