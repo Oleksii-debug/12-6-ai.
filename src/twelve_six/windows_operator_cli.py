@@ -50,9 +50,20 @@ def _distribution_or_fail(
 
 
 def _matches_installed_asset(entry: object, expected: PurePosixPath) -> bool:
-    parts = PurePosixPath(str(entry).replace("\\", "/")).parts
+    raw = str(entry)
+    if "\\" in raw:
+        return False
+    candidate = PurePosixPath(raw)
+    if candidate.is_absolute():
+        return False
+    parts = candidate.parts
     expected_parts = expected.parts
-    return len(parts) >= len(expected_parts) and parts[-len(expected_parts) :] == expected_parts
+    if len(parts) < len(expected_parts):
+        return False
+    if parts[-len(expected_parts) :] != expected_parts:
+        return False
+    prefix = parts[: -len(expected_parts)]
+    return all(part == ".." for part in prefix)
 
 
 def _locate_installed_asset(

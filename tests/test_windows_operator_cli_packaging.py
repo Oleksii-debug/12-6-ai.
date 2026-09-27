@@ -109,6 +109,59 @@ def test_installed_defaults_follow_distribution_record_not_sys_prefix(tmp_path: 
     assert state == owner_home / ".twelve-six-local"
 
 
+@pytest.mark.parametrize("upward_prefix", ["", "../", "../../", "../../../../../../"])
+def test_installed_record_resolution_accepts_only_upward_scheme_prefixes(
+    tmp_path: Path,
+    upward_prefix: str,
+) -> None:
+    module = _fake_installed_module(tmp_path)
+    data_root = tmp_path / "accepted/share/twelve-six-ai/configs/research"
+    data_root.mkdir(parents=True)
+    profile = data_root / PROFILE_RELATIVE.name
+    packet = data_root / PACKET_RELATIVE.name
+    profile.write_text("{}\n", encoding="utf-8")
+    packet.write_text("{}\n", encoding="utf-8")
+    profile_record = (
+        upward_prefix + "share/twelve-six-ai/configs/research/" + PROFILE_RELATIVE.name
+    )
+    packet_record = (
+        upward_prefix + "share/twelve-six-ai/configs/research/" + PACKET_RELATIVE.name
+    )
+    distribution = _FakeDistribution({profile_record: profile, packet_record: packet})
+
+    resolved_profile, resolved_packet, _ = resolve_default_paths(
+        module_path=module,
+        distribution=distribution,
+    )
+
+    assert resolved_profile == profile
+    assert resolved_packet == packet
+
+
+@pytest.mark.parametrize(
+    "profile_record",
+    [
+        "evil/share/twelve-six-ai/configs/research/" + PROFILE_RELATIVE.name,
+        "/tmp/evil/share/twelve-six-ai/configs/research/" + PROFILE_RELATIVE.name,
+        "../../../foo/../share/twelve-six-ai/configs/research/" + PROFILE_RELATIVE.name,
+        "..\\..\\..\\share\\twelve-six-ai\\configs\\research\\" + PROFILE_RELATIVE.name,
+    ],
+)
+def test_installed_record_resolution_rejects_noncanonical_prefix_aliases(
+    tmp_path: Path,
+    profile_record: str,
+) -> None:
+    module = _fake_installed_module(tmp_path)
+    profile = tmp_path / "alias-profile.json"
+    packet = tmp_path / "packet.json"
+    profile.write_text("{}\n", encoding="utf-8")
+    packet.write_text("{}\n", encoding="utf-8")
+    distribution = _FakeDistribution({profile_record: profile, PACKET_RECORD: packet})
+
+    with pytest.raises(RuntimeError, match="found 0"):
+        resolve_default_paths(module_path=module, distribution=distribution)
+
+
 def test_installed_record_resolution_fails_closed_on_missing_duplicate_or_nonfile(
     tmp_path: Path,
 ) -> None:
