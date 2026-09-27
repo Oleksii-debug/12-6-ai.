@@ -47,6 +47,8 @@ _RELEASE_AUTHORITY: dict[str, Any] = {
     "distinct_physical_source_count": 244,
     "retained_payload_bytes": 5601716,
     "records_jsonl_sha256": "bbeb43b3b8e3e4b0e2631c16895d700896f3733d6cd6fe3833fe678594bc86d8",
+    "inventory_json_sha256": "3804a43eba5e0bfa6ce2568782cb03bf681e53a68808742874cf89139488c69e",
+    "evidence_json_sha256": "877b6233738e0ca6593acbbf9922f5f178ec8456bf101b95f2f4a300805509e4",
     "record_inventory_digest_sha256": "dbdf741884ec1f147827647908b17a846584b145454e3f82fdb63120422c6059",
     "payload_inventory_digest_sha256": "2384480c89c19b14d188aa57130ee2967463512bb54241f90b6f17a525653a1e",
     "materialization_identity_sha256": "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade",
@@ -54,9 +56,11 @@ _RELEASE_AUTHORITY: dict[str, Any] = {
     "physical_pr_number": 2153,
     "physical_head_git_sha": "6af889c7c3d15d38f463791c9e2ba56c8e936e16",
     "physical_run_id": 36026689718,
+    "physical_job_id": 107724922341,
     "artifact_id": 10820342689,
     "artifact_zip_sha256": "99069ce2183abbbc374749cca5c538efa259df0c64658a9b88cc96b25c0fbba0",
     "independent_audit_issue_number": 2174,
+    "independent_audit_terminal_comment_id": 5818780583,
     "independent_audit_status": "PASS_PHYSICAL_CLEAN_POST_G05G06_EXACT_RUN",
 }
 
@@ -258,9 +262,21 @@ def _strict_loads(raw: bytes, label: str) -> dict[str, Any]:
     return value
 
 
-def _load_json(path: Path) -> tuple[dict[str, Any], str]:
+def _load_json(
+    path: Path,
+    *,
+    expected_sha256: str | None = None,
+    label: str | None = None,
+) -> tuple[dict[str, Any], str]:
     raw = path.read_bytes()
-    return _strict_loads(raw, str(path)), _sha256(raw)
+    actual_sha256 = _sha256(raw)
+    if expected_sha256 is not None and actual_sha256 != _hex64(
+        expected_sha256, f"expected {label or path.name} SHA-256"
+    ):
+        raise ValueError(
+            f"{label or path.name} physical byte hash is not independently expected"
+        )
+    return _strict_loads(raw, str(path)), actual_sha256
 
 
 def _release_authority_identity() -> str:
@@ -279,9 +295,15 @@ def _verify_inventory(inventory: Mapping[str, Any]) -> dict[str, dict[str, Any]]
         raise ValueError("retained record count is not independently expected")
     if total != expected["retained_payload_bytes"]:
         raise ValueError("retained payload bytes are not independently expected")
-    if inventory.get("record_inventory_digest_sha256") != expected["record_inventory_digest_sha256"]:
+    if (
+        inventory.get("record_inventory_digest_sha256")
+        != expected["record_inventory_digest_sha256"]
+    ):
         raise ValueError("record inventory root is not independently expected")
-    if inventory.get("payload_inventory_digest_sha256") != expected["payload_inventory_digest_sha256"]:
+    if (
+        inventory.get("payload_inventory_digest_sha256")
+        != expected["payload_inventory_digest_sha256"]
+    ):
         raise ValueError("payload inventory root is not independently expected")
 
     raw_rows = inventory.get("records")
@@ -299,8 +321,14 @@ def _verify_inventory(inventory: Mapping[str, Any]) -> dict[str, dict[str, Any]]
         for field in ("record_id", "source_id", "family", "modality"):
             if type(row[field]) is not str or not row[field]:
                 raise ValueError(f"record inventory row[{index}].{field} invalid")
-        _hex64(row["payload_sha256"], f"record inventory row[{index}].payload_sha256")
-        _positive_int(row["payload_bytes"], f"record inventory row[{index}].payload_bytes")
+        _hex64(
+            row["payload_sha256"],
+            f"record inventory row[{index}].payload_sha256",
+        )
+        _positive_int(
+            row["payload_bytes"],
+            f"record inventory row[{index}].payload_bytes",
+        )
         if row["record_id"] in seen:
             raise ValueError(f"duplicate record inventory record_id: {row['record_id']}")
         seen.add(row["record_id"])
@@ -310,7 +338,10 @@ def _verify_inventory(inventory: Mapping[str, Any]) -> dict[str, dict[str, Any]]
         raise ValueError("record inventory rows are not sorted")
     if sum(row["payload_bytes"] for row in normalized) != total:
         raise ValueError("record inventory payload byte sum drift")
-    if len({row["source_id"] for row in normalized}) != expected["distinct_physical_source_count"]:
+    if (
+        len({row["source_id"] for row in normalized})
+        != expected["distinct_physical_source_count"]
+    ):
         raise ValueError("distinct physical source count drift")
 
     payload_projection = [
@@ -323,7 +354,10 @@ def _verify_inventory(inventory: Mapping[str, Any]) -> dict[str, dict[str, Any]]
     ]
     if _sha256(_canonical(normalized)) != expected["record_inventory_digest_sha256"]:
         raise ValueError("record inventory digest does not reproduce")
-    if _sha256(_canonical(payload_projection)) != expected["payload_inventory_digest_sha256"]:
+    if (
+        _sha256(_canonical(payload_projection))
+        != expected["payload_inventory_digest_sha256"]
+    ):
         raise ValueError("payload inventory digest does not reproduce")
     return {row["record_id"]: row for row in normalized}
 
@@ -337,6 +371,8 @@ def _verify_evidence(evidence: Mapping[str, Any]) -> None:
         raise ValueError("materialization status drift")
     if evidence.get("execution_profile") != "LOCAL_FREE":
         raise ValueError("materialization profile is not LOCAL_FREE")
+    if evidence.get("execution_head_sha") != _RELEASE_AUTHORITY["physical_head_git_sha"]:
+        raise ValueError("materialization execution head is not independently expected")
     if evidence.get("repeat_materialization_byte_identical") is not True:
         raise ValueError("repeat materialization proof missing")
 
@@ -353,7 +389,10 @@ def _verify_evidence(evidence: Mapping[str, Any]) -> None:
         raise ValueError("materialization identity self-hash mismatch")
 
     input_authority = evidence.get("input")
-    if type(input_authority) is not dict or set(input_authority) != _EVIDENCE_INPUT_KEYS:
+    if (
+        type(input_authority) is not dict
+        or set(input_authority) != _EVIDENCE_INPUT_KEYS
+    ):
         raise ValueError("materialization input authority schema drift")
     result = evidence.get("result")
     if type(result) is not dict or set(result) != _RESULT_KEYS:
@@ -365,12 +404,21 @@ def _verify_evidence(evidence: Mapping[str, Any]) -> None:
     if type(truth) is not dict or set(truth) != _TRUTH_KEYS or truth != _TRUTH:
         raise ValueError("materialization truth boundary widened or drifted")
 
-    if input_authority.get("composition_preflight_identity_sha256") != expected["composition_preflight_identity_sha256"]:
+    if (
+        input_authority.get("composition_preflight_identity_sha256")
+        != expected["composition_preflight_identity_sha256"]
+    ):
         raise ValueError("composition preflight identity drift")
     for key, wanted in (
         ("record_payload_jsonl_sha256", expected["records_jsonl_sha256"]),
-        ("record_inventory_digest_sha256", expected["record_inventory_digest_sha256"]),
-        ("payload_inventory_digest_sha256", expected["payload_inventory_digest_sha256"]),
+        (
+            "record_inventory_digest_sha256",
+            expected["record_inventory_digest_sha256"],
+        ),
+        (
+            "payload_inventory_digest_sha256",
+            expected["payload_inventory_digest_sha256"],
+        ),
         ("record_count", expected["retained_source_count"]),
         ("source_object_count", expected["distinct_physical_source_count"]),
         ("total_payload_bytes", expected["retained_payload_bytes"]),
@@ -389,7 +437,10 @@ def _verify_evidence(evidence: Mapping[str, Any]) -> None:
         "successor_authority_rebuild_required_for_invalidated_v5_v6_v8": True,
     }:
         raise ValueError("materialization provenance truth drift")
-    _hex64(provenance.get("quarantine_identity_sha256"), "quarantine_identity_sha256")
+    _hex64(
+        provenance.get("quarantine_identity_sha256"),
+        "quarantine_identity_sha256",
+    )
     if evidence.get("remaining_materialization_blockers") != [
         "SUCCESSOR_CORPUS_AUTHORITY_REBUILD_REQUIRED"
     ]:
@@ -432,7 +483,10 @@ def _prepare_rows(
             ):
                 raise ValueError(f"payload metadata drift: {record_id}")
             text_raw = row["normalized_payload"].encode("utf-8")
-            if len(text_raw) != expected["payload_bytes"] or _sha256(text_raw) != expected["payload_sha256"]:
+            if (
+                len(text_raw) != expected["payload_bytes"]
+                or _sha256(text_raw) != expected["payload_sha256"]
+            ):
                 raise ValueError(f"payload identity mismatch: {record_id}")
             records.append(
                 {
@@ -514,15 +568,23 @@ def _build_receipt(
             TRAINING_RECORDS_NAME: _sha256(records_raw),
             TRAINING_HANDOFF_NAME: _sha256(handoff_raw),
         },
-        "materialization_identity_sha256": authority["materialization_identity_sha256"],
+        "materialization_identity_sha256": authority[
+            "materialization_identity_sha256"
+        ],
         "composition_preflight_identity_sha256": authority[
             "composition_preflight_identity_sha256"
         ],
-        "record_inventory_digest_sha256": authority["record_inventory_digest_sha256"],
-        "payload_inventory_digest_sha256": authority["payload_inventory_digest_sha256"],
+        "record_inventory_digest_sha256": authority[
+            "record_inventory_digest_sha256"
+        ],
+        "payload_inventory_digest_sha256": authority[
+            "payload_inventory_digest_sha256"
+        ],
         "records_jsonl_sha256": authority["records_jsonl_sha256"],
         "retained_source_count": authority["retained_source_count"],
-        "distinct_physical_source_count": authority["distinct_physical_source_count"],
+        "distinct_physical_source_count": authority[
+            "distinct_physical_source_count"
+        ],
         "retained_payload_bytes": authority["retained_payload_bytes"],
         "training_records_file_bytes": len(records_raw),
         "payload_match_proven": True,
@@ -548,7 +610,10 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
         raise ValueError("execution receipt key set drift")
     if receipt.get("schema_version") != RECEIPT_SCHEMA:
         raise ValueError("execution receipt schema drift")
-    claimed = _hex64(receipt.get("receipt_identity_sha256"), "receipt_identity_sha256")
+    claimed = _hex64(
+        receipt.get("receipt_identity_sha256"),
+        "receipt_identity_sha256",
+    )
     core = dict(receipt)
     core.pop("receipt_identity_sha256")
     if claimed != _sha256(_canonical(core)):
@@ -564,11 +629,20 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
         "training_records_file_bytes",
     ):
         _positive_int(receipt.get(key), f"receipt.{key}")
-    if receipt.get("retained_source_count") != _RELEASE_AUTHORITY["retained_source_count"]:
+    if (
+        receipt.get("retained_source_count")
+        != _RELEASE_AUTHORITY["retained_source_count"]
+    ):
         raise ValueError("receipt retained_source_count drift")
-    if receipt.get("distinct_physical_source_count") != _RELEASE_AUTHORITY["distinct_physical_source_count"]:
+    if (
+        receipt.get("distinct_physical_source_count")
+        != _RELEASE_AUTHORITY["distinct_physical_source_count"]
+    ):
         raise ValueError("receipt distinct physical source count drift")
-    if receipt.get("retained_payload_bytes") != _RELEASE_AUTHORITY["retained_payload_bytes"]:
+    if (
+        receipt.get("retained_payload_bytes")
+        != _RELEASE_AUTHORITY["retained_payload_bytes"]
+    ):
         raise ValueError("receipt retained payload bytes drift")
     for key in (
         "authorized_optimized_target_exposure",
@@ -589,7 +663,10 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
     ):
         if receipt.get(key) is not False:
             raise ValueError(f"receipt {key} widened")
-    if receipt.get("payload_match_proven") is not True or receipt.get("durable_receipt_hash_only") is not True:
+    if (
+        receipt.get("payload_match_proven") is not True
+        or receipt.get("durable_receipt_hash_only") is not True
+    ):
         raise ValueError("receipt proof flags drift")
 
 
@@ -601,7 +678,9 @@ def _rename_directory_no_replace(source: Path, destination: Path) -> None:
     try:
         renameat2 = libc.renameat2
     except AttributeError as exc:
-        raise RuntimeError("atomic no-replace directory publication is unsupported") from exc
+        raise RuntimeError(
+            "atomic no-replace directory publication is unsupported"
+        ) from exc
     renameat2.argtypes = [
         ctypes.c_int,
         ctypes.c_char_p,
@@ -639,13 +718,27 @@ def prepare_and_publish(
 ) -> dict[str, Any]:
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"refusing to overwrite output: {output_dir}")
-    inventory, inventory_file_sha = _load_json(inventory_path)
-    evidence, evidence_file_sha = _load_json(evidence_path)
+    inventory, inventory_file_sha = _load_json(
+        inventory_path,
+        expected_sha256=_RELEASE_AUTHORITY["inventory_json_sha256"],
+        label="record inventory JSON",
+    )
+    evidence, evidence_file_sha = _load_json(
+        evidence_path,
+        expected_sha256=_RELEASE_AUTHORITY["evidence_json_sha256"],
+        label="materialization evidence JSON",
+    )
     by_record = _verify_inventory(inventory)
     _verify_evidence(evidence)
-    if evidence["result"]["record_inventory_digest_sha256"] != inventory["record_inventory_digest_sha256"]:
+    if (
+        evidence["result"]["record_inventory_digest_sha256"]
+        != inventory["record_inventory_digest_sha256"]
+    ):
         raise ValueError("evidence/inventory record root mismatch")
-    if evidence["result"]["payload_inventory_digest_sha256"] != inventory["payload_inventory_digest_sha256"]:
+    if (
+        evidence["result"]["payload_inventory_digest_sha256"]
+        != inventory["payload_inventory_digest_sha256"]
+    ):
         raise ValueError("evidence/inventory payload root mismatch")
     records, projection = _prepare_rows(records_path, by_record)
     handoff = _handoff(projection)
@@ -705,8 +798,13 @@ def require_exact_checkout(repo_root: Path, expected_carrier_git_sha: str) -> st
     expected = _git_sha(expected_carrier_git_sha, "expected carrier Git SHA")
     head = _git(repo_root, "rev-parse", "--verify", "HEAD")
     if head.returncode != 0 or head.stdout.strip() != expected:
-        raise RuntimeError("checked-out carrier head differs from independent expectation")
-    for args in (("diff", "--quiet", "HEAD", "--"), ("diff", "--cached", "--quiet", "HEAD", "--")):
+        raise RuntimeError(
+            "checked-out carrier head differs from independent expectation"
+        )
+    for args in (
+        ("diff", "--quiet", "HEAD", "--"),
+        ("diff", "--cached", "--quiet", "HEAD", "--"),
+    ):
         completed = _git(repo_root, *args)
         if completed.returncode not in (0, 1):
             raise RuntimeError("unable to verify tracked working-tree cleanliness")
@@ -719,12 +817,21 @@ def require_exact_checkout(repo_root: Path, expected_carrier_git_sha: str) -> st
     return expected
 
 
-def require_executing_carrier(repo_root: Path, expected_carrier_git_sha: str) -> None:
+def require_executing_carrier(
+    repo_root: Path,
+    expected_carrier_git_sha: str,
+) -> None:
     expected_path = (repo_root / CARRIER_MODULE).resolve(strict=True)
     running = Path(__file__)
     if running.is_symlink() or running.resolve(strict=True) != expected_path:
-        raise RuntimeError("executing carrier path is not the authenticated repository carrier")
-    authoritative = _git_path_bytes(repo_root, expected_carrier_git_sha, CARRIER_MODULE)
+        raise RuntimeError(
+            "executing carrier path is not the authenticated repository carrier"
+        )
+    authoritative = _git_path_bytes(
+        repo_root,
+        expected_carrier_git_sha,
+        CARRIER_MODULE,
+    )
     if running.read_bytes() != authoritative:
         raise RuntimeError("executing carrier bytes differ from authenticated Git bytes")
 
@@ -737,7 +844,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--materialization-evidence-json", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--expected-carrier-git-sha", required=True)
-    parser.add_argument("--isolated-child", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--isolated-child",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     return parser
 
 
