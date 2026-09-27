@@ -15,6 +15,11 @@ EXPECTED_PROBE_REPORT_SHA256 = (
     "630c985cc09a550f2eca786c39540fa7b98e3b088e6eaded06422703ed631a9e"
 )
 EXPECTED_PROBE_TOOL_BLOB_SHA1 = "6a668c6885c8578b23cfc50d94c6add149b3d978"
+EXPECTED_MEASUREMENT_TEST_BLOB_SHA1 = "6518994628abaab6bca302278ee8f3a02bde6e61"
+MEASUREMENT_AUTHORITY_COMMENT_ID = 5851221028
+MEASUREMENT_AUTHORITY_SHA256 = (
+    "1eb6a61cd9eeec79ef557ff231873092ad289a60ccd17a616678332b27f7332f"
+)
 EXPECTED_CAPTURE = {
     "repository": "Oleksii-debug/12-6-ai.",
     "issue": 2166,
@@ -53,6 +58,22 @@ def canonical_json_sha256(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def measurement_authority_payload(receipt: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "authority_schema": "12-6.model341.current-main-measurement-authority.v1",
+        "claim_issue": EXPECTED_CAPTURE["issue"],
+        "pr": EXPECTED_CAPTURE["pull_request"],
+        "measurement_head_sha": EXPECTED_CAPTURE["probe_head_sha"],
+        "measurement_merge_sha": EXPECTED_CAPTURE["tested_merge_sha"],
+        "base_main_sha": EXPECTED_CAPTURE["base_sha"],
+        "ci_run_id": EXPECTED_CAPTURE["workflow_run_id"],
+        "ci_job_id": EXPECTED_CAPTURE["job_id"],
+        "probe_tool_blob_sha1": EXPECTED_CAPTURE["probe_tool_blob_sha1"],
+        "measurement_test_blob_sha1": EXPECTED_MEASUREMENT_TEST_BLOB_SHA1,
+        "probe": receipt["probe_report"],
+    }
+
+
 def validate_probe_tool_blob(root: Path) -> None:
     path = root / PROBE_TOOL_RELATIVE_PATH
     actual = git_blob_sha1(path)
@@ -84,6 +105,10 @@ def validate_receipt(receipt: dict[str, Any]) -> None:
         raise ValueError("captured probe report content mismatch")
 
     validate_probe(probe_report)
+
+    authority_sha = canonical_json_sha256(measurement_authority_payload(receipt))
+    if authority_sha != MEASUREMENT_AUTHORITY_SHA256:
+        raise ValueError("prepublished measurement authority mismatch")
 
 
 def validate_receipt_file(path: Path, *, root: Path | None = None) -> dict[str, Any]:
