@@ -22,9 +22,9 @@ from twelve_six.learned20m_global_training_lease import (
     CANONICAL_LOCK_DOMAIN,
     CANONICAL_REPOSITORY,
     GlobalLeaseInspection,
-    _GlobalLeaseFailure,
     _delete_local_ref,
     _fetch_remote_commit,
+    _GlobalLeaseFailure,
     _read_snapshot,
     _remote_tip,
     _run_git,
@@ -310,7 +310,7 @@ def build_current_run_pointer_state(
         raise ValueError("global_lease_expires_at_utc_invalid")
     identities = manifest.get("identities")
     if not isinstance(identities, Mapping):
-        raise ValueError("manifest_identities_missing")
+        raise TypeError("manifest_identities_missing")
     if identities.get("source_git_sha") != current_run_identity.get("source_git_sha"):
         raise ValueError("current_run_source_git_sha_mismatch")
     if _base_manifest_digest(manifest) != current_run_identity.get(
@@ -404,7 +404,7 @@ def decode_current_run_pointer_state(raw: bytes) -> dict[str, Any]:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("current_run_pointer_json_invalid") from exc
     if not isinstance(parsed, Mapping):
-        raise ValueError("current_run_pointer_not_object")
+        raise TypeError("current_run_pointer_not_object")
     canonical = canonical_json_bytes(parsed)
     if canonical != raw:
         raise ValueError("current_run_pointer_not_canonical")
