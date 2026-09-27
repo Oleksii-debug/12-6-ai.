@@ -82,7 +82,7 @@ jobs:
           import sys
           import urllib.request
           from pathlib import Path
-          from urllib.parse import urlencode, urlsplit, urlunsplit
+          from urllib.parse import urlsplit
 
           root = Path.cwd()
           tool_path = root / "tools/validate_d03_ua_nbu_official_resolutions_intake_v1.py"
@@ -103,75 +103,93 @@ jobs:
               raise RuntimeError("search page size outside discovery hard bound")
 
           allowed = urlsplit(config["source"]["allowed_origin"])
-          search_root = config["source"]["catalog_url"]
-          search_path = urlsplit(search_root).path
-          search_query = urlencode(
-              {
-                  "from": "",
-                  "metaKeywords": "",
-                  "number": "",
-                  "page": "1",
-                  "perPage": str(per_page),
-                  "publicationDate": "",
-                  "title": "",
-                  "to": "",
-                  "type": "",
-              }
-          )
-          search_url = urlunsplit(("https", allowed.netloc.casefold(), search_path, search_query, ""))
 
-          def fetch_text(url: str) -> str:
+          def fetch_raw(url: str) -> tuple[str, str]:
               request = urllib.request.Request(
                   url,
-                  headers={"User-Agent": "12-6-ai-d03-nbu-live-execution/3.0 (+source-audit)"},
+                  headers={
+                      "User-Agent": "12-6-ai-d03-nbu-live-execution/4.0 (+source-audit)"
+                  },
                   method="GET",
               )
               with urllib.request.urlopen(request, timeout=30) as response:
-                  final = urlsplit(response.geturl())
-                  if final.scheme != "https" or final.netloc.casefold() != allowed.netloc.casefold():
-                      raise RuntimeError(f"NBU fetch escaped origin: {response.geturl()}")
-                  if final.path != search_path and url == search_url:
-                      raise RuntimeError(f"NBU search escaped canonical path: {response.geturl()}")
+                  final_url = response.geturl()
+                  final = urlsplit(final_url)
+                  if (
+                      final.scheme != "https"
+                      or final.netloc.casefold() != allowed.netloc.casefold()
+                  ):
+                      raise RuntimeError(f"NBU fetch escaped origin: {final_url}")
                   body = response.read(8_000_001)
               if len(body) > 8_000_000:
                   raise RuntimeError(f"NBU HTML response exceeded bound: {url}")
-              return body.decode("utf-8", errors="strict")
+              return body.decode("utf-8", errors="strict"), final_url
 
-          def catalog_snapshot() -> tuple[str, tuple[str, ...]]:
-              body = fetch_text(search_url)
-              documents = module.discover_resolution_urls(body, config)
+          def fetch_catalog(url: str) -> tuple[str, str]:
+              body, final_url = fetch_raw(url)
+              module.validate_catalog_response_url(final_url, url, config)
+              return body, final_url
+
+          def catalog_snapshot() -> tuple[tuple[str, ...], tuple[str, ...]]:
+              requested, documents = module.crawl_resolution_catalog(
+                  config,
+                  fetch_catalog,
+                  target_documents=target_documents,
+                  per_page=per_page,
+              )
               print(
                   "CATALOG_SNAPSHOT "
-                  f"documents={len(documents)} per_page={per_page} url={search_url}"
+                  f"documents={len(documents)} pages={len(requested)} "
+                  f"per_page={per_page}"
               )
-              if len(documents) < target_documents:
-                  raise RuntimeError(
-                      f"NBU bounded search found only {len(documents)} canonical resolution documents; "
-                      f"target={target_documents} per_page={per_page}"
-                  )
-              if len(documents) > hard_max:
-                  raise RuntimeError("NBU bounded search exceeded hard document bound")
-              return body, documents
+              return requested, documents
 
-          first_catalog, first_urls = catalog_snapshot()
-          second_catalog, second_urls = catalog_snapshot()
+          first_pages, first_urls = catalog_snapshot()
+          second_pages, second_urls = catalog_snapshot()
+          if first_pages != second_pages:
+              raise RuntimeError(
+                  "NBU requested page sequence changed between independent bounded snapshots"
+              )
           if first_urls != second_urls:
-              raise RuntimeError("NBU canonical document set changed between independent bounded snapshots")
-          print(f"LIVE_DISCOVERY documents={len(first_urls)}")
+              raise RuntimeError(
+                  "NBU canonical document set changed between independent bounded snapshots"
+              )
+          print(
+              "LIVE_DISCOVERY "
+              f"documents={len(first_urls)} pages={len(first_pages)}"
+          )
 
           document_fetches: dict[str, list[str]] = {}
           for index, url in enumerate(first_urls, start=1):
-              document_fetches[url] = [fetch_text(url), fetch_text(url)]
+              first_body, first_final = fetch_raw(url)
+              second_body, second_final = fetch_raw(url)
+              if first_final != url or second_final != url:
+                  raise RuntimeError(f"NBU document final identity changed: {url}")
+              document_fetches[url] = [first_body, second_body]
               print(f"LIVE_DOCUMENT {index}/{len(first_urls)} url={url}")
 
-          evidence = module.build_body_free_discovery_evidence(
+          evidence = module.build_body_free_discovery_evidence_from_documents(
               config,
-              [first_catalog, second_catalog],
+              first_urls,
               document_fetches,
           )
           module.validate_evidence(evidence, config)
           Path("/tmp/nbu-discovery-evidence.json").write_text(
-              json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+              json.dumps(evidence, ensure_ascii=False, indent=2) + "\\n",
+              encoding="utf-8",
+          )
+          Path("/tmp/nbu-catalog-pages.json").write_text(
+              json.dumps(
+                  {
+                      "schema": "12-6.d03-ua-nbu-catalog-page-sequence.v1",
+                      "requested_urls": list(first_pages),
+                      "canonical_document_urls": list(first_urls),
+                  },
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\\n",
               encoding="utf-8",
           )
           print(
@@ -266,6 +284,7 @@ jobs:
           path: |
             /tmp/pdftotext-version.txt
             /tmp/nbu-discovery-evidence.json
+            /tmp/nbu-catalog-pages.json
             /tmp/nbu-pdf-pin-evidence.json
             /tmp/nbu-text-evidence-a.json
             /tmp/nbu-text-evidence-b.json
