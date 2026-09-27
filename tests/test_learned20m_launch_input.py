@@ -17,14 +17,18 @@ def _sha(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def _identity(value: dict, field: str) -> str:
-    body = copy.deepcopy(value)
-    body.pop(field, None)
+def _object_sha(value: dict) -> str:
     encoded = (
-        json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         + "\n"
     ).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _identity(value: dict, field: str) -> str:
+    body = copy.deepcopy(value)
+    body.pop(field, None)
+    return _object_sha(body)
 
 
 def _rehash(value: dict, field: str) -> None:
@@ -71,6 +75,30 @@ def _d04_proof(
     return proof
 
 
+def _implementation_manifest() -> dict[str, str]:
+    return {
+        "twelve_six/__init__.py": _sha("impl-package-init"),
+        "twelve_six/packing/__init__.py": _sha("impl-packing-init"),
+        "twelve_six/packing/core.py": _sha("impl-packing-core"),
+        "twelve_six/packing/jsonl.py": _sha("impl-packing-jsonl"),
+        "twelve_six/packing/loss_materialization.py": _sha("impl-loss-materialization"),
+        "twelve_six/packing/manifest.py": _sha("impl-packing-manifest"),
+        "twelve_six/packing/two_clean_build.py": _sha("impl-two-clean"),
+        "twelve_six/tokenization/__init__.py": _sha("impl-tokenization-init"),
+        "twelve_six/tokenization/base.py": _sha("impl-tokenization-base"),
+        "twelve_six/tokenization/byte.py": _sha("impl-tokenization-byte"),
+    }
+
+
+def _implementation_identity(manifest: dict[str, str]) -> str:
+    return _object_sha(
+        {
+            "schema_version": "12-6.d04-two-clean-implementation-manifest.v1",
+            "components": manifest,
+        }
+    )
+
+
 def _fixture() -> tuple[dict, dict, dict, dict]:
     stages = {
         "normalization": _sha("normalization"),
@@ -83,14 +111,18 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
     packing_identity = _sha("packing")
     runtime_identity = _sha("runtime")
     materialization = _sha("materialization")
+    implementation_manifest = _implementation_manifest()
+    implementation_identity = _implementation_identity(implementation_manifest)
     proof = {
-        "schema_version": "12-6.postpack-two-clean-proof.v2",
+        "schema_version": "12-6.postpack-two-clean-proof.v3",
         "input_packet_identity_sha256": _sha("input"),
         "terminal_corpus_authority_identity_sha256": _sha("corpus"),
         "stage_bindings": copy.deepcopy(stages),
         "tokenizer_identity_sha256": tokenizer_identity,
         "packing_identity_sha256": packing_identity,
         "runtime_identity_sha256": runtime_identity,
+        "implementation_manifest": copy.deepcopy(implementation_manifest),
+        "implementation_manifest_identity_sha256": implementation_identity,
         "fresh_process_count": 2,
         "byte_identical": True,
         "build_a_sha256": _sha("same-output"),
@@ -180,6 +212,12 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
         "expected_tokenizer_identity_sha256": tokenizer_identity,
         "expected_packing_identity_sha256": packing_identity,
         "expected_runtime_identity_sha256": runtime_identity,
+        "expected_two_clean_implementation_manifest": copy.deepcopy(
+            implementation_manifest
+        ),
+        "expected_two_clean_implementation_manifest_identity_sha256": (
+            implementation_identity
+        ),
         "expected_carrier_git_sha": "a" * 40,
         "expected_modelspec_sha256": _sha("modelspec"),
         "expected_initialization_identity_sha256": _sha("init"),
@@ -220,11 +258,11 @@ def _verify_authority(authority: dict, *, expected_identity: str | None = None) 
     )
 
 
-def test_binds_v2_freshness_and_d04_membership_without_authorization() -> None:
+def test_binds_v3_freshness_and_d04_membership_without_authorization() -> None:
     first = _build()
     second = _build()
     assert first == second
-    assert first["schema_version"] == "12-6.learned20m-launch-input-authority.v2"
+    assert first["schema_version"] == "12-6.learned20m-launch-input-authority.v3"
     assert first["binding_status"] == "READY_FOR_READINESS_BINDING"
     assert (
         first["data_spine"]["one_pass_unique_nonignored_causal_loss_positions"]
@@ -241,6 +279,10 @@ def test_binds_v2_freshness_and_d04_membership_without_authorization() -> None:
     assert (
         first["data_spine"]["terminal_split_train_record_membership_sha256"]
         == _sha("train-record-membership")
+    )
+    assert (
+        first["data_spine"]["two_clean_implementation_manifest_identity_sha256"]
+        == _implementation_identity(_implementation_manifest())
     )
     assert first["claim_boundary"]["authorized_optimized_target_exposure"] == 0
     assert first["claim_boundary"]["authorizes_training"] is False
@@ -373,7 +415,81 @@ def test_v1_two_clean_proof_is_rejected() -> None:
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
 
-def test_v2_two_clean_proof_rejects_rehashed_extra_field() -> None:
+
+def test_v2_two_clean_proof_is_rejected() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    proof["schema_version"] = "12-6.postpack-two-clean-proof.v2"
+    _rehash(proof, "proof_identity_sha256")
+    expected["expected_two_clean_proof_identity_sha256"] = proof[
+        "proof_identity_sha256"
+    ]
+    with pytest.raises(
+        LaunchInputAuthorityError, match="canonical two-clean proof rejected"
+    ):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_coherently_resealed_implementation_manifest_substitution_fails() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    proof["implementation_manifest"]["twelve_six/packing/core.py"] = _sha(
+        "substituted-core"
+    )
+    proof["implementation_manifest_identity_sha256"] = _implementation_identity(
+        proof["implementation_manifest"]
+    )
+    _rehash(proof, "proof_identity_sha256")
+    expected["expected_two_clean_proof_identity_sha256"] = proof[
+        "proof_identity_sha256"
+    ]
+    with pytest.raises(
+        LaunchInputAuthorityError,
+        match="canonical two-clean proof rejected: two-clean proof implementation manifest mismatch",
+    ):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_expected_implementation_identity_must_match_expected_manifest() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    expected["expected_two_clean_implementation_manifest_identity_sha256"] = _sha(
+        "other-implementation-root"
+    )
+    with pytest.raises(
+        LaunchInputAuthorityError,
+        match="expected implementation manifest identity mismatch",
+    ):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra"])
+def test_expected_implementation_manifest_is_closed_world(mutation: str) -> None:
+    proof, ledger, carrier, expected = _fixture()
+    manifest = expected["expected_two_clean_implementation_manifest"]
+    if mutation == "missing":
+        manifest.pop("twelve_six/packing/core.py")
+    else:
+        manifest["twelve_six/packing/forbidden.py"] = _sha("forbidden")
+    with pytest.raises(
+        LaunchInputAuthorityError,
+        match="implementation manifest has an unexpected or missing component",
+    ):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_launch_authority_implementation_root_tamper_fails_frozen_identity() -> None:
+    authority = _build()
+    frozen_identity = authority["authority_identity_sha256"]
+    authority["data_spine"][
+        "two_clean_implementation_manifest_identity_sha256"
+    ] = _sha("other-implementation-root")
+    _rehash(authority, "authority_identity_sha256")
+    with pytest.raises(
+        LaunchInputAuthorityError,
+        match="does not match independently expected identity",
+    ):
+        _verify_authority(authority, expected_identity=frozen_identity)
+
+
+def test_v3_two_clean_proof_rejects_rehashed_extra_field() -> None:
     proof, ledger, carrier, expected = _fixture()
     proof["candidate_text"] = "forbidden"
     _rehash(proof, "proof_identity_sha256")
@@ -409,7 +525,7 @@ def test_v2_two_clean_proof_rejects_rehashed_extra_field() -> None:
         ),
     ],
 )
-def test_v2_proof_identities_are_independently_expected(
+def test_v3_proof_identities_are_independently_expected(
     expected_field: str,
     replacement: str,
     message: str,
