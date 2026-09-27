@@ -27,6 +27,12 @@ def _load() -> dict:
     return json.loads(REPORT_PATH.read_text(encoding="utf-8"))
 
 
+def _write_raw_receipt(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "receipt.json"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
 def test_checked_in_resource_receipt_is_exact_and_valid() -> None:
     receipt = validate_receipt_file(REPORT_PATH, root=ROOT)
     assert receipt["capture"] == EXPECTED_CAPTURE
@@ -92,3 +98,43 @@ def test_report_payload_tamper_with_stale_hash_fails_closed() -> None:
 
     with pytest.raises(ValueError, match="captured probe report content mismatch"):
         validate_receipt(receipt)
+
+
+def test_raw_receipt_rejects_duplicate_top_level_key(tmp_path: Path) -> None:
+    raw = REPORT_PATH.read_text(encoding="utf-8")
+    ambiguous = raw.replace(
+        "{\n",
+        '{\n  "schema": "attacker-controlled-shadow",\n',
+        1,
+    )
+    path = _write_raw_receipt(tmp_path, ambiguous)
+
+    with pytest.raises(ValueError, match="duplicate JSON object member: schema"):
+        validate_receipt_file(path)
+
+
+def test_raw_receipt_rejects_duplicate_nested_authority_key(tmp_path: Path) -> None:
+    raw = REPORT_PATH.read_text(encoding="utf-8")
+    ambiguous = raw.replace(
+        '"capture": {\n',
+        '"capture": {\n'
+        '    "probe_head_sha": "0000000000000000000000000000000000000000",\n',
+        1,
+    )
+    path = _write_raw_receipt(tmp_path, ambiguous)
+
+    with pytest.raises(ValueError, match="duplicate JSON object member: probe_head_sha"):
+        validate_receipt_file(path)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_raw_receipt_rejects_nonfinite_json_constants(
+    tmp_path: Path,
+    constant: str,
+) -> None:
+    raw = REPORT_PATH.read_text(encoding="utf-8")
+    invalid = raw.replace('"pytest_warnings": 1,', f'"pytest_warnings": {constant},', 1)
+    path = _write_raw_receipt(tmp_path, invalid)
+
+    with pytest.raises(ValueError, match="non-finite JSON constant rejected"):
+        validate_receipt_file(path)
