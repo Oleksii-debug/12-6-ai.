@@ -389,11 +389,14 @@ def _verify_survivor_publication(
 
     record_count = rebuilt["record_count"]
     payload_bytes = rebuilt["total_payload_bytes"]
+    source_objects = len({record["source_id"] for record in records})
     if (
         type(composition.get("survivor_records")) is not int
         or composition["survivor_records"] != record_count
         or type(composition.get("survivor_payload_bytes")) is not int
         or composition["survivor_payload_bytes"] != payload_bytes
+        or type(composition.get("survivor_source_objects")) is not int
+        or composition["survivor_source_objects"] != source_objects
     ):
         raise RuntimeError("survivor receipt/count publication drift")
 
