@@ -310,4 +310,8 @@ def test_main_reexecutes_in_isolated_child_before_project_import(
     assert observed[1:3] == ["-I", "-S"]
     assert "-X" in observed
     assert any(value.startswith("pycache_prefix=") for value in observed)
+    assert "-c" in observed
+    assert cli.ISOLATED_CHILD_BOOTSTRAP in observed
+    assert cli.CARRIER_PATH in observed
+    assert str(tmp_path / cli.CARRIER_PATH) not in observed
     assert "--isolated-child" in observed
