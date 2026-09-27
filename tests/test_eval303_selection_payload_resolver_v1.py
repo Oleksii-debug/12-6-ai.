@@ -257,6 +257,16 @@ def test_strict_json_rejects_nonfinite_constants(constant: str) -> None:
         module._parse_json_object(raw, "candidate authority")
 
 
+@pytest.mark.parametrize("number", ["1e999", "-1e999"])
+def test_strict_json_rejects_float_overflow(number: str) -> None:
+    raw = f'{{"value":{number}}}'.encode("utf-8")
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="non-finite JSON number rejected",
+    ):
+        module._parse_json_object(raw, "candidate authority")
+
+
 def test_strict_jsonl_rejects_nested_duplicate_members() -> None:
     with pytest.raises(
         module.SelectionPayloadResolverError,
