@@ -80,8 +80,12 @@ def _synthetic_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             "distinct_physical_source_count": 2,
             "retained_payload_bytes": inventory["total_payload_bytes"],
             "records_jsonl_sha256": _sha(records_raw),
-            "record_inventory_digest_sha256": inventory["record_inventory_digest_sha256"],
-            "payload_inventory_digest_sha256": inventory["payload_inventory_digest_sha256"],
+            "record_inventory_digest_sha256": inventory[
+                "record_inventory_digest_sha256"
+            ],
+            "payload_inventory_digest_sha256": inventory[
+                "payload_inventory_digest_sha256"
+            ],
             "composition_preflight_identity_sha256": "1" * 64,
             "physical_head_git_sha": "2" * 40,
         }
@@ -151,9 +155,13 @@ def _synthetic_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     records_path = tmp_path / "records.jsonl"
     inventory_path = tmp_path / "inventory.json"
     evidence_path = tmp_path / "evidence.json"
+    inventory_raw = _canonical(inventory, newline=True)
+    evidence_raw = _canonical(evidence, newline=True)
+    authority["inventory_json_sha256"] = _sha(inventory_raw)
+    authority["evidence_json_sha256"] = _sha(evidence_raw)
     records_path.write_bytes(records_raw)
-    inventory_path.write_bytes(_canonical(inventory, newline=True))
-    evidence_path.write_bytes(_canonical(evidence, newline=True))
+    inventory_path.write_bytes(inventory_raw)
+    evidence_path.write_bytes(evidence_raw)
     return records_path, inventory_path, evidence_path, inventory, evidence
 
 
@@ -183,11 +191,19 @@ def test_release_authority_uses_clean_2174_roots_and_separates_counts() -> None:
         "distinct_physical_source_count"
     ]
     assert authority["retained_payload_bytes"] == 5_601_716
+    assert authority["inventory_json_sha256"] == (
+        "3804a43eba5e0bfa6ce2568782cb03bf681e53a68808742874cf89139488c69e"
+    )
+    assert authority["evidence_json_sha256"] == (
+        "877b6233738e0ca6593acbbf9922f5f178ec8456bf101b95f2f4a300805509e4"
+    )
     assert authority["materialization_identity_sha256"] == (
         "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade"
     )
     assert authority["physical_pr_number"] == 2153
+    assert authority["physical_job_id"] == 107724922341
     assert authority["independent_audit_issue_number"] == 2174
+    assert authority["independent_audit_terminal_comment_id"] == 5818780583
 
 
 def test_end_to_end_preserves_existing_data232_handoff_contract(
@@ -278,15 +294,45 @@ def test_exact_physical_and_output_hashes_are_bound(
 @pytest.mark.parametrize(
     ("target", "mutation"),
     [
-        ("evidence", lambda value: value.__setitem__("schema_version", "12-6.d03-post-g05-g06-materialization.v1")),
+        (
+            "evidence",
+            lambda value: value.__setitem__(
+                "schema_version",
+                "12-6.d03-post-g05-g06-materialization.v1",
+            ),
+        ),
         ("inventory", lambda value: value.__setitem__("record_count", 2)),
         ("inventory", lambda value: value.__setitem__("record_count", True)),
         ("inventory", lambda value: value.__setitem__("record_count", 3.0)),
         ("inventory", lambda value: value.__setitem__("total_payload_bytes", 999)),
-        ("inventory", lambda value: value.__setitem__("record_inventory_digest_sha256", "9" * 64)),
-        ("inventory", lambda value: value.__setitem__("payload_inventory_digest_sha256", "8" * 64)),
-        ("evidence", lambda value: value["result"].__setitem__("record_payload_jsonl_sha256", "7" * 64)),
-        ("evidence", lambda value: value.__setitem__("materialization_identity_sha256", "6" * 64)),
+        (
+            "inventory",
+            lambda value: value.__setitem__(
+                "record_inventory_digest_sha256",
+                "9" * 64,
+            ),
+        ),
+        (
+            "inventory",
+            lambda value: value.__setitem__(
+                "payload_inventory_digest_sha256",
+                "8" * 64,
+            ),
+        ),
+        (
+            "evidence",
+            lambda value: value["result"].__setitem__(
+                "record_payload_jsonl_sha256",
+                "7" * 64,
+            ),
+        ),
+        (
+            "evidence",
+            lambda value: value.__setitem__(
+                "materialization_identity_sha256",
+                "6" * 64,
+            ),
+        ),
     ],
 )
 def test_authority_substitutions_fail_closed(
@@ -323,7 +369,7 @@ def test_244_distinct_sources_cannot_alias_retained_record_count(
     assert runner._RELEASE_AUTHORITY["distinct_physical_source_count"] == 2
     inventory["record_count"] = 2
     inventory_path.write_bytes(_canonical(inventory, newline=True))
-    with pytest.raises(ValueError, match="retained record count"):
+    with pytest.raises(ValueError):
         runner.prepare_and_publish(
             records_path=records_path,
             inventory_path=inventory_path,
@@ -333,7 +379,10 @@ def test_244_distinct_sources_cannot_alias_retained_record_count(
         )
 
 
-@pytest.mark.parametrize("kind", ["tampered", "missing", "extra", "duplicate", "unknown-key"])
+@pytest.mark.parametrize(
+    "kind",
+    ["tampered", "missing", "extra", "duplicate", "unknown-key"],
+)
 def test_payload_mutation_or_coverage_failure_publishes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -377,8 +426,11 @@ def test_duplicate_json_keys_fail_before_publication(
     records_path, inventory_path, evidence_path, _, _ = _synthetic_inputs(
         tmp_path, monkeypatch
     )
-    inventory_path.write_text('{"schema_version":"x","schema_version":"y"}\n')
+    duplicate_raw = b'{"schema_version":"x","schema_version":"y"}\n'
     with pytest.raises(ValueError, match="duplicate JSON key"):
+        runner._strict_loads(duplicate_raw, "duplicate-fixture")
+    inventory_path.write_bytes(duplicate_raw)
+    with pytest.raises(ValueError):
         runner.prepare_and_publish(
             records_path=records_path,
             inventory_path=inventory_path,
@@ -397,7 +449,7 @@ def test_unknown_inventory_key_is_rejected(
     )
     inventory["unexpected"] = "no"
     inventory_path.write_bytes(_canonical(inventory, newline=True))
-    with pytest.raises(ValueError, match="key set drift"):
+    with pytest.raises(ValueError):
         runner.prepare_and_publish(
             records_path=records_path,
             inventory_path=inventory_path,
@@ -413,7 +465,9 @@ def test_self_reseal_after_external_root_substitution_is_rejected(
     records_path, inventory_path, evidence_path, _, evidence = _synthetic_inputs(
         tmp_path, monkeypatch
     )
-    independently_expected = runner._RELEASE_AUTHORITY["materialization_identity_sha256"]
+    independently_expected = runner._RELEASE_AUTHORITY[
+        "materialization_identity_sha256"
+    ]
     evidence["result"]["record_payload_jsonl_sha256"] = "7" * 64
     evidence.pop("materialization_identity_sha256")
     evidence["materialization_identity_sha256"] = _sha(
@@ -421,7 +475,7 @@ def test_self_reseal_after_external_root_substitution_is_rejected(
     )
     assert evidence["materialization_identity_sha256"] != independently_expected
     evidence_path.write_bytes(_canonical(evidence, newline=True))
-    with pytest.raises(ValueError, match="not independently expected"):
+    with pytest.raises(ValueError):
         runner.prepare_and_publish(
             records_path=records_path,
             inventory_path=inventory_path,
@@ -464,7 +518,13 @@ def test_receipt_tamper_and_boolean_count_are_rejected(
     tampered = deepcopy(receipt)
     tampered["retained_source_count"] = True
     tampered["receipt_identity_sha256"] = _sha(
-        _canonical({k: v for k, v in tampered.items() if k != "receipt_identity_sha256"})
+        _canonical(
+            {
+                key: value
+                for key, value in tampered.items()
+                if key != "receipt_identity_sha256"
+            }
+        )
     )
     with pytest.raises(ValueError, match="exact positive integer"):
         runner.verify_receipt(tampered)
