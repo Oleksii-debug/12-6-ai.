@@ -125,6 +125,27 @@ def _worker(args: argparse.Namespace) -> int:
     return 0
 
 
+def _write_incomplete(
+    output_root: Path,
+    completed_run_ids: list[str],
+    *,
+    reason: str,
+) -> None:
+    _write_create_only(
+        output_root / "incomplete.json",
+        {
+            "schema_version": "12-6.d03-rada-two-clean-incomplete.v1",
+            "status": "INCOMPLETE_NO_SURVIVOR_AUTHORITY",
+            "reason": reason,
+            "completed_run_ids": list(completed_run_ids),
+            "canonical_capacity_credited": 0,
+            "authorized_optimized_target_exposure": 0,
+            "training_executed": False,
+            "paid_compute_used": False,
+        },
+    )
+
+
 def _run_two_clean(args: argparse.Namespace) -> int:
     try:
         args.output_root.mkdir(parents=True, exist_ok=False)
@@ -154,26 +175,25 @@ def _run_two_clean(args: argparse.Namespace) -> int:
             )
             completed.append(run_id)
     except (OSError, subprocess.CalledProcessError) as exc:
-        incomplete = {
-            "schema_version": "12-6.d03-rada-two-clean-incomplete.v1",
-            "status": "INCOMPLETE_NO_SURVIVOR_AUTHORITY",
-            "completed_run_ids": completed,
-            "canonical_capacity_credited": 0,
-            "authorized_optimized_target_exposure": 0,
-            "training_executed": False,
-            "paid_compute_used": False,
-        }
-        _write_create_only(args.output_root / "incomplete.json", incomplete)
+        _write_incomplete(args.output_root, completed, reason="worker_execution_failed")
         raise RadaTwoCleanExecutionError("two-clean execution did not complete") from exc
 
-    first = _read_json(args.output_root / "clean-a" / "run-receipt.json")
-    second = _read_json(args.output_root / "clean-b" / "run-receipt.json")
-    authority = build_two_clean_authority(first, second)
+    try:
+        first = _read_json(args.output_root / "clean-a" / "run-receipt.json")
+        second = _read_json(args.output_root / "clean-b" / "run-receipt.json")
+        authority = build_two_clean_authority(first, second)
 
-    first_survivor = _read_json(args.output_root / "clean-a" / "survivor-authority.json")
-    second_survivor = _read_json(args.output_root / "clean-b" / "survivor-authority.json")
-    if first_survivor != second_survivor:
-        raise RadaTwoCleanExecutionError("two-clean survivor artifact bytes differ")
+        first_survivor = _read_json(args.output_root / "clean-a" / "survivor-authority.json")
+        second_survivor = _read_json(args.output_root / "clean-b" / "survivor-authority.json")
+        if first_survivor != second_survivor:
+            raise RadaTwoCleanExecutionError("two-clean survivor artifact bytes differ")
+    except RadaTwoCleanExecutionError:
+        _write_incomplete(
+            args.output_root,
+            completed,
+            reason="post_run_convergence_failed",
+        )
+        raise
 
     _write_create_only(args.output_root / "survivor-authority.json", first_survivor)
     _write_create_only(args.output_root / "two-clean-authority.json", authority)
