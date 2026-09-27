@@ -13,7 +13,7 @@ import re
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +66,7 @@ _POINTER_FIELDS = {
     "launch_manifest_sha256",
     "global_lease_ref",
     "global_lease_remote_tip",
+    "global_lease_expires_at_utc",
     "current_run_identity",
 }
 _POINTER_STATUSES = {"ACTIVE", "RETIRED"}
@@ -87,6 +88,7 @@ class CurrentRunAuthorityInspection:
     launch_manifest_sha256: str | None
     global_lease_ref: str | None
     global_lease_remote_tip: str | None
+    global_lease_expires_at_utc: str | None
     run_id: str | None
     recovery_run_manifest_sha256: str | None
     current_run_identity_sha256: str | None
@@ -136,6 +138,24 @@ def _token(value: Any) -> bool:
 
 def _exact_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _parse_utc_second(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+    return parsed
+
+
+def _normalized_now(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime.now(UTC).replace(microsecond=0)
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("now_must_be_timezone_aware")
+    return value.astimezone(UTC).replace(microsecond=0)
 
 
 def _base_manifest_digest(manifest: Mapping[str, Any]) -> str:
@@ -256,6 +276,7 @@ def build_current_run_pointer_state(
     current_run_identity: Mapping[str, Any],
     *,
     generation: int,
+    global_lease_expires_at_utc: str,
     status: str = "ACTIVE",
 ) -> dict[str, Any]:
     manifest_errors = validate_launch_manifest(manifest)
@@ -282,6 +303,8 @@ def build_current_run_pointer_state(
         raise ValueError("global_lease_remote_tip_invalid")
     if global_lease.run_id != current_run_identity.get("run_id"):
         raise ValueError("global_lease_run_id_mismatch")
+    if _parse_utc_second(global_lease_expires_at_utc) is None:
+        raise ValueError("global_lease_expires_at_utc_invalid")
     identities = manifest.get("identities")
     if not isinstance(identities, Mapping):
         raise ValueError("manifest_identities_missing")
@@ -316,6 +339,7 @@ def build_current_run_pointer_state(
         "launch_manifest_sha256": digest,
         "global_lease_ref": expected_ref,
         "global_lease_remote_tip": global_lease.remote_tip,
+        "global_lease_expires_at_utc": global_lease_expires_at_utc,
         "current_run_identity": dict(current_run_identity),
     }
     state["pointer_identity_sha256"] = _pointer_digest(state)
@@ -348,6 +372,13 @@ def validate_current_run_pointer_state(state: Mapping[str, Any]) -> tuple[str, .
         errors.append("current_run_pointer_global_lease_ref_invalid")
     if not _git_sha(state.get("global_lease_remote_tip")):
         errors.append("current_run_pointer_global_lease_tip_invalid")
+    if _parse_utc_second(state.get("global_lease_expires_at_utc")) is None:
+        errors.append("current_run_pointer_global_lease_expiry_invalid")
+    digest = state.get("launch_manifest_sha256")
+    if isinstance(ref, str) and _sha256(digest):
+        expected_ref = f"refs/heads/ts6-training-run-lease-v1/{digest}"
+        if ref != expected_ref:
+            errors.append("current_run_pointer_global_lease_ref_manifest_mismatch")
     identity = state.get("current_run_identity")
     if not isinstance(identity, Mapping):
         errors.append("current_run_identity_missing_or_not_object")
@@ -441,6 +472,8 @@ def _read_pointer_state(
 def inspect_current_run_authority(
     repo_root: str | Path,
     remote: str,
+    *,
+    now: datetime | None = None,
 ) -> CurrentRunAuthorityInspection:
     _validate_transport(remote)
     try:
@@ -457,6 +490,7 @@ def inspect_current_run_authority(
             launch_manifest_sha256=None,
             global_lease_ref=None,
             global_lease_remote_tip=None,
+            global_lease_expires_at_utc=None,
             run_id=None,
             recovery_run_manifest_sha256=None,
             current_run_identity_sha256=None,
@@ -474,6 +508,7 @@ def inspect_current_run_authority(
             launch_manifest_sha256=None,
             global_lease_ref=None,
             global_lease_remote_tip=None,
+            global_lease_expires_at_utc=None,
             run_id=None,
             recovery_run_manifest_sha256=None,
             current_run_identity_sha256=None,
@@ -481,10 +516,29 @@ def inspect_current_run_authority(
         )
     tip, state = snapshot
     identity = state["current_run_identity"]
+    active = state["status"] == "ACTIVE"
+    blockers: list[str] = []
+    if active:
+        try:
+            observed_global_tip = _remote_tip(
+                repo_root,
+                remote,
+                str(state["global_lease_ref"]),
+            )
+        except Exception as exc:
+            blockers.append(f"current_run_global_lease_tip_read_failed:{exc}")
+        else:
+            if observed_global_tip != state["global_lease_remote_tip"]:
+                blockers.append("current_run_global_lease_tip_changed")
+        expiry = _parse_utc_second(state["global_lease_expires_at_utc"])
+        current = _normalized_now(now)
+        if expiry is None or current >= expiry:
+            blockers.append("current_run_global_lease_expired")
+    valid = not blockers
     return CurrentRunAuthorityInspection(
         present=True,
-        valid=True,
-        active=state["status"] == "ACTIVE",
+        valid=valid,
+        active=active and valid,
         ref=CURRENT_RUN_POINTER_REF,
         remote_tip=tip,
         generation=int(state["generation"]),
@@ -492,10 +546,11 @@ def inspect_current_run_authority(
         launch_manifest_sha256=str(state["launch_manifest_sha256"]),
         global_lease_ref=str(state["global_lease_ref"]),
         global_lease_remote_tip=str(state["global_lease_remote_tip"]),
+        global_lease_expires_at_utc=str(state["global_lease_expires_at_utc"]),
         run_id=str(identity["run_id"]),
         recovery_run_manifest_sha256=str(identity["recovery_run_manifest_sha256"]),
         current_run_identity_sha256=str(identity["identity_sha256"]),
-        blockers=(),
+        blockers=tuple(blockers),
     )
 
 
@@ -683,6 +738,9 @@ def activate_current_run_authority(
             global_lease,
             identity_snapshot,
             generation=generation,
+            global_lease_expires_at_utc=str(
+                global_snapshot.lease["expires_at_utc"]
+            ),
         )
         candidate_tip = _write_pointer_commit(
             repo_root,
@@ -722,7 +780,7 @@ def activate_current_run_authority(
             run_id=str(identity_snapshot["run_id"]),
             identity_sha256=str(identity_snapshot["identity_sha256"]),
         )
-    reread = inspect_current_run_authority(repo_root, remote)
+    reread = inspect_current_run_authority(repo_root, remote, now=now)
     verified = (
         reread.valid
         and reread.active
