@@ -42,6 +42,9 @@ _AUTHORITY_KEYS = frozenset(
         "indexed_module",
         "indexed_module_git_blob_sha1",
         "v3_module",
+        "max_candidate_pairs",
+        "max_index_postings",
+        "max_pair_expansions",
         "canonical_capacity_credit",
         "authorized_optimized_target_exposure",
         "training_executed",
@@ -197,6 +200,9 @@ def validate_dependency_authority(
         type(authority["v3_module"]) is str and bool(authority["v3_module"]),
         "v3_module missing",
     )
+    _exact_positive_int(authority["max_candidate_pairs"], "max_candidate_pairs")
+    _exact_positive_int(authority["max_index_postings"], "max_index_postings")
+    _exact_positive_int(authority["max_pair_expansions"], "max_pair_expansions")
     _require(
         authority["canonical_capacity_credit"] == 0
         and type(authority["canonical_capacity_credit"]) is int,
@@ -349,9 +355,6 @@ def execute_once(
     candidate_jsonl: Path,
     quality_report: Path,
     execution_evidence: Path,
-    max_candidate_pairs: int,
-    max_index_postings: int,
-    max_pair_expansions: int,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Execute one clean, authority-bound Rada indexed-dedup process."""
     _require(type(run_id) is str and bool(run_id), "run_id must be non-empty text")
@@ -410,9 +413,9 @@ def execute_once(
         v3,
         inventory,
         payloads,
-        max_candidate_pairs=max_candidate_pairs,
-        max_index_postings=max_index_postings,
-        max_pair_expansions=max_pair_expansions,
+        max_candidate_pairs=authority["max_candidate_pairs"],
+        max_index_postings=authority["max_index_postings"],
+        max_pair_expansions=authority["max_pair_expansions"],
     )
     match_seconds = time.perf_counter() - match_started
     verify = getattr(v3, "verify_report", None)
@@ -433,6 +436,11 @@ def execute_once(
         "inventory_raw_sha256": expected_inventory_sha256,
         "source_object_count": source_count,
         "source_payload_utf8_bytes": source_bytes,
+        "work_limits": {
+            "max_candidate_pairs": authority["max_candidate_pairs"],
+            "max_index_postings": authority["max_index_postings"],
+            "max_pair_expansions": authority["max_pair_expansions"],
+        },
         "v3_report_sha256": report["report_sha256"],
         "survivor_authority_sha256": survivor["survivor_authority_sha256"],
         "survivor_source_object_count": survivor["post_dedup_survivor_source_object_count"],
@@ -490,6 +498,12 @@ def build_two_clean_authority(
         )
         _require(receipt.get("raw_text_emitted") is False, f"{label} receipt emitted raw text")
         _require(
+            receipt.get("resource_measurement_complete") is True
+            and type(receipt.get("process_max_rss_kib")) is int
+            and receipt.get("process_max_rss_kib") > 0,
+            f"{label} receipt lacks terminal max-RSS evidence",
+        )
+        _require(
             receipt.get("canonical_capacity_credited") == 0
             and receipt.get("authorized_optimized_target_exposure") == 0,
             f"{label} receipt widened scientific authority",
@@ -501,6 +515,7 @@ def build_two_clean_authority(
         "inventory_raw_sha256",
         "source_object_count",
         "source_payload_utf8_bytes",
+        "work_limits",
         "v3_report_sha256",
         "survivor_authority_sha256",
         "survivor_source_object_count",
@@ -528,6 +543,7 @@ def build_two_clean_authority(
         "survivor_authority_sha256": first_receipt["survivor_authority_sha256"],
         "source_object_count": first_receipt["source_object_count"],
         "source_payload_utf8_bytes": first_receipt["source_payload_utf8_bytes"],
+        "work_limits": first_receipt["work_limits"],
         "survivor_source_object_count": first_receipt["survivor_source_object_count"],
         "survivor_declared_capacity_bytes": first_receipt[
             "survivor_declared_capacity_bytes"
