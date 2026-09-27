@@ -270,8 +270,6 @@ def _resolve_eval303_rows(
     membership: list[dict[str, Any]],
     ua_rows: list[dict[str, Any]],
     en_rows: list[dict[str, Any]],
-    *,
-    payload_resolution: str,
 ) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     payload_by_record: dict[str, dict[str, str]] = {}
     for row in ua_rows:
@@ -351,12 +349,10 @@ def _resolve_eval303_rows(
         "eval290_head_sha": EVAL290_HEAD,
         "eval290_artifact_id": EVAL290_ARTIFACT_ID,
         "eval290_artifact_sha256": EVAL290_ARTIFACT_SHA256,
-        "eval290_payload_resolution": payload_resolution,
         "eval290_set_identity_sha256": EVAL290_SET_ID,
         "eval291_head_sha": EVAL291_HEAD,
         "eval291_artifact_id": EVAL291_ARTIFACT_ID,
         "eval291_artifact_sha256": EVAL291_ARTIFACT_SHA256,
-        "eval291_payload_resolution": payload_resolution,
         "eval291_authority_identity_sha256": EVAL291_AUTHORITY_ID,
         "documents": len(matcher_rows),
         "modality_documents": {"ua": EXPECTED_UA_RECORDS, "en": EXPECTED_EN_RECORDS, "code": 0},
@@ -382,12 +378,7 @@ def resolve_eval303_selection_payloads(
     membership, _ = _load_membership(eval303_membership_jsonl)
     ua_rows, _ = _load_eval290(eval290_artifact_zip)
     en_rows, _ = _load_eval291(eval291_artifact_zip)
-    return _resolve_eval303_rows(
-        membership,
-        ua_rows,
-        en_rows,
-        payload_resolution="HISTORICAL_ARTIFACT_ZIP",
-    )
+    return _resolve_eval303_rows(membership, ua_rows, en_rows)
 
 
 def resolve_eval303_selection_payloads_from_reconstructed(
@@ -415,9 +406,4 @@ def resolve_eval303_selection_payloads_from_reconstructed(
         eval291_data_jsonl,
         eval291_authority_json,
     )
-    return _resolve_eval303_rows(
-        membership,
-        ua_rows,
-        en_rows,
-        payload_resolution="EXACT_HEAD_RECONSTRUCTION",
-    )
+    return _resolve_eval303_rows(membership, ua_rows, en_rows)
