@@ -486,6 +486,8 @@ def _global_lease_binding_blockers(
     tip = str(state["global_lease_remote_tip"])
     try:
         raw = _fetch_remote_commit(repo_root, remote, ref, tip)
+        if _remote_tip(repo_root, remote, ref) != tip:
+            return ("current_run_global_lease_tip_changed_during_read",)
     except _GlobalLeaseFailure as exc:
         return (f"current_run_global_lease_read_failed:{exc.blocker}",)
     if hashlib.sha256(raw).hexdigest() != state["global_lease_state_sha256"]:
