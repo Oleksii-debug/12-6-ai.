@@ -217,13 +217,24 @@ def test_pointer_state_binds_incumbent_manifest_global_lease_and_run() -> None:
 
     wrong_run = _global_inspection(manifest, run_id="run-b")
     with pytest.raises(ValueError, match="global_lease_run_id_mismatch"):
-        build_current_run_pointer_state(manifest, wrong_run, identity, generation=1, global_lease_expires_at_utc="2026-09-27T14:00:00Z")
+        build_current_run_pointer_state(
+            manifest,
+            wrong_run,
+            identity,
+            generation=1,
+            global_lease_expires_at_utc="2026-09-27T14:00:00Z",
+        )
 
     wrong_ref = deepcopy(global_lease)
     object.__setattr__(wrong_ref, "ref", "refs/heads/attacker")
     with pytest.raises(ValueError, match="global_lease_ref_mismatch"):
-        build_current_run_pointer_state(manifest, wrong_ref, identity, generation=1, global_lease_expires_at_utc="2026-09-27T14:00:00Z")
-
+        build_current_run_pointer_state(
+            manifest,
+            wrong_ref,
+            identity,
+            generation=1,
+            global_lease_expires_at_utc="2026-09-27T14:00:00Z",
+        )
 
 
 def test_base_manifest_substitution_fails_under_fixed_run_identity() -> None:
@@ -238,6 +249,7 @@ def test_base_manifest_substitution_fails_under_fixed_run_identity() -> None:
             _global_inspection(substituted),
             identity,
             generation=1,
+            global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
 def test_pointer_decoder_rejects_noncanonical_and_unknown_fields() -> None:
@@ -474,15 +486,22 @@ def test_boolean_generation_and_source_or_binding_substitution_fail_closed() -> 
     wrong_source = _identity(source_git_sha="c" * 40)
     with pytest.raises(ValueError, match="current_run_source_git_sha_mismatch"):
         build_current_run_pointer_state(
-            manifest, _global_inspection(manifest), wrong_source, generation=1
+            manifest,
+            _global_inspection(manifest),
+            wrong_source,
+            generation=1,
+            global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
     wrong_binding = _identity(binding="f" * 64)
     with pytest.raises(ValueError, match="current_run_portable_binding_mismatch"):
         build_current_run_pointer_state(
-            manifest, _global_inspection(manifest), wrong_binding, generation=1
+            manifest,
+            _global_inspection(manifest),
+            wrong_binding,
+            generation=1,
+            global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
-
 
 
 def test_activation_rejects_candidate_selected_current_run_identity_root(
