@@ -30,6 +30,8 @@ def _write_create_only(path: Path, value: Mapping[str, Any]) -> None:
             handle.write(_canonical_bytes(dict(value)))
     except FileExistsError as exc:
         raise RadaTwoCleanExecutionError(f"refusing to overwrite output: {path}") from exc
+    except OSError as exc:
+        raise RadaTwoCleanExecutionError(f"cannot write output: {path}") from exc
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -191,20 +193,24 @@ def _run_two_clean(args: argparse.Namespace) -> int:
         second = _read_json(args.output_root / "clean-b" / "run-receipt.json")
         authority = build_two_clean_authority(first, second)
 
-        first_survivor = _read_json(args.output_root / "clean-a" / "survivor-authority.json")
-        second_survivor = _read_json(args.output_root / "clean-b" / "survivor-authority.json")
+        first_survivor_path = args.output_root / "clean-a" / "survivor-authority.json"
+        second_survivor_path = args.output_root / "clean-b" / "survivor-authority.json"
+        first_survivor = _read_json(first_survivor_path)
+        second_survivor = _read_json(second_survivor_path)
         if first_survivor != second_survivor:
+            raise RadaTwoCleanExecutionError("two-clean survivor artifacts differ")
+        if first_survivor_path.read_bytes() != second_survivor_path.read_bytes():
             raise RadaTwoCleanExecutionError("two-clean survivor artifact bytes differ")
-    except RadaTwoCleanExecutionError:
+        _write_create_only(args.output_root / "two-clean-authority.json", authority)
+    except (OSError, RadaTwoCleanExecutionError) as exc:
         _write_incomplete(
             args.output_root,
             completed,
             reason="post_run_convergence_failed",
         )
-        raise
-
-    _write_create_only(args.output_root / "survivor-authority.json", first_survivor)
-    _write_create_only(args.output_root / "two-clean-authority.json", authority)
+        if isinstance(exc, RadaTwoCleanExecutionError):
+            raise
+        raise RadaTwoCleanExecutionError("cannot finalize two-clean authority") from exc
     print(
         json.dumps(
             {
