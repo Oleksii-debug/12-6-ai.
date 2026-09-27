@@ -175,7 +175,7 @@ jobs:
           )
           module.validate_evidence(evidence, config)
           Path("/tmp/nbu-discovery-evidence.json").write_text(
-              json.dumps(evidence, ensure_ascii=False, indent=2) + "\\n",
+              json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
               encoding="utf-8",
           )
           Path("/tmp/nbu-catalog-pages.json").write_text(
@@ -189,7 +189,7 @@ jobs:
                   sort_keys=True,
                   separators=(",", ":"),
               )
-              + "\\n",
+              + "\n",
               encoding="utf-8",
           )
           print(
