@@ -129,16 +129,15 @@ def _load_membership(path: Path) -> tuple[list[dict[str, Any]], bytes]:
     return rows, raw
 
 
-def _load_eval290(artifact: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    raw_zip = artifact.read_bytes()
-    _require(_sha256(raw_zip) == EVAL290_ARTIFACT_SHA256, "EVAL-290 artifact ZIP identity drift")
-    with zipfile.ZipFile(artifact) as archive:
-        data_raw = _read_exact_zip_member(archive, EVAL290_DATA_PATH, EVAL290_DATA_SHA256)
-        manifest_raw = _read_exact_zip_member(
-            archive,
-            EVAL290_MANIFEST_PATH,
-            EVAL290_MANIFEST_SHA256,
-        )
+def _parse_eval290_materialization(
+    data_raw: bytes,
+    manifest_raw: bytes,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    _require(_sha256(data_raw) == EVAL290_DATA_SHA256, "EVAL-290 data SHA-256 drift")
+    _require(
+        _sha256(manifest_raw) == EVAL290_MANIFEST_SHA256,
+        "EVAL-290 manifest SHA-256 drift",
+    )
     manifest = _parse_json_object(manifest_raw, "EVAL-290 manifest")
     _require(manifest.get("set_identity_sha256") == EVAL290_SET_ID, "EVAL-290 set identity drift")
     _require(manifest.get("documents") == EXPECTED_UA_RECORDS, "EVAL-290 document count drift")
@@ -164,16 +163,43 @@ def _load_eval290(artifact: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]
     return rows, manifest
 
 
-def _load_eval291(artifact: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _load_eval290(artifact: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     raw_zip = artifact.read_bytes()
-    _require(_sha256(raw_zip) == EVAL291_ARTIFACT_SHA256, "EVAL-291 artifact ZIP identity drift")
+    _require(
+        _sha256(raw_zip) == EVAL290_ARTIFACT_SHA256,
+        "EVAL-290 artifact ZIP identity drift",
+    )
     with zipfile.ZipFile(artifact) as archive:
-        data_raw = _read_exact_zip_member(archive, EVAL291_DATA_PATH, EVAL291_DATA_SHA256)
-        authority_raw = _read_exact_zip_member(
-            archive,
-            EVAL291_AUTHORITY_PATH,
-            EVAL291_AUTHORITY_SHA256,
+        data_raw = _read_exact_zip_member(
+            archive, EVAL290_DATA_PATH, EVAL290_DATA_SHA256
         )
+        manifest_raw = _read_exact_zip_member(
+            archive,
+            EVAL290_MANIFEST_PATH,
+            EVAL290_MANIFEST_SHA256,
+        )
+    return _parse_eval290_materialization(data_raw, manifest_raw)
+
+
+def _load_eval290_reconstructed(
+    data_path: Path,
+    manifest_path: Path,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    return _parse_eval290_materialization(
+        data_path.read_bytes(),
+        manifest_path.read_bytes(),
+    )
+
+
+def _parse_eval291_materialization(
+    data_raw: bytes,
+    authority_raw: bytes,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    _require(_sha256(data_raw) == EVAL291_DATA_SHA256, "EVAL-291 data SHA-256 drift")
+    _require(
+        _sha256(authority_raw) == EVAL291_AUTHORITY_SHA256,
+        "EVAL-291 authority SHA-256 drift",
+    )
     authority = _parse_json_object(authority_raw, "EVAL-291 authority")
     _require(
         authority.get("authority_identity_sha256") == EVAL291_AUTHORITY_ID,
@@ -212,16 +238,41 @@ def _load_eval291(artifact: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]
     return rows, authority
 
 
-def resolve_eval303_selection_payloads(
-    eval290_artifact_zip: Path,
-    eval291_artifact_zip: Path,
-    eval303_membership_jsonl: Path,
-) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
-    """Resolve ten terminal selection records for decontamination-only use."""
-    membership, _ = _load_membership(eval303_membership_jsonl)
-    ua_rows, _ = _load_eval290(eval290_artifact_zip)
-    en_rows, _ = _load_eval291(eval291_artifact_zip)
+def _load_eval291(artifact: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    raw_zip = artifact.read_bytes()
+    _require(
+        _sha256(raw_zip) == EVAL291_ARTIFACT_SHA256,
+        "EVAL-291 artifact ZIP identity drift",
+    )
+    with zipfile.ZipFile(artifact) as archive:
+        data_raw = _read_exact_zip_member(
+            archive, EVAL291_DATA_PATH, EVAL291_DATA_SHA256
+        )
+        authority_raw = _read_exact_zip_member(
+            archive,
+            EVAL291_AUTHORITY_PATH,
+            EVAL291_AUTHORITY_SHA256,
+        )
+    return _parse_eval291_materialization(data_raw, authority_raw)
 
+
+def _load_eval291_reconstructed(
+    data_path: Path,
+    authority_path: Path,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    return _parse_eval291_materialization(
+        data_path.read_bytes(),
+        authority_path.read_bytes(),
+    )
+
+
+def _resolve_eval303_rows(
+    membership: list[dict[str, Any]],
+    ua_rows: list[dict[str, Any]],
+    en_rows: list[dict[str, Any]],
+    *,
+    payload_resolution: str,
+) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     payload_by_record: dict[str, dict[str, str]] = {}
     for row in ua_rows:
         record_id = str(row["record_id"])
@@ -300,10 +351,12 @@ def resolve_eval303_selection_payloads(
         "eval290_head_sha": EVAL290_HEAD,
         "eval290_artifact_id": EVAL290_ARTIFACT_ID,
         "eval290_artifact_sha256": EVAL290_ARTIFACT_SHA256,
+        "eval290_payload_resolution": payload_resolution,
         "eval290_set_identity_sha256": EVAL290_SET_ID,
         "eval291_head_sha": EVAL291_HEAD,
         "eval291_artifact_id": EVAL291_ARTIFACT_ID,
         "eval291_artifact_sha256": EVAL291_ARTIFACT_SHA256,
+        "eval291_payload_resolution": payload_resolution,
         "eval291_authority_identity_sha256": EVAL291_AUTHORITY_ID,
         "documents": len(matcher_rows),
         "modality_documents": {"ua": EXPECTED_UA_RECORDS, "en": EXPECTED_EN_RECORDS, "code": 0},
@@ -318,3 +371,53 @@ def resolve_eval303_selection_payloads(
     }
     evidence_core["resolver_identity_sha256"] = _sha256(_canonical_bytes(evidence_core))
     return matcher_rows, reserved_set, evidence_core
+
+
+def resolve_eval303_selection_payloads(
+    eval290_artifact_zip: Path,
+    eval291_artifact_zip: Path,
+    eval303_membership_jsonl: Path,
+) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
+    """Resolve terminal selection rows from the original immutable artifact ZIPs."""
+    membership, _ = _load_membership(eval303_membership_jsonl)
+    ua_rows, _ = _load_eval290(eval290_artifact_zip)
+    en_rows, _ = _load_eval291(eval291_artifact_zip)
+    return _resolve_eval303_rows(
+        membership,
+        ua_rows,
+        en_rows,
+        payload_resolution="HISTORICAL_ARTIFACT_ZIP",
+    )
+
+
+def resolve_eval303_selection_payloads_from_reconstructed(
+    *,
+    eval290_data_jsonl: Path,
+    eval290_manifest_json: Path,
+    eval291_data_jsonl: Path,
+    eval291_authority_json: Path,
+    eval303_membership_jsonl: Path,
+) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
+    """Resolve selection rows from exact-head reconstructed component bytes.
+
+    This path exists because Actions artifacts are retention-bounded.  It does not
+    relax component authority: all inner payload/manifest hashes, set identities,
+    reservation firewalls, EVAL-303 membership and per-record content hashes remain
+    exact.  Callers are responsible for obtaining the bytes from the pinned component
+    Git heads and, for EVAL-290, rerunning its frozen deterministic materializer.
+    """
+    membership, _ = _load_membership(eval303_membership_jsonl)
+    ua_rows, _ = _load_eval290_reconstructed(
+        eval290_data_jsonl,
+        eval290_manifest_json,
+    )
+    en_rows, _ = _load_eval291_reconstructed(
+        eval291_data_jsonl,
+        eval291_authority_json,
+    )
+    return _resolve_eval303_rows(
+        membership,
+        ua_rows,
+        en_rows,
+        payload_resolution="EXACT_HEAD_RECONSTRUCTION",
+    )
