@@ -10,9 +10,9 @@ import tools.model341_current_main_resource_receipt_v1 as receipt_module
 from tools.model341_current_main_resource_receipt_v1 import (
     EXPECTED_CAPTURE,
     EXPECTED_PROBE_REPORT_SHA256,
+    EXPECTED_RUNTIME_PROJECT,
     MEASUREMENT_AUTHORITY_COMMENT_ID,
     MEASUREMENT_AUTHORITY_SHA256,
-    EXPECTED_RUNTIME_PROJECT,
     canonical_json_sha256,
     measurement_authority_payload,
     runtime_project_projection,
@@ -213,4 +213,32 @@ def test_raw_receipt_rejects_overflowed_json_number(tmp_path: Path) -> None:
     path = _write_raw_receipt(tmp_path, invalid)
 
     with pytest.raises(ValueError, match="non-finite JSON number rejected"):
+        validate_receipt_file(path)
+
+
+def test_current_checkout_compatibility_rejects_model_byte_drift(
+    tmp_path: Path,
+) -> None:
+    model_source = ROOT / "src/twelve_six/model.py"
+    model_target = tmp_path / "src/twelve_six/model.py"
+    model_target.parent.mkdir(parents=True)
+    model_target.write_bytes(model_source.read_bytes() + b"\n")
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="current checkout model.py identity mismatch"):
+        validate_current_checkout_compatibility(tmp_path)
+
+
+def test_raw_receipt_rejects_non_object_document(tmp_path: Path) -> None:
+    path = _write_raw_receipt(tmp_path, "[]")
+
+    with pytest.raises(ValueError, match="receipt must be an object"):
         validate_receipt_file(path)
