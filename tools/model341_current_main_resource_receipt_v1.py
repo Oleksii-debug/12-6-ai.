@@ -58,6 +58,27 @@ def canonical_json_sha256(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _reject_duplicate_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object member: {key}")
+        value[key] = item
+    return value
+
+
+def _reject_nonfinite_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON constant rejected: {value}")
+
+
+def strict_json_loads(text: str) -> Any:
+    return json.loads(
+        text,
+        object_pairs_hook=_reject_duplicate_object_pairs,
+        parse_constant=_reject_nonfinite_constant,
+    )
+
+
 def measurement_authority_payload(receipt: dict[str, Any]) -> dict[str, Any]:
     return {
         "authority_schema": "12-6.model341.current-main-measurement-authority.v1",
@@ -112,7 +133,7 @@ def validate_receipt(receipt: dict[str, Any]) -> None:
 
 
 def validate_receipt_file(path: Path, *, root: Path | None = None) -> dict[str, Any]:
-    receipt = json.loads(path.read_text(encoding="utf-8"))
+    receipt = strict_json_loads(path.read_text(encoding="utf-8"))
     if type(receipt) is not dict:
         raise ValueError("receipt must be an object")
     validate_receipt(receipt)
