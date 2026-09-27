@@ -749,7 +749,9 @@ def bind_preoptimizer_to_run_binding(
         or binding.packet_sha256 is None
         or binding.mode not in {"FRESH_START", "RESUME"}
     ):
-        raise ValueError("preoptimizer finalization requires a runnable preliminary binding")
+        raise ValueError(
+            "preoptimizer finalization requires a runnable preliminary binding"
+        )
     if not _is_sha256(trusted_readiness_bundle_sha256):
         raise ValueError("trusted readiness bundle identity must be 64 lowercase hex")
 
@@ -782,13 +784,22 @@ def bind_preoptimizer_to_run_binding(
     launch_root = packet_binding.get("launch_input_authority_identity_sha256")
     preoptimizer_root = preoptimizer_sha256(preoptimizer_authorities)
     if not _is_sha256(launch_root):
-        blockers = tuple(sorted(set(blockers) | {"binding:launch_input_authority_root_missing"}))
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:launch_input_authority_root_missing"})
+        )
         desired_ready = False
-    if packet_binding.get("trusted_readiness_bundle_sha256") != trusted_readiness_bundle_sha256:
-        blockers = tuple(sorted(set(blockers) | {"binding:trusted_readiness_bundle_root_mismatch"}))
+    if (
+        packet_binding.get("trusted_readiness_bundle_sha256")
+        != trusted_readiness_bundle_sha256
+    ):
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:trusted_readiness_bundle_root_mismatch"})
+        )
         desired_ready = False
     if packet_binding.get("preoptimizer_authorities_sha256") != preoptimizer_root:
-        blockers = tuple(sorted(set(blockers) | {"binding:preoptimizer_authorities_root_mismatch"}))
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:preoptimizer_authorities_root_mismatch"})
+        )
         desired_ready = False
 
     exposed_packet = final_packet if desired_ready else None

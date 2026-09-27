@@ -14,11 +14,11 @@ from twelve_six.portable_run_binding import (
     validate_session_overlay_contract,
 )
 from twelve_six.preoptimizer_authority import PREOPTIMIZER_SCHEMA
-from twelve_six.tokenization.decision_authority import DECISION as TOKENIZER_DECISION
 from twelve_six.readiness_trust_root import (
     authenticated_trusted_launch_bundle,
     trusted_readiness_bundle_sha256,
 )
+from twelve_six.tokenization.decision_authority import DECISION as TOKENIZER_DECISION
 
 ROOT = Path(__file__).resolve().parents[1]
 READINESS = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"

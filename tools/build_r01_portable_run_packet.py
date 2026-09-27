@@ -14,7 +14,6 @@ from typing import Any
 from twelve_six.portable_run_binding import (
     bind_portable_run_packet,
     bind_preoptimizer_to_run_binding,
-    canonical_sha256,
 )
 from twelve_six.preoptimizer_authority import (
     canonical_sha256 as preoptimizer_sha256,
