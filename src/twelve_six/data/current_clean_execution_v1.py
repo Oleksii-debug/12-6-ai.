@@ -302,8 +302,14 @@ def verify_current_clean_composition_receipt(
     receipt: Mapping[str, Any],
     *,
     expected_receipt_identity_sha256: str,
+    expected_data232_report_sha256: str,
+    expected_decontamination_execution_identity_sha256: str,
+    expected_eval647_execution_receipt_identity_sha256: str,
+    expected_quality_execution_identity_sha256: str,
+    expected_privacy_execution_identity_sha256: str,
+    expected_post_decontamination_input_rows_sha256: str,
 ) -> str:
-    """Verify the durable text-free receipt against an independent expected root."""
+    """Verify the receipt and every nested execution root against external pins."""
     _require(isinstance(receipt, Mapping) and set(receipt) == _RECEIPT_KEYS, "receipt schema is not closed")
     _require(receipt.get("schema_version") == COMPOSITION_SCHEMA, "receipt schema drift")
     expected = _require_sha256(expected_receipt_identity_sha256, "expected receipt identity")
@@ -312,7 +318,27 @@ def verify_current_clean_composition_receipt(
     body.pop("receipt_identity_sha256")
     _require(_sha256(_cjson(body)) == claimed, "receipt self-hash mismatch")
     _require(claimed == expected, "receipt identity is not independently expected")
-    _require(receipt.get("dependency_git_blobs") == EXPECTED_DEPENDENCY_BLOBS, "dependency blob binding drift")
+    expected_nested = {
+        "data232_report_sha256": expected_data232_report_sha256,
+        "decontamination_execution_identity_sha256": (
+            expected_decontamination_execution_identity_sha256
+        ),
+        "eval647_execution_receipt_identity_sha256": (
+            expected_eval647_execution_receipt_identity_sha256
+        ),
+        "quality_execution_identity_sha256": expected_quality_execution_identity_sha256,
+        "privacy_execution_identity_sha256": expected_privacy_execution_identity_sha256,
+        "post_decontamination_input_rows_sha256": (
+            expected_post_decontamination_input_rows_sha256
+        ),
+    }
+    for key, value in expected_nested.items():
+        if receipt.get(key) != _require_sha256(value, f"expected {key}"):
+            raise CurrentCleanExecutionError(f"nested execution root drift: {key}")
+    _require(
+        receipt.get("dependency_git_blobs") == EXPECTED_DEPENDENCY_BLOBS,
+        "dependency blob binding drift",
+    )
     _require(receipt.get("durable_evidence_hash_only") is True, "durable evidence boundary weakened")
     _require(receipt.get("current_corpus_launch_authority_promoted") is False, "corpus launch authority fabricated")
     for key in ("authorized_optimized_target_exposure", "optimizer_updates_executed_on_real_targets"):
