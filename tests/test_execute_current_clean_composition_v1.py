@@ -88,7 +88,31 @@ def _executor(*args, **kwargs):
     eval647 = {"receipt_identity_sha256": "d" * 64}
     quality = {"execution_identity_sha256": "e" * 64}
     privacy = {"execution_identity_sha256": "f" * 64}
-    return composition, report, decontam, eval647, quality, privacy
+    survivor_records = [
+        {
+            "record_id": "survivor-1",
+            "source_id": "s1",
+            "family": "f1",
+            "modality": "uk",
+            "normalized_payload": "Дозволений матеріалізований текст",
+        }
+    ]
+    survivor_inventory = {
+        "record_count": 1,
+        "total_payload_bytes": len(
+            survivor_records[0]["normalized_payload"].encode("utf-8")
+        ),
+    }
+    return (
+        composition,
+        report,
+        decontam,
+        eval647,
+        quality,
+        privacy,
+        survivor_records,
+        survivor_inventory,
+    )
 
 
 def test_execute_and_publish_writes_only_text_free_evidence(tmp_path: Path) -> None:
@@ -96,14 +120,21 @@ def test_execute_and_publish_writes_only_text_free_evidence(tmp_path: Path) -> N
     receipt = cli.execute_and_publish(args, _executor)
 
     assert receipt["receipt_identity_sha256"] == "a" * 64
-    assert {path.name for path in args.output_dir.iterdir()} == set(
-        cli.OUTPUT_FILES.values()
+    assert {path.name for path in args.output_dir.iterdir()} == {
+        *cli.OUTPUT_FILES.values(),
+        cli.SURVIVOR_RECORDS_NAME,
+    }
+    evidence = "\n".join(
+        (args.output_dir / filename).read_text(encoding="utf-8")
+        for filename in cli.OUTPUT_FILES.values()
     )
-    published = "\n".join(
-        path.read_text(encoding="utf-8") for path in args.output_dir.iterdir()
+    assert "Секретний сирий навчальний текст" not in evidence
+    assert "SECRET RAW EVALUATION TEXT" not in evidence
+    survivors = (args.output_dir / cli.SURVIVOR_RECORDS_NAME).read_text(
+        encoding="utf-8"
     )
-    assert "Секретний сирий навчальний текст" not in published
-    assert "SECRET RAW EVALUATION TEXT" not in published
+    assert "Дозволений матеріалізований текст" in survivors
+    assert "SECRET RAW EVALUATION TEXT" not in survivors
 
 
 def test_execute_and_publish_refuses_existing_output(tmp_path: Path) -> None:
