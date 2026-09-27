@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from twelve_six.learned20m_current_run_authority import CurrentRunAuthorityInspection
+import twelve_six.windows_operator_preflight as operator
+from twelve_six.learned20m_current_run_authority import (
+    CurrentRunAuthorityInspection,
+)
 from twelve_six.windows_operator_preflight import (
     OperatorPreflightError,
     _TRUTH_BOUNDARY,
@@ -160,6 +163,7 @@ def test_write_failure_leaves_no_final_marker_and_retry_succeeds(
     def fail_write(fd: int, data: object) -> int:
         del fd, data
         raise OSError("synthetic write failure")
+
     monkeypatch.setattr(os, "write", fail_write)
     with pytest.raises(OperatorPreflightError, match="safe_stop_publish_failed"):
         _request(state)
@@ -186,6 +190,7 @@ def test_fsync_failure_leaves_no_final_marker_and_retry_succeeds(
     def fail_fsync(fd: int) -> None:
         del fd
         raise OSError("synthetic fsync failure")
+
     monkeypatch.setattr(os, "fsync", fail_fsync)
     with pytest.raises(OperatorPreflightError, match="safe_stop_publish_failed"):
         _request(state)
@@ -198,3 +203,34 @@ def test_fsync_failure_leaves_no_final_marker_and_retry_succeeds(
 def test_truth_boundary_fixture_still_has_exact_json_scalar_types() -> None:
     assert _TRUTH_BOUNDARY["authorized_optimized_target_exposure"].__class__ is int
     assert _TRUTH_BOUNDARY["training_executed"].__class__ is bool
+
+
+
+def test_status_without_marker_does_not_require_remote_current_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "missing-state"
+
+    def forbidden_resolver(**kwargs: object) -> tuple[str, str, str]:
+        del kwargs
+        raise AssertionError("current-run authority must not be read for no marker")
+
+    monkeypatch.setattr(operator, "_resolve_current_run_identity", forbidden_resolver)
+    code = operator.main(["--state-dir", str(state), "--json", "status"])
+    assert code in {operator.EXIT_OK, operator.EXIT_BLOCKED}
+
+
+def test_status_with_marker_fails_closed_without_current_run_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "STOP_REQUEST.json").write_text("{}", encoding="utf-8")
+
+    def blocked_resolver(**kwargs: object) -> tuple[str, str, str]:
+        del kwargs
+        raise OperatorPreflightError("synthetic_current_run_unavailable")
+
+    monkeypatch.setattr(operator, "_resolve_current_run_identity", blocked_resolver)
+    code = operator.main(["--state-dir", str(state), "--json", "status"])
+    assert code == operator.EXIT_ERROR
