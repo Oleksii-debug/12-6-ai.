@@ -266,6 +266,69 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             )
 
 
+def _canonical_json(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _recompute_survivor_inventory(records: list[dict[str, Any]]) -> dict[str, Any]:
+    expected_keys = {
+        "record_id",
+        "source_id",
+        "family",
+        "modality",
+        "normalized_payload",
+    }
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, record in enumerate(records):
+        if type(record) is not dict or set(record) != expected_keys:
+            raise RuntimeError(f"survivor record[{index}] schema drift")
+        for key in expected_keys:
+            if not isinstance(record[key], str) or not record[key]:
+                raise RuntimeError(f"survivor record[{index}].{key} malformed")
+        record_id = record["record_id"]
+        if record_id in seen:
+            raise RuntimeError(f"duplicate survivor record_id: {record_id}")
+        seen.add(record_id)
+        payload = record["normalized_payload"].encode("utf-8")
+        rows.append(
+            {
+                "record_id": record_id,
+                "source_id": record["source_id"],
+                "family": record["family"],
+                "modality": record["modality"],
+                "payload_sha256": hashlib.sha256(payload).hexdigest(),
+                "payload_bytes": len(payload),
+            }
+        )
+    rows.sort(key=lambda row: row["record_id"])
+    payload_projection = [
+        {
+            "record_id": row["record_id"],
+            "payload_sha256": row["payload_sha256"],
+            "payload_bytes": row["payload_bytes"],
+        }
+        for row in rows
+    ]
+    return {
+        "schema_version": "12-6.data526-record-inventory.v1",
+        "record_count": len(rows),
+        "total_payload_bytes": sum(row["payload_bytes"] for row in rows),
+        "record_inventory_digest_sha256": hashlib.sha256(
+            _canonical_json(rows)
+        ).hexdigest(),
+        "payload_inventory_digest_sha256": hashlib.sha256(
+            _canonical_json(payload_projection)
+        ).hexdigest(),
+        "records": rows,
+    }
+
+
 def _verify_survivor_publication(
     path: Path,
     records: list[dict[str, Any]],
@@ -283,18 +346,19 @@ def _verify_survivor_publication(
     if actual_hash != expected_hash:
         raise RuntimeError("published survivor JSONL differs from execution receipt")
 
-    record_count = len(records)
-    payload_bytes = sum(
-        len(row["normalized_payload"].encode("utf-8"))
-        for row in records
-    )
-    if (
-        type(inventory.get("record_count")) is not int
-        or inventory["record_count"] != record_count
-        or type(inventory.get("total_payload_bytes")) is not int
-        or inventory["total_payload_bytes"] != payload_bytes
+    rebuilt = _recompute_survivor_inventory(records)
+    if inventory != rebuilt:
+        raise RuntimeError("survivor inventory differs from independently rebuilt inventory")
+    for field in (
+        "survivor_record_inventory_digest_sha256",
+        "survivor_payload_inventory_digest_sha256",
     ):
-        raise RuntimeError("survivor inventory/count publication drift")
+        inventory_field = field.removeprefix("survivor_")
+        if composition.get(field) != rebuilt[inventory_field]:
+            raise RuntimeError(f"survivor receipt inventory root drift: {field}")
+
+    record_count = rebuilt["record_count"]
+    payload_bytes = rebuilt["total_payload_bytes"]
     if (
         type(composition.get("survivor_records")) is not int
         or composition["survivor_records"] != record_count
