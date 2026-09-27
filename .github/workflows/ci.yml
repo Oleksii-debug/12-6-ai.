@@ -137,8 +137,11 @@ jobs:
           eval290_out_a="$RUNNER_TEMP/eval290-out-a"
           eval290_out_b="$RUNNER_TEMP/eval290-out-b"
           eval290_lock="$RUNNER_TEMP/eval290-extra.lock.txt"
+          eval290_venv="$RUNNER_TEMP/eval290-venv"
+          eval290_environment="$RUNNER_TEMP/eval290-environment.json"
           eval291_src="$RUNNER_TEMP/eval291-src"
-          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src"
+          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src" "$eval290_venv"
+          rm -f "$eval290_environment"
 
           # Historical Actions artifacts were retention-bounded. Recover authority
           # from immutable Git roots instead of weakening to a newer/unbound payload.
@@ -149,13 +152,21 @@ jobs:
           git -C "$eval290_src" diff --quiet HEAD --
           git -C "$eval290_src" diff --cached --quiet HEAD --
 
+          # Reproduce the frozen producer environment before installing its EVAL290 extra.
+          python "$eval290_src/tools/execution_bootstrap.py" bootstrap \
+            --repo-root "$eval290_src" \
+            --capabilities "runtime,tests" \
+            --venv "$eval290_venv" \
+            --manifest "$eval290_environment"
+
           git -C "$eval290_src" show             "$EVAL290_HEAD_SHA:requirements/locks/linux-x86_64/eval290-extra.lock.txt"             > "$eval290_lock"
-          python -m pip install             --disable-pip-version-check             --require-hashes             --no-deps             -r "$eval290_lock"
+          "$eval290_venv/bin/python" -m pip install             --disable-pip-version-check             --require-hashes             --no-deps             -r "$eval290_lock"
+          "$eval290_venv/bin/python" -c 'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
           for out in "$eval290_out_a" "$eval290_out_b"; do
-            PYTHONPATH="$eval290_src/src" python -m twelve_six.eval290_ua_selection               build --repo-root "$eval290_src" --output-dir "$out"
+            PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python" -m twelve_six.eval290_ua_selection               build --repo-root "$eval290_src" --output-dir "$out"
           done
           diff -ru "$eval290_out_a" "$eval290_out_b"
-          PYTHONPATH="$eval290_src/src" python -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out_a"
+          PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python" -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out_a"
           test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
           test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
 
