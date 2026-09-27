@@ -262,9 +262,6 @@ def test_self_consistent_input_substitution_fails_external_identity_binding() ->
             expected_runtime_dependency_manifest_identity_sha256=(
                 _runtime_dependency_identity()
             ),
-        expected_runtime_dependency_manifest_identity_sha256=(
-            _runtime_dependency_identity()
-        ),
         )
 
 
@@ -328,9 +325,6 @@ def test_runtime_identity_substitution_fails_before_child_spawn() -> None:
             expected_runtime_dependency_manifest_identity_sha256=(
                 _runtime_dependency_identity()
             ),
-        expected_runtime_dependency_manifest_identity_sha256=(
-            _runtime_dependency_identity()
-        ),
         )
 
 
@@ -346,9 +340,6 @@ def test_alternate_python_executable_is_rejected() -> None:
             expected_runtime_dependency_manifest_identity_sha256=(
                 _runtime_dependency_identity()
             ),
-        expected_runtime_dependency_manifest_identity_sha256=(
-            _runtime_dependency_identity()
-        ),
             python_executable=alternate,
         )
 
@@ -419,9 +410,6 @@ def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
         expected_implementation_manifest=_implementation_manifest(),
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
         expected_runtime_dependency_manifest=_runtime_dependency_manifest(),
-        expected_runtime_dependency_manifest_identity_sha256=(
-            _runtime_dependency_identity()
-        ),
         expected_runtime_dependency_manifest_identity_sha256=(
             _runtime_dependency_identity()
         ),
@@ -505,9 +493,6 @@ def test_invalid_timeout_fails_before_spawning_children() -> None:
             expected_runtime_dependency_manifest_identity_sha256=(
                 _runtime_dependency_identity()
             ),
-        expected_runtime_dependency_manifest_identity_sha256=(
-            _runtime_dependency_identity()
-        ),
             timeout_seconds=True,
         )
 
@@ -577,6 +562,9 @@ def test_implementation_source_substitution_fails_external_binding() -> None:
             expected_implementation_manifest_identity_sha256=(
                 _implementation_identity()
             ),
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
+            ),
         )
 
 
@@ -599,6 +587,9 @@ def test_actual_implementation_bytes_are_checked_before_child_spawn() -> None:
             expected_implementation_manifest_identity_sha256=packet[
                 "expected_implementation_manifest_identity_sha256"
             ],
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
+            ),
         )
 
 
