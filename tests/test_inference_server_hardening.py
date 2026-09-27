@@ -9,6 +9,7 @@ from http.client import HTTPConnection
 
 import pytest
 
+from twelve_six.inference import server as server_module
 from twelve_six.inference.server import make_loading_server, make_server
 
 
@@ -152,6 +153,32 @@ def test_loading_readiness_identity_and_draining_are_separate_from_liveness() ->
         assert draining["runtime_state"] == "draining"
         assert completion_status == 503
         assert completion["error"]["code"] == "model_not_ready"  # type: ignore[index]
+
+
+def test_startup_diagnostics_use_runtime_identity_allowlist() -> None:
+    backend = TinyBackend()
+    server = make_server(
+        backend,
+        host="127.0.0.1",
+        port=0,
+        model_name="model341-startup-diagnostics-test",
+    )
+    try:
+        host, port = server.server_address[:2]
+        diagnostics = server_module._startup_diagnostics(
+            server.runtime.model_identity(),
+            host=str(host),
+            port=int(port),
+            model_name=server.model_name,
+            serving=server.runtime.status(),
+        )
+    finally:
+        server.server_close()
+
+    encoded = json.dumps(diagnostics, sort_keys=True)
+    assert diagnostics["backend"]["checkpoint_id"] == "a" * 64  # type: ignore[index]
+    assert "secret_prompt" not in encoded
+    assert "never-expose-me" not in encoded
 
 
 def test_status_endpoint_exposes_counters_without_prompt_content() -> None:
