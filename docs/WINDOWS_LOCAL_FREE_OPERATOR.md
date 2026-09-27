@@ -64,7 +64,7 @@ Infinity are rejected rather than normalized or silently overwritten.
 Request a checkpoint-safe stop without editing trainer/checkpoint internals:
 
 ```text
-python -m twelve_six.windows_operator_preflight request-stop --target 20m --run-manifest PATH\\TO\\run-manifest.json
+python -m twelve_six.windows_operator_preflight request-stop --target 20m --run-manifest PATH\TO\run-manifest.json
 ```
 
 The command first reads the fixed canonical current-run authority ref from the

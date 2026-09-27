@@ -14,6 +14,7 @@ import json
 import math
 import os
 import platform
+import re
 import secrets
 import shutil
 import stat
@@ -44,6 +45,7 @@ EXIT_OK = 0
 EXIT_BLOCKED = 2
 EXIT_ERROR = 3
 _SHA256_HEX = frozenset("0123456789abcdef")
+_UTC_TIMESTAMP = re.compile(r"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$")
 _SAFE_STOP_MARKER_KEYS = frozenset(
     {
         "schema",
@@ -690,15 +692,14 @@ def _resolve_current_run_identity(
 
 
 def _requested_at_utc_valid(value: Any) -> bool:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or _UTC_TIMESTAMP.fullmatch(value) is None:
         return False
-    for pattern in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
-        try:
-            datetime.strptime(value, pattern).replace(tzinfo=UTC)
-        except ValueError:
-            continue
-        return True
-    return False
+    pattern = "%Y-%m-%dT%H:%M:%S.%fZ" if "." in value else "%Y-%m-%dT%H:%M:%SZ"
+    try:
+        datetime.strptime(value, pattern).replace(tzinfo=UTC)
+    except ValueError:
+        return False
+    return True
 
 
 def _marker_payload(

@@ -146,6 +146,11 @@ def test_self_resealed_unknown_marker_field_fails_closed(tmp_path: Path) -> None
         "2026-09-14T20:00Z",
         "2026-09-14T20:00:00+00:00",
         "2026-09-14T20:00:00",
+        "2026-9-14T20:00:00Z",
+        "2026-09-4T20:00:00Z",
+        "2026-09-14T2:00:00Z",
+        "2026-09-14T20:00:00.1234567Z",
+        "2026-02-30T20:00:00Z",
     ],
 )
 def test_self_resealed_noncanonical_requested_at_utc_fails_closed(
