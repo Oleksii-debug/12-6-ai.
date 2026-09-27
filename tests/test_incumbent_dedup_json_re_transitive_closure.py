@@ -126,6 +126,76 @@ def test_loader_rejects_re_maxcache_non_exact_int(monkeypatch: pytest.MonkeyPatc
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+def test_loader_binds_runtime_specific_re_cache2_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    caught: indexed.IndexedExecutionError | None = None
+    if indexed._FROZEN_RE_HAS_CACHE2:
+        original_cache2 = re._cache2
+        with monkeypatch.context() as patch:
+            patch.setattr(re, "_cache2", {})
+            try:
+                indexed._attest_loader_frozen_runtime_dependencies()
+            except indexed.IndexedExecutionError as exc:
+                caught = exc
+        expected = "transitive behavior drift: re._cache2"
+        assert re._cache2 is original_cache2
+    else:
+        with monkeypatch.context() as patch:
+            patch.setattr(re, "_cache2", {}, raising=False)
+            try:
+                indexed._attest_loader_frozen_runtime_dependencies()
+            except indexed.IndexedExecutionError as exc:
+                caught = exc
+        expected = "transitive behavior drift: re._cache2 presence"
+        assert not hasattr(re, "_cache2")
+
+    assert caught is not None
+    assert str(caught) == expected
+    indexed._attest_loader_frozen_runtime_dependencies()
+
+
+def test_loader_binds_runtime_specific_re_maxcache2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not indexed._FROZEN_RE_HAS_MAXCACHE2:
+        pytest.skip("runtime has no re._MAXCACHE2")
+
+    caught: indexed.IndexedExecutionError | None = None
+    with monkeypatch.context() as patch:
+        patch.setattr(re, "_MAXCACHE2", float(re._MAXCACHE2))
+        try:
+            indexed._attest_loader_frozen_runtime_dependencies()
+        except indexed.IndexedExecutionError as exc:
+            caught = exc
+
+    assert caught is not None
+    assert str(caught) == "transitive behavior drift: re._MAXCACHE2"
+    indexed._attest_loader_frozen_runtime_dependencies()
+
+
+def test_runtime_specific_re_cache2_is_neutralized_when_present() -> None:
+    if not indexed._FROZEN_RE_HAS_CACHE2:
+        pytest.skip("runtime has no re._cache2")
+
+    cache2 = re._cache2
+    original = dict(cache2)
+    key = (str, "__cache2_probe__", 0)
+    poison = re._compiler.compile(".*", 0)
+    try:
+        cache2[key] = poison
+        indexed._attest_loader_frozen_runtime_dependencies()
+        indexed._neutralize_verified_re_cache()
+        assert re._cache2 is cache2
+        assert key not in cache2
+        assert cache2 == {}
+    finally:
+        cache2.clear()
+        cache2.update(original)
+
+    indexed._attest_loader_frozen_runtime_dependencies()
+
+
 def test_verified_regex_cache_is_neutralized_not_trusted() -> None:
     class Poison:
         def sub(self, repl: object, string: object, count: int = 0) -> str:
