@@ -64,13 +64,21 @@ Infinity are rejected rather than normalized or silently overwritten.
 Request a checkpoint-safe stop without editing trainer/checkpoint internals:
 
 ```text
-python -m twelve_six.windows_operator_preflight request-stop --target 20m
+python -m twelve_six.windows_operator_preflight request-stop --target 20m --run-manifest PATH\\TO\\run-manifest.json
 ```
 
-The command creates `.twelve-six-local/STOP_REQUEST.json` exactly once. The
-marker is content-authenticated, binds the exact operator-profile and portable
-packet bytes, is idempotent for the same binding, and fails closed on corruption,
-symlinks, duplicate JSON keys, non-finite JSON values, or binding drift.
+The command first reads the fixed canonical current-run authority ref from the
+project's canonical GitHub repository. The supplied `--run-manifest` is input
+only: its exact RecoveryStore run ID and canonical manifest SHA-256 must match
+that independently selected active run before any marker is published.
+
+The command publishes `.twelve-six-local/STOP_REQUEST.json` exactly once. It
+writes and fsyncs a private temporary file first and then uses an atomic
+no-overwrite hard-link publication step, so a failed write/fsync cannot expose a
+partial final marker. The marker is content-authenticated, binds the exact
+operator profile, portable packet and current run, is idempotent for the same
+binding, and fails closed on corruption, symlinks, duplicate JSON keys,
+non-finite JSON values, scalar-type substitution, or binding drift.
 
 The marker is only a **request** for the canonical trainer to consume. Its
 presence does not mean that a checkpoint was written, that resume was verified,
