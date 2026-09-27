@@ -22,6 +22,7 @@ from twelve_six.learned20m_current_run_authority import (
     validate_current_run_identity,
     validate_current_run_pointer_state,
     verify_candidate_against_current_run,
+    verify_terminal_authority_current_run_binding,
 )
 from twelve_six.learned20m_global_training_lease import (
     GlobalLeaseInspection,
@@ -186,6 +187,36 @@ def test_current_run_identity_is_closed_world_and_self_hashed() -> None:
         widened
     )
 
+
+
+
+def test_terminal_authority_crossbind_matches_safe_stop_identity_without_cycle() -> None:
+    identity = _identity()
+    terminal = {
+        "recovery_run_id": identity["run_id"],
+        "recovery_run_manifest_sha256": identity["recovery_run_manifest_sha256"],
+        "recovery_attempt_authority_sha256": identity[
+            "recovery_attempt_authority_sha256"
+        ],
+        "safe_stop_current_run_sha256": identity["identity_sha256"],
+        "source_git_sha": identity["source_git_sha"],
+        "portable_run_binding_sha256": identity["portable_run_binding_sha256"],
+    }
+    assert verify_terminal_authority_current_run_binding(identity, terminal) == ()
+
+    for field in tuple(terminal):
+        substituted = deepcopy(terminal)
+        if field == "recovery_run_id":
+            substituted[field] = "run-b"
+        elif field == "source_git_sha":
+            substituted[field] = "c" * 40
+        else:
+            substituted[field] = "f" * 64
+        blockers = verify_terminal_authority_current_run_binding(
+            identity,
+            substituted,
+        )
+        assert blockers == (f"terminal_current_run_binding_mismatch:{field}",)
 
 def test_pointer_state_binds_incumbent_manifest_global_lease_and_run() -> None:
     manifest = _manifest()
