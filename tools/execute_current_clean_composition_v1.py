@@ -19,6 +19,12 @@ from typing import Any
 
 CARRIER_PATH = "tools/execute_current_clean_composition_v1.py"
 MODULE_PATH = "src/twelve_six/data/current_clean_execution_v1.py"
+AUTHENTICATED_DEPENDENCY_PATHS = (
+    "src/twelve_six/data/current_reserved_decontamination_v1.py",
+    "src/twelve_six/data/eval647_reserved_decontamination_v1.py",
+    "src/twelve_six/data/quality_execution_authority.py",
+    "src/twelve_six/data/privacy_execution_authority.py",
+)
 OUTPUT_FILES = {
     "composition_receipt": "composition_receipt.json",
     "data232_report": "data232_report.json",
@@ -69,7 +75,7 @@ def require_exact_checkout(repo_root: Path, expected_git_sha: str) -> str:
         if completed.returncode:
             raise RuntimeError("tracked working tree differs from expected carrier head")
 
-    for repo_path in (CARRIER_PATH, MODULE_PATH):
+    for repo_path in (CARRIER_PATH, MODULE_PATH, *AUTHENTICATED_DEPENDENCY_PATHS):
         physical = (repo_root / repo_path).resolve(strict=True).read_bytes()
         authenticated = _git_bytes(repo_root, expected_git_sha, repo_path)
         if physical != authenticated:
@@ -102,10 +108,13 @@ def load_authenticated_executor(
         raise RuntimeError("composition module has no source path")
     if Path(module_file).resolve(strict=True) != expected_path:
         raise RuntimeError("composition module resolved outside authenticated checkout")
-    physical = expected_path.read_bytes()
-    authenticated = _git_bytes(repo_root, expected_git_sha, MODULE_PATH)
-    if physical != authenticated:
-        raise RuntimeError("loaded composition module differs from authenticated Git bytes")
+    for repo_path in (MODULE_PATH, *AUTHENTICATED_DEPENDENCY_PATHS):
+        physical = (repo_root / repo_path).resolve(strict=True).read_bytes()
+        authenticated = _git_bytes(repo_root, expected_git_sha, repo_path)
+        if physical != authenticated:
+            raise RuntimeError(
+                f"loaded execution dependency differs from authenticated Git bytes: {repo_path}"
+            )
     executor = getattr(module, "execute_current_clean_composition", None)
     if not callable(executor):
         raise RuntimeError("authenticated composition executor is unavailable")
