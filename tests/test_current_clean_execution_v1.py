@@ -94,6 +94,58 @@ def test_unknown_decontamination_exclusion_fails_closed() -> None:
         )
 
 
+def test_quality_retain_all_with_multiple_windows_materializes_once() -> None:
+    text = "abcdefghij"
+    inputs = [{"id": "r1", "text": text, "mode": "en"}]
+    quality = {
+        "records": [
+            {
+                "record_id": "r1",
+                "mode": "en",
+                "payload_sha256": _payload_sha(text),
+                "utf8_bytes": 10,
+                "status": "RETAIN_ALL",
+                "retained_utf8_bytes": 10,
+                "rejected_utf8_bytes": 0,
+                "units": [
+                    {
+                        "unit_id": "r1#quality-window-0000",
+                        "start_char": 0,
+                        "end_char": 4,
+                        "payload_sha256": _payload_sha("abcd"),
+                        "utf8_bytes": 4,
+                        "accepted": True,
+                    },
+                    {
+                        "unit_id": "r1#quality-window-0001",
+                        "start_char": 4,
+                        "end_char": 10,
+                        "payload_sha256": _payload_sha("efghij"),
+                        "utf8_bytes": 6,
+                        "accepted": True,
+                    },
+                ],
+            }
+        ]
+    }
+    output, stats = runner._materialize_quality_survivors(
+        inputs,
+        {"r1": {"source_id": "s1", "family": "f1", "mode": "en"}},
+        quality,
+    )
+    assert output == [
+        {
+            "record_id": "r1",
+            "source_id": "s1",
+            "family": "f1",
+            "modality": "en",
+            "normalized_payload": text,
+        }
+    ]
+    assert stats["g05_rejected_units"] == 0
+    assert stats["g05_rejected_utf8_bytes"] == 0
+
+
 def test_quality_partial_fails_closed_without_canonical_physical_authority() -> None:
     text = "abcdefghij"
     inputs = [{"id": "r1", "text": text, "mode": "en"}]
