@@ -11,18 +11,24 @@ from typing import Any
 from twelve_six.data import _incumbent_dedup_indexed_execution_core as _core
 
 # Preserve the complete existing module surface, including private helpers exercised
-# by the exact-lineage qualification suite.  Behavior-bearing functions keep the
-# same core globals; the attestation hooks below are installed into those globals.
+# by the exact-lineage qualification suite. Behavior-bearing functions keep the same
+# core globals; the attestation hooks below are installed into those globals.
 for _name, _value in vars(_core).items():
     if not _name.startswith("__"):
         globals()[_name] = _value
+
+# Make the hardening dependencies explicit for static analysis as well as runtime.
+json = _core.json
+re = _core.re
+IndexedExecutionError = _core.IndexedExecutionError
+_freeze_direct_behavior = _core._freeze_direct_behavior
+_direct_behavior_state_matches = _core._direct_behavior_state_matches
 
 _CORE_LOADER_ATTEST = _core._attest_loader_frozen_runtime_dependencies
 _CORE_RUNTIME_ATTEST = _core.attest_incumbent_runtime
 
 # json.dumps can take the common fast path through this mutable singleton even while
 # json.dumps and JSONEncoder themselves remain unchanged.
-_FROZEN_JSON_DEFAULT_ENCODER = json._default_encoder
 _FROZEN_JSON_DEFAULT_ENCODER_STATE = _freeze_direct_behavior(json._default_encoder)
 _FROZEN_TRANSITIVE_BEHAVIOR = (
     *_core._FROZEN_TRANSITIVE_BEHAVIOR,
@@ -35,7 +41,7 @@ _FROZEN_TRANSITIVE_BEHAVIOR = (
 )
 _core._FROZEN_TRANSITIVE_BEHAVIOR = _FROZEN_TRANSITIVE_BEHAVIOR
 
-# re._compile delegates to a mutable compiler module and a mutable cache.  Bind the
+# re._compile delegates to a mutable compiler module and a mutable cache. Bind the
 # concrete compiler behavior and cache/capacity identities, but intentionally do not
 # treat cache contents as authority: verified contents are discarded before use.
 _FROZEN_RE_COMPILER = re._compiler
@@ -88,7 +94,7 @@ def attest_incumbent_runtime(v3: Any) -> None:
     _neutralize_verified_re_cache()
 
 
-# Install the hardened hooks into the byte-preserved core globals.  Existing core
+# Install the hardened hooks into the byte-preserved core globals. Existing core
 # functions such as audit_payloads_indexed and _attest_executable_module therefore
 # resolve the hardened attesters without duplicating any executor/science logic.
 _core._attest_loader_frozen_runtime_dependencies = _attest_loader_frozen_runtime_dependencies
