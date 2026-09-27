@@ -30,10 +30,10 @@ export EXPECTED_ARTIFACT_ZIP_SHA EXPECTED_CURRENT_SHA EXPECTED_RECORD_INVENTORY_
 export EXPECTED_PAYLOAD_INVENTORY_SHA EXPECTED_MATERIALIZATION_ID EXPECTED_MATERIALIZATION_SCHEMA
 export EXPECTED_RECORD_COUNT EXPECTED_PAYLOAD_BYTES EXPECTED_DISTINCT_SOURCE_IDS
 
-# Preserve the implementation binding established by #2060. This carrier now consumes the
-# independently qualified physical v2 output rather than re-running historical dirty inputs.
+# Preserve current-branch bindings that actually exist on this historical PR lineage.
+# The v2 implementation itself is not present on this branch; its exact Git blob is instead
+# authenticated through the independently qualified physical evidence/proof below.
 test "$(git hash-object src/twelve_six/data/post_g05_g06_materialization_v1.py)" = "$EXPECTED_MATERIALIZER_BLOB"
-test "$(git hash-object src/twelve_six/data/post_g05_g06_materialization_v2.py)" = "$EXPECTED_MATERIALIZER_V2_BLOB"
 test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "$EXPECTED_PRIVACY_BLOB"
 
 WORK="$(mktemp -d)"
