@@ -5,6 +5,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CARRIER = ROOT / "tools/run_eval647_real_overlap_ci_v1.sh"
 EXPECTED_MATERIALIZER_V2_BLOB = "a4de33f1e225ab8598197e4c1cba28480180d575"
+EXPECTED_EVAL_MANIFEST_BLOB = "89af932a1b0e2dae30b08f766505c8dba9d3e39f"
+EXPECTED_EVAL_MATERIALIZER_BLOB = "13000d9b911bf0e0c7567613e68f2b9b113bd955"
+EXPECTED_EVAL_SOURCE_EVIDENCE_BLOB = "efa5b77275919fa9417e35efb30c8c9a527bd960"
 EXPECTED_RUN_ID = "36026689718"
 EXPECTED_ARTIFACT_ID = "10820342689"
 EXPECTED_ARTIFACT_SHA = "99069ce2183abbbc374749cca5c538efa259df0c64658a9b88cc96b25c0fbba0"
@@ -30,6 +33,19 @@ def test_real_overlap_carrier_binds_clean_v2_physical_authority() -> None:
     assert 'artifact["digest"] == f"sha256:{zip_sha}"' in carrier
     assert 'evidence["schema_version"] == expected_schema' in carrier
     assert 'result["record_payload_jsonl_sha256"] == expected_jsonl' in carrier
+
+
+def test_real_overlap_carrier_pins_immutable_eval647_source_authority() -> None:
+    carrier = CARRIER.read_text(encoding="utf-8")
+    assert f'EXPECTED_EVAL_MANIFEST_BLOB="{EXPECTED_EVAL_MANIFEST_BLOB}"' in carrier
+    assert f'EXPECTED_EVAL_MATERIALIZER_BLOB="{EXPECTED_EVAL_MATERIALIZER_BLOB}"' in carrier
+    assert (
+        f'EXPECTED_EVAL_SOURCE_EVIDENCE_BLOB="{EXPECTED_EVAL_SOURCE_EVIDENCE_BLOB}"'
+        in carrier
+    )
+    assert 'git hash-object configs/evaluation/eval_code_reserve_v1.json' in carrier
+    assert 'git hash-object tools/materialize_eval_code_reserve_v1.py' in carrier
+    assert 'git hash-object evidence/eval647/code_selection_source_materialization_v1.json' in carrier
 
 
 def test_real_overlap_carrier_rejects_historical_dirty_authority() -> None:
