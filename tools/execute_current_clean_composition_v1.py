@@ -11,6 +11,7 @@ import importlib
 import importlib.abc
 import importlib.util
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -227,6 +228,34 @@ def _require_raw_sha256(raw: bytes, expected: str, label: str) -> None:
         raise RuntimeError(f"{label} raw file identity drift")
 
 
+def _strict_json_loads(decoded: str, label: str) -> Any:
+    """Parse JSON with duplicate-key and nonfinite-number rejection."""
+
+    def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"{label} contains duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    def finite_float(token: str) -> float:
+        value = float(token)
+        if not math.isfinite(value):
+            raise ValueError(f"{label} contains nonfinite JSON number: {token}")
+        return value
+
+    def reject_constant(token: str) -> Any:
+        raise ValueError(f"{label} contains nonstandard JSON constant: {token}")
+
+    return json.loads(
+        decoded,
+        object_pairs_hook=object_pairs,
+        parse_float=finite_float,
+        parse_constant=reject_constant,
+    )
+
+
 def _load_json(
     path: Path,
     label: str,
@@ -240,7 +269,7 @@ def _load_json(
         decoded = raw.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise ValueError(f"{label} is not strict UTF-8") from exc
-    value = json.loads(decoded)
+    value = _strict_json_loads(decoded, label)
     if type(value) is not dict:
         raise ValueError(f"{label} must be a JSON object")
     return value
@@ -265,7 +294,7 @@ def _load_jsonl(
             ) from exc
         if not decoded.strip():
             raise ValueError(f"{label} line {line_number} is blank")
-        value = json.loads(decoded)
+        value = _strict_json_loads(decoded, f"{label} line {line_number}")
         if type(value) is not dict:
             raise ValueError(f"{label} line {line_number} must be a JSON object")
         rows.append(value)
