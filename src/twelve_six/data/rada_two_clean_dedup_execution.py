@@ -43,7 +43,7 @@ _AUTHORITY_KEYS = frozenset(
         "indexed_module_git_blob_sha1",
         "v3_module",
         "incumbent_base_authority_ref",
-        "incumbent_base_inventory_sha256",
+        "combined_inventory_sha256",
         "incumbent_base_payload_map_sha256",
         "max_candidate_pairs",
         "max_index_postings",
@@ -209,9 +209,9 @@ def validate_dependency_authority(
         "incumbent_base_authority_ref missing",
     )
     _require_hex(
-        authority["incumbent_base_inventory_sha256"],
+        authority["combined_inventory_sha256"],
         64,
-        "incumbent_base_inventory_sha256",
+        "combined_inventory_sha256",
     )
     _require_hex(
         authority["incumbent_base_payload_map_sha256"],
@@ -455,7 +455,7 @@ def execute_once(
         expected_raw_sha256=expected_dependency_authority_sha256,
     )
     _require(
-        expected_inventory_sha256 == authority["incumbent_base_inventory_sha256"],
+        expected_inventory_sha256 == authority["combined_inventory_sha256"],
         "combined inventory SHA differs from dependency authority",
     )
     _require(
