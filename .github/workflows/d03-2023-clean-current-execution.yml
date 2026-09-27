@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - "d03/2023-clean-current-main-execution-2210"
-    paths:
-      - ".github/workflows/d03-2023-clean-current-execution.yml"
   workflow_dispatch:
 
 permissions:
