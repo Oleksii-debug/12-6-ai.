@@ -25,6 +25,40 @@ SURVIVOR_SCHEMA = "12-6.d03-rada-post-dedup-survivors.v1"
 TWO_CLEAN_SCHEMA = "12-6.d03-rada-two-clean-survivor-authority.v1"
 SELECTION_RULE = "largest_declared_capacity_then_lexicographically_smallest_source_id"
 
+_RECEIPT_KEYS = frozenset(
+    {
+        "schema_version",
+        "run_id",
+        "local_free_only",
+        "completed",
+        "dependency_authority_raw_sha256",
+        "inventory_raw_sha256",
+        "base_payload_map_raw_sha256",
+        "source_object_count",
+        "source_payload_utf8_bytes",
+        "work_limits",
+        "v3_report_sha256",
+        "survivor_authority_sha256",
+        "survivor_source_object_count",
+        "survivor_declared_capacity_bytes",
+        "match_wall_clock_seconds",
+        "total_wall_clock_seconds",
+        "source_objects_per_match_second",
+        "payload_bytes_per_match_second",
+        "process_max_rss_kib",
+        "resource_measurement_complete",
+        "raw_text_emitted",
+        "canonical_capacity_credited",
+        "authorized_optimized_target_exposure",
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "receipt_identity_sha256",
+    }
+)
+
 _AUTHORITY_KEYS = frozenset(
     {
         "schema_version",
@@ -599,6 +633,7 @@ def build_two_clean_authority(
         "two-clean run ids must differ",
     )
     for receipt, label in ((first_receipt, "first"), (second_receipt, "second")):
+        _require(set(receipt) == _RECEIPT_KEYS, f"{label} receipt schema drift")
         identity = _require_hex(
             receipt.get("receipt_identity_sha256"),
             64,
@@ -610,6 +645,48 @@ def build_two_clean_authority(
             _sha256(_canonical_bytes(unsigned)) == identity,
             f"{label} receipt self-hash mismatch",
         )
+        _require(receipt.get("local_free_only") is True, f"{label} receipt is not LOCAL_FREE")
+        _exact_positive_int(receipt.get("source_object_count"), f"{label} source_object_count")
+        _exact_positive_int(
+            receipt.get("source_payload_utf8_bytes"),
+            f"{label} source_payload_utf8_bytes",
+        )
+        _exact_positive_int(
+            receipt.get("survivor_source_object_count"),
+            f"{label} survivor_source_object_count",
+        )
+        _exact_positive_int(
+            receipt.get("survivor_declared_capacity_bytes"),
+            f"{label} survivor_declared_capacity_bytes",
+        )
+        for hash_key in (
+            "dependency_authority_raw_sha256",
+            "inventory_raw_sha256",
+            "base_payload_map_raw_sha256",
+            "v3_report_sha256",
+            "survivor_authority_sha256",
+        ):
+            _require_hex(receipt.get(hash_key), 64, f"{label} {hash_key}")
+        limits = receipt.get("work_limits")
+        _require(type(limits) is dict, f"{label} work_limits missing")
+        _require(
+            set(limits)
+            == {"max_candidate_pairs", "max_index_postings", "max_pair_expansions"},
+            f"{label} work_limits schema drift",
+        )
+        for key, value in limits.items():
+            _exact_positive_int(value, f"{label} {key}")
+        for metric in (
+            "match_wall_clock_seconds",
+            "total_wall_clock_seconds",
+            "source_objects_per_match_second",
+            "payload_bytes_per_match_second",
+        ):
+            value = receipt.get(metric)
+            _require(
+                type(value) in {int, float} and value > 0,
+                f"{label} receipt invalid telemetry: {metric}",
+            )
         _require(receipt.get("raw_text_emitted") is False, f"{label} receipt emitted raw text")
         _require(
             receipt.get("resource_measurement_complete") is True
@@ -619,10 +696,19 @@ def build_two_clean_authority(
         )
         _require(
             receipt.get("canonical_capacity_credited") == 0
-            and receipt.get("authorized_optimized_target_exposure") == 0,
+            and type(receipt.get("canonical_capacity_credited")) is int
+            and receipt.get("authorized_optimized_target_exposure") == 0
+            and type(receipt.get("authorized_optimized_target_exposure")) is int,
             f"{label} receipt widened scientific authority",
         )
-        _require(receipt.get("training_executed") is False, f"{label} receipt claims training")
+        for key in (
+            "tokenizer_fit_authorized",
+            "training_executed",
+            "learned_weights_created",
+            "final_test_outcomes_read",
+            "paid_compute_used",
+        ):
+            _require(receipt.get(key) is False, f"{label} receipt truth drift: {key}")
 
     equality_fields = (
         "dependency_authority_raw_sha256",
