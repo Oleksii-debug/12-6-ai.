@@ -513,8 +513,51 @@ def test_inventory_totals_reject_integer_to_float_aliases(field: str) -> None:
 def _current_clean_bytes(
     rows: list[dict],
 ) -> tuple[dict, dict[str, bytes], dict[str, object]]:
-    inventory = _inventory(rows)
-    survivor_raw = b'{"physical_survivor_bytes":"opaque-to-balance"}\n'
+    survivors: list[dict[str, str]] = []
+    inventory_rows: list[dict] = []
+    for index, row in enumerate(rows):
+        payload = chr(ord("a") + index) * row["payload_bytes"]
+        survivor = {
+            "record_id": row["record_id"],
+            "source_id": row["source_id"],
+            "family": row["family"],
+            "modality": row["modality"],
+            "normalized_payload": payload,
+        }
+        survivors.append(survivor)
+        payload_raw = payload.encode()
+        inventory_rows.append(
+            {
+                "record_id": row["record_id"],
+                "source_id": row["source_id"],
+                "family": row["family"],
+                "modality": row["modality"],
+                "payload_sha256": hashlib.sha256(payload_raw).hexdigest(),
+                "payload_bytes": len(payload_raw),
+            }
+        )
+    inventory_rows.sort(key=lambda row: row["record_id"])
+    payload_projection = [
+        {
+            "record_id": row["record_id"],
+            "payload_sha256": row["payload_sha256"],
+            "payload_bytes": row["payload_bytes"],
+        }
+        for row in inventory_rows
+    ]
+    inventory = {
+        "schema_version": "12-6.data526-record-inventory.v1",
+        "record_count": len(inventory_rows),
+        "total_payload_bytes": sum(row["payload_bytes"] for row in inventory_rows),
+        "record_inventory_digest_sha256": hashlib.sha256(
+            _canonical(inventory_rows)
+        ).hexdigest(),
+        "payload_inventory_digest_sha256": hashlib.sha256(
+            _canonical(payload_projection)
+        ).hexdigest(),
+        "records": inventory_rows,
+    }
+    survivor_raw = b"".join(_canonical(record) + b"\n" for record in survivors)
     survivor_sha = hashlib.sha256(survivor_raw).hexdigest()
     source_objects = len({row["source_id"] for row in inventory["records"]})
     count = inventory["record_count"]
@@ -838,3 +881,121 @@ def test_current_clean_balance_binding_preserves_explicit_physical_authority() -
     assert binding["schema"] == CURRENT_CLEAN_BALANCE_BINDING_SCHEMA
     assert binding["current_clean_physical_authority"] == physical
     assert binding["authorized_optimized_target_exposure"] == 0
+
+
+def test_current_clean_rebuilds_inventory_from_survivor_jsonl() -> None:
+    inventory, raw, expected = _current_clean_bytes(_partial_rows())
+    parsed = [
+        json.loads(line)
+        for line in raw["survivor_records"].decode("utf-8").splitlines()
+    ]
+    assert len(parsed) == inventory["record_count"]
+    assert sum(len(row["normalized_payload"].encode()) for row in parsed) == (
+        inventory["total_payload_bytes"]
+    )
+    vector = build_current_clean_family_vector(
+        composition_receipt_raw=raw["composition_receipt"],
+        survivor_inventory_raw=raw["survivor_inventory"],
+        repeat_proof_raw=raw["repeat_proof"],
+        survivor_records_raw=raw["survivor_records"],
+        **expected,
+    )
+    assert vector["record_inventory_digest_sha256"] == inventory[
+        "record_inventory_digest_sha256"
+    ]
+
+
+def test_current_clean_rejects_coherently_resealed_record_inventory_mismatch() -> None:
+    _, raw, expected = _current_clean_bytes(_partial_rows())
+    records = [
+        json.loads(line)
+        for line in raw["survivor_records"].decode("utf-8").splitlines()
+    ]
+    records[0]["normalized_payload"] = "z" + records[0]["normalized_payload"][1:]
+    raw["survivor_records"] = b"".join(
+        _canonical(record) + b"\n" for record in records
+    )
+    survivor_sha = hashlib.sha256(raw["survivor_records"]).hexdigest()
+
+    receipt = json.loads(raw["composition_receipt"])
+    receipt["survivor_jsonl_sha256"] = survivor_sha
+    raw["composition_receipt"] = _reseal(receipt, "receipt_identity_sha256")
+    resealed_receipt = json.loads(raw["composition_receipt"])
+
+    repeat = json.loads(raw["repeat_proof"])
+    repeat["survivor_jsonl_sha256"] = survivor_sha
+    repeat["output_files_sha256"]["survivor_records.jsonl"] = survivor_sha
+    repeat["output_files_sha256"]["composition_receipt.json"] = hashlib.sha256(
+        raw["composition_receipt"]
+    ).hexdigest()
+    raw["repeat_proof"] = _reseal(repeat, "proof_identity_sha256")
+    resealed_repeat = json.loads(raw["repeat_proof"])
+
+    expected["expected_survivor_records_jsonl_sha256"] = survivor_sha
+    expected["expected_composition_receipt_json_sha256"] = hashlib.sha256(
+        raw["composition_receipt"]
+    ).hexdigest()
+    expected["expected_repeat_proof_json_sha256"] = hashlib.sha256(
+        raw["repeat_proof"]
+    ).hexdigest()
+    expected["expected_receipt_identity_sha256"] = resealed_receipt[
+        "receipt_identity_sha256"
+    ]
+    expected["expected_repeat_proof_identity_sha256"] = resealed_repeat[
+        "proof_identity_sha256"
+    ]
+
+    with pytest.raises(ProjectionError, match="differs from rebuilt survivor JSONL"):
+        build_current_clean_family_vector(
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_inventory_raw=raw["survivor_inventory"],
+            repeat_proof_raw=raw["repeat_proof"],
+            survivor_records_raw=raw["survivor_records"],
+            **expected,
+        )
+
+
+def test_current_clean_rejects_noncanonical_survivor_jsonl() -> None:
+    _, raw, expected = _current_clean_bytes(_partial_rows())
+    first, *rest = raw["survivor_records"].splitlines(keepends=True)
+    record = json.loads(first)
+    noncanonical = json.dumps(record, ensure_ascii=False).encode() + b"\n"
+    raw["survivor_records"] = noncanonical + b"".join(rest)
+    survivor_sha = hashlib.sha256(raw["survivor_records"]).hexdigest()
+
+    receipt = json.loads(raw["composition_receipt"])
+    receipt["survivor_jsonl_sha256"] = survivor_sha
+    raw["composition_receipt"] = _reseal(receipt, "receipt_identity_sha256")
+    resealed_receipt = json.loads(raw["composition_receipt"])
+
+    repeat = json.loads(raw["repeat_proof"])
+    repeat["survivor_jsonl_sha256"] = survivor_sha
+    repeat["output_files_sha256"]["survivor_records.jsonl"] = survivor_sha
+    repeat["output_files_sha256"]["composition_receipt.json"] = hashlib.sha256(
+        raw["composition_receipt"]
+    ).hexdigest()
+    raw["repeat_proof"] = _reseal(repeat, "proof_identity_sha256")
+    resealed_repeat = json.loads(raw["repeat_proof"])
+
+    expected["expected_survivor_records_jsonl_sha256"] = survivor_sha
+    expected["expected_composition_receipt_json_sha256"] = hashlib.sha256(
+        raw["composition_receipt"]
+    ).hexdigest()
+    expected["expected_repeat_proof_json_sha256"] = hashlib.sha256(
+        raw["repeat_proof"]
+    ).hexdigest()
+    expected["expected_receipt_identity_sha256"] = resealed_receipt[
+        "receipt_identity_sha256"
+    ]
+    expected["expected_repeat_proof_identity_sha256"] = resealed_repeat[
+        "proof_identity_sha256"
+    ]
+
+    with pytest.raises(ProjectionError, match="not canonical JSON"):
+        build_current_clean_family_vector(
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_inventory_raw=raw["survivor_inventory"],
+            repeat_proof_raw=raw["repeat_proof"],
+            survivor_records_raw=raw["survivor_records"],
+            **expected,
+        )

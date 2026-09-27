@@ -772,6 +772,89 @@ def _verify_current_clean_repeat(
     )
 
 
+def _rebuild_current_clean_survivor_inventory(
+    survivor_records_raw: bytes,
+) -> dict[str, Any]:
+    """Rebuild the DATA526 inventory from authenticated current-clean JSONL bytes."""
+
+    if not isinstance(survivor_records_raw, bytes) or not survivor_records_raw:
+        raise ProjectionError("current-clean survivor JSONL bytes are missing")
+    if not survivor_records_raw.endswith(b"\n"):
+        raise ProjectionError("current-clean survivor JSONL must end with LF")
+
+    expected_keys = {
+        "record_id",
+        "source_id",
+        "family",
+        "modality",
+        "normalized_payload",
+    }
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, physical_line in enumerate(
+        survivor_records_raw.splitlines(keepends=True)
+    ):
+        if not physical_line.endswith(b"\n"):
+            raise ProjectionError(
+                f"current-clean survivor record[{index}] lacks terminal LF"
+            )
+        line = physical_line[:-1]
+        record = load_strict_json_object(
+            line,
+            label=f"current-clean survivor record[{index}]",
+        )
+        if set(record) != expected_keys:
+            raise ProjectionError(
+                f"current-clean survivor record[{index}] schema drift"
+            )
+        if _canonical_bytes(record) != line:
+            raise ProjectionError(
+                f"current-clean survivor record[{index}] is not canonical JSON"
+            )
+        for key in expected_keys:
+            if not isinstance(record.get(key), str) or not record[key]:
+                raise ProjectionError(
+                    f"current-clean survivor record[{index}].{key} malformed"
+                )
+        record_id = record["record_id"]
+        if record_id in seen:
+            raise ProjectionError(
+                f"duplicate current-clean survivor record_id: {record_id}"
+            )
+        seen.add(record_id)
+        payload_raw = record["normalized_payload"].encode("utf-8")
+        rows.append(
+            {
+                "record_id": record_id,
+                "source_id": record["source_id"],
+                "family": record["family"],
+                "modality": record["modality"],
+                "payload_sha256": _sha256_bytes(payload_raw),
+                "payload_bytes": len(payload_raw),
+            }
+        )
+    if not rows:
+        raise ProjectionError("current-clean survivor JSONL contains no records")
+
+    rows.sort(key=lambda row: row["record_id"])
+    payload_projection = [
+        {
+            "record_id": row["record_id"],
+            "payload_sha256": row["payload_sha256"],
+            "payload_bytes": row["payload_bytes"],
+        }
+        for row in rows
+    ]
+    return {
+        "schema_version": INVENTORY_SCHEMA,
+        "record_count": len(rows),
+        "total_payload_bytes": sum(row["payload_bytes"] for row in rows),
+        "record_inventory_digest_sha256": _sha256(rows),
+        "payload_inventory_digest_sha256": _sha256(payload_projection),
+        "records": rows,
+    }
+
+
 def build_current_clean_family_vector(
     *,
     composition_receipt_raw: bytes,
@@ -893,8 +976,15 @@ def build_current_clean_family_vector(
         expected_record_count=expected_record_count,
         expected_total_payload_bytes=expected_total_payload_bytes,
     )
+    rebuilt_inventory = _rebuild_current_clean_survivor_inventory(
+        survivor_records_raw
+    )
+    if inventory != rebuilt_inventory:
+        raise ProjectionError(
+            "current-clean survivor inventory differs from rebuilt survivor JSONL"
+        )
     rows = _verify_inventory(
-        inventory,
+        rebuilt_inventory,
         expected_record_count=expected_record_count,
         expected_total_payload_bytes=expected_total_payload_bytes,
         expected_record_inventory_digest_sha256=(
