@@ -12,8 +12,11 @@ from tools.model341_current_main_resource_receipt_v1 import (
     EXPECTED_PROBE_REPORT_SHA256,
     MEASUREMENT_AUTHORITY_COMMENT_ID,
     MEASUREMENT_AUTHORITY_SHA256,
+    EXPECTED_RUNTIME_PROJECT,
     canonical_json_sha256,
     measurement_authority_payload,
+    runtime_project_projection,
+    validate_current_checkout_compatibility,
     validate_probe_tool_blob,
     validate_receipt,
     validate_receipt_file,
@@ -138,3 +141,67 @@ def test_raw_receipt_rejects_nonfinite_json_constants(
 
     with pytest.raises(ValueError, match="non-finite JSON constant rejected"):
         validate_receipt_file(path)
+
+
+def test_current_checkout_runtime_compatibility_is_explicit() -> None:
+    validate_current_checkout_compatibility(ROOT)
+
+
+def test_runtime_projection_ignores_packaging_only_metadata() -> None:
+    pyproject = {
+        "project": {
+            "name": "twelve-six-ai",
+            "version": "0.2.0.dev0",
+            "requires-python": ">=3.11",
+            "dependencies": ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"],
+            "optional-dependencies": {
+                "dev": ["pytest>=8", "ruff>=0.12", "setuptools>=75", "wheel"],
+            },
+            "scripts": {"twelve-six-windows": "twelve_six.windows_operator_cli:main"},
+        },
+        "tool": {"setuptools": {"data-files": {"share/twelve-six-ai": ["config.json"]}}},
+    }
+
+    assert runtime_project_projection(pyproject) == EXPECTED_RUNTIME_PROJECT
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("requires-python", ">=3.12"),
+        ("dependencies", ["numpy>=1.26", "safetensors>=0.5", "torch>=2.6"]),
+    ],
+)
+def test_runtime_projection_rejects_execution_environment_drift(
+    field: str,
+    replacement: object,
+) -> None:
+    project = copy.deepcopy(EXPECTED_RUNTIME_PROJECT)
+    project[field] = replacement
+    projection = runtime_project_projection({"project": project})
+
+    assert projection != EXPECTED_RUNTIME_PROJECT
+
+
+def test_current_checkout_compatibility_rejects_dependency_drift(
+    tmp_path: Path,
+) -> None:
+    model_source = ROOT / "src/twelve_six/model.py"
+    model_target = tmp_path / "src/twelve_six/model.py"
+    model_target.parent.mkdir(parents=True)
+    model_target.write_bytes(model_source.read_bytes())
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "safetensors>=0.5", "torch>=99"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="current checkout runtime project dependency projection mismatch",
+    ):
+        validate_current_checkout_compatibility(tmp_path)
