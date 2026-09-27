@@ -1260,12 +1260,23 @@ def retire_current_run_authority(
     retired = dict(state)
     retired["status"] = "RETIRED"
     retired["pointer_identity_sha256"] = _pointer_digest(retired)
-    candidate_tip = _write_pointer_commit(
-        repo_root,
-        retired,
-        parent_tip=observed_tip,
-        operation="RETIRE",
-    )
+    try:
+        candidate_tip = _write_pointer_commit(
+            repo_root,
+            retired,
+            parent_tip=observed_tip,
+            operation="RETIRE",
+        )
+    except (CurrentRunAuthorityError, TypeError, ValueError) as exc:
+        return _operation_failure(
+            "RETIRE",
+            blocker=str(exc),
+            expected_remote_tip=expected_pointer_tip,
+            observed_remote_tip=observed_tip,
+            generation=int(state["generation"]),
+            run_id=str(identity["run_id"]),
+            identity_sha256=str(identity["identity_sha256"]),
+        )
     pushed = _run_git(
         repo_root,
         [
