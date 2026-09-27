@@ -265,13 +265,15 @@ def _load_base_payloads(
     )
 
     all_ids: list[str] = []
+    seen_ids: set[str] = set()
     base_ids: set[str] = set()
     for index, row in enumerate(rows):
         _require(type(row) is dict, f"combined inventory source {index} must be exact object")
         source_id = row.get("source_id")
         _require(type(source_id) is str and bool(source_id), "combined inventory source_id invalid")
-        _require(source_id not in all_ids, "combined inventory contains duplicate source_id")
+        _require(source_id not in seen_ids, "combined inventory contains duplicate source_id")
         all_ids.append(source_id)
+        seen_ids.add(source_id)
         if source_id not in rada_ids:
             base_ids.add(source_id)
     _require(bool(base_ids), "combined inventory lacks incumbent base sources")
