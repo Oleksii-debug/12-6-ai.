@@ -957,6 +957,247 @@ def activate_current_run_authority(
     )
 
 
+def refresh_current_run_authority(
+    repo_root: str | Path,
+    remote: str,
+    manifest: Mapping[str, Any],
+    *,
+    expected_pointer_tip: str,
+    expected_current_run_identity_sha256: str,
+    now: datetime | None = None,
+) -> CurrentRunAuthorityOperation:
+    """Rebind one ACTIVE current-run pointer after a healthy same-run lease renewal."""
+
+    _validate_transport(remote)
+    if not _git_sha(expected_pointer_tip):
+        return _operation_failure("REFRESH", blocker="expected_pointer_tip_invalid")
+    if not _sha256(expected_current_run_identity_sha256):
+        return _operation_failure(
+            "REFRESH",
+            blocker="expected_current_run_identity_invalid",
+        )
+
+    manifest_snapshot = json.loads(canonical_json_bytes(manifest))
+    try:
+        current = _read_pointer_state(repo_root, remote)
+    except (CurrentRunAuthorityError, _GlobalLeaseFailure, TypeError, ValueError) as exc:
+        return _operation_failure("REFRESH", blocker=str(exc))
+    if current is None:
+        return _operation_failure("REFRESH", blocker="current_run_pointer_missing")
+
+    observed_tip, state = current
+    identity = state["current_run_identity"]
+    generation = int(state["generation"])
+    run_id = str(identity["run_id"])
+    identity_sha256 = str(identity["identity_sha256"])
+    failure_context = {
+        "expected_remote_tip": expected_pointer_tip,
+        "observed_remote_tip": observed_tip,
+        "generation": generation,
+        "run_id": run_id,
+        "identity_sha256": identity_sha256,
+    }
+    if observed_tip != expected_pointer_tip:
+        return _operation_failure(
+            "REFRESH",
+            blocker="current_run_pointer_expected_tip_mismatch",
+            **failure_context,
+        )
+    if state["status"] != "ACTIVE":
+        return _operation_failure(
+            "REFRESH",
+            blocker="current_run_pointer_not_active",
+            **failure_context,
+        )
+    if identity_sha256 != expected_current_run_identity_sha256:
+        return _operation_failure(
+            "REFRESH",
+            blocker="current_run_identity_mismatch",
+            **failure_context,
+        )
+    if launch_manifest_sha256(manifest_snapshot) != state["launch_manifest_sha256"]:
+        return _operation_failure(
+            "REFRESH",
+            blocker="current_run_launch_manifest_mismatch",
+            **failure_context,
+        )
+
+    global_lease = inspect_global_training_run_lease(
+        repo_root,
+        remote,
+        manifest_snapshot,
+    )
+    if not global_lease.present or not global_lease.valid:
+        return _operation_failure(
+            "REFRESH",
+            blocker="global_training_run_lease_not_valid",
+            **failure_context,
+        )
+    if global_lease.lease_status != "RUNNING":
+        return _operation_failure(
+            "REFRESH",
+            blocker="global_training_run_lease_not_running",
+            **failure_context,
+        )
+    if global_lease.ref != state["global_lease_ref"]:
+        return _operation_failure(
+            "REFRESH",
+            blocker="global_training_run_lease_ref_mismatch",
+            **failure_context,
+        )
+    if global_lease.run_id != run_id:
+        return _operation_failure(
+            "REFRESH",
+            blocker="global_training_run_lease_run_id_mismatch",
+            **failure_context,
+        )
+    if global_lease.remote_tip == state["global_lease_remote_tip"]:
+        return _operation_failure(
+            "REFRESH",
+            blocker="global_training_run_lease_not_renewed",
+            **failure_context,
+        )
+
+    try:
+        global_snapshot = _read_snapshot(repo_root, remote, manifest_snapshot)
+    except _GlobalLeaseFailure as exc:
+        return _operation_failure("REFRESH", blocker=exc.blocker, **failure_context)
+    if global_snapshot is None:
+        return _operation_failure(
+            "REFRESH",
+            blocker="global_training_run_lease_missing",
+            **failure_context,
+        )
+    lease_assessment = assess_training_run_lease(
+        manifest_snapshot,
+        global_snapshot.lease,
+        now=now,
+    )
+    lease_blockers = tuple(
+        dict.fromkeys((*lease_assessment.contract_errors, *lease_assessment.blockers))
+    )
+    if lease_blockers:
+        return _operation_failure(
+            "REFRESH",
+            blocker=lease_blockers[0],
+            **failure_context,
+        )
+    if global_snapshot.remote_tip != global_lease.remote_tip:
+        return _operation_failure(
+            "REFRESH",
+            blocker="global_training_run_lease_tip_mismatch",
+            **failure_context,
+        )
+
+    try:
+        refreshed = build_current_run_pointer_state(
+            manifest_snapshot,
+            global_lease,
+            identity,
+            generation=generation,
+            global_lease_state_sha256=hashlib.sha256(
+                canonical_json_bytes(
+                    build_global_lease_state(
+                        manifest_snapshot,
+                        global_snapshot.lease,
+                    )
+                )
+            ).hexdigest(),
+            global_lease_expires_at_utc=str(
+                global_snapshot.lease["expires_at_utc"]
+            ),
+        )
+        candidate_tip = _write_pointer_commit(
+            repo_root,
+            refreshed,
+            parent_tip=observed_tip,
+            operation="REFRESH",
+        )
+    except (CurrentRunAuthorityError, TypeError, ValueError) as exc:
+        return _operation_failure(
+            "REFRESH",
+            blocker=str(exc),
+            **failure_context,
+        )
+
+    pushed = _run_git(
+        repo_root,
+        [
+            "push",
+            "--porcelain",
+            "--",
+            remote,
+            f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
+        ],
+    )
+    try:
+        observed_after = _remote_tip(repo_root, remote, CURRENT_RUN_POINTER_REF)
+    except _GlobalLeaseFailure as exc:
+        if pushed.returncode != 0:
+            return _operation_outcome_unknown(
+                "REFRESH",
+                blocker=f"current_run_pointer_push_outcome_unknown:{exc.blocker}",
+                expected_remote_tip=expected_pointer_tip,
+                generation=generation,
+                run_id=run_id,
+                identity_sha256=identity_sha256,
+            )
+        return _operation_committed_unverified(
+            "REFRESH",
+            blocker=exc.blocker,
+            expected_remote_tip=expected_pointer_tip,
+            observed_remote_tip=None,
+            written_remote_tip=candidate_tip,
+            generation=generation,
+            run_id=run_id,
+            identity_sha256=identity_sha256,
+        )
+    if pushed.returncode != 0 and observed_after != candidate_tip:
+        return _operation_failure(
+            "REFRESH",
+            blocker="current_run_pointer_cas_conflict",
+            expected_remote_tip=expected_pointer_tip,
+            observed_remote_tip=observed_after,
+            generation=generation,
+            run_id=run_id,
+            identity_sha256=identity_sha256,
+        )
+    if observed_after != candidate_tip:
+        return _operation_committed_unverified(
+            "REFRESH",
+            blocker="current_run_pointer_post_write_tip_mismatch",
+            expected_remote_tip=expected_pointer_tip,
+            observed_remote_tip=observed_after,
+            written_remote_tip=candidate_tip,
+            generation=generation,
+            run_id=run_id,
+            identity_sha256=identity_sha256,
+        )
+
+    reread = inspect_current_run_authority(repo_root, remote, now=now)
+    verified = (
+        reread.valid
+        and reread.active
+        and reread.remote_tip == candidate_tip
+        and reread.generation == generation
+        and reread.current_run_identity_sha256 == identity_sha256
+        and reread.global_lease_remote_tip == global_lease.remote_tip
+    )
+    return CurrentRunAuthorityOperation(
+        operation="REFRESH",
+        committed=True,
+        post_write_reread_verified=verified,
+        ref=CURRENT_RUN_POINTER_REF,
+        expected_remote_tip=expected_pointer_tip,
+        observed_remote_tip=observed_after,
+        written_remote_tip=candidate_tip,
+        generation=generation,
+        run_id=run_id,
+        current_run_identity_sha256=identity_sha256,
+        blockers=() if verified else ("current_run_pointer_post_write_reread_mismatch",),
+    )
+
+
 def retire_current_run_authority(
     repo_root: str | Path,
     remote: str,
