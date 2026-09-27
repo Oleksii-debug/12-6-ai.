@@ -91,6 +91,7 @@ def _receipt(run_id: str, *, report_sha: str = "e" * 64) -> dict[str, object]:
         "completed": True,
         "dependency_authority_raw_sha256": "1" * 64,
         "inventory_raw_sha256": "2" * 64,
+        "base_payload_map_raw_sha256": "5" * 64,
         "source_object_count": 3,
         "source_payload_utf8_bytes": 50,
         "work_limits": {
@@ -171,6 +172,105 @@ def test_dependency_authority_rejects_duplicate_json_keys(tmp_path: Path) -> Non
     identity = hashlib.sha256(path.read_bytes()).hexdigest()
     with pytest.raises(carrier.RadaTwoCleanExecutionError, match="duplicate JSON key"):
         carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
+
+
+
+
+def test_global_payload_composition_requires_incumbent_base_and_exact_rada_segment(
+    tmp_path: Path,
+) -> None:
+    base_path = tmp_path / "base.bin"
+    base_path.write_bytes(b"base-payload")
+    base_row = {
+        "source_id": "base-1",
+        "source_family": "incumbent.family",
+    }
+    rada_row = {
+        "source_id": "rada-1",
+        "source_family": "ua.rada.open-data.laws-texts",
+    }
+    inventory = {"sources": [base_row, rada_row]}
+    payloads = carrier._load_base_payloads(
+        inventory,
+        (rada_row,),
+        {"rada-1": b"rada-payload"},
+        {"base-1": str(base_path)},
+        rada_source_family="ua.rada.open-data.laws-texts",
+    )
+
+    assert payloads == {
+        "base-1": b"base-payload",
+        "rada-1": b"rada-payload",
+    }
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="lacks incumbent base"):
+        carrier._load_base_payloads(
+            {"sources": [rada_row]},
+            (rada_row,),
+            {"rada-1": b"rada-payload"},
+            {},
+            rada_source_family="ua.rada.open-data.laws-texts",
+        )
+
+
+def test_global_payload_composition_rejects_base_coverage_and_rada_projection_drift(
+    tmp_path: Path,
+) -> None:
+    base_path = tmp_path / "base.bin"
+    base_path.write_bytes(b"base-payload")
+    base_row = {
+        "source_id": "base-1",
+        "source_family": "incumbent.family",
+    }
+    rada_row = {
+        "source_id": "rada-1",
+        "source_family": "ua.rada.open-data.laws-texts",
+    }
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="base payload map coverage"):
+        carrier._load_base_payloads(
+            {"sources": [base_row, rada_row]},
+            (rada_row,),
+            {"rada-1": b"rada-payload"},
+            {},
+            rada_source_family="ua.rada.open-data.laws-texts",
+        )
+
+    substituted = dict(rada_row)
+    substituted["source_id"] = "rada-substituted"
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="Rada segment"):
+        carrier._load_base_payloads(
+            {"sources": [base_row, substituted]},
+            (rada_row,),
+            {"rada-1": b"rada-payload"},
+            {"base-1": str(base_path), "rada-substituted": str(base_path)},
+            rada_source_family="ua.rada.open-data.laws-texts",
+        )
+
+
+def test_global_payload_composition_rejects_duplicate_combined_source_ids(
+    tmp_path: Path,
+) -> None:
+    base_path = tmp_path / "base.bin"
+    base_path.write_bytes(b"base-payload")
+    base_row = {
+        "source_id": "base-1",
+        "source_family": "incumbent.family",
+    }
+    rada_row = {
+        "source_id": "rada-1",
+        "source_family": "ua.rada.open-data.laws-texts",
+    }
+    duplicate_base = dict(base_row)
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="duplicate source_id"):
+        carrier._load_base_payloads(
+            {"sources": [base_row, duplicate_base, rada_row]},
+            (rada_row,),
+            {"rada-1": b"rada-payload"},
+            {"base-1": str(base_path)},
+            rada_source_family="ua.rada.open-data.laws-texts",
+        )
 
 
 def test_survivor_authority_reuses_incumbent_capacity_representative_rule() -> None:
