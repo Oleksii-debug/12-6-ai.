@@ -847,8 +847,17 @@ def _write_all(fd: int, raw: bytes) -> None:
         view = view[written:]
 
 
+def _path_still_names_open_file(fd: int, path: Path) -> bool:
+    try:
+        opened = os.fstat(fd)
+        named = os.stat(path, follow_symlinks=False)
+    except OSError:
+        return False
+    return stat.S_ISREG(named.st_mode) and os.path.samestat(opened, named)
+
+
 def _publish_marker_no_overwrite(marker_path: Path, raw: bytes) -> bool:
-    """Publish only fully-written bytes; never expose a partial final marker."""
+    """Publish fully-written bytes with no-overwrite and file-identity checks."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     temp_path: Path | None = None
     fd: int | None = None
@@ -865,35 +874,40 @@ def _publish_marker_no_overwrite(marker_path: Path, raw: bytes) -> bool:
             break
         if fd is None or temp_path is None:
             raise OperatorPreflightError("safe_stop_temp_create_exhausted")
+
         _write_all(fd, raw)
         os.fsync(fd)
-        os.close(fd)
-        fd = None
+        if not _path_still_names_open_file(fd, temp_path):
+            raise OperatorPreflightError("safe_stop_temp_identity_changed")
+
         try:
-            os.link(temp_path, marker_path)
+            os.link(temp_path, marker_path, follow_symlinks=False)
         except FileExistsError:
             return False
         except OSError as exc:
             raise OperatorPreflightError(
                 f"safe_stop_publish_failed:{exc}"
             ) from exc
+
+        if not _path_still_names_open_file(fd, marker_path):
+            raise OperatorPreflightError("safe_stop_publish_identity_mismatch")
         return True
     except OperatorPreflightError:
         raise
     except OSError as exc:
         raise OperatorPreflightError(f"safe_stop_publish_failed:{exc}") from exc
     finally:
+        if fd is not None and temp_path is not None:
+            if _path_still_names_open_file(fd, temp_path):
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
         if fd is not None:
             try:
                 os.close(fd)
             except OSError:
                 pass
-        if temp_path is not None:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-
 
 def request_safe_stop(
     state_dir: Path,

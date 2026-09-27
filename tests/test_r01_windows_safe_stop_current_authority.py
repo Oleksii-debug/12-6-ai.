@@ -234,3 +234,42 @@ def test_status_with_marker_fails_closed_without_current_run_authority(
     monkeypatch.setattr(operator, "_resolve_current_run_identity", blocked_resolver)
     code = operator.main(["--state-dir", str(state), "--json", "status"])
     assert code == operator.EXIT_ERROR
+
+
+
+def test_temp_path_substitution_never_publishes_success_or_unlinks_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    original_link = os.link
+    replacement_paths: list[Path] = []
+
+    def substitute_then_link(
+        source: os.PathLike[str] | str,
+        destination: os.PathLike[str] | str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        assert src_dir_fd is None
+        assert dst_dir_fd is None
+        source_path = Path(source)
+        source_path.unlink()
+        source_path.write_bytes(b"attacker-replacement")
+        replacement_paths.append(source_path)
+        original_link(
+            source_path,
+            destination,
+            follow_symlinks=follow_symlinks,
+        )
+
+    monkeypatch.setattr(os, "link", substitute_then_link)
+    with pytest.raises(
+        OperatorPreflightError, match="safe_stop_publish_identity_mismatch"
+    ):
+        _request(state)
+
+    assert replacement_paths
+    assert replacement_paths[0].read_bytes() == b"attacker-replacement"
+    assert (state / "STOP_REQUEST.json").read_bytes() == b"attacker-replacement"
