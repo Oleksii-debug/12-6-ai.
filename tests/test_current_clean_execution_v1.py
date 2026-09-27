@@ -190,6 +190,110 @@ def test_quality_partial_fails_closed_without_canonical_physical_authority() -> 
             quality,
         )
 
+def test_quality_reject_document_is_physically_absent_from_survivors() -> None:
+    inputs = [
+        {"id": "drop", "text": "discard me", "mode": "en"},
+        {"id": "keep", "text": "retain me", "mode": "en"},
+    ]
+
+    def row(record_id: str, text: str, status: str, accepted: bool) -> dict[str, object]:
+        payload = text.encode("utf-8")
+        return {
+            "record_id": record_id,
+            "mode": "en",
+            "payload_sha256": _payload_sha(text),
+            "utf8_bytes": len(payload),
+            "status": status,
+            "retained_utf8_bytes": len(payload) if accepted else 0,
+            "rejected_utf8_bytes": 0 if accepted else len(payload),
+            "units": [
+                {
+                    "unit_id": record_id,
+                    "start_char": 0,
+                    "end_char": len(text),
+                    "payload_sha256": _payload_sha(text),
+                    "utf8_bytes": len(payload),
+                    "accepted": accepted,
+                }
+            ],
+        }
+
+    quality = {
+        "records": [
+            row("drop", "discard me", "REJECT_DOCUMENT", False),
+            row("keep", "retain me", "RETAIN_ALL", True),
+        ]
+    }
+    metadata = {
+        "drop": {"source_id": "s-drop", "family": "f", "mode": "en"},
+        "keep": {"source_id": "s-keep", "family": "f", "mode": "en"},
+    }
+    output, stats = runner._materialize_quality_survivors(inputs, metadata, quality)
+    assert [record["record_id"] for record in output] == ["keep"]
+    assert all(record["normalized_payload"] != "discard me" for record in output)
+    assert stats["g05_reject_documents"] == 1
+    assert stats["g05_rejected_utf8_bytes"] == len("discard me".encode("utf-8"))
+
+
+def test_privacy_quarantine_and_exclude_are_physically_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = [
+        {
+            "record_id": "allow",
+            "source_id": "s1",
+            "family": "f",
+            "modality": "en",
+            "normalized_payload": "public",
+        },
+        {
+            "record_id": "exclude",
+            "source_id": "s2",
+            "family": "f",
+            "modality": "en",
+            "normalized_payload": "private-exclude",
+        },
+        {
+            "record_id": "quarantine",
+            "source_id": "s3",
+            "family": "f",
+            "modality": "en",
+            "normalized_payload": "private-quarantine",
+        },
+    ]
+
+    def privacy_row(record: dict[str, str], action: str) -> dict[str, object]:
+        payload = record["normalized_payload"].encode("utf-8")
+        return {
+            "record_id": record["record_id"],
+            "mode": record["modality"],
+            "payload_sha256": _payload_sha(record["normalized_payload"]),
+            "utf8_bytes": len(payload),
+            "action": action,
+        }
+
+    privacy = {
+        "privacy_binding": {"placeholder": True},
+        "records": [
+            privacy_row(records[0], "ALLOW"),
+            privacy_row(records[1], "EXCLUDE"),
+            privacy_row(records[2], "QUARANTINE"),
+        ],
+    }
+    monkeypatch.setattr(
+        runner,
+        "_privacy_runtime",
+        lambda path, privacy_binding: (lambda text: [], lambda raw: None, "f" * 40),
+    )
+    output, stats = runner._materialize_privacy_survivors(records, privacy)
+    assert [record["record_id"] for record in output] == ["allow"]
+    serialized = runner.canonical_record_bytes(output)
+    assert b"private-exclude" not in serialized
+    assert b"private-quarantine" not in serialized
+    assert stats["g06_exclude_records"] == 1
+    assert stats["g06_quarantine_records"] == 1
+
+
 def test_privacy_redaction_uses_canonical_materializer_and_rescans_allow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
