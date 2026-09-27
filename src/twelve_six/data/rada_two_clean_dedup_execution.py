@@ -477,7 +477,10 @@ def execute_once(
     sources = getattr(projection, "sources", None)
     rada_payloads = getattr(projection, "payloads", None)
     _require(type(sources) is tuple and bool(sources), "Rada projection sources missing")
-    _require(type(rada_payloads) is dict and bool(rada_payloads), "Rada projection payloads missing")
+    _require(
+        type(rada_payloads) is dict and bool(rada_payloads),
+        "Rada projection payloads missing",
+    )
     rada_source_family = getattr(adapter, "SOURCE_FAMILY", None)
     payloads = _load_base_payloads(
         inventory,
