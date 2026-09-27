@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections import defaultdict
 from collections.abc import Mapping
 from typing import Any
@@ -21,14 +22,90 @@ from twelve_six.data.trusted_family_authority_v1 import (
 )
 
 FAMILY_VECTOR_SCHEMA = "12-6.d03-postmaterialization-family-vector.v1"
+CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA = "12-6.d03-current-clean-family-vector.v1"
 MATERIALIZATION_SCHEMA = "12-6.d03-post-g05-g06-materialization.v1"
+CURRENT_CLEAN_RECEIPT_SCHEMA = "12-6.current-clean-decontam-quality-privacy-survivor.v2"
+CURRENT_CLEAN_REPEAT_SCHEMA = "12-6.d03-current-clean-composition-physical-repeat.v1"
 INVENTORY_SCHEMA = "12-6.data526-record-inventory.v1"
 NEXT100_INPUT_SCHEMA = "12-6.next100-106-post-dedup-family-vector.v1"
 BALANCE_RESULT_SCHEMA = "12-6.next100-106-balance-gate-result.v1"
 BALANCE_BINDING_SCHEMA = "12-6.d03-postmaterialization-balance-binding.v1"
+CURRENT_CLEAN_BALANCE_BINDING_SCHEMA = "12-6.d03-current-clean-balance-binding.v1"
 TARGET_STATUS = "TARGET_20M_SOURCE_MIX_FEASIBLE"
 STRATUM_MAP = {"uk": "ua", "en": "en", "code": "code"}
 _HEX = frozenset("0123456789abcdef")
+_CURRENT_CLEAN_RECEIPT_KEYS = {
+    "schema_version",
+    "status",
+    "clean_training_records_sha256",
+    "clean_training_handoff_sha256",
+    "data232_report_sha256",
+    "decontamination_execution_identity_sha256",
+    "eval647_execution_receipt_identity_sha256",
+    "quality_execution_identity_sha256",
+    "privacy_execution_identity_sha256",
+    "post_decontamination_input_rows_sha256",
+    "post_quality_input_rows_sha256",
+    "survivor_jsonl_sha256",
+    "survivor_record_inventory_digest_sha256",
+    "survivor_payload_inventory_digest_sha256",
+    "input_training_records",
+    "post_decontamination_records",
+    "post_quality_records",
+    "survivor_records",
+    "survivor_payload_bytes",
+    "survivor_source_objects",
+    "rejection_counts",
+    "privacy_detector_counts",
+    "dependency_git_blobs",
+    "durable_evidence_hash_only",
+    "terminal_post_g05_g06_authority",
+    "independent_qualification_required",
+    "current_corpus_launch_authority_promoted",
+    "authorized_optimized_target_exposure",
+    "tokenizer_fit_authorized",
+    "optimizer_updates_executed_on_real_targets",
+    "training_executed",
+    "learned_weights_created",
+    "final_test_outcomes_read",
+    "paid_compute_used",
+    "foreign_pretrained_weights",
+    "receipt_identity_sha256",
+}
+_CURRENT_CLEAN_REPEAT_KEYS = {
+    "schema_version",
+    "status",
+    "execution_head_sha",
+    "execution_profile",
+    "output_files_sha256",
+    "survivor_jsonl_sha256",
+    "survivor_record_inventory_digest_sha256",
+    "survivor_payload_inventory_digest_sha256",
+    "survivor_records",
+    "survivor_payload_bytes",
+    "two_fresh_executions_byte_identical",
+    "terminal_post_g05_g06_authority",
+    "independent_qualification_required",
+    "authorized_optimized_target_exposure",
+    "tokenizer_fit_authorized",
+    "optimizer_updates_executed_on_real_targets",
+    "training_executed",
+    "learned_weights_created",
+    "final_test_outcomes_read",
+    "paid_compute_used",
+    "foreign_pretrained_weights",
+    "proof_identity_sha256",
+}
+_CURRENT_CLEAN_REPEAT_OUTPUT_FILES = {
+    "composition_receipt.json",
+    "data232_report.json",
+    "decontamination_execution.json",
+    "eval647_execution_receipt.json",
+    "privacy_execution.json",
+    "quality_execution.json",
+    "survivor_inventory.json",
+    "survivor_records.jsonl",
+}
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -42,6 +119,53 @@ def _canonical_bytes(value: Any) -> bytes:
 
 def _sha256(value: Any) -> str:
     return hashlib.sha256(_canonical_bytes(value)).hexdigest()
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _strict_json_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ProjectionError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _strict_json_constant(value: str) -> Any:
+    raise ProjectionError(f"nonstandard JSON constant is forbidden: {value}")
+
+
+def _strict_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ProjectionError(f"nonfinite JSON number is forbidden: {value}")
+    return parsed
+
+
+def load_strict_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
+    """Decode one trust-boundary JSON object without lossy key/value aliases."""
+
+    if not isinstance(raw, bytes):
+        raise ProjectionError(f"{label} raw input must be bytes")
+    try:
+        text_value = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ProjectionError(f"{label} is not strict UTF-8") from exc
+    try:
+        value = json.loads(
+            text_value,
+            object_pairs_hook=_strict_json_pairs,
+            parse_constant=_strict_json_constant,
+            parse_float=_strict_json_float,
+        )
+    except (json.JSONDecodeError, OverflowError) as exc:
+        raise ProjectionError(f"{label} is not strict JSON") from exc
+    if not isinstance(value, dict):
+        raise ProjectionError(f"{label} must contain a top-level JSON object")
+    return value
 
 
 def _self_hash(document: Mapping[str, Any], identity_field: str) -> str:
@@ -233,6 +357,54 @@ def _validate_record_family(row: Mapping[str, Any]) -> str:
     return stratum
 
 
+def _family_capacity_projection(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    family_bytes: dict[tuple[str, str], int] = defaultdict(int)
+    family_records: dict[tuple[str, str], int] = defaultdict(int)
+    for row in rows:
+        stratum = _validate_record_family(row)
+        key = (stratum, str(row["family"]))
+        family_bytes[key] += int(row["payload_bytes"])
+        family_records[key] += 1
+
+    families = [
+        {
+            "stratum": stratum,
+            "family": family,
+            "record_count": family_records[(stratum, family)],
+            "capacity_bytes": family_bytes[(stratum, family)],
+        }
+        for stratum, family in sorted(family_bytes)
+    ]
+    family_names = {row["family"] for row in families}
+    trusted_root = trusted_family_authority_root_sha256(family_names)
+    stratum_capacity_bytes = {
+        stratum: sum(
+            row["capacity_bytes"] for row in families if row["stratum"] == stratum
+        )
+        for stratum in ("code", "en", "uk")
+    }
+    stratum_family_counts = {
+        stratum: sum(1 for row in families if row["stratum"] == stratum)
+        for stratum in ("code", "en", "uk")
+    }
+    record_membership = [
+        {
+            "record_id": row["record_id"],
+            "source_id": row["source_id"],
+            "family": row["family"],
+            "modality": row["modality"],
+        }
+        for row in rows
+    ]
+    return {
+        "families": families,
+        "stratum_capacity_bytes": stratum_capacity_bytes,
+        "stratum_family_counts": stratum_family_counts,
+        "record_membership_sha256": _sha256(record_membership),
+        "trusted_family_authority_root_sha256": trusted_root,
+    }
+
+
 def build_postmaterialization_family_vector(
     *,
     inventory: Mapping[str, Any],
@@ -350,45 +522,12 @@ def build_postmaterialization_family_vector(
     ):
         raise ProjectionError("inventory/result payload-root cross-bind mismatch")
 
-    family_bytes: dict[tuple[str, str], int] = defaultdict(int)
-    family_records: dict[tuple[str, str], int] = defaultdict(int)
-    for row in rows:
-        stratum = _validate_record_family(row)
-        key = (stratum, str(row["family"]))
-        family_bytes[key] += int(row["payload_bytes"])
-        family_records[key] += 1
-
-    families = [
-        {
-            "stratum": stratum,
-            "family": family,
-            "record_count": family_records[(stratum, family)],
-            "capacity_bytes": family_bytes[(stratum, family)],
-        }
-        for stratum, family in sorted(family_bytes)
-    ]
-    family_names = {row["family"] for row in families}
-    trusted_root = trusted_family_authority_root_sha256(family_names)
-
-    stratum_capacity_bytes = {
-        stratum: sum(
-            row["capacity_bytes"] for row in families if row["stratum"] == stratum
-        )
-        for stratum in ("code", "en", "uk")
-    }
-    stratum_family_counts = {
-        stratum: sum(1 for row in families if row["stratum"] == stratum)
-        for stratum in ("code", "en", "uk")
-    }
-    record_membership = [
-        {
-            "record_id": row["record_id"],
-            "source_id": row["source_id"],
-            "family": row["family"],
-            "modality": row["modality"],
-        }
-        for row in rows
-    ]
+    family_projection = _family_capacity_projection(rows)
+    families = family_projection["families"]
+    trusted_root = family_projection["trusted_family_authority_root_sha256"]
+    stratum_capacity_bytes = family_projection["stratum_capacity_bytes"]
+    stratum_family_counts = family_projection["stratum_family_counts"]
+    record_membership_sha256 = family_projection["record_membership_sha256"]
 
     vector: dict[str, Any] = {
         "schema": FAMILY_VECTOR_SCHEMA,
@@ -402,11 +541,408 @@ def build_postmaterialization_family_vector(
         "record_count": expected_record_count,
         "total_payload_bytes": expected_total_payload_bytes,
         "source_object_count": expected_source_object_count,
-        "record_membership_sha256": _sha256(record_membership),
+        "record_membership_sha256": record_membership_sha256,
         "trusted_family_authority_root_sha256": trusted_root,
         "families": families,
         "stratum_capacity_bytes": stratum_capacity_bytes,
         "stratum_family_counts": stratum_family_counts,
+        "next_gate": "NEXT100-106_BALANCE_FAMILY_CAP",
+        "training_eligible": False,
+        "evaluation_eligible": False,
+        "tokenizer_fit_authorized": False,
+        "model_training_authorized": False,
+        "authorized_optimized_target_exposure": 0,
+        "training_authorized_by_this_report": False,
+    }
+    vector["family_vector_identity_sha256"] = _self_hash(
+        vector, "family_vector_identity_sha256"
+    )
+    return vector
+
+
+def _verify_current_clean_zero_credit(document: Mapping[str, Any], *, label: str) -> None:
+    for field in (
+        "authorized_optimized_target_exposure",
+        "optimizer_updates_executed_on_real_targets",
+    ):
+        if type(document.get(field)) is not int or document.get(field) != 0:
+            raise ProjectionError(f"{label} widened zero-credit field: {field}")
+    for field in (
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "foreign_pretrained_weights",
+    ):
+        if document.get(field) is not False:
+            raise ProjectionError(f"{label} widened zero-credit field: {field}")
+    if document.get("terminal_post_g05_g06_authority") is not False:
+        raise ProjectionError(f"{label} fabricated terminal post-G05/G06 authority")
+    if document.get("independent_qualification_required") is not True:
+        raise ProjectionError(f"{label} erased independent qualification requirement")
+
+
+def _verify_current_clean_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    expected_receipt_identity_sha256: str,
+    expected_survivor_jsonl_sha256: str,
+    expected_record_inventory_digest_sha256: str,
+    expected_payload_inventory_digest_sha256: str,
+    expected_record_count: int,
+    expected_total_payload_bytes: int,
+    expected_source_object_count: int,
+) -> None:
+    if set(receipt) != _CURRENT_CLEAN_RECEIPT_KEYS:
+        raise ProjectionError("current-clean receipt fields are not closed-world")
+    if receipt.get("schema_version") != CURRENT_CLEAN_RECEIPT_SCHEMA:
+        raise ProjectionError("unsupported current-clean receipt schema")
+    if (
+        receipt.get("status")
+        != "CLEAN_SURVIVOR_MATERIALIZED_PENDING_INDEPENDENT_QUALIFICATION"
+    ):
+        raise ProjectionError("current-clean receipt status drift")
+    claimed = _require_sha256(
+        receipt.get("receipt_identity_sha256"), "current-clean receipt identity"
+    )
+    if claimed != _require_sha256(
+        expected_receipt_identity_sha256, "expected current-clean receipt identity"
+    ):
+        raise ProjectionError("current-clean receipt is not independently expected")
+    if claimed != _self_hash(receipt, "receipt_identity_sha256"):
+        raise ProjectionError("current-clean receipt self-hash mismatch")
+    if receipt.get("durable_evidence_hash_only") is not True:
+        raise ProjectionError("current-clean durable evidence boundary weakened")
+    if receipt.get("current_corpus_launch_authority_promoted") is not False:
+        raise ProjectionError("current-clean receipt fabricated corpus launch authority")
+    _verify_current_clean_zero_credit(receipt, label="current-clean receipt")
+
+    for field in (
+        "clean_training_records_sha256",
+        "clean_training_handoff_sha256",
+        "data232_report_sha256",
+        "decontamination_execution_identity_sha256",
+        "eval647_execution_receipt_identity_sha256",
+        "quality_execution_identity_sha256",
+        "privacy_execution_identity_sha256",
+        "post_decontamination_input_rows_sha256",
+        "post_quality_input_rows_sha256",
+    ):
+        _require_sha256(receipt.get(field), field)
+    dependency_blobs = receipt.get("dependency_git_blobs")
+    if not isinstance(dependency_blobs, Mapping) or not dependency_blobs:
+        raise ProjectionError("current-clean receipt dependency Git blobs are missing")
+    for path, blob_sha in dependency_blobs.items():
+        _require_nonempty(path, "dependency path")
+        _require_git_sha(blob_sha, f"dependency blob: {path}")
+
+    exact_roots = {
+        "survivor_jsonl_sha256": expected_survivor_jsonl_sha256,
+        "survivor_record_inventory_digest_sha256": (
+            expected_record_inventory_digest_sha256
+        ),
+        "survivor_payload_inventory_digest_sha256": (
+            expected_payload_inventory_digest_sha256
+        ),
+    }
+    for field, expected in exact_roots.items():
+        _expect(
+            receipt.get(field),
+            _require_sha256(expected, f"expected {field}"),
+            f"current-clean receipt.{field}",
+        )
+    exact_counts = {
+        "survivor_records": expected_record_count,
+        "survivor_payload_bytes": expected_total_payload_bytes,
+        "survivor_source_objects": expected_source_object_count,
+    }
+    for field, expected in exact_counts.items():
+        expected = _require_nonnegative_int(expected, f"expected {field}")
+        if expected <= 0:
+            raise ProjectionError(f"current-clean receipt {field} must be positive")
+        _expect(receipt.get(field), expected, f"current-clean receipt.{field}")
+    for field in (
+        "input_training_records",
+        "post_decontamination_records",
+        "post_quality_records",
+    ):
+        if _require_nonnegative_int(receipt.get(field), field) <= 0:
+            raise ProjectionError(f"current-clean receipt {field} must be positive")
+    if not (
+        receipt["input_training_records"]
+        >= receipt["post_decontamination_records"]
+        >= receipt["post_quality_records"]
+        >= receipt["survivor_records"]
+    ):
+        raise ProjectionError("current-clean survivor count monotonicity drift")
+    if receipt["survivor_source_objects"] > receipt["survivor_records"]:
+        raise ProjectionError("current-clean source-object count exceeds record count")
+
+    for field in ("rejection_counts", "privacy_detector_counts"):
+        values = receipt.get(field)
+        if not isinstance(values, Mapping):
+            raise ProjectionError(f"current-clean receipt {field} must be an object")
+        for key, value in values.items():
+            _require_nonempty(key, f"{field} key")
+            _require_nonnegative_int(value, f"{field}.{key}")
+
+
+def _verify_current_clean_repeat(
+    proof: Mapping[str, Any],
+    *,
+    expected_proof_identity_sha256: str,
+    expected_execution_head_sha: str,
+    expected_output_files_sha256: Mapping[str, str],
+    expected_survivor_jsonl_sha256: str,
+    expected_record_inventory_digest_sha256: str,
+    expected_payload_inventory_digest_sha256: str,
+    expected_record_count: int,
+    expected_total_payload_bytes: int,
+) -> None:
+    if set(proof) != _CURRENT_CLEAN_REPEAT_KEYS:
+        raise ProjectionError("current-clean repeat proof fields are not closed-world")
+    if proof.get("schema_version") != CURRENT_CLEAN_REPEAT_SCHEMA:
+        raise ProjectionError("unsupported current-clean repeat proof schema")
+    if (
+        proof.get("status")
+        != "PHYSICAL_EXECUTION_COMPLETE_PENDING_INDEPENDENT_QUALIFICATION"
+    ):
+        raise ProjectionError("current-clean repeat proof status drift")
+    if proof.get("execution_profile") != "LOCAL_FREE":
+        raise ProjectionError("current-clean repeat proof is not LOCAL_FREE")
+    _expect(
+        proof.get("execution_head_sha"),
+        _require_git_sha(
+            expected_execution_head_sha, "expected current-clean execution_head_sha"
+        ),
+        "current-clean repeat execution_head_sha",
+    )
+    claimed = _require_sha256(
+        proof.get("proof_identity_sha256"), "current-clean repeat proof identity"
+    )
+    if claimed != _require_sha256(
+        expected_proof_identity_sha256, "expected current-clean repeat proof identity"
+    ):
+        raise ProjectionError("current-clean repeat proof is not independently expected")
+    if claimed != _self_hash(proof, "proof_identity_sha256"):
+        raise ProjectionError("current-clean repeat proof self-hash mismatch")
+    _verify_current_clean_zero_credit(proof, label="current-clean repeat proof")
+    if proof.get("two_fresh_executions_byte_identical") is not True:
+        raise ProjectionError("current-clean repeat proof is not byte-identical")
+
+    outputs = proof.get("output_files_sha256")
+    if not isinstance(outputs, Mapping) or set(outputs) != _CURRENT_CLEAN_REPEAT_OUTPUT_FILES:
+        raise ProjectionError("current-clean repeat output file set drift")
+    for name, value in outputs.items():
+        _require_sha256(value, f"repeat output_files_sha256.{name}")
+    for name, expected in expected_output_files_sha256.items():
+        _expect(
+            outputs.get(name),
+            _require_sha256(expected, f"expected raw SHA-256 for {name}"),
+            f"current-clean repeat raw root: {name}",
+        )
+
+    exact_roots = {
+        "survivor_jsonl_sha256": expected_survivor_jsonl_sha256,
+        "survivor_record_inventory_digest_sha256": (
+            expected_record_inventory_digest_sha256
+        ),
+        "survivor_payload_inventory_digest_sha256": (
+            expected_payload_inventory_digest_sha256
+        ),
+    }
+    for field, expected in exact_roots.items():
+        _expect(
+            proof.get(field),
+            _require_sha256(expected, f"expected repeat {field}"),
+            f"current-clean repeat.{field}",
+        )
+    _expect(
+        proof.get("survivor_records"),
+        _require_nonnegative_int(expected_record_count, "expected survivor_records"),
+        "current-clean repeat.survivor_records",
+    )
+    _expect(
+        proof.get("survivor_payload_bytes"),
+        _require_nonnegative_int(
+            expected_total_payload_bytes, "expected survivor_payload_bytes"
+        ),
+        "current-clean repeat.survivor_payload_bytes",
+    )
+
+
+def build_current_clean_family_vector(
+    *,
+    composition_receipt_raw: bytes,
+    survivor_inventory_raw: bytes,
+    repeat_proof_raw: bytes,
+    survivor_records_raw: bytes,
+    expected_composition_receipt_json_sha256: str,
+    expected_survivor_inventory_json_sha256: str,
+    expected_repeat_proof_json_sha256: str,
+    expected_survivor_records_jsonl_sha256: str,
+    expected_receipt_identity_sha256: str,
+    expected_repeat_proof_identity_sha256: str,
+    expected_execution_head_sha: str,
+    expected_record_count: int,
+    expected_total_payload_bytes: int,
+    expected_source_object_count: int,
+    expected_record_inventory_digest_sha256: str,
+    expected_payload_inventory_digest_sha256: str,
+    source_git_sha: str,
+) -> dict[str, Any]:
+    """Authenticate current #2023 physical bytes and project them into #838."""
+
+    raw_roots = {
+        "composition_receipt.json": (
+            composition_receipt_raw,
+            expected_composition_receipt_json_sha256,
+        ),
+        "survivor_inventory.json": (
+            survivor_inventory_raw,
+            expected_survivor_inventory_json_sha256,
+        ),
+        "repeat_proof.json": (repeat_proof_raw, expected_repeat_proof_json_sha256),
+        "survivor_records.jsonl": (
+            survivor_records_raw,
+            expected_survivor_records_jsonl_sha256,
+        ),
+    }
+    for name, (raw, expected) in raw_roots.items():
+        if not isinstance(raw, bytes):
+            raise ProjectionError(f"{name} raw input must be bytes")
+        _expect(
+            _sha256_bytes(raw),
+            _require_sha256(expected, f"expected raw SHA-256 for {name}"),
+            f"raw SHA-256 for {name}",
+        )
+
+    receipt = load_strict_json_object(
+        composition_receipt_raw, label="current-clean composition receipt"
+    )
+    inventory = load_strict_json_object(
+        survivor_inventory_raw, label="current-clean survivor inventory"
+    )
+    repeat = load_strict_json_object(
+        repeat_proof_raw, label="current-clean repeat proof"
+    )
+
+    expected_record_count = _require_nonnegative_int(
+        expected_record_count, "expected_record_count"
+    )
+    expected_total_payload_bytes = _require_nonnegative_int(
+        expected_total_payload_bytes, "expected_total_payload_bytes"
+    )
+    expected_source_object_count = _require_nonnegative_int(
+        expected_source_object_count, "expected_source_object_count"
+    )
+    if min(
+        expected_record_count,
+        expected_total_payload_bytes,
+        expected_source_object_count,
+    ) <= 0:
+        raise ProjectionError("current-clean survivor counts/bytes must be positive")
+    source_git_sha = _require_git_sha(source_git_sha, "source_git_sha")
+    expected_execution_head_sha = _require_git_sha(
+        expected_execution_head_sha, "expected_execution_head_sha"
+    )
+    expected_record_inventory_digest_sha256 = _require_sha256(
+        expected_record_inventory_digest_sha256,
+        "expected_record_inventory_digest_sha256",
+    )
+    expected_payload_inventory_digest_sha256 = _require_sha256(
+        expected_payload_inventory_digest_sha256,
+        "expected_payload_inventory_digest_sha256",
+    )
+    expected_survivor_records_jsonl_sha256 = _require_sha256(
+        expected_survivor_records_jsonl_sha256,
+        "expected_survivor_records_jsonl_sha256",
+    )
+
+    _verify_current_clean_receipt(
+        receipt,
+        expected_receipt_identity_sha256=expected_receipt_identity_sha256,
+        expected_survivor_jsonl_sha256=expected_survivor_records_jsonl_sha256,
+        expected_record_inventory_digest_sha256=(
+            expected_record_inventory_digest_sha256
+        ),
+        expected_payload_inventory_digest_sha256=(
+            expected_payload_inventory_digest_sha256
+        ),
+        expected_record_count=expected_record_count,
+        expected_total_payload_bytes=expected_total_payload_bytes,
+        expected_source_object_count=expected_source_object_count,
+    )
+    _verify_current_clean_repeat(
+        repeat,
+        expected_proof_identity_sha256=expected_repeat_proof_identity_sha256,
+        expected_execution_head_sha=expected_execution_head_sha,
+        expected_output_files_sha256={
+            "composition_receipt.json": expected_composition_receipt_json_sha256,
+            "survivor_inventory.json": expected_survivor_inventory_json_sha256,
+            "survivor_records.jsonl": expected_survivor_records_jsonl_sha256,
+        },
+        expected_survivor_jsonl_sha256=expected_survivor_records_jsonl_sha256,
+        expected_record_inventory_digest_sha256=(
+            expected_record_inventory_digest_sha256
+        ),
+        expected_payload_inventory_digest_sha256=(
+            expected_payload_inventory_digest_sha256
+        ),
+        expected_record_count=expected_record_count,
+        expected_total_payload_bytes=expected_total_payload_bytes,
+    )
+    rows = _verify_inventory(
+        inventory,
+        expected_record_count=expected_record_count,
+        expected_total_payload_bytes=expected_total_payload_bytes,
+        expected_record_inventory_digest_sha256=(
+            expected_record_inventory_digest_sha256
+        ),
+        expected_payload_inventory_digest_sha256=(
+            expected_payload_inventory_digest_sha256
+        ),
+        expected_source_object_count=expected_source_object_count,
+    )
+    family_projection = _family_capacity_projection(rows)
+    vector: dict[str, Any] = {
+        "schema": CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA,
+        "status": "PASS",
+        "source_git_sha": source_git_sha,
+        "current_clean_execution_head_sha": expected_execution_head_sha,
+        "current_clean_receipt_identity_sha256": _require_sha256(
+            expected_receipt_identity_sha256, "expected current-clean receipt identity"
+        ),
+        "current_clean_repeat_proof_identity_sha256": _require_sha256(
+            expected_repeat_proof_identity_sha256,
+            "expected current-clean repeat proof identity",
+        ),
+        "composition_receipt_json_sha256": _require_sha256(
+            expected_composition_receipt_json_sha256,
+            "expected composition receipt raw SHA-256",
+        ),
+        "survivor_inventory_json_sha256": _require_sha256(
+            expected_survivor_inventory_json_sha256,
+            "expected survivor inventory raw SHA-256",
+        ),
+        "repeat_proof_json_sha256": _require_sha256(
+            expected_repeat_proof_json_sha256,
+            "expected repeat proof raw SHA-256",
+        ),
+        "survivor_records_jsonl_sha256": expected_survivor_records_jsonl_sha256,
+        "record_inventory_digest_sha256": expected_record_inventory_digest_sha256,
+        "payload_inventory_digest_sha256": expected_payload_inventory_digest_sha256,
+        "record_count": expected_record_count,
+        "total_payload_bytes": expected_total_payload_bytes,
+        "source_object_count": expected_source_object_count,
+        "record_membership_sha256": family_projection["record_membership_sha256"],
+        "trusted_family_authority_root_sha256": family_projection[
+            "trusted_family_authority_root_sha256"
+        ],
+        "families": family_projection["families"],
+        "stratum_capacity_bytes": family_projection["stratum_capacity_bytes"],
+        "stratum_family_counts": family_projection["stratum_family_counts"],
         "next_gate": "NEXT100-106_BALANCE_FAMILY_CAP",
         "training_eligible": False,
         "evaluation_eligible": False,
@@ -426,7 +962,8 @@ def verify_postmaterialization_family_vector(
     *,
     expected_identity_sha256: str | None = None,
 ) -> str:
-    if document.get("schema") != FAMILY_VECTOR_SCHEMA:
+    schema = document.get("schema")
+    if schema not in {FAMILY_VECTOR_SCHEMA, CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA}:
         raise ProjectionError("unsupported post-materialization family vector schema")
     claimed = _require_sha256(
         document.get("family_vector_identity_sha256"),
@@ -445,19 +982,38 @@ def verify_postmaterialization_family_vector(
     if document.get("next_gate") != "NEXT100-106_BALANCE_FAMILY_CAP":
         raise ProjectionError("post-materialization family vector next-gate drift")
 
-    for field in (
-        "materialization_identity_sha256",
-        "record_payload_jsonl_sha256",
-        "record_inventory_digest_sha256",
-        "payload_inventory_digest_sha256",
-        "record_membership_sha256",
-        "trusted_family_authority_root_sha256",
-    ):
-        _require_sha256(document.get(field), field)
-    _require_git_sha(
-        document.get("materialization_execution_head_sha"),
-        "materialization_execution_head_sha",
-    )
+    if schema == FAMILY_VECTOR_SCHEMA:
+        for field in (
+            "materialization_identity_sha256",
+            "record_payload_jsonl_sha256",
+            "record_inventory_digest_sha256",
+            "payload_inventory_digest_sha256",
+            "record_membership_sha256",
+            "trusted_family_authority_root_sha256",
+        ):
+            _require_sha256(document.get(field), field)
+        _require_git_sha(
+            document.get("materialization_execution_head_sha"),
+            "materialization_execution_head_sha",
+        )
+    else:
+        for field in (
+            "current_clean_receipt_identity_sha256",
+            "current_clean_repeat_proof_identity_sha256",
+            "composition_receipt_json_sha256",
+            "survivor_inventory_json_sha256",
+            "repeat_proof_json_sha256",
+            "survivor_records_jsonl_sha256",
+            "record_inventory_digest_sha256",
+            "payload_inventory_digest_sha256",
+            "record_membership_sha256",
+            "trusted_family_authority_root_sha256",
+        ):
+            _require_sha256(document.get(field), field)
+        _require_git_sha(
+            document.get("current_clean_execution_head_sha"),
+            "current_clean_execution_head_sha",
+        )
     _require_git_sha(document.get("source_git_sha"), "source_git_sha")
 
     for field in (
@@ -469,7 +1025,10 @@ def verify_postmaterialization_family_vector(
     ):
         if document.get(field) is not False:
             raise ProjectionError(f"{field} must remain false")
-    if document.get("authorized_optimized_target_exposure") != 0:
+    if (
+        type(document.get("authorized_optimized_target_exposure")) is not int
+        or document.get("authorized_optimized_target_exposure") != 0
+    ):
         raise ProjectionError("family vector must keep optimized-target exposure at zero")
 
     families = document.get("families")
@@ -571,6 +1130,61 @@ def _normalize_dedup_authority(
     return normalized
 
 
+def _family_vector_physical_authority(
+    family_vector: Mapping[str, Any],
+    identity: str,
+) -> dict[str, Any]:
+    if family_vector.get("schema") == FAMILY_VECTOR_SCHEMA:
+        return {
+            "family_vector_identity_sha256": identity,
+            "materialization_identity_sha256": family_vector[
+                "materialization_identity_sha256"
+            ],
+            "record_payload_jsonl_sha256": family_vector[
+                "record_payload_jsonl_sha256"
+            ],
+            "record_inventory_digest_sha256": family_vector[
+                "record_inventory_digest_sha256"
+            ],
+            "payload_inventory_digest_sha256": family_vector[
+                "payload_inventory_digest_sha256"
+            ],
+            "record_count": family_vector["record_count"],
+            "total_payload_bytes": family_vector["total_payload_bytes"],
+            "source_object_count": family_vector["source_object_count"],
+        }
+    if family_vector.get("schema") == CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA:
+        return {
+            "family_vector_identity_sha256": identity,
+            "current_clean_receipt_identity_sha256": family_vector[
+                "current_clean_receipt_identity_sha256"
+            ],
+            "current_clean_repeat_proof_identity_sha256": family_vector[
+                "current_clean_repeat_proof_identity_sha256"
+            ],
+            "composition_receipt_json_sha256": family_vector[
+                "composition_receipt_json_sha256"
+            ],
+            "survivor_inventory_json_sha256": family_vector[
+                "survivor_inventory_json_sha256"
+            ],
+            "repeat_proof_json_sha256": family_vector["repeat_proof_json_sha256"],
+            "survivor_records_jsonl_sha256": family_vector[
+                "survivor_records_jsonl_sha256"
+            ],
+            "record_inventory_digest_sha256": family_vector[
+                "record_inventory_digest_sha256"
+            ],
+            "payload_inventory_digest_sha256": family_vector[
+                "payload_inventory_digest_sha256"
+            ],
+            "record_count": family_vector["record_count"],
+            "total_payload_bytes": family_vector["total_payload_bytes"],
+            "source_object_count": family_vector["source_object_count"],
+        }
+    raise ProjectionError("unsupported family-vector physical authority schema")
+
+
 def adapt_postmaterialization_family_vector_to_next100_106(
     family_vector: Mapping[str, Any],
     *,
@@ -620,24 +1234,9 @@ def adapt_postmaterialization_family_vector_to_next100_106(
             "by_stratum": {stratum: by_stratum[stratum] for stratum in strata},
             "family_count": {stratum: family_count[stratum] for stratum in strata},
         },
-        "physical_authority": {
-            "family_vector_identity_sha256": identity,
-            "materialization_identity_sha256": family_vector[
-                "materialization_identity_sha256"
-            ],
-            "record_payload_jsonl_sha256": family_vector[
-                "record_payload_jsonl_sha256"
-            ],
-            "record_inventory_digest_sha256": family_vector[
-                "record_inventory_digest_sha256"
-            ],
-            "payload_inventory_digest_sha256": family_vector[
-                "payload_inventory_digest_sha256"
-            ],
-            "record_count": family_vector["record_count"],
-            "total_payload_bytes": family_vector["total_payload_bytes"],
-            "source_object_count": family_vector["source_object_count"],
-        },
+        "physical_authority": _family_vector_physical_authority(
+            family_vector, identity
+        ),
     }
     return result
 
@@ -705,43 +1304,15 @@ def build_balance_result_binding(
     physical = next100_input.get("physical_authority")
     if not isinstance(physical, Mapping):
         raise ProjectionError("NEXT100-106 input lacks physical authority extension")
-    expected_physical = {
-        "family_vector_identity_sha256": family_identity,
-        "materialization_identity_sha256": family_vector[
-            "materialization_identity_sha256"
-        ],
-        "record_payload_jsonl_sha256": family_vector[
-            "record_payload_jsonl_sha256"
-        ],
-        "record_inventory_digest_sha256": family_vector[
-            "record_inventory_digest_sha256"
-        ],
-        "payload_inventory_digest_sha256": family_vector[
-            "payload_inventory_digest_sha256"
-        ],
-        "record_count": family_vector["record_count"],
-        "total_payload_bytes": family_vector["total_payload_bytes"],
-        "source_object_count": family_vector["source_object_count"],
-    }
+    expected_physical = _family_vector_physical_authority(
+        family_vector, family_identity
+    )
     if dict(physical) != expected_physical:
         raise ProjectionError("NEXT100-106 input physical authority mismatch")
 
-    binding: dict[str, Any] = {
-        "schema": BALANCE_BINDING_SCHEMA,
+    binding_common: dict[str, Any] = {
         "status": "BOUND_ZERO_CREDIT",
         "family_vector_identity_sha256": family_identity,
-        "materialization_identity_sha256": family_vector[
-            "materialization_identity_sha256"
-        ],
-        "record_payload_jsonl_sha256": family_vector[
-            "record_payload_jsonl_sha256"
-        ],
-        "record_inventory_digest_sha256": family_vector[
-            "record_inventory_digest_sha256"
-        ],
-        "payload_inventory_digest_sha256": family_vector[
-            "payload_inventory_digest_sha256"
-        ],
         "next100_input_identity_sha256": _sha256(dict(next100_input)),
         "balance_policy_identity_sha256": policy_identity,
         "balance_result_identity_sha256": result_identity,
@@ -768,6 +1339,29 @@ def build_balance_result_binding(
         "tokenizer_fit_authorized": False,
         "model_training_authorized": False,
     }
+    if family_vector.get("schema") == FAMILY_VECTOR_SCHEMA:
+        binding: dict[str, Any] = {
+            "schema": BALANCE_BINDING_SCHEMA,
+            "materialization_identity_sha256": family_vector[
+                "materialization_identity_sha256"
+            ],
+            "record_payload_jsonl_sha256": family_vector[
+                "record_payload_jsonl_sha256"
+            ],
+            "record_inventory_digest_sha256": family_vector[
+                "record_inventory_digest_sha256"
+            ],
+            "payload_inventory_digest_sha256": family_vector[
+                "payload_inventory_digest_sha256"
+            ],
+            **binding_common,
+        }
+    else:
+        binding = {
+            "schema": CURRENT_CLEAN_BALANCE_BINDING_SCHEMA,
+            "current_clean_physical_authority": expected_physical,
+            **binding_common,
+        }
     binding["binding_identity_sha256"] = _self_hash(
         binding, "binding_identity_sha256"
     )
@@ -781,7 +1375,10 @@ def require_balanced_selection_ready(
 ) -> None:
     """Fail closed unless #838 reached its exact 20M target on this physical universe."""
 
-    if binding.get("schema") != BALANCE_BINDING_SCHEMA:
+    if binding.get("schema") not in {
+        BALANCE_BINDING_SCHEMA,
+        CURRENT_CLEAN_BALANCE_BINDING_SCHEMA,
+    }:
         raise ProjectionError("unsupported balance binding schema")
     claimed = _require_sha256(
         binding.get("binding_identity_sha256"), "binding_identity_sha256"
