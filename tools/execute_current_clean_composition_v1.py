@@ -33,6 +33,7 @@ AUTHENTICATED_DEPENDENCY_PATHS = (
     "src/twelve_six/data/document_quality.py",
     "src/twelve_six/data/quality_granularity.py",
     "src/twelve_six/data/privacy_filter_v3.py",
+    "src/twelve_six/data/post_g05_g06_materialization_v1.py",
 )
 OUTPUT_FILES = {
     "composition_receipt": "composition_receipt.json",
