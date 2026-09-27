@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
-import threading
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from http.client import HTTPConnection
+import json
+import threading
 
 import pytest
 
