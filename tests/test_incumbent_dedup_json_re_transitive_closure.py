@@ -45,14 +45,22 @@ def test_loader_rejects_json_default_encoder_in_place_state_drift() -> None:
 
 
 def test_loader_rejects_re_compiler_module_rebinding(monkeypatch: pytest.MonkeyPatch) -> None:
-    with monkeypatch.context() as patch:
-        patch.setattr(re, "_compiler", ModuleType("synthetic_re_compiler"))
-        with pytest.raises(
-            indexed.IndexedExecutionError,
-            match=r"transitive behavior drift: re\._compiler$",
-        ):
-            indexed._attest_loader_frozen_runtime_dependencies()
+    cache = re._cache
+    original_cache = dict(cache)
+    caught: indexed.IndexedExecutionError | None = None
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(re, "_compiler", ModuleType("synthetic_re_compiler"))
+            try:
+                indexed._attest_loader_frozen_runtime_dependencies()
+            except indexed.IndexedExecutionError as exc:
+                caught = exc
+    finally:
+        cache.clear()
+        cache.update(original_cache)
 
+    assert caught is not None
+    assert str(caught) == "transitive behavior drift: re._compiler"
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
@@ -65,38 +73,56 @@ def test_loader_rejects_re_compiler_behavior_rebinding(
         del args, kwargs
         return object()
 
-    with monkeypatch.context() as patch:
-        patch.setattr(re._compiler, member_name, replacement)
-        with pytest.raises(
-            indexed.IndexedExecutionError,
-            match=rf"transitive behavior drift: re\._compiler\.{member_name}$",
-        ):
-            indexed._attest_loader_frozen_runtime_dependencies()
+    cache = re._cache
+    original_cache = dict(cache)
+    caught: indexed.IndexedExecutionError | None = None
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(re._compiler, member_name, replacement)
+            try:
+                indexed._attest_loader_frozen_runtime_dependencies()
+            except indexed.IndexedExecutionError as exc:
+                caught = exc
+    finally:
+        cache.clear()
+        cache.update(original_cache)
 
+    assert caught is not None
+    assert str(caught) == f"transitive behavior drift: re._compiler.{member_name}"
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_loader_rejects_re_cache_rebinding(monkeypatch: pytest.MonkeyPatch) -> None:
-    with monkeypatch.context() as patch:
-        patch.setattr(re, "_cache", {})
-        with pytest.raises(
-            indexed.IndexedExecutionError,
-            match=r"transitive behavior drift: re\._cache",
-        ):
-            indexed._attest_loader_frozen_runtime_dependencies()
+    cache = re._cache
+    original_cache = dict(cache)
+    caught: indexed.IndexedExecutionError | None = None
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(re, "_cache", {})
+            try:
+                indexed._attest_loader_frozen_runtime_dependencies()
+            except indexed.IndexedExecutionError as exc:
+                caught = exc
+    finally:
+        cache.clear()
+        cache.update(original_cache)
 
+    assert caught is not None
+    assert str(caught) == "transitive behavior drift: re._cache"
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_loader_rejects_re_maxcache_non_exact_int(monkeypatch: pytest.MonkeyPatch) -> None:
+    caught: indexed.IndexedExecutionError | None = None
     with monkeypatch.context() as patch:
         patch.setattr(re, "_MAXCACHE", float(re._MAXCACHE))
-        with pytest.raises(
-            indexed.IndexedExecutionError,
-            match=r"transitive behavior drift: re\._MAXCACHE",
-        ):
+        try:
             indexed._attest_loader_frozen_runtime_dependencies()
+        except indexed.IndexedExecutionError as exc:
+            caught = exc
 
+    assert caught is not None
+    assert str(caught) == "transitive behavior drift: re._MAXCACHE"
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
