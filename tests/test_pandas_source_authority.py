@@ -173,13 +173,20 @@ def test_file_loader_rejects_duplicate_nested_json_member(tmp_path: Path) -> Non
     assert validate_pandas_source_authority_files(tmp_path) == ["config_json_invalid"]
 
 
-def test_file_loader_rejects_nonfinite_or_overflowed_json_number(tmp_path: Path) -> None:
+def test_file_loader_rejects_nonfinite_or_overflowed_json_numbers(tmp_path: Path) -> None:
     config, receipt = _load()
     encoded = json.dumps(config, ensure_ascii=False).encode()
     marker = b'"canonical_capacity_credit_bytes": 0'
     assert marker in encoded
-    _write_fixture_repo(tmp_path, encoded.replace(marker, b'"canonical_capacity_credit_bytes": 1e400'), receipt)
-    assert validate_pandas_source_authority_files(tmp_path) == ["config_json_invalid"]
+
+    for token in (b"NaN", b"Infinity", b"-Infinity", b"1e400"):
+        mutated = encoded.replace(
+            marker,
+            b'"canonical_capacity_credit_bytes": ' + token,
+            1,
+        )
+        _write_fixture_repo(tmp_path, mutated, receipt)
+        assert validate_pandas_source_authority_files(tmp_path) == ["config_json_invalid"]
 
 
 def test_file_loader_never_reads_traversal_receipt_path(
