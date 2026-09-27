@@ -41,6 +41,9 @@ def _authority() -> dict[str, object]:
         "indexed_module": "twelve_six.data.incumbent_dedup_indexed_execution",
         "indexed_module_git_blob_sha1": "4" * 40,
         "v3_module": "authority_runtime.cross_source_capacity_audit_v3",
+        "incumbent_base_authority_ref": "clean-base-authority:test",
+        "combined_inventory_sha256": "6" * 64,
+        "incumbent_base_payload_map_sha256": "7" * 64,
         "max_candidate_pairs": 5_000_000,
         "max_index_postings": 100_000_000,
         "max_pair_expansions": 100_000_000,
@@ -363,4 +366,24 @@ def test_dependency_authority_binds_execution_work_limits(tmp_path: Path) -> Non
     identity = _write_json(path, value)
 
     with pytest.raises(carrier.RadaTwoCleanExecutionError, match="max_candidate_pairs"):
+        carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
+
+
+def test_dependency_authority_binds_combined_inventory_and_base_map_roots(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "authority.json"
+    value = _authority()
+    value["combined_inventory_sha256"] = "not-a-hash"
+    identity = _write_json(path, value)
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="combined_inventory_sha256"):
+        carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
+
+    value = _authority()
+    value["incumbent_base_payload_map_sha256"] = "not-a-hash"
+    identity = _write_json(path, value)
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError,
+        match="incumbent_base_payload_map_sha256",
+    ):
         carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
