@@ -313,6 +313,10 @@ def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
             expected_tokenizer_identity_sha256=_tokenizer_identity(),
             expected_packing_identity_sha256=PACKING_CONFIG_HASH,
             expected_runtime_identity_sha256=_runtime_identity(),
+            expected_implementation_manifest=_implementation_manifest(),
+            expected_implementation_manifest_identity_sha256=(
+                _implementation_identity()
+            ),
         )
 
 
@@ -338,6 +342,10 @@ def test_proof_rejects_unknown_fields_even_after_self_hash_recomputation() -> No
             expected_tokenizer_identity_sha256=_tokenizer_identity(),
             expected_packing_identity_sha256=PACKING_CONFIG_HASH,
             expected_runtime_identity_sha256=_runtime_identity(),
+            expected_implementation_manifest=_implementation_manifest(),
+            expected_implementation_manifest_identity_sha256=(
+                _implementation_identity()
+            ),
         )
 
 
@@ -355,6 +363,7 @@ def test_invalid_timeout_fails_before_spawning_children() -> None:
         two_clean.prove_two_clean_build(
             packet,
             expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
+            expected_implementation_manifest_identity_sha256=_implementation_identity(),
             timeout_seconds=True,
         )
 
