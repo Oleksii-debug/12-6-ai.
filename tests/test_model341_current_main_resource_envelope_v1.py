@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import copy
-import json
-import warnings
 from pathlib import Path
 
 import pytest
@@ -82,7 +80,7 @@ def test_windows_memory_probe_fails_closed_without_windows_api(monkeypatch: pyte
     assert probe._windows_peak_working_set_mib() is None
 
 
-def test_current_main_resource_probe_preserves_weights_and_emits_measurement() -> None:
+def test_current_main_resource_probe_preserves_weights_without_updates() -> None:
     report = run_probe(ROOT, warmup_samples=1, measured_samples=3, intraop_threads=2)
     validate_probe(report)
     assert report["model"]["parameter_count"] == EXPECTED_PARAMETER_COUNT
@@ -90,6 +88,3 @@ def test_current_main_resource_probe_preserves_weights_and_emits_measurement() -
     assert report["measurement"]["optimizer_updates"] == 0
     assert report["measurement"]["model_updates"] == 0
     assert report["truth_boundary"] == TRUTH_BOUNDARY
-
-    compact = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    warnings.warn(f"MODEL341_CURRENT_MAIN_REPAIRED_MEASUREMENT={compact}", stacklevel=1)
