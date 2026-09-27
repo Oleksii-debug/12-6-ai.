@@ -24,7 +24,7 @@ from twelve_six.data._data232_decontamination_matching import (
 )
 
 SCHEMA = "12-6.eval647-current-corpus-overlap.v1"
-MATERIALIZATION_SCHEMA = "12-6.d03-post-g05-g06-materialization.v1"
+MATERIALIZATION_SCHEMA = "12-6.d03-post-g05-g06-materialization.v2"
 MATERIALIZATION_STATUS = "MATERIALIZED_ZERO_CREDIT"
 
 
