@@ -483,7 +483,10 @@ def test_coherently_resealed_runtime_dependency_substitution_fails() -> None:
     ]
     with pytest.raises(
         LaunchInputAuthorityError,
-        match="canonical two-clean proof rejected: two-clean proof runtime dependency manifest mismatch",
+        match=(
+            "canonical two-clean proof rejected: "
+            "two-clean proof runtime dependency manifest mismatch"
+        ),
     ):
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
@@ -527,7 +530,10 @@ def test_coherently_resealed_implementation_manifest_substitution_fails() -> Non
     ]
     with pytest.raises(
         LaunchInputAuthorityError,
-        match="canonical two-clean proof rejected: two-clean proof implementation manifest mismatch",
+        match=(
+            "canonical two-clean proof rejected: "
+            "two-clean proof implementation manifest mismatch"
+        ),
     ):
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
