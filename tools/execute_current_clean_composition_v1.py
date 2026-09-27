@@ -26,6 +26,12 @@ AUTHENTICATED_DEPENDENCY_PATHS = (
     "src/twelve_six/data/eval647_reserved_decontamination_v1.py",
     "src/twelve_six/data/quality_execution_authority.py",
     "src/twelve_six/data/privacy_execution_authority.py",
+    "src/twelve_six/data/decontamination_authority_v2.py",
+    "src/twelve_six/data/_data232_decontamination_matching.py",
+    "src/twelve_six/data/eval647_future_training_exclusion_v1.py",
+    "src/twelve_six/data/document_quality.py",
+    "src/twelve_six/data/quality_granularity.py",
+    "src/twelve_six/data/privacy_filter_v3.py",
 )
 OUTPUT_FILES = {
     "composition_receipt": "composition_receipt.json",
