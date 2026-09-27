@@ -232,7 +232,7 @@ def test_quality_reject_document_is_physically_absent_from_survivors() -> None:
     assert [record["record_id"] for record in output] == ["keep"]
     assert all(record["normalized_payload"] != "discard me" for record in output)
     assert stats["g05_reject_documents"] == 1
-    assert stats["g05_rejected_utf8_bytes"] == len("discard me".encode("utf-8"))
+    assert stats["g05_rejected_utf8_bytes"] == len(b"discard me")
 
 
 def test_privacy_quarantine_and_exclude_are_physically_absent(
@@ -313,7 +313,7 @@ def test_privacy_redaction_uses_canonical_materializer_and_rescans_allow(
                 "record_id": "r1",
                 "mode": "en",
                 "payload_sha256": _payload_sha("email a@b.com end"),
-                "utf8_bytes": len("email a@b.com end".encode()),
+                "utf8_bytes": len(b"email a@b.com end"),
                 "action": "REDACT",
             }
         ],
