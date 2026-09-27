@@ -50,6 +50,7 @@ _IDENTITY_FIELDS = {
     "schema",
     "identity_sha256",
     "run_id",
+    "base_launch_manifest_sha256",
     "recovery_run_manifest_sha256",
     "recovery_attempt_authority_sha256",
     "portable_run_binding_sha256",
@@ -137,6 +138,14 @@ def _exact_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _base_manifest_digest(manifest: Mapping[str, Any]) -> str:
+    unsigned = dict(manifest)
+    unsigned.pop("terminal_authority", None)
+    import hashlib
+
+    return hashlib.sha256(canonical_json_bytes(unsigned)).hexdigest()
+
+
 def _identity_digest(identity: Mapping[str, Any]) -> str:
     unsigned = dict(identity)
     unsigned.pop("identity_sha256", None)
@@ -156,6 +165,7 @@ def _pointer_digest(state: Mapping[str, Any]) -> str:
 def build_current_run_identity(
     *,
     run_id: str,
+    base_launch_manifest_sha256: str,
     recovery_run_manifest_sha256: str,
     recovery_attempt_authority_sha256: str,
     portable_run_binding_sha256: str,
@@ -165,6 +175,7 @@ def build_current_run_identity(
         "schema": CURRENT_RUN_IDENTITY_SCHEMA,
         "identity_sha256": "0" * 64,
         "run_id": run_id,
+        "base_launch_manifest_sha256": base_launch_manifest_sha256,
         "recovery_run_manifest_sha256": recovery_run_manifest_sha256,
         "recovery_attempt_authority_sha256": recovery_attempt_authority_sha256,
         "portable_run_binding_sha256": portable_run_binding_sha256,
@@ -190,6 +201,7 @@ def validate_current_run_identity(
     if not _token(identity.get("run_id")):
         errors.append("current_run_id_invalid")
     for field in (
+        "base_launch_manifest_sha256",
         "recovery_run_manifest_sha256",
         "recovery_attempt_authority_sha256",
         "portable_run_binding_sha256",
@@ -215,6 +227,9 @@ def verify_terminal_authority_current_run_binding(
     if identity_errors:
         return tuple(f"current_run_identity:{error}" for error in identity_errors)
     expected = {
+        "base_manifest_sha256": current_run_identity.get(
+            "base_launch_manifest_sha256"
+        ),
         "recovery_run_id": current_run_identity.get("run_id"),
         "recovery_run_manifest_sha256": current_run_identity.get(
             "recovery_run_manifest_sha256"
@@ -272,6 +287,10 @@ def build_current_run_pointer_state(
         raise ValueError("manifest_identities_missing")
     if identities.get("source_git_sha") != current_run_identity.get("source_git_sha"):
         raise ValueError("current_run_source_git_sha_mismatch")
+    if _base_manifest_digest(manifest) != current_run_identity.get(
+        "base_launch_manifest_sha256"
+    ):
+        raise ValueError("current_run_base_manifest_mismatch")
     if identities.get("portable_run_binding_sha256") != current_run_identity.get(
         "portable_run_binding_sha256"
     ):
@@ -585,9 +604,15 @@ def activate_current_run_authority(
     current_run_identity: Mapping[str, Any],
     *,
     expected_pointer_tip: str | None,
+    expected_current_run_identity_sha256: str,
     now: datetime | None = None,
 ) -> CurrentRunAuthorityOperation:
     _validate_transport(remote)
+    if not _sha256(expected_current_run_identity_sha256):
+        return _operation_failure(
+            "ACTIVATE",
+            blocker="expected_current_run_identity_sha256_invalid",
+        )
     manifest_snapshot = json.loads(canonical_json_bytes(manifest))
     identity_snapshot = json.loads(canonical_json_bytes(current_run_identity))
     identity_errors = validate_current_run_identity(identity_snapshot)
@@ -595,6 +620,12 @@ def activate_current_run_authority(
         return _operation_failure(
             "ACTIVATE",
             blocker="invalid_current_run_identity:" + ";".join(identity_errors),
+        )
+    if identity_snapshot.get("identity_sha256") != expected_current_run_identity_sha256:
+        return _operation_failure(
+            "ACTIVATE",
+            blocker="expected_current_run_identity_sha256_mismatch",
+            identity_sha256=str(identity_snapshot.get("identity_sha256", "")),
         )
     global_lease = inspect_global_training_run_lease(
         repo_root, remote, manifest_snapshot
