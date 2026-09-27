@@ -30,6 +30,7 @@ INPUT_SCHEMA = "12-6.postpack-two-clean-input.v4"
 PROOF_SCHEMA = "12-6.postpack-two-clean-proof.v4"
 IMPLEMENTATION_MANIFEST_SCHEMA = "12-6.d04-two-clean-implementation-manifest.v1"
 RUNTIME_DEPENDENCY_MANIFEST_SCHEMA = "12-6.d04-runtime-dependency-manifest.v1"
+_RUNTIME_FILE_KINDS = frozenset({"stdlib", "platstdlib", "windows-extension"})
 _IMPLEMENTATION_PATHS = (
     "twelve_six/__init__.py",
     "twelve_six/packing/__init__.py",
@@ -244,7 +245,7 @@ def _normalize_runtime_dependency_manifest(
                 )
             normalized[module_name] = {"kind": kind}
             continue
-        if kind != "stdlib" or set(entry) != {"kind", "path", "sha256"}:
+        if kind not in _RUNTIME_FILE_KINDS or set(entry) != {"kind", "path", "sha256"}:
             raise TwoCleanBuildError(
                 f"runtime dependency {module_name} has unexpected fields"
             )
@@ -260,7 +261,7 @@ def _normalize_runtime_dependency_manifest(
                 f"runtime dependency {module_name} has invalid relative path"
             )
         normalized[module_name] = {
-            "kind": "stdlib",
+            "kind": kind,
             "path": relative_path,
             "sha256": _require_sha256(
                 entry.get("sha256"),
@@ -282,16 +283,81 @@ def _runtime_dependency_manifest_identity(
     )
 
 
+def _resolved_sysconfig_root(name: str, *, required: bool) -> Path | None:
+    value = sysconfig.get_path(name)
+    if not isinstance(value, str) or not value:
+        if required:
+            raise TwoCleanBuildError(f"Python {name} root is unavailable")
+        return None
+    try:
+        return Path(value).resolve(strict=True)
+    except OSError as exc:
+        if required:
+            raise TwoCleanBuildError(f"Python {name} root cannot be resolved") from exc
+        return None
+
+
+def _trusted_runtime_roots() -> tuple[tuple[str, Path], ...]:
+    """Return canonical file-backed runtime roots in deterministic priority order."""
+    roots: list[tuple[str, Path]] = []
+
+    def add(kind: str, root: Path | None) -> None:
+        if root is None or any(existing == root for _, existing in roots):
+            return
+        roots.append((kind, root))
+
+    add("stdlib", _resolved_sysconfig_root("stdlib", required=True))
+    add("platstdlib", _resolved_sysconfig_root("platstdlib", required=False))
+    if sys.platform == "win32":
+        for prefix in (sys.base_exec_prefix, sys.exec_prefix):
+            if not isinstance(prefix, str) or not prefix:
+                continue
+            try:
+                add("windows-extension", (Path(prefix) / "DLLs").resolve(strict=True))
+            except OSError:
+                continue
+    return tuple(roots)
+
+
+def _excluded_runtime_roots() -> tuple[Path, ...]:
+    """Return site-package roots that must never inherit stdlib trust."""
+    roots: list[Path] = []
+    for name in ("purelib", "platlib"):
+        root = _resolved_sysconfig_root(name, required=False)
+        if root is not None and root not in roots:
+            roots.append(root)
+    return tuple(roots)
+
+
+def _runtime_dependency_file_entry(
+    module_name: str,
+    candidate: Path,
+    *,
+    trusted_roots: Sequence[tuple[str, Path]],
+    excluded_roots: Sequence[Path],
+) -> dict[str, str]:
+    for excluded in excluded_roots:
+        if candidate == excluded or candidate.is_relative_to(excluded):
+            raise TwoCleanBuildError(
+                f"runtime dependency escaped stdlib/source closure: {module_name}"
+            )
+    for kind, root in trusted_roots:
+        if candidate.is_relative_to(root):
+            return {
+                "kind": kind,
+                "path": candidate.relative_to(root).as_posix(),
+                "sha256": _sha256_file(candidate),
+            }
+    raise TwoCleanBuildError(
+        f"runtime dependency escaped stdlib/source closure: {module_name}"
+    )
+
+
 def _current_runtime_dependency_manifest() -> dict[str, dict[str, str]]:
     """Describe behavior-bearing clean-runtime modules without absolute paths."""
     source_root = _trusted_source_root()
-    stdlib_root_value = sysconfig.get_path("stdlib")
-    if not isinstance(stdlib_root_value, str) or not stdlib_root_value:
-        raise TwoCleanBuildError("Python stdlib root is unavailable")
-    try:
-        stdlib_root = Path(stdlib_root_value).resolve(strict=True)
-    except OSError as exc:
-        raise TwoCleanBuildError("Python stdlib root cannot be resolved") from exc
+    trusted_roots = _trusted_runtime_roots()
+    excluded_roots = _excluded_runtime_roots()
 
     manifest: dict[str, dict[str, str]] = {}
     for module_name, module in sorted(sys.modules.items()):
@@ -321,19 +387,16 @@ def _current_runtime_dependency_manifest() -> dict[str, dict[str, str]]:
                     f"{module_name}"
                 )
             continue
-        if not candidate.is_relative_to(stdlib_root):
-            raise TwoCleanBuildError(
-                f"runtime dependency escaped stdlib/source closure: {module_name}"
-            )
         if candidate.is_symlink() or not candidate.is_file():
             raise TwoCleanBuildError(
                 f"runtime dependency is not a regular file: {module_name}"
             )
-        manifest[module_name] = {
-            "kind": "stdlib",
-            "path": candidate.relative_to(stdlib_root).as_posix(),
-            "sha256": _sha256_file(candidate),
-        }
+        manifest[module_name] = _runtime_dependency_file_entry(
+            module_name,
+            candidate,
+            trusted_roots=trusted_roots,
+            excluded_roots=excluded_roots,
+        )
     return _normalize_runtime_dependency_manifest(manifest)
 
 
