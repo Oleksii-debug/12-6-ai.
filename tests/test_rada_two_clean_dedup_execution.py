@@ -387,3 +387,39 @@ def test_dependency_authority_binds_combined_inventory_and_base_map_roots(
         match="incumbent_base_payload_map_sha256",
     ):
         carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
+
+
+def test_two_clean_authority_rejects_extra_receipt_fields_even_if_rehashed() -> None:
+    first = _receipt("clean-a")
+    second = _receipt("clean-b")
+    second["text"] = "must never be accepted"
+    unsigned = dict(second)
+    unsigned.pop("receipt_identity_sha256")
+    second["receipt_identity_sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="receipt schema drift"):
+        carrier.build_two_clean_authority(first, second)
+
+
+@pytest.mark.parametrize(
+    "field,bad_value",
+    [
+        ("tokenizer_fit_authorized", True),
+        ("learned_weights_created", True),
+        ("final_test_outcomes_read", True),
+        ("paid_compute_used", True),
+    ],
+)
+def test_two_clean_authority_rejects_truth_widening_even_if_rehashed(
+    field: str,
+    bad_value: object,
+) -> None:
+    first = _receipt("clean-a")
+    second = _receipt("clean-b")
+    second[field] = bad_value
+    unsigned = dict(second)
+    unsigned.pop("receipt_identity_sha256")
+    second["receipt_identity_sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="truth drift"):
+        carrier.build_two_clean_authority(first, second)
