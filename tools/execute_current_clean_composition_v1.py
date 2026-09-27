@@ -372,15 +372,18 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = args.repo_root.resolve(strict=True)
     carrier = require_exact_checkout(repo_root, args.expected_carrier_git_sha)
     if not args.isolated_child:
-        command = [
-            sys.executable,
-            "-I",
-            "-S",
-            str((repo_root / CARRIER_PATH).resolve(strict=True)),
-            *raw_args,
-            "--isolated-child",
-        ]
-        return subprocess.run(command, check=False).returncode
+        with tempfile.TemporaryDirectory(prefix="12-6-current-clean-pycache-") as pycache:
+            command = [
+                sys.executable,
+                "-I",
+                "-S",
+                "-X",
+                f"pycache_prefix={pycache}",
+                str((repo_root / CARRIER_PATH).resolve(strict=True)),
+                *raw_args,
+                "--isolated-child",
+            ]
+            return subprocess.run(command, check=False).returncode
     executor = load_authenticated_executor(repo_root, carrier)
     receipt = execute_and_publish(args, executor)
     print(receipt["receipt_identity_sha256"])
