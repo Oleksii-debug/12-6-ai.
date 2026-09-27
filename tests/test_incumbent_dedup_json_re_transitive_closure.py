@@ -232,24 +232,39 @@ def test_runtime_attestation_neutralizes_cache_before_and_after_core(
     cache = re._cache
     original = dict(cache)
     key = (str, "two-phase-probe", 0)
+    cache2 = getattr(re, "_cache2", None)
+    original_cache2 = None if cache2 is None else dict(cache2)
+    key2 = (str, "two-phase-cache2-probe", 0)
+    poison2 = None if cache2 is None else re._compiler.compile(".*", 0)
     events: list[str] = []
 
     def fake_core_attest(v3: object) -> None:
         del v3
         assert key not in cache
+        if cache2 is not None:
+            assert key2 not in cache2
         events.append("core")
         cache[key] = Poison()
+        if cache2 is not None:
+            cache2[key2] = poison2
 
     try:
         cache[key] = Poison()
+        if cache2 is not None:
+            cache2[key2] = poison2
         with monkeypatch.context() as patch:
             patch.setattr(indexed, "_CORE_RUNTIME_ATTEST", fake_core_attest)
             indexed.attest_incumbent_runtime(object())
         assert events == ["core"]
         assert key not in cache
+        if cache2 is not None:
+            assert key2 not in cache2
     finally:
         cache.clear()
         cache.update(original)
+        if cache2 is not None and original_cache2 is not None:
+            cache2.clear()
+            cache2.update(original_cache2)
 
     indexed._attest_loader_frozen_runtime_dependencies()
 
