@@ -372,44 +372,49 @@ def _materialize_quality_survivors(
             )
             _require(type(accepted) is bool, f"G05 unit accepted type drift: {record_id}")
             _require(isinstance(unit_id, str) and bool(unit_id), "G05 unit_id missing")
-            piece = text[start:end]
-            piece_raw = piece.encode("utf-8")
+            piece_raw = text[start:end].encode("utf-8")
             _require(
                 unit.get("payload_sha256") == _sha256(piece_raw)
                 and unit.get("utf8_bytes") == len(piece_raw),
                 f"G05 unit payload drift: {unit_id}",
             )
-            if not accepted:
+            if accepted:
+                accepted_bytes += len(piece_raw)
+            else:
                 stats["g05_rejected_units"] += 1
                 stats["g05_rejected_utf8_bytes"] += len(piece_raw)
                 rejected_bytes += len(piece_raw)
-                continue
-            accepted_bytes += len(piece_raw)
-            output_id = record_id if status == "RETAIN_ALL" else unit_id
-            _require(
-                output_id not in seen_output_ids,
-                f"G05 materialized record-id collision: {output_id}",
-            )
-            seen_output_ids.add(output_id)
-            meta = metadata[record_id]
-            output.append(
-                {
-                    "record_id": output_id,
-                    "source_id": meta["source_id"],
-                    "family": meta["family"],
-                    "modality": mode,
-                    "normalized_payload": piece,
-                }
-            )
+
         _require(
             accepted_bytes == row.get("retained_utf8_bytes")
             and rejected_bytes == row.get("rejected_utf8_bytes"),
             f"G05 retained/rejected byte accounting drift: {record_id}",
         )
         if status == "RETAIN_ALL":
-            _require(accepted_bytes == len(payload), f"G05 RETAIN_ALL byte drift: {record_id}")
+            _require(
+                accepted_bytes == len(payload) and rejected_bytes == 0,
+                f"G05 RETAIN_ALL byte drift: {record_id}",
+            )
+            _require(
+                record_id not in seen_output_ids,
+                f"G05 materialized record-id collision: {record_id}",
+            )
+            seen_output_ids.add(record_id)
+            meta = metadata[record_id]
+            output.append(
+                {
+                    "record_id": record_id,
+                    "source_id": meta["source_id"],
+                    "family": meta["family"],
+                    "modality": mode,
+                    "normalized_payload": text,
+                }
+            )
         if status == "REJECT_DOCUMENT":
-            _require(accepted_bytes == 0, f"G05 rejected record retained bytes: {record_id}")
+            _require(
+                accepted_bytes == 0 and rejected_bytes == len(payload),
+                f"G05 rejected record retained bytes: {record_id}",
+            )
 
     _require(bool(output), "G05 removed every post-decontamination record")
     output.sort(key=lambda row: row["record_id"])
