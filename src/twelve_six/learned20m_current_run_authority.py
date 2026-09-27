@@ -8,6 +8,7 @@ safe-stop do not let candidate bytes select their own trust namespace.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -93,6 +94,7 @@ class CurrentRunAuthorityInspection:
     recovery_run_manifest_sha256: str | None
     current_run_identity_sha256: str | None
     blockers: tuple[str, ...]
+    remote_write_outcome_unknown: bool = False
     mechanics_scope: str = MECHANICS_SCOPE
     optimizer_start_permitted_by_this_module: bool = False
     training_authority_granted_by_this_module: bool = False
@@ -161,24 +163,18 @@ def _normalized_now(value: datetime | None) -> datetime:
 def _base_manifest_digest(manifest: Mapping[str, Any]) -> str:
     unsigned = dict(manifest)
     unsigned.pop("terminal_authority", None)
-    import hashlib
-
     return hashlib.sha256(canonical_json_bytes(unsigned)).hexdigest()
 
 
 def _identity_digest(identity: Mapping[str, Any]) -> str:
     unsigned = dict(identity)
     unsigned.pop("identity_sha256", None)
-    import hashlib
-
     return hashlib.sha256(canonical_json_bytes(unsigned)).hexdigest()
 
 
 def _pointer_digest(state: Mapping[str, Any]) -> str:
     unsigned = dict(state)
     unsigned.pop("pointer_identity_sha256", None)
-    import hashlib
-
     return hashlib.sha256(canonical_json_bytes(unsigned)).hexdigest()
 
 
@@ -478,7 +474,7 @@ def inspect_current_run_authority(
     _validate_transport(remote)
     try:
         snapshot = _read_pointer_state(repo_root, remote)
-    except (CurrentRunAuthorityError, ValueError) as exc:
+    except (CurrentRunAuthorityError, _GlobalLeaseFailure, ValueError) as exc:
         return CurrentRunAuthorityInspection(
             present=True,
             valid=False,
@@ -654,6 +650,57 @@ def _operation_failure(
     )
 
 
+def _operation_outcome_unknown(
+    operation: str,
+    *,
+    blocker: str,
+    expected_remote_tip: str | None,
+    generation: int | None,
+    run_id: str | None,
+    identity_sha256: str | None,
+) -> CurrentRunAuthorityOperation:
+    return CurrentRunAuthorityOperation(
+        operation=operation,
+        committed=False,
+        post_write_reread_verified=False,
+        ref=CURRENT_RUN_POINTER_REF,
+        expected_remote_tip=expected_remote_tip,
+        observed_remote_tip=None,
+        written_remote_tip=None,
+        generation=generation,
+        run_id=run_id,
+        current_run_identity_sha256=identity_sha256,
+        blockers=(blocker,),
+        remote_write_outcome_unknown=True,
+    )
+
+
+def _operation_committed_unverified(
+    operation: str,
+    *,
+    blocker: str,
+    expected_remote_tip: str | None,
+    observed_remote_tip: str | None,
+    written_remote_tip: str,
+    generation: int,
+    run_id: str,
+    identity_sha256: str,
+) -> CurrentRunAuthorityOperation:
+    return CurrentRunAuthorityOperation(
+        operation=operation,
+        committed=True,
+        post_write_reread_verified=False,
+        ref=CURRENT_RUN_POINTER_REF,
+        expected_remote_tip=expected_remote_tip,
+        observed_remote_tip=observed_remote_tip,
+        written_remote_tip=written_remote_tip,
+        generation=generation,
+        run_id=run_id,
+        current_run_identity_sha256=identity_sha256,
+        blockers=(blocker,),
+    )
+
+
 def activate_current_run_authority(
     repo_root: str | Path,
     remote: str,
@@ -712,7 +759,7 @@ def activate_current_run_authority(
 
     try:
         current = _read_pointer_state(repo_root, remote)
-    except (CurrentRunAuthorityError, ValueError) as exc:
+    except (CurrentRunAuthorityError, _GlobalLeaseFailure, ValueError) as exc:
         return _operation_failure("ACTIVATE", blocker=str(exc))
     observed_tip = None if current is None else current[0]
     if observed_tip != expected_pointer_tip:
@@ -771,13 +818,45 @@ def activate_current_run_authority(
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
         ],
     )
-    observed_after = _remote_tip(repo_root, remote, CURRENT_RUN_POINTER_REF)
-    if pushed.returncode != 0 or observed_after != candidate_tip:
+    try:
+        observed_after = _remote_tip(repo_root, remote, CURRENT_RUN_POINTER_REF)
+    except _GlobalLeaseFailure as exc:
+        if pushed.returncode != 0:
+            return _operation_outcome_unknown(
+                "ACTIVATE",
+                blocker=f"current_run_pointer_push_outcome_unknown:{exc.blocker}",
+                expected_remote_tip=expected_pointer_tip,
+                generation=generation,
+                run_id=str(identity_snapshot["run_id"]),
+                identity_sha256=str(identity_snapshot["identity_sha256"]),
+            )
+        return _operation_committed_unverified(
+            "ACTIVATE",
+            blocker=exc.blocker,
+            expected_remote_tip=expected_pointer_tip,
+            observed_remote_tip=None,
+            written_remote_tip=candidate_tip,
+            generation=generation,
+            run_id=str(identity_snapshot["run_id"]),
+            identity_sha256=str(identity_snapshot["identity_sha256"]),
+        )
+    if pushed.returncode != 0 and observed_after != candidate_tip:
         return _operation_failure(
             "ACTIVATE",
             blocker="current_run_pointer_cas_conflict",
             expected_remote_tip=expected_pointer_tip,
             observed_remote_tip=observed_after,
+            generation=generation,
+            run_id=str(identity_snapshot["run_id"]),
+            identity_sha256=str(identity_snapshot["identity_sha256"]),
+        )
+    if observed_after != candidate_tip:
+        return _operation_committed_unverified(
+            "ACTIVATE",
+            blocker="current_run_pointer_post_write_tip_mismatch",
+            expected_remote_tip=expected_pointer_tip,
+            observed_remote_tip=observed_after,
+            written_remote_tip=candidate_tip,
             generation=generation,
             run_id=str(identity_snapshot["run_id"]),
             identity_sha256=str(identity_snapshot["identity_sha256"]),
@@ -819,7 +898,7 @@ def retire_current_run_authority(
         return _operation_failure("RETIRE", blocker="expected_current_run_identity_invalid")
     try:
         current = _read_pointer_state(repo_root, remote)
-    except (CurrentRunAuthorityError, ValueError) as exc:
+    except (CurrentRunAuthorityError, _GlobalLeaseFailure, ValueError) as exc:
         return _operation_failure("RETIRE", blocker=str(exc))
     if current is None:
         return _operation_failure("RETIRE", blocker="current_run_pointer_missing")
@@ -865,13 +944,45 @@ def retire_current_run_authority(
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
         ],
     )
-    observed_after = _remote_tip(repo_root, remote, CURRENT_RUN_POINTER_REF)
-    if pushed.returncode != 0 or observed_after != candidate_tip:
+    try:
+        observed_after = _remote_tip(repo_root, remote, CURRENT_RUN_POINTER_REF)
+    except _GlobalLeaseFailure as exc:
+        if pushed.returncode != 0:
+            return _operation_outcome_unknown(
+                "RETIRE",
+                blocker=f"current_run_pointer_push_outcome_unknown:{exc.blocker}",
+                expected_remote_tip=expected_pointer_tip,
+                generation=int(state["generation"]),
+                run_id=str(identity["run_id"]),
+                identity_sha256=str(identity["identity_sha256"]),
+            )
+        return _operation_committed_unverified(
+            "RETIRE",
+            blocker=exc.blocker,
+            expected_remote_tip=expected_pointer_tip,
+            observed_remote_tip=None,
+            written_remote_tip=candidate_tip,
+            generation=int(state["generation"]),
+            run_id=str(identity["run_id"]),
+            identity_sha256=str(identity["identity_sha256"]),
+        )
+    if pushed.returncode != 0 and observed_after != candidate_tip:
         return _operation_failure(
             "RETIRE",
             blocker="current_run_pointer_cas_conflict",
             expected_remote_tip=expected_pointer_tip,
             observed_remote_tip=observed_after,
+            generation=int(state["generation"]),
+            run_id=str(identity["run_id"]),
+            identity_sha256=str(identity["identity_sha256"]),
+        )
+    if observed_after != candidate_tip:
+        return _operation_committed_unverified(
+            "RETIRE",
+            blocker="current_run_pointer_post_write_tip_mismatch",
+            expected_remote_tip=expected_pointer_tip,
+            observed_remote_tip=observed_after,
+            written_remote_tip=candidate_tip,
             generation=int(state["generation"]),
             run_id=str(identity["run_id"]),
             identity_sha256=str(identity["identity_sha256"]),
