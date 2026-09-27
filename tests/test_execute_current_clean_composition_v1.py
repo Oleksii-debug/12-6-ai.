@@ -126,6 +126,7 @@ def _executor(*args, **kwargs):
         ],
         "survivor_records": 1,
         "survivor_payload_bytes": payload_bytes,
+        "survivor_source_objects": 1,
     }
     report = {"report_sha256": "b" * 64, "hash_only_evidence": True}
     decontam = {"execution_identity_sha256": "c" * 64}
@@ -226,6 +227,27 @@ def test_execute_and_publish_rejects_receipt_inventory_root_drift(
     with pytest.raises(
         RuntimeError,
         match="survivor receipt inventory root drift",
+    ):
+        cli.execute_and_publish(args, bad_executor)
+    assert not args.output_dir.exists()
+
+
+def test_execute_and_publish_rejects_source_object_count_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _args(tmp_path, monkeypatch)
+
+    def bad_executor(*args, **kwargs):
+        result = list(_executor(*args, **kwargs))
+        composition = dict(result[0])
+        composition["survivor_source_objects"] = 2
+        result[0] = composition
+        return tuple(result)
+
+    with pytest.raises(
+        RuntimeError,
+        match="survivor receipt/count publication drift",
     ):
         cli.execute_and_publish(args, bad_executor)
     assert not args.output_dir.exists()
