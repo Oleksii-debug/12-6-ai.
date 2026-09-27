@@ -140,7 +140,7 @@ jobs:
 
           # Historical Actions artifacts were retention-bounded. Recover authority
           # from immutable Git roots instead of weakening to a newer/unbound payload.
-          git fetch --no-tags --depth=1 origin "$EVAL290_HEAD_SHA"
+          git fetch --no-tags origin "$EVAL290_HEAD_SHA"
           git worktree add --detach "$eval290_src" "$EVAL290_HEAD_SHA"
           test "$(git -C "$eval290_src" rev-parse HEAD)" = "$EVAL290_HEAD_SHA"
           git -C "$eval290_src" diff --quiet HEAD --
@@ -153,7 +153,7 @@ jobs:
           test "$(sha256sum "$eval290_out/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
           test "$(sha256sum "$eval290_out/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
 
-          git fetch --no-tags --depth=1 origin "$EVAL291_HEAD_SHA"
+          git fetch --no-tags origin "$EVAL291_HEAD_SHA"
           git show             "$EVAL291_HEAD_SHA:data/evaluation/eval291/selection-validation/en.jsonl"             > "$RUNNER_TEMP/eval291-en.jsonl"
           git show             "$EVAL291_HEAD_SHA:evidence/eval291/en-selection-validation-v1-authority.json"             > "$RUNNER_TEMP/eval291-authority.json"
           test "$(sha256sum "$RUNNER_TEMP/eval291-en.jsonl" | cut -d' ' -f1)" = "$EVAL291_DATA_SHA256"
