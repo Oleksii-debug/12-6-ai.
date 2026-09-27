@@ -11,14 +11,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from twelve_six.learned20m_readiness import assess_learned20m_readiness
-from twelve_six.preoptimizer_authority import (
-    bind_preoptimizer_to_packet,
-    canonical_sha256 as preoptimizer_sha256,
-)
 from twelve_six.portable_run_packet import (
     PortableRunAssessment,
     assess_portable_run_packet,
     validate_portable_run_contract,
+)
+from twelve_six.preoptimizer_authority import (
+    bind_preoptimizer_to_packet,
+    canonical_sha256 as preoptimizer_sha256,
 )
 
 OVERLAY_ID = "R01-LEARNED20M-PORTABLE-SESSION-OVERLAY-V1"
@@ -554,11 +554,14 @@ def _build_candidate(
                 evaluation_evidence.get("firewall_authority")
             ),
             "backend": copy.deepcopy(binding_authorities.get("backend")),
-            "parent_checkpoint": copy.deepcopy(
-                checkpoint_overlay.get("parent_checkpoint_authority")
-            ),
         }
     )
+    if checkpoint_overlay.get("mode") == "RESUME":
+        packet["authorities"]["parent_checkpoint"] = copy.deepcopy(
+            checkpoint_overlay.get("parent_checkpoint_authority")
+        )
+    else:
+        packet["authorities"].pop("parent_checkpoint", None)
     packet["recipe"].update(
         {
             "training_config_sha256": recipe_evidence.get("config_sha256"),
