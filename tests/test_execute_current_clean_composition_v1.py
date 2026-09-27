@@ -121,6 +121,7 @@ def test_require_exact_checkout_authenticates_carrier_and_module(
     files = {
         cli.CARRIER_PATH: b"carrier bytes",
         cli.MODULE_PATH: b"module bytes",
+        **{path: f"dependency:{path}".encode("utf-8") for path in cli.AUTHENTICATED_DEPENDENCY_PATHS},
     }
     for repo_path, payload in files.items():
         path = tmp_path / repo_path
@@ -146,7 +147,7 @@ def test_require_exact_checkout_rejects_dirty_tree(
     tmp_path: Path,
 ) -> None:
     carrier_sha = "2" * 40
-    for repo_path in (cli.CARRIER_PATH, cli.MODULE_PATH):
+    for repo_path in (cli.CARRIER_PATH, cli.MODULE_PATH, *cli.AUTHENTICATED_DEPENDENCY_PATHS):
         path = tmp_path / repo_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("x", encoding="utf-8")
@@ -164,6 +165,40 @@ def test_require_exact_checkout_rejects_dirty_tree(
     with pytest.raises(RuntimeError, match="working tree differs"):
         cli.require_exact_checkout(tmp_path, carrier_sha)
     assert calls >= 2
+
+
+
+def test_require_exact_checkout_rejects_tampered_execution_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    carrier_sha = "5" * 40
+    files = {
+        cli.CARRIER_PATH: b"carrier bytes",
+        cli.MODULE_PATH: b"module bytes",
+        **{path: f"dependency:{path}".encode("utf-8") for path in cli.AUTHENTICATED_DEPENDENCY_PATHS},
+    }
+    for repo_path, payload in files.items():
+        path = tmp_path / repo_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+    tampered_path = cli.AUTHENTICATED_DEPENDENCY_PATHS[0]
+    (tmp_path / tampered_path).write_bytes(b"tampered dependency")
+
+    def fake_git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        if args[:3] == ("rev-parse", "--verify", "HEAD"):
+            return subprocess.CompletedProcess(args, 0, carrier_sha + "\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(cli, "_git", fake_git)
+    monkeypatch.setattr(
+        cli,
+        "_git_bytes",
+        lambda repo_root, git_sha, repo_path: files[repo_path],
+    )
+    with pytest.raises(RuntimeError, match="physical bytes differ from authenticated Git bytes"):
+        cli.require_exact_checkout(tmp_path, carrier_sha)
 
 
 def test_authenticated_import_rejects_preloaded_external_module(
