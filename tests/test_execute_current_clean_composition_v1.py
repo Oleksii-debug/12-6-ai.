@@ -121,7 +121,10 @@ def test_require_exact_checkout_authenticates_carrier_and_module(
     files = {
         cli.CARRIER_PATH: b"carrier bytes",
         cli.MODULE_PATH: b"module bytes",
-        **{path: f"dependency:{path}".encode("utf-8") for path in cli.AUTHENTICATED_DEPENDENCY_PATHS},
+        **{
+            path: f"dependency:{path}".encode("utf-8")
+            for path in cli.AUTHENTICATED_DEPENDENCY_PATHS
+        },
     }
     for repo_path, payload in files.items():
         path = tmp_path / repo_path
@@ -176,7 +179,10 @@ def test_require_exact_checkout_rejects_tampered_execution_dependency(
     files = {
         cli.CARRIER_PATH: b"carrier bytes",
         cli.MODULE_PATH: b"module bytes",
-        **{path: f"dependency:{path}".encode("utf-8") for path in cli.AUTHENTICATED_DEPENDENCY_PATHS},
+        **{
+            path: f"dependency:{path}".encode("utf-8")
+            for path in cli.AUTHENTICATED_DEPENDENCY_PATHS
+        },
     }
     for repo_path, payload in files.items():
         path = tmp_path / repo_path
