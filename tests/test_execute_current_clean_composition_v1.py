@@ -183,3 +183,68 @@ def test_authenticated_import_rejects_preloaded_external_module(
 
     with pytest.raises(RuntimeError, match="outside authenticated checkout"):
         cli.load_authenticated_executor(tmp_path, carrier_sha)
+
+
+def test_main_reexecutes_in_isolated_child_before_project_import(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    carrier_sha = "4" * 40
+    raw_args = [
+        "--repo-root",
+        str(tmp_path),
+        "--expected-carrier-git-sha",
+        carrier_sha,
+        "--training-records-jsonl",
+        str(tmp_path / "training.jsonl"),
+        "--training-handoff-json",
+        str(tmp_path / "handoff.json"),
+        "--evaluation-records-jsonl",
+        str(tmp_path / "evaluation.jsonl"),
+        "--base-reserved-binding-json",
+        str(tmp_path / "binding.json"),
+        "--eval647-manifest-json",
+        str(tmp_path / "manifest.json"),
+        "--eval647-materialization-evidence-json",
+        str(tmp_path / "evidence.json"),
+        "--expected-base-reserved-binding-identity-sha256",
+        "1" * 64,
+        "--expected-composed-reserved-binding-identity-sha256",
+        "2" * 64,
+        "--expected-eval647-materialization-evidence-identity-sha256",
+        "3" * 64,
+        "--expected-eval647-object-set-identity-sha256",
+        "4" * 64,
+        "--expected-inventory-identity-sha256",
+        "5" * 64,
+        "--expected-survivor-authority-sha256",
+        "6" * 64,
+        "--expected-training-handoff-identity-sha256",
+        "7" * 64,
+        "--expected-selection-validation-identity-sha256",
+        "8" * 64,
+        "--expected-final-test-identity-sha256",
+        "9" * 64,
+        "--output-dir",
+        str(tmp_path / "out"),
+    ]
+    monkeypatch.setattr(
+        cli,
+        "require_exact_checkout",
+        lambda repo_root, expected: carrier_sha,
+    )
+    monkeypatch.setattr(
+        cli,
+        "load_authenticated_executor",
+        lambda *args, **kwargs: pytest.fail("project import occurred in parent"),
+    )
+    observed: list[str] = []
+
+    def fake_run(command, *, check):
+        observed.extend(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    assert cli.main(raw_args) == 0
+    assert observed[1:3] == ["-I", "-S"]
+    assert "--isolated-child" in observed
