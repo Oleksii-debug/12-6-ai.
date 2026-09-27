@@ -94,7 +94,7 @@ def test_unknown_decontamination_exclusion_fails_closed() -> None:
         )
 
 
-def test_quality_partial_materializes_accepted_windows_independently() -> None:
+def test_quality_partial_fails_closed_without_canonical_physical_authority() -> None:
     text = "abcdefghij"
     inputs = [{"id": "r1", "text": text, "mode": "en"}]
     quality = {
@@ -128,27 +128,15 @@ def test_quality_partial_materializes_accepted_windows_independently() -> None:
             }
         ]
     }
-    output, stats = runner._materialize_quality_survivors(
-        inputs,
-        {"r1": {"source_id": "s1", "family": "f1", "mode": "en"}},
-        quality,
-    )
-    assert output == [
-        {
-            "record_id": "r1#quality-window-0001",
-            "source_id": "s1",
-            "family": "f1",
-            "modality": "en",
-            "normalized_payload": "efghij",
-        }
-    ]
-    assert stats == {
-        "g05_reject_documents": 0,
-        "g05_partial_documents": 1,
-        "g05_rejected_units": 1,
-        "g05_rejected_utf8_bytes": 4,
-    }
-
+    with pytest.raises(
+        runner.CurrentCleanExecutionError,
+        match="lacks canonical physical materialization authority",
+    ):
+        runner._materialize_quality_survivors(
+            inputs,
+            {"r1": {"source_id": "s1", "family": "f1", "mode": "en"}},
+            quality,
+        )
 
 def test_privacy_redaction_uses_canonical_materializer_and_rescans_allow(
     monkeypatch: pytest.MonkeyPatch,
@@ -337,8 +325,10 @@ def test_execute_composes_serial_quality_then_privacy_and_survivor_authority(
     assert privacy["execution_identity_sha256"] == "e" * 64
     assert final_survivors == final
     assert inventory["record_count"] == 1
-    assert receipt["status"] == "CLEAN_SURVIVOR_MATERIALIZED_ZERO_CREDIT"
+    assert receipt["status"] == "CLEAN_SURVIVOR_MATERIALIZED_PENDING_INDEPENDENT_QUALIFICATION"
     assert receipt["survivor_records"] == 1
+    assert receipt["terminal_post_g05_g06_authority"] is False
+    assert receipt["independent_qualification_required"] is True
     assert receipt["authorized_optimized_target_exposure"] == 0
     assert receipt["tokenizer_fit_authorized"] is False
     assert receipt["training_executed"] is False
@@ -348,7 +338,7 @@ def test_execute_composes_serial_quality_then_privacy_and_survivor_authority(
 def _synthetic_receipt() -> dict[str, object]:
     receipt: dict[str, object] = {
         "schema_version": runner.COMPOSITION_SCHEMA,
-        "status": "CLEAN_SURVIVOR_MATERIALIZED_ZERO_CREDIT",
+        "status": "CLEAN_SURVIVOR_MATERIALIZED_PENDING_INDEPENDENT_QUALIFICATION",
         "clean_training_records_sha256": runner.PRODUCTION_TRAINING_RECORDS_SHA256,
         "clean_training_handoff_sha256": runner.PRODUCTION_TRAINING_HANDOFF_SHA256,
         "data232_report_sha256": "a" * 64,
@@ -371,6 +361,8 @@ def _synthetic_receipt() -> dict[str, object]:
         "privacy_detector_counts": {},
         "dependency_git_blobs": dict(runner.EXPECTED_DEPENDENCY_BLOBS),
         "durable_evidence_hash_only": True,
+        "terminal_post_g05_g06_authority": False,
+        "independent_qualification_required": True,
         "current_corpus_launch_authority_promoted": False,
         "authorized_optimized_target_exposure": 0,
         "tokenizer_fit_authorized": False,
