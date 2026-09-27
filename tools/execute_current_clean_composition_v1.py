@@ -168,11 +168,15 @@ class _AuthenticatedGitFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader
         if source is None:
             raise ImportError(f"authenticated Git source disappeared: {module.__name__}")
         payload, repo_path, is_package = source
-        synthetic_file = f"git:{self.git_sha}:{repo_path}"
-        module.__file__ = synthetic_file
+        physical_path = (self.repo_root / repo_path).resolve(strict=True)
+        if physical_path.read_bytes() != payload:
+            raise ImportError(
+                f"physical source drift before authenticated import: {repo_path}"
+            )
+        module.__file__ = str(physical_path)
         if is_package:
-            module.__path__ = [f"git:{self.git_sha}:{repo_path.rsplit('/', 1)[0]}"]
-        code = compile(payload, synthetic_file, "exec", dont_inherit=True)
+            module.__path__ = [str(physical_path.parent)]
+        code = compile(payload, str(physical_path), "exec", dont_inherit=True)
         exec(code, module.__dict__)
 
 
