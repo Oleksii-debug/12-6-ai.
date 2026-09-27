@@ -595,6 +595,8 @@ def test_coherent_reseal_cannot_substitute_nested_quality_root() -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
+        ("terminal_post_g05_g06_authority", True),
+        ("independent_qualification_required", False),
         ("authorized_optimized_target_exposure", 1),
         ("optimizer_updates_executed_on_real_targets", True),
         ("tokenizer_fit_authorized", True),
