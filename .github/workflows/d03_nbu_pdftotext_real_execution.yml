@@ -130,11 +130,13 @@ jobs:
               module.validate_catalog_response_url(final_url, url, config)
               return body, final_url
 
+          candidate_target = min(hard_max, target_documents * 2)
+
           def catalog_snapshot() -> tuple[tuple[str, ...], tuple[str, ...]]:
               requested, documents = module.crawl_resolution_catalog(
                   config,
                   fetch_catalog,
-                  target_documents=target_documents,
+                  target_documents=candidate_target,
                   per_page=per_page,
               )
               print(
@@ -160,17 +162,37 @@ jobs:
           )
 
           document_fetches: dict[str, list[str]] = {}
+          selected_urls: list[str] = []
+          rejected_scope = 0
           for index, url in enumerate(first_urls, start=1):
               first_body, first_final = fetch_raw(url)
               second_body, second_final = fetch_raw(url)
               if first_final != url or second_final != url:
                   raise RuntimeError(f"NBU document final identity changed: {url}")
-              document_fetches[url] = [first_body, second_body]
-              print(f"LIVE_DOCUMENT {index}/{len(first_urls)} url={url}")
+              pair = [first_body, second_body]
+              page, rejection = module.inspect_resolution_page_pair(pair, url, config)
+              if page is None:
+                  rejected_scope += 1
+                  print(
+                      f"REJECTED_DOCUMENT {index}/{len(first_urls)} "
+                      f"reason={rejection} url={url}"
+                  )
+                  continue
+              document_fetches[url] = pair
+              selected_urls.append(url)
+              print(f"LIVE_DOCUMENT {len(selected_urls)}/{target_documents} url={url}")
+              if len(selected_urls) == target_documents:
+                  break
+          if len(selected_urls) != target_documents:
+              raise RuntimeError(
+                  "NBU bounded candidate set did not yield enough in-scope Board resolutions: "
+                  f"selected={len(selected_urls)} target={target_documents} "
+                  f"candidates={len(first_urls)} rejected_scope={rejected_scope}"
+              )
 
           evidence = module.build_body_free_discovery_evidence_from_documents(
               config,
-              first_urls,
+              tuple(selected_urls),
               document_fetches,
           )
           module.validate_evidence(evidence, config)
@@ -183,7 +205,9 @@ jobs:
                   {
                       "schema": "12-6.d03-ua-nbu-catalog-page-sequence.v1",
                       "requested_urls": list(first_pages),
-                      "canonical_document_urls": list(first_urls),
+                      "candidate_document_urls": list(first_urls),
+                      "selected_document_urls": list(selected_urls),
+                      "rejected_scope_count": rejected_scope,
                   },
                   ensure_ascii=False,
                   sort_keys=True,

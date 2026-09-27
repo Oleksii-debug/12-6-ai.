@@ -260,3 +260,48 @@ def test_catalog_response_rejects_cross_origin_and_extra_query_fields():
             expected,
             config,
         )
+
+
+OUT_OF_SCOPE = """
+<html><head><title>Рішення Національного банку України</title></head>
+<body><a href="/admin_uploads/law/13012026_2.pdf">PDF</a></body></html>
+"""
+NO_PDF = """
+<html><head><title>Постанова Правління Національного банку України № 2</title></head>
+<body><p>no attachment</p></body></html>
+"""
+
+
+def test_resolution_pair_deterministically_rejects_known_scope_misses():
+    config = load_config()
+    url = "https://bank.gov.ua/ua/legislation/Resolution_13012026_2"
+    page, reason = module.inspect_resolution_page_pair(
+        [OUT_OF_SCOPE, OUT_OF_SCOPE], url, config
+    )
+    assert page is None
+    assert reason == "not a proven NBU Board resolution"
+
+    page, reason = module.inspect_resolution_page_pair([NO_PDF, NO_PDF], url, config)
+    assert page is None
+    assert reason == "no official resolution PDF"
+
+
+def test_resolution_pair_rejects_eligibility_drift_between_fetches():
+    config = load_config()
+    url = "https://bank.gov.ua/ua/legislation/Resolution_13012026_2"
+    with pytest.raises(
+        module.NbuIntakeError,
+        match="unstable document eligibility/metadata",
+    ):
+        module.inspect_resolution_page_pair([DOC_2_A, OUT_OF_SCOPE], url, config)
+
+
+def test_selected_document_builder_never_silently_drops_scope_miss():
+    config = load_config()
+    url = "https://bank.gov.ua/ua/legislation/Resolution_13012026_2"
+    with pytest.raises(module.NbuIntakeError, match="selected document is outside scope"):
+        module.build_body_free_discovery_evidence_from_documents(
+            config,
+            [url],
+            {url: [OUT_OF_SCOPE, OUT_OF_SCOPE]},
+        )

@@ -17,6 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "configs/data/d03_ua_nbu_official_resolutions_intake_v1.json"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_SCOPE_REJECTION_REASONS = frozenset(
+    {"not a proven NBU Board resolution", "no official resolution PDF"}
+)
 _SEARCH_QUERY_KEYS = (
     "from",
     "metaKeywords",
@@ -340,6 +343,35 @@ def inspect_resolution_page(document_html: str, document_url: str, config: Mappi
     return ResolutionPage(url, title, tuple(sorted(pdfs)))
 
 
+def inspect_resolution_page_pair(
+    document_fetches: Sequence[str],
+    document_url: str,
+    config: Mapping[str, Any],
+) -> tuple[ResolutionPage | None, str | None]:
+    """Require two stable fetches; known rights-scope misses are deterministic rejects."""
+    if len(document_fetches) != 2:
+        raise NbuIntakeError("document fetch count")
+    outcomes: list[tuple[str, ResolutionPage | str]] = []
+    for payload in document_fetches:
+        try:
+            page = inspect_resolution_page(payload, document_url, config)
+        except NbuIntakeError as exc:
+            reason = str(exc)
+            if reason not in _SCOPE_REJECTION_REASONS:
+                raise
+            outcomes.append(("reject", reason))
+        else:
+            outcomes.append(("accept", page))
+    if outcomes[0] != outcomes[1]:
+        raise NbuIntakeError("unstable document eligibility/metadata")
+    status, value = outcomes[0]
+    if status == "reject":
+        return None, str(value)
+    if not isinstance(value, ResolutionPage):
+        raise AssertionError("accepted document outcome type drift")
+    return value, None
+
+
 def build_body_free_discovery_evidence_from_documents(
     config: Mapping[str, Any],
     document_urls: Sequence[str],
@@ -360,10 +392,9 @@ def build_body_free_discovery_evidence_from_documents(
         payloads = document_fetches.get(url)
         if payloads is None or len(payloads) != 2:
             raise NbuIntakeError("document fetch count")
-        pages = [inspect_resolution_page(item, url, config) for item in payloads]
-        if pages[0] != pages[1]:
-            raise NbuIntakeError("unstable document metadata")
-        page = pages[0]
+        page, rejection = inspect_resolution_page_pair(payloads, url, config)
+        if page is None:
+            raise NbuIntakeError(f"selected document is outside scope: {rejection}")
         meta = {
             "url": page.url,
             "title": page.title,
