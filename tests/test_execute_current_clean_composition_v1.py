@@ -308,4 +308,6 @@ def test_main_reexecutes_in_isolated_child_before_project_import(
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
     assert cli.main(raw_args) == 0
     assert observed[1:3] == ["-I", "-S"]
+    assert "-X" in observed
+    assert any(value.startswith("pycache_prefix=") for value in observed)
     assert "--isolated-child" in observed
