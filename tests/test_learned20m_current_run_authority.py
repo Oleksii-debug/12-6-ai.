@@ -1176,6 +1176,58 @@ def test_inspection_fail_closes_on_pointer_type_error(
     assert inspection.blockers == ("current_run_pointer_not_object",)
 
 
+def test_retire_contains_pointer_commit_failure(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    activated = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert activated.committed is True
+    assert activated.written_remote_tip is not None
+
+    def fail_write(*args: object, **kwargs: object) -> str:
+        del args, kwargs
+        raise current_run.CurrentRunAuthorityError("synthetic_pointer_commit_failure")
+
+    monkeypatch.setattr(current_run, "_write_pointer_commit", fail_write)
+    retired = retire_current_run_authority(
+        writer_a,
+        str(remote),
+        expected_pointer_tip=activated.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+    )
+
+    assert retired.committed is False
+    assert retired.blockers == ("synthetic_pointer_commit_failure",)
+    assert retired.expected_remote_tip == activated.written_remote_tip
+    assert retired.observed_remote_tip == activated.written_remote_tip
+
+
 def test_mutations_fail_closed_on_pointer_type_error(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
