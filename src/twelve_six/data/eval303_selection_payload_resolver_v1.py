@@ -78,11 +78,32 @@ def _read_exact_zip_member(
     return value
 
 
-def _parse_json_object(raw: bytes, label: str) -> dict[str, Any]:
+def _reject_json_constant(value: str) -> None:
+    raise SelectionPayloadResolverError(f"non-finite JSON constant rejected: {value}")
+
+
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise SelectionPayloadResolverError(f"duplicate JSON object member: {key}")
+        value[key] = item
+    return value
+
+
+def _loads_strict(raw: bytes, label: str) -> Any:
     try:
-        value = json.loads(raw)
+        return json.loads(
+            raw,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SelectionPayloadResolverError(f"invalid JSON: {label}") from exc
+
+
+def _parse_json_object(raw: bytes, label: str) -> dict[str, Any]:
+    value = _loads_strict(raw, label)
     _require(isinstance(value, dict), f"expected JSON object: {label}")
     return value
 
@@ -93,7 +114,7 @@ def _parse_jsonl(raw: bytes, label: str) -> list[dict[str, Any]]:
         if not line:
             continue
         try:
-            value = json.loads(line)
+            value = _loads_strict(line, f"{label} row {index}")
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise SelectionPayloadResolverError(f"invalid JSONL row {index}: {label}") from exc
         _require(isinstance(value, dict), f"JSONL row {index} is not an object: {label}")
