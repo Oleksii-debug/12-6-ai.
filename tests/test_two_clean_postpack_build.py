@@ -399,6 +399,25 @@ def test_missing_implementation_component_is_rejected_at_packet_creation() -> No
         )
 
 
+def test_extra_implementation_component_is_rejected_at_packet_creation() -> None:
+    manifest = _implementation_manifest()
+    manifest["twelve_six/packing/attacker.py"] = "0" * 64
+
+    with pytest.raises(
+        two_clean.TwoCleanBuildError,
+        match="unexpected or missing component",
+    ):
+        two_clean.make_input_packet(
+            _documents(),
+            terminal_corpus_authority_identity_sha256="f" * 64,
+            stage_bindings=_bindings(),
+            expected_tokenizer_identity_sha256=_tokenizer_identity(),
+            expected_packing_identity_sha256=PACKING_CONFIG_HASH,
+            expected_runtime_identity_sha256=_runtime_identity(),
+            expected_implementation_manifest=manifest,
+        )
+
+
 def test_implementation_source_substitution_fails_external_binding() -> None:
     packet = _packet()
     substituted = copy.deepcopy(packet)
