@@ -42,6 +42,29 @@ OUTPUT_FILES = {
     "privacy_execution": "privacy_execution.json",
 }
 
+ISOLATED_CHILD_BOOTSTRAP = r"""
+import subprocess
+import sys
+
+repo_root, git_sha, carrier_path, *child_args = sys.argv[1:]
+completed = subprocess.run(
+    ["git", "show", f"{git_sha}:{carrier_path}"],
+    cwd=repo_root,
+    capture_output=True,
+    check=False,
+)
+if completed.returncode != 0:
+    raise RuntimeError("unable to read authenticated Git carrier bytes")
+synthetic_file = f"git:{git_sha}:{carrier_path}"
+sys.argv = [synthetic_file, *child_args]
+namespace = {
+    "__name__": "__main__",
+    "__file__": synthetic_file,
+    "__package__": None,
+}
+exec(compile(completed.stdout, synthetic_file, "exec", dont_inherit=True), namespace)
+"""
+
 
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -379,7 +402,11 @@ def main(argv: list[str] | None = None) -> int:
                 "-S",
                 "-X",
                 f"pycache_prefix={pycache}",
-                str((repo_root / CARRIER_PATH).resolve(strict=True)),
+                "-c",
+                ISOLATED_CHILD_BOOTSTRAP,
+                str(repo_root),
+                carrier,
+                CARRIER_PATH,
                 *raw_args,
                 "--isolated-child",
             ]
