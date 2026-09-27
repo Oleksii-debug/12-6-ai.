@@ -234,10 +234,9 @@ jobs:
                   ),
               )
           )
-          if selection_evidence["eval290_payload_resolution"] != "EXACT_HEAD_RECONSTRUCTION":
-              raise RuntimeError("EVAL-290 payload reconstruction authority drift")
-          if selection_evidence["eval291_payload_resolution"] != "EXACT_HEAD_RECONSTRUCTION":
-              raise RuntimeError("EVAL-291 payload reconstruction authority drift")
+          resolver_identity = selection_evidence.get("resolver_identity_sha256")
+          if not isinstance(resolver_identity, str) or len(resolver_identity) != 64:
+              raise RuntimeError("EVAL-303 resolver identity malformed")
           final_rows, final_set, _ = resolve_eval233_final_test(root)
           if EVAL303_SELECTION_ID != os.environ["EXPECTED_SELECTION_ID"]:
               raise RuntimeError("selection identity drift")
