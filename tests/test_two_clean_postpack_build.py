@@ -139,11 +139,13 @@ def test_clean_runtime_dependency_probe_is_deterministic_and_path_independent() 
     assert first == second
     assert first
     assert first.get("sys") == {"kind": "built-in"}
-    stdlib_entries = [
-        entry for entry in first.values() if entry.get("kind") == "stdlib"
+    file_entries = [
+        entry
+        for entry in first.values()
+        if entry.get("kind") in two_clean._RUNTIME_FILE_KINDS
     ]
-    assert stdlib_entries
-    for entry in stdlib_entries:
+    assert file_entries
+    for entry in file_entries:
         assert not entry["path"].startswith("/")
         assert "\\" not in entry["path"]
         assert len(entry["sha256"]) == 64
@@ -176,6 +178,58 @@ def test_runtime_dependency_manifest_rejects_unknown_entry_fields() -> None:
         match="unexpected fields",
     ):
         two_clean._runtime_dependency_manifest_identity(manifest)
+
+
+def test_windows_extension_origin_uses_explicit_trusted_root(tmp_path: Path) -> None:
+    stdlib = tmp_path / "Lib"
+    dlls = tmp_path / "DLLs"
+    site_packages = stdlib / "site-packages"
+    stdlib.mkdir()
+    dlls.mkdir()
+    site_packages.mkdir()
+    extension = dlls / "_ssl.pyd"
+    extension.write_bytes(b"synthetic extension bytes")
+
+    entry = two_clean._runtime_dependency_file_entry(
+        "_ssl",
+        extension,
+        trusted_roots=(("stdlib", stdlib), ("windows-extension", dlls)),
+        excluded_roots=(site_packages,),
+    )
+
+    assert entry == {
+        "kind": "windows-extension",
+        "path": "_ssl.pyd",
+        "sha256": hashlib.sha256(b"synthetic extension bytes").hexdigest(),
+    }
+    assert two_clean._normalize_runtime_dependency_manifest({"_ssl": entry}) == {
+        "_ssl": entry
+    }
+
+
+@pytest.mark.parametrize("location", ["site", "external"])
+def test_runtime_origin_outside_trusted_runtime_roots_fails_closed(
+    tmp_path: Path, location: str
+) -> None:
+    stdlib = tmp_path / "Lib"
+    dlls = tmp_path / "DLLs"
+    site_packages = stdlib / "site-packages"
+    external = tmp_path / "attacker"
+    for directory in (stdlib, dlls, site_packages, external):
+        directory.mkdir(parents=True, exist_ok=True)
+    candidate = (site_packages if location == "site" else external) / "_evil.pyd"
+    candidate.write_bytes(b"untrusted extension bytes")
+
+    with pytest.raises(
+        two_clean.TwoCleanBuildError,
+        match="escaped stdlib/source closure",
+    ):
+        two_clean._runtime_dependency_file_entry(
+            "_evil",
+            candidate,
+            trusted_roots=(("stdlib", stdlib), ("windows-extension", dlls)),
+            excluded_roots=(site_packages,),
+        )
 
 
 def test_changed_stdlib_dependency_fails_before_qualified_proof() -> None:
