@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import math
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -108,6 +109,7 @@ def _canonical_bytes(value: Any) -> bytes:
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
 
 
@@ -634,6 +636,10 @@ def build_two_clean_authority(
     )
     for receipt, label in ((first_receipt, "first"), (second_receipt, "second")):
         _require(set(receipt) == _RECEIPT_KEYS, f"{label} receipt schema drift")
+        _require(
+            type(receipt.get("run_id")) is str and bool(receipt.get("run_id")),
+            f"{label} receipt run_id invalid",
+        )
         identity = _require_hex(
             receipt.get("receipt_identity_sha256"),
             64,
@@ -684,7 +690,9 @@ def build_two_clean_authority(
         ):
             value = receipt.get(metric)
             _require(
-                type(value) in {int, float} and value > 0,
+                type(value) in {int, float}
+                and math.isfinite(value)
+                and value > 0,
                 f"{label} receipt invalid telemetry: {metric}",
             )
         _require(receipt.get("raw_text_emitted") is False, f"{label} receipt emitted raw text")
@@ -693,6 +701,19 @@ def build_two_clean_authority(
             and type(receipt.get("process_max_rss_kib")) is int
             and receipt.get("process_max_rss_kib") > 0,
             f"{label} receipt lacks terminal max-RSS evidence",
+        )
+        _require(
+            receipt["survivor_source_object_count"] <= receipt["source_object_count"],
+            f"{label} survivor source count exceeds input",
+        )
+        _require(
+            receipt["survivor_declared_capacity_bytes"]
+            <= receipt["source_payload_utf8_bytes"],
+            f"{label} survivor bytes exceed input",
+        )
+        _require(
+            receipt["total_wall_clock_seconds"] >= receipt["match_wall_clock_seconds"],
+            f"{label} total wall clock is smaller than match wall clock",
         )
         _require(
             receipt.get("canonical_capacity_credited") == 0
