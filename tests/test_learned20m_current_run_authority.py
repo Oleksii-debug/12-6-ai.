@@ -811,6 +811,156 @@ def test_refresh_rejects_identity_substitution_and_unrenewed_lease(
     assert substitution.blockers == ("current_run_identity_mismatch",)
 
 
+
+def test_refresh_rejects_candidate_manifest_substitution(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    pointer = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert pointer.committed is True
+    assert pointer.written_remote_tip is not None
+
+    renewed = renew_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        expected_remote_tip=acquired.written_remote_tip,
+        ttl_seconds=3600,
+        now=NOW + timedelta(minutes=10),
+    )
+    assert renewed.committed is True
+
+    manifest_b = _manifest(source_git_sha="c" * 40)
+    substituted = refresh_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest_b,
+        expected_pointer_tip=pointer.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW + timedelta(minutes=10),
+    )
+    assert substituted.committed is False
+    assert substituted.blockers == ("current_run_launch_manifest_mismatch",)
+
+
+def test_refresh_second_renewal_race_commits_no_active_authority(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    pointer = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert pointer.committed is True
+    assert pointer.written_remote_tip is not None
+
+    first_renewal = renew_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        expected_remote_tip=acquired.written_remote_tip,
+        ttl_seconds=3600,
+        now=NOW + timedelta(minutes=10),
+    )
+    assert first_renewal.committed is True
+    assert first_renewal.written_remote_tip is not None
+
+    original_read_snapshot = current_run._read_snapshot
+    raced = False
+
+    def read_then_renew_again(
+        repo_root: str | Path,
+        remote_name: str,
+        manifest_value: dict,
+    ):
+        nonlocal raced
+        snapshot = original_read_snapshot(repo_root, remote_name, manifest_value)
+        if not raced:
+            raced = True
+            second = renew_global_training_run_lease(
+                writer_a,
+                str(remote),
+                manifest,
+                expected_remote_tip=first_renewal.written_remote_tip,
+                ttl_seconds=3600,
+                now=NOW + timedelta(minutes=20),
+            )
+            assert second.committed is True
+        return snapshot
+
+    monkeypatch.setattr(current_run, "_read_snapshot", read_then_renew_again)
+    refreshed = refresh_current_run_authority(
+        writer_b,
+        str(remote),
+        manifest,
+        expected_pointer_tip=pointer.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW + timedelta(minutes=10),
+    )
+
+    assert raced is True
+    assert refreshed.committed is True
+    assert refreshed.post_write_reread_verified is False
+    assert refreshed.blockers == ("current_run_pointer_post_write_reread_mismatch",)
+
+    inspection = inspect_current_run_authority(
+        writer_a,
+        str(remote),
+        now=NOW + timedelta(minutes=20),
+    )
+    assert inspection.valid is False
+    assert inspection.active is False
+    assert inspection.blockers == ("current_run_global_lease_tip_changed",)
+
+
 def test_pointer_read_rechecks_fixed_ref_after_blob_read(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
