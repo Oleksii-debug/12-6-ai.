@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -82,11 +83,19 @@ def _reject_nonfinite_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON constant rejected: {value}")
 
 
+def _strict_json_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"non-finite JSON number rejected: {value}")
+    return number
+
+
 def strict_json_loads(text: str) -> Any:
     return json.loads(
         text,
         object_pairs_hook=_reject_duplicate_object_pairs,
         parse_constant=_reject_nonfinite_constant,
+        parse_float=_strict_json_float,
     )
 
 
