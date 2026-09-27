@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -143,7 +142,7 @@ def _require_sha256(value: Any, label: str) -> str:
 
 def _git_blob_sha1(payload: bytes) -> str:
     header = f"blob {len(payload)}\0".encode("ascii")
-    return hashlib.sha1(  # noqa: S324 - Git object identity, not security use
+    return hashlib.sha1(
         header + payload,
         usedforsecurity=False,
     ).hexdigest()
