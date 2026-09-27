@@ -811,7 +811,6 @@ def test_refresh_rejects_identity_substitution_and_unrenewed_lease(
     assert substitution.blockers == ("current_run_identity_mismatch",)
 
 
-
 def test_refresh_rejects_candidate_manifest_substitution(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
