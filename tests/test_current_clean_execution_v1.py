@@ -513,7 +513,12 @@ def _synthetic_receipt() -> dict[str, object]:
         "survivor_records": 254,
         "survivor_payload_bytes": 1000,
         "survivor_source_objects": 200,
-        "rejection_counts": {key: 0 for key in runner._REJECTION_KEYS},
+        "rejection_counts": {
+            **{key: 0 for key in runner._REJECTION_KEYS},
+            "data232_excluded_records": 1,
+            "g05_reject_documents": 1,
+            "g06_exclude_records": 1,
+        },
         "privacy_detector_counts": {},
         "dependency_git_blobs": dict(runner.EXPECTED_DEPENDENCY_BLOBS),
         "durable_evidence_hash_only": True,
@@ -573,6 +578,31 @@ def _verify_receipt(
 def test_receipt_verifier_accepts_exact_independent_roots() -> None:
     receipt = _synthetic_receipt()
     assert _verify_receipt(receipt) == receipt["receipt_identity_sha256"]
+
+
+@pytest.mark.parametrize(
+    ("field", "delta", "match"),
+    [
+        ("data232_excluded_records", 1, "DATA-232 rejection/count accounting drift"),
+        ("g05_reject_documents", 1, "G05 rejection/count accounting drift"),
+        ("g06_quarantine_records", 1, "G06 drop/count accounting drift"),
+        ("g05_partial_documents", 1, "G05 partial materialization authority was widened"),
+    ],
+)
+def test_resealed_rejection_accounting_drift_fails_closed(
+    field: str,
+    delta: int,
+    match: str,
+) -> None:
+    receipt = _synthetic_receipt()
+    rejection = dict(receipt["rejection_counts"])
+    rejection[field] += delta
+    receipt["rejection_counts"] = rejection
+    body = dict(receipt)
+    body.pop("receipt_identity_sha256")
+    receipt["receipt_identity_sha256"] = runner._sha256(runner._cjson(body))
+    with pytest.raises(runner.CurrentCleanExecutionError, match=match):
+        _verify_receipt(receipt)
 
 
 def test_coherent_reseal_cannot_substitute_nested_quality_root() -> None:
