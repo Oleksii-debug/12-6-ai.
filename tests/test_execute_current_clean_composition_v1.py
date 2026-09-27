@@ -539,7 +539,7 @@ def test_load_jsonl_rejects_duplicate_keys_before_execution(
 ) -> None:
     path = tmp_path / "evaluation.jsonl"
     path.write_text(
-        '{"record_id":"a","record_id":"b","source_id":"s","source_family":"f","modality":"en","text":"x"}\\n',
+        '{"record_id":"a","record_id":"b","source_id":"s","source_family":"f","modality":"en","text":"x"}\n',
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="duplicate JSON key: record_id"):
@@ -552,7 +552,7 @@ def test_load_json_rejects_nonfinite_numbers(
     number: str,
 ) -> None:
     path = tmp_path / "authority.json"
-    path.write_text('{"value":' + number + '}\\n', encoding="utf-8")
+    path.write_text('{"value":' + number + '}\n', encoding="utf-8")
     with pytest.raises(ValueError, match="nonfinite|nonstandard JSON constant"):
         cli._load_json(path, "authority")
 
@@ -562,7 +562,7 @@ def test_load_json_rejects_nested_duplicate_keys(
 ) -> None:
     path = tmp_path / "authority.json"
     path.write_text(
-        '{"outer":{"identity":"a","identity":"b"}}\\n',
+        '{"outer":{"identity":"a","identity":"b"}}\n',
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="duplicate JSON key: identity"):
