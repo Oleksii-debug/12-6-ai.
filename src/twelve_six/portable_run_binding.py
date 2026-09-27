@@ -157,6 +157,8 @@ class PortableRunBinding:
     trusted_readiness_bundle_sha256: str | None = None
     preoptimizer_authorities_sha256: str | None = None
     launch_input_authority_identity_sha256: str | None = None
+    loss_bearing_manifest_identity_sha256: str | None = None
+    exposure_plan_identity_sha256: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -175,6 +177,10 @@ class PortableRunBinding:
             "launch_input_authority_identity_sha256": (
                 self.launch_input_authority_identity_sha256
             ),
+            "loss_bearing_manifest_identity_sha256": (
+                self.loss_bearing_manifest_identity_sha256
+            ),
+            "exposure_plan_identity_sha256": self.exposure_plan_identity_sha256,
         }
 
 
@@ -785,10 +791,22 @@ def bind_preoptimizer_to_run_binding(
     )
     packet_binding = _mapping(final_packet.get("binding"))
     launch_root = packet_binding.get("launch_input_authority_identity_sha256")
+    manifest_root = packet_binding.get("loss_bearing_manifest_identity_sha256")
+    exposure_plan_root = packet_binding.get("exposure_plan_identity_sha256")
     preoptimizer_root = preoptimizer_sha256(preoptimizer_authorities)
     if not _is_sha256(launch_root):
         blockers = tuple(
             sorted(set(blockers) | {"binding:launch_input_authority_root_missing"})
+        )
+        desired_ready = False
+    if not _is_sha256(manifest_root):
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:loss_bearing_manifest_root_missing"})
+        )
+        desired_ready = False
+    if not _is_sha256(exposure_plan_root):
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:exposure_plan_root_missing"})
         )
         desired_ready = False
     if (
@@ -822,5 +840,11 @@ def bind_preoptimizer_to_run_binding(
         preoptimizer_authorities_sha256=preoptimizer_root,
         launch_input_authority_identity_sha256=(
             launch_root if _is_sha256(launch_root) else None
+        ),
+        loss_bearing_manifest_identity_sha256=(
+            manifest_root if _is_sha256(manifest_root) else None
+        ),
+        exposure_plan_identity_sha256=(
+            exposure_plan_root if _is_sha256(exposure_plan_root) else None
         ),
     )

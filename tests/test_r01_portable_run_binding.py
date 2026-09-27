@@ -241,6 +241,12 @@ def _preoptimizer(readiness: dict) -> dict:
             "decision_identity_sha256": "3" * 64,
             "tokenizer_identity_sha256": tokenizer,
         },
+        "ordered_exposure": {
+            "plan_identity_sha256": "5" * 64,
+            "preflight_identity_sha256": "6" * 64,
+            "unique_loss_ledger_identity_sha256": ledger,
+            "one_pass_unique_nonignored_causal_loss_positions": positions,
+        },
         "resource_evidence": {
             "evidence_identity_sha256": "4" * 64,
             "resource_class": "LOCAL_FREE",
@@ -612,6 +618,10 @@ def test_preoptimizer_finalization_rehashes_exact_runtime_packet_and_binds_d10_r
     assert final.packet is not preliminary.packet
     assert final.packet["binding"]["launch_input_authority_identity_sha256"] == "1" * 64
     assert final.launch_input_authority_identity_sha256 == "1" * 64
+    assert final.loss_bearing_manifest_identity_sha256 == "2" * 64
+    assert final.exposure_plan_identity_sha256 == "5" * 64
+    assert final.packet["binding"]["loss_bearing_manifest_identity_sha256"] == "2" * 64
+    assert final.packet["binding"]["exposure_plan_identity_sha256"] == "5" * 64
     assert final.trusted_readiness_bundle_sha256 == expected
     assert final.preoptimizer_authorities_sha256 == final.packet["binding"][
         "preoptimizer_authorities_sha256"

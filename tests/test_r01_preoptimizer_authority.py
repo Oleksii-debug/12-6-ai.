@@ -22,6 +22,8 @@ LAUNCH = "4" * 64
 CONTENT = "5" * 64
 DECISION = "6" * 64
 RESOURCE = "7" * 64
+PLAN = "8" * 64
+PREFLIGHT = "9" * 64
 POSITIONS = 20_000_000
 
 
@@ -49,6 +51,12 @@ def _preoptimizer() -> dict:
             "decision": "RETAIN_BYTE_BASELINE",
             "decision_identity_sha256": DECISION,
             "tokenizer_identity_sha256": TOKENIZER,
+        },
+        "ordered_exposure": {
+            "plan_identity_sha256": PLAN,
+            "preflight_identity_sha256": PREFLIGHT,
+            "unique_loss_ledger_identity_sha256": LEDGER,
+            "one_pass_unique_nonignored_causal_loss_positions": POSITIONS,
         },
         "resource_evidence": {
             "evidence_identity_sha256": RESOURCE,
@@ -161,6 +169,9 @@ def test_packet_carries_external_root_and_exact_preoptimizer_projection() -> Non
     assert packet["binding"]["preoptimizer_authorities_sha256"] == canonical_sha256(value)
     assert packet["binding"]["preoptimizer_authorities"] == value
     assert packet["binding"]["launch_input_authority_identity_sha256"] == LAUNCH
+    assert packet["binding"]["loss_bearing_manifest_identity_sha256"] == CONTENT
+    assert packet["binding"]["exposure_plan_identity_sha256"] == PLAN
+    assert packet["binding"]["exposure_plan_preflight_identity_sha256"] == PREFLIGHT
 
 
 def test_resource_measurements_must_be_finite_positive_and_not_cross_host() -> None:
@@ -183,4 +194,26 @@ def test_packet_crossbind_rejects_tokenizer_decision_authority_substitution() ->
             _packet(),
             value,
             trusted_readiness_bundle_sha256="a" * 64,
+        )
+
+
+def test_packet_crossbind_rejects_ordered_exposure_ledger_or_budget_substitution() -> None:
+    wrong_ledger = _preoptimizer()
+    wrong_ledger["ordered_exposure"]["unique_loss_ledger_identity_sha256"] = "a" * 64
+    with pytest.raises(ValueError, match="ordered_exposure_ledger_identity_packet_mismatch"):
+        bind_preoptimizer_to_packet(
+            _packet(),
+            wrong_ledger,
+            trusted_readiness_bundle_sha256="b" * 64,
+        )
+
+    wrong_budget = _preoptimizer()
+    wrong_budget["ordered_exposure"][
+        "one_pass_unique_nonignored_causal_loss_positions"
+    ] = POSITIONS - 1
+    with pytest.raises(ValueError, match="ordered_exposure_unique_loss_positions_packet_mismatch"):
+        bind_preoptimizer_to_packet(
+            _packet(),
+            wrong_budget,
+            trusted_readiness_bundle_sha256="b" * 64,
         )

@@ -24,7 +24,7 @@ from twelve_six.tokenization.decision_authority import (
     SCHEMA as TOKENIZER_DECISION_SCHEMA,
 )
 
-PREOPTIMIZER_SCHEMA = "12-6.r01-preoptimizer-authority-carrier.v1"
+PREOPTIMIZER_SCHEMA = "12-6.r01-preoptimizer-authority-carrier.v2"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 _ROOT_KEYS = {
@@ -32,6 +32,7 @@ _ROOT_KEYS = {
     "launch_input",
     "loss_bearing_content",
     "tokenizer_decision",
+    "ordered_exposure",
     "resource_evidence",
 }
 _LAUNCH_KEYS = {
@@ -55,6 +56,12 @@ _TOKENIZER_KEYS = {
     "decision",
     "decision_identity_sha256",
     "tokenizer_identity_sha256",
+}
+_ORDERED_EXPOSURE_KEYS = {
+    "plan_identity_sha256",
+    "preflight_identity_sha256",
+    "unique_loss_ledger_identity_sha256",
+    "one_pass_unique_nonignored_causal_loss_positions",
 }
 _RESOURCE_KEYS = {
     "evidence_identity_sha256",
@@ -164,6 +171,24 @@ def validate_preoptimizer_authorities(value: Any) -> list[str]:
         if not _is_sha256(tokenizer.get(field)):
             errors.append(f"tokenizer_decision_{field}_invalid")
 
+    ordered = _mapping(
+        errors,
+        root.get("ordered_exposure"),
+        _ORDERED_EXPOSURE_KEYS,
+        "ordered_exposure",
+    )
+    for field in (
+        "plan_identity_sha256",
+        "preflight_identity_sha256",
+        "unique_loss_ledger_identity_sha256",
+    ):
+        if not _is_sha256(ordered.get(field)):
+            errors.append(f"ordered_exposure_{field}_invalid")
+    if not _positive_int(
+        ordered.get("one_pass_unique_nonignored_causal_loss_positions")
+    ):
+        errors.append("ordered_exposure_unique_loss_positions_invalid")
+
     resource = _mapping(
         errors,
         root.get("resource_evidence"),
@@ -228,6 +253,7 @@ def bind_preoptimizer_to_packet(
     launch = preoptimizer["launch_input"]
     content = preoptimizer["loss_bearing_content"]
     tokenizer = preoptimizer["tokenizer_decision"]
+    ordered = preoptimizer["ordered_exposure"]
     measured = preoptimizer["resource_evidence"]
 
     expected_pairs = (
@@ -249,11 +275,18 @@ def bind_preoptimizer_to_packet(
     ):
         raise ValueError("tokenizer_decision_authority_identity_packet_mismatch")
 
+    if ordered.get("unique_loss_ledger_identity_sha256") != identities.get(
+        "unique_loss_ledger_sha256"
+    ):
+        raise ValueError("ordered_exposure_ledger_identity_packet_mismatch")
+
     available = recipe.get("available_unique_loss_positions")
     if launch.get("one_pass_unique_nonignored_causal_loss_positions") != available:
         raise ValueError("launch_input_unique_loss_positions_packet_mismatch")
     if content.get("one_pass_unique_nonignored_causal_loss_positions") != available:
         raise ValueError("loss_bearing_content_unique_loss_positions_packet_mismatch")
+    if ordered.get("one_pass_unique_nonignored_causal_loss_positions") != available:
+        raise ValueError("ordered_exposure_unique_loss_positions_packet_mismatch")
 
     if resource.get("resource_class") != "LOCAL_FREE":
         raise ValueError("portable packet is not LOCAL_FREE")
@@ -270,5 +303,14 @@ def bind_preoptimizer_to_packet(
     result_binding["preoptimizer_authorities"] = copy.deepcopy(preoptimizer)
     result_binding["launch_input_authority_identity_sha256"] = launch[
         "authority_identity_sha256"
+    ]
+    result_binding["loss_bearing_manifest_identity_sha256"] = content[
+        "manifest_identity_sha256"
+    ]
+    result_binding["exposure_plan_identity_sha256"] = ordered[
+        "plan_identity_sha256"
+    ]
+    result_binding["exposure_plan_preflight_identity_sha256"] = ordered[
+        "preflight_identity_sha256"
     ]
     return result
