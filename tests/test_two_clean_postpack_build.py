@@ -38,6 +38,14 @@ def _runtime_identity() -> str:
     return two_clean.current_runtime_identity_sha256()
 
 
+def _implementation_manifest() -> dict[str, str]:
+    return two_clean.current_implementation_manifest()
+
+
+def _implementation_identity() -> str:
+    return two_clean._implementation_manifest_identity(_implementation_manifest())
+
+
 def _documents(text: str = "fresh-process fixture\n" * 20) -> tuple[LossMaterializationDocument, ...]:
     return (
         LossMaterializationDocument(
@@ -76,6 +84,7 @@ def _packet(text: str = "fresh-process fixture\n" * 20) -> dict:
         expected_tokenizer_identity_sha256=_tokenizer_identity(),
         expected_packing_identity_sha256=PACKING_CONFIG_HASH,
         expected_runtime_identity_sha256=_runtime_identity(),
+        expected_implementation_manifest=_implementation_manifest(),
     )
 
 
@@ -110,6 +119,7 @@ def test_two_fresh_processes_produce_literal_byte_identity() -> None:
     proof = two_clean.prove_two_clean_build(
         packet,
         expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
+        expected_implementation_manifest_identity_sha256=_implementation_identity(),
     )
 
     assert proof["schema_version"] == two_clean.PROOF_SCHEMA
@@ -119,6 +129,11 @@ def test_two_fresh_processes_produce_literal_byte_identity() -> None:
     assert proof["tokenizer_identity_sha256"] == _tokenizer_identity()
     assert proof["packing_identity_sha256"] == PACKING_CONFIG_HASH
     assert proof["runtime_identity_sha256"] == _runtime_identity()
+    assert proof["implementation_manifest"] == _implementation_manifest()
+    assert (
+        proof["implementation_manifest_identity_sha256"]
+        == _implementation_identity()
+    )
     assert len(proof["materialization_identity_sha256"]) == 64
     assert proof["claim_boundary"] == {
         "contains_source_text": False,
@@ -138,10 +153,12 @@ def test_proof_is_deterministic_across_independent_pairs() -> None:
     first = two_clean.prove_two_clean_build(
         packet,
         expected_input_packet_identity_sha256=expected,
+        expected_implementation_manifest_identity_sha256=_implementation_identity(),
     )
     second = two_clean.prove_two_clean_build(
         packet,
         expected_input_packet_identity_sha256=expected,
+        expected_implementation_manifest_identity_sha256=_implementation_identity(),
     )
     assert first == second
 
@@ -157,6 +174,7 @@ def test_self_consistent_input_substitution_fails_external_identity_binding() ->
         two_clean.prove_two_clean_build(
             substituted,
             expected_input_packet_identity_sha256=expected,
+            expected_implementation_manifest_identity_sha256=_implementation_identity(),
         )
 
 
@@ -216,6 +234,7 @@ def test_runtime_identity_substitution_fails_before_child_spawn() -> None:
             expected_input_packet_identity_sha256=(
                 substituted["input_packet_identity_sha256"]
             ),
+            expected_implementation_manifest_identity_sha256=_implementation_identity(),
         )
 
 
@@ -227,6 +246,7 @@ def test_alternate_python_executable_is_rejected() -> None:
         two_clean.prove_two_clean_build(
             packet,
             expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
+            expected_implementation_manifest_identity_sha256=_implementation_identity(),
             python_executable=alternate,
         )
 
@@ -242,6 +262,7 @@ def test_parent_python_injection_environment_is_not_forwarded(monkeypatch: pytes
     proof = two_clean.prove_two_clean_build(
         packet,
         expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
+        expected_implementation_manifest_identity_sha256=_implementation_identity(),
     )
     assert proof["runtime_identity_sha256"] == _runtime_identity()
 
@@ -264,6 +285,7 @@ def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
     proof = two_clean.prove_two_clean_build(
         packet,
         expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
+        expected_implementation_manifest_identity_sha256=_implementation_identity(),
     )
     verified = two_clean.verify_proof(
         proof,
@@ -274,6 +296,8 @@ def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
         expected_tokenizer_identity_sha256=_tokenizer_identity(),
         expected_packing_identity_sha256=PACKING_CONFIG_HASH,
         expected_runtime_identity_sha256=_runtime_identity(),
+        expected_implementation_manifest=_implementation_manifest(),
+        expected_implementation_manifest_identity_sha256=_implementation_identity(),
     )
     assert verified == proof
 
@@ -297,6 +321,7 @@ def test_proof_rejects_unknown_fields_even_after_self_hash_recomputation() -> No
     proof = two_clean.prove_two_clean_build(
         packet,
         expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
+        expected_implementation_manifest_identity_sha256=_implementation_identity(),
     )
     injected = copy.deepcopy(proof)
     injected["source_text"] = "must never survive durable proof verification"
@@ -331,4 +356,114 @@ def test_invalid_timeout_fails_before_spawning_children() -> None:
             packet,
             expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
             timeout_seconds=True,
+        )
+
+
+def test_missing_implementation_component_is_rejected_at_packet_creation() -> None:
+    manifest = _implementation_manifest()
+    manifest.pop("twelve_six/packing/core.py")
+
+    with pytest.raises(
+        two_clean.TwoCleanBuildError,
+        match="unexpected or missing component",
+    ):
+        two_clean.make_input_packet(
+            _documents(),
+            terminal_corpus_authority_identity_sha256="f" * 64,
+            stage_bindings=_bindings(),
+            expected_tokenizer_identity_sha256=_tokenizer_identity(),
+            expected_packing_identity_sha256=PACKING_CONFIG_HASH,
+            expected_runtime_identity_sha256=_runtime_identity(),
+            expected_implementation_manifest=manifest,
+        )
+
+
+def test_implementation_source_substitution_fails_external_binding() -> None:
+    packet = _packet()
+    substituted = copy.deepcopy(packet)
+    substituted["expected_implementation_manifest"][
+        "twelve_six/packing/core.py"
+    ] = "0" * 64
+    substituted["expected_implementation_manifest_identity_sha256"] = (
+        two_clean._implementation_manifest_identity(
+            substituted["expected_implementation_manifest"]
+        )
+    )
+    substituted = _rehash_packet(substituted)
+
+    with pytest.raises(
+        two_clean.TwoCleanBuildError,
+        match="independently expected identity",
+    ):
+        two_clean.prove_two_clean_build(
+            substituted,
+            expected_input_packet_identity_sha256=(
+                substituted["input_packet_identity_sha256"]
+            ),
+            expected_implementation_manifest_identity_sha256=(
+                _implementation_identity()
+            ),
+        )
+
+
+def test_actual_implementation_bytes_are_checked_before_child_spawn() -> None:
+    packet = _packet()
+    expected_manifest = copy.deepcopy(packet["expected_implementation_manifest"])
+    expected_manifest["twelve_six/tokenization/byte.py"] = "0" * 64
+    packet["expected_implementation_manifest"] = expected_manifest
+    packet["expected_implementation_manifest_identity_sha256"] = (
+        two_clean._implementation_manifest_identity(expected_manifest)
+    )
+    packet = _rehash_packet(packet)
+
+    with pytest.raises(two_clean.TwoCleanBuildError, match="source bytes mismatch"):
+        two_clean.prove_two_clean_build(
+            packet,
+            expected_input_packet_identity_sha256=packet[
+                "input_packet_identity_sha256"
+            ],
+            expected_implementation_manifest_identity_sha256=packet[
+                "expected_implementation_manifest_identity_sha256"
+            ],
+        )
+
+
+def test_resealed_proof_cannot_replace_independent_implementation_root() -> None:
+    packet = _packet()
+    proof = two_clean.prove_two_clean_build(
+        packet,
+        expected_input_packet_identity_sha256=packet[
+            "input_packet_identity_sha256"
+        ],
+        expected_implementation_manifest_identity_sha256=_implementation_identity(),
+    )
+    substituted = copy.deepcopy(proof)
+    substituted["implementation_manifest"]["twelve_six/packing/core.py"] = "0" * 64
+    substituted["implementation_manifest_identity_sha256"] = (
+        two_clean._implementation_manifest_identity(
+            substituted["implementation_manifest"]
+        )
+    )
+    substituted.pop("proof_identity_sha256")
+    substituted["proof_identity_sha256"] = two_clean._sha256_obj(substituted)
+
+    with pytest.raises(
+        two_clean.TwoCleanBuildError,
+        match="implementation manifest mismatch",
+    ):
+        two_clean.verify_proof(
+            substituted,
+            expected_proof_identity_sha256=substituted["proof_identity_sha256"],
+            expected_input_packet_identity_sha256=packet[
+                "input_packet_identity_sha256"
+            ],
+            expected_terminal_corpus_identity_sha256="f" * 64,
+            expected_stage_bindings=_bindings(),
+            expected_tokenizer_identity_sha256=_tokenizer_identity(),
+            expected_packing_identity_sha256=PACKING_CONFIG_HASH,
+            expected_runtime_identity_sha256=_runtime_identity(),
+            expected_implementation_manifest=_implementation_manifest(),
+            expected_implementation_manifest_identity_sha256=(
+                _implementation_identity()
+            ),
         )
