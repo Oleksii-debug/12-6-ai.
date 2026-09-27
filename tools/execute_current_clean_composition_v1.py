@@ -294,13 +294,25 @@ def _parser() -> argparse.ArgumentParser:
     ):
         parser.add_argument(f"--expected-{name}", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--isolated-child", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    args = _parser().parse_args(raw_args)
     repo_root = args.repo_root.resolve(strict=True)
     carrier = require_exact_checkout(repo_root, args.expected_carrier_git_sha)
+    if not args.isolated_child:
+        command = [
+            sys.executable,
+            "-I",
+            "-S",
+            str((repo_root / CARRIER_PATH).resolve(strict=True)),
+            *raw_args,
+            "--isolated-child",
+        ]
+        return subprocess.run(command, check=False).returncode
     executor = load_authenticated_executor(repo_root, carrier)
     receipt = execute_and_publish(args, executor)
     print(receipt["receipt_identity_sha256"])
