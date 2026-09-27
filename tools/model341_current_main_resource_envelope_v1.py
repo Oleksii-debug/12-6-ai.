@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import math
 import platform
-import resource
 import statistics
 import sys
 import time
@@ -16,8 +16,13 @@ import torch.nn.functional as F
 
 from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder, count_trainable_parameters
 
+try:
+    import resource as _resource
+except ModuleNotFoundError:  # Windows
+    _resource = None
+
 SCHEMA = "12-6.model341.current-main-local-free-resource-probe.v1"
-CURRENT_MAIN_SHA = "c95286b118c1c65c21050de4a48a7becee8a81ea"
+EXECUTION_ROOT_MAIN_SHA = "c95286b118c1c65c21050de4a48a7becee8a81ea"
 MODEL_BLOB_SHA1 = "c3879fe0ba9193d5a8176c284e1942f058ef7885"
 PYPROJECT_BLOB_SHA1 = "ab7518370c9f4ff13eb007d3bacecb363bb4956f"
 EXPECTED_PARAMETER_COUNT = 20_613_440
@@ -36,7 +41,9 @@ TRUTH_BOUNDARY = {
     "final_test_outcomes_read": False,
     "paid_compute_used": False,
     "foreign_pretrained_weights": False,
-    "external_llm_or_api_used_for_data_or_intelligence": False,
+    "probe_uses_real_corpus_or_final_test_payload": False,
+    "probe_uses_deterministic_synthetic_token_ids_only": True,
+    "external_model_or_api_called_by_probe": False,
 }
 
 
@@ -104,6 +111,66 @@ def _cpu_name() -> str:
     return "UNKNOWN"
 
 
+def _windows_peak_working_set_mib() -> float | None:
+    if sys.platform != "win32":
+        return None
+
+    from ctypes import wintypes
+
+    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    try:
+        counters = PROCESS_MEMORY_COUNTERS()
+        counters.cb = ctypes.sizeof(counters)
+        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
+        get_current_process.argtypes = []
+        get_current_process.restype = wintypes.HANDLE
+        get_process_memory_info = ctypes.windll.psapi.GetProcessMemoryInfo
+        get_process_memory_info.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+            wintypes.DWORD,
+        ]
+        get_process_memory_info.restype = wintypes.BOOL
+        handle = get_current_process()
+        ok = get_process_memory_info(
+            handle,
+            ctypes.byref(counters),
+            ctypes.sizeof(counters),
+        )
+        if not ok:
+            return None
+        return float(counters.PeakWorkingSetSize) / 1024.0**2
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _process_hwm_mib_approx() -> tuple[float | None, str]:
+    windows_value = _windows_peak_working_set_mib()
+    if windows_value is not None:
+        return windows_value, "windows_peak_working_set"
+
+    if _resource is None:
+        return None, "unavailable"
+
+    hwm_raw = _resource.getrusage(_resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        return float(hwm_raw) / 1024.0**2, "ru_maxrss_bytes"
+    return float(hwm_raw) / 1024.0, "ru_maxrss_kib"
+
+
 def _finite_positive(value: Any, name: str) -> float:
     if type(value) not in {int, float}:
         raise ValueError(f"{name} must be a JSON number")
@@ -137,130 +204,136 @@ def run_probe(
         raise ValueError("intraop_threads must be a positive integer")
 
     validate_source_root(root)
-    torch.set_num_threads(intraop_threads)
-    torch.manual_seed(341)
+    previous_threads = torch.get_num_threads()
 
-    spec = model_spec()
-    init = init_spec()
-    if spec.identity_sha256() != EXPECTED_MODEL_IDENTITY_SHA256:
-        raise ValueError("MODEL-341 ModelSpec identity drift")
-    if init.identity_sha256() != EXPECTED_INIT_IDENTITY_SHA256:
-        raise ValueError("MODEL-341 InitSpec identity drift")
-    if spec.parameter_count() != EXPECTED_PARAMETER_COUNT:
-        raise ValueError("MODEL-341 parameter formula drift")
+    try:
+        torch.set_num_threads(intraop_threads)
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(341)
 
-    model = TwelveSixDecoder(spec, init)
-    model.train()
-    if count_trainable_parameters(model) != EXPECTED_PARAMETER_COUNT:
-        raise ValueError("MODEL-341 instantiated parameter count drift")
+            spec = model_spec()
+            init = init_spec()
+            if spec.identity_sha256() != EXPECTED_MODEL_IDENTITY_SHA256:
+                raise ValueError("MODEL-341 ModelSpec identity drift")
+            if init.identity_sha256() != EXPECTED_INIT_IDENTITY_SHA256:
+                raise ValueError("MODEL-341 InitSpec identity drift")
+            if spec.parameter_count() != EXPECTED_PARAMETER_COUNT:
+                raise ValueError("MODEL-341 parameter formula drift")
 
-    parameter_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
-    before = _parameter_fingerprint(model)
-    generator = torch.Generator(device="cpu")
-    generator.manual_seed(341)
-    input_ids = torch.randint(
-        low=0,
-        high=spec.vocab_size,
-        size=(1, 128),
-        generator=generator,
-        dtype=torch.long,
-    )
-    causal_targets = input_ids.numel() - input_ids.shape[0]
+            model = TwelveSixDecoder(spec, init)
+            model.train()
+            if count_trainable_parameters(model) != EXPECTED_PARAMETER_COUNT:
+                raise ValueError("MODEL-341 instantiated parameter count drift")
 
-    def one_sample() -> tuple[float, float]:
-        model.zero_grad(set_to_none=True)
-        started = time.perf_counter()
-        output = model(input_ids)
-        logits = output.logits[:, :-1, :].contiguous()
-        labels = input_ids[:, 1:].contiguous()
-        loss = F.cross_entropy(
-            logits.view(-1, logits.shape[-1]),
-            labels.view(-1),
-        )
-        loss.backward()
-        elapsed = time.perf_counter() - started
-        return elapsed, float(loss.detach())
+            parameter_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
+            before = _parameter_fingerprint(model)
+            generator = torch.Generator(device="cpu")
+            generator.manual_seed(341)
+            input_ids = torch.randint(
+                low=0,
+                high=spec.vocab_size,
+                size=(1, 128),
+                generator=generator,
+                dtype=torch.long,
+            )
+            causal_targets = input_ids.numel() - input_ids.shape[0]
 
-    for _ in range(warmup_samples):
-        one_sample()
+            def one_sample() -> tuple[float, float]:
+                model.zero_grad(set_to_none=True)
+                started = time.perf_counter()
+                output = model(input_ids)
+                logits = output.logits[:, :-1, :].contiguous()
+                labels = input_ids[:, 1:].contiguous()
+                loss = F.cross_entropy(
+                    logits.view(-1, logits.shape[-1]),
+                    labels.view(-1),
+                )
+                loss.backward()
+                elapsed = time.perf_counter() - started
+                return elapsed, float(loss.detach())
 
-    elapsed_samples: list[float] = []
-    losses: list[float] = []
-    for _ in range(measured_samples):
-        elapsed, loss = one_sample()
-        elapsed_samples.append(elapsed)
-        losses.append(loss)
+            for _ in range(warmup_samples):
+                one_sample()
 
-    after = _parameter_fingerprint(model)
-    median_seconds = statistics.median(elapsed_samples)
-    throughput = causal_targets / median_seconds
-    gradient_bytes = sum(
-        p.grad.numel() * p.grad.element_size()
-        for p in model.parameters()
-        if p.grad is not None
-    )
-    hwm_raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    hwm_mib = hwm_raw / 1024.0 if sys.platform != "darwin" else hwm_raw / 1024.0**2
+            elapsed_samples: list[float] = []
+            losses: list[float] = []
+            for _ in range(measured_samples):
+                elapsed, loss = one_sample()
+                elapsed_samples.append(elapsed)
+                losses.append(loss)
 
-    return {
-        "schema": SCHEMA,
-        "source": {
-            "current_main_sha": CURRENT_MAIN_SHA,
-            "model_blob_sha1": MODEL_BLOB_SHA1,
-            "pyproject_blob_sha1": PYPROJECT_BLOB_SHA1,
-        },
-        "model": {
-            "model_identity_sha256": spec.identity_sha256(),
-            "init_identity_sha256": init.identity_sha256(),
-            "parameter_count": EXPECTED_PARAMETER_COUNT,
-            "vocab_size": spec.vocab_size,
-            "sequence_length": 128,
-            "micro_batch_size": 1,
-            "precision": "fp32",
-            "seed": 341,
-            "causal_targets_per_microbatch": causal_targets,
-        },
-        "runtime": {
-            "python": platform.python_version(),
-            "torch": torch.__version__,
-            "cpu": _cpu_name(),
-            "cuda_available": torch.cuda.is_available(),
-            "intraop_threads": torch.get_num_threads(),
-            "interop_threads": torch.get_num_interop_threads(),
-        },
-        "measurement": {
-            "warmup_samples": warmup_samples,
-            "measured_samples": measured_samples,
-            "elapsed_seconds": elapsed_samples,
-            "median_forward_loss_backward_seconds": median_seconds,
-            "median_causal_targets_per_second": throughput,
-            "synthetic_loss_median": statistics.median(losses),
-            "parameter_bytes": parameter_bytes,
-            "gradient_bytes": gradient_bytes,
-            "process_hwm_mib_approx": hwm_mib,
-            "parameter_fingerprint_before_sha256": before,
-            "parameter_fingerprint_after_sha256": after,
-            "parameter_fingerprint_unchanged": before == after,
-            "optimizer_object_created": False,
-            "optimizer_updates": 0,
-            "model_updates": 0,
-        },
-        "planning": {
-            "scope": "forward+causal_ce+backward_only",
-            "target_positions_example": 20_000_000,
-            "mechanics_only_lower_bound_seconds_example": 20_000_000 / throughput,
-            "mechanics_only_lower_bound_hours_example": 20_000_000 / throughput / 3600.0,
-            "cross_host_extrapolation_allowed": False,
-            "excluded": [
-                "optimizer.step",
-                "checkpoint_io",
-                "evaluation",
-                "packing_data_io",
-                "real_pilot_overhead",
-            ],
-        },
-        "truth_boundary": dict(TRUTH_BOUNDARY),
-    }
+            after = _parameter_fingerprint(model)
+            median_seconds = statistics.median(elapsed_samples)
+            throughput = causal_targets / median_seconds
+            gradient_bytes = sum(
+                p.grad.numel() * p.grad.element_size()
+                for p in model.parameters()
+                if p.grad is not None
+            )
+            hwm_mib, hwm_source = _process_hwm_mib_approx()
+
+            return {
+                "schema": SCHEMA,
+                "source": {
+                    "execution_root_main_sha": EXECUTION_ROOT_MAIN_SHA,
+                    "model_blob_sha1": MODEL_BLOB_SHA1,
+                    "pyproject_blob_sha1": PYPROJECT_BLOB_SHA1,
+                },
+                "model": {
+                    "model_identity_sha256": spec.identity_sha256(),
+                    "init_identity_sha256": init.identity_sha256(),
+                    "parameter_count": EXPECTED_PARAMETER_COUNT,
+                    "vocab_size": spec.vocab_size,
+                    "sequence_length": 128,
+                    "micro_batch_size": 1,
+                    "precision": "fp32",
+                    "seed": 341,
+                    "causal_targets_per_microbatch": causal_targets,
+                },
+                "runtime": {
+                    "python": platform.python_version(),
+                    "torch": torch.__version__,
+                    "cpu": _cpu_name(),
+                    "cuda_available": torch.cuda.is_available(),
+                    "intraop_threads": torch.get_num_threads(),
+                    "interop_threads": torch.get_num_interop_threads(),
+                },
+                "measurement": {
+                    "warmup_samples": warmup_samples,
+                    "measured_samples": measured_samples,
+                    "elapsed_seconds": elapsed_samples,
+                    "median_forward_loss_backward_seconds": median_seconds,
+                    "median_causal_targets_per_second": throughput,
+                    "synthetic_loss_median": statistics.median(losses),
+                    "parameter_bytes": parameter_bytes,
+                    "gradient_bytes": gradient_bytes,
+                    "process_hwm_mib_approx": hwm_mib,
+                    "process_hwm_source": hwm_source,
+                    "parameter_fingerprint_before_sha256": before,
+                    "parameter_fingerprint_after_sha256": after,
+                    "parameter_fingerprint_unchanged": before == after,
+                    "optimizer_object_created": False,
+                    "optimizer_updates": 0,
+                    "model_updates": 0,
+                },
+                "planning": {
+                    "scope": "forward+causal_ce+backward_only",
+                    "target_positions_example": 20_000_000,
+                    "mechanics_only_lower_bound_seconds_example": 20_000_000 / throughput,
+                    "mechanics_only_lower_bound_hours_example": 20_000_000 / throughput / 3600.0,
+                    "cross_host_extrapolation_allowed": False,
+                    "excluded": [
+                        "optimizer.step",
+                        "checkpoint_io",
+                        "evaluation",
+                        "packing_data_io",
+                        "real_pilot_overhead",
+                    ],
+                },
+                "truth_boundary": dict(TRUTH_BOUNDARY),
+            }
+    finally:
+        torch.set_num_threads(previous_threads)
 
 
 def validate_probe(report: dict[str, Any]) -> None:
@@ -270,7 +343,7 @@ def validate_probe(report: dict[str, Any]) -> None:
     if type(source) is not dict:
         raise ValueError("source must be an object")
     expected_source = {
-        "current_main_sha": CURRENT_MAIN_SHA,
+        "execution_root_main_sha": EXECUTION_ROOT_MAIN_SHA,
         "model_blob_sha1": MODEL_BLOB_SHA1,
         "pyproject_blob_sha1": PYPROJECT_BLOB_SHA1,
     }
@@ -288,6 +361,8 @@ def validate_probe(report: dict[str, Any]) -> None:
         raise ValueError("parameter_count type mismatch")
     if model["parameter_count"] != EXPECTED_PARAMETER_COUNT:
         raise ValueError("parameter_count mismatch")
+    if type(model.get("causal_targets_per_microbatch")) is not int or model["causal_targets_per_microbatch"] <= 0:
+        raise ValueError("causal target count mismatch")
 
     measurement = report.get("measurement")
     if type(measurement) is not dict:
@@ -306,6 +381,16 @@ def validate_probe(report: dict[str, Any]) -> None:
     for field in ("optimizer_updates", "model_updates"):
         if type(measurement.get(field)) is not int or measurement[field] != 0:
             raise ValueError(f"{field} must be exact integer zero")
+
+    hwm = measurement.get("process_hwm_mib_approx")
+    hwm_source = measurement.get("process_hwm_source")
+    if hwm_source == "unavailable":
+        if hwm is not None:
+            raise ValueError("unavailable process HWM must be null")
+    elif hwm_source in {"windows_peak_working_set", "ru_maxrss_bytes", "ru_maxrss_kib"}:
+        _finite_positive(hwm, "process HWM")
+    else:
+        raise ValueError("process HWM source mismatch")
 
     if report.get("truth_boundary") != TRUTH_BOUNDARY:
         raise ValueError("truth boundary mismatch")
