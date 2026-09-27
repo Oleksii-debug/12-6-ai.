@@ -249,7 +249,7 @@ def test_strict_json_rejects_duplicate_members() -> None:
 
 @pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
 def test_strict_json_rejects_nonfinite_constants(constant: str) -> None:
-    raw = f'{{"value":{constant}}}'.encode("utf-8")
+    raw = f'{{"value":{constant}}}'.encode()
     with pytest.raises(
         module.SelectionPayloadResolverError,
         match="non-finite JSON constant rejected",
@@ -259,7 +259,7 @@ def test_strict_json_rejects_nonfinite_constants(constant: str) -> None:
 
 @pytest.mark.parametrize("number", ["1e999", "-1e999"])
 def test_strict_json_rejects_float_overflow(number: str) -> None:
-    raw = f'{{"value":{number}}}'.encode("utf-8")
+    raw = f'{{"value":{number}}}'.encode()
     with pytest.raises(
         module.SelectionPayloadResolverError,
         match="non-finite JSON number rejected",
