@@ -46,6 +46,24 @@ def _implementation_identity() -> str:
     return two_clean._implementation_manifest_identity(_implementation_manifest())
 
 
+_RUNTIME_DEPENDENCY_MANIFEST: dict[str, dict[str, str]] | None = None
+
+
+def _runtime_dependency_manifest() -> dict[str, dict[str, str]]:
+    global _RUNTIME_DEPENDENCY_MANIFEST
+    if _RUNTIME_DEPENDENCY_MANIFEST is None:
+        _RUNTIME_DEPENDENCY_MANIFEST = (
+            two_clean.probe_clean_runtime_dependency_manifest()
+        )
+    return copy.deepcopy(_RUNTIME_DEPENDENCY_MANIFEST)
+
+
+def _runtime_dependency_identity() -> str:
+    return two_clean._runtime_dependency_manifest_identity(
+        _runtime_dependency_manifest()
+    )
+
+
 def _documents(text: str = "fresh-process fixture\n" * 20) -> tuple[LossMaterializationDocument, ...]:
     return (
         LossMaterializationDocument(
@@ -85,6 +103,7 @@ def _packet(text: str = "fresh-process fixture\n" * 20) -> dict:
         expected_packing_identity_sha256=PACKING_CONFIG_HASH,
         expected_runtime_identity_sha256=_runtime_identity(),
         expected_implementation_manifest=_implementation_manifest(),
+        expected_runtime_dependency_manifest=_runtime_dependency_manifest(),
     )
 
 
@@ -114,12 +133,66 @@ def _compare(first: bytes, second: bytes, **overrides: object) -> dict:
     return two_clean.compare_clean_build_bytes(first, second, **kwargs)
 
 
+def test_clean_runtime_dependency_probe_is_deterministic_and_path_independent() -> None:
+    first = _runtime_dependency_manifest()
+    second = two_clean.probe_clean_runtime_dependency_manifest()
+    assert first == second
+    assert first
+    assert first.get("sys") == {"kind": "built-in"}
+    stdlib_entries = [
+        entry for entry in first.values() if entry.get("kind") == "stdlib"
+    ]
+    assert stdlib_entries
+    for entry in stdlib_entries:
+        assert not entry["path"].startswith("/")
+        assert "\\" not in entry["path"]
+        assert len(entry["sha256"]) == 64
+
+
+def test_changed_stdlib_dependency_fails_before_qualified_proof() -> None:
+    packet = _packet()
+    runtime_manifest = copy.deepcopy(packet["expected_runtime_dependency_manifest"])
+    changed = False
+    for entry in runtime_manifest.values():
+        if entry.get("kind") == "stdlib":
+            replacement = "0" * 64
+            if entry["sha256"] == replacement:
+                replacement = "1" * 64
+            entry["sha256"] = replacement
+            changed = True
+            break
+    assert changed
+    packet["expected_runtime_dependency_manifest"] = runtime_manifest
+    packet["expected_runtime_dependency_manifest_identity_sha256"] = (
+        two_clean._runtime_dependency_manifest_identity(runtime_manifest)
+    )
+    packet = _rehash_packet(packet)
+
+    with pytest.raises(
+        two_clean.TwoCleanBuildError,
+        match="runtime dependency manifest does not match clean current runtime",
+    ):
+        two_clean.prove_two_clean_build(
+            packet,
+            expected_input_packet_identity_sha256=packet[
+                "input_packet_identity_sha256"
+            ],
+            expected_implementation_manifest_identity_sha256=_implementation_identity(),
+            expected_runtime_dependency_manifest_identity_sha256=packet[
+                "expected_runtime_dependency_manifest_identity_sha256"
+            ],
+        )
+
+
 def test_two_fresh_processes_produce_literal_byte_identity() -> None:
     packet = _packet()
     proof = two_clean.prove_two_clean_build(
         packet,
         expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
     )
 
     assert proof["schema_version"] == two_clean.PROOF_SCHEMA
@@ -133,6 +206,11 @@ def test_two_fresh_processes_produce_literal_byte_identity() -> None:
     assert (
         proof["implementation_manifest_identity_sha256"]
         == _implementation_identity()
+    )
+    assert proof["runtime_dependency_manifest"] == _runtime_dependency_manifest()
+    assert (
+        proof["runtime_dependency_manifest_identity_sha256"]
+        == _runtime_dependency_identity()
     )
     assert len(proof["materialization_identity_sha256"]) == 64
     assert proof["claim_boundary"] == {
@@ -154,11 +232,17 @@ def test_proof_is_deterministic_across_independent_pairs() -> None:
         packet,
         expected_input_packet_identity_sha256=expected,
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
     )
     second = two_clean.prove_two_clean_build(
         packet,
         expected_input_packet_identity_sha256=expected,
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
     )
     assert first == second
 
@@ -175,6 +259,12 @@ def test_self_consistent_input_substitution_fails_external_identity_binding() ->
             substituted,
             expected_input_packet_identity_sha256=expected,
             expected_implementation_manifest_identity_sha256=_implementation_identity(),
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
+            ),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
         )
 
 
@@ -235,6 +325,12 @@ def test_runtime_identity_substitution_fails_before_child_spawn() -> None:
                 substituted["input_packet_identity_sha256"]
             ),
             expected_implementation_manifest_identity_sha256=_implementation_identity(),
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
+            ),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
         )
 
 
@@ -247,6 +343,12 @@ def test_alternate_python_executable_is_rejected() -> None:
             packet,
             expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
             expected_implementation_manifest_identity_sha256=_implementation_identity(),
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
+            ),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
             python_executable=alternate,
         )
 
@@ -263,6 +365,9 @@ def test_parent_python_injection_environment_is_not_forwarded(monkeypatch: pytes
         packet,
         expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
     )
     assert proof["runtime_identity_sha256"] == _runtime_identity()
 
@@ -298,6 +403,9 @@ def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
         packet,
         expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
     )
     verified = two_clean.verify_proof(
         proof,
@@ -310,6 +418,13 @@ def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
         expected_runtime_identity_sha256=_runtime_identity(),
         expected_implementation_manifest=_implementation_manifest(),
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
+        expected_runtime_dependency_manifest=_runtime_dependency_manifest(),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
     )
     assert verified == proof
 
@@ -329,6 +444,10 @@ def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
             expected_implementation_manifest_identity_sha256=(
                 _implementation_identity()
             ),
+            expected_runtime_dependency_manifest=_runtime_dependency_manifest(),
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
+            ),
         )
 
 
@@ -338,6 +457,9 @@ def test_proof_rejects_unknown_fields_even_after_self_hash_recomputation() -> No
         packet,
         expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
     )
     injected = copy.deepcopy(proof)
     injected["source_text"] = "must never survive durable proof verification"
@@ -358,6 +480,10 @@ def test_proof_rejects_unknown_fields_even_after_self_hash_recomputation() -> No
             expected_implementation_manifest_identity_sha256=(
                 _implementation_identity()
             ),
+            expected_runtime_dependency_manifest=_runtime_dependency_manifest(),
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
+            ),
         )
 
 
@@ -376,6 +502,12 @@ def test_invalid_timeout_fails_before_spawning_children() -> None:
             packet,
             expected_input_packet_identity_sha256=packet["input_packet_identity_sha256"],
             expected_implementation_manifest_identity_sha256=_implementation_identity(),
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
+            ),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
             timeout_seconds=True,
         )
 
@@ -396,6 +528,7 @@ def test_missing_implementation_component_is_rejected_at_packet_creation() -> No
             expected_packing_identity_sha256=PACKING_CONFIG_HASH,
             expected_runtime_identity_sha256=_runtime_identity(),
             expected_implementation_manifest=manifest,
+            expected_runtime_dependency_manifest=_runtime_dependency_manifest(),
         )
 
 
@@ -415,6 +548,7 @@ def test_extra_implementation_component_is_rejected_at_packet_creation() -> None
             expected_packing_identity_sha256=PACKING_CONFIG_HASH,
             expected_runtime_identity_sha256=_runtime_identity(),
             expected_implementation_manifest=manifest,
+            expected_runtime_dependency_manifest=_runtime_dependency_manifest(),
         )
 
 
@@ -476,6 +610,9 @@ def test_resealed_proof_cannot_replace_independent_implementation_root() -> None
             "input_packet_identity_sha256"
         ],
         expected_implementation_manifest_identity_sha256=_implementation_identity(),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            _runtime_dependency_identity()
+        ),
     )
     substituted = copy.deepcopy(proof)
     substituted["implementation_manifest"]["twelve_six/packing/core.py"] = "0" * 64
@@ -505,5 +642,9 @@ def test_resealed_proof_cannot_replace_independent_implementation_root() -> None
             expected_implementation_manifest=_implementation_manifest(),
             expected_implementation_manifest_identity_sha256=(
                 _implementation_identity()
+            ),
+            expected_runtime_dependency_manifest=_runtime_dependency_manifest(),
+            expected_runtime_dependency_manifest_identity_sha256=(
+                _runtime_dependency_identity()
             ),
         )
