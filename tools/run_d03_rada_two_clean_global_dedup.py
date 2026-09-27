@@ -47,6 +47,8 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--expected-dependency-authority-sha256", required=True)
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--expected-inventory-sha256", required=True)
+    parser.add_argument("--base-payload-map", type=Path, required=True)
+    parser.add_argument("--expected-base-payload-map-sha256", required=True)
     parser.add_argument("--candidate-jsonl", type=Path, required=True)
     parser.add_argument("--quality-report", type=Path, required=True)
     parser.add_argument("--execution-evidence", type=Path, required=True)
@@ -78,6 +80,10 @@ def _common_argv(args: argparse.Namespace) -> list[str]:
         str(args.inventory),
         "--expected-inventory-sha256",
         args.expected_inventory_sha256,
+        "--base-payload-map",
+        str(args.base_payload_map),
+        "--expected-base-payload-map-sha256",
+        args.expected_base_payload_map_sha256,
         "--candidate-jsonl",
         str(args.candidate_jsonl),
         "--quality-report",
@@ -101,6 +107,8 @@ def _worker(args: argparse.Namespace) -> int:
         expected_dependency_authority_sha256=args.expected_dependency_authority_sha256,
         inventory_path=args.inventory,
         expected_inventory_sha256=args.expected_inventory_sha256,
+        base_payload_map_path=args.base_payload_map,
+        expected_base_payload_map_sha256=args.expected_base_payload_map_sha256,
         candidate_jsonl=args.candidate_jsonl,
         quality_report=args.quality_report,
         execution_evidence=args.execution_evidence,
