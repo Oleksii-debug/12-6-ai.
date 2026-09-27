@@ -8,8 +8,8 @@ import pytest
 import twelve_six.learned20m_training_lease as lease_module
 from twelve_six.learned20m_training_lease import (
     TERMINAL_AUTHORITY_SCHEMA,
-    base_launch_manifest_sha256,
     assess_terminal_launch_authority,
+    base_launch_manifest_sha256,
     build_authorized_training_run_lease,
     finalize_launch_manifest,
     launch_manifest_sha256,
