@@ -374,7 +374,7 @@ def build_body_free_discovery_evidence_from_documents(
                 "document_url": page.url,
                 "official_pdf_urls": list(page.official_pdf_urls),
                 "page_metadata_sha256": sha256(
-                    (canonical_json(meta) + "\\n").encode()
+                    (canonical_json(meta) + "\n").encode()
                 ),
             }
         )
@@ -398,7 +398,7 @@ def build_body_free_discovery_evidence_from_documents(
         "paid_compute_used": False,
     }
     evidence["evidence_identity_sha256"] = sha256(
-        (canonical_json(evidence) + "\\n").encode()
+        (canonical_json(evidence) + "\n").encode()
     )
     return evidence
 
