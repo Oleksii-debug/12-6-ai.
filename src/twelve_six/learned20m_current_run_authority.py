@@ -94,7 +94,6 @@ class CurrentRunAuthorityInspection:
     recovery_run_manifest_sha256: str | None
     current_run_identity_sha256: str | None
     blockers: tuple[str, ...]
-    remote_write_outcome_unknown: bool = False
     mechanics_scope: str = MECHANICS_SCOPE
     optimizer_start_permitted_by_this_module: bool = False
     training_authority_granted_by_this_module: bool = False
@@ -117,6 +116,7 @@ class CurrentRunAuthorityOperation:
     run_id: str | None
     current_run_identity_sha256: str | None
     blockers: tuple[str, ...]
+    remote_write_outcome_unknown: bool = False
     mechanics_scope: str = MECHANICS_SCOPE
     optimizer_start_permitted_by_this_module: bool = False
     training_authority_granted_by_this_module: bool = False
