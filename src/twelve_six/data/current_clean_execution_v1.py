@@ -861,6 +861,10 @@ def verify_current_clean_composition_receipt(
         >= receipt["survivor_records"],
         "survivor count monotonicity drift",
     )
+    _require(
+        receipt["survivor_source_objects"] <= receipt["survivor_records"],
+        "survivor source-object count exceeds survivor records",
+    )
 
     rejection_counts = receipt.get("rejection_counts")
     _require(
