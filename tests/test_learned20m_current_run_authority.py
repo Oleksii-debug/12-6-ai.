@@ -919,6 +919,17 @@ def test_mutations_fail_closed_on_pointer_type_error(
     assert activated.committed is False
     assert activated.blockers == ("current_run_pointer_not_object",)
 
+    refreshed = refresh_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        expected_pointer_tip="a" * 40,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert refreshed.committed is False
+    assert refreshed.blockers == ("current_run_pointer_not_object",)
+
     retired = retire_current_run_authority(
         writer_a,
         str(remote),
