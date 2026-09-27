@@ -103,6 +103,7 @@ _CLEAN_ENV_KEYS = frozenset(
         "PYTHONPATH",
         "PYTHONNOUSERSITE",
         "PYTHONDONTWRITEBYTECODE",
+        "PYTHONPYCACHEPREFIX",
     }
 )
 
@@ -264,12 +265,15 @@ def _trusted_source_root() -> Path:
     return source_root
 
 
-def _clean_child_env(source_root: Path) -> dict[str, str]:
+def _clean_child_env(source_root: Path, pycache_root: Path) -> dict[str, str]:
     """Build a minimal child environment instead of inheriting caller Python hooks."""
+    if pycache_root.exists():
+        raise TwoCleanBuildError("child pycache root must start absent")
     env = {
         "PYTHONPATH": str(source_root),
         "PYTHONNOUSERSITE": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPYCACHEPREFIX": str(pycache_root),
     }
     if set(env) != set(_CLEAN_ENV_KEYS):
         raise AssertionError("clean child environment key drift")
@@ -652,7 +656,7 @@ def prove_two_clean_build(
             completed = subprocess.run(
                 command,
                 cwd=work,
-                env=_clean_child_env(source_root),
+                env=_clean_child_env(source_root, work / "pycache"),
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
