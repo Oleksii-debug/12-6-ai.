@@ -12,6 +12,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import sysconfig
 import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -25,9 +26,10 @@ from .loss_materialization import (
     build_postpack_loss_materialization,
 )
 
-INPUT_SCHEMA = "12-6.postpack-two-clean-input.v3"
-PROOF_SCHEMA = "12-6.postpack-two-clean-proof.v3"
+INPUT_SCHEMA = "12-6.postpack-two-clean-input.v4"
+PROOF_SCHEMA = "12-6.postpack-two-clean-proof.v4"
 IMPLEMENTATION_MANIFEST_SCHEMA = "12-6.d04-two-clean-implementation-manifest.v1"
+RUNTIME_DEPENDENCY_MANIFEST_SCHEMA = "12-6.d04-runtime-dependency-manifest.v1"
 _IMPLEMENTATION_PATHS = (
     "twelve_six/__init__.py",
     "twelve_six/packing/__init__.py",
@@ -50,6 +52,8 @@ _INPUT_KEYS = frozenset(
         "expected_runtime_identity_sha256",
         "expected_implementation_manifest",
         "expected_implementation_manifest_identity_sha256",
+        "expected_runtime_dependency_manifest",
+        "expected_runtime_dependency_manifest_identity_sha256",
         "documents",
         "claim_boundary",
         "input_packet_identity_sha256",
@@ -66,6 +70,8 @@ _PROOF_KEYS = frozenset(
         "runtime_identity_sha256",
         "implementation_manifest",
         "implementation_manifest_identity_sha256",
+        "runtime_dependency_manifest",
+        "runtime_dependency_manifest_identity_sha256",
         "fresh_process_count",
         "byte_identical",
         "build_a_sha256",
@@ -216,6 +222,130 @@ def _verify_implementation_binding(
     return expected_identity
 
 
+def _normalize_runtime_dependency_manifest(
+    value: Mapping[str, Mapping[str, str]],
+) -> dict[str, dict[str, str]]:
+    if not isinstance(value, Mapping) or not value:
+        raise TwoCleanBuildError("runtime dependency manifest must be a non-empty object")
+    normalized: dict[str, dict[str, str]] = {}
+    for module_name in sorted(value):
+        if not isinstance(module_name, str) or not module_name:
+            raise TwoCleanBuildError("runtime dependency module name must be non-empty")
+        entry = value[module_name]
+        if not isinstance(entry, Mapping):
+            raise TwoCleanBuildError(
+                f"runtime dependency entry must be an object: {module_name}"
+            )
+        kind = entry.get("kind")
+        if kind in {"built-in", "frozen"}:
+            if set(entry) != {"kind"}:
+                raise TwoCleanBuildError(
+                    f"runtime dependency {module_name} has unexpected fields"
+                )
+            normalized[module_name] = {"kind": kind}
+            continue
+        if kind != "stdlib" or set(entry) != {"kind", "path", "sha256"}:
+            raise TwoCleanBuildError(
+                f"runtime dependency {module_name} has unexpected fields"
+            )
+        relative_path = entry.get("path")
+        if (
+            not isinstance(relative_path, str)
+            or not relative_path
+            or relative_path.startswith("/")
+            or "\\" in relative_path
+            or any(part in {"", ".", ".."} for part in relative_path.split("/"))
+        ):
+            raise TwoCleanBuildError(
+                f"runtime dependency {module_name} has invalid relative path"
+            )
+        normalized[module_name] = {
+            "kind": "stdlib",
+            "path": relative_path,
+            "sha256": _require_sha256(
+                entry.get("sha256"),
+                f"runtime_dependency_manifest.{module_name}.sha256",
+            ),
+        }
+    return normalized
+
+
+def _runtime_dependency_manifest_identity(
+    value: Mapping[str, Mapping[str, str]],
+) -> str:
+    normalized = _normalize_runtime_dependency_manifest(value)
+    return _sha256_obj(
+        {
+            "schema_version": RUNTIME_DEPENDENCY_MANIFEST_SCHEMA,
+            "modules": normalized,
+        }
+    )
+
+
+def _current_runtime_dependency_manifest() -> dict[str, dict[str, str]]:
+    """Describe behavior-bearing clean-runtime modules without absolute paths."""
+    source_root = _trusted_source_root()
+    stdlib_root_value = sysconfig.get_path("stdlib")
+    if not isinstance(stdlib_root_value, str) or not stdlib_root_value:
+        raise TwoCleanBuildError("Python stdlib root is unavailable")
+    try:
+        stdlib_root = Path(stdlib_root_value).resolve(strict=True)
+    except OSError as exc:
+        raise TwoCleanBuildError("Python stdlib root cannot be resolved") from exc
+
+    manifest: dict[str, dict[str, str]] = {}
+    for module_name, module in sorted(sys.modules.items()):
+        spec = getattr(module, "__spec__", None)
+        origin = getattr(spec, "origin", None)
+        if origin in {"built-in", "frozen"}:
+            manifest[module_name] = {"kind": origin}
+            continue
+        if not isinstance(origin, str) or not origin:
+            continue
+        try:
+            candidate = Path(origin).resolve(strict=True)
+        except OSError as exc:
+            raise TwoCleanBuildError(
+                f"runtime dependency origin cannot be resolved: {module_name}"
+            ) from exc
+        if candidate.is_relative_to(source_root):
+            continue
+        if not candidate.is_relative_to(stdlib_root):
+            raise TwoCleanBuildError(
+                f"runtime dependency escaped stdlib/source closure: {module_name}"
+            )
+        if candidate.is_symlink() or not candidate.is_file():
+            raise TwoCleanBuildError(
+                f"runtime dependency is not a regular file: {module_name}"
+            )
+        manifest[module_name] = {
+            "kind": "stdlib",
+            "path": candidate.relative_to(stdlib_root).as_posix(),
+            "sha256": _sha256_file(candidate),
+        }
+    return _normalize_runtime_dependency_manifest(manifest)
+
+
+def _verify_runtime_dependency_binding(
+    expected_manifest: Mapping[str, Mapping[str, str]],
+    *,
+    expected_identity_sha256: str,
+) -> str:
+    normalized = _normalize_runtime_dependency_manifest(expected_manifest)
+    expected_identity = _require_sha256(
+        expected_identity_sha256,
+        "expected_runtime_dependency_manifest_identity_sha256",
+    )
+    if _runtime_dependency_manifest_identity(normalized) != expected_identity:
+        raise TwoCleanBuildError("runtime dependency manifest identity mismatch")
+    observed = _current_runtime_dependency_manifest()
+    if observed != normalized:
+        raise TwoCleanBuildError(
+            "runtime dependency manifest does not match clean current runtime"
+        )
+    return expected_identity
+
+
 def _trusted_python_executable(requested: str | None = None) -> Path:
     if not sys.executable:
         raise TwoCleanBuildError("python executable is unavailable")
@@ -280,6 +410,53 @@ def _clean_child_env(source_root: Path, pycache_root: Path) -> dict[str, str]:
     return env
 
 
+def probe_clean_runtime_dependency_manifest(
+    *, python_executable: str | None = None, timeout_seconds: int = 120
+) -> dict[str, dict[str, str]]:
+    """Observe clean-child runtime dependencies for external freezing/authorization."""
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int):
+        raise TwoCleanBuildError("timeout_seconds must be a positive integer")
+    if timeout_seconds <= 0:
+        raise TwoCleanBuildError("timeout_seconds must be a positive integer")
+    executable = _trusted_python_executable(python_executable)
+    source_root = _trusted_source_root()
+    with tempfile.TemporaryDirectory(prefix="twelve-six-runtime-probe-") as directory:
+        root = Path(directory)
+        completed = subprocess.run(
+            [
+                str(executable),
+                "-S",
+                "-B",
+                "-m",
+                "twelve_six.packing.two_clean_build",
+                "--runtime-manifest-probe",
+            ],
+            cwd=root,
+            env=_clean_child_env(source_root, root / "pycache"),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()[-1000:]
+        raise TwoCleanBuildError(f"runtime dependency probe failed: {detail}")
+    if completed.stderr:
+        raise TwoCleanBuildError("runtime dependency probe emitted stderr")
+    try:
+        value = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise TwoCleanBuildError(
+            "runtime dependency probe did not emit canonical JSON"
+        ) from exc
+    if not isinstance(value, Mapping):
+        raise TwoCleanBuildError("runtime dependency probe root must be an object")
+    normalized = _normalize_runtime_dependency_manifest(value)
+    if _canonical_json_bytes(normalized).decode("utf-8") != completed.stdout:
+        raise TwoCleanBuildError("runtime dependency probe bytes are not canonical")
+    return normalized
+
+
 def _document_row(document: LossMaterializationDocument) -> dict[str, Any]:
     return {
         "document_id": document.document_id,
@@ -307,6 +484,7 @@ def make_input_packet(
     expected_packing_identity_sha256: str,
     expected_runtime_identity_sha256: str,
     expected_implementation_manifest: Mapping[str, str],
+    expected_runtime_dependency_manifest: Mapping[str, Mapping[str, str]],
 ) -> dict[str, Any]:
     """Freeze one externally bound ephemeral build request."""
     if not documents:
@@ -319,6 +497,12 @@ def make_input_packet(
     )
     implementation_identity = _implementation_manifest_identity(
         implementation_manifest
+    )
+    runtime_dependency_manifest = _normalize_runtime_dependency_manifest(
+        expected_runtime_dependency_manifest
+    )
+    runtime_dependency_identity = _runtime_dependency_manifest_identity(
+        runtime_dependency_manifest
     )
     packet: dict[str, Any] = {
         "schema_version": INPUT_SCHEMA,
@@ -341,6 +525,8 @@ def make_input_packet(
         ),
         "expected_implementation_manifest": implementation_manifest,
         "expected_implementation_manifest_identity_sha256": implementation_identity,
+        "expected_runtime_dependency_manifest": runtime_dependency_manifest,
+        "expected_runtime_dependency_manifest_identity_sha256": runtime_dependency_identity,
         "documents": [_document_row(item) for item in ordered],
         "claim_boundary": {
             "ephemeral_input_contains_source_text": True,
@@ -406,6 +592,25 @@ def _verify_input_packet(
         != implementation_identity
     ):
         raise TwoCleanBuildError("implementation manifest identity mismatch")
+    runtime_dependencies = value.get("expected_runtime_dependency_manifest")
+    if not isinstance(runtime_dependencies, Mapping):
+        raise TwoCleanBuildError(
+            "expected_runtime_dependency_manifest must be an object"
+        )
+    value["expected_runtime_dependency_manifest"] = (
+        _normalize_runtime_dependency_manifest(runtime_dependencies)
+    )
+    runtime_dependency_identity = _require_sha256(
+        value.get("expected_runtime_dependency_manifest_identity_sha256"),
+        "expected_runtime_dependency_manifest_identity_sha256",
+    )
+    if (
+        _runtime_dependency_manifest_identity(
+            value["expected_runtime_dependency_manifest"]
+        )
+        != runtime_dependency_identity
+    ):
+        raise TwoCleanBuildError("runtime dependency manifest identity mismatch")
     boundary = value.get("claim_boundary")
     if boundary != {
         "ephemeral_input_contains_source_text": True,
@@ -586,7 +791,20 @@ def _run_child(input_path: Path, output_path: Path, expected_identity: str) -> N
             verified["expected_implementation_manifest_identity_sha256"]
         ),
     )
-    output_path.write_bytes(_canonical_json_bytes(_build_one(verified)))
+    _verify_runtime_dependency_binding(
+        verified["expected_runtime_dependency_manifest"],
+        expected_identity_sha256=(
+            verified["expected_runtime_dependency_manifest_identity_sha256"]
+        ),
+    )
+    materialization = _build_one(verified)
+    _verify_runtime_dependency_binding(
+        verified["expected_runtime_dependency_manifest"],
+        expected_identity_sha256=(
+            verified["expected_runtime_dependency_manifest_identity_sha256"]
+        ),
+    )
+    output_path.write_bytes(_canonical_json_bytes(materialization))
 
 
 def prove_two_clean_build(
@@ -594,6 +812,7 @@ def prove_two_clean_build(
     *,
     expected_input_packet_identity_sha256: str,
     expected_implementation_manifest_identity_sha256: str,
+    expected_runtime_dependency_manifest_identity_sha256: str,
     python_executable: str | None = None,
     timeout_seconds: int = 120,
 ) -> dict[str, Any]:
@@ -623,6 +842,17 @@ def prove_two_clean_build(
         verified["expected_implementation_manifest"],
         expected_identity_sha256=independent_implementation_identity,
     )
+    independent_runtime_dependency_identity = _require_sha256(
+        expected_runtime_dependency_manifest_identity_sha256,
+        "expected_runtime_dependency_manifest_identity_sha256",
+    )
+    if (
+        verified["expected_runtime_dependency_manifest_identity_sha256"]
+        != independent_runtime_dependency_identity
+    ):
+        raise TwoCleanBuildError(
+            "input packet runtime dependency manifest does not match independently expected identity"
+        )
     executable = _trusted_python_executable(python_executable)
     packet_identity = verified["input_packet_identity_sha256"]
     corpus_identity = verified["terminal_corpus_authority_identity_sha256"]
@@ -695,6 +925,12 @@ def prove_two_clean_build(
             verified["expected_implementation_manifest"]
         ),
         "implementation_manifest_identity_sha256": implementation_identity,
+        "runtime_dependency_manifest": dict(
+            verified["expected_runtime_dependency_manifest"]
+        ),
+        "runtime_dependency_manifest_identity_sha256": (
+            independent_runtime_dependency_identity
+        ),
         "fresh_process_count": 2,
         "byte_identical": True,
         "build_a_sha256": output_hashes[0],
@@ -725,8 +961,10 @@ def verify_proof(
     expected_runtime_identity_sha256: str,
     expected_implementation_manifest: Mapping[str, str],
     expected_implementation_manifest_identity_sha256: str,
+    expected_runtime_dependency_manifest: Mapping[str, Mapping[str, str]],
+    expected_runtime_dependency_manifest_identity_sha256: str,
 ) -> dict[str, Any]:
-    """Independently verify the durable V2 proof without trusting producer prose."""
+    """Independently verify the durable V4 proof without trusting producer prose."""
     value = dict(proof)
     if set(value) != _PROOF_KEYS:
         raise TwoCleanBuildError("two-clean proof has unexpected or missing fields")
@@ -778,6 +1016,29 @@ def verify_proof(
         raise TwoCleanBuildError(
             "two-clean proof implementation manifest identity mismatch"
         )
+    expected_runtime_dependencies = _normalize_runtime_dependency_manifest(
+        expected_runtime_dependency_manifest
+    )
+    expected_runtime_dependency_identity = _require_sha256(
+        expected_runtime_dependency_manifest_identity_sha256,
+        "expected_runtime_dependency_manifest_identity_sha256",
+    )
+    if (
+        _runtime_dependency_manifest_identity(expected_runtime_dependencies)
+        != expected_runtime_dependency_identity
+    ):
+        raise TwoCleanBuildError(
+            "expected runtime dependency manifest identity mismatch"
+        )
+    if value.get("runtime_dependency_manifest") != expected_runtime_dependencies:
+        raise TwoCleanBuildError("two-clean proof runtime dependency manifest mismatch")
+    if (
+        value.get("runtime_dependency_manifest_identity_sha256")
+        != expected_runtime_dependency_identity
+    ):
+        raise TwoCleanBuildError(
+            "two-clean proof runtime dependency manifest identity mismatch"
+        )
     if value.get("fresh_process_count") != 2:
         raise TwoCleanBuildError("two-clean proof must bind exactly two fresh processes")
     if value.get("byte_identical") is not True:
@@ -804,11 +1065,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--child", nargs=2, metavar=("INPUT", "OUTPUT"))
     parser.add_argument("--expected-input-identity")
+    parser.add_argument("--runtime-manifest-probe", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+    if args.runtime_manifest_probe:
+        if args.child is not None or args.expected_input_identity is not None:
+            raise TwoCleanBuildError("runtime manifest probe cannot accept child arguments")
+        print(_canonical_json_bytes(_current_runtime_dependency_manifest()).decode("utf-8"), end="")
+        return 0
     if args.child is None or args.expected_input_identity is None:
         raise TwoCleanBuildError(
             "module CLI is child-only; use prove_two_clean_build() from the trusted parent"
