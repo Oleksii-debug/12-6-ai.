@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import warnings
 from pathlib import Path
 
 import pytest
@@ -91,4 +92,4 @@ def test_current_main_resource_probe_preserves_weights_and_emits_measurement() -
     assert report["truth_boundary"] == TRUTH_BOUNDARY
 
     compact = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    assert compact
+    warnings.warn(f"MODEL341_CURRENT_MAIN_REPAIRED_MEASUREMENT={compact}", stacklevel=1)
