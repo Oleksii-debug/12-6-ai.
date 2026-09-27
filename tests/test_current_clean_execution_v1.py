@@ -144,7 +144,7 @@ def test_execute_composes_incumbent_authorities_and_stays_zero_credit(
         lambda *args, **kwargs: None,
     )
 
-    receipt, observed_report, quality, privacy = (
+    receipt, observed_report, observed_decontam, observed_eval, quality, privacy = (
         runner.execute_current_clean_composition(
             records,
             [],
@@ -176,6 +176,8 @@ def test_execute_composes_incumbent_authorities_and_stays_zero_credit(
     assert calls["quality_manifest"] == "b" * 64
     assert calls["quality_input"] == calls["privacy_input"]
     assert observed_report is report
+    assert observed_decontam is decontam
+    assert observed_eval is eval_receipt
     assert quality["execution_identity_sha256"] == "d" * 64
     assert privacy["execution_identity_sha256"] == "e" * 64
     assert receipt["input_training_records"] == 2
