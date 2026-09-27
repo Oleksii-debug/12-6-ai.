@@ -492,7 +492,13 @@ def _global_lease_binding_blockers(
         parsed = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return ("current_run_global_lease_state_json_invalid",)
-    if not isinstance(parsed, Mapping) or canonical_json_bytes(parsed) != raw:
+    if not isinstance(parsed, Mapping):
+        return ("current_run_global_lease_state_not_canonical",)
+    try:
+        canonical = canonical_json_bytes(parsed)
+    except (TypeError, ValueError):
+        return ("current_run_global_lease_state_not_canonical",)
+    if canonical != raw:
         return ("current_run_global_lease_state_not_canonical",)
     blockers: list[str] = []
     if parsed.get("repository") != CANONICAL_REPOSITORY:
