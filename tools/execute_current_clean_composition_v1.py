@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import errno
+import hashlib
 import importlib
 import importlib.abc
 import importlib.util
@@ -264,6 +265,44 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             )
 
 
+def _verify_survivor_publication(
+    path: Path,
+    records: list[dict[str, Any]],
+    inventory: dict[str, Any],
+    composition: dict[str, Any],
+) -> None:
+    expected_hash = composition.get("survivor_jsonl_sha256")
+    if (
+        not isinstance(expected_hash, str)
+        or len(expected_hash) != 64
+        or any(ch not in "0123456789abcdef" for ch in expected_hash)
+    ):
+        raise RuntimeError("composition survivor JSONL identity is invalid")
+    actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual_hash != expected_hash:
+        raise RuntimeError("published survivor JSONL differs from execution receipt")
+
+    record_count = len(records)
+    payload_bytes = sum(
+        len(row["normalized_payload"].encode("utf-8"))
+        for row in records
+    )
+    if (
+        type(inventory.get("record_count")) is not int
+        or inventory["record_count"] != record_count
+        or type(inventory.get("total_payload_bytes")) is not int
+        or inventory["total_payload_bytes"] != payload_bytes
+    ):
+        raise RuntimeError("survivor inventory/count publication drift")
+    if (
+        type(composition.get("survivor_records")) is not int
+        or composition["survivor_records"] != record_count
+        or type(composition.get("survivor_payload_bytes")) is not int
+        or composition["survivor_payload_bytes"] != payload_bytes
+    ):
+        raise RuntimeError("survivor receipt/count publication drift")
+
+
 def _rename_directory_no_replace(source: Path, destination: Path) -> None:
     if os.name == "nt":
         os.rename(source, destination)
@@ -374,7 +413,14 @@ def execute_and_publish(
         }
         for key, filename in OUTPUT_FILES.items():
             _write_json(temporary / filename, values[key])
-        _write_jsonl(temporary / SURVIVOR_RECORDS_NAME, survivor_records)
+        survivor_path = temporary / SURVIVOR_RECORDS_NAME
+        _write_jsonl(survivor_path, survivor_records)
+        _verify_survivor_publication(
+            survivor_path,
+            survivor_records,
+            survivor_inventory,
+            composition,
+        )
         _rename_directory_no_replace(temporary, output_dir)
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
