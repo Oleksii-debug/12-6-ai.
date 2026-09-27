@@ -40,9 +40,9 @@ def test_dependency_blobs_match_current_canonical_sources() -> None:
     )
 
 
-def test_exclusions_are_mapped_by_hash_and_ua_normalizes_to_uk() -> None:
+def test_post_decontamination_maps_exclusions_and_normalizes_ua() -> None:
     records = _training_records()
-    survivors = runner._normalize_post_decontamination_records(
+    survivors, metadata, excluded_count = runner._post_decontamination_records(
         records,
         _report(records),
     )
@@ -53,19 +53,24 @@ def test_exclusions_are_mapped_by_hash_and_ua_normalizes_to_uk() -> None:
             "mode": "uk",
         }
     ]
+    assert metadata == {
+        "keep-uk": {
+            "source_id": "source-1",
+            "family": "family-1",
+            "mode": "uk",
+        }
+    }
+    assert excluded_count == 1
 
 
 def test_unknown_exclusion_hash_fails_closed() -> None:
-    report = {
-        "excluded_records": [{"record_id_sha256": "0" * 64}],
-    }
     with pytest.raises(
         runner.CurrentCleanExecutionError,
         match="exclusions do not map exactly",
     ):
-        runner._normalize_post_decontamination_records(
+        runner._post_decontamination_records(
             _training_records(),
-            report,
+            {"excluded_records": [{"record_id_sha256": "0" * 64}]},
         )
 
 
@@ -83,153 +88,45 @@ def test_unsupported_post_decontamination_mode_fails_closed() -> None:
         runner.CurrentCleanExecutionError,
         match="unsupported post-decontamination modality",
     ):
-        runner._normalize_post_decontamination_records(
+        runner._post_decontamination_records(
             records,
             {"excluded_records": []},
         )
 
 
-def test_execute_composes_incumbent_authorities_and_stays_zero_credit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    records = _training_records()
-    report = _report(records)
-    decontam = {"execution_identity_sha256": "b" * 64}
-    eval_receipt = {"receipt_identity_sha256": "c" * 64}
-    calls: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        runner,
-        "verify_dependency_blobs",
-        lambda: dict(sorted(runner.EXPECTED_DEPENDENCY_BLOBS.items())),
-    )
-
-    def fake_decontam(*args, **kwargs):
-        calls["decontam_training"] = args[0]
-        calls["decontam_kwargs"] = kwargs
-        return report, decontam, eval_receipt
-
-    monkeypatch.setattr(
-        runner,
-        "execute_eval647_reserved_decontamination",
-        fake_decontam,
-    )
-    monkeypatch.setattr(
-        runner,
-        "verify_eval647_reserved_decontamination_receipt",
-        lambda *args, **kwargs: None,
-    )
-
-    def fake_quality(rows, *, input_manifest_sha256, expected_input_rows_sha256):
-        calls["quality_rows"] = rows
-        calls["quality_manifest"] = input_manifest_sha256
-        calls["quality_input"] = expected_input_rows_sha256
-        return {"execution_identity_sha256": "d" * 64}
-
-    def fake_privacy(rows, *, expected_input_rows_sha256):
-        calls["privacy_rows"] = rows
-        calls["privacy_input"] = expected_input_rows_sha256
-        return {"execution_identity_sha256": "e" * 64}
-
-    monkeypatch.setattr(runner, "build_quality_execution_authority", fake_quality)
-    monkeypatch.setattr(
-        runner,
-        "verify_quality_execution_authority",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(runner, "build_privacy_execution_authority", fake_privacy)
-    monkeypatch.setattr(
-        runner,
-        "verify_privacy_execution_authority",
-        lambda *args, **kwargs: None,
-    )
-
-    receipt, observed_report, observed_decontam, observed_eval, quality, privacy = (
-        runner.execute_current_clean_composition(
-            records,
-            [],
-            training_handoff_evidence={},
-            base_reserved_binding={},
-            eval647_manifest={},
-            eval647_materialization_evidence={},
-            expected_base_reserved_binding_identity_sha256="1" * 64,
-            expected_composed_reserved_binding_identity_sha256="2" * 64,
-            expected_eval647_materialization_evidence_identity_sha256="3" * 64,
-            expected_eval647_object_set_identity_sha256="4" * 64,
-            expected_inventory_identity_sha256="5" * 64,
-            expected_survivor_authority_sha256="6" * 64,
-            expected_training_handoff_identity_sha256="7" * 64,
-            expected_selection_validation_identity_sha256="8" * 64,
-            expected_final_test_identity_sha256="9" * 64,
-        )
-    )
-
-    survivors = calls["quality_rows"]
-    assert survivors == calls["privacy_rows"]
-    assert survivors == [
-        {
-            "id": "keep-uk",
-            "text": "Корисний український текст.",
-            "mode": "uk",
-        }
-    ]
-    assert calls["quality_manifest"] == "b" * 64
-    assert calls["quality_input"] == calls["privacy_input"]
-    assert observed_report is report
-    assert observed_decontam is decontam
-    assert observed_eval is eval_receipt
-    assert quality["execution_identity_sha256"] == "d" * 64
-    assert privacy["execution_identity_sha256"] == "e" * 64
-    assert receipt["input_training_records"] == 2
-    assert receipt["excluded_training_records"] == 1
-    assert receipt["post_decontamination_records"] == 1
-    assert receipt["authorized_optimized_target_exposure"] == 0
-    assert receipt["optimizer_updates_executed_on_real_targets"] == 0
-    assert receipt["tokenizer_fit_authorized"] is False
-    assert receipt["training_executed"] is False
-    assert receipt["learned_weights_created"] is False
-    assert receipt["final_test_outcomes_read"] is False
-    assert receipt["paid_compute_used"] is False
-    assert receipt["foreign_pretrained_weights"] is False
-
-
-def _verify_receipt(receipt: dict[str, object]) -> str:
-    return runner.verify_current_clean_composition_receipt(
-        receipt,
-        expected_receipt_identity_sha256=receipt["receipt_identity_sha256"],
-        expected_data232_report_sha256=receipt["data232_report_sha256"],
-        expected_decontamination_execution_identity_sha256=(
-            receipt["decontamination_execution_identity_sha256"]
-        ),
-        expected_eval647_execution_receipt_identity_sha256=(
-            receipt["eval647_execution_receipt_identity_sha256"]
-        ),
-        expected_quality_execution_identity_sha256=(
-            receipt["quality_execution_identity_sha256"]
-        ),
-        expected_privacy_execution_identity_sha256=(
-            receipt["privacy_execution_identity_sha256"]
-        ),
-        expected_post_decontamination_input_rows_sha256=(
-            receipt["post_decontamination_input_rows_sha256"]
-        ),
-    )
+def test_clean_release_binding_rejects_caller_selected_small_corpus() -> None:
+    with pytest.raises(
+        runner.CurrentCleanExecutionError,
+        match="record count is not independently expected",
+    ):
+        runner._verify_clean_release_binding(_training_records(), {})
 
 
 def _synthetic_receipt() -> dict[str, object]:
+    rejection_counts = {key: 0 for key in runner._REJECTION_KEYS}
     receipt: dict[str, object] = {
         "schema_version": runner.COMPOSITION_SCHEMA,
-        "status": "CURRENT_CLEAN_DECONTAM_G05_G06_EXECUTED_ZERO_CREDIT",
+        "status": "CLEAN_SURVIVOR_MATERIALIZED_ZERO_CREDIT",
+        "clean_training_records_sha256": runner.PRODUCTION_TRAINING_RECORDS_SHA256,
+        "clean_training_handoff_sha256": runner.PRODUCTION_TRAINING_HANDOFF_SHA256,
         "data232_report_sha256": "a" * 64,
         "decontamination_execution_identity_sha256": "b" * 64,
         "eval647_execution_receipt_identity_sha256": "c" * 64,
         "quality_execution_identity_sha256": "d" * 64,
         "privacy_execution_identity_sha256": "e" * 64,
         "post_decontamination_input_rows_sha256": "f" * 64,
-        "input_training_records": 2,
-        "excluded_training_records": 1,
-        "post_decontamination_records": 1,
-        "post_decontamination_utf8_bytes": 10,
+        "post_quality_input_rows_sha256": "0" * 64,
+        "survivor_jsonl_sha256": "1" * 64,
+        "survivor_record_inventory_digest_sha256": "2" * 64,
+        "survivor_payload_inventory_digest_sha256": "3" * 64,
+        "input_training_records": runner.PRODUCTION_INPUT_RECORD_COUNT,
+        "post_decontamination_records": runner.PRODUCTION_INPUT_RECORD_COUNT - 1,
+        "post_quality_records": runner.PRODUCTION_INPUT_RECORD_COUNT - 2,
+        "survivor_records": runner.PRODUCTION_INPUT_RECORD_COUNT - 3,
+        "survivor_payload_bytes": 1000,
+        "survivor_source_objects": 10,
+        "rejection_counts": rejection_counts,
+        "privacy_detector_counts": {"EMAIL": 0},
         "dependency_git_blobs": dict(runner.EXPECTED_DEPENDENCY_BLOBS),
         "durable_evidence_hash_only": True,
         "current_corpus_launch_authority_promoted": False,
@@ -246,7 +143,45 @@ def _synthetic_receipt() -> dict[str, object]:
     return receipt
 
 
-def test_receipt_verifier_accepts_exact_independently_bound_roots() -> None:
+def _verify_receipt(
+    receipt: dict[str, object],
+    *,
+    expected: dict[str, object] | None = None,
+) -> str:
+    pins = receipt if expected is None else expected
+    return runner.verify_current_clean_composition_receipt(
+        receipt,
+        expected_receipt_identity_sha256=receipt["receipt_identity_sha256"],
+        expected_data232_report_sha256=pins["data232_report_sha256"],
+        expected_decontamination_execution_identity_sha256=(
+            pins["decontamination_execution_identity_sha256"]
+        ),
+        expected_eval647_execution_receipt_identity_sha256=(
+            pins["eval647_execution_receipt_identity_sha256"]
+        ),
+        expected_quality_execution_identity_sha256=(
+            pins["quality_execution_identity_sha256"]
+        ),
+        expected_privacy_execution_identity_sha256=(
+            pins["privacy_execution_identity_sha256"]
+        ),
+        expected_post_decontamination_input_rows_sha256=(
+            pins["post_decontamination_input_rows_sha256"]
+        ),
+        expected_post_quality_input_rows_sha256=(
+            pins["post_quality_input_rows_sha256"]
+        ),
+        expected_survivor_jsonl_sha256=pins["survivor_jsonl_sha256"],
+        expected_survivor_record_inventory_digest_sha256=(
+            pins["survivor_record_inventory_digest_sha256"]
+        ),
+        expected_survivor_payload_inventory_digest_sha256=(
+            pins["survivor_payload_inventory_digest_sha256"]
+        ),
+    )
+
+
+def test_receipt_verifier_accepts_exact_v2_independent_roots() -> None:
     receipt = _synthetic_receipt()
     assert _verify_receipt(receipt) == receipt["receipt_identity_sha256"]
 
@@ -263,26 +198,20 @@ def test_coherent_reseal_cannot_substitute_nested_quality_root() -> None:
         runner.CurrentCleanExecutionError,
         match="nested execution root drift",
     ):
-        runner.verify_current_clean_composition_receipt(
-            receipt,
-            expected_receipt_identity_sha256=receipt["receipt_identity_sha256"],
-            expected_data232_report_sha256=original["data232_report_sha256"],
-            expected_decontamination_execution_identity_sha256=(
-                original["decontamination_execution_identity_sha256"]
-            ),
-            expected_eval647_execution_receipt_identity_sha256=(
-                original["eval647_execution_receipt_identity_sha256"]
-            ),
-            expected_quality_execution_identity_sha256=(
-                original["quality_execution_identity_sha256"]
-            ),
-            expected_privacy_execution_identity_sha256=(
-                original["privacy_execution_identity_sha256"]
-            ),
-            expected_post_decontamination_input_rows_sha256=(
-                original["post_decontamination_input_rows_sha256"]
-            ),
-        )
+        _verify_receipt(receipt, expected=original)
+
+
+def test_boolean_survivor_count_fails_closed() -> None:
+    receipt = _synthetic_receipt()
+    receipt["survivor_records"] = True
+    body = dict(receipt)
+    body.pop("receipt_identity_sha256")
+    receipt["receipt_identity_sha256"] = runner._sha256(runner._cjson(body))
+    with pytest.raises(
+        runner.CurrentCleanExecutionError,
+        match="invalid positive count",
+    ):
+        _verify_receipt(receipt)
 
 
 @pytest.mark.parametrize(
