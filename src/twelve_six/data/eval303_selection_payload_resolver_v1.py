@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import zipfile
 from collections.abc import Mapping, Sequence
@@ -82,6 +83,13 @@ def _reject_json_constant(value: str) -> None:
     raise SelectionPayloadResolverError(f"non-finite JSON constant rejected: {value}")
 
 
+def _strict_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise SelectionPayloadResolverError(f"non-finite JSON number rejected: {value}")
+    return parsed
+
+
 def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     value: dict[str, Any] = {}
     for key, item in pairs:
@@ -96,6 +104,7 @@ def _loads_strict(raw: bytes, label: str) -> Any:
         return json.loads(
             raw,
             object_pairs_hook=_strict_json_object,
+            parse_float=_strict_json_float,
             parse_constant=_reject_json_constant,
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
