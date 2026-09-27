@@ -230,6 +230,76 @@ def _max_rss_kib() -> int | None:
     return value // 1024 if value > 10_000_000 else value
 
 
+def _load_base_payloads(
+    combined_inventory: Mapping[str, Any],
+    rada_sources: Sequence[Mapping[str, Any]],
+    rada_payloads: Mapping[str, bytes],
+    base_payload_map: Mapping[str, Any],
+    *,
+    rada_source_family: str,
+) -> dict[str, bytes]:
+    """Bind exact incumbent-base files to a combined inventory plus exact Rada rows."""
+    rows = combined_inventory.get("sources")
+    _require(type(rows) is list and bool(rows), "combined V3 inventory has no sources")
+    _require(
+        type(rada_source_family) is str and bool(rada_source_family),
+        "Rada source family missing",
+    )
+
+    rada_ids = {row.get("source_id") for row in rada_sources}
+    _require(
+        len(rada_ids) == len(rada_sources)
+        and all(type(source_id) is str and bool(source_id) for source_id in rada_ids),
+        "Rada projection contains invalid or duplicate source ids",
+    )
+    _require(set(rada_payloads) == rada_ids, "Rada projection payload coverage drift")
+
+    observed_rada_rows = [
+        row
+        for row in rows
+        if type(row) is dict and row.get("source_family") == rada_source_family
+    ]
+    _require(
+        observed_rada_rows == list(rada_sources),
+        "combined inventory Rada segment does not equal exact authenticated projection",
+    )
+
+    all_ids: list[str] = []
+    base_ids: set[str] = set()
+    for index, row in enumerate(rows):
+        _require(type(row) is dict, f"combined inventory source {index} must be exact object")
+        source_id = row.get("source_id")
+        _require(type(source_id) is str and bool(source_id), "combined inventory source_id invalid")
+        _require(source_id not in all_ids, "combined inventory contains duplicate source_id")
+        all_ids.append(source_id)
+        if source_id not in rada_ids:
+            base_ids.add(source_id)
+    _require(bool(base_ids), "combined inventory lacks incumbent base sources")
+    _require(
+        set(base_payload_map) == base_ids,
+        "base payload map coverage differs from incumbent base inventory",
+    )
+
+    payloads: dict[str, bytes] = {}
+    for source_id in sorted(base_ids):
+        raw_path = base_payload_map[source_id]
+        _require(
+            type(raw_path) is str and bool(raw_path),
+            f"base payload path invalid: {source_id}",
+        )
+        try:
+            payload = Path(raw_path).read_bytes()
+        except OSError as exc:
+            raise RadaTwoCleanExecutionError(
+                f"cannot read incumbent base payload: {source_id}"
+            ) from exc
+        payloads[source_id] = payload
+
+    payloads.update(rada_payloads)
+    _require(set(payloads) == set(all_ids), "combined payload coverage drift")
+    return payloads
+
+
 def derive_survivor_authority(report: Mapping[str, Any]) -> dict[str, Any]:
     """Make the incumbent V3 capacity representative set explicit, without raw text."""
     report_sha = _require_hex(report.get("report_sha256"), 64, "report_sha256")
@@ -352,6 +422,8 @@ def execute_once(
     expected_dependency_authority_sha256: str,
     inventory_path: Path,
     expected_inventory_sha256: str,
+    base_payload_map_path: Path,
+    expected_base_payload_map_sha256: str,
     candidate_jsonl: Path,
     quality_report: Path,
     execution_evidence: Path,
@@ -363,6 +435,11 @@ def execute_once(
         expected_raw_sha256=expected_dependency_authority_sha256,
     )
     inventory = _read_exact_json(inventory_path, expected_inventory_sha256, "V3 inventory")
+    base_payload_map = _read_exact_json(
+        base_payload_map_path,
+        expected_base_payload_map_sha256,
+        "incumbent base payload map",
+    )
 
     adapter = importlib.import_module(authority["rada_adapter_module"])
     indexed = importlib.import_module(authority["indexed_module"])
@@ -396,15 +473,17 @@ def execute_once(
         retain_payloads=True,
     )
     sources = getattr(projection, "sources", None)
-    payloads = getattr(projection, "payloads", None)
+    rada_payloads = getattr(projection, "payloads", None)
     _require(type(sources) is tuple and bool(sources), "Rada projection sources missing")
-    _require(type(payloads) is dict and bool(payloads), "Rada projection payloads missing")
-    _require(
-        inventory.get("sources") == list(sources),
-        "externally bound V3 inventory does not equal exact Rada projection",
+    _require(type(rada_payloads) is dict and bool(rada_payloads), "Rada projection payloads missing")
+    rada_source_family = getattr(adapter, "SOURCE_FAMILY", None)
+    payloads = _load_base_payloads(
+        inventory,
+        sources,
+        rada_payloads,
+        base_payload_map,
+        rada_source_family=rada_source_family,
     )
-    expected_ids = {row["source_id"] for row in sources}
-    _require(set(payloads) == expected_ids, "Rada payload coverage drift")
 
     execute = getattr(indexed, "audit_payloads_indexed", None)
     _require(callable(execute), "indexed executor entrypoint missing")
@@ -424,7 +503,9 @@ def execute_once(
     survivor = derive_survivor_authority(report)
     total_seconds = time.perf_counter() - total_started
 
-    source_count = len(sources)
+    inventory_sources = inventory.get("sources")
+    assert isinstance(inventory_sources, list)
+    source_count = len(inventory_sources)
     source_bytes = sum(len(value) for value in payloads.values())
     rss = _max_rss_kib()
     receipt_core: dict[str, Any] = {
@@ -434,6 +515,7 @@ def execute_once(
         "completed": True,
         "dependency_authority_raw_sha256": expected_dependency_authority_sha256,
         "inventory_raw_sha256": expected_inventory_sha256,
+        "base_payload_map_raw_sha256": expected_base_payload_map_sha256,
         "source_object_count": source_count,
         "source_payload_utf8_bytes": source_bytes,
         "work_limits": {
@@ -513,6 +595,7 @@ def build_two_clean_authority(
     equality_fields = (
         "dependency_authority_raw_sha256",
         "inventory_raw_sha256",
+        "base_payload_map_raw_sha256",
         "source_object_count",
         "source_payload_utf8_bytes",
         "work_limits",
@@ -539,6 +622,7 @@ def build_two_clean_authority(
             "dependency_authority_raw_sha256"
         ],
         "inventory_raw_sha256": first_receipt["inventory_raw_sha256"],
+        "base_payload_map_raw_sha256": first_receipt["base_payload_map_raw_sha256"],
         "v3_report_sha256": first_receipt["v3_report_sha256"],
         "survivor_authority_sha256": first_receipt["survivor_authority_sha256"],
         "source_object_count": first_receipt["source_object_count"],
