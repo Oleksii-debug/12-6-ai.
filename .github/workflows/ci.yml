@@ -76,8 +76,12 @@ jobs:
       EXPECTED_FINAL_ID: "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116"
       EXPECTED_EVAL647_EVIDENCE_ID: "3401db10bad35fd1c6fac2839413fc6afffac58fa5f2135d2202b944bc2fda82"
       EXPECTED_EVAL647_OBJECT_SET_ID: "0557410622403b411ac9d6d8fb01a57ef461617c19d06f112aa61dd57f670048"
-      EVAL290_ARTIFACT_ID: "9606656857"
-      EVAL291_ARTIFACT_ID: "9606132134"
+      EVAL290_HEAD_SHA: "029514654829cebc149cff6fc1fea2a8ba4fa566"
+      EVAL290_DATA_SHA256: "5400e37b8e8ddfdb9516a8b6eaa6fc01a8c5ec41811385d9f6907e6ef6d9614f"
+      EVAL290_MANIFEST_SHA256: "d0f8cf208724c80bda7b92aed54e10bea1492fa5bb3511a7e0fd828fc881e14a"
+      EVAL291_HEAD_SHA: "fb268061300127b62cc2a262664b30c614559dac"
+      EVAL291_DATA_SHA256: "df20e3d3ec75208399039a283487c3b8958c80ec3f119cee278fcc09948c6bfb"
+      EVAL291_AUTHORITY_SHA256: "493be56b8189325d122868ca778733676cc2143d24d121fb63f6b1b62a977177"
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -125,18 +129,35 @@ jobs:
           test "$(sha256sum "$RUNNER_TEMP/handoff/training_records.jsonl" | cut -d' ' -f1)" = "$EXPECTED_TRAINING_RECORDS_SHA256"
           test "$(sha256sum "$RUNNER_TEMP/handoff/training_handoff.json" | cut -d' ' -f1)" = "$EXPECTED_TRAINING_HANDOFF_SHA256"
 
-      - name: Fetch immutable selection-validation payload artifacts
+      - name: Reconstruct immutable selection-validation payloads from exact heads
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          for pair in "eval290:$EVAL290_ARTIFACT_ID" "eval291:$EVAL291_ARTIFACT_ID"; do
-            name="${pair%%:*}"
-            id="${pair##*:}"
-            curl --fail --location --retry 5 --retry-all-errors               -H "Authorization: Bearer $GH_TOKEN"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               -o "$RUNNER_TEMP/${name}.zip"               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip"
-            test -s "$RUNNER_TEMP/${name}.zip"
-          done
+          eval290_src="$RUNNER_TEMP/eval290-src"
+          eval290_out="$RUNNER_TEMP/eval290-out"
+          eval290_lock="$RUNNER_TEMP/eval290-extra.lock.txt"
+          rm -rf "$eval290_src" "$eval290_out"
+
+          # Historical Actions artifacts were retention-bounded. Recover authority
+          # from immutable Git roots instead of weakening to a newer/unbound payload.
+          git fetch --no-tags --depth=1 origin "$EVAL290_HEAD_SHA"
+          git worktree add --detach "$eval290_src" "$EVAL290_HEAD_SHA"
+          test "$(git -C "$eval290_src" rev-parse HEAD)" = "$EVAL290_HEAD_SHA"
+          git -C "$eval290_src" diff --quiet HEAD --
+          git -C "$eval290_src" diff --cached --quiet HEAD --
+
+          git -C "$eval290_src" show             "$EVAL290_HEAD_SHA:requirements/locks/linux-x86_64/eval290-extra.lock.txt"             > "$eval290_lock"
+          python -m pip install             --disable-pip-version-check             --require-hashes             --no-deps             -r "$eval290_lock"
+          PYTHONPATH="$eval290_src/src" python -m twelve_six.eval290_ua_selection             build --repo-root "$eval290_src" --output-dir "$eval290_out"
+          PYTHONPATH="$eval290_src/src" python -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out"
+          test "$(sha256sum "$eval290_out/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
+          test "$(sha256sum "$eval290_out/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
+
+          git fetch --no-tags --depth=1 origin "$EVAL291_HEAD_SHA"
+          git show             "$EVAL291_HEAD_SHA:data/evaluation/eval291/selection-validation/en.jsonl"             > "$RUNNER_TEMP/eval291-en.jsonl"
+          git show             "$EVAL291_HEAD_SHA:evidence/eval291/en-selection-validation-v1-authority.json"             > "$RUNNER_TEMP/eval291-authority.json"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-en.jsonl" | cut -d' ' -f1)" = "$EVAL291_DATA_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-authority.json" | cut -d' ' -f1)" = "$EVAL291_AUTHORITY_SHA256"
 
       - name: Build complete ephemeral reserved-evaluation universe
         shell: bash
@@ -158,7 +179,7 @@ jobs:
           )
           from twelve_six.data.eval303_selection_payload_resolver_v1 import (
               EVAL303_SELECTION_ID,
-              resolve_eval303_selection_payloads,
+              resolve_eval303_selection_payloads_from_reconstructed,
           )
           from twelve_six.data.eval647_future_training_exclusion_v1 import (
               build_eval647_auxiliary_reserved_set,
@@ -182,11 +203,26 @@ jobs:
           def write_jsonl(path, rows):
               Path(path).write_bytes(b"".join(canonical(row) + b"\n" for row in rows))
 
-          selection_rows, selection_set, _ = resolve_eval303_selection_payloads(
-              tmp / "eval290.zip",
-              tmp / "eval291.zip",
-              root / "data/evaluation/eval303/selection-validation/composite-membership.jsonl",
+          selection_rows, selection_set, selection_evidence = (
+              resolve_eval303_selection_payloads_from_reconstructed(
+                  eval290_data_jsonl=(
+                      tmp / "eval290-out/eval290_ua_selection_validation_v1.jsonl"
+                  ),
+                  eval290_manifest_json=(
+                      tmp / "eval290-out/eval290_ua_selection_validation_manifest_v1.json"
+                  ),
+                  eval291_data_jsonl=tmp / "eval291-en.jsonl",
+                  eval291_authority_json=tmp / "eval291-authority.json",
+                  eval303_membership_jsonl=(
+                      root
+                      / "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
+                  ),
+              )
           )
+          if selection_evidence["eval290_payload_resolution"] != "EXACT_HEAD_RECONSTRUCTION":
+              raise RuntimeError("EVAL-290 payload reconstruction authority drift")
+          if selection_evidence["eval291_payload_resolution"] != "EXACT_HEAD_RECONSTRUCTION":
+              raise RuntimeError("EVAL-291 payload reconstruction authority drift")
           final_rows, final_set, _ = resolve_eval233_final_test(root)
           if EVAL303_SELECTION_ID != os.environ["EXPECTED_SELECTION_ID"]:
               raise RuntimeError("selection identity drift")
