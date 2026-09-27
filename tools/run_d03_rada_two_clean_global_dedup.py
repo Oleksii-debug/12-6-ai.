@@ -50,9 +50,6 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--candidate-jsonl", type=Path, required=True)
     parser.add_argument("--quality-report", type=Path, required=True)
     parser.add_argument("--execution-evidence", type=Path, required=True)
-    parser.add_argument("--max-candidate-pairs", type=int, default=5_000_000)
-    parser.add_argument("--max-index-postings", type=int, default=100_000_000)
-    parser.add_argument("--max-pair-expansions", type=int, default=100_000_000)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -87,12 +84,6 @@ def _common_argv(args: argparse.Namespace) -> list[str]:
         str(args.quality_report),
         "--execution-evidence",
         str(args.execution_evidence),
-        "--max-candidate-pairs",
-        str(args.max_candidate_pairs),
-        "--max-index-postings",
-        str(args.max_index_postings),
-        "--max-pair-expansions",
-        str(args.max_pair_expansions),
     ]
 
 
@@ -113,9 +104,6 @@ def _worker(args: argparse.Namespace) -> int:
         candidate_jsonl=args.candidate_jsonl,
         quality_report=args.quality_report,
         execution_evidence=args.execution_evidence,
-        max_candidate_pairs=args.max_candidate_pairs,
-        max_index_postings=args.max_index_postings,
-        max_pair_expansions=args.max_pair_expansions,
     )
     _write_create_only(args.output_dir / "dedup-report.json", report)
     _write_create_only(args.output_dir / "survivor-authority.json", survivor)
