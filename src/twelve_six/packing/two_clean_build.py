@@ -302,13 +302,24 @@ def _current_runtime_dependency_manifest() -> dict[str, dict[str, str]]:
             continue
         if not isinstance(origin, str) or not origin:
             continue
+        raw_candidate = Path(origin)
+        if raw_candidate.is_symlink():
+            raise TwoCleanBuildError(
+                f"runtime dependency origin is a symlink: {module_name}"
+            )
         try:
-            candidate = Path(origin).resolve(strict=True)
+            candidate = raw_candidate.resolve(strict=True)
         except OSError as exc:
             raise TwoCleanBuildError(
                 f"runtime dependency origin cannot be resolved: {module_name}"
             ) from exc
         if candidate.is_relative_to(source_root):
+            source_relative = candidate.relative_to(source_root).as_posix()
+            if source_relative not in _IMPLEMENTATION_PATHS:
+                raise TwoCleanBuildError(
+                    "runtime dependency escaped implementation source closure: "
+                    f"{module_name}"
+                )
             continue
         if not candidate.is_relative_to(stdlib_root):
             raise TwoCleanBuildError(
