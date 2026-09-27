@@ -62,7 +62,8 @@ def test_d03_artifact_job_is_same_repo_and_pr_pinned():
         in job
     )
 
-def test_d03_selection_payload_reconstruction_is_exact_head_and_retention_independent():
+
+def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     workflow = (
         Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
     ).read_text(encoding="utf-8")
