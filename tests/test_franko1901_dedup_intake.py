@@ -259,7 +259,7 @@ def test_authority_chain_keeps_historical_and_fresh_execution_distinct() -> None
 
 def test_full_candidate_byte_drift_fails_before_self_consistent_row_can_pass() -> None:
     original = _row(1, "Оригінал.")
-    candidate_raw, historical_raw, fresh_raw, authority = _fixture([original])
+    _candidate_raw, historical_raw, fresh_raw, authority = _fixture([original])
     changed = _row(1, "Змінений рядок.")
     changed_raw = _canonical_line(changed)
     assert hashlib.sha256(changed_raw).hexdigest() != authority.candidate_sha256
@@ -539,7 +539,7 @@ def test_fresh_authority_identity_self_hash_is_required() -> None:
 
 
 def test_historical_terminal_cannot_claim_global_dedup_passed() -> None:
-    candidate_raw, historical_raw, fresh_raw, authority = _fixture([_row(1, "Текст.")])
+    candidate_raw, historical_raw, _fresh_raw, authority = _fixture([_row(1, "Текст.")])
     historical = json.loads(historical_raw)
     historical["truth_boundary"]["global_dedup"] = "PASS"
     changed = _json_bytes(historical)
