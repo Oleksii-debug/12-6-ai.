@@ -1094,6 +1094,78 @@ def test_refresh_rejects_retired_pointer_and_manifest_substitution(
     assert rejected.blockers == ("current_run_pointer_not_active",)
 
 
+def test_inspection_rechecks_global_lease_tip_after_blob_read(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+
+    activated = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert activated.committed is True
+
+    original_fetch = current_run._fetch_remote_commit
+    raced = False
+
+    def read_then_renew(
+        repo_root: str | Path,
+        remote_name: str,
+        ref: str,
+        expected_tip: str,
+    ) -> bytes:
+        nonlocal raced
+        raw = original_fetch(repo_root, remote_name, ref, expected_tip)
+        if not raced:
+            raced = True
+            renewed = renew_global_training_run_lease(
+                writer_a,
+                str(remote),
+                manifest,
+                expected_remote_tip=acquired.written_remote_tip,
+                ttl_seconds=3600,
+                now=NOW + timedelta(minutes=10),
+            )
+            assert renewed.committed is True
+        return raw
+
+    monkeypatch.setattr(current_run, "_fetch_remote_commit", read_then_renew)
+    inspection = inspect_current_run_authority(
+        writer_b,
+        str(remote),
+        now=NOW + timedelta(minutes=10),
+    )
+
+    assert raced is True
+    assert inspection.valid is False
+    assert inspection.active is False
+    assert inspection.blockers == ("current_run_global_lease_tip_changed_during_read",)
+
+
 def test_pointer_read_rechecks_fixed_ref_after_blob_read(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
