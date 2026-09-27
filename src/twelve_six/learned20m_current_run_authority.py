@@ -459,6 +459,8 @@ def _fetch_pointer_bytes(
         )
         if blob.returncode != 0:
             raise CurrentRunAuthorityError("current_run_pointer_blob_missing")
+        if _remote_tip(repo_root, remote, CURRENT_RUN_POINTER_REF) != expected_tip:
+            raise CurrentRunAuthorityError("current_run_pointer_changed_during_read")
         return blob.stdout
     finally:
         _delete_local_ref(repo_root, temporary_ref)
