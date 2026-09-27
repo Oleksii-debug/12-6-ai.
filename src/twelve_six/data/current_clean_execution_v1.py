@@ -98,6 +98,8 @@ _RECEIPT_KEYS = {
     "privacy_detector_counts",
     "dependency_git_blobs",
     "durable_evidence_hash_only",
+    "terminal_post_g05_g06_authority",
+    "independent_qualification_required",
     "current_corpus_launch_authority_promoted",
     "authorized_optimized_target_exposure",
     "tokenizer_fit_authorized",
@@ -345,6 +347,10 @@ def _materialize_quality_survivors(
             f"G05 status drift: {record_id}",
         )
         _require(isinstance(units, list) and bool(units), f"G05 units missing: {record_id}")
+        _require(
+            status != "RETAIN_PARTIAL",
+            f"G05 partial row lacks canonical physical materialization authority: {record_id}",
+        )
         if status == "REJECT_DOCUMENT":
             stats["g05_reject_documents"] += 1
         elif status == "RETAIN_PARTIAL":
@@ -655,7 +661,7 @@ def execute_current_clean_composition(
 
     receipt: dict[str, Any] = {
         "schema_version": COMPOSITION_SCHEMA,
-        "status": "CLEAN_SURVIVOR_MATERIALIZED_ZERO_CREDIT",
+        "status": "CLEAN_SURVIVOR_MATERIALIZED_PENDING_INDEPENDENT_QUALIFICATION",
         "clean_training_records_sha256": PRODUCTION_TRAINING_RECORDS_SHA256,
         "clean_training_handoff_sha256": PRODUCTION_TRAINING_HANDOFF_SHA256,
         "data232_report_sha256": _require_sha256(
@@ -692,6 +698,8 @@ def execute_current_clean_composition(
         "privacy_detector_counts": dict(sorted(privacy_detector_counts.items())),
         "dependency_git_blobs": dependency_blobs,
         "durable_evidence_hash_only": True,
+        "terminal_post_g05_g06_authority": False,
+        "independent_qualification_required": True,
         "current_corpus_launch_authority_promoted": False,
         "authorized_optimized_target_exposure": 0,
         "tokenizer_fit_authorized": False,
@@ -730,14 +738,15 @@ def verify_current_clean_composition_receipt(
     expected_survivor_record_inventory_digest_sha256: str,
     expected_survivor_payload_inventory_digest_sha256: str,
 ) -> str:
-    """Verify terminal zero-credit survivor evidence against independent pins."""
+    """Verify zero-credit survivor candidate evidence against independent pins."""
     _require(
         isinstance(receipt, Mapping) and set(receipt) == _RECEIPT_KEYS,
         "receipt schema is not closed",
     )
     _require(receipt.get("schema_version") == COMPOSITION_SCHEMA, "receipt schema drift")
     _require(
-        receipt.get("status") == "CLEAN_SURVIVOR_MATERIALIZED_ZERO_CREDIT",
+        receipt.get("status")
+        == "CLEAN_SURVIVOR_MATERIALIZED_PENDING_INDEPENDENT_QUALIFICATION",
         "receipt status drift",
     )
     expected = _require_sha256(
@@ -793,6 +802,14 @@ def verify_current_clean_composition_receipt(
     _require(
         receipt.get("durable_evidence_hash_only") is True,
         "durable evidence boundary weakened",
+    )
+    _require(
+        receipt.get("terminal_post_g05_g06_authority") is False,
+        "terminal post-G05/G06 authority fabricated",
+    )
+    _require(
+        receipt.get("independent_qualification_required") is True,
+        "independent qualification requirement erased",
     )
     _require(
         receipt.get("current_corpus_launch_authority_promoted") is False,
