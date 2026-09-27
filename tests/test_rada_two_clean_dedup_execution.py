@@ -423,3 +423,25 @@ def test_two_clean_authority_rejects_truth_widening_even_if_rehashed(
 
     with pytest.raises(carrier.RadaTwoCleanExecutionError, match="truth drift"):
         carrier.build_two_clean_authority(first, second)
+
+
+def test_two_clean_authority_rejects_non_finite_telemetry() -> None:
+    first = _receipt("clean-a")
+    second = _receipt("clean-b")
+    second["match_wall_clock_seconds"] = float("inf")
+    unsigned = dict(second)
+    unsigned.pop("receipt_identity_sha256")
+    with pytest.raises(ValueError):
+        carrier._canonical_bytes(unsigned)
+
+
+def test_two_clean_authority_rejects_impossible_survivor_totals() -> None:
+    first = _receipt("clean-a")
+    second = _receipt("clean-b")
+    second["survivor_source_object_count"] = 4
+    unsigned = dict(second)
+    unsigned.pop("receipt_identity_sha256")
+    second["receipt_identity_sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="exceeds input"):
+        carrier.build_two_clean_authority(first, second)
