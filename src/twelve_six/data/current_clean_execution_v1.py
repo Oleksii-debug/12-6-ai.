@@ -184,7 +184,14 @@ def execute_current_clean_composition(
     expected_training_handoff_identity_sha256: str,
     expected_selection_validation_identity_sha256: str,
     expected_final_test_identity_sha256: str,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+]:
     """Execute clean decontamination then G05/G06 mechanics with zero scientific credit."""
     dependency_blobs = verify_dependency_blobs()
     report, decontam_evidence, eval647_receipt = execute_eval647_reserved_decontamination(
@@ -295,7 +302,7 @@ def execute_current_clean_composition(
         "foreign_pretrained_weights": False,
     }
     receipt["receipt_identity_sha256"] = _sha256(_cjson(receipt))
-    return receipt, report, quality, privacy
+    return receipt, report, decontam_evidence, eval647_receipt, quality, privacy
 
 
 def verify_current_clean_composition_receipt(
