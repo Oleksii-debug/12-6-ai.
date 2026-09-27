@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 from copy import deepcopy
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -24,12 +25,16 @@ from twelve_six.learned20m_current_run_authority import (
 )
 from twelve_six.learned20m_global_training_lease import (
     GlobalLeaseInspection,
+    GlobalLeaseSnapshot,
     global_training_run_lease_ref,
 )
 from twelve_six.learned20m_training_lease import (
+    build_training_run_lease,
     canonical_json_bytes,
     launch_manifest_sha256,
 )
+
+NOW = datetime(2026, 9, 27, 13, 0, tzinfo=UTC)
 
 
 def _manifest(*, source_git_sha: str = "b" * 40, binding: str = "a" * 64) -> dict:
@@ -115,6 +120,28 @@ def _global_inspection(
         lease_status="RUNNING",
         renewal_sequence=0,
         blockers=(),
+    )
+
+
+def _global_snapshot(
+    manifest: dict,
+    *,
+    run_id: str = "run-a",
+    remote_tip: str = "c" * 40,
+    acquired_at: datetime = NOW,
+) -> GlobalLeaseSnapshot:
+    lease = build_training_run_lease(
+        manifest,
+        run_id=run_id,
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=acquired_at,
+    )
+    return GlobalLeaseSnapshot(
+        ref=global_training_run_lease_ref(manifest),
+        remote_tip=remote_tip,
+        launch_manifest_sha256=launch_manifest_sha256(manifest),
+        lease=lease.as_dict(),
     )
 
 
@@ -268,12 +295,19 @@ def test_fixed_pointer_activation_retirement_and_generation(
         "inspect_global_training_run_lease",
         lambda repo_root, remote_value, manifest: inspection_a,
     )
+    snapshot_a = _global_snapshot(manifest_a)
+    monkeypatch.setattr(
+        current_run,
+        "_read_snapshot",
+        lambda repo_root, remote_value, manifest: snapshot_a,
+    )
     first = activate_current_run_authority(
         writer_a,
         str(remote),
         manifest_a,
         identity_a,
         expected_pointer_tip=None,
+        now=NOW,
     )
     assert first.committed is True
     assert first.post_write_reread_verified is True
@@ -292,6 +326,7 @@ def test_fixed_pointer_activation_retirement_and_generation(
         manifest_a,
         identity_a,
         expected_pointer_tip=first.written_remote_tip,
+        now=NOW,
     )
     assert duplicate.committed is False
     assert duplicate.blockers == ("current_run_already_active",)
@@ -312,6 +347,7 @@ def test_fixed_pointer_activation_retirement_and_generation(
         manifest_a,
         identity_a,
         expected_pointer_tip=first.written_remote_tip,
+        now=NOW,
     )
     assert stale.committed is False
     assert stale.blockers == ("current_run_pointer_expected_tip_mismatch",)
@@ -337,7 +373,13 @@ def test_retired_pointer_can_advance_only_from_exact_latest_tip(
             return _global_inspection(manifest_a)
         return _global_inspection(manifest_b, run_id="run-b", remote_tip="e" * 40)
 
+    def read_global(repo_root, remote_value, manifest):
+        if launch_manifest_sha256(manifest) == launch_manifest_sha256(manifest_a):
+            return _global_snapshot(manifest_a)
+        return _global_snapshot(manifest_b, run_id="run-b", remote_tip="e" * 40)
+
     monkeypatch.setattr(current_run, "inspect_global_training_run_lease", inspect_global)
+    monkeypatch.setattr(current_run, "_read_snapshot", read_global)
 
     first = activate_current_run_authority(
         writer_a, str(remote), manifest_a, identity_a, expected_pointer_tip=None
@@ -356,6 +398,7 @@ def test_retired_pointer_can_advance_only_from_exact_latest_tip(
         manifest_b,
         identity_b,
         expected_pointer_tip=retired.written_remote_tip,
+        now=NOW,
     )
     assert second.committed is True
     assert second.generation == 2
@@ -385,3 +428,41 @@ def test_boolean_generation_and_source_or_binding_substitution_fail_closed() -> 
         build_current_run_pointer_state(
             manifest, _global_inspection(manifest), wrong_binding, generation=1
         )
+
+
+def test_activation_rejects_expired_running_global_lease(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity()
+    structural = _global_inspection(manifest)
+    expired_snapshot = _global_snapshot(
+        manifest,
+        acquired_at=datetime(2026, 9, 27, 11, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr(
+        current_run,
+        "inspect_global_training_run_lease",
+        lambda repo_root, remote_value, candidate: structural,
+    )
+    monkeypatch.setattr(
+        current_run,
+        "_read_snapshot",
+        lambda repo_root, remote_value, candidate: expired_snapshot,
+    )
+
+    result = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        now=NOW,
+    )
+
+    assert result.committed is False
+    assert result.blockers == ("training_run_lease_expired",)
+    assert inspect_current_run_authority(writer_a, str(remote)).present is False
+
