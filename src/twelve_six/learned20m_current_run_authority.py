@@ -205,6 +205,36 @@ def validate_current_run_identity(
     return tuple(dict.fromkeys(errors))
 
 
+def verify_terminal_authority_current_run_binding(
+    current_run_identity: Mapping[str, Any],
+    terminal_authority: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Cross-bind PR2080-style terminal authority to the immutable run identity."""
+
+    identity_errors = validate_current_run_identity(current_run_identity)
+    if identity_errors:
+        return tuple(f"current_run_identity:{error}" for error in identity_errors)
+    expected = {
+        "recovery_run_id": current_run_identity.get("run_id"),
+        "recovery_run_manifest_sha256": current_run_identity.get(
+            "recovery_run_manifest_sha256"
+        ),
+        "recovery_attempt_authority_sha256": current_run_identity.get(
+            "recovery_attempt_authority_sha256"
+        ),
+        "safe_stop_current_run_sha256": current_run_identity.get("identity_sha256"),
+        "source_git_sha": current_run_identity.get("source_git_sha"),
+        "portable_run_binding_sha256": current_run_identity.get(
+            "portable_run_binding_sha256"
+        ),
+    }
+    blockers: list[str] = []
+    for field, expected_value in expected.items():
+        if terminal_authority.get(field) != expected_value:
+            blockers.append(f"terminal_current_run_binding_mismatch:{field}")
+    return tuple(blockers)
+
+
 def build_current_run_pointer_state(
     manifest: Mapping[str, Any],
     global_lease: GlobalLeaseInspection,
@@ -246,6 +276,16 @@ def build_current_run_pointer_state(
         "portable_run_binding_sha256"
     ):
         raise ValueError("current_run_portable_binding_mismatch")
+    terminal_authority = manifest.get("terminal_authority")
+    if terminal_authority is not None:
+        if not isinstance(terminal_authority, Mapping):
+            raise ValueError("terminal_authority_not_object")
+        terminal_blockers = verify_terminal_authority_current_run_binding(
+            current_run_identity,
+            terminal_authority,
+        )
+        if terminal_blockers:
+            raise ValueError(";".join(terminal_blockers))
 
     state: dict[str, Any] = {
         "schema": CURRENT_RUN_POINTER_SCHEMA,
