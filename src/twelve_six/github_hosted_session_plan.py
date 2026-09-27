@@ -539,9 +539,33 @@ def validate_hosted_carrier_evidence(
     runner = evidence.get("runner")
     if runner != _HOSTED_RUNNER:
         errors.append("hosted_carrier_runner_identity_mismatch")
-    if evidence.get("scientific_effects") != _HOSTED_SCIENTIFIC_EFFECTS:
+    scientific = evidence.get("scientific_effects")
+    if not isinstance(scientific, dict) or set(scientific) != set(
+        _HOSTED_SCIENTIFIC_EFFECTS
+    ):
         errors.append("hosted_carrier_scientific_effects_mismatch")
-    if evidence.get("authority_boundary") != _HOSTED_AUTHORITY_BOUNDARY:
+    else:
+        for key in (
+            "worker_invoked",
+            "real_target_execution_supported",
+            "training_executed",
+            "learned_weights_created",
+        ):
+            if scientific.get(key) is not False:
+                errors.append("hosted_carrier_scientific_effects_mismatch")
+                break
+        for key in (
+            "authorized_optimized_target_exposure",
+            "optimizer_updates_executed_on_real_targets",
+        ):
+            if not _exact_int(scientific.get(key)) or scientific.get(key) != 0:
+                errors.append("hosted_carrier_scientific_effects_mismatch")
+                break
+
+    authority = evidence.get("authority_boundary")
+    if not isinstance(authority, dict) or set(authority) != set(
+        _HOSTED_AUTHORITY_BOUNDARY
+    ) or any(authority.get(key) is not False for key in _HOSTED_AUTHORITY_BOUNDARY):
         errors.append("hosted_carrier_authority_boundary_mismatch")
     if not isinstance(evidence.get("worker_identity"), dict):
         errors.append("hosted_carrier_worker_identity_missing")
