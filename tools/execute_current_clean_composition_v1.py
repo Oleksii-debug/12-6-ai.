@@ -6,17 +6,16 @@ from __future__ import annotations
 import argparse
 import ctypes
 import errno
+import importlib
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-
-from twelve_six.data.current_clean_execution_v1 import (
-    execute_current_clean_composition,
-)
 
 CARRIER_PATH = "tools/execute_current_clean_composition_v1.py"
 MODULE_PATH = "src/twelve_six/data/current_clean_execution_v1.py"
@@ -53,7 +52,9 @@ def _git_bytes(repo_root: Path, git_sha: str, repo_path: str) -> bytes:
 
 
 def require_exact_checkout(repo_root: Path, expected_git_sha: str) -> str:
-    if len(expected_git_sha) != 40 or any(c not in "0123456789abcdef" for c in expected_git_sha):
+    if len(expected_git_sha) != 40 or any(
+        c not in "0123456789abcdef" for c in expected_git_sha
+    ):
         raise RuntimeError("expected carrier Git SHA must be lowercase 40-hex")
     head = _git(repo_root, "rev-parse", "--verify", "HEAD")
     if head.returncode != 0 or head.stdout.strip() != expected_git_sha:
@@ -74,6 +75,41 @@ def require_exact_checkout(repo_root: Path, expected_git_sha: str) -> str:
         if physical != authenticated:
             raise RuntimeError(f"physical bytes differ from authenticated Git bytes: {repo_path}")
     return expected_git_sha
+
+
+def load_authenticated_executor(
+    repo_root: Path,
+    expected_git_sha: str,
+) -> Callable[..., tuple[dict[str, Any], ...]]:
+    """Import the composition module only after exact-checkout authentication."""
+    module_name = "twelve_six.data.current_clean_execution_v1"
+    expected_path = (repo_root / MODULE_PATH).resolve(strict=True)
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        existing_file = getattr(existing, "__file__", None)
+        if not isinstance(existing_file, str):
+            raise RuntimeError("preloaded composition module has no source path")
+        if Path(existing_file).resolve(strict=True) != expected_path:
+            raise RuntimeError("preloaded composition module is outside authenticated checkout")
+
+    source_root = (repo_root / "src").resolve(strict=True)
+    source_root_text = str(source_root)
+    if source_root_text not in sys.path:
+        sys.path.insert(0, source_root_text)
+    module = importlib.import_module(module_name)
+    module_file = getattr(module, "__file__", None)
+    if not isinstance(module_file, str):
+        raise RuntimeError("composition module has no source path")
+    if Path(module_file).resolve(strict=True) != expected_path:
+        raise RuntimeError("composition module resolved outside authenticated checkout")
+    physical = expected_path.read_bytes()
+    authenticated = _git_bytes(repo_root, expected_git_sha, MODULE_PATH)
+    if physical != authenticated:
+        raise RuntimeError("loaded composition module differs from authenticated Git bytes")
+    executor = getattr(module, "execute_current_clean_composition", None)
+    if not callable(executor):
+        raise RuntimeError("authenticated composition executor is unavailable")
+    return executor
 
 
 def _load_json(path: Path, label: str) -> dict[str, Any]:
@@ -151,7 +187,10 @@ def _rename_directory_no_replace(source: Path, destination: Path) -> None:
     raise OSError(number, os.strerror(number), destination)
 
 
-def execute_and_publish(args: argparse.Namespace) -> dict[str, Any]:
+def execute_and_publish(
+    args: argparse.Namespace,
+    executor: Callable[..., tuple[dict[str, Any], ...]],
+) -> dict[str, Any]:
     output_dir = args.output_dir.resolve(strict=False)
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"refusing to overwrite output: {output_dir}")
@@ -176,7 +215,7 @@ def execute_and_publish(args: argparse.Namespace) -> dict[str, Any]:
         eval647_receipt,
         quality,
         privacy,
-    ) = execute_current_clean_composition(
+    ) = executor(
         training_records,
         evaluation_records,
         training_handoff_evidence=training_handoff,
@@ -261,8 +300,9 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     repo_root = args.repo_root.resolve(strict=True)
-    require_exact_checkout(repo_root, args.expected_carrier_git_sha)
-    receipt = execute_and_publish(args)
+    carrier = require_exact_checkout(repo_root, args.expected_carrier_git_sha)
+    executor = load_authenticated_executor(repo_root, carrier)
+    receipt = execute_and_publish(args, executor)
     print(receipt["receipt_identity_sha256"])
     return 0
 
