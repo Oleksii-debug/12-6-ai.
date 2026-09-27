@@ -41,6 +41,9 @@ def _authority() -> dict[str, object]:
         "indexed_module": "twelve_six.data.incumbent_dedup_indexed_execution",
         "indexed_module_git_blob_sha1": "4" * 40,
         "v3_module": "authority_runtime.cross_source_capacity_audit_v3",
+        "max_candidate_pairs": 5_000_000,
+        "max_index_postings": 100_000_000,
+        "max_pair_expansions": 100_000_000,
         "canonical_capacity_credit": 0,
         "authorized_optimized_target_exposure": 0,
         "training_executed": False,
@@ -90,6 +93,11 @@ def _receipt(run_id: str, *, report_sha: str = "e" * 64) -> dict[str, object]:
         "inventory_raw_sha256": "2" * 64,
         "source_object_count": 3,
         "source_payload_utf8_bytes": 50,
+        "work_limits": {
+            "max_candidate_pairs": 5_000_000,
+            "max_index_postings": 100_000_000,
+            "max_pair_expansions": 100_000_000,
+        },
         "v3_report_sha256": report_sha,
         "survivor_authority_sha256": "3" * 64,
         "survivor_source_object_count": 2,
@@ -233,3 +241,26 @@ def test_two_clean_authority_rejects_report_drift_and_receipt_tampering() -> Non
     tampered["source_object_count"] = 4
     with pytest.raises(carrier.RadaTwoCleanExecutionError, match="self-hash"):
         carrier.build_two_clean_authority(first, tampered)
+
+
+def test_two_clean_authority_requires_terminal_resource_measurement() -> None:
+    first = _receipt("clean-a")
+    second = _receipt("clean-b")
+    second["resource_measurement_complete"] = False
+    second["process_max_rss_kib"] = None
+    unsigned = dict(second)
+    unsigned.pop("receipt_identity_sha256")
+    second["receipt_identity_sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="max-RSS"):
+        carrier.build_two_clean_authority(first, second)
+
+
+def test_dependency_authority_binds_execution_work_limits(tmp_path: Path) -> None:
+    path = tmp_path / "authority.json"
+    value = _authority()
+    value["max_candidate_pairs"] = True
+    identity = _write_json(path, value)
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="max_candidate_pairs"):
+        carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
