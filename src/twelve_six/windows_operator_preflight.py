@@ -1095,23 +1095,39 @@ def main(argv: list[str] | None = None) -> int:
             target=args.target,
         )
         if args.command == "status":
-            candidate_run_id: str | None = None
-            candidate_manifest_sha256: str | None = None
-            if args.run_manifest is not None:
-                candidate_run_id, candidate_manifest_sha256 = _load_run_identity(
-                    args.run_manifest
-                )
-            (
-                run_id,
-                run_manifest_sha256,
-                current_run_identity_sha256,
-            ) = _resolve_current_run_identity(
-                candidate_run_id=candidate_run_id,
-                candidate_run_manifest_sha256=candidate_manifest_sha256,
+            state_present = args.state_dir.exists() or args.state_dir.is_symlink()
+            marker_path = args.state_dir / "STOP_REQUEST.json"
+            marker_present = state_present and (
+                marker_path.exists() or marker_path.is_symlink()
             )
-            result["current_run_identity_sha256"] = current_run_identity_sha256
-            result["safe_stop"] = (
-                read_stop_status(
+            if args.run_manifest is None and not marker_present:
+                result["safe_stop"] = (
+                    read_stop_status(
+                        args.state_dir,
+                        profile_sha256=profile_sha,
+                        packet_sha256=packet_sha,
+                        target=args.target,
+                    )
+                    if state_present
+                    else {"status": "NOT_REQUESTED", "marker": None, "errors": []}
+                )
+            else:
+                candidate_run_id: str | None = None
+                candidate_manifest_sha256: str | None = None
+                if args.run_manifest is not None:
+                    candidate_run_id, candidate_manifest_sha256 = _load_run_identity(
+                        args.run_manifest
+                    )
+                (
+                    run_id,
+                    run_manifest_sha256,
+                    current_run_identity_sha256,
+                ) = _resolve_current_run_identity(
+                    candidate_run_id=candidate_run_id,
+                    candidate_run_manifest_sha256=candidate_manifest_sha256,
+                )
+                result["current_run_identity_sha256"] = current_run_identity_sha256
+                result["safe_stop"] = read_stop_status(
                     args.state_dir,
                     profile_sha256=profile_sha,
                     packet_sha256=packet_sha,
@@ -1119,9 +1135,6 @@ def main(argv: list[str] | None = None) -> int:
                     run_id=run_id,
                     run_manifest_sha256=run_manifest_sha256,
                 )
-                if args.state_dir.exists() or args.state_dir.is_symlink()
-                else {"status": "NOT_REQUESTED", "marker": None, "errors": []}
-            )
             if result["safe_stop"]["status"] == "INVALID":
                 result["status"] = "BLOCKED"
                 result["operator_preflight_passed"] = False
