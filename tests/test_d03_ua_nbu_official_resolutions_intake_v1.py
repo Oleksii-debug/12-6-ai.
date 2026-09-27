@@ -5,6 +5,7 @@ import json
 import sys
 from copy import deepcopy
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -145,3 +146,117 @@ def test_evidence_promotion_and_tamper_fail_closed():
     tampered["documents"][0]["official_pdf_urls"][0] = "https://evil.example/a.pdf"
     with pytest.raises(module.NbuIntakeError):
         module.validate_evidence(tampered, config)
+
+
+def _catalog_page(*document_ids: str) -> str:
+    links = "".join(
+        f'<a href="/ua/legislation/Resolution_01012026_{value}">{value}</a>'
+        for value in document_ids
+    )
+    return f"<html><body>{links}</body></html>"
+
+
+def _requested_page(url: str) -> int:
+    query = parse_qs(urlsplit(url).query, keep_blank_values=True)
+    return int(query["page"][0])
+
+
+def test_catalog_search_url_is_exact_and_rejects_bool_integer_aliases():
+    config = load_config()
+    url = module.catalog_search_url(config, page=2, per_page=40)
+    parts = urlsplit(url)
+    query = parse_qs(parts.query, keep_blank_values=True)
+    assert parts.scheme == "https"
+    assert parts.netloc == "bank.gov.ua"
+    assert parts.path == "/ua/legislation/search"
+    assert query["page"] == ["2"]
+    assert query["perPage"] == ["40"]
+    assert set(query) == {
+        "from",
+        "metaKeywords",
+        "number",
+        "page",
+        "perPage",
+        "publicationDate",
+        "title",
+        "to",
+        "type",
+    }
+    with pytest.raises(module.NbuIntakeError, match="page must be an exact integer"):
+        module.catalog_search_url(config, page=True, per_page=40)
+    with pytest.raises(module.NbuIntakeError, match="per_page must be an exact integer"):
+        module.catalog_search_url(config, page=1, per_page=False)
+
+
+def test_bounded_catalog_crawl_progresses_without_pagination_anchors():
+    config = load_config()
+    pages = {
+        1: _catalog_page("1", "2", "3"),
+        2: _catalog_page("4", "5", "6"),
+    }
+    fetched: list[str] = []
+
+    def fetch(url: str) -> tuple[str, str]:
+        fetched.append(url)
+        return pages[_requested_page(url)], url
+
+    requested, documents = module.crawl_resolution_catalog(
+        config,
+        fetch,
+        target_documents=5,
+        per_page=40,
+    )
+    assert requested == tuple(fetched)
+    assert [_requested_page(url) for url in requested] == [1, 2]
+    assert len(documents) == 6
+    assert documents == tuple(sorted(documents))
+
+
+def test_catalog_crawl_rejects_response_query_substitution():
+    config = load_config()
+
+    def fetch(url: str) -> tuple[str, str]:
+        final = url.replace("page=1", "page=2")
+        return _catalog_page("1"), final
+
+    with pytest.raises(module.NbuIntakeError, match="catalog response query value drift"):
+        module.crawl_resolution_catalog(
+            config,
+            fetch,
+            target_documents=1,
+            per_page=40,
+        )
+
+
+def test_catalog_crawl_rejects_repeated_or_no_progress_page():
+    config = load_config()
+
+    def fetch(url: str) -> tuple[str, str]:
+        page = _requested_page(url)
+        body = _catalog_page("1") if page in {1, 2} else _catalog_page("2")
+        return body, url
+
+    with pytest.raises(module.NbuIntakeError, match="catalog page document tuple repeated"):
+        module.crawl_resolution_catalog(
+            config,
+            fetch,
+            target_documents=2,
+            per_page=40,
+        )
+
+
+def test_catalog_response_rejects_cross_origin_and_extra_query_fields():
+    config = load_config()
+    expected = module.catalog_search_url(config, page=1, per_page=40)
+    with pytest.raises(module.NbuIntakeError, match="escaped canonical origin/path"):
+        module.validate_catalog_response_url(
+            "https://evil.example/ua/legislation/search?page=1&perPage=40",
+            expected,
+            config,
+        )
+    with pytest.raises(module.NbuIntakeError, match="query field count drift"):
+        module.validate_catalog_response_url(
+            expected + "&unexpected=1",
+            expected,
+            config,
+        )
