@@ -99,7 +99,7 @@ def _strict_int(value: Any) -> bool:
 
 def _strict_json_equal(observed: Any, expected: Any) -> bool:
     """Compare JSON values without Python bool/int/float aliasing."""
-    if type(observed) is not type(expected):
+    if observed.__class__ is not expected.__class__:
         return False
     if isinstance(expected, dict):
         if observed.keys() != expected.keys():

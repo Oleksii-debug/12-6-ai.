@@ -156,6 +156,7 @@ def test_write_failure_leaves_no_final_marker_and_retry_succeeds(
 ) -> None:
     state = tmp_path / "state"
     original_write = os.write
+
     def fail_write(fd: int, data: object) -> int:
         del fd, data
         raise OSError("synthetic write failure")
@@ -181,6 +182,7 @@ def test_fsync_failure_leaves_no_final_marker_and_retry_succeeds(
 ) -> None:
     state = tmp_path / "state"
     original_fsync = os.fsync
+
     def fail_fsync(fd: int) -> None:
         del fd
         raise OSError("synthetic fsync failure")
@@ -194,5 +196,5 @@ def test_fsync_failure_leaves_no_final_marker_and_retry_succeeds(
 
 
 def test_truth_boundary_fixture_still_has_exact_json_scalar_types() -> None:
-    assert type(_TRUTH_BOUNDARY["authorized_optimized_target_exposure"]) is int
-    assert type(_TRUTH_BOUNDARY["training_executed"]) is bool
+    assert _TRUTH_BOUNDARY["authorized_optimized_target_exposure"].__class__ is int
+    assert _TRUTH_BOUNDARY["training_executed"].__class__ is bool
