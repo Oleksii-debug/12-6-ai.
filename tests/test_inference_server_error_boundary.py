@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from http.client import HTTPConnection
-import json
-import threading
+from json import dumps, loads
+from threading import Thread
 
 import pytest
 
@@ -46,7 +46,7 @@ def running_server(
         port=0,
         model_name="model341-error-boundary-test",
     )
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address[:2]
     try:
@@ -63,7 +63,7 @@ def _json_request(
     payload: dict[str, object],
 ) -> tuple[int, dict[str, object]]:
     connection = HTTPConnection(*address, timeout=3)
-    body = json.dumps(payload).encode("utf-8")
+    body = dumps(payload).encode("utf-8")
     connection.request(
         "POST",
         "/v1/completions",
@@ -71,7 +71,7 @@ def _json_request(
         headers={"Content-Type": "application/json"},
     )
     response = connection.getresponse()
-    parsed = json.loads(response.read().decode("utf-8"))
+    parsed = loads(response.read().decode("utf-8"))
     connection.close()
     return response.status, parsed
 
@@ -90,7 +90,7 @@ def test_backend_value_error_is_sanitized_as_internal_server_error(
     assert status == 500
     assert payload["error"]["code"] == "internal_error"  # type: ignore[index]
     assert payload["error"]["message"] == "internal server error"  # type: ignore[index]
-    assert _INTERNAL_SECRET not in json.dumps(payload)
+    assert _INTERNAL_SECRET not in dumps(payload)
     assert _INTERNAL_SECRET not in captured
     assert "internal_error=ValueError" in captured
     assert backend.calls == 1
