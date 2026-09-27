@@ -709,6 +709,7 @@ def test_pointer_read_rechecks_fixed_ref_after_blob_read(
         )
     assert calls == 2
 
+
 def test_inspection_fail_closes_on_pointer_type_error(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
@@ -727,3 +728,38 @@ def test_inspection_fail_closes_on_pointer_type_error(
     assert inspection.active is False
     assert inspection.blockers == ("current_run_pointer_not_object",)
 
+
+def test_mutations_fail_closed_on_pointer_type_error(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+
+    def malformed_pointer(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise TypeError("current_run_pointer_not_object")
+
+    monkeypatch.setattr(current_run, "_read_pointer_state", malformed_pointer)
+
+    activated = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert activated.committed is False
+    assert activated.blockers == ("current_run_pointer_not_object",)
+
+    retired = retire_current_run_authority(
+        writer_a,
+        str(remote),
+        expected_pointer_tip="a" * 40,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+    )
+    assert retired.committed is False
+    assert retired.blockers == ("current_run_pointer_not_object",)
