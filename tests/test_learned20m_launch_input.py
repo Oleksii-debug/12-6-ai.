@@ -99,6 +99,28 @@ def _implementation_identity(manifest: dict[str, str]) -> str:
     )
 
 
+def _runtime_dependency_manifest() -> dict[str, dict[str, str]]:
+    return {
+        "sys": {"kind": "built-in"},
+        "json": {
+            "kind": "stdlib",
+            "path": "json/__init__.py",
+            "sha256": _sha("stdlib-json"),
+        },
+    }
+
+
+def _runtime_dependency_identity(
+    manifest: dict[str, dict[str, str]],
+) -> str:
+    return _object_sha(
+        {
+            "schema_version": "12-6.d04-runtime-dependency-manifest.v1",
+            "modules": manifest,
+        }
+    )
+
+
 def _fixture() -> tuple[dict, dict, dict, dict]:
     stages = {
         "normalization": _sha("normalization"),
@@ -113,8 +135,12 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
     materialization = _sha("materialization")
     implementation_manifest = _implementation_manifest()
     implementation_identity = _implementation_identity(implementation_manifest)
+    runtime_dependency_manifest = _runtime_dependency_manifest()
+    runtime_dependency_identity = _runtime_dependency_identity(
+        runtime_dependency_manifest
+    )
     proof = {
-        "schema_version": "12-6.postpack-two-clean-proof.v3",
+        "schema_version": "12-6.postpack-two-clean-proof.v4",
         "input_packet_identity_sha256": _sha("input"),
         "terminal_corpus_authority_identity_sha256": _sha("corpus"),
         "stage_bindings": copy.deepcopy(stages),
@@ -123,6 +149,8 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
         "runtime_identity_sha256": runtime_identity,
         "implementation_manifest": copy.deepcopy(implementation_manifest),
         "implementation_manifest_identity_sha256": implementation_identity,
+        "runtime_dependency_manifest": copy.deepcopy(runtime_dependency_manifest),
+        "runtime_dependency_manifest_identity_sha256": runtime_dependency_identity,
         "fresh_process_count": 2,
         "byte_identical": True,
         "build_a_sha256": _sha("same-output"),
@@ -218,6 +246,12 @@ def _fixture() -> tuple[dict, dict, dict, dict]:
         "expected_two_clean_implementation_manifest_identity_sha256": (
             implementation_identity
         ),
+        "expected_two_clean_runtime_dependency_manifest": copy.deepcopy(
+            runtime_dependency_manifest
+        ),
+        "expected_two_clean_runtime_dependency_manifest_identity_sha256": (
+            runtime_dependency_identity
+        ),
         "expected_carrier_git_sha": "a" * 40,
         "expected_modelspec_sha256": _sha("modelspec"),
         "expected_initialization_identity_sha256": _sha("init"),
@@ -258,11 +292,11 @@ def _verify_authority(authority: dict, *, expected_identity: str | None = None) 
     )
 
 
-def test_binds_v3_freshness_and_d04_membership_without_authorization() -> None:
+def test_binds_v4_freshness_and_d04_membership_without_authorization() -> None:
     first = _build()
     second = _build()
     assert first == second
-    assert first["schema_version"] == "12-6.learned20m-launch-input-authority.v3"
+    assert first["schema_version"] == "12-6.learned20m-launch-input-authority.v4"
     assert first["binding_status"] == "READY_FOR_READINESS_BINDING"
     assert (
         first["data_spine"]["one_pass_unique_nonignored_causal_loss_positions"]
@@ -283,6 +317,12 @@ def test_binds_v3_freshness_and_d04_membership_without_authorization() -> None:
     assert (
         first["data_spine"]["two_clean_implementation_manifest_identity_sha256"]
         == _implementation_identity(_implementation_manifest())
+    )
+    assert (
+        first["data_spine"][
+            "two_clean_runtime_dependency_manifest_identity_sha256"
+        ]
+        == _runtime_dependency_identity(_runtime_dependency_manifest())
     )
     assert first["claim_boundary"]["authorized_optimized_target_exposure"] == 0
     assert first["claim_boundary"]["authorizes_training"] is False
@@ -414,6 +454,50 @@ def test_v1_two_clean_proof_is_rejected() -> None:
     ):
         build_launch_input_authority(proof, ledger, carrier, **expected)
 
+
+
+def test_v3_two_clean_proof_is_rejected() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    proof["schema_version"] = "12-6.postpack-two-clean-proof.v3"
+    _rehash(proof, "proof_identity_sha256")
+    expected["expected_two_clean_proof_identity_sha256"] = proof[
+        "proof_identity_sha256"
+    ]
+    with pytest.raises(
+        LaunchInputAuthorityError, match="canonical two-clean proof rejected"
+    ):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_coherently_resealed_runtime_dependency_substitution_fails() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    proof["runtime_dependency_manifest"]["json"]["sha256"] = _sha(
+        "substituted-stdlib-json"
+    )
+    proof["runtime_dependency_manifest_identity_sha256"] = (
+        _runtime_dependency_identity(proof["runtime_dependency_manifest"])
+    )
+    _rehash(proof, "proof_identity_sha256")
+    expected["expected_two_clean_proof_identity_sha256"] = proof[
+        "proof_identity_sha256"
+    ]
+    with pytest.raises(
+        LaunchInputAuthorityError,
+        match="canonical two-clean proof rejected: two-clean proof runtime dependency manifest mismatch",
+    ):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
+
+
+def test_expected_runtime_dependency_identity_must_match_expected_manifest() -> None:
+    proof, ledger, carrier, expected = _fixture()
+    expected[
+        "expected_two_clean_runtime_dependency_manifest_identity_sha256"
+    ] = _sha("other-runtime-dependency-root")
+    with pytest.raises(
+        LaunchInputAuthorityError,
+        match="expected runtime dependency manifest identity mismatch",
+    ):
+        build_launch_input_authority(proof, ledger, carrier, **expected)
 
 
 def test_v2_two_clean_proof_is_rejected() -> None:
