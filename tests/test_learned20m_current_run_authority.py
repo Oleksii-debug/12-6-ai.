@@ -301,7 +301,7 @@ def test_candidate_b_cannot_self_select_namespace_when_a_is_current() -> None:
     identity_a = _identity()
     state_a = build_current_run_pointer_state(
         manifest_a, _global_inspection(manifest_a), identity_a, generation=1,
-        global_lease_state_sha256=_global_state_sha256(manifest),
+        global_lease_state_sha256=_global_state_sha256(manifest_a),
         global_lease_expires_at_utc="2026-09-27T14:00:00Z",
     )
     inspection = CurrentRunAuthorityInspection(
