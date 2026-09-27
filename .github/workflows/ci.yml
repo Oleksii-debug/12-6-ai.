@@ -374,9 +374,15 @@ jobs:
           ):
               if composition.get(key) is not False:
                   raise RuntimeError(f"scientific boundary widened: {key}")
-          if composition.get("authorized_optimized_target_exposure") != 0:
+          if (
+              type(composition.get("authorized_optimized_target_exposure")) is not int
+              or composition.get("authorized_optimized_target_exposure") != 0
+          ):
               raise RuntimeError("optimized target exposure widened")
-          if composition.get("optimizer_updates_executed_on_real_targets") != 0:
+          if (
+              type(composition.get("optimizer_updates_executed_on_real_targets")) is not int
+              or composition.get("optimizer_updates_executed_on_real_targets") != 0
+          ):
               raise RuntimeError("optimizer execution widened")
           if composition.get("terminal_post_g05_g06_authority") is not False:
               raise RuntimeError("independent qualification was bypassed")
