@@ -380,11 +380,20 @@ def test_244_distinct_sources_cannot_alias_retained_record_count(
 
 
 @pytest.mark.parametrize(
-    "kind",
-    ["tampered", "missing", "extra", "duplicate", "unknown-key"],
+    ("kind", "failure_pattern"),
+    [
+        ("tampered", "payload identity mismatch"),
+        ("missing", "physical records JSONL root"),
+        ("extra", "unexpected payload record_id"),
+        ("duplicate", "duplicate payload record_id"),
+        ("unknown-key", "schema drift"),
+    ],
 )
 def test_payload_mutation_or_coverage_failure_publishes_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    failure_pattern: str,
 ) -> None:
     records_path, inventory_path, evidence_path, _, _ = _synthetic_inputs(
         tmp_path, monkeypatch
