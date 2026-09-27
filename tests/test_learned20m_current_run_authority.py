@@ -556,6 +556,7 @@ def test_activation_rejects_candidate_selected_current_run_identity_root(
     assert result.blockers == ("expected_current_run_identity_sha256_mismatch",)
     assert inspect_current_run_authority(writer_a, str(remote)).present is False
 
+
 def test_mutations_fail_closed_on_uncanonicalizable_manifest(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
