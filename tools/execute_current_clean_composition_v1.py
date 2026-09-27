@@ -155,7 +155,7 @@ class _AuthenticatedGitFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader
             return None
         source = self._source(fullname)
         if source is None:
-            return None
+            raise ImportError(f"authenticated Git module is unavailable: {fullname}")
         return importlib.util.spec_from_loader(fullname, self, is_package=source[2])
 
     def create_module(self, spec):
