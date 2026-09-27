@@ -64,6 +64,25 @@ _RELEASE_AUTHORITY: dict[str, Any] = {
     "independent_audit_status": "PASS_PHYSICAL_CLEAN_POST_G05G06_EXACT_RUN",
 }
 
+# These deterministic downstream file roots were independently recomputed from
+# the immutable #2174-qualified four-file artifact, without publishing corpus
+# text.  They make the durable receipt's output bindings independently anchored
+# instead of self-authenticating through its own receipt hash.
+_PRODUCTION_RELEASE_AUTHORITY_IDENTITY_SHA256 = (
+    "ab053552ecf9e6637cee2ad38d3eba9e40b4563c8d99d14965ed94be7cd6b0be"
+)
+_PRODUCTION_OUTPUT_FILES_SHA256 = {
+    TRAINING_RECORDS_NAME: "3458afe0380ea45d328ad3f004b21845a188ca69f2f7a83c24999e9e53268e53",
+    TRAINING_HANDOFF_NAME: "80bcf2dd28f0d13795ceea01b358c7149b636f55f17b29575d14313b5cee99ee",
+}
+_PRODUCTION_TRAINING_RECORDS_FILE_BYTES = 5_851_879
+_INPUT_FILE_HASH_KEYS = {
+    "records_jsonl",
+    "record_inventory_json",
+    "materialization_evidence_json",
+}
+_OUTPUT_FILE_HASH_KEYS = {TRAINING_RECORDS_NAME, TRAINING_HANDOFF_NAME}
+
 _INVENTORY_KEYS = {
     "schema_version",
     "record_count",
@@ -451,16 +470,16 @@ def _prepare_rows(
     records_path: Path,
     by_record: Mapping[str, Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    # Verify the independently expected physical byte root before parsing payload text.
-    actual_raw_sha = _sha256_path(records_path)
-    if actual_raw_sha != _RELEASE_AUTHORITY["records_jsonl_sha256"]:
-        raise ValueError("physical records JSONL root is not independently expected")
-
+    # Hash the exact bytes that are parsed through this one open file handle.
+    # This closes the former hash-then-reopen TOCTOU window while retaining the
+    # independently expected transport root as the release condition.
+    transport_digest = hashlib.sha256()
     records: list[dict[str, Any]] = []
     projection: list[dict[str, Any]] = []
     seen: set[str] = set()
     with records_path.open("rb") as handle:
         for line_number, raw in enumerate(handle, 1):
+            transport_digest.update(raw)
             if not raw.strip():
                 raise ValueError(f"blank records JSONL line {line_number}")
             row = _strict_loads(raw, f"{records_path}:line {line_number}")
@@ -507,6 +526,8 @@ def _prepare_rows(
                     "text_utf8_bytes": expected["payload_bytes"],
                 }
             )
+    if transport_digest.hexdigest() != _RELEASE_AUTHORITY["records_jsonl_sha256"]:
+        raise ValueError("physical records JSONL root is not independently expected")
     missing = sorted(set(by_record) - seen)
     if missing:
         raise ValueError(f"missing payload records: {', '.join(missing[:5])}")
@@ -605,6 +626,20 @@ def _build_receipt(
     return receipt
 
 
+def _receipt_hash_map(
+    value: object,
+    *,
+    label: str,
+    exact_keys: set[str],
+) -> dict[str, str]:
+    if type(value) is not dict or set(value) != exact_keys:
+        raise ValueError(f"{label} key set drift")
+    return {
+        key: _hex64(value[key], f"{label}.{key}")
+        for key in sorted(exact_keys)
+    }
+
+
 def verify_receipt(receipt: Mapping[str, Any]) -> None:
     if set(receipt) != _RECEIPT_KEYS:
         raise ValueError("execution receipt key set drift")
@@ -618,10 +653,60 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
     core.pop("receipt_identity_sha256")
     if claimed != _sha256(_canonical(core)):
         raise ValueError("execution receipt identity mismatch")
-    if receipt.get("clean_release_authority_sha256") != _release_authority_identity():
+
+    _git_sha(
+        receipt.get("carrier_implementation_git_sha"),
+        "receipt.carrier_implementation_git_sha",
+    )
+    current_authority_identity = _release_authority_identity()
+    if receipt.get("clean_release_authority_sha256") != current_authority_identity:
         raise ValueError("clean release authority identity drift")
     if receipt.get("physical_release_authority") != _RELEASE_AUTHORITY:
         raise ValueError("physical release authority drift")
+
+    input_hashes = _receipt_hash_map(
+        receipt.get("input_files_sha256"),
+        label="receipt.input_files_sha256",
+        exact_keys=_INPUT_FILE_HASH_KEYS,
+    )
+    expected_input_hashes = {
+        "records_jsonl": _RELEASE_AUTHORITY["records_jsonl_sha256"],
+        "record_inventory_json": _RELEASE_AUTHORITY["inventory_json_sha256"],
+        "materialization_evidence_json": _RELEASE_AUTHORITY["evidence_json_sha256"],
+    }
+    if input_hashes != expected_input_hashes:
+        raise ValueError("receipt input file hashes are not independently expected")
+
+    output_hashes = _receipt_hash_map(
+        receipt.get("output_files_sha256"),
+        label="receipt.output_files_sha256",
+        exact_keys=_OUTPUT_FILE_HASH_KEYS,
+    )
+    # Unit fixtures deliberately replace the trusted release authority.  The
+    # production authority is immutable and therefore receives the additional
+    # independently recomputed exact-output binding below.  An untrusted receipt
+    # cannot alter the module's code-bound authority identity.
+    production_authority = (
+        current_authority_identity
+        == _PRODUCTION_RELEASE_AUTHORITY_IDENTITY_SHA256
+    )
+    if production_authority and output_hashes != _PRODUCTION_OUTPUT_FILES_SHA256:
+        raise ValueError("receipt output file hashes are not independently expected")
+
+    for receipt_key, authority_key in (
+        ("materialization_identity_sha256", "materialization_identity_sha256"),
+        (
+            "composition_preflight_identity_sha256",
+            "composition_preflight_identity_sha256",
+        ),
+        ("record_inventory_digest_sha256", "record_inventory_digest_sha256"),
+        ("payload_inventory_digest_sha256", "payload_inventory_digest_sha256"),
+        ("records_jsonl_sha256", "records_jsonl_sha256"),
+    ):
+        value = _hex64(receipt.get(receipt_key), f"receipt.{receipt_key}")
+        if value != _RELEASE_AUTHORITY[authority_key]:
+            raise ValueError(f"receipt {receipt_key} drift")
+
     for key in (
         "retained_source_count",
         "distinct_physical_source_count",
@@ -644,6 +729,12 @@ def verify_receipt(receipt: Mapping[str, Any]) -> None:
         != _RELEASE_AUTHORITY["retained_payload_bytes"]
     ):
         raise ValueError("receipt retained payload bytes drift")
+    if (
+        production_authority
+        and receipt.get("training_records_file_bytes")
+        != _PRODUCTION_TRAINING_RECORDS_FILE_BYTES
+    ):
+        raise ValueError("receipt training records file byte count drift")
     for key in (
         "authorized_optimized_target_exposure",
         "optimizer_updates_executed_on_real_targets",
