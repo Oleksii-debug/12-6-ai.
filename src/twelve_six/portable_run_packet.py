@@ -61,6 +61,111 @@ ALLOWED_BACKENDS = {
 }
 
 
+_ROOT_KEYS = {
+    "schema_version",
+    "packet_id",
+    "status",
+    "contract_fields",
+    "truth_boundary",
+    "identities",
+    "authorities",
+    "recipe",
+    "checkpoint",
+    "evaluation",
+    "runtime",
+    "resource",
+    "output",
+}
+_TRUTH_BOUNDARY_KEYS = {
+    "canonical_base",
+    "foreign_pretrained_or_aligned_weights_used",
+    "hidden_teacher_logits_used",
+    "selection_validation_used_for_training",
+    "final_test_payload_accessed",
+    "replay_or_padding_counted_as_unique_exposure",
+    "materially_paid_compute_authorized",
+    "materially_paid_compute_requested",
+}
+_IDENTITY_KEYS = {
+    "source_git_sha",
+    "modelspec_sha256",
+    "initspec_sha256",
+    "tokenizer_sha256",
+    "corpus_manifest_sha256",
+    "split_sha256",
+    "packing_sha256",
+    "unique_loss_ledger_sha256",
+    "canonical_base",
+    "parameter_count",
+}
+_RECIPE_KEYS = {
+    "training_config_sha256",
+    "optimizer_scheduler_precision",
+    "seed",
+    "target_unique_loss_positions",
+    "maximum_total_exposures",
+    "available_unique_loss_positions",
+    "max_exposures_per_unique_position",
+}
+_CHECKPOINT_KEYS = {
+    "mode",
+    "lineage",
+    "stop_resume_policy_sha256",
+    "session_time_limit_minutes",
+    "first_checkpoint_deadline_minutes",
+    "checkpoint_every_steps",
+    "atomic_publish_required",
+    "fresh_process_resume_required",
+    "cross_provider_resume_required",
+    "checkpoint_early_in_ephemeral_session",
+}
+_LINEAGE_KEYS = {
+    "parent_checkpoint_sha256",
+    "parent_manifest_sha256",
+    "previous_run_id",
+    "source_provider",
+    "cross_provider_transfer",
+    "resume_validated",
+}
+_EVALUATION_KEYS = {
+    "evaluation_schedule_sha256",
+    "selection_validation_only",
+    "final_test_payload_access",
+}
+_RUNTIME_KEYS = {
+    "backend_id",
+    "python_version",
+    "framework_version",
+    "environment_lock_sha256",
+    "device_type",
+}
+_RESOURCE_KEYS = {
+    "resource_class",
+    "provider",
+    "maximum_cost_usd",
+    "materially_paid",
+    "paid_authorization_ref",
+}
+_OUTPUT_KEYS = {"artifact_store_uri", "content_addressed"}
+_PRELIMINARY_BINDING_KEYS = {
+    "readiness_campaign_id",
+    "readiness_sha256",
+    "session_overlay_id",
+    "session_overlay_sha256",
+    "portable_execution_sha256",
+    "tokenizer_decision_identity_sha256",
+}
+_FINAL_BINDING_KEYS = _PRELIMINARY_BINDING_KEYS | {
+    "trusted_readiness_bundle_sha256",
+    "preoptimizer_authorities_sha256",
+    "preoptimizer_authorities",
+    "launch_input_authority_identity_sha256",
+    "loss_bearing_manifest_identity_sha256",
+    "exposure_plan_identity_sha256",
+    "exposure_plan_preflight_identity_sha256",
+}
+
+
 @dataclass(frozen=True)
 class PortableRunAssessment:
     """Readiness is split between a fresh launch and a transferred resume."""
@@ -158,9 +263,25 @@ def _get_mapping(data: dict[str, Any], key: str, errors: list[str]) -> dict[str,
     return value
 
 
+def _expect_exact_keys(
+    errors: list[str],
+    value: dict[str, Any],
+    expected: set[str],
+    name: str,
+) -> None:
+    if set(value) != expected:
+        errors.append(f"{name}_fields_mismatch")
+
+
 def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     """Validate immutable safety/shape rules without claiming launch readiness."""
     errors: list[str] = []
+    root_keys = set(data)
+    _expect(
+        errors,
+        root_keys in (_ROOT_KEYS, _ROOT_KEYS | {"binding"}),
+        "packet_top_level_fields_mismatch",
+    )
     _expect(
         errors,
         _is_exact_int(data.get("schema_version"), PACKET_SCHEMA_VERSION),
@@ -184,6 +305,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
         _expect(errors, len(declared) == len(set(declared)), "contract_fields_not_unique")
 
     boundaries = _get_mapping(data, "truth_boundary", errors)
+    _expect_exact_keys(errors, boundaries, _TRUTH_BOUNDARY_KEYS, "truth_boundary")
     _expect(
         errors,
         boundaries.get("canonical_base") == "RANDOM_INIT_PRETRAINING_ONLY",
@@ -201,6 +323,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
         _expect(errors, boundaries.get(key) is False, f"truth_boundary_{key}_must_be_false")
 
     resource = _get_mapping(data, "resource", errors)
+    _expect_exact_keys(errors, resource, _RESOURCE_KEYS, "resource")
     _expect(
         errors,
         resource.get("resource_class") in {"LOCAL_FREE", "FREE_GPU"},
@@ -229,6 +352,9 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     )
 
     checkpoint = _get_mapping(data, "checkpoint", errors)
+    _expect_exact_keys(errors, checkpoint, _CHECKPOINT_KEYS, "checkpoint")
+    lineage = _get_mapping(checkpoint, "lineage", errors)
+    _expect_exact_keys(errors, lineage, _LINEAGE_KEYS, "checkpoint_lineage")
     _expect(
         errors,
         checkpoint.get("mode") in {"FRESH_START", "RESUME"},
@@ -243,6 +369,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
         _expect(errors, checkpoint.get(key) is True, f"checkpoint_{key}_must_be_true")
 
     evaluation = _get_mapping(data, "evaluation", errors)
+    _expect_exact_keys(errors, evaluation, _EVALUATION_KEYS, "evaluation")
     _expect(
         errors,
         evaluation.get("selection_validation_only") is True,
@@ -255,6 +382,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     )
 
     identities = _get_mapping(data, "identities", errors)
+    _expect_exact_keys(errors, identities, _IDENTITY_KEYS, "identities")
     _expect(
         errors,
         identities.get("canonical_base") == "random_init",
@@ -267,14 +395,45 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     )
 
     authorities = _get_mapping(data, "authorities", errors)
+    mode = checkpoint.get("mode")
+    expected_authorities = (
+        REQUIRED_AUTHORITIES | {"parent_checkpoint"}
+        if mode == "RESUME"
+        else REQUIRED_AUTHORITIES
+    )
     _expect(
         errors,
-        REQUIRED_AUTHORITIES.issubset(authorities),
-        "required_authority_slots_missing",
+        set(authorities) == expected_authorities,
+        "authority_slots_mismatch",
     )
 
-    for key in ("recipe", "runtime", "output"):
-        _get_mapping(data, key, errors)
+    recipe = _get_mapping(data, "recipe", errors)
+    recipe_keys = set(recipe)
+    _expect(
+        errors,
+        recipe_keys in (_RECIPE_KEYS, _RECIPE_KEYS | {"execution_projection"}),
+        "recipe_fields_mismatch",
+    )
+    optimizer = recipe.get("optimizer_scheduler_precision")
+    if isinstance(optimizer, dict):
+        _expect_exact_keys(
+            errors,
+            optimizer,
+            {"optimizer", "scheduler", "precision"},
+            "optimizer_scheduler_precision",
+        )
+
+    runtime = _get_mapping(data, "runtime", errors)
+    _expect_exact_keys(errors, runtime, _RUNTIME_KEYS, "runtime")
+    output = _get_mapping(data, "output", errors)
+    _expect_exact_keys(errors, output, _OUTPUT_KEYS, "output")
+
+    binding = data.get("binding")
+    if binding is not None:
+        if not isinstance(binding, dict):
+            errors.append("binding_missing")
+        elif set(binding) not in (_PRELIMINARY_BINDING_KEYS, _FINAL_BINDING_KEYS):
+            errors.append("binding_fields_mismatch")
 
     errors.extend(_find_embedded_secrets(data))
     return sorted(set(errors))
