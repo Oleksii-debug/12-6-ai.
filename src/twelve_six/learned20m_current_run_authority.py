@@ -782,8 +782,20 @@ def activate_current_run_authority(
             "ACTIVATE",
             blocker="expected_current_run_identity_sha256_invalid",
         )
-    manifest_snapshot = json.loads(canonical_json_bytes(manifest))
-    identity_snapshot = json.loads(canonical_json_bytes(current_run_identity))
+    try:
+        manifest_snapshot = json.loads(canonical_json_bytes(manifest))
+    except (TypeError, ValueError) as exc:
+        return _operation_failure(
+            "ACTIVATE",
+            blocker=f"launch_manifest_snapshot_invalid:{exc}",
+        )
+    try:
+        identity_snapshot = json.loads(canonical_json_bytes(current_run_identity))
+    except (TypeError, ValueError) as exc:
+        return _operation_failure(
+            "ACTIVATE",
+            blocker=f"current_run_identity_snapshot_invalid:{exc}",
+        )
     identity_errors = validate_current_run_identity(identity_snapshot)
     if identity_errors:
         return _operation_failure(
@@ -977,7 +989,13 @@ def refresh_current_run_authority(
             blocker="expected_current_run_identity_invalid",
         )
 
-    manifest_snapshot = json.loads(canonical_json_bytes(manifest))
+    try:
+        manifest_snapshot = json.loads(canonical_json_bytes(manifest))
+    except (TypeError, ValueError) as exc:
+        return _operation_failure(
+            "REFRESH",
+            blocker=f"launch_manifest_snapshot_invalid:{exc}",
+        )
     try:
         current = _read_pointer_state(repo_root, remote)
     except (CurrentRunAuthorityError, _GlobalLeaseFailure, TypeError, ValueError) as exc:
