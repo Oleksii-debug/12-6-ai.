@@ -471,6 +471,99 @@ def test_existing_child_pycache_root_is_rejected(tmp_path: Path) -> None:
         two_clean._clean_child_env(source_root, pycache_root)
 
 
+def test_windows_clean_child_environment_forwards_only_validated_system_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_root = two_clean._trusted_source_root()
+    pycache_root = tmp_path / "fresh-pycache"
+    monkeypatch.setattr(two_clean, "_is_windows_runtime", lambda: True)
+    monkeypatch.setattr(
+        two_clean,
+        "_validated_windows_system_root",
+        lambda: r"C:\\Windows",
+    )
+    monkeypatch.setenv("PYTHONHOME", r"C:\\attacker")
+    monkeypatch.setenv("PYTHONSTARTUP", r"C:\\attacker\\startup.py")
+    monkeypatch.setenv("PATH", r"C:\\attacker")
+
+    env = two_clean._clean_child_env(source_root, pycache_root)
+
+    assert env == {
+        "PYTHONPATH": str(source_root),
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPYCACHEPREFIX": str(pycache_root),
+        "SystemRoot": r"C:\\Windows",
+    }
+    assert "PYTHONHOME" not in env
+    assert "PYTHONSTARTUP" not in env
+    assert "PATH" not in env
+
+
+@pytest.mark.parametrize("value", [None, "", "relative\\Windows", r"C:\\Windows\\..\\Temp"])
+def test_windows_system_root_validation_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str | None,
+) -> None:
+    if value is None:
+        monkeypatch.delenv("SystemRoot", raising=False)
+    else:
+        monkeypatch.setenv("SystemRoot", value)
+    monkeypatch.setattr(two_clean, "_is_windows_runtime", lambda: False)
+
+    with pytest.raises(two_clean.TwoCleanBuildError, match="SystemRoot"):
+        two_clean._validated_windows_system_root()
+
+
+def test_runtime_probe_uses_minimal_windows_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    executable = Path(os.sys.executable).resolve()
+    source_root = two_clean._trusted_source_root()
+    observed: dict[str, object] = {}
+
+    class Completed:
+        returncode = 0
+        stderr = ""
+        stdout = '{"sys":{"kind":"built-in"}}\\n'
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["env"] = kwargs["env"]
+        return Completed()
+
+    monkeypatch.setattr(two_clean, "_trusted_python_executable", lambda requested=None: executable)
+    monkeypatch.setattr(two_clean, "_trusted_source_root", lambda: source_root)
+    monkeypatch.setattr(two_clean, "_is_windows_runtime", lambda: True)
+    monkeypatch.setattr(
+        two_clean,
+        "_validated_windows_system_root",
+        lambda: r"C:\\Windows",
+    )
+    monkeypatch.setattr(two_clean.subprocess, "run", fake_run)
+    monkeypatch.setenv("PYTHONHOME", r"C:\\attacker")
+    monkeypatch.setenv("PATH", r"C:\\attacker")
+
+    manifest = two_clean.probe_clean_runtime_dependency_manifest(timeout_seconds=1)
+
+    assert manifest == {"sys": {"kind": "built-in"}}
+    env = observed["env"]
+    assert isinstance(env, dict)
+    assert set(env) == {
+        "PYTHONPATH",
+        "PYTHONNOUSERSITE",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONPYCACHEPREFIX",
+        "SystemRoot",
+    }
+    assert env["PYTHONPATH"] == str(source_root)
+    assert env["SystemRoot"] == r"C:\\Windows"
+    assert "PYTHONHOME" not in env
+    assert "PATH" not in env
+
+
 def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
     packet = _packet()
     proof = two_clean.prove_two_clean_build(
