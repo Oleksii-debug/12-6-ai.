@@ -10,12 +10,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import sysconfig
 import tempfile
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from twelve_six.tokenization import ByteTokenizer
@@ -105,7 +106,7 @@ _DOCUMENT_KEYS = {
     "evaluation_reserved",
     "reserved_target_ranges",
 }
-_CLEAN_ENV_KEYS = frozenset(
+_CLEAN_ENV_BASE_KEYS = frozenset(
     {
         "PYTHONPATH",
         "PYTHONNOUSERSITE",
@@ -113,6 +114,7 @@ _CLEAN_ENV_KEYS = frozenset(
         "PYTHONPYCACHEPREFIX",
     }
 )
+_WINDOWS_REQUIRED_ENV_KEYS = frozenset({"SystemRoot"})
 
 
 class TwoCleanBuildError(ValueError):
@@ -469,6 +471,29 @@ def _trusted_source_root() -> Path:
     return source_root
 
 
+def _is_windows_runtime() -> bool:
+    return sys.platform == "win32"
+
+
+def _validated_windows_system_root() -> str:
+    """Return the one OS environment root required by clean Windows children."""
+    raw = os.environ.get("SystemRoot")
+    if not isinstance(raw, str) or not raw.strip():
+        raise TwoCleanBuildError("Windows SystemRoot is required for clean child execution")
+    candidate = PureWindowsPath(raw)
+    if not candidate.is_absolute() or any(part in {".", ".."} for part in candidate.parts):
+        raise TwoCleanBuildError("Windows SystemRoot must be an absolute canonical path")
+    if _is_windows_runtime():
+        try:
+            resolved = Path(raw).resolve(strict=True)
+        except OSError as exc:
+            raise TwoCleanBuildError("Windows SystemRoot cannot be resolved") from exc
+        if not resolved.is_dir():
+            raise TwoCleanBuildError("Windows SystemRoot must resolve to a directory")
+        return str(resolved)
+    return str(candidate)
+
+
 def _clean_child_env(source_root: Path, pycache_root: Path) -> dict[str, str]:
     """Build a minimal child environment instead of inheriting caller Python hooks."""
     if pycache_root.exists():
@@ -479,7 +504,11 @@ def _clean_child_env(source_root: Path, pycache_root: Path) -> dict[str, str]:
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONPYCACHEPREFIX": str(pycache_root),
     }
-    if set(env) != set(_CLEAN_ENV_KEYS):
+    expected_keys = set(_CLEAN_ENV_BASE_KEYS)
+    if _is_windows_runtime():
+        env["SystemRoot"] = _validated_windows_system_root()
+        expected_keys.update(_WINDOWS_REQUIRED_ENV_KEYS)
+    if set(env) != expected_keys:
         raise AssertionError("clean child environment key drift")
     return env
 
