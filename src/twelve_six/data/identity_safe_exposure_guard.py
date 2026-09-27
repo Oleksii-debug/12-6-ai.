@@ -34,6 +34,8 @@ _CLAIM_KEYS = frozenset(
     {"segment_identity_sha256", "offset_start", "offset_end"}
 )
 _NEXT_EXPOSURE_SCHEMA = "12-6.next-exposure-identity.v1"
+_CONTENT_MANIFEST_SCHEMA = "12-6.d04-loss-bearing-content-manifest.v2"
+_CONTENT_MANIFEST_STATE_KEY = "loss_bearing_manifest_identity_sha256"
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -63,14 +65,7 @@ def _require_nonnegative_int(value: Any, label: str) -> int:
 def require_expected_ledger_identity(
     ledger: Mapping[str, Any], *, expected_ledger_identity_sha256: str
 ) -> None:
-    """Fail closed unless ledger bytes match the externally bound ledger identity.
-
-    ExposureReplayGuard V2 binds resume state to the ledger identity string. This
-    preflight additionally proves that the string is the hash of the exact ledger
-    object and that it equals the identity supplied by the stage/checkpoint
-    authority. Unknown ledger fields are rejected so a self-rehashed future schema
-    cannot silently alter current replay semantics.
-    """
+    """Fail closed unless ledger bytes match the externally bound ledger identity."""
     if not isinstance(ledger, Mapping):
         raise LedgerError("ledger must be an object")
     if set(ledger) != _LEDGER_KEYS:
@@ -91,8 +86,40 @@ def require_expected_ledger_identity(
         raise LedgerError("ledger self-hash mismatch")
 
 
+def _validate_content_manifest_root(
+    manifest: Mapping[str, Any], *, expected_manifest_identity_sha256: str
+) -> tuple[dict[str, Any], str]:
+    if not isinstance(manifest, Mapping):
+        raise LedgerError("loss-bearing content manifest must be an object")
+    copied = deepcopy(dict(manifest))
+    if copied.get("schema_version") != _CONTENT_MANIFEST_SCHEMA:
+        raise LedgerError("unsupported loss-bearing content manifest schema")
+    expected = _require_sha256(
+        expected_manifest_identity_sha256,
+        "expected_loss_bearing_manifest_identity_sha256",
+    )
+    observed = _require_sha256(
+        copied.get("manifest_identity_sha256"),
+        "loss_bearing_content_manifest.manifest_identity_sha256",
+    )
+    unhashed = deepcopy(copied)
+    unhashed.pop("manifest_identity_sha256", None)
+    if _canonical_sha256(unhashed) != observed:
+        raise LedgerError("loss-bearing content manifest self-hash mismatch")
+    if observed != expected:
+        raise LedgerError("loss-bearing content manifest differs from external authority")
+    if copied.get("training_authorized_by_this_manifest") is not False:
+        raise LedgerError("loss-bearing content manifest may not self-authorize training")
+    if copied.get("live_input_binding") != "canonical_predictor_context_and_targets_v2":
+        raise LedgerError("loss-bearing content manifest lacks predictor/context authority")
+    batches = copied.get("batches")
+    if not isinstance(batches, Sequence) or isinstance(batches, (str, bytes)):
+        raise LedgerError("loss-bearing content manifest batches must be a sequence")
+    return copied, observed
+
+
 class IdentitySafeExposureReplayGuard(ExposureReplayGuard):
-    """ExposureReplayGuard with external ledger and next-exposure identity guards."""
+    """Exposure guard with external ledger, state and optional content authority."""
 
     def __init__(
         self,
@@ -101,31 +128,50 @@ class IdentitySafeExposureReplayGuard(ExposureReplayGuard):
         expected_ledger_identity_sha256: str,
         authorized_budget: int,
         trainer_state_binding: Mapping[str, Any],
+        loss_bearing_content_manifest: Mapping[str, Any] | None = None,
+        expected_loss_bearing_manifest_identity_sha256: str | None = None,
     ) -> None:
         require_expected_ledger_identity(
             ledger,
             expected_ledger_identity_sha256=expected_ledger_identity_sha256,
         )
+        if (loss_bearing_content_manifest is None) != (
+            expected_loss_bearing_manifest_identity_sha256 is None
+        ):
+            raise LedgerError(
+                "loss-bearing content manifest and external manifest identity "
+                "must be supplied together"
+            )
+        self._loss_bearing_content_manifest: dict[str, Any] | None = None
+        self.loss_bearing_manifest_identity_sha256: str | None = None
+        if loss_bearing_content_manifest is not None:
+            assert expected_loss_bearing_manifest_identity_sha256 is not None
+            (
+                self._loss_bearing_content_manifest,
+                self.loss_bearing_manifest_identity_sha256,
+            ) = _validate_content_manifest_root(
+                loss_bearing_content_manifest,
+                expected_manifest_identity_sha256=(
+                    expected_loss_bearing_manifest_identity_sha256
+                ),
+            )
         super().__init__(
             ledger,
+            expected_ledger_identity_sha256=expected_ledger_identity_sha256,
             authorized_budget=authorized_budget,
             trainer_state_binding=trainer_state_binding,
         )
 
-    def next_exposure_identity(
+    @property
+    def content_authority_configured(self) -> bool:
+        return self._loss_bearing_content_manifest is not None
+
+    def _normalized_claims(
         self,
         claims: Sequence[Mapping[str, Any]],
         *,
         actual_nonignored_targets: int,
-    ) -> str:
-        """Return an order-sensitive identity for the exact next authorized batch.
-
-        The identity binds the current self-hashed exposure state, ledger/corpus/
-        packing identities, next claim sequence, ordered claim intervals and the
-        trainer-observed target cardinality. It is stable across a fresh-process
-        resume of the same state and changes if a worker/order/batch substitution
-        is attempted.
-        """
+    ) -> tuple[list[dict[str, Any]], int]:
         actual = _require_nonnegative_int(
             actual_nonignored_targets, "actual_nonignored_targets"
         )
@@ -172,21 +218,94 @@ class IdentitySafeExposureReplayGuard(ExposureReplayGuard):
             )
         if self.consumed_loss_positions + claimed_count > self.authorized_budget:
             raise LedgerError("batch would exceed authorized exposure budget")
+        return normalized_claims, actual
 
+    def _manifest_claims_for_batch(self, batch_index: int) -> list[dict[str, Any]]:
+        if self._loss_bearing_content_manifest is None:
+            raise LedgerError("loss-bearing content authority is not configured")
+        index = _require_nonnegative_int(batch_index, "batch_index")
+        batches = self._loss_bearing_content_manifest.get("batches")
+        if not isinstance(batches, Sequence) or isinstance(batches, (str, bytes)):
+            raise LedgerError("loss-bearing content manifest batches must be a sequence")
+        if index >= len(batches):
+            raise LedgerError("batch_index is outside loss-bearing content manifest")
+        batch = batches[index]
+        if not isinstance(batch, Mapping):
+            raise LedgerError("loss-bearing content batch must be an object")
+        if batch.get("global_batch_index") != index:
+            raise LedgerError("loss-bearing content batch index is non-canonical")
+        raw_claims = batch.get("claims")
+        if not isinstance(raw_claims, Sequence) or isinstance(raw_claims, (str, bytes)):
+            raise LedgerError("loss-bearing content batch claims must be a sequence")
+        normalized: list[dict[str, Any]] = []
+        for claim_index, claim in enumerate(raw_claims):
+            if not isinstance(claim, Mapping):
+                raise LedgerError(
+                    f"loss-bearing content claims[{claim_index}] must be an object"
+                )
+            normalized.append(
+                {
+                    "segment_identity_sha256": _require_sha256(
+                        claim.get("segment_identity_sha256"),
+                        f"loss-bearing content claims[{claim_index}]"
+                        ".segment_identity_sha256",
+                    ),
+                    "offset_start": _require_nonnegative_int(
+                        claim.get("offset_start"),
+                        f"loss-bearing content claims[{claim_index}].offset_start",
+                    ),
+                    "offset_end": _require_nonnegative_int(
+                        claim.get("offset_end"),
+                        f"loss-bearing content claims[{claim_index}].offset_end",
+                    ),
+                }
+            )
+        return normalized
+
+    def next_exposure_identity(
+        self,
+        claims: Sequence[Mapping[str, Any]],
+        *,
+        actual_nonignored_targets: int,
+    ) -> str:
+        """Return an order-sensitive identity for the exact next authorized batch."""
+        normalized_claims, actual = self._normalized_claims(
+            claims,
+            actual_nonignored_targets=actual_nonignored_targets,
+        )
         state_identity = _require_sha256(
             self.state_dict()["state_identity_sha256"], "state_identity_sha256"
         )
-        return _canonical_sha256(
-            {
-                "schema_version": _NEXT_EXPOSURE_SCHEMA,
-                "ledger_identity_sha256": self.ledger_identity_sha256,
-                "materialization_identity_sha256": self.materialization_identity_sha256,
-                "packing_identity_sha256": self.packing_identity_sha256,
-                "current_exposure_state_identity_sha256": state_identity,
-                "next_claim_sequence": self.claim_sequence + 1,
-                "ordered_claims": normalized_claims,
-                "actual_nonignored_targets": actual,
-            }
+        payload: dict[str, Any] = {
+            "schema_version": _NEXT_EXPOSURE_SCHEMA,
+            "ledger_identity_sha256": self.ledger_identity_sha256,
+            "materialization_identity_sha256": self.materialization_identity_sha256,
+            "packing_identity_sha256": self.packing_identity_sha256,
+            "current_exposure_state_identity_sha256": state_identity,
+            "next_claim_sequence": self.claim_sequence + 1,
+            "ordered_claims": normalized_claims,
+            "actual_nonignored_targets": actual,
+        }
+        if self.loss_bearing_manifest_identity_sha256 is not None:
+            payload[_CONTENT_MANIFEST_STATE_KEY] = (
+                self.loss_bearing_manifest_identity_sha256
+            )
+        return _canonical_sha256(payload)
+
+    def authorize_batch(
+        self,
+        claims: Sequence[Mapping[str, Any]],
+        *,
+        actual_nonignored_targets: int,
+    ) -> None:
+        if self.content_authority_configured:
+            raise LedgerError(
+                "content-aware authorization is required while loss-bearing "
+                "content authority is configured"
+            )
+        super().authorize_batch(
+            claims,
+            actual_nonignored_targets=actual_nonignored_targets,
         )
 
     def authorize_batch_with_identity(
@@ -196,7 +315,12 @@ class IdentitySafeExposureReplayGuard(ExposureReplayGuard):
         actual_nonignored_targets: int,
         expected_next_exposure_identity_sha256: str,
     ) -> str:
-        """Authorize only the externally expected exact next exposure identity."""
+        """Authorize a legacy count-only batch only when no content authority exists."""
+        if self.content_authority_configured:
+            raise LedgerError(
+                "content-aware authorization is required while loss-bearing "
+                "content authority is configured"
+            )
         expected = _require_sha256(
             expected_next_exposure_identity_sha256,
             "expected_next_exposure_identity_sha256",
@@ -212,3 +336,121 @@ class IdentitySafeExposureReplayGuard(ExposureReplayGuard):
             actual_nonignored_targets=actual_nonignored_targets,
         )
         return observed
+
+    def authorize_live_batch_with_identity(
+        self,
+        claims: Sequence[Mapping[str, Any]],
+        *,
+        actual_nonignored_targets: int,
+        expected_next_exposure_identity_sha256: str,
+        batch_index: int,
+        input_ids: Any,
+        target_ids: Any,
+        loss_mask: Any | None = None,
+        shifted: bool = False,
+        ignore_index: int = -100,
+    ) -> str:
+        """Authenticate exact live predictor/target content before exposure mutation."""
+        if self._loss_bearing_content_manifest is None:
+            raise LedgerError("loss-bearing content authority is not configured")
+        manifest_identity = self.loss_bearing_manifest_identity_sha256
+        assert manifest_identity is not None
+        expected = _require_sha256(
+            expected_next_exposure_identity_sha256,
+            "expected_next_exposure_identity_sha256",
+        )
+        normalized_claims, actual = self._normalized_claims(
+            claims,
+            actual_nonignored_targets=actual_nonignored_targets,
+        )
+        observed = self.next_exposure_identity(
+            normalized_claims,
+            actual_nonignored_targets=actual,
+        )
+        if observed != expected:
+            raise LedgerError("next exposure identity does not match expected handoff")
+        manifest_claims = self._manifest_claims_for_batch(batch_index)
+        if normalized_claims != manifest_claims:
+            raise LedgerError(
+                "submitted claims differ from canonical loss-bearing content manifest"
+            )
+
+        from twelve_six.data.loss_bearing_content_binding_v1 import (
+            verify_live_loss_bearing_batch,
+        )
+
+        verify_live_loss_bearing_batch(
+            self._loss_bearing_content_manifest,
+            expected_manifest_identity_sha256=manifest_identity,
+            batch_index=batch_index,
+            input_ids=input_ids,
+            target_ids=target_ids,
+            loss_mask=loss_mask,
+            shifted=shifted,
+            ignore_index=ignore_index,
+        )
+        super().authorize_batch(
+            normalized_claims,
+            actual_nonignored_targets=actual,
+        )
+        return observed
+
+    def state_dict(self) -> dict[str, Any]:
+        state = super().state_dict()
+        manifest_identity = self.loss_bearing_manifest_identity_sha256
+        if manifest_identity is None:
+            return state
+        hardened = deepcopy(state)
+        hardened.pop("state_identity_sha256", None)
+        hardened[_CONTENT_MANIFEST_STATE_KEY] = manifest_identity
+        hardened["state_identity_sha256"] = _canonical_sha256(hardened)
+        return hardened
+
+    def load_state_dict(
+        self,
+        state: Mapping[str, Any],
+        *,
+        expected_state_identity_sha256: str,
+        expected_trainer_state_binding: Mapping[str, Any],
+    ) -> None:
+        manifest_identity = self.loss_bearing_manifest_identity_sha256
+        if manifest_identity is None:
+            if isinstance(state, Mapping) and _CONTENT_MANIFEST_STATE_KEY in state:
+                raise LedgerError(
+                    "content-bound exposure state requires matching content authority"
+                )
+            super().load_state_dict(
+                state,
+                expected_state_identity_sha256=expected_state_identity_sha256,
+                expected_trainer_state_binding=expected_trainer_state_binding,
+            )
+            return
+
+        if not isinstance(state, Mapping):
+            raise LedgerError("exposure state must be an object")
+        expected_outer = _require_sha256(
+            expected_state_identity_sha256, "expected_state_identity_sha256"
+        )
+        outer = deepcopy(dict(state))
+        observed_outer = _require_sha256(
+            outer.pop("state_identity_sha256", None), "state_identity_sha256"
+        )
+        if _canonical_sha256(outer) != observed_outer:
+            raise LedgerError("exposure state self-hash mismatch")
+        if observed_outer != expected_outer:
+            raise LedgerError("resume exposure state identity mismatch")
+        saved_manifest_identity = _require_sha256(
+            outer.pop(_CONTENT_MANIFEST_STATE_KEY, None),
+            _CONTENT_MANIFEST_STATE_KEY,
+        )
+        if saved_manifest_identity != manifest_identity:
+            raise LedgerError("resume loss-bearing content manifest identity mismatch")
+
+        base_state = outer
+        base_identity = _canonical_sha256(base_state)
+        base_state["state_identity_sha256"] = base_identity
+        super().load_state_dict(
+            base_state,
+            expected_state_identity_sha256=base_identity,
+            expected_trainer_state_binding=expected_trainer_state_binding,
+        )

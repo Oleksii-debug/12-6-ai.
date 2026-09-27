@@ -32,7 +32,7 @@ _TRUTH_BOUNDARY = {
     "final_test_outcomes_read": False,
     "paid_compute_used": False,
     "foreign_pretrained_weights": False,
-    "external_llm_or_api_used_for_data_or_intelligence": False,
+    "whole_corpus_external_llm_cleanliness_claimed": False,
     "source_text_retained_in_authority": False,
 }
 _INPUT_KEYS = frozenset({"id", "text", "mode"})
