@@ -355,7 +355,7 @@ jobs:
           proof = {
               "schema_version": "12-6.d03-current-clean-composition-physical-repeat.v1",
               "status": "PHYSICAL_EXECUTION_COMPLETE_PENDING_INDEPENDENT_QUALIFICATION",
-              "execution_head_sha": os.environ["GITHUB_SHA"],
+              "execution_head_sha": os.environ["D03_EXECUTION_SHA"],
               "execution_profile": "LOCAL_FREE",
               "output_files_sha256": roots,
               "survivor_jsonl_sha256": composition["survivor_jsonl_sha256"],
