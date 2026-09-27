@@ -340,16 +340,21 @@ def inspect_resolution_page(document_html: str, document_url: str, config: Mappi
     return ResolutionPage(url, title, tuple(sorted(pdfs)))
 
 
-def build_body_free_discovery_evidence(config: Mapping[str, Any], catalog_fetches: Sequence[str], document_fetches: Mapping[str, Sequence[str]]) -> dict[str, Any]:
+def build_body_free_discovery_evidence_from_documents(
+    config: Mapping[str, Any],
+    document_urls: Sequence[str],
+    document_fetches: Mapping[str, Sequence[str]],
+) -> dict[str, Any]:
+    """Build body-free evidence from an already authenticated canonical URL tuple."""
     validate_config(config)
-    if len(catalog_fetches) != 2:
-        raise NbuIntakeError("catalog fetch count")
-    discoveries = [discover_resolution_urls(item, config) for item in catalog_fetches]
-    if discoveries[0] != discoveries[1] or not discoveries[0]:
-        raise NbuIntakeError("unstable/empty discovery")
-    urls = discoveries[0]
+    urls = tuple(document_urls)
+    if not urls or urls != tuple(sorted(set(urls))):
+        raise NbuIntakeError("canonical document tuple invalid")
     if len(urls) > config["discovery_contract"]["hard_max_documents"]:
         raise NbuIntakeError("hard bound exceeded")
+    for url in urls:
+        if canonical_document_url(url, config["source"]["catalog_url"], config) != url:
+            raise NbuIntakeError("document tuple contains non-canonical URL")
     documents = []
     for url in urls:
         payloads = document_fetches.get(url)
@@ -359,8 +364,20 @@ def build_body_free_discovery_evidence(config: Mapping[str, Any], catalog_fetche
         if pages[0] != pages[1]:
             raise NbuIntakeError("unstable document metadata")
         page = pages[0]
-        meta = {"url": page.url, "title": page.title, "official_pdf_urls": list(page.official_pdf_urls)}
-        documents.append({"document_url": page.url, "official_pdf_urls": list(page.official_pdf_urls), "page_metadata_sha256": sha256((canonical_json(meta) + "\n").encode())})
+        meta = {
+            "url": page.url,
+            "title": page.title,
+            "official_pdf_urls": list(page.official_pdf_urls),
+        }
+        documents.append(
+            {
+                "document_url": page.url,
+                "official_pdf_urls": list(page.official_pdf_urls),
+                "page_metadata_sha256": sha256(
+                    (canonical_json(meta) + "\\n").encode()
+                ),
+            }
+        )
     evidence = {
         "schema": "12-6.d03-ua-nbu-official-resolutions-discovery-evidence.v1",
         "status": "DISCOVERY_ONLY_ZERO_CREDIT",
@@ -380,8 +397,29 @@ def build_body_free_discovery_evidence(config: Mapping[str, Any], catalog_fetche
         "final_test_accessed": False,
         "paid_compute_used": False,
     }
-    evidence["evidence_identity_sha256"] = sha256((canonical_json(evidence) + "\n").encode())
+    evidence["evidence_identity_sha256"] = sha256(
+        (canonical_json(evidence) + "\\n").encode()
+    )
     return evidence
+
+
+def build_body_free_discovery_evidence(
+    config: Mapping[str, Any],
+    catalog_fetches: Sequence[str],
+    document_fetches: Mapping[str, Sequence[str]],
+) -> dict[str, Any]:
+    """Compatibility path for the original two single-page catalog snapshots."""
+    validate_config(config)
+    if len(catalog_fetches) != 2:
+        raise NbuIntakeError("catalog fetch count")
+    discoveries = [discover_resolution_urls(item, config) for item in catalog_fetches]
+    if discoveries[0] != discoveries[1] or not discoveries[0]:
+        raise NbuIntakeError("unstable/empty discovery")
+    return build_body_free_discovery_evidence_from_documents(
+        config,
+        discoveries[0],
+        document_fetches,
+    )
 
 
 def validate_evidence(evidence: Mapping[str, Any], config: Mapping[str, Any]) -> None:
