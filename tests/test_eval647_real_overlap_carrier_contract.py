@@ -15,7 +15,9 @@ EXPECTED_MATERIALIZATION_ID = "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81
 def test_real_overlap_carrier_binds_clean_v2_physical_authority() -> None:
     carrier = CARRIER.read_text(encoding="utf-8")
     assert f'EXPECTED_MATERIALIZER_V2_BLOB="{EXPECTED_MATERIALIZER_V2_BLOB}"' in carrier
-    assert 'git hash-object src/twelve_six/data/post_g05_g06_materialization_v2.py' in carrier
+    assert 'git hash-object src/twelve_six/data/post_g05_g06_materialization_v2.py' not in carrier
+    assert 'evidence["materializer_v2_implementation_git_blob_sha1"] == expected_v2_blob' in carrier
+    assert 'proof["materializer_v2_git_blob_sha1"] == expected_v2_blob' in carrier
     assert f'PHYSICAL_RUN_ID="{EXPECTED_RUN_ID}"' in carrier
     assert f'PHYSICAL_ARTIFACT_ID="{EXPECTED_ARTIFACT_ID}"' in carrier
     assert f'EXPECTED_ARTIFACT_ZIP_SHA="{EXPECTED_ARTIFACT_SHA}"' in carrier
