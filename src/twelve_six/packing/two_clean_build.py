@@ -589,6 +589,7 @@ def prove_two_clean_build(
     packet: Mapping[str, Any],
     *,
     expected_input_packet_identity_sha256: str,
+    expected_implementation_manifest_identity_sha256: str,
     python_executable: str | None = None,
     timeout_seconds: int = 120,
 ) -> dict[str, Any]:
@@ -603,11 +604,20 @@ def prove_two_clean_build(
         expected_identity_sha256=expected_input_packet_identity_sha256,
     )
     runtime_identity = _verify_runtime_binding(verified)
+    independent_implementation_identity = _require_sha256(
+        expected_implementation_manifest_identity_sha256,
+        "expected_implementation_manifest_identity_sha256",
+    )
+    if (
+        verified["expected_implementation_manifest_identity_sha256"]
+        != independent_implementation_identity
+    ):
+        raise TwoCleanBuildError(
+            "input packet implementation manifest does not match independently expected identity"
+        )
     implementation_identity = _verify_implementation_binding(
         verified["expected_implementation_manifest"],
-        expected_identity_sha256=(
-            verified["expected_implementation_manifest_identity_sha256"]
-        ),
+        expected_identity_sha256=independent_implementation_identity,
     )
     executable = _trusted_python_executable(python_executable)
     packet_identity = verified["input_packet_identity_sha256"]
