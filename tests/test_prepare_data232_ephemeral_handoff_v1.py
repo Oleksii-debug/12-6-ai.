@@ -418,7 +418,7 @@ def test_payload_mutation_or_coverage_failure_publishes_nothing(
     else:
         rows[0]["unexpected"] = "no"
     records_path.write_bytes(b"".join(_canonical(row, newline=True) for row in rows))
-    with pytest.raises(ValueError, match="physical records JSONL root"):
+    with pytest.raises(ValueError, match=failure_pattern):
         runner.prepare_and_publish(
             records_path=records_path,
             inventory_path=inventory_path,
