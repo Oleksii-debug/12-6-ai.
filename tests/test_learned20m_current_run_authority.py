@@ -252,6 +252,7 @@ def test_base_manifest_substitution_fails_under_fixed_run_identity() -> None:
             global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
+
 def test_pointer_decoder_rejects_noncanonical_and_unknown_fields() -> None:
     manifest = _manifest()
     state = build_current_run_pointer_state(
