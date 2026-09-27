@@ -862,7 +862,8 @@ def prove_two_clean_build(
         != independent_runtime_dependency_identity
     ):
         raise TwoCleanBuildError(
-            "input packet runtime dependency manifest does not match independently expected identity"
+            "input packet runtime dependency manifest does not match "
+            "independently expected identity"
         )
     executable = _trusted_python_executable(python_executable)
     packet_identity = verified["input_packet_identity_sha256"]
