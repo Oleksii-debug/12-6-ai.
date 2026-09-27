@@ -69,6 +69,7 @@ def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     ).read_text(encoding="utf-8")
     job_start = workflow.index("  d03-current-clean-physical:\n")
     job = workflow[job_start:]
+    compact_job = " ".join(job.split())
 
     assert 'EVAL290_HEAD_SHA: "029514654829cebc149cff6fc1fea2a8ba4fa566"' in job
     assert 'EVAL291_HEAD_SHA: "fb268061300127b62cc2a262664b30c614559dac"' in job
@@ -79,7 +80,24 @@ def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     assert 'eval290_out_a="$RUNNER_TEMP/eval290-out-a"' in job
     assert 'eval290_out_b="$RUNNER_TEMP/eval290-out-b"' in job
     assert 'diff -ru "$eval290_out_a" "$eval290_out_b"' in job
-    compact_job = " ".join(job.split())
+    assert (
+        'python "$eval290_src/tools/execution_bootstrap.py" bootstrap '
+        '--repo-root "$eval290_src" --capabilities "runtime,tests" '
+        '--venv "$eval290_venv" --manifest "$eval290_environment"'
+        in compact_job
+    )
+    assert (
+        'PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python" -m '
+        'twelve_six.eval290_ua_selection build --repo-root "$eval290_src"'
+        in compact_job
+    )
+    assert (
+        'PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python" -m '
+        'twelve_six.eval290_ua_selection verify --repo-root "$eval290_src"'
+        in compact_job
+    )
+    assert 'numpy.__version__ == "2.4.6"' in job
+    assert 'pyarrow.__version__ == "25.0.1"' in job
     assert (
         'PYTHONPATH="$eval291_src/src" python -m '
         'twelve_six.eval291_en_selection_validation build --repo-root "$eval291_src"'
