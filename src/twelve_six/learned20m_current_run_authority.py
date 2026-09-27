@@ -532,7 +532,7 @@ def inspect_current_run_authority(
     _validate_transport(remote)
     try:
         snapshot = _read_pointer_state(repo_root, remote)
-    except (CurrentRunAuthorityError, _GlobalLeaseFailure, ValueError) as exc:
+    except (CurrentRunAuthorityError, _GlobalLeaseFailure, TypeError, ValueError) as exc:
         return CurrentRunAuthorityInspection(
             present=True,
             valid=False,
@@ -824,7 +824,7 @@ def activate_current_run_authority(
 
     try:
         current = _read_pointer_state(repo_root, remote)
-    except (CurrentRunAuthorityError, _GlobalLeaseFailure, ValueError) as exc:
+    except (CurrentRunAuthorityError, _GlobalLeaseFailure, TypeError, ValueError) as exc:
         return _operation_failure("ACTIVATE", blocker=str(exc))
     observed_tip = None if current is None else current[0]
     if observed_tip != expected_pointer_tip:
@@ -971,7 +971,7 @@ def retire_current_run_authority(
         return _operation_failure("RETIRE", blocker="expected_current_run_identity_invalid")
     try:
         current = _read_pointer_state(repo_root, remote)
-    except (CurrentRunAuthorityError, _GlobalLeaseFailure, ValueError) as exc:
+    except (CurrentRunAuthorityError, _GlobalLeaseFailure, TypeError, ValueError) as exc:
         return _operation_failure("RETIRE", blocker=str(exc))
     if current is None:
         return _operation_failure("RETIRE", blocker="current_run_pointer_missing")
