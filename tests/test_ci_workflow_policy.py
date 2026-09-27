@@ -53,3 +53,11 @@ def test_d03_artifact_job_is_same_repo_and_pr_pinned():
         in job
     )
     assert "pull_request_target" not in job
+    assert (
+        'type(composition.get("authorized_optimized_target_exposure")) is not int'
+        in job
+    )
+    assert (
+        'type(composition.get("optimizer_updates_executed_on_real_targets")) is not int'
+        in job
+    )
