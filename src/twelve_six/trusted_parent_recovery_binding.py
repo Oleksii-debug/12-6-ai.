@@ -19,8 +19,8 @@ from twelve_six.accelerated_scaling import REPOSITORY
 from twelve_six.portable_run_binding import (
     PortableRunBinding,
     _build_candidate,
-    canonical_sha256,
     bind_portable_run_packet,
+    canonical_sha256,
 )
 from twelve_six.portable_run_packet import assess_portable_run_packet
 from twelve_six.scale141_recovery import (
