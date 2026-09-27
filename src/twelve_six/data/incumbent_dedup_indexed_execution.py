@@ -49,6 +49,10 @@ _FROZEN_RE_COMPILER_COMPILE = _freeze_direct_behavior(re._compiler.compile)
 _FROZEN_RE_COMPILER_ISSTRING = _freeze_direct_behavior(re._compiler.isstring)
 _FROZEN_RE_CACHE = re._cache
 _FROZEN_RE_MAXCACHE = re._MAXCACHE
+_FROZEN_RE_HAS_CACHE2 = hasattr(re, "_cache2")
+_FROZEN_RE_HAS_MAXCACHE2 = hasattr(re, "_MAXCACHE2")
+_FROZEN_RE_CACHE2 = getattr(re, "_cache2", None)
+_FROZEN_RE_MAXCACHE2 = getattr(re, "_MAXCACHE2", None)
 
 
 def _attest_loader_frozen_runtime_dependencies() -> None:
@@ -78,11 +82,34 @@ def _attest_loader_frozen_runtime_dependencies() -> None:
     ):
         raise IndexedExecutionError("transitive behavior drift: re._MAXCACHE")
 
+    has_cache2 = hasattr(re, "_cache2")
+    has_maxcache2 = hasattr(re, "_MAXCACHE2")
+    if has_cache2 != _FROZEN_RE_HAS_CACHE2:
+        raise IndexedExecutionError("transitive behavior drift: re._cache2 presence")
+    if has_maxcache2 != _FROZEN_RE_HAS_MAXCACHE2:
+        raise IndexedExecutionError("transitive behavior drift: re._MAXCACHE2 presence")
+    if _FROZEN_RE_HAS_CACHE2 != _FROZEN_RE_HAS_MAXCACHE2:
+        raise IndexedExecutionError("transitive behavior drift: incomplete re._cache2 contract")
+    if _FROZEN_RE_HAS_CACHE2:
+        cache2 = getattr(re, "_cache2", None)
+        if type(cache2) is not dict or cache2 is not _FROZEN_RE_CACHE2:
+            raise IndexedExecutionError("transitive behavior drift: re._cache2")
+        maxcache2 = getattr(re, "_MAXCACHE2", None)
+        if (
+            type(_FROZEN_RE_MAXCACHE2) is not int
+            or type(maxcache2) is not int
+            or maxcache2 != _FROZEN_RE_MAXCACHE2
+        ):
+            raise IndexedExecutionError("transitive behavior drift: re._MAXCACHE2")
+
 
 def _neutralize_verified_re_cache() -> None:
     """Verify regex runtime identity before clearing non-authoritative cache contents."""
     _attest_loader_frozen_runtime_dependencies()
     _FROZEN_RE_CACHE.clear()
+    if _FROZEN_RE_HAS_CACHE2:
+        assert isinstance(_FROZEN_RE_CACHE2, dict)
+        _FROZEN_RE_CACHE2.clear()
 
 
 def attest_incumbent_runtime(v3: Any) -> None:
