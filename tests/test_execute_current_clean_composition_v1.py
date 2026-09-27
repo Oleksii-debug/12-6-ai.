@@ -201,23 +201,43 @@ def test_require_exact_checkout_rejects_tampered_execution_dependency(
         cli.require_exact_checkout(tmp_path, carrier_sha)
 
 
-def test_authenticated_import_rejects_preloaded_external_module(
+def test_authenticated_import_rejects_any_preloaded_project_module(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     carrier_sha = "3" * 40
-    expected = tmp_path / cli.MODULE_PATH
-    expected.parent.mkdir(parents=True, exist_ok=True)
-    expected.write_text("def execute_current_clean_composition(): pass\n", encoding="utf-8")
-    external = tmp_path / "external.py"
-    external.write_text("pass\n", encoding="utf-8")
-    fake = types.ModuleType("twelve_six.data.current_clean_execution_v1")
-    fake.__file__ = str(external)
-    module_name = "twelve_six.data.current_clean_execution_v1"
-    monkeypatch.setitem(sys.modules, module_name, fake)
+    fake = types.ModuleType("twelve_six.data.injected")
+    monkeypatch.setitem(sys.modules, "twelve_six.data.injected", fake)
 
-    with pytest.raises(RuntimeError, match="outside authenticated checkout"):
+    with pytest.raises(RuntimeError, match="preloaded before authenticated Git importer"):
         cli.load_authenticated_executor(tmp_path, carrier_sha)
+
+
+def test_authenticated_git_finder_executes_git_bytes_not_physical_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    carrier_sha = "a" * 40
+    physical = tmp_path / "src" / "twelve_six" / "demo.py"
+    physical.parent.mkdir(parents=True, exist_ok=True)
+    physical.write_text("raise RuntimeError('physical code executed')\n", encoding="utf-8")
+    sources = {
+        "src/twelve_six/__init__.py": b"",
+        "src/twelve_six/demo.py": b"VALUE = 'authenticated'\n",
+    }
+    monkeypatch.setattr(
+        cli,
+        "_git_bytes_optional",
+        lambda repo_root, git_sha, repo_path: sources.get(repo_path),
+    )
+    finder = cli._AuthenticatedGitFinder(tmp_path, carrier_sha)
+    spec = finder.find_spec("twelve_six.demo")
+    assert spec is not None and spec.loader is finder
+    module = types.ModuleType("twelve_six.demo")
+    module.__spec__ = spec
+    finder.exec_module(module)
+    assert module.VALUE == "authenticated"
+    assert module.__file__ == f"git:{carrier_sha}:src/twelve_six/demo.py"
 
 
 def test_main_reexecutes_in_isolated_child_before_project_import(
