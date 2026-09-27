@@ -24,9 +24,14 @@ from twelve_six.learned20m_global_training_lease import (
     terminate_global_training_run_lease,
 )
 from twelve_six.learned20m_training_lease import (
+    TERMINAL_AUTHORITY_SCHEMA,
+    base_launch_manifest_sha256,
+    build_authorized_training_run_lease,
     build_training_run_lease,
     canonical_json_bytes,
+    finalize_launch_manifest,
     launch_manifest_sha256,
+    terminal_authority_sha256,
 )
 
 NOW = datetime(2026, 9, 14, 12, 0, tzinfo=UTC)
@@ -83,6 +88,63 @@ def _manifest() -> dict:
     }
 
 
+def _terminal_authority(manifest: dict, *, exposure: int) -> dict:
+    identities = manifest["identities"]
+    authority = {
+        "schema": TERMINAL_AUTHORITY_SCHEMA,
+        "authority_identity_sha256": "0" * 64,
+        "base_manifest_sha256": base_launch_manifest_sha256(manifest),
+        "source_git_sha": identities["source_git_sha"],
+        "carrier_authority_sha256": "0" * 64,
+        "modelspec_sha256": identities["modelspec_sha256"],
+        "initspec_sha256": identities["initspec_sha256"],
+        "random_init": True,
+        "foreign_pretrained_weights_used": False,
+        "launch_input_authority_sha256": "1" * 64,
+        "corpus_manifest_sha256": identities["corpus_manifest_sha256"],
+        "split_sha256": identities["split_sha256"],
+        "tokenizer_decision_sha256": "2" * 64,
+        "tokenizer_sha256": identities["tokenizer_sha256"],
+        "packing_sha256": identities["packing_sha256"],
+        "loss_bearing_manifest_sha256": "3" * 64,
+        "unique_loss_ledger_sha256": identities["unique_loss_ledger_sha256"],
+        "exposure_plan_sha256": "4" * 64,
+        "portable_run_packet_sha256": identities["portable_run_packet_sha256"],
+        "portable_run_binding_sha256": identities["portable_run_binding_sha256"],
+        "recipe_authority_sha256": "5" * 64,
+        "training_config_sha256": identities["training_config_sha256"],
+        "seed_vector_sha256": "6" * 64,
+        "target_unique_loss_positions": manifest["recipe"]["target_unique_loss_positions"],
+        "maximum_total_exposures": manifest["recipe"]["maximum_total_exposures"],
+        "replay_cap": 4_000_000,
+        "recovery_run_id": "learned20m-run-001",
+        "recovery_run_manifest_sha256": "7" * 64,
+        "recovery_attempt_authority_sha256": "8" * 64,
+        "checkpoint_contract_sha256": manifest["checkpoint"]["checkpoint_contract_sha256"],
+        "checkpoint_cadence_sha256": "9" * 64,
+        "resume_rules_sha256": "a" * 64,
+        "safe_stop_current_run_sha256": "b" * 64,
+        "evaluation_schedule_sha256": "c" * 64,
+        "evaluation_firewall_sha256": manifest["evaluation"]["firewall_sha256"],
+        "poison_stop_semantics_sha256": "d" * 64,
+        "resource_evidence_sha256": "e" * 64,
+        "execution_target_sha256": "f" * 64,
+        "measured_resource_envelope_sha256": "0" * 64,
+        "resource_class": manifest["resource"]["resource_class"],
+        "maximum_cost_usd": 0,
+        "materially_paid": False,
+        "final_test_payload_access": False,
+        "training_authority_ref": manifest["authorities"]["training"]["reference"],
+        "training_authority_sha256": manifest["authorities"]["training"]["evidence_sha256"],
+        "compute_authority_ref": manifest["authorities"]["compute"]["reference"],
+        "compute_authority_sha256": manifest["authorities"]["compute"]["evidence_sha256"],
+        "execution_backend": manifest["execution_backend"],
+        "authorized_optimized_target_exposure": exposure,
+    }
+    authority["authority_identity_sha256"] = terminal_authority_sha256(authority)
+    return authority
+
+
 def _lease(manifest: dict, *, run_id: str = "run-a"):
     return build_training_run_lease(
         manifest,
@@ -126,6 +188,49 @@ def _assert_no_authority_widening(result: GlobalLeaseOperation) -> None:
     assert result.optimizer_start_permitted_by_this_module is False
     assert result.training_authority_granted_by_this_module is False
     assert result.scientific_truth_changed is False
+
+
+def test_terminal_authority_lease_composes_with_global_cas_without_authority_widening(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    base = _manifest()
+    authority = _terminal_authority(base, exposure=1_000)
+    manifest = finalize_launch_manifest(base, authority)
+    expected_authority = authority["authority_identity_sha256"]
+
+    lease = build_authorized_training_run_lease(
+        manifest,
+        expected_terminal_authority_sha256=expected_authority,
+        run_id="run-terminal-authority",
+        holder_id="runner-terminal-authority",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+
+    expected_manifest = launch_manifest_sha256(manifest)
+    assert lease.manifest_sha256 == expected_manifest
+    assert global_training_run_lease_ref(manifest).endswith(f"/{expected_manifest}")
+
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.post_write_reread_verified is True
+    assert acquired.launch_manifest_sha256 == expected_manifest
+    assert acquired.run_id == lease.run_id
+    _assert_no_authority_widening(acquired)
+
+    inspection = inspect_global_training_run_lease(writer_b, str(remote), manifest)
+    assert inspection.present is True
+    assert inspection.valid is True
+    assert inspection.launch_manifest_sha256 == expected_manifest
+    assert inspection.run_id == lease.run_id
+    assert inspection.optimizer_start_permitted_by_this_module is False
 
 
 def test_ref_and_state_bind_fixed_repository_lock_domain_and_manifest() -> None:
