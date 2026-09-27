@@ -556,6 +556,61 @@ def test_activation_rejects_candidate_selected_current_run_identity_root(
     assert result.blockers == ("expected_current_run_identity_sha256_mismatch",)
     assert inspect_current_run_authority(writer_a, str(remote)).present is False
 
+def test_mutations_fail_closed_on_uncanonicalizable_manifest(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    malformed = deepcopy(manifest)
+    malformed["recipe"]["opaque"] = object()
+
+    activated = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        malformed,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert activated.committed is False
+    assert activated.blockers[0].startswith("launch_manifest_snapshot_invalid:")
+
+    refreshed = refresh_current_run_authority(
+        writer_a,
+        str(remote),
+        malformed,
+        expected_pointer_tip="a" * 40,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert refreshed.committed is False
+    assert refreshed.blockers[0].startswith("launch_manifest_snapshot_invalid:")
+
+
+def test_activation_fail_closes_on_uncanonicalizable_identity(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    identity["opaque"] = object()
+
+    result = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256="a" * 64,
+        now=NOW,
+    )
+
+    assert result.committed is False
+    assert result.blockers[0].startswith("current_run_identity_snapshot_invalid:")
+
+
 def test_activation_rejects_expired_running_global_lease(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
