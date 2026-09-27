@@ -149,6 +149,35 @@ def test_clean_runtime_dependency_probe_is_deterministic_and_path_independent() 
         assert len(entry["sha256"]) == 64
 
 
+@pytest.mark.parametrize(
+    "bad_path",
+    ["/absolute/json.py", "../json.py", "json\\__init__.py"],
+)
+def test_runtime_dependency_manifest_rejects_nonportable_paths(bad_path: str) -> None:
+    manifest = _runtime_dependency_manifest()
+    module_name = next(
+        name
+        for name, entry in manifest.items()
+        if entry.get("kind") == "stdlib"
+    )
+    manifest[module_name]["path"] = bad_path
+    with pytest.raises(
+        two_clean.TwoCleanBuildError,
+        match="invalid relative path",
+    ):
+        two_clean._runtime_dependency_manifest_identity(manifest)
+
+
+def test_runtime_dependency_manifest_rejects_unknown_entry_fields() -> None:
+    manifest = _runtime_dependency_manifest()
+    manifest["sys"] = {"kind": "built-in", "sha256": "0" * 64}
+    with pytest.raises(
+        two_clean.TwoCleanBuildError,
+        match="unexpected fields",
+    ):
+        two_clean._runtime_dependency_manifest_identity(manifest)
+
+
 def test_changed_stdlib_dependency_fails_before_qualified_proof() -> None:
     packet = _packet()
     runtime_manifest = copy.deepcopy(packet["expected_runtime_dependency_manifest"])
