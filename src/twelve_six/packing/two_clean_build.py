@@ -140,7 +140,7 @@ def _sha256_file(path: Path) -> str:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
     except OSError as exc:
-        raise TwoCleanBuildError("trusted Python executable cannot be hashed") from exc
+        raise TwoCleanBuildError(f"trusted file cannot be hashed: {path.name}") from exc
     return digest.hexdigest()
 
 
