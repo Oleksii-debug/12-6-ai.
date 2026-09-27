@@ -69,7 +69,7 @@ def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     ).read_text(encoding="utf-8")
     job_start = workflow.index("  d03-current-clean-physical:\n")
     job = workflow[job_start:]
-    compact_job = " ".join(job.split())
+    compact_job = " ".join(job.replace(chr(92) + "\n", " ").split())
 
     assert 'EVAL290_HEAD_SHA: "029514654829cebc149cff6fc1fea2a8ba4fa566"' in job
     assert 'EVAL291_HEAD_SHA: "fb268061300127b62cc2a262664b30c614559dac"' in job
