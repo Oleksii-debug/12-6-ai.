@@ -9,14 +9,14 @@ import pytest
 from tools import run_current_survivor_g05_quality_v2 as runner
 
 
-def test_canonical_checkout_assets_are_the_pinned_trust_roots() -> None:
+def test_historical_runner_fails_closed_after_g05_authority_supersession() -> None:
     repo_root = Path(__file__).resolve().parents[1]
-    bindings = runner._verify_checkout_assets(repo_root)
+    current_g05_raw = (repo_root / runner.CANONICAL_G05_MODULE_PATH).read_bytes()
 
-    assert bindings == {
-        "g05_module_git_blob_sha1": runner.CANONICAL_G05_MODULE_BLOB_SHA1,
-        "survivor_evidence_git_blob_sha1": runner.CANONICAL_SURVIVOR_EVIDENCE_BLOB_SHA1,
-    }
+    assert runner._git_blob_sha1(current_g05_raw) != runner.CANONICAL_G05_MODULE_BLOB_SHA1
+    with pytest.raises(ValueError, match="canonical G05 module Git blob drift"):
+        runner._verify_checkout_assets(repo_root)
+
     evidence = runner._validate_survivor_evidence(
         repo_root / runner.CANONICAL_SURVIVOR_EVIDENCE_PATH
     )
