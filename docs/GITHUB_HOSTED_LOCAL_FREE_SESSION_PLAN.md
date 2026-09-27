@@ -15,11 +15,24 @@ checkpoint deadline must fit the packet's actual `session_time_limit_minutes`.
 Every plan is canonical-JSON hashed and preserves a zero-credit truth boundary. The
 validator rejects bool-as-int coercions, paid-resource widening, unsafe work windows,
 sequence gaps, digest drift, and positive training/optimizer/learned-weight/final-test
-claims in the planning artifact.
+claims in the planning artifact. Raw JSON loaded by this boundary is strict: duplicate
+object keys, NaN/Infinity and overflow-to-nonfinite numbers are rejected before semantic
+validation.
+
+Portable `OTHER_FREE` is only a coarse resource class. It is never proof that the
+concrete executor is GitHub-hosted. Launch assessment additionally consumes a hosted
+carrier receipt with the canonical `github-hosted` / `ubuntu-24.04` / Linux / X64
+identity, exact repository and exact portable `identities.source_git_sha`. The receipt
+self-hash is integrity only: the caller must provide the independently trusted expected
+receipt SHA-256. Missing evidence, a caller-resealed substitute, source-SHA drift or a
+self-hosted/other-free runner identity keeps readiness false.
 
 A continuation handoff binds the plan identity, exact predecessor index/run id,
-checkpoint and manifest hashes, and a non-credential-bearing `file:` or `https:`
-checkpoint URI. That handoff is correlation data, **not** a recovery trust root.
+checkpoint and manifest hashes, the concrete hosted-carrier receipt SHA-256, and a
+non-credential-bearing `file:` or `https:` checkpoint URI. That handoff is correlation
+data, **not** a recovery trust root. A later session must bind the same independently
+authenticated concrete hosted-carrier identity; matching `OTHER_FREE` strings are not
+sufficient same-provider evidence.
 Session 2+ is ready only when the canonical portable-run assessment independently
 reports `ready_for_same_provider_fresh_process_resume=true`. Cross-provider readiness
 can never authorize a GitHub-hosted -> GitHub-hosted continuation.
