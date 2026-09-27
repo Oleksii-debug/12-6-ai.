@@ -61,7 +61,7 @@ def _fixture(tmp_path: Path) -> tuple[dict[str, Path], dict[str, bytes | str]]:
         "materialization_evidence": {"identity_sha256": "3" * 64},
     }
     evidence = {
-        "schema_version": "12-6.d03-post-g05-g06-materialization.v1",
+        "schema_version": "12-6.d03-post-g05-g06-materialization.v2",
         "status": "MATERIALIZED_ZERO_CREDIT",
         "execution_profile": "LOCAL_FREE",
         "materialization_identity_sha256": "4" * 64,
@@ -128,6 +128,29 @@ def test_execute_rejects_self_selected_training_identity(
             output_json=paths["output"],
             expected_materialization_identity_sha256="4" * 64,
             expected_training_jsonl_sha256="6" * 64,
+        )
+
+
+def test_execute_rejects_legacy_materialization_v1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths, values = _fixture(tmp_path)
+    evidence = json.loads(paths["evidence"].read_text(encoding="utf-8"))
+    evidence["schema_version"] = "12-6.d03-post-g05-g06-materialization.v1"
+    paths["evidence"].write_text(json.dumps(evidence), encoding="utf-8")
+
+    def fake_fetch(url: str, _timeout: int) -> bytes:
+        return values["reserved_a"] if "example/one" in url else values["reserved_b"]  # type: ignore[return-value]
+
+    monkeypatch.setattr(executor.source_materializer, "_fetch", fake_fetch)
+    with pytest.raises(DecontaminationError, match="materialization schema drift"):
+        executor.execute(
+            training_records_jsonl=paths["training"],
+            materialization_evidence_json=paths["evidence"],
+            manifest_json=paths["manifest"],
+            output_json=paths["output"],
+            expected_materialization_identity_sha256="4" * 64,
+            expected_training_jsonl_sha256=str(values["training_sha"]),
         )
 
 
