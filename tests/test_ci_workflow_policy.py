@@ -61,3 +61,27 @@ def test_d03_artifact_job_is_same_repo_and_pr_pinned():
         'type(composition.get("optimizer_updates_executed_on_real_targets")) is not int'
         in job
     )
+
+def test_d03_selection_payload_reconstruction_is_exact_head_and_retention_independent():
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    job_start = workflow.index("  d03-current-clean-physical:\n")
+    job = workflow[job_start:]
+
+    assert 'EVAL290_HEAD_SHA: "029514654829cebc149cff6fc1fea2a8ba4fa566"' in job
+    assert 'EVAL291_HEAD_SHA: "fb268061300127b62cc2a262664b30c614559dac"' in job
+    assert "git fetch --no-tags origin refs/pull/402/head" in job
+    assert 'test "$(git rev-parse FETCH_HEAD)" = "$EVAL290_HEAD_SHA"' in job
+    assert "git fetch --no-tags origin refs/pull/395/head" in job
+    assert 'test "$(git rev-parse FETCH_HEAD)" = "$EVAL291_HEAD_SHA"' in job
+    assert 'eval290_out_a="$RUNNER_TEMP/eval290-out-a"' in job
+    assert 'eval290_out_b="$RUNNER_TEMP/eval290-out-b"' in job
+    assert 'diff -ru "$eval290_out_a" "$eval290_out_b"' in job
+    assert "python -m twelve_six.eval291_en_selection_validation \\" in job
+    assert 'cmp "$RUNNER_TEMP/eval291-en.jsonl"' in job
+    assert "resolve_eval303_selection_payloads_from_reconstructed" in job
+    assert "Fetch immutable selection-validation payload artifacts" not in job
+    assert "EVAL290_ARTIFACT_ID:" not in job
+    assert "EVAL291_ARTIFACT_ID:" not in job
+
