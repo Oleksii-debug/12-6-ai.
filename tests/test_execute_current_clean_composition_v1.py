@@ -79,15 +79,6 @@ def _args(tmp_path: Path) -> argparse.Namespace:
 def _executor(*args, **kwargs):
     assert args[0][0]["text"] == "Секретний сирий навчальний текст"
     assert args[1][0]["text"] == "SECRET RAW EVALUATION TEXT"
-    composition = {
-        "receipt_identity_sha256": "a" * 64,
-        "durable_evidence_hash_only": True,
-    }
-    report = {"report_sha256": "b" * 64, "hash_only_evidence": True}
-    decontam = {"execution_identity_sha256": "c" * 64}
-    eval647 = {"receipt_identity_sha256": "d" * 64}
-    quality = {"execution_identity_sha256": "e" * 64}
-    privacy = {"execution_identity_sha256": "f" * 64}
     survivor_records = [
         {
             "record_id": "survivor-1",
@@ -97,11 +88,36 @@ def _executor(*args, **kwargs):
             "normalized_payload": "Дозволений матеріалізований текст",
         }
     ]
+    survivor_raw = "".join(
+        json.dumps(
+            row,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+        for row in survivor_records
+    ).encode("utf-8")
+    payload_bytes = len(
+        survivor_records[0]["normalized_payload"].encode("utf-8")
+    )
+    composition = {
+        "receipt_identity_sha256": "a" * 64,
+        "durable_evidence_hash_only": True,
+        "survivor_jsonl_sha256": __import__("hashlib").sha256(
+            survivor_raw
+        ).hexdigest(),
+        "survivor_records": 1,
+        "survivor_payload_bytes": payload_bytes,
+    }
+    report = {"report_sha256": "b" * 64, "hash_only_evidence": True}
+    decontam = {"execution_identity_sha256": "c" * 64}
+    eval647 = {"receipt_identity_sha256": "d" * 64}
+    quality = {"execution_identity_sha256": "e" * 64}
+    privacy = {"execution_identity_sha256": "f" * 64}
     survivor_inventory = {
         "record_count": 1,
-        "total_payload_bytes": len(
-            survivor_records[0]["normalized_payload"].encode("utf-8")
-        ),
+        "total_payload_bytes": payload_bytes,
     }
     return (
         composition,
@@ -135,6 +151,24 @@ def test_execute_and_publish_writes_only_text_free_evidence(tmp_path: Path) -> N
     )
     assert "Дозволений матеріалізований текст" in survivors
     assert "SECRET RAW EVALUATION TEXT" not in survivors
+
+
+def test_execute_and_publish_rejects_survivor_hash_drift(tmp_path: Path) -> None:
+    args = _args(tmp_path)
+
+    def bad_executor(*args, **kwargs):
+        result = list(_executor(*args, **kwargs))
+        composition = dict(result[0])
+        composition["survivor_jsonl_sha256"] = "0" * 64
+        result[0] = composition
+        return tuple(result)
+
+    with pytest.raises(
+        RuntimeError,
+        match="survivor JSONL differs from execution receipt",
+    ):
+        cli.execute_and_publish(args, bad_executor)
+    assert not args.output_dir.exists()
 
 
 def test_execute_and_publish_refuses_existing_output(tmp_path: Path) -> None:
