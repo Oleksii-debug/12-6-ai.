@@ -236,7 +236,6 @@ def test_status_with_marker_fails_closed_without_current_run_authority(
     assert code == operator.EXIT_ERROR
 
 
-
 def test_temp_path_substitution_never_publishes_success_or_unlinks_replacement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
