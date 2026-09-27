@@ -205,3 +205,12 @@ dependencies = ["numpy>=1.26", "safetensors>=0.5", "torch>=99"]
         match="current checkout runtime project dependency projection mismatch",
     ):
         validate_current_checkout_compatibility(tmp_path)
+
+
+def test_raw_receipt_rejects_overflowed_json_number(tmp_path: Path) -> None:
+    raw = REPORT_PATH.read_text(encoding="utf-8")
+    invalid = raw.replace('"pytest_warnings": 1,', '"pytest_warnings": 1e400,', 1)
+    path = _write_raw_receipt(tmp_path, invalid)
+
+    with pytest.raises(ValueError, match="non-finite JSON number rejected"):
+        validate_receipt_file(path)
