@@ -134,9 +134,11 @@ jobs:
         run: |
           set -euo pipefail
           eval290_src="$RUNNER_TEMP/eval290-src"
-          eval290_out="$RUNNER_TEMP/eval290-out"
+          eval290_out_a="$RUNNER_TEMP/eval290-out-a"
+          eval290_out_b="$RUNNER_TEMP/eval290-out-b"
           eval290_lock="$RUNNER_TEMP/eval290-extra.lock.txt"
-          rm -rf "$eval290_src" "$eval290_out"
+          eval291_src="$RUNNER_TEMP/eval291-src"
+          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src"
 
           # Historical Actions artifacts were retention-bounded. Recover authority
           # from immutable Git roots instead of weakening to a newer/unbound payload.
@@ -149,17 +151,28 @@ jobs:
 
           git -C "$eval290_src" show             "$EVAL290_HEAD_SHA:requirements/locks/linux-x86_64/eval290-extra.lock.txt"             > "$eval290_lock"
           python -m pip install             --disable-pip-version-check             --require-hashes             --no-deps             -r "$eval290_lock"
-          PYTHONPATH="$eval290_src/src" python -m twelve_six.eval290_ua_selection             build --repo-root "$eval290_src" --output-dir "$eval290_out"
-          PYTHONPATH="$eval290_src/src" python -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out"
-          test "$(sha256sum "$eval290_out/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
-          test "$(sha256sum "$eval290_out/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
+          for out in "$eval290_out_a" "$eval290_out_b"; do
+            PYTHONPATH="$eval290_src/src" python -m twelve_six.eval290_ua_selection               build --repo-root "$eval290_src" --output-dir "$out"
+          done
+          diff -ru "$eval290_out_a" "$eval290_out_b"
+          PYTHONPATH="$eval290_src/src" python -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out_a"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
 
           git fetch --no-tags origin refs/pull/395/head
           test "$(git rev-parse FETCH_HEAD)" = "$EVAL291_HEAD_SHA"
-          git show             "$EVAL291_HEAD_SHA:data/evaluation/eval291/selection-validation/en.jsonl"             > "$RUNNER_TEMP/eval291-en.jsonl"
-          git show             "$EVAL291_HEAD_SHA:evidence/eval291/en-selection-validation-v1-authority.json"             > "$RUNNER_TEMP/eval291-authority.json"
+          git worktree add --detach "$eval291_src" "$EVAL291_HEAD_SHA"
+          test "$(git -C "$eval291_src" rev-parse HEAD)" = "$EVAL291_HEAD_SHA"
+          git -C "$eval291_src" diff --quiet HEAD --
+          git -C "$eval291_src" diff --cached --quiet HEAD --
+          cp "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"             "$RUNNER_TEMP/eval291-en.jsonl"
+          cp "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"             "$RUNNER_TEMP/eval291-authority.json"
           test "$(sha256sum "$RUNNER_TEMP/eval291-en.jsonl" | cut -d' ' -f1)" = "$EVAL291_DATA_SHA256"
           test "$(sha256sum "$RUNNER_TEMP/eval291-authority.json" | cut -d' ' -f1)" = "$EVAL291_AUTHORITY_SHA256"
+          PYTHONPATH="$eval291_src/src" python -m twelve_six.eval291_en_selection_validation             build --repo-root "$eval291_src"
+          cmp "$RUNNER_TEMP/eval291-en.jsonl"             "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"
+          cmp "$RUNNER_TEMP/eval291-authority.json"             "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"
+          PYTHONPATH="$eval291_src/src" python -m twelve_six.eval291_en_selection_validation             verify --repo-root "$eval291_src"
 
       - name: Build complete ephemeral reserved-evaluation universe
         shell: bash
@@ -208,10 +221,10 @@ jobs:
           selection_rows, selection_set, selection_evidence = (
               resolve_eval303_selection_payloads_from_reconstructed(
                   eval290_data_jsonl=(
-                      tmp / "eval290-out/eval290_ua_selection_validation_v1.jsonl"
+                      tmp / "eval290-out-a/eval290_ua_selection_validation_v1.jsonl"
                   ),
                   eval290_manifest_json=(
-                      tmp / "eval290-out/eval290_ua_selection_validation_manifest_v1.json"
+                      tmp / "eval290-out-a/eval290_ua_selection_validation_manifest_v1.json"
                   ),
                   eval291_data_jsonl=tmp / "eval291-en.jsonl",
                   eval291_authority_json=tmp / "eval291-authority.json",
