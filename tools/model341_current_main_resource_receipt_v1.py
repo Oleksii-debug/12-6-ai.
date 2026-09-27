@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tomllib
 from pathlib import Path
 from typing import Any
 
-from tools.model341_current_main_resource_envelope_v1 import git_blob_sha1, validate_probe
+from tools.model341_current_main_resource_envelope_v1 import (
+    MODEL_BLOB_SHA1,
+    git_blob_sha1,
+    validate_probe,
+)
 
 RECEIPT_SCHEMA = "12-6.model341.current-main-local-free-resource-receipt.v1"
 RECEIPT_STATUS = "CAPTURED_SYNTHETIC_MECHANICS_ONLY"
 REPORT_RELATIVE_PATH = Path("reports/model341_current_main_resource_envelope_v1.json")
 PROBE_TOOL_RELATIVE_PATH = Path("tools/model341_current_main_resource_envelope_v1.py")
+CURRENT_MODEL_RELATIVE_PATH = Path("src/twelve_six/model.py")
+CURRENT_PYPROJECT_RELATIVE_PATH = Path("pyproject.toml")
 EXPECTED_PROBE_REPORT_SHA256 = (
     "630c985cc09a550f2eca786c39540fa7b98e3b088e6eaded06422703ed631a9e"
 )
@@ -20,6 +27,10 @@ MEASUREMENT_AUTHORITY_COMMENT_ID = 5851221028
 MEASUREMENT_AUTHORITY_SHA256 = (
     "1eb6a61cd9eeec79ef557ff231873092ad289a60ccd17a616678332b27f7332f"
 )
+EXPECTED_RUNTIME_PROJECT = {
+    "requires-python": ">=3.11",
+    "dependencies": ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"],
+}
 EXPECTED_CAPTURE = {
     "repository": "Oleksii-debug/12-6-ai.",
     "issue": 2166,
@@ -77,6 +88,34 @@ def strict_json_loads(text: str) -> Any:
         object_pairs_hook=_reject_duplicate_object_pairs,
         parse_constant=_reject_nonfinite_constant,
     )
+
+
+def runtime_project_projection(pyproject: dict[str, Any]) -> dict[str, Any]:
+    project = pyproject.get("project")
+    if type(project) is not dict:
+        raise ValueError("pyproject project table missing")
+    requires_python = project.get("requires-python")
+    dependencies = project.get("dependencies")
+    if type(requires_python) is not str:
+        raise ValueError("pyproject requires-python type mismatch")
+    if type(dependencies) is not list or any(type(item) is not str for item in dependencies):
+        raise ValueError("pyproject dependencies type mismatch")
+    return {
+        "requires-python": requires_python,
+        "dependencies": list(dependencies),
+    }
+
+
+def validate_current_checkout_compatibility(root: Path) -> None:
+    model_path = root / CURRENT_MODEL_RELATIVE_PATH
+    if git_blob_sha1(model_path) != MODEL_BLOB_SHA1:
+        raise ValueError("current checkout model.py identity mismatch")
+
+    pyproject_path = root / CURRENT_PYPROJECT_RELATIVE_PATH
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    projection = runtime_project_projection(pyproject)
+    if projection != EXPECTED_RUNTIME_PROJECT:
+        raise ValueError("current checkout runtime project dependency projection mismatch")
 
 
 def measurement_authority_payload(receipt: dict[str, Any]) -> dict[str, Any]:
@@ -139,6 +178,7 @@ def validate_receipt_file(path: Path, *, root: Path | None = None) -> dict[str, 
     validate_receipt(receipt)
     if root is not None:
         validate_probe_tool_blob(root)
+        validate_current_checkout_compatibility(root)
     return receipt
 
 
