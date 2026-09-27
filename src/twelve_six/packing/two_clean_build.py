@@ -25,8 +25,21 @@ from .loss_materialization import (
     build_postpack_loss_materialization,
 )
 
-INPUT_SCHEMA = "12-6.postpack-two-clean-input.v2"
-PROOF_SCHEMA = "12-6.postpack-two-clean-proof.v2"
+INPUT_SCHEMA = "12-6.postpack-two-clean-input.v3"
+PROOF_SCHEMA = "12-6.postpack-two-clean-proof.v3"
+IMPLEMENTATION_MANIFEST_SCHEMA = "12-6.d04-two-clean-implementation-manifest.v1"
+_IMPLEMENTATION_PATHS = (
+    "twelve_six/__init__.py",
+    "twelve_six/packing/__init__.py",
+    "twelve_six/packing/core.py",
+    "twelve_six/packing/jsonl.py",
+    "twelve_six/packing/loss_materialization.py",
+    "twelve_six/packing/manifest.py",
+    "twelve_six/packing/two_clean_build.py",
+    "twelve_six/tokenization/__init__.py",
+    "twelve_six/tokenization/base.py",
+    "twelve_six/tokenization/byte.py",
+)
 _INPUT_KEYS = frozenset(
     {
         "schema_version",
@@ -35,6 +48,8 @@ _INPUT_KEYS = frozenset(
         "expected_tokenizer_identity_sha256",
         "expected_packing_identity_sha256",
         "expected_runtime_identity_sha256",
+        "expected_implementation_manifest",
+        "expected_implementation_manifest_identity_sha256",
         "documents",
         "claim_boundary",
         "input_packet_identity_sha256",
@@ -49,6 +64,8 @@ _PROOF_KEYS = frozenset(
         "tokenizer_identity_sha256",
         "packing_identity_sha256",
         "runtime_identity_sha256",
+        "implementation_manifest",
+        "implementation_manifest_identity_sha256",
         "fresh_process_count",
         "byte_identical",
         "build_a_sha256",
@@ -140,6 +157,64 @@ def _normalize_bindings(value: Mapping[str, str]) -> dict[str, str]:
     }
 
 
+def _normalize_implementation_manifest(value: Mapping[str, str]) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise TwoCleanBuildError("implementation manifest must be an object")
+    if set(value) != set(_IMPLEMENTATION_PATHS):
+        raise TwoCleanBuildError(
+            "implementation manifest has an unexpected or missing component"
+        )
+    return {
+        path: _require_sha256(value[path], f"implementation_manifest.{path}")
+        for path in _IMPLEMENTATION_PATHS
+    }
+
+
+def _implementation_manifest_identity(value: Mapping[str, str]) -> str:
+    normalized = _normalize_implementation_manifest(value)
+    return _sha256_obj(
+        {
+            "schema_version": IMPLEMENTATION_MANIFEST_SCHEMA,
+            "components": normalized,
+        }
+    )
+
+
+def current_implementation_manifest() -> dict[str, str]:
+    """Hash the exact repository source closure used by the two-clean build."""
+    source_root = _trusted_source_root()
+    manifest: dict[str, str] = {}
+    for relative_path in _IMPLEMENTATION_PATHS:
+        candidate = source_root / relative_path
+        if candidate.is_symlink() or not candidate.is_file():
+            raise TwoCleanBuildError(
+                f"implementation component is not a regular file: {relative_path}"
+            )
+        manifest[relative_path] = _sha256_file(candidate)
+    return manifest
+
+
+def _verify_implementation_binding(
+    expected_manifest: Mapping[str, str],
+    *,
+    expected_identity_sha256: str,
+) -> str:
+    normalized = _normalize_implementation_manifest(expected_manifest)
+    expected_identity = _require_sha256(
+        expected_identity_sha256,
+        "expected_implementation_manifest_identity_sha256",
+    )
+    if _implementation_manifest_identity(normalized) != expected_identity:
+        raise TwoCleanBuildError("implementation manifest identity mismatch")
+    observed = current_implementation_manifest()
+    for relative_path in _IMPLEMENTATION_PATHS:
+        if observed[relative_path] != normalized[relative_path]:
+            raise TwoCleanBuildError(
+                f"implementation source bytes mismatch: {relative_path}"
+            )
+    return expected_identity
+
+
 def _trusted_python_executable(requested: str | None = None) -> Path:
     if not sys.executable:
         raise TwoCleanBuildError("python executable is unavailable")
@@ -227,6 +302,7 @@ def make_input_packet(
     expected_tokenizer_identity_sha256: str,
     expected_packing_identity_sha256: str,
     expected_runtime_identity_sha256: str,
+    expected_implementation_manifest: Mapping[str, str],
 ) -> dict[str, Any]:
     """Freeze one externally bound ephemeral build request."""
     if not documents:
@@ -234,6 +310,12 @@ def make_input_packet(
     ordered = sorted(documents, key=lambda item: item.document_id)
     if len({item.document_id for item in ordered}) != len(ordered):
         raise TwoCleanBuildError("document_id values must be unique")
+    implementation_manifest = _normalize_implementation_manifest(
+        expected_implementation_manifest
+    )
+    implementation_identity = _implementation_manifest_identity(
+        implementation_manifest
+    )
     packet: dict[str, Any] = {
         "schema_version": INPUT_SCHEMA,
         "terminal_corpus_authority_identity_sha256": _require_sha256(
@@ -253,6 +335,8 @@ def make_input_packet(
             expected_runtime_identity_sha256,
             "expected_runtime_identity_sha256",
         ),
+        "expected_implementation_manifest": implementation_manifest,
+        "expected_implementation_manifest_identity_sha256": implementation_identity,
         "documents": [_document_row(item) for item in ordered],
         "claim_boundary": {
             "ephemeral_input_contains_source_text": True,
@@ -303,6 +387,21 @@ def _verify_input_packet(
         "expected_runtime_identity_sha256",
     ):
         value[field] = _require_sha256(value.get(field), field)
+    implementation_manifest = value.get("expected_implementation_manifest")
+    if not isinstance(implementation_manifest, Mapping):
+        raise TwoCleanBuildError("expected_implementation_manifest must be an object")
+    value["expected_implementation_manifest"] = _normalize_implementation_manifest(
+        implementation_manifest
+    )
+    implementation_identity = _require_sha256(
+        value.get("expected_implementation_manifest_identity_sha256"),
+        "expected_implementation_manifest_identity_sha256",
+    )
+    if (
+        _implementation_manifest_identity(value["expected_implementation_manifest"])
+        != implementation_identity
+    ):
+        raise TwoCleanBuildError("implementation manifest identity mismatch")
     boundary = value.get("claim_boundary")
     if boundary != {
         "ephemeral_input_contains_source_text": True,
@@ -477,6 +576,12 @@ def _run_child(input_path: Path, output_path: Path, expected_identity: str) -> N
         expected_identity_sha256=expected_identity,
     )
     _verify_runtime_binding(verified)
+    _verify_implementation_binding(
+        verified["expected_implementation_manifest"],
+        expected_identity_sha256=(
+            verified["expected_implementation_manifest_identity_sha256"]
+        ),
+    )
     output_path.write_bytes(_canonical_json_bytes(_build_one(verified)))
 
 
@@ -498,6 +603,12 @@ def prove_two_clean_build(
         expected_identity_sha256=expected_input_packet_identity_sha256,
     )
     runtime_identity = _verify_runtime_binding(verified)
+    implementation_identity = _verify_implementation_binding(
+        verified["expected_implementation_manifest"],
+        expected_identity_sha256=(
+            verified["expected_implementation_manifest_identity_sha256"]
+        ),
+    )
     executable = _trusted_python_executable(python_executable)
     packet_identity = verified["input_packet_identity_sha256"]
     corpus_identity = verified["terminal_corpus_authority_identity_sha256"]
@@ -566,6 +677,10 @@ def prove_two_clean_build(
         "tokenizer_identity_sha256": tokenizer_identity,
         "packing_identity_sha256": packing_identity,
         "runtime_identity_sha256": runtime_identity,
+        "implementation_manifest": dict(
+            verified["expected_implementation_manifest"]
+        ),
+        "implementation_manifest_identity_sha256": implementation_identity,
         "fresh_process_count": 2,
         "byte_identical": True,
         "build_a_sha256": output_hashes[0],
@@ -594,6 +709,8 @@ def verify_proof(
     expected_tokenizer_identity_sha256: str,
     expected_packing_identity_sha256: str,
     expected_runtime_identity_sha256: str,
+    expected_implementation_manifest: Mapping[str, str],
+    expected_implementation_manifest_identity_sha256: str,
 ) -> dict[str, Any]:
     """Independently verify the durable V2 proof without trusting producer prose."""
     value = dict(proof)
@@ -632,6 +749,21 @@ def verify_proof(
     expected_bindings = _normalize_bindings(expected_stage_bindings)
     if value.get("stage_bindings") != expected_bindings:
         raise TwoCleanBuildError("two-clean proof stage binding mismatch")
+    expected_manifest = _normalize_implementation_manifest(
+        expected_implementation_manifest
+    )
+    expected_manifest_identity = _require_sha256(
+        expected_implementation_manifest_identity_sha256,
+        "expected_implementation_manifest_identity_sha256",
+    )
+    if _implementation_manifest_identity(expected_manifest) != expected_manifest_identity:
+        raise TwoCleanBuildError("expected implementation manifest identity mismatch")
+    if value.get("implementation_manifest") != expected_manifest:
+        raise TwoCleanBuildError("two-clean proof implementation manifest mismatch")
+    if value.get("implementation_manifest_identity_sha256") != expected_manifest_identity:
+        raise TwoCleanBuildError(
+            "two-clean proof implementation manifest identity mismatch"
+        )
     if value.get("fresh_process_count") != 2:
         raise TwoCleanBuildError("two-clean proof must bind exactly two fresh processes")
     if value.get("byte_identical") is not True:
