@@ -446,9 +446,13 @@ def test_parent_python_injection_environment_is_not_forwarded(monkeypatch: pytes
     assert proof["runtime_identity_sha256"] == _runtime_identity()
 
 
-def test_clean_child_environment_has_only_trusted_python_controls(tmp_path: Path) -> None:
+def test_non_windows_clean_child_environment_has_only_trusted_python_controls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     source_root = two_clean._trusted_source_root()
     pycache_root = tmp_path / "fresh-pycache"
+    monkeypatch.setattr(two_clean, "_is_windows_runtime", lambda: False)
     env = two_clean._clean_child_env(source_root, pycache_root)
 
     assert env == {
