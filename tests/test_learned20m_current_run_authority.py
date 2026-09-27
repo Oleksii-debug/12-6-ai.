@@ -647,3 +647,65 @@ def test_active_pointer_invalidates_on_global_lease_tip_change_or_expiry(
     assert drifted.active is False
     assert drifted.blockers == ("current_run_global_lease_tip_changed",)
 
+def test_pointer_read_rechecks_fixed_ref_after_blob_read(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    pointer = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert pointer.committed is True
+    assert pointer.written_remote_tip is not None
+
+    calls = 0
+
+    def drifting_tip(
+        repo_root: str | Path,
+        remote_name: str,
+        ref: str,
+    ) -> str:
+        nonlocal calls
+        calls += 1
+        assert repo_root == writer_b
+        assert remote_name == str(remote)
+        assert ref == CURRENT_RUN_POINTER_REF
+        if calls == 1:
+            return pointer.written_remote_tip
+        return "f" * 40
+
+    monkeypatch.setattr(current_run, "_remote_tip", drifting_tip)
+    with pytest.raises(
+        current_run.CurrentRunAuthorityError,
+        match="current_run_pointer_changed_during_read",
+    ):
+        current_run._fetch_pointer_bytes(
+            writer_b,
+            str(remote),
+            pointer.written_remote_tip,
+        )
+    assert calls == 2
+
