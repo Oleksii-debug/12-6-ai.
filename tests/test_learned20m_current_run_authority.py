@@ -382,7 +382,12 @@ def test_retired_pointer_can_advance_only_from_exact_latest_tip(
     monkeypatch.setattr(current_run, "_read_snapshot", read_global)
 
     first = activate_current_run_authority(
-        writer_a, str(remote), manifest_a, identity_a, expected_pointer_tip=None
+        writer_a,
+        str(remote),
+        manifest_a,
+        identity_a,
+        expected_pointer_tip=None,
+        now=NOW,
     )
     retired = retire_current_run_authority(
         writer_a,
