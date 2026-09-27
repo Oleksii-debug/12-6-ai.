@@ -13,6 +13,7 @@ import re
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,9 @@ from twelve_six.learned20m_global_training_lease import (
     CANONICAL_LOCK_DOMAIN,
     CANONICAL_REPOSITORY,
     GlobalLeaseInspection,
+    _GlobalLeaseFailure,
     _delete_local_ref,
+    _read_snapshot,
     _remote_tip,
     _run_git,
     _validate_transport,
@@ -28,6 +31,7 @@ from twelve_six.learned20m_global_training_lease import (
     inspect_global_training_run_lease,
 )
 from twelve_six.learned20m_training_lease import (
+    assess_training_run_lease,
     canonical_json_bytes,
     launch_manifest_sha256,
     validate_launch_manifest,
@@ -541,6 +545,7 @@ def activate_current_run_authority(
     current_run_identity: Mapping[str, Any],
     *,
     expected_pointer_tip: str | None,
+    now: datetime | None = None,
 ) -> CurrentRunAuthorityOperation:
     _validate_transport(remote)
     manifest_snapshot = json.loads(canonical_json_bytes(manifest))
@@ -558,6 +563,24 @@ def activate_current_run_authority(
         return _operation_failure("ACTIVATE", blocker="global_training_run_lease_not_valid")
     if global_lease.lease_status != "RUNNING":
         return _operation_failure("ACTIVATE", blocker="global_training_run_lease_not_running")
+    try:
+        global_snapshot = _read_snapshot(repo_root, remote, manifest_snapshot)
+    except _GlobalLeaseFailure as exc:
+        return _operation_failure("ACTIVATE", blocker=exc.blocker)
+    if global_snapshot is None:
+        return _operation_failure("ACTIVATE", blocker="global_training_run_lease_missing")
+    lease_assessment = assess_training_run_lease(
+        manifest_snapshot,
+        global_snapshot.lease,
+        now=now,
+    )
+    lease_blockers = tuple(
+        dict.fromkeys((*lease_assessment.contract_errors, *lease_assessment.blockers))
+    )
+    if lease_blockers:
+        return _operation_failure("ACTIVATE", blocker=lease_blockers[0])
+    if global_snapshot.remote_tip != global_lease.remote_tip:
+        return _operation_failure("ACTIVATE", blocker="global_training_run_lease_tip_mismatch")
 
     try:
         current = _read_pointer_state(repo_root, remote)
