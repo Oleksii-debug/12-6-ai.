@@ -533,7 +533,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _startup_diagnostics(
-    backend: InferenceBackend,
+    backend_identity: dict[str, object],
     *,
     host: str,
     port: int,
@@ -551,9 +551,7 @@ def _startup_diagnostics(
         "chat_semantics": False,
         "streaming": False,
     }
-    diagnostics = getattr(backend, "diagnostics", None)
-    if callable(diagnostics):
-        payload["backend"] = diagnostics()
+    payload["backend"] = dict(backend_identity)
     if serving is not None:
         payload["serving"] = serving
     return payload
@@ -578,7 +576,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     bound_host, bound_port = server.server_address[:2]
     diagnostics = _startup_diagnostics(
-        backend,
+        server.runtime.model_identity(),
         host=str(bound_host),
         port=int(bound_port),
         model_name=args.model_name,
