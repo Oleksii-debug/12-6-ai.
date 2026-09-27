@@ -873,6 +873,28 @@ def verify_current_clean_composition_receipt(
             type(value) is int and value >= 0,
             f"invalid rejection count: {key}",
         )
+    _require(
+        receipt["input_training_records"] - receipt["post_decontamination_records"]
+        == rejection_counts["data232_excluded_records"],
+        "DATA-232 rejection/count accounting drift",
+    )
+    _require(
+        rejection_counts["g05_partial_documents"] == 0,
+        "G05 partial materialization authority was widened",
+    )
+    _require(
+        receipt["post_decontamination_records"] - receipt["post_quality_records"]
+        == rejection_counts["g05_reject_documents"],
+        "G05 rejection/count accounting drift",
+    )
+    _require(
+        receipt["post_quality_records"] - receipt["survivor_records"]
+        == (
+            rejection_counts["g06_quarantine_records"]
+            + rejection_counts["g06_exclude_records"]
+        ),
+        "G06 drop/count accounting drift",
+    )
     detector_counts = receipt.get("privacy_detector_counts")
     _require(isinstance(detector_counts, Mapping), "privacy detector counts missing")
     for key, value in detector_counts.items():
