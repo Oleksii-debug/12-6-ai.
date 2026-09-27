@@ -71,6 +71,45 @@ _HANDOFF_KEYS = {
     "checkpoint_sha256",
     "checkpoint_manifest_sha256",
     "checkpoint_uri",
+    "hosted_carrier_evidence_sha256",
+}
+_HOSTED_CARRIER_SCHEMA = "twelve-six-github-hosted-carrier-preflight-v1"
+_HOSTED_CARRIER_KEYS = {
+    "schema",
+    "source_sha",
+    "expected_source_sha",
+    "observed_checkout_sha",
+    "result",
+    "carrier_mode",
+    "repository",
+    "repository_visibility",
+    "runner",
+    "worker_identity",
+    "scientific_effects",
+    "authority_boundary",
+    "future_real_target_requirements",
+    "evidence_sha256",
+}
+_HOSTED_RUNNER = {
+    "provider": "github-hosted",
+    "environment": "github-hosted",
+    "label": "ubuntu-24.04",
+    "os": "Linux",
+    "arch": "X64",
+}
+_HOSTED_SCIENTIFIC_EFFECTS = {
+    "worker_invoked": False,
+    "real_target_execution_supported": False,
+    "authorized_optimized_target_exposure": 0,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": False,
+    "learned_weights_created": False,
+}
+_HOSTED_AUTHORITY_BOUNDARY = {
+    "worker_authority_environment_present": False,
+    "paid_compute_authorized": False,
+    "foreign_pretrained_weights_permitted": False,
+    "external_llm_or_api_for_data_or_intelligence_permitted": False,
 }
 
 
@@ -80,6 +119,7 @@ class SessionLaunchAssessment:
     session_index: int | None
     blockers: tuple[str, ...]
     portable_packet_sha256: str | None
+    hosted_carrier_evidence_sha256: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -87,6 +127,7 @@ class SessionLaunchAssessment:
             "session_index": self.session_index,
             "blockers": list(self.blockers),
             "portable_packet_sha256": self.portable_packet_sha256,
+            "hosted_carrier_evidence_sha256": self.hosted_carrier_evidence_sha256,
         }
 
 
@@ -368,7 +409,11 @@ def _checkpoint_uri_valid(value: Any) -> bool:
 
 
 def validate_previous_handoff(
-    handoff: Any, *, plan_sha256: str, expected_session_index: int
+    handoff: Any,
+    *,
+    plan_sha256: str,
+    expected_session_index: int,
+    expected_hosted_carrier_evidence_sha256: str | None = None,
 ) -> list[str]:
     """Validate correlation fields only; this handoff is never an authority root."""
     if not isinstance(handoff, dict):
@@ -388,6 +433,14 @@ def validate_previous_handoff(
             errors.append(f"handoff_{key}_invalid")
     if not _checkpoint_uri_valid(handoff.get("checkpoint_uri")):
         errors.append("handoff_checkpoint_uri_invalid_or_credential_bearing")
+    carrier_sha = handoff.get("hosted_carrier_evidence_sha256")
+    if not _sha256(carrier_sha):
+        errors.append("handoff_hosted_carrier_evidence_sha256_invalid")
+    elif (
+        expected_hosted_carrier_evidence_sha256 is not None
+        and carrier_sha != expected_hosted_carrier_evidence_sha256
+    ):
+        errors.append("handoff_hosted_carrier_evidence_sha256_mismatch")
     return sorted(set(errors))
 
 
@@ -436,6 +489,70 @@ def _portable_time_blockers(
     return blockers
 
 
+
+def validate_hosted_carrier_evidence(
+    evidence: Any,
+    *,
+    expected_evidence_sha256: Any,
+    expected_source_git_sha: Any,
+) -> list[str]:
+    """Authenticate concrete GitHub-hosted identity from an externally rooted receipt."""
+    errors: list[str] = []
+    if not _sha256(expected_evidence_sha256):
+        errors.append("hosted_carrier_expected_evidence_sha256_invalid")
+    if not isinstance(evidence, dict):
+        errors.append("hosted_carrier_evidence_missing")
+        return sorted(set(errors))
+
+    errors += _exact_keys(evidence, _HOSTED_CARRIER_KEYS, "hosted_carrier")
+    embedded = evidence.get("evidence_sha256")
+    if not _sha256(embedded):
+        errors.append("hosted_carrier_evidence_sha256_invalid")
+    else:
+        sealed = copy.deepcopy(evidence)
+        sealed.pop("evidence_sha256", None)
+        if canonical_sha256(sealed) != embedded:
+            errors.append("hosted_carrier_evidence_sha256_mismatch")
+        if _sha256(expected_evidence_sha256) and embedded != expected_evidence_sha256:
+            errors.append("hosted_carrier_external_authority_mismatch")
+
+    if evidence.get("schema") != _HOSTED_CARRIER_SCHEMA:
+        errors.append("hosted_carrier_schema_mismatch")
+    if evidence.get("result") != "PASS":
+        errors.append("hosted_carrier_result_not_pass")
+    if evidence.get("carrier_mode") != "preflight":
+        errors.append("hosted_carrier_mode_mismatch")
+    if evidence.get("repository") != "Oleksii-debug/12-6-ai.":
+        errors.append("hosted_carrier_repository_mismatch")
+    if evidence.get("repository_visibility") != "public":
+        errors.append("hosted_carrier_repository_visibility_mismatch")
+
+    if not isinstance(expected_source_git_sha, str) or re.fullmatch(
+        r"[0-9a-f]{40}", expected_source_git_sha
+    ) is None:
+        errors.append("portable_source_git_sha_invalid")
+    else:
+        for key in ("source_sha", "expected_source_sha", "observed_checkout_sha"):
+            if evidence.get(key) != expected_source_git_sha:
+                errors.append(f"hosted_carrier_{key}_mismatch")
+
+    runner = evidence.get("runner")
+    if runner != _HOSTED_RUNNER:
+        errors.append("hosted_carrier_runner_identity_mismatch")
+    if evidence.get("scientific_effects") != _HOSTED_SCIENTIFIC_EFFECTS:
+        errors.append("hosted_carrier_scientific_effects_mismatch")
+    if evidence.get("authority_boundary") != _HOSTED_AUTHORITY_BOUNDARY:
+        errors.append("hosted_carrier_authority_boundary_mismatch")
+    if not isinstance(evidence.get("worker_identity"), dict):
+        errors.append("hosted_carrier_worker_identity_missing")
+    requirements = evidence.get("future_real_target_requirements")
+    if not isinstance(requirements, list) or not all(
+        isinstance(item, str) and item for item in requirements
+    ):
+        errors.append("hosted_carrier_future_requirements_invalid")
+    return sorted(set(errors))
+
+
 def assess_session_launch(
     plan: Any,
     profile: Any,
@@ -443,6 +560,8 @@ def assess_session_launch(
     portable_packet: Any,
     *,
     previous_handoff: Any = None,
+    hosted_carrier_evidence: Any = None,
+    expected_hosted_carrier_evidence_sha256: Any = None,
 ) -> SessionLaunchAssessment:
     blockers = [f"profile:{item}" for item in validate_profile(profile)]
     if blockers:
@@ -498,6 +617,24 @@ def assess_session_launch(
         blockers.append("portable_materially_paid_must_be_false")
 
     blockers += _portable_time_blockers(session, profile, checkpoint)
+
+    identities = portable_packet.get("identities")
+    source_git_sha = (
+        identities.get("source_git_sha") if isinstance(identities, dict) else None
+    )
+    carrier_errors = validate_hosted_carrier_evidence(
+        hosted_carrier_evidence,
+        expected_evidence_sha256=expected_hosted_carrier_evidence_sha256,
+        expected_source_git_sha=source_git_sha,
+    )
+    blockers += carrier_errors
+    carrier_sha = (
+        hosted_carrier_evidence.get("evidence_sha256")
+        if isinstance(hosted_carrier_evidence, dict)
+        and not carrier_errors
+        else None
+    )
+
     portable = assess_portable_run_packet(portable_packet)
 
     if session_index == 1:
@@ -512,6 +649,7 @@ def assess_session_launch(
             previous_handoff,
             plan_sha256=plan.get("plan_sha256"),
             expected_session_index=session_index,
+            expected_hosted_carrier_evidence_sha256=carrier_sha,
         )
         if checkpoint.get("mode") != "RESUME":
             blockers.append("continuation_session_requires_resume_packet")
@@ -552,12 +690,46 @@ def assess_session_launch(
 
     blockers = sorted(set(blockers))
     return SessionLaunchAssessment(
-        not blockers, session_index, tuple(blockers), packet_hash
+        not blockers,
+        session_index,
+        tuple(blockers),
+        packet_hash,
+        carrier_sha,
     )
 
 
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"nonfinite_json_constant:{value}")
+
+
+def _reject_nonfinite_numbers(value: Any, path: str = "root") -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(f"nonfinite_json_number:{path}")
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _reject_nonfinite_numbers(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _reject_nonfinite_numbers(child, f"{path}[{index}]")
+
+
 def _read_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_strict_json_object,
+        parse_constant=_reject_json_constant,
+    )
+    _reject_nonfinite_numbers(value)
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
