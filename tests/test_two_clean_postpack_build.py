@@ -267,17 +267,29 @@ def test_parent_python_injection_environment_is_not_forwarded(monkeypatch: pytes
     assert proof["runtime_identity_sha256"] == _runtime_identity()
 
 
-def test_clean_child_environment_has_only_trusted_python_controls() -> None:
+def test_clean_child_environment_has_only_trusted_python_controls(tmp_path: Path) -> None:
     source_root = two_clean._trusted_source_root()
-    env = two_clean._clean_child_env(source_root)
+    pycache_root = tmp_path / "fresh-pycache"
+    env = two_clean._clean_child_env(source_root, pycache_root)
 
     assert env == {
         "PYTHONPATH": str(source_root),
         "PYTHONNOUSERSITE": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPYCACHEPREFIX": str(pycache_root),
     }
+    assert not pycache_root.exists()
     assert "PYTHONHOME" not in env
     assert "PYTHONSTARTUP" not in env
+
+
+def test_existing_child_pycache_root_is_rejected(tmp_path: Path) -> None:
+    source_root = two_clean._trusted_source_root()
+    pycache_root = tmp_path / "existing-pycache"
+    pycache_root.mkdir()
+
+    with pytest.raises(two_clean.TwoCleanBuildError, match="pycache root must start absent"):
+        two_clean._clean_child_env(source_root, pycache_root)
 
 
 def test_durable_proof_is_independently_verifiable_and_tamper_fails() -> None:
