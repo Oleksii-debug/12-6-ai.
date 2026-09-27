@@ -45,7 +45,7 @@ def _manifest(payloads: list[bytes]) -> dict:
 
 def _materialization(payload_sha: str, count: int) -> dict:
     return {
-        "schema_version": "12-6.d03-post-g05-g06-materialization.v1",
+        "schema_version": "12-6.d03-post-g05-g06-materialization.v2",
         "status": "MATERIALIZED_ZERO_CREDIT",
         "execution_profile": "LOCAL_FREE",
         "materialization_identity_sha256": "4" * 64,
@@ -126,6 +126,22 @@ def test_training_payload_identity_must_be_independently_bound() -> None:
             payloads,
             _materialization("5" * 64, 1),
             actual_training_jsonl_sha256="6" * 64,
+            expected_materialization_identity_sha256="4" * 64,
+            expected_training_jsonl_sha256="5" * 64,
+        )
+
+
+def test_legacy_materialization_v1_is_rejected() -> None:
+    payloads = [b"def a():\n    return 1\n", b"def b():\n    return 2\n"]
+    materialization = _materialization("5" * 64, 1)
+    materialization["schema_version"] = "12-6.d03-post-g05-g06-materialization.v1"
+    with pytest.raises(DecontaminationError, match="materialization schema drift"):
+        build_report(
+            _training(),
+            _manifest(payloads),
+            payloads,
+            materialization,
+            actual_training_jsonl_sha256="5" * 64,
             expected_materialization_identity_sha256="4" * 64,
             expected_training_jsonl_sha256="5" * 64,
         )
