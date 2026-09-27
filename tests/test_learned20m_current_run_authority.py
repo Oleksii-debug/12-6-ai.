@@ -709,3 +709,21 @@ def test_pointer_read_rechecks_fixed_ref_after_blob_read(
         )
     assert calls == 2
 
+def test_inspection_fail_closes_on_pointer_type_error(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+
+    def malformed_pointer(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise TypeError("current_run_pointer_not_object")
+
+    monkeypatch.setattr(current_run, "_read_pointer_state", malformed_pointer)
+    inspection = inspect_current_run_authority(writer_a, str(remote), now=NOW)
+
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.active is False
+    assert inspection.blockers == ("current_run_pointer_not_object",)
+
