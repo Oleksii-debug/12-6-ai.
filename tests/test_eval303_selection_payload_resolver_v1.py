@@ -259,8 +259,6 @@ def test_reconstructed_exact_component_bytes_match_selection_authority(
 
     artifact_rows, artifact_reserved, artifact_evidence = (
         module.resolve_eval303_selection_payloads(
-        ua_zip,
-        en_zip,
             ua_zip,
             en_zip,
             membership,
