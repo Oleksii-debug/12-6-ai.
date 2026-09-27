@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: d03-2023-clean-current-physical-execution
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   PYTHONPATH: src
