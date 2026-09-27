@@ -7,6 +7,7 @@ from pathlib import Path
 from twelve_six.pandas_source_authority import (
     CONFIG_PATH,
     RECEIPT_FILE_SHA256,
+    RECEIPT_PATH,
     validate_pandas_source_authority,
     validate_pandas_source_authority_files,
 )
@@ -16,8 +17,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load() -> tuple[dict, bytes]:
     config = json.loads((ROOT / CONFIG_PATH).read_text(encoding="utf-8"))
-    receipt = (ROOT / config["historical_execution"]["receipt_path"]).read_bytes()
+    receipt = (ROOT / RECEIPT_PATH).read_bytes()
     return config, receipt
+
+
+def _write_fixture_repo(root: Path, config_bytes: bytes, receipt: bytes) -> None:
+    config_path = root / CONFIG_PATH
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_bytes(config_bytes)
+    receipt_path = root / RECEIPT_PATH
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_bytes(receipt)
 
 
 def test_current_main_pandas_source_authority_is_zero_credit_and_valid() -> None:
@@ -136,3 +146,93 @@ def test_exact_authority_objects_reject_python_numeric_aliases() -> None:
     assert "historical_dedup_boundary_mismatch" in validate_pandas_source_authority(
         mutated, receipt
     )
+
+
+def test_file_loader_rejects_duplicate_top_level_json_member(tmp_path: Path) -> None:
+    config, receipt = _load()
+    encoded = json.dumps(config, ensure_ascii=False).encode()
+    encoded = encoded.replace(
+        b'{"schema_version": ',
+        b'{"schema_version": "duplicate", "schema_version": ',
+        1,
+    )
+    _write_fixture_repo(tmp_path, encoded, receipt)
+    assert validate_pandas_source_authority_files(tmp_path) == ["config_json_invalid"]
+
+
+def test_file_loader_rejects_duplicate_nested_json_member(tmp_path: Path) -> None:
+    config, receipt = _load()
+    encoded = json.dumps(config, ensure_ascii=False).encode()
+    marker = (
+        b'"receipt_path": '
+        + json.dumps(RECEIPT_PATH.as_posix()).encode()
+    )
+    replacement = b'"receipt_path": "../../shadow.json", ' + marker
+    assert marker in encoded
+    _write_fixture_repo(tmp_path, encoded.replace(marker, replacement, 1), receipt)
+    assert validate_pandas_source_authority_files(tmp_path) == ["config_json_invalid"]
+
+
+def test_file_loader_rejects_nonfinite_or_overflowed_json_number(tmp_path: Path) -> None:
+    config, receipt = _load()
+    encoded = json.dumps(config, ensure_ascii=False).encode()
+    marker = b'"canonical_capacity_credit_bytes": 0'
+    assert marker in encoded
+    _write_fixture_repo(tmp_path, encoded.replace(marker, b'"canonical_capacity_credit_bytes": 1e400'), receipt)
+    assert validate_pandas_source_authority_files(tmp_path) == ["config_json_invalid"]
+
+
+def test_file_loader_never_reads_traversal_receipt_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, receipt = _load()
+    mutated = copy.deepcopy(config)
+    mutated["historical_execution"]["receipt_path"] = "../../attacker-controlled.json"
+    _write_fixture_repo(tmp_path, json.dumps(mutated).encode(), receipt)
+
+    original_read_bytes = Path.read_bytes
+    reads: list[Path] = []
+
+    def recording_read_bytes(path: Path) -> bytes:
+        reads.append(path)
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", recording_read_bytes)
+    blockers = validate_pandas_source_authority_files(tmp_path)
+
+    assert "historical_receipt_path_mismatch" in blockers
+    assert tmp_path / RECEIPT_PATH in reads
+    assert all("attacker-controlled.json" not in str(path) for path in reads)
+
+
+def test_file_loader_never_reads_absolute_receipt_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, receipt = _load()
+    mutated = copy.deepcopy(config)
+    mutated["historical_execution"]["receipt_path"] = str(tmp_path / "absolute-attacker.json")
+    _write_fixture_repo(tmp_path, json.dumps(mutated).encode(), receipt)
+
+    original_read_bytes = Path.read_bytes
+    reads: list[Path] = []
+
+    def recording_read_bytes(path: Path) -> bytes:
+        reads.append(path)
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", recording_read_bytes)
+    blockers = validate_pandas_source_authority_files(tmp_path)
+
+    assert "historical_receipt_path_mismatch" in blockers
+    assert tmp_path / RECEIPT_PATH in reads
+    assert all("absolute-attacker.json" not in str(path) for path in reads)
+
+
+def test_file_loader_malformed_historical_execution_returns_blocker(tmp_path: Path) -> None:
+    config, receipt = _load()
+    mutated = copy.deepcopy(config)
+    mutated["historical_execution"] = None
+    _write_fixture_repo(tmp_path, json.dumps(mutated).encode(), receipt)
+
+    blockers = validate_pandas_source_authority_files(tmp_path)
+    assert "historical_execution_missing" in blockers
