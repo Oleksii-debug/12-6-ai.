@@ -24,7 +24,8 @@
     "tokenizer": {
       "identity_sha256": null,
       "decision": "UNRESOLVED",
-      "authority": null
+      "authority": null,
+      "decision_identity_sha256": null
     },
     "loss_ledger": {
       "identity_sha256": null,

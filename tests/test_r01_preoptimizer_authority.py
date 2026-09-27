@@ -74,7 +74,7 @@ def _packet() -> dict:
         },
         "recipe": {"available_unique_loss_positions": POSITIONS},
         "resource": {"resource_class": "LOCAL_FREE", "maximum_cost_usd": 0},
-        "binding": {},
+        "binding": {"tokenizer_decision_identity_sha256": DECISION},
     }
 
 
@@ -160,6 +160,7 @@ def test_packet_carries_external_root_and_exact_preoptimizer_projection() -> Non
     assert packet["binding"]["trusted_readiness_bundle_sha256"] == "a" * 64
     assert packet["binding"]["preoptimizer_authorities_sha256"] == canonical_sha256(value)
     assert packet["binding"]["preoptimizer_authorities"] == value
+    assert packet["binding"]["launch_input_authority_identity_sha256"] == LAUNCH
 
 
 def test_resource_measurements_must_be_finite_positive_and_not_cross_host() -> None:
@@ -169,3 +170,17 @@ def test_resource_measurements_must_be_finite_positive_and_not_cross_host() -> N
     errors = validate_preoptimizer_authorities(value)
     assert "resource_evidence_median_causal_targets_per_second_invalid" in errors
     assert "resource_evidence_cross_host_extrapolation_must_be_false" in errors
+
+
+def test_packet_crossbind_rejects_tokenizer_decision_authority_substitution() -> None:
+    value = _preoptimizer()
+    value["tokenizer_decision"]["decision_identity_sha256"] = "8" * 64
+    with pytest.raises(
+        ValueError,
+        match="tokenizer_decision_authority_identity_packet_mismatch",
+    ):
+        bind_preoptimizer_to_packet(
+            _packet(),
+            value,
+            trusted_readiness_bundle_sha256="a" * 64,
+        )

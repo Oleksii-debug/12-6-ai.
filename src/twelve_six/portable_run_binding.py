@@ -605,6 +605,9 @@ def _build_candidate(
         "session_overlay_id": overlay.get("overlay_id"),
         "session_overlay_sha256": overlay_sha256,
         "portable_execution_sha256": portable_execution_sha256,
+        "tokenizer_decision_identity_sha256": tokenizer.get(
+            "decision_identity_sha256"
+        ),
     }
     return packet
 

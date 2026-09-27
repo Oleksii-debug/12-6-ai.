@@ -50,7 +50,7 @@ _SCIENTIFIC_METADATA_KEYS = {
     "corpus": frozenset(
         {"manifest_sha256", "split_sha256", "packing_sha256", "two_clean_builds_identical"}
     ),
-    "tokenizer": frozenset({"identity_sha256", "decision"}),
+    "tokenizer": frozenset({"identity_sha256", "decision", "decision_identity_sha256"}),
     "loss_ledger": frozenset({"identity_sha256", "unique_causal_loss_positions"}),
     "data_budget": frozenset(
         {"ledger_identity_sha256", "unique_causal_loss_positions", "data_budget_status"}
@@ -229,6 +229,7 @@ def scientific_role_metadata(role: str, evidence: Any) -> dict[str, Any] | None:
         return {
             "identity_sha256": item.get("identity_sha256"),
             "decision": item.get("decision"),
+            "decision_identity_sha256": item.get("decision_identity_sha256"),
         }
     if normalized_role == "loss_ledger":
         item = block("loss_ledger")
@@ -540,6 +541,11 @@ def assess_learned20m_readiness(
         evidence.get("tokenizer") if isinstance(evidence.get("tokenizer"), dict) else {}
     )
     _require_identity(local, tokenizer.get("identity_sha256"), "tokenizer_identity_missing")
+    _require_identity(
+        local,
+        tokenizer.get("decision_identity_sha256"),
+        "tokenizer_decision_identity_missing",
+    )
     if tokenizer.get("decision") != TOKENIZER_DECISION:
         local.append("tokenizer_decision_not_terminal")
     _require_scientific_authority(

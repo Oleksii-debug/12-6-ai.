@@ -136,6 +136,7 @@ def _make_local_pilot_ready() -> dict[str, Any]:
         {
             "identity_sha256": SHA64,
             "decision": TOKENIZER_DECISION,
+            "decision_identity_sha256": SHA64,
             "authority": _authority(),
         }
     )
@@ -784,3 +785,21 @@ def test_tokenizer_decision_requires_exact_canonical_authority_vocabulary() -> N
         assert not result.ready_for_local_free_pilot
         assert "tokenizer_decision_not_terminal" in result.local_free_pilot_blockers
 
+
+
+def test_tokenizer_decision_identity_is_required_and_role_bound() -> None:
+    data = _make_local_pilot_ready()
+    data["evidence"]["tokenizer"]["decision_identity_sha256"] = None
+    result = _assess(data)
+    assert not result.ready_for_local_free_pilot
+    assert "tokenizer_decision_identity_missing" in result.local_free_pilot_blockers
+
+    data = _make_local_pilot_ready()
+    verified = _verified_scientific(data)
+    data["evidence"]["tokenizer"]["decision_identity_sha256"] = "c" * 64
+    result = _assess_impl(
+        data,
+        verified_scientific_authorities=verified,
+    )
+    assert not result.ready_for_local_free_pilot
+    assert "terminal_tokenizer_authority_unverified" in result.local_free_pilot_blockers

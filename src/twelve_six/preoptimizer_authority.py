@@ -244,6 +244,10 @@ def bind_preoptimizer_to_packet(
 
     if tokenizer.get("tokenizer_identity_sha256") != identities.get("tokenizer_sha256"):
         raise ValueError("tokenizer_decision_identity_packet_mismatch")
+    if tokenizer.get("decision_identity_sha256") != binding.get(
+        "tokenizer_decision_identity_sha256"
+    ):
+        raise ValueError("tokenizer_decision_authority_identity_packet_mismatch")
 
     available = recipe.get("available_unique_loss_positions")
     if launch.get("one_pass_unique_nonignored_causal_loss_positions") != available:

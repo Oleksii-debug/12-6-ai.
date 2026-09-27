@@ -76,6 +76,7 @@ def _ready_readiness() -> dict:
         {
             "identity_sha256": SHA64,
             "decision": TOKENIZER_DECISION,
+            "decision_identity_sha256": "3" * 64,
             "authority": _authority(),
         }
     )
@@ -599,6 +600,7 @@ def test_preoptimizer_finalization_rehashes_exact_runtime_packet_and_binds_d10_r
     assert preliminary.binding_ready
     assert preliminary.packet is not None
     assert "launch_input_authority_identity_sha256" not in preliminary.packet["binding"]
+    assert preliminary.packet["binding"]["tokenizer_decision_identity_sha256"] == "3" * 64
 
     final = bind_preoptimizer_to_run_binding(
         preliminary,
@@ -617,3 +619,29 @@ def test_preoptimizer_finalization_rehashes_exact_runtime_packet_and_binds_d10_r
     assert final.packet_sha256 == canonical_sha256(final.packet)
     assert final.packet_sha256 != preliminary.packet_sha256
 
+
+
+def test_preoptimizer_finalization_rejects_tokenizer_decision_identity_substitution() -> None:
+    readiness = _ready_readiness()
+    overlay = _ready_overlay()
+    tokens, refs, _, expected, execution = _verified_inputs(readiness, overlay)
+    preliminary = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        expected_portable_execution=execution,
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
+    )
+    substituted = _preoptimizer(readiness)
+    substituted["tokenizer_decision"]["decision_identity_sha256"] = "9" * 64
+    try:
+        bind_preoptimizer_to_run_binding(
+            preliminary,
+            substituted,
+            trusted_readiness_bundle_sha256=expected,
+        )
+    except ValueError as exc:
+        assert "tokenizer_decision_authority_identity_packet_mismatch" in str(exc)
+    else:
+        raise AssertionError("tokenizer decision identity substitution must fail closed")
