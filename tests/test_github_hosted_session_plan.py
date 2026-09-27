@@ -449,3 +449,41 @@ def test_raw_json_trust_boundary_rejects_duplicates_and_nonfinite(
     with pytest.raises(ValueError, match=expected):
         _read_json(path)
 
+@pytest.mark.parametrize(
+    ("section", "key", "replacement", "expected"),
+    [
+        (
+            "scientific_effects",
+            "authorized_optimized_target_exposure",
+            False,
+            "hosted_carrier_scientific_effects_mismatch",
+        ),
+        (
+            "scientific_effects",
+            "optimizer_updates_executed_on_real_targets",
+            False,
+            "hosted_carrier_scientific_effects_mismatch",
+        ),
+        (
+            "authority_boundary",
+            "paid_compute_authorized",
+            0,
+            "hosted_carrier_authority_boundary_mismatch",
+        ),
+    ],
+)
+def test_carrier_receipt_rejects_bool_int_aliases(
+    section: str, key: str, replacement: object, expected: str
+) -> None:
+    evidence = _carrier_evidence()
+    evidence[section][key] = replacement
+    evidence["evidence_sha256"] = canonical_sha256(
+        {name: value for name, value in evidence.items() if name != "evidence_sha256"}
+    )
+    errors = validate_hosted_carrier_evidence(
+        evidence,
+        expected_evidence_sha256=evidence["evidence_sha256"],
+        expected_source_git_sha=SOURCE_SHA,
+    )
+    assert expected in errors
+
