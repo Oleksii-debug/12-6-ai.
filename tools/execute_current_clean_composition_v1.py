@@ -7,6 +7,8 @@ import argparse
 import ctypes
 import errno
 import importlib
+import importlib.abc
+import importlib.util
 import json
 import os
 import shutil
@@ -83,43 +85,94 @@ def require_exact_checkout(repo_root: Path, expected_git_sha: str) -> str:
     return expected_git_sha
 
 
+def _git_bytes_optional(repo_root: Path, git_sha: str, repo_path: str) -> bytes | None:
+    completed = subprocess.run(
+        ["git", "show", f"{git_sha}:{repo_path}"],
+        cwd=repo_root,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout
+
+
+class _AuthenticatedGitFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """Load twelve_six modules directly from immutable Git object bytes."""
+
+    def __init__(self, repo_root: Path, git_sha: str) -> None:
+        self.repo_root = repo_root
+        self.git_sha = git_sha
+        self._sources: dict[str, tuple[bytes, str, bool]] = {}
+
+    def _source(self, fullname: str) -> tuple[bytes, str, bool] | None:
+        cached = self._sources.get(fullname)
+        if cached is not None:
+            return cached
+        relative = fullname.replace(".", "/")
+        for repo_path, is_package in (
+            (f"src/{relative}/__init__.py", True),
+            (f"src/{relative}.py", False),
+        ):
+            payload = _git_bytes_optional(self.repo_root, self.git_sha, repo_path)
+            if payload is not None:
+                source = (payload, repo_path, is_package)
+                self._sources[fullname] = source
+                return source
+        return None
+
+    def find_spec(self, fullname: str, path=None, target=None):
+        if fullname != "twelve_six" and not fullname.startswith("twelve_six."):
+            return None
+        source = self._source(fullname)
+        if source is None:
+            return None
+        return importlib.util.spec_from_loader(fullname, self, is_package=source[2])
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module) -> None:
+        source = self._source(module.__name__)
+        if source is None:
+            raise ImportError(f"authenticated Git source disappeared: {module.__name__}")
+        payload, repo_path, is_package = source
+        synthetic_file = f"git:{self.git_sha}:{repo_path}"
+        module.__file__ = synthetic_file
+        if is_package:
+            module.__path__ = [f"git:{self.git_sha}:{repo_path.rsplit('/', 1)[0]}"]
+        code = compile(payload, synthetic_file, "exec", dont_inherit=True)
+        exec(code, module.__dict__)
+
+
 def load_authenticated_executor(
     repo_root: Path,
     expected_git_sha: str,
 ) -> Callable[..., tuple[dict[str, Any], ...]]:
-    """Import the composition module only after exact-checkout authentication."""
-    module_name = "twelve_six.data.current_clean_execution_v1"
-    expected_path = (repo_root / MODULE_PATH).resolve(strict=True)
-    existing = sys.modules.get(module_name)
-    if existing is not None:
-        existing_file = getattr(existing, "__file__", None)
-        if not isinstance(existing_file, str):
-            raise RuntimeError("preloaded composition module has no source path")
-        if Path(existing_file).resolve(strict=True) != expected_path:
-            raise RuntimeError("preloaded composition module is outside authenticated checkout")
+    """Import all project code exclusively from the independently pinned Git tree."""
+    preloaded = sorted(
+        name
+        for name in sys.modules
+        if name == "twelve_six" or name.startswith("twelve_six.")
+    )
+    if preloaded:
+        raise RuntimeError(
+            "project modules were preloaded before authenticated Git importer: "
+            + ", ".join(preloaded)
+        )
 
-    source_root = (repo_root / "src").resolve(strict=True)
-    source_root_text = str(source_root)
-    if source_root_text not in sys.path:
-        sys.path.insert(0, source_root_text)
-    module = importlib.import_module(module_name)
-    module_file = getattr(module, "__file__", None)
-    if not isinstance(module_file, str):
-        raise RuntimeError("composition module has no source path")
-    if Path(module_file).resolve(strict=True) != expected_path:
-        raise RuntimeError("composition module resolved outside authenticated checkout")
-    for repo_path in (MODULE_PATH, *AUTHENTICATED_DEPENDENCY_PATHS):
-        physical = (repo_root / repo_path).resolve(strict=True).read_bytes()
-        authenticated = _git_bytes(repo_root, expected_git_sha, repo_path)
-        if physical != authenticated:
-            raise RuntimeError(
-                f"loaded execution dependency differs from authenticated Git bytes: {repo_path}"
-            )
+    finder = _AuthenticatedGitFinder(repo_root, expected_git_sha)
+    sys.meta_path.insert(0, finder)
+    try:
+        module = importlib.import_module("twelve_six.data.current_clean_execution_v1")
+    except Exception:
+        if finder in sys.meta_path:
+            sys.meta_path.remove(finder)
+        raise
     executor = getattr(module, "execute_current_clean_composition", None)
     if not callable(executor):
         raise RuntimeError("authenticated composition executor is unavailable")
     return executor
-
 
 def _load_json(path: Path, label: str) -> dict[str, Any]:
     raw = path.read_bytes()
