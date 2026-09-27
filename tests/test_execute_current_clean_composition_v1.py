@@ -24,7 +24,10 @@ def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     )
 
 
-def _args(tmp_path: Path) -> argparse.Namespace:
+def _args(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> argparse.Namespace:
     training = tmp_path / "training.jsonl"
     evaluation = tmp_path / "evaluation.jsonl"
     handoff = tmp_path / "handoff.json"
@@ -57,6 +60,16 @@ def _args(tmp_path: Path) -> argparse.Namespace:
     )
     for path in (handoff, binding, manifest, evidence):
         _write_json(path, {"placeholder": True})
+    monkeypatch.setattr(
+        cli,
+        "PRODUCTION_TRAINING_RECORDS_SHA256",
+        hashlib.sha256(training.read_bytes()).hexdigest(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "PRODUCTION_TRAINING_HANDOFF_SHA256",
+        hashlib.sha256(handoff.read_bytes()).hexdigest(),
+    )
     return argparse.Namespace(
         output_dir=tmp_path / "out",
         training_records_jsonl=training,
@@ -131,8 +144,11 @@ def _executor(*args, **kwargs):
     )
 
 
-def test_execute_and_publish_writes_only_text_free_evidence(tmp_path: Path) -> None:
-    args = _args(tmp_path)
+def test_execute_and_publish_writes_only_text_free_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _args(tmp_path, monkeypatch)
     receipt = cli.execute_and_publish(args, _executor)
 
     assert receipt["receipt_identity_sha256"] == "a" * 64
@@ -153,8 +169,11 @@ def test_execute_and_publish_writes_only_text_free_evidence(tmp_path: Path) -> N
     assert "SECRET RAW EVALUATION TEXT" not in survivors
 
 
-def test_execute_and_publish_rejects_survivor_hash_drift(tmp_path: Path) -> None:
-    args = _args(tmp_path)
+def test_execute_and_publish_rejects_survivor_hash_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _args(tmp_path, monkeypatch)
 
     def bad_executor(*args, **kwargs):
         result = list(_executor(*args, **kwargs))
@@ -171,8 +190,11 @@ def test_execute_and_publish_rejects_survivor_hash_drift(tmp_path: Path) -> None
     assert not args.output_dir.exists()
 
 
-def test_execute_and_publish_rejects_inventory_substitution(tmp_path: Path) -> None:
-    args = _args(tmp_path)
+def test_execute_and_publish_rejects_inventory_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _args(tmp_path, monkeypatch)
 
     def bad_executor(*args, **kwargs):
         result = list(_executor(*args, **kwargs))
@@ -192,7 +214,7 @@ def test_execute_and_publish_rejects_inventory_substitution(tmp_path: Path) -> N
 def test_execute_and_publish_rejects_receipt_inventory_root_drift(
     tmp_path: Path,
 ) -> None:
-    args = _args(tmp_path)
+    args = _args(tmp_path, monkeypatch)
 
     def bad_executor(*args, **kwargs):
         result = list(_executor(*args, **kwargs))
@@ -209,8 +231,39 @@ def test_execute_and_publish_rejects_receipt_inventory_root_drift(
     assert not args.output_dir.exists()
 
 
-def test_execute_and_publish_refuses_existing_output(tmp_path: Path) -> None:
-    args = _args(tmp_path)
+def test_execute_and_publish_rejects_raw_training_transport_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _args(tmp_path, monkeypatch)
+    args.training_records_jsonl.write_bytes(
+        args.training_records_jsonl.read_bytes() + b"\n"
+    )
+    with pytest.raises(RuntimeError, match="training records raw file identity drift"):
+        cli.execute_and_publish(args, _executor)
+    assert not args.output_dir.exists()
+
+
+def test_execute_and_publish_rejects_raw_handoff_transport_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _args(tmp_path, monkeypatch)
+    original = json.loads(args.training_handoff_json.read_text(encoding="utf-8"))
+    args.training_handoff_json.write_text(
+        json.dumps(original, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="training handoff raw file identity drift"):
+        cli.execute_and_publish(args, _executor)
+    assert not args.output_dir.exists()
+
+
+def test_execute_and_publish_refuses_existing_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _args(tmp_path, monkeypatch)
     args.output_dir.mkdir()
     with pytest.raises(FileExistsError, match="refusing to overwrite output"):
         cli.execute_and_publish(args, _executor)
