@@ -99,13 +99,18 @@ def _executor(*args, **kwargs):
         + "\n"
         for row in survivor_records
     ).encode("utf-8")
-    payload_bytes = len(
-        survivor_records[0]["normalized_payload"].encode("utf-8")
-    )
+    survivor_inventory = cli._recompute_survivor_inventory(survivor_records)
+    payload_bytes = survivor_inventory["total_payload_bytes"]
     composition = {
         "receipt_identity_sha256": "a" * 64,
         "durable_evidence_hash_only": True,
         "survivor_jsonl_sha256": hashlib.sha256(survivor_raw).hexdigest(),
+        "survivor_record_inventory_digest_sha256": survivor_inventory[
+            "record_inventory_digest_sha256"
+        ],
+        "survivor_payload_inventory_digest_sha256": survivor_inventory[
+            "payload_inventory_digest_sha256"
+        ],
         "survivor_records": 1,
         "survivor_payload_bytes": payload_bytes,
     }
@@ -114,10 +119,6 @@ def _executor(*args, **kwargs):
     eval647 = {"receipt_identity_sha256": "d" * 64}
     quality = {"execution_identity_sha256": "e" * 64}
     privacy = {"execution_identity_sha256": "f" * 64}
-    survivor_inventory = {
-        "record_count": 1,
-        "total_payload_bytes": payload_bytes,
-    }
     return (
         composition,
         report,
@@ -165,6 +166,44 @@ def test_execute_and_publish_rejects_survivor_hash_drift(tmp_path: Path) -> None
     with pytest.raises(
         RuntimeError,
         match="survivor JSONL differs from execution receipt",
+    ):
+        cli.execute_and_publish(args, bad_executor)
+    assert not args.output_dir.exists()
+
+
+def test_execute_and_publish_rejects_inventory_substitution(tmp_path: Path) -> None:
+    args = _args(tmp_path)
+
+    def bad_executor(*args, **kwargs):
+        result = list(_executor(*args, **kwargs))
+        inventory = dict(result[7])
+        inventory["record_inventory_digest_sha256"] = "0" * 64
+        result[7] = inventory
+        return tuple(result)
+
+    with pytest.raises(
+        RuntimeError,
+        match="differs from independently rebuilt inventory",
+    ):
+        cli.execute_and_publish(args, bad_executor)
+    assert not args.output_dir.exists()
+
+
+def test_execute_and_publish_rejects_receipt_inventory_root_drift(
+    tmp_path: Path,
+) -> None:
+    args = _args(tmp_path)
+
+    def bad_executor(*args, **kwargs):
+        result = list(_executor(*args, **kwargs))
+        composition = dict(result[0])
+        composition["survivor_payload_inventory_digest_sha256"] = "0" * 64
+        result[0] = composition
+        return tuple(result)
+
+    with pytest.raises(
+        RuntimeError,
+        match="survivor receipt inventory root drift",
     ):
         cli.execute_and_publish(args, bad_executor)
     assert not args.output_dir.exists()
