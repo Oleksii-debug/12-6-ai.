@@ -523,7 +523,7 @@ def test_boolean_generation_and_source_or_binding_substitution_fail_closed() -> 
             global_lease_expires_at_utc="2026-09-27T14:00:00Z",
         )
 
-    wrong_binding = _identity(binding="f" * 64)
+    wrong_binding = _identity(manifest=manifest, binding="f" * 64)
     with pytest.raises(ValueError, match="current_run_portable_binding_mismatch"):
         build_current_run_pointer_state(
             manifest,
@@ -900,6 +900,21 @@ def test_mutations_fail_closed_on_pointer_type_error(
     remote, writer_a, _ = git_pair
     manifest = _manifest()
     identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
 
     def malformed_pointer(*args: object, **kwargs: object) -> None:
         del args, kwargs
