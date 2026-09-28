@@ -152,6 +152,14 @@ def _exact_int(value: Any, expected: int) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value == expected
 
 
+def _zero_secret_counts(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and bool(value)
+        and all(_exact_int(count, 0) for count in value.values())
+    )
+
+
 def _validate_receipt(receipt_bytes: bytes) -> list[str]:
     errors: list[str] = []
     if _git_blob_sha1(receipt_bytes) != RECEIPT_GIT_BLOB_SHA1:
@@ -273,6 +281,9 @@ def _validate_receipt(receipt_bytes: bytes) -> list[str]:
                 errors.append("historical_receipt_document_row_invalid")
                 continue
             path = row.get("path")
+            if not isinstance(path, str):
+                errors.append("historical_receipt_document_path_mismatch")
+                continue
             expected = EXPECTED_DOCUMENTS.get(path)
             if expected is None or path in seen:
                 errors.append("historical_receipt_document_path_mismatch")
@@ -296,9 +307,9 @@ def _validate_receipt(receipt_bytes: bytes) -> list[str]:
                 errors.append(f"historical_receipt_quality_changed:{path}")
             privacy = row.get("privacy")
             if not isinstance(privacy, dict) or (
-                privacy.get("email_shape_count") != 0
+                not _exact_int(privacy.get("email_shape_count"), 0)
                 or privacy.get("matched_values_retained") is not False
-                or any(privacy.get("secret_finding_counts", {}).values())
+                or not _zero_secret_counts(privacy.get("secret_finding_counts"))
             ):
                 errors.append(f"historical_receipt_privacy_changed:{path}")
         if seen != set(EXPECTED_DOCUMENTS):
@@ -307,9 +318,9 @@ def _validate_receipt(receipt_bytes: bytes) -> list[str]:
     privacy = receipt.get("privacy")
     if not isinstance(privacy, dict) or (
         privacy.get("decision") != "PASS"
-        or privacy.get("email_shape_count") != 0
+        or not _exact_int(privacy.get("email_shape_count"), 0)
         or privacy.get("matched_values_retained") is not False
-        or any(privacy.get("secret_finding_counts", {}).values())
+        or not _zero_secret_counts(privacy.get("secret_finding_counts"))
     ):
         errors.append("historical_receipt_privacy_boundary_mismatch")
 
@@ -422,6 +433,13 @@ def validate_postgresql_source_authority(config: Any, receipt_bytes: bytes) -> l
             "current_retained_corpus_cleanliness": "NOT_PROVEN_BY_THIS_AUTHORITY",
             "source_authority_status": "VERIFIED_BOUNDED_SOURCE_AUTHORITY",
         }
+        expected_credit_keys = {
+            "canonical_capacity_credit_bytes",
+            "canonical_family_credit",
+            "canonical_files_credit",
+        }
+        if set(composition) != set(expected_strings) | expected_credit_keys:
+            errors.append("current_composition_keys_mismatch")
         for key, expected in expected_strings.items():
             if composition.get(key) != expected:
                 errors.append(f"current_composition_{key}_mismatch")
