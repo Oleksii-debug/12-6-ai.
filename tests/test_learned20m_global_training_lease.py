@@ -413,8 +413,24 @@ def test_acquire_recovers_when_push_reports_failure_after_remote_commit(
     manifest, expected_authority = _authorized_manifest()
     real_push = global_lease_module._push_candidate
 
-    def push_then_report_failure(repo_root, remote_arg, candidate_tip, ref):
-        assert real_push(repo_root, remote_arg, candidate_tip, ref) is True
+    def push_then_report_failure(
+        repo_root,
+        remote_arg,
+        candidate_tip,
+        ref,
+        *,
+        expected_remote_tip,
+    ):
+        assert (
+            real_push(
+                repo_root,
+                remote_arg,
+                candidate_tip,
+                ref,
+                expected_remote_tip=expected_remote_tip,
+            )
+            is True
+        )
         return False
 
     monkeypatch.setattr(global_lease_module, "_push_candidate", push_then_report_failure)
@@ -529,8 +545,21 @@ def test_renew_freezes_manifest_before_post_write_reread(
     mutable_manifest = deepcopy(original_manifest)
     real_push = global_lease_module._push_candidate
 
-    def push_then_mutate(repo_root, remote_arg, candidate_tip, ref):
-        pushed = real_push(repo_root, remote_arg, candidate_tip, ref)
+    def push_then_mutate(
+        repo_root,
+        remote_arg,
+        candidate_tip,
+        ref,
+        *,
+        expected_remote_tip,
+    ):
+        pushed = real_push(
+            repo_root,
+            remote_arg,
+            candidate_tip,
+            ref,
+            expected_remote_tip=expected_remote_tip,
+        )
         mutable_manifest["recipe"]["seed"] = 424242
         return pushed
 
@@ -554,6 +583,75 @@ def test_renew_freezes_manifest_before_post_write_reread(
     )
     assert inspection.valid is True
     assert inspection.renewal_sequence == 1
+
+
+def test_transition_does_not_recreate_ref_deleted_after_authenticated_read(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        _authorized_lease(manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.written_remote_tip is not None
+
+    ref = global_training_run_lease_ref(manifest)
+    real_push = global_lease_module._push_candidate
+
+    def delete_ref_before_push(
+        repo_root,
+        remote_arg,
+        candidate_tip,
+        ref_arg,
+        *,
+        expected_remote_tip,
+    ):
+        assert ref_arg == ref
+        assert expected_remote_tip == acquired.written_remote_tip
+        _git("--git-dir", str(remote), "update-ref", "-d", ref)
+        return real_push(
+            repo_root,
+            remote_arg,
+            candidate_tip,
+            ref_arg,
+            expected_remote_tip=expected_remote_tip,
+        )
+
+    monkeypatch.setattr(
+        global_lease_module,
+        "_push_candidate",
+        delete_ref_before_push,
+    )
+    renewed = renew_global_training_run_lease(
+        writer_b,
+        str(remote),
+        manifest,
+        expected_remote_tip=acquired.written_remote_tip,
+        ttl_seconds=3600,
+        now=NOW + timedelta(minutes=10),
+    )
+
+    assert renewed.committed is False
+    assert renewed.post_write_reread_verified is False
+    assert renewed.remote_write_outcome_unknown is False
+    assert renewed.written_remote_tip is None
+    assert renewed.blockers == ("global_lease_transition_push_rejected",)
+    assert (
+        _git(
+            "--git-dir",
+            str(remote),
+            "for-each-ref",
+            "--format=%(refname)",
+            ref,
+        )
+        == ""
+    )
 
 
 def test_renew_is_fast_forward_and_stale_tip_cannot_retry_itself_into_authority(
