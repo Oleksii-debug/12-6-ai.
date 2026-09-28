@@ -1,12 +1,13 @@
 """12-6 AI checkpoint format v1.
 
 The checkpoint is a self-contained directory with SafeTensors payloads, a
-JSON state tree, a manifest, and SHA-256 integrity records. Loading verifies
-all recorded checksums before mutating model or trainer state.
+JSON state tree, a manifest, and SHA-256 integrity records. Loading snapshots
+and verifies every recorded byte before mutating model or trainer state.
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib
 import json
@@ -14,6 +15,7 @@ import os
 import platform
 import random
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -22,13 +24,14 @@ from dataclasses import asdict, dataclass, is_dataclass
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
-from safetensors.numpy import load_file as load_safetensors
+from safetensors.numpy import load as load_safetensors_bytes
 from safetensors.numpy import save_file as save_safetensors
 
-from .state_tree import pack_state_tree, unpack_state_tree
+from .state_tree import StateTreeError, pack_state_tree, unpack_state_tree
 
 FORMAT_NAME = "12-6-checkpoint"
 FORMAT_VERSION = 1
@@ -37,6 +40,8 @@ MANIFEST_CHECKSUM_NAME = "MANIFEST.sha256"
 WEIGHTS_NAME = "weights.safetensors"
 STATE_TENSORS_NAME = "state.safetensors"
 STATE_TREE_NAME = "state.json"
+_PAYLOAD_NAMES = frozenset({WEIGHTS_NAME, STATE_TENSORS_NAME, STATE_TREE_NAME})
+_DIRECTORY_NAMES = frozenset({MANIFEST_NAME, MANIFEST_CHECKSUM_NAME, *_PAYLOAD_NAMES})
 _HEX = frozenset("0123456789abcdef")
 
 
@@ -100,7 +105,9 @@ class CheckpointIdentity:
             raise ValueError("training_config must be a non-empty mapping")
         if not isinstance(self.optimizer, Mapping) or not self.optimizer:
             raise ValueError("optimizer must be a non-empty mapping")
-        if self.scheduler is not None and (not isinstance(self.scheduler, Mapping) or not self.scheduler):
+        if self.scheduler is not None and (
+            not isinstance(self.scheduler, Mapping) or not self.scheduler
+        ):
             raise ValueError("scheduler must be a non-empty mapping or None")
         if (
             not isinstance(self.parameter_count, int)
@@ -132,10 +139,29 @@ class LoadResult:
     rng_state: Mapping[str, Any]
 
 
+@dataclass(frozen=True)
+class VerifiedCheckpoint:
+    """Immutable in-memory byte snapshot verified before any target mutation.
+
+    Manifest and payload bytes are stored privately. ``manifest`` reparses the
+    exact verified manifest bytes on each access, so callers cannot mutate the
+    snapshot's provenance before :func:`load_verified_checkpoint` consumes it.
+    """
+
+    _manifest_bytes: bytes
+    _artifacts: Mapping[str, bytes]
+
+    @property
+    def manifest(self) -> dict[str, Any]:
+        return json.loads(self._manifest_bytes.decode("utf-8"))
+
+
 def canonical_json_bytes(value: Any) -> bytes:
     """Canonical JSON encoding used for all identity hashes."""
 
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -230,9 +256,56 @@ def capture_rng_state() -> dict[str, Any]:
     return state
 
 
+def _preflight_rng_state(state: Mapping[str, Any]) -> None:
+    """Validate supported RNG state without touching global RNG streams."""
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint RNG state must be a mapping")
+    if "python" in state:
+        try:
+            probe = random.Random()
+            probe.setstate(state["python"])
+        except (TypeError, ValueError) as exc:
+            raise CheckpointCompatibilityError("checkpoint Python RNG state is invalid") from exc
+    if "numpy" in state:
+        try:
+            probe_np = np.random.RandomState()
+            probe_np.set_state(state["numpy"])
+        except (TypeError, ValueError) as exc:
+            raise CheckpointCompatibilityError("checkpoint NumPy RNG state is invalid") from exc
+    torch_state = state.get("torch")
+    if not torch_state:
+        return
+    if not isinstance(torch_state, Mapping) or "cpu" not in torch_state:
+        raise CheckpointCompatibilityError("checkpoint torch RNG state is invalid")
+    try:
+        torch = importlib.import_module("torch")
+    except ModuleNotFoundError as exc:
+        raise CheckpointCompatibilityError(
+            "checkpoint contains torch RNG state but torch is unavailable"
+        ) from exc
+    try:
+        generator = torch.Generator(device="cpu")
+        generator.set_state(torch_state["cpu"].cpu())
+    except (AttributeError, RuntimeError, TypeError) as exc:
+        raise CheckpointCompatibilityError("checkpoint torch CPU RNG state is invalid") from exc
+    cuda_states = torch_state.get("cuda", [])
+    if cuda_states:
+        if not torch.cuda.is_available():
+            raise CheckpointCompatibilityError(
+                "checkpoint contains CUDA RNG state but CUDA is unavailable; "
+                "load with restore_rng=False"
+            )
+        if len(cuda_states) != torch.cuda.device_count():
+            raise CheckpointCompatibilityError(
+                "CUDA device count differs from the checkpoint; load with restore_rng=False"
+            )
+
+
 def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
     """Restore captured RNG streams and report the exact restored scope."""
 
+    _preflight_rng_state(state)
     scope = {"python": False, "numpy": False, "torch_cpu": False, "torch_cuda_devices": 0}
     if "python" in state:
         random.setstate(state["python"])
@@ -242,22 +315,11 @@ def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
         scope["numpy"] = True
     torch_state = state.get("torch")
     if torch_state:
-        try:
-            torch = importlib.import_module("torch")
-        except ModuleNotFoundError as exc:
-            raise CheckpointCompatibilityError("checkpoint contains torch RNG state but torch is unavailable") from exc
+        torch = importlib.import_module("torch")
         torch.set_rng_state(torch_state["cpu"].cpu())
         scope["torch_cpu"] = True
         cuda_states = torch_state.get("cuda", [])
         if cuda_states:
-            if not torch.cuda.is_available():
-                raise CheckpointCompatibilityError(
-                    "checkpoint contains CUDA RNG state but CUDA is unavailable; load with restore_rng=False"
-                )
-            if len(cuda_states) != torch.cuda.device_count():
-                raise CheckpointCompatibilityError(
-                    "CUDA device count differs from the checkpoint; load with restore_rng=False"
-                )
             torch.cuda.set_rng_state_all([item.cpu() for item in cuda_states])
             scope["torch_cuda_devices"] = len(cuda_states)
         torch.use_deterministic_algorithms(bool(torch_state.get("deterministic_algorithms", False)))
@@ -294,14 +356,27 @@ def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
             raise CheckpointCompatibilityError(
                 f"shape mismatch: checkpoint {tuple(array.shape)} vs target {tuple(target.shape)}"
             )
-        return array.astype(target.dtype, copy=True)
+        if array.dtype != target.dtype:
+            raise CheckpointCompatibilityError(
+                f"dtype mismatch: checkpoint {array.dtype} vs target {target.dtype}"
+            )
+        return array.copy()
     cls = target.__class__
     if cls.__module__.startswith("torch") and cls.__name__ in {"Tensor", "Parameter"}:
         torch = importlib.import_module("torch")
         if str(target.dtype) == "torch.bfloat16" and array.dtype == np.uint16:
             tensor = torch.from_numpy(array.copy()).view(torch.bfloat16)
         else:
-            tensor = torch.from_numpy(array.copy()).to(dtype=target.dtype)
+            try:
+                tensor = torch.from_numpy(array.copy())
+            except (TypeError, ValueError, RuntimeError) as exc:
+                raise CheckpointCompatibilityError(
+                    f"checkpoint tensor cannot be materialized for {target.dtype}"
+                ) from exc
+            if tensor.dtype != target.dtype:
+                raise CheckpointCompatibilityError(
+                    f"dtype mismatch: checkpoint {tensor.dtype} vs target {target.dtype}"
+                )
         if tuple(target.shape) != tuple(tensor.shape):
             raise CheckpointCompatibilityError(
                 f"shape mismatch: checkpoint {tuple(tensor.shape)} vs target {tuple(target.shape)}"
@@ -310,18 +385,328 @@ def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
     raise CheckpointCompatibilityError(f"unsupported target tensor type {type(target)!r}")
 
 
-def _load_model_weights(model: Any, arrays: Mapping[str, np.ndarray], strict: bool) -> None:
+def _prepare_model_weights(
+    model: Any, arrays: Mapping[str, np.ndarray], strict: bool
+) -> dict[str, Any]:
+    """Materialize and validate all model tensors without mutating the model."""
+
     target_state = model.state_dict()
     target_keys = set(target_state)
     source_keys = set(arrays)
     if strict and target_keys != source_keys:
         missing = sorted(target_keys - source_keys)
         unexpected = sorted(source_keys - target_keys)
-        raise CheckpointCompatibilityError(f"state_dict keys differ: missing={missing}, unexpected={unexpected}")
-    materialized = {
+        raise CheckpointCompatibilityError(
+            f"state_dict keys differ: missing={missing}, unexpected={unexpected}"
+        )
+    return {
         name: _materialize_for_target(arrays[name], target_state[name])
         for name in target_state.keys() & arrays.keys()
     }
+
+
+def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
+    """Validate optimizer state before any live model or optimizer mutation.
+
+    First-party PyTorch optimizers receive a structural geometry preflight because
+    ``Optimizer.load_state_dict`` maps serialized parameter IDs to live parameters
+    by group order without checking per-parameter tensor shapes. Other optimizer
+    implementations retain the checkpoint-v1 generic contract and are validated
+    by loading an isolated deep copy rather than assuming PyTorch's state schema.
+    """
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint optimizer state must be a mapping")
+    if not hasattr(optimizer, "load_state_dict") or not hasattr(optimizer, "state_dict"):
+        raise CheckpointCompatibilityError("optimizer must provide state_dict/load_state_dict")
+
+    optimizer_module = optimizer.__class__.__module__
+    if not optimizer_module.startswith("torch.optim"):
+        try:
+            probe = copy.deepcopy(optimizer)
+            probe.load_state_dict(copy.deepcopy(state))
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint optimizer state failed isolated compatibility preflight"
+            ) from exc
+        return
+
+    source_groups = state.get("param_groups")
+    source_state = state.get("state")
+    target_groups = getattr(optimizer, "param_groups", None)
+    if not isinstance(source_groups, list) or not isinstance(source_state, Mapping):
+        raise CheckpointCompatibilityError(
+            "checkpoint optimizer state must contain param_groups list and state mapping"
+        )
+    if not isinstance(target_groups, list) or len(source_groups) != len(target_groups):
+        raise CheckpointCompatibilityError("optimizer parameter-group count mismatch")
+
+    target_by_source_id: dict[Any, Any] = {}
+    for group_index, (source_group, target_group) in enumerate(
+        zip(source_groups, target_groups, strict=True)
+    ):
+        if not isinstance(source_group, Mapping) or not isinstance(target_group, Mapping):
+            raise CheckpointCompatibilityError(
+                f"optimizer parameter group {group_index} must be a mapping"
+            )
+        source_params = source_group.get("params")
+        target_params = target_group.get("params")
+        if not isinstance(source_params, list) or not isinstance(target_params, list):
+            raise CheckpointCompatibilityError(
+                f"optimizer parameter group {group_index} params must be lists"
+            )
+        if len(source_params) != len(target_params):
+            raise CheckpointCompatibilityError(
+                f"optimizer parameter count mismatch in group {group_index}"
+            )
+        for source_id, target_param in zip(source_params, target_params, strict=True):
+            try:
+                duplicate = source_id in target_by_source_id
+            except TypeError as exc:
+                raise CheckpointCompatibilityError(
+                    "optimizer serialized parameter IDs must be hashable"
+                ) from exc
+            if duplicate:
+                raise CheckpointCompatibilityError(
+                    f"optimizer serialized parameter ID is duplicated: {source_id!r}"
+                )
+            target_by_source_id[source_id] = target_param
+
+    try:
+        unknown_ids = set(source_state) - set(target_by_source_id)
+    except TypeError as exc:
+        raise CheckpointCompatibilityError(
+            "optimizer state parameter IDs must be hashable"
+        ) from exc
+    if unknown_ids:
+        raise CheckpointCompatibilityError(
+            f"optimizer state contains unknown parameter IDs: {sorted(map(str, unknown_ids))}"
+        )
+
+    parameter_shaped_state_names = frozenset(
+        {
+            "momentum_buffer",
+            "exp_avg",
+            "exp_avg_sq",
+            "max_exp_avg_sq",
+            "sum",
+            "square_avg",
+            "grad_avg",
+            "acc_delta",
+            "ax",
+        }
+    )
+    optimizer_class_names = {base.__name__ for base in optimizer.__class__.__mro__}
+    adam_moment_state_names = (
+        frozenset({"exp_avg", "exp_avg_sq", "max_exp_avg_sq"})
+        if optimizer_class_names & {"Adam", "AdamW"}
+        else frozenset()
+    )
+    live_state = getattr(optimizer, "state", {})
+    for source_id, parameter_state in source_state.items():
+        if not isinstance(parameter_state, Mapping):
+            raise CheckpointCompatibilityError(
+                f"optimizer state for parameter {source_id!r} must be a mapping"
+            )
+        target_param = target_by_source_id[source_id]
+        target_shape = tuple(getattr(target_param, "shape", ()))
+        target_dtype = getattr(target_param, "dtype", None)
+        existing_state = live_state.get(target_param, {}) if isinstance(live_state, Mapping) else {}
+        for state_name, value in parameter_state.items():
+            cls = value.__class__
+            is_torch_tensor = cls.__module__.startswith("torch") and cls.__name__ in {
+                "Tensor",
+                "Parameter",
+            }
+            if not is_torch_tensor:
+                continue
+
+            existing_value = existing_state.get(state_name) if isinstance(existing_state, Mapping) else None
+            existing_cls = existing_value.__class__ if existing_value is not None else None
+            existing_is_tensor = bool(
+                existing_cls is not None
+                and existing_cls.__module__.startswith("torch")
+                and existing_cls.__name__ in {"Tensor", "Parameter"}
+            )
+            value_shape = tuple(value.shape)
+            if existing_is_tensor:
+                if value_shape != tuple(existing_value.shape):
+                    raise CheckpointCompatibilityError(
+                        "optimizer state tensor shape mismatch for "
+                        f"{state_name!r}: checkpoint {value_shape} vs live {tuple(existing_value.shape)}"
+                    )
+                if value.dtype != existing_value.dtype:
+                    raise CheckpointCompatibilityError(
+                        "optimizer state tensor dtype mismatch for "
+                        f"{state_name!r}: checkpoint {value.dtype} vs live {existing_value.dtype}"
+                    )
+                continue
+
+            if state_name in parameter_shaped_state_names and value.ndim != 0:
+                if value_shape != target_shape:
+                    raise CheckpointCompatibilityError(
+                        "optimizer state tensor shape mismatch for "
+                        f"{state_name!r}: checkpoint {value_shape} vs parameter {target_shape}"
+                    )
+                requires_parameter_dtype = (
+                    state_name == "momentum_buffer" or state_name in adam_moment_state_names
+                )
+                if requires_parameter_dtype and value.dtype != target_dtype:
+                    raise CheckpointCompatibilityError(
+                        "optimizer state tensor dtype mismatch for "
+                        f"{state_name!r}: checkpoint {value.dtype} vs parameter {target_dtype}"
+                    )
+
+
+def _validate_state_schema(expected: Any, actual: Any, *, path: str) -> None:
+    """Validate state-dict geometry and scalar types without mutating the target."""
+
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping):
+            raise CheckpointCompatibilityError(f"{path} must be a mapping")
+        expected_keys = set(expected)
+        actual_keys = set(actual)
+        if actual_keys != expected_keys:
+            missing = sorted(map(str, expected_keys - actual_keys))
+            unexpected = sorted(map(str, actual_keys - expected_keys))
+            raise CheckpointCompatibilityError(
+                f"{path} keys differ: missing={missing}, unexpected={unexpected}"
+            )
+        for key, expected_value in expected.items():
+            _validate_state_schema(expected_value, actual[key], path=f"{path}.{key}")
+        return
+
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} list geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    if isinstance(expected, tuple):
+        if not isinstance(actual, tuple) or len(actual) != len(expected):
+            raise CheckpointCompatibilityError(
+                f"{path} tuple geometry mismatch: expected length {len(expected)}"
+            )
+        for index, (expected_value, actual_value) in enumerate(
+            zip(expected, actual, strict=True)
+        ):
+            _validate_state_schema(
+                expected_value,
+                actual_value,
+                path=f"{path}[{index}]",
+            )
+        return
+
+    expected_cls = expected.__class__ if expected is not None else None
+    actual_cls = actual.__class__ if actual is not None else None
+    expected_is_tensor = bool(
+        expected_cls is not None
+        and expected_cls.__module__.startswith("torch")
+        and expected_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    actual_is_tensor = bool(
+        actual_cls is not None
+        and actual_cls.__module__.startswith("torch")
+        and actual_cls.__name__ in {"Tensor", "Parameter"}
+    )
+    if expected_is_tensor:
+        if not actual_is_tensor:
+            raise CheckpointCompatibilityError(f"{path} must be a torch tensor")
+        if tuple(actual.shape) != tuple(expected.shape) or actual.dtype != expected.dtype:
+            raise CheckpointCompatibilityError(
+                f"{path} tensor metadata mismatch: checkpoint "
+                f"shape={tuple(actual.shape)} dtype={actual.dtype}, live "
+                f"shape={tuple(expected.shape)} dtype={expected.dtype}"
+            )
+        return
+
+    if expected is None:
+        if actual is not None:
+            raise CheckpointCompatibilityError(f"{path} must be None")
+        return
+
+    if isinstance(expected, bool):
+        compatible = isinstance(actual, bool)
+    elif isinstance(expected, int):
+        compatible = isinstance(actual, int) and not isinstance(actual, bool)
+    elif isinstance(expected, float):
+        compatible = isinstance(actual, float)
+    else:
+        compatible = type(actual) is type(expected)
+    if not compatible:
+        raise CheckpointCompatibilityError(
+            f"{path} type mismatch: checkpoint {type(actual).__name__}, "
+            f"live {type(expected).__name__}"
+        )
+
+
+def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
+    """Load detached component state without copying model-scale optimizer state.
+
+    Built-in PyTorch scheduler loaders mutate scheduler attributes, including
+    nested schedulers and callable state. A shallow scheduler copy is insufficient.
+    Deep-copy that graph while retaining its optimizer reference only in the copy
+    memo; the supported loaders do not restore or step the optimizer.
+    """
+
+    memo: dict[int, Any] = {}
+    pending = [component]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        optimizer = getattr(current, "optimizer", None)
+        owns_torch_optimizer = any(
+            base.__module__.startswith("torch.optim") for base in type(optimizer).__mro__
+        )
+        if owns_torch_optimizer:
+            if current.__class__.__module__ != "torch.optim.lr_scheduler":
+                raise CheckpointCompatibilityError(
+                    f"{label} cannot be safely semantically preflighted "
+                    "without cloning optimizer state"
+                )
+            memo[id(optimizer)] = optimizer
+            pending.extend(getattr(current, "_schedulers", ()))
+    try:
+        probe = copy.deepcopy(component, memo)
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} cannot be isolated for semantic compatibility preflight"
+        ) from exc
+    try:
+        probe.load_state_dict(copy.deepcopy(state))
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"checkpoint {label} state failed isolated semantic compatibility preflight"
+        ) from exc
+
+
+def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
+    """Validate scheduler-like state before model/optimizer mutation."""
+
+    if not hasattr(component, "state_dict") or not hasattr(component, "load_state_dict"):
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        )
+    live_state = component.state_dict()
+    if not isinstance(live_state, Mapping):
+        raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
+    _validate_state_schema(live_state, state, path=f"{label} state")
+    _semantic_stateful_probe(component, state, label=label)
+
+
+def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
     if hasattr(model, "load_state_dict"):
         try:
             model.load_state_dict(materialized, strict=strict)
@@ -388,15 +773,22 @@ def save_checkpoint(
     trainer_state: Mapping[str, Any] | None = None,
     overwrite: bool = False,
 ) -> dict[str, Any]:
-    """Atomically create a verified checkpoint directory.
+    """Atomically publish one immutable verified checkpoint directory.
 
-    The function fails closed when required lineage fields are missing. It does
-    not use pickle. Optimizer, scheduler, trainer, and RNG tensor leaves are
-    stored in SafeTensors with their nested structure in JSON.
+    Checkpoint-v1 directories are immutable once published. ``overwrite=True``
+    is retained for API compatibility only when the destination does not exist;
+    replacing an existing non-empty directory cannot be made crash-atomic across
+    supported filesystems and therefore fails closed instead of deleting a prior
+    valid checkpoint.
     """
 
     destination = Path(directory)
-    if destination.exists() and not overwrite:
+    if destination.exists() or destination.is_symlink():
+        if overwrite:
+            raise FileExistsError(
+                "checkpoint-v1 is immutable and cannot overwrite existing destination: "
+                f"{destination}"
+            )
         raise FileExistsError(f"checkpoint already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_dir = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
@@ -409,10 +801,7 @@ def save_checkpoint(
             "rng": capture_rng_state(),
         }
         packed = pack_state_tree(combined_state)
-        if packed.tensors:
-            save_safetensors(packed.tensors, str(temp_dir / STATE_TENSORS_NAME))
-        else:
-            save_safetensors({}, str(temp_dir / STATE_TENSORS_NAME))
+        save_safetensors(packed.tensors, str(temp_dir / STATE_TENSORS_NAME))
         _write_json(temp_dir / STATE_TREE_NAME, packed.tree)
 
         environment = environment_snapshot()
@@ -443,33 +832,81 @@ def save_checkpoint(
             f"{manifest_sha}  {MANIFEST_NAME}\n", encoding="ascii"
         )
         verify_checkpoint(temp_dir)
-        if destination.exists():
-            shutil.rmtree(destination)
         os.replace(temp_dir, destination)
         return manifest
     except Exception:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
         raise
 
 
-def _read_manifest(directory: Path) -> dict[str, Any]:
-    manifest_path = directory / MANIFEST_NAME
-    checksum_path = directory / MANIFEST_CHECKSUM_NAME
-    if not manifest_path.is_file() or not checksum_path.is_file():
-        raise CheckpointIntegrityError("checkpoint is missing manifest integrity files")
-    checksum_line = checksum_path.read_text(encoding="ascii").strip().split()
+def _require_checkpoint_directory(root: Path) -> None:
+    try:
+        root_stat = root.lstat()
+    except FileNotFoundError as exc:
+        raise CheckpointIntegrityError(f"checkpoint directory does not exist: {root}") from exc
+    if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
+        raise CheckpointIntegrityError("checkpoint root must be a real directory, not a symlink")
+    names = {entry.name for entry in root.iterdir()}
+    if names != _DIRECTORY_NAMES:
+        missing = sorted(_DIRECTORY_NAMES - names)
+        unexpected = sorted(names - _DIRECTORY_NAMES)
+        raise CheckpointIntegrityError(
+            f"checkpoint directory inventory mismatch: missing={missing}, unexpected={unexpected}"
+        )
+
+
+def _read_regular_bytes(root: Path, name: str) -> bytes:
+    path = root / name
+    try:
+        before = path.lstat()
+    except FileNotFoundError as exc:
+        raise CheckpointIntegrityError(f"missing checkpoint artifact: {name}") from exc
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+        raise CheckpointIntegrityError(
+            f"checkpoint artifact must be a regular non-symlink file: {name}"
+        )
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise CheckpointIntegrityError(f"cannot safely open checkpoint artifact: {name}") from exc
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise CheckpointIntegrityError(
+                f"checkpoint artifact changed type while opening: {name}"
+            )
+        before_identity = (before.st_dev, before.st_ino)
+        opened_identity = (opened.st_dev, opened.st_ino)
+        if before_identity != opened_identity:
+            raise CheckpointIntegrityError(f"checkpoint artifact changed while opening: {name}")
+        with os.fdopen(fd, "rb", closefd=False) as handle:
+            return handle.read()
+    finally:
+        os.close(fd)
+
+
+def _parse_manifest_bytes(manifest_bytes: bytes, checksum_bytes: bytes) -> dict[str, Any]:
+    try:
+        checksum_line = checksum_bytes.decode("ascii").strip().split()
+    except UnicodeDecodeError as exc:
+        raise CheckpointIntegrityError("MANIFEST.sha256 must be ASCII") from exc
     if len(checksum_line) != 2 or checksum_line[1] != MANIFEST_NAME:
         raise CheckpointIntegrityError("invalid MANIFEST.sha256 format")
-    actual_manifest_hash = sha256_file(manifest_path)
+    actual_manifest_hash = sha256_bytes(manifest_bytes)
     if checksum_line[0] != actual_manifest_hash:
         raise CheckpointIntegrityError("manifest checksum mismatch")
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise CheckpointIntegrityError("manifest is not valid JSON") from exc
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CheckpointIntegrityError("manifest is not valid UTF-8 JSON") from exc
     if manifest.get("format") != FORMAT_NAME or manifest.get("format_version") != FORMAT_VERSION:
         raise CheckpointCompatibilityError(
-            f"unsupported checkpoint format: {manifest.get('format')!r} v{manifest.get('format_version')!r}"
+            "unsupported checkpoint format: "
+            f"{manifest.get('format')!r} v{manifest.get('format_version')!r}"
         )
     return manifest
 
@@ -497,6 +934,42 @@ def _validate_manifest_identity(identity: Any) -> None:
     except ValueError as exc:
         raise CheckpointIntegrityError(str(exc)) from exc
 
+    if not isinstance(identity.get("model_spec"), Mapping) or not identity["model_spec"]:
+        raise CheckpointIntegrityError("identity.model_spec must be a non-empty mapping")
+    if not isinstance(identity.get("training_config"), Mapping) or not identity["training_config"]:
+        raise CheckpointIntegrityError("identity.training_config must be a non-empty mapping")
+    if not isinstance(identity.get("optimizer"), Mapping) or not identity["optimizer"]:
+        raise CheckpointIntegrityError("identity.optimizer must be a non-empty mapping")
+    scheduler = identity.get("scheduler")
+    if scheduler is not None and (not isinstance(scheduler, Mapping) or not scheduler):
+        raise CheckpointIntegrityError("identity.scheduler must be a non-empty mapping or None")
+    parameter_count = identity.get("parameter_count")
+    if (
+        not isinstance(parameter_count, int)
+        or isinstance(parameter_count, bool)
+        or parameter_count <= 0
+    ):
+        raise CheckpointIntegrityError("identity.parameter_count must be a positive integer")
+    seed = identity.get("seed")
+    if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0:
+        raise CheckpointIntegrityError("identity.seed must be a non-negative integer")
+    precision = identity.get("precision")
+    if not isinstance(precision, str) or not precision.strip():
+        raise CheckpointIntegrityError("identity.precision must be a non-empty string")
+    step = identity.get("step")
+    tokens_seen = identity.get("tokens_seen")
+    if (
+        not isinstance(step, int)
+        or isinstance(step, bool)
+        or not isinstance(tokens_seen, int)
+        or isinstance(tokens_seen, bool)
+        or step < 0
+        or tokens_seen < 0
+    ):
+        raise CheckpointIntegrityError(
+            "identity.step and identity.tokens_seen must be non-negative integers"
+        )
+
     hash_pairs = (
         ("model_spec", "model_spec_hash"),
         ("training_config", "training_config_hash"),
@@ -509,29 +982,65 @@ def _validate_manifest_identity(identity: Any) -> None:
             raise CheckpointIntegrityError(f"{hash_key} does not match {payload_key}")
 
 
-def verify_checkpoint(directory: str | Path) -> dict[str, Any]:
-    """Verify manifest, lineage identities, and every file checksum without mutation."""
+def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
+    """Read each checkpoint byte once and verify that exact immutable snapshot.
+
+    This closes the check/use gap in the original loader: later mutations of the
+    source directory cannot change the bytes consumed by
+    :func:`load_verified_checkpoint`.
+    """
 
     root = Path(directory)
-    manifest = _read_manifest(root)
+    _require_checkpoint_directory(root)
+    manifest_bytes = _read_regular_bytes(root, MANIFEST_NAME)
+    checksum_bytes = _read_regular_bytes(root, MANIFEST_CHECKSUM_NAME)
+    manifest = _parse_manifest_bytes(manifest_bytes, checksum_bytes)
     _validate_manifest_identity(manifest.get("identity"))
+
     files = manifest.get("files")
-    if not isinstance(files, dict) or not files:
-        raise CheckpointIntegrityError("manifest contains no file records")
-    for name, record in files.items():
-        if Path(name).name != name:
-            raise CheckpointIntegrityError(f"unsafe artifact path in manifest: {name!r}")
-        path = root / name
-        if not path.is_file():
-            raise CheckpointIntegrityError(f"missing checkpoint artifact: {name}")
-        if path.stat().st_size != record.get("bytes"):
+    if not isinstance(files, dict) or set(files) != _PAYLOAD_NAMES:
+        raise CheckpointIntegrityError(
+            f"manifest file inventory must be exactly {sorted(_PAYLOAD_NAMES)}"
+        )
+
+    payloads: dict[str, bytes] = {}
+    for name in sorted(_PAYLOAD_NAMES):
+        record = files.get(name)
+        if not isinstance(record, Mapping):
+            raise CheckpointIntegrityError(f"invalid file record for {name}")
+        try:
+            expected_hash = _require_exact_hex(
+                record.get("sha256"), field=f"files.{name}.sha256", lengths={64}
+            )
+        except ValueError as exc:
+            raise CheckpointIntegrityError(str(exc)) from exc
+        expected_bytes = record.get("bytes")
+        if (
+            not isinstance(expected_bytes, int)
+            or isinstance(expected_bytes, bool)
+            or expected_bytes < 0
+        ):
+            raise CheckpointIntegrityError(f"invalid byte length for {name}")
+        data = _read_regular_bytes(root, name)
+        if len(data) != expected_bytes:
             raise CheckpointIntegrityError(f"size mismatch for {name}")
-        if sha256_file(path) != record.get("sha256"):
+        if sha256_bytes(data) != expected_hash:
             raise CheckpointIntegrityError(f"checksum mismatch for {name}")
+        payloads[name] = data
+
     expected_id = hash_json({"identity": manifest["identity"], "files": manifest["files"]})
     if expected_id != manifest.get("checkpoint_id"):
         raise CheckpointIntegrityError("checkpoint_id does not match identity and artifact records")
-    return manifest
+    return VerifiedCheckpoint(
+        _manifest_bytes=manifest_bytes,
+        _artifacts=MappingProxyType(payloads),
+    )
+
+
+def verify_checkpoint(directory: str | Path) -> dict[str, Any]:
+    """Verify exact inventory, lineage identities, and every payload checksum."""
+
+    return prepare_checkpoint_load(directory).manifest
 
 
 def assert_identity(
@@ -564,6 +1073,97 @@ def assert_identity(
         raise CheckpointCompatibilityError(f"checkpoint identity mismatch: {mismatches}")
 
 
+def _decode_verified_state(
+    verified: VerifiedCheckpoint,
+) -> tuple[dict[str, np.ndarray], Mapping[str, Any]]:
+    try:
+        arrays = load_safetensors_bytes(verified._artifacts[WEIGHTS_NAME])
+    except Exception as exc:
+        raise CheckpointIntegrityError("weights.safetensors cannot be decoded") from exc
+    try:
+        state_arrays = load_safetensors_bytes(verified._artifacts[STATE_TENSORS_NAME])
+    except Exception as exc:
+        raise CheckpointIntegrityError("state.safetensors cannot be decoded") from exc
+    try:
+        state_tree = json.loads(verified._artifacts[STATE_TREE_NAME].decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CheckpointIntegrityError("state.json cannot be decoded") from exc
+    try:
+        combined_state = unpack_state_tree(state_tree, state_arrays)
+    except (StateTreeError, KeyError, TypeError, ValueError) as exc:
+        raise CheckpointIntegrityError("checkpoint state tree is structurally invalid") from exc
+    if not isinstance(combined_state, Mapping):
+        raise CheckpointIntegrityError("checkpoint combined state must be a mapping")
+    if "rng" not in combined_state:
+        raise CheckpointIntegrityError("checkpoint combined state is missing RNG state")
+    return arrays, combined_state
+
+
+def load_verified_checkpoint(
+    verified: VerifiedCheckpoint,
+    *,
+    model: Any,
+    optimizer: Any | None = None,
+    scheduler: Any | None = None,
+    strict_model: bool = True,
+    restore_rng: bool = True,
+    expected_git_sha: str | None = None,
+    expected_model_spec_hash: str | None = None,
+    expected_tokenizer_hash: str | None = None,
+    expected_tokenizer_vocab_hash: str | None = None,
+    expected_dataset_manifest_hash: str | None = None,
+    expected_run_manifest_hash: str | None = None,
+) -> LoadResult:
+    """Preflight/decode a verified byte snapshot, then mutate requested targets."""
+
+    manifest = verified.manifest
+    assert_identity(
+        manifest,
+        git_sha=expected_git_sha,
+        model_spec_hash=expected_model_spec_hash,
+        tokenizer_hash=expected_tokenizer_hash,
+        tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        dataset_manifest_hash=expected_dataset_manifest_hash,
+        run_manifest_hash=expected_run_manifest_hash,
+    )
+    arrays, combined_state = _decode_verified_state(verified)
+    materialized = _prepare_model_weights(model, arrays, strict_model)
+    if optimizer is not None and combined_state.get("optimizer") is None:
+        raise CheckpointCompatibilityError(
+            "optimizer was requested but checkpoint has no optimizer state"
+        )
+    if optimizer is not None:
+        _preflight_optimizer_state(optimizer, combined_state["optimizer"])
+    if scheduler is not None and combined_state.get("scheduler") is None:
+        raise CheckpointCompatibilityError(
+            "scheduler was requested but checkpoint has no scheduler state"
+        )
+    if scheduler is not None:
+        _preflight_stateful_component(
+            scheduler,
+            combined_state["scheduler"],
+            label="scheduler",
+        )
+    if restore_rng:
+        _preflight_rng_state(combined_state["rng"])
+
+    # No checkpoint byte is reopened after this point. All integrity, identity,
+    # payload decoding, model/optimizer/scheduler compatibility and supported RNG
+    # checks completed before the first mutation.
+    _apply_model_weights(model, materialized, strict_model)
+    if optimizer is not None:
+        optimizer.load_state_dict(combined_state["optimizer"])
+    if scheduler is not None:
+        scheduler.load_state_dict(combined_state["scheduler"])
+    if restore_rng:
+        restore_rng_state(combined_state["rng"])
+    return LoadResult(
+        manifest=copy.deepcopy(manifest),
+        trainer_state=combined_state.get("trainer", {}),
+        rng_state=combined_state["rng"],
+    )
+
+
 def load_checkpoint(
     directory: str | Path,
     *,
@@ -579,38 +1179,20 @@ def load_checkpoint(
     expected_dataset_manifest_hash: str | None = None,
     expected_run_manifest_hash: str | None = None,
 ) -> LoadResult:
-    """Verify then restore model/trainer state from a checkpoint."""
+    """Snapshot+verify exact checkpoint bytes, then restore requested targets."""
 
-    root = Path(directory)
-    manifest = verify_checkpoint(root)
-    assert_identity(
-        manifest,
-        git_sha=expected_git_sha,
-        model_spec_hash=expected_model_spec_hash,
-        tokenizer_hash=expected_tokenizer_hash,
-        tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
-        dataset_manifest_hash=expected_dataset_manifest_hash,
-        run_manifest_hash=expected_run_manifest_hash,
-    )
-    arrays = load_safetensors(str(root / WEIGHTS_NAME))
-    _load_model_weights(model, arrays, strict_model)
-    state_arrays = load_safetensors(str(root / STATE_TENSORS_NAME))
-    state_tree = json.loads((root / STATE_TREE_NAME).read_text(encoding="utf-8"))
-    combined_state = unpack_state_tree(state_tree, state_arrays)
-    if optimizer is not None:
-        state = combined_state.get("optimizer")
-        if state is None:
-            raise CheckpointCompatibilityError("optimizer was requested but checkpoint has no optimizer state")
-        optimizer.load_state_dict(state)
-    if scheduler is not None:
-        state = combined_state.get("scheduler")
-        if state is None:
-            raise CheckpointCompatibilityError("scheduler was requested but checkpoint has no scheduler state")
-        scheduler.load_state_dict(state)
-    if restore_rng:
-        restore_rng_state(combined_state["rng"])
-    return LoadResult(
-        manifest=manifest,
-        trainer_state=combined_state.get("trainer", {}),
-        rng_state=combined_state["rng"],
+    verified = prepare_checkpoint_load(directory)
+    return load_verified_checkpoint(
+        verified,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        strict_model=strict_model,
+        restore_rng=restore_rng,
+        expected_git_sha=expected_git_sha,
+        expected_model_spec_hash=expected_model_spec_hash,
+        expected_tokenizer_hash=expected_tokenizer_hash,
+        expected_tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        expected_dataset_manifest_hash=expected_dataset_manifest_hash,
+        expected_run_manifest_hash=expected_run_manifest_hash,
     )

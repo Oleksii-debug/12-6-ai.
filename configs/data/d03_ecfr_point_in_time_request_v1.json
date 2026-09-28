@@ -1,0 +1,63 @@
+{
+  "authority": {
+    "family_id": "us.federal-regulations.ecfr",
+    "import_in_progress": false,
+    "metadata_observation_authority": "DISCOVERY_ONLY",
+    "metadata_observed_on": "2026-09-07",
+    "reserved_titles": [
+      35
+    ],
+    "source_id": "en.us.ecfr.regulations",
+    "stratum": "en",
+    "titles_endpoint": "https://www.ecfr.gov/api/versioner/v1/titles.json",
+    "titles_metadata_date": "2026-09-03"
+  },
+  "base_authority": {
+    "incumbent_pr": 707,
+    "live_main_observed_sha": "4fa4839f2882984e7bf148dc38ce315d51b60957",
+    "ownership_issue": 672,
+    "repository": "Oleksii-debug/12-6-ai."
+  },
+  "bounds": {
+    "acquisitions_required": 2,
+    "allow_redirects": false,
+    "max_response_bytes": 8388608,
+    "require_identical_bytes": true,
+    "require_xml_parse": true,
+    "timeout_seconds": 60
+  },
+  "claims": {
+    "authorized_unique_loss_positions": 0,
+    "canonical_capacity_credit_bytes": 0,
+    "family_credit": 0,
+    "final_test_accessed": false,
+    "learned_20m_claim": false,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "paid_compute_authorized": false,
+    "research_corpus_v1_released": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0
+  },
+  "next_required_gates": [
+    "RECORD_LEVEL_STRUCTURAL_EXTRACTION_WITH_PROVENANCE",
+    "RIGHTS_AND_PROVENANCE_CLASSIFICATION",
+    "QUALITY_LANGUAGE_PRIVACY_FILTER",
+    "GLOBAL_EXACT_NEAR_FRAGMENT_LINEAGE_DEDUP",
+    "EVALUATION_RESERVATION_DECONTAMINATION",
+    "BALANCE_AND_FAMILY_CAP_RETEST",
+    "CLUSTER_SAFE_SPLIT",
+    "DETERMINISTIC_TOKENIZE_PACK",
+    "POST_PACK_UNIQUE_CAUSAL_LOSS_LEDGER"
+  ],
+  "purpose": "BOUNDED_TRANSPORT_AND_DETERMINISTIC_XML_PARSE_QUALIFICATION_ONLY",
+  "request_identity_sha256": "d9955ff11713a358164513d912d39ba107f0073c75bed15be64afe2cc8c3a2e4",
+  "schema": "12-6.d03-ecfr-point-in-time-materialization-request.v1",
+  "selection": {
+    "date": "2026-09-03",
+    "title": 1,
+    "title_name": "General Provisions",
+    "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-09-03/title-1.xml"
+  },
+  "status": "READY_FOR_NETWORK_EXECUTION_ZERO_CREDIT"
+}

@@ -1,0 +1,62 @@
+{
+  "authorized_unique_loss_positions": 0,
+  "canonical_capacity_credit_bytes": 0,
+  "common_pile_audit": {
+    "audited_code_revision": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "collector_blob_sha1": "0f8633d9a0c12bd04140420d74a95d82a065119f",
+    "collector_path": "sources/loc_books/books.py",
+    "registry_blob_sha1": "7b4d6828288672bf25c551e85a5d7f7399e8ef0f",
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "source_key": "library_of_congress"
+  },
+  "contract_identity_sha256": "9f6fc98e3a3b720f58963b52b3f3cf3b651bdb9e35f08fa380c99f7b7112f828",
+  "corpus_admitted": false,
+  "evaluation_eligible": false,
+  "execution_profile": "LOCAL_FREE",
+  "final_test_payload_accessed": false,
+  "model_training_permitted": false,
+  "paid_compute_authorized": false,
+  "required_downstream_gates": [
+    "privacy",
+    "quality",
+    "global_exact_near_fragment_lineage_dedup",
+    "reserved_evaluation_decontamination",
+    "balance_family_caps",
+    "cluster_safe_split",
+    "deterministic_pack_two_clean_builds",
+    "positive_unique_loss_ledger"
+  ],
+  "rights_policy": {
+    "dataset_package_license_is_training_authority": false,
+    "expected_language": "english",
+    "expected_license": "Public Domain",
+    "legal_conclusion_claimed": false,
+    "official_rights_url": "https://www.loc.gov/collections/selected-digitized-books/about-this-collection/rights-and-access/",
+    "require_exact_item_url": true,
+    "require_loc_text_file_url": true,
+    "source_collection": "Library of Congress Selected Digitized Books"
+  },
+  "schema_version": "12-6.d03-common-pile-loc-intake.v1",
+  "selection_policy": {
+    "max_documents": 128,
+    "max_examined_documents": 256,
+    "max_jsonl_line_bytes": 4194304,
+    "max_remote_compressed_prefix_bytes": 33554432,
+    "max_single_normalized_utf8_bytes": 1000000,
+    "max_total_normalized_utf8_bytes": 4500000,
+    "min_single_normalized_utf8_bytes": 1024,
+    "ordering": "SOURCE_ORDER"
+  },
+  "source_family": "en.loc.selected-digitized-books",
+  "tokenizer_fit_permitted": false,
+  "training_authorized_bytes": 0,
+  "upstream": {
+    "dataset": "common-pile/library_of_congress",
+    "resolve_url": "https://huggingface.co/datasets/common-pile/library_of_congress/resolve/d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/data/00000_loc_books.jsonl.gz",
+    "revision": "d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7",
+    "shard_compressed_bytes": 358594502,
+    "shard_lfs_sha256": "a6a6023d9cae067b5531ba84537877c180ab3ff1579f99aeac446d65d465ae0f",
+    "shard_path": "data/00000_loc_books.jsonl.gz",
+    "source_name": "loc_books"
+  }
+}

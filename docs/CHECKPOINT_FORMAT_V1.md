@@ -16,7 +16,7 @@ The format was hardened before any canonical S0 checkpoint existed, so the pre-r
 
 ## Save/load invariants
 
-`save_checkpoint` stages into a sibling temporary directory, verifies the completed bundle, and only then renames it into place. Existing checkpoints are not overwritten unless explicitly requested.
+`save_checkpoint` stages into a sibling temporary directory, verifies the completed bundle, and only then renames it into place. Checkpoint-v1 destinations are immutable after publication: saving to an existing destination fails closed even when the historical `overwrite=True` argument is passed. That argument remains accepted only for source compatibility and does not authorize replacing an existing checkpoint.
 
 `CheckpointIdentity.validate()` rejects abbreviated Git identities and placeholder/non-hash lineage strings. Required candidate/tokenizer/dataset/run hashes must be exact lowercase hexadecimal values of the documented width. This applies even when callers construct `CheckpointIdentity` directly rather than going through the C01 run-manifest binder.
 
