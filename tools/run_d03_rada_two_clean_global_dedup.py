@@ -346,6 +346,20 @@ def _write_incomplete(
     )
 
 
+def _run_worker(command: list[str], *, timeout_seconds: int) -> None:
+    process = subprocess.Popen(command)
+    try:
+        returncode = process.wait(timeout=timeout_seconds)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        try:
+            process.kill()
+        finally:
+            process.wait()
+        raise
+    if returncode != 0:
+        raise subprocess.CalledProcessError(returncode, command)
+
+
 def _run_two_clean(args: argparse.Namespace) -> int:
     try:
         args.output_root.mkdir(parents=True, exist_ok=False)
@@ -366,7 +380,7 @@ def _run_two_clean(args: argparse.Namespace) -> int:
     completed: list[str] = []
     try:
         for run_id, output_dir in runs:
-            subprocess.run(
+            _run_worker(
                 [
                     sys.executable,
                     str(script),
@@ -377,8 +391,7 @@ def _run_two_clean(args: argparse.Namespace) -> int:
                     "--output-dir",
                     str(output_dir),
                 ],
-                check=True,
-                timeout=worker_timeout_seconds,
+                timeout_seconds=worker_timeout_seconds,
             )
             completed.append(run_id)
     except subprocess.TimeoutExpired as exc:
