@@ -9,6 +9,18 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+_MODEL_PAYLOAD_SUFFIXES = frozenset(
+    {
+        ".ckpt",
+        ".ggml",
+        ".gguf",
+        ".onnx",
+        ".pt",
+        ".pth",
+        ".safetensors",
+    }
+)
+
 
 def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
@@ -42,17 +54,26 @@ def _write(path: Path, payload: dict[str, Any], *, hash_field: str = "manifest_s
     )
 
 
+def _is_model_checkpoint_payload(name: str) -> bool:
+    """Return whether one artifact member is serialized model/checkpoint payload bytes.
+
+    Package namespaces such as ``twelve_six/checkpoint/core.py`` are executable
+    application code, not a bundled checkpoint. The artifact boundary therefore
+    classifies actual serialized model formats instead of matching directory
+    names containing ``checkpoint``.
+    """
+
+    normalized = name.replace("\\", "/").rstrip("/").casefold()
+    return any(normalized.endswith(suffix) for suffix in _MODEL_PAYLOAD_SUFFIXES)
+
+
 def _application(root: Path, source_sha: str) -> None:
     wheels = sorted(root.glob("twelve_six_ai-*.whl"))
     if len(wheels) != 1:
         raise RuntimeError(f"expected exactly one application wheel, found {len(wheels)}")
     with zipfile.ZipFile(wheels[0]) as archive:
         names = archive.namelist()
-    forbidden = [
-        name
-        for name in names
-        if name.lower().endswith(".safetensors") or "/checkpoint" in name.lower()
-    ]
+    forbidden = sorted(name for name in names if _is_model_checkpoint_payload(name))
     if forbidden:
         raise RuntimeError(f"application wheel contains model/checkpoint bytes: {forbidden}")
     payload = {
@@ -70,13 +91,15 @@ def _runtime(root: Path) -> None:
     application_wheels = list((root / "wheelhouse").glob("twelve_six_ai-*.whl"))
     if application_wheels:
         raise RuntimeError("runtime wheelhouse must not contain the application wheel")
-    checkpoint_bytes = [
-        path
+    checkpoint_bytes = sorted(
+        path.relative_to(root).as_posix()
         for path in root.rglob("*")
-        if path.is_file() and path.suffix.lower() == ".safetensors"
-    ]
+        if path.is_file() and _is_model_checkpoint_payload(path.relative_to(root).as_posix())
+    )
     if checkpoint_bytes:
-        raise RuntimeError("runtime artifact must not contain checkpoint tensors")
+        raise RuntimeError(
+            f"runtime artifact must not contain model/checkpoint bytes: {checkpoint_bytes}"
+        )
     payload = {
         "schema_version": "12-6.windows-runtime-artifact.v1",
         "profile_id": profile["profile_id"],
