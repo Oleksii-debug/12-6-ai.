@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
-from http.client import HTTPConnection
-from json import dumps, loads
-from threading import Thread
+import collections.abc
+import contextlib
+import http.client
+import json
+import threading
 
 import pytest
 
@@ -24,10 +24,13 @@ class SecretFailingBackend:
     def encode(self, text: str) -> list[int]:
         return [0] if text else []
 
-    def decode(self, token_ids: Sequence[int]) -> str:
+    def decode(self, token_ids: collections.abc.Sequence[int]) -> str:
         return "A" * len(token_ids)
 
-    def next_token_logits(self, input_ids: Sequence[int]) -> Sequence[float]:
+    def next_token_logits(
+        self,
+        input_ids: collections.abc.Sequence[int],
+    ) -> collections.abc.Sequence[float]:
         del input_ids
         self.calls += 1
         raise ValueError(_INTERNAL_SECRET)
@@ -36,17 +39,17 @@ class SecretFailingBackend:
         return {"backend": "secret-failing-test"}
 
 
-@contextmanager
+@contextlib.contextmanager
 def running_server(
     backend: SecretFailingBackend,
-) -> Iterator[tuple[object, tuple[str, int]]]:
+) -> collections.abc.Iterator[tuple[object, tuple[str, int]]]:
     server = make_server(
         backend,
         host="127.0.0.1",
         port=0,
         model_name="model341-error-boundary-test",
     )
-    thread = Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address[:2]
     try:
@@ -62,8 +65,8 @@ def _json_request(
     address: tuple[str, int],
     payload: dict[str, object],
 ) -> tuple[int, dict[str, object]]:
-    connection = HTTPConnection(*address, timeout=3)
-    body = dumps(payload).encode("utf-8")
+    connection = http.client.HTTPConnection(*address, timeout=3)
+    body = json.dumps(payload).encode("utf-8")
     connection.request(
         "POST",
         "/v1/completions",
@@ -71,7 +74,7 @@ def _json_request(
         headers={"Content-Type": "application/json"},
     )
     response = connection.getresponse()
-    parsed = loads(response.read().decode("utf-8"))
+    parsed = json.loads(response.read().decode("utf-8"))
     connection.close()
     return response.status, parsed
 
@@ -90,7 +93,7 @@ def test_backend_value_error_is_sanitized_as_internal_server_error(
     assert status == 500
     assert payload["error"]["code"] == "internal_error"  # type: ignore[index]
     assert payload["error"]["message"] == "internal server error"  # type: ignore[index]
-    assert _INTERNAL_SECRET not in dumps(payload)
+    assert _INTERNAL_SECRET not in json.dumps(payload)
     assert _INTERNAL_SECRET not in captured
     assert "internal_error=ValueError" in captured
     assert backend.calls == 1
