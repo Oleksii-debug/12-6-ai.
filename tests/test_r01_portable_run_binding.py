@@ -426,7 +426,6 @@ def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
     assert (readiness, template, overlay) == originals
 
 
-
 def test_ready_packet_execution_projection_is_closed_world_and_cross_bound() -> None:
     readiness = _ready_readiness()
     overlay = _ready_overlay()
@@ -479,8 +478,6 @@ def test_ready_packet_execution_projection_is_closed_world_and_cross_bound() -> 
         "execution_projection_seed_vector_model_init_invalid"
         in validate_portable_run_contract(seed_alias)
     )
-
-
 
 
 def test_ready_packet_execution_projection_rejects_nonfinite_and_invalid_ranges() -> None:
