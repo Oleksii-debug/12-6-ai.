@@ -224,7 +224,7 @@ def run_probe(
     try:
         torch.set_num_threads(intraop_threads)
         with torch.random.fork_rng(devices=[]):
-            torch.manual_seed(341)
+            torch.default_generator.manual_seed(341)
 
             spec = model_spec()
             init = init_spec()
