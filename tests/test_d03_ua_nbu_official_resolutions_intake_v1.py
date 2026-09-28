@@ -345,3 +345,50 @@ def test_related_attachment_without_exact_primary_is_deterministic_scope_reject(
     )
     assert page is None
     assert reason == "no exact primary resolution PDF"
+
+
+def test_resealed_discovery_evidence_cannot_add_related_pdf():
+    config = load_config()
+    fetches = {
+        "https://bank.gov.ua/ua/legislation/Resolution_13012026_2": [DOC_2_A, DOC_2_A],
+    }
+    catalog = '<html><body><a href="/ua/legislation/Resolution_13012026_2">r2</a></body></html>'
+    evidence = module.build_body_free_discovery_evidence(
+        config,
+        [catalog, catalog],
+        fetches,
+    )
+    tampered = deepcopy(evidence)
+    tampered["documents"][0]["official_pdf_urls"].append(
+        "https://bank.gov.ua/admin_uploads/law/Resolution_24022022_18_kp.pdf"
+    )
+    tampered["documents"][0]["official_pdf_urls"].sort()
+    tampered["evidence_identity_sha256"] = module.self_identity(
+        tampered,
+        "evidence_identity_sha256",
+    )
+    with pytest.raises(module.NbuIntakeError, match="bad primary PDF set"):
+        module.validate_evidence(tampered, config)
+
+
+def test_resealed_discovery_evidence_cannot_substitute_related_pdf():
+    config = load_config()
+    fetches = {
+        "https://bank.gov.ua/ua/legislation/Resolution_13012026_2": [DOC_2_A, DOC_2_A],
+    }
+    catalog = '<html><body><a href="/ua/legislation/Resolution_13012026_2">r2</a></body></html>'
+    evidence = module.build_body_free_discovery_evidence(
+        config,
+        [catalog, catalog],
+        fetches,
+    )
+    tampered = deepcopy(evidence)
+    tampered["documents"][0]["official_pdf_urls"] = [
+        "https://bank.gov.ua/admin_uploads/law/Resolution_24022022_18_kp.pdf"
+    ]
+    tampered["evidence_identity_sha256"] = module.self_identity(
+        tampered,
+        "evidence_identity_sha256",
+    )
+    with pytest.raises(module.NbuIntakeError, match="non-primary PDF"):
+        module.validate_evidence(tampered, config)

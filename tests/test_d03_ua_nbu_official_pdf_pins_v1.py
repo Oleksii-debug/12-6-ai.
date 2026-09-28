@@ -217,3 +217,27 @@ def test_pin_evidence_promotion_and_digest_tamper_fail_closed():
     tampered["pins"][0]["pdf_sha256"] = "0" * 64
     with pytest.raises(module.NbuPdfPinError):
         module.validate_pin_evidence(tampered, config)
+
+
+def test_resealed_related_attachment_never_reaches_pdf_fetch():
+    config = load_config()
+    url = "https://bank.gov.ua/admin_uploads/law/01012026_1.pdf"
+    discovery = discovery_evidence(config, [url])
+    tampered = deepcopy(discovery)
+    tampered["documents"][0]["official_pdf_urls"] = [
+        "https://bank.gov.ua/admin_uploads/law/Resolution_24022022_18_kp.pdf"
+    ]
+    tampered["evidence_identity_sha256"] = module.PARENT.self_identity(
+        tampered,
+        "evidence_identity_sha256",
+    )
+    calls = 0
+
+    def fetcher(*_args):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("fetch must not occur for invalid parent evidence")
+
+    with pytest.raises(module.NbuPdfPinError, match="parent discovery evidence invalid"):
+        module.materialize_pdf_pins(tampered, config, fetcher)
+    assert calls == 0

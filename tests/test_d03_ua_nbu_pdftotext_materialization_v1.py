@@ -222,3 +222,31 @@ def test_resealed_manifest_cannot_substitute_document_provenance():
     with_identity(tampered)
     with pytest.raises(module.NbuTextMaterializationError, match="record provenance identity mismatch"):
         module.validate_materialization_evidence(tampered, config)
+
+
+def test_resealed_discovery_related_pdf_fails_before_fetch():
+    config = load_config()
+    discovery, pins, pdf_bytes = sample_inputs(config)
+    discovery["documents"][0]["official_pdf_urls"] = [
+        "https://bank.gov.ua/admin_uploads/law/Resolution_24022022_18_kp.pdf"
+    ]
+    with_identity(discovery)
+    pins["parent_discovery_evidence_identity_sha256"] = discovery["evidence_identity_sha256"]
+    with_identity(pins)
+    calls = 0
+
+    def fetcher(*_args):
+        nonlocal calls
+        calls += 1
+        return pdf_bytes
+
+    with pytest.raises(module.NbuTextMaterializationError, match="primary PDF identity mismatch"):
+        module.materialize_text(
+            discovery,
+            pins,
+            config,
+            fetcher=fetcher,
+            extractor=lambda *_: b"valid extracted text over thirty-two bytes\n",
+            extractor_version="25.06.0",
+        )
+    assert calls == 0

@@ -329,6 +329,13 @@ def crawl_resolution_catalog(
     raise NbuIntakeError("catalog target not reached within hard page bound")
 
 
+def _expected_primary_pdf_name(document_url: str) -> str:
+    document_name = urlsplit(document_url).path.rsplit("/", 1)[-1]
+    if not document_name.startswith("Resolution_"):
+        raise NbuIntakeError("canonical resolution identity drift")
+    return document_name.removeprefix("Resolution_") + ".pdf"
+
+
 def inspect_resolution_page(document_html: str, document_url: str, config: Mapping[str, Any]) -> ResolutionPage:
     validate_config(config)
     url = canonical_document_url(document_url, config["source"]["catalog_url"], config)
@@ -345,10 +352,7 @@ def inspect_resolution_page(document_html: str, document_url: str, config: Mappi
     if not pdfs:
         raise NbuIntakeError("no official resolution PDF")
 
-    document_name = urlsplit(url).path.rsplit("/", 1)[-1]
-    if not document_name.startswith("Resolution_"):
-        raise NbuIntakeError("canonical resolution identity drift")
-    expected_pdf_name = document_name.removeprefix("Resolution_") + ".pdf"
+    expected_pdf_name = _expected_primary_pdf_name(url)
     primary_pdfs = {
         pdf_url
         for pdf_url in pdfs
@@ -485,10 +489,11 @@ def validate_evidence(evidence: Mapping[str, Any], config: Mapping[str, Any]) ->
             raise NbuIntakeError("duplicate document")
         seen.add(url)
         pdfs = item.get("official_pdf_urls")
-        if not isinstance(pdfs, list) or not pdfs or sorted(set(pdfs)) != pdfs:
-            raise NbuIntakeError("bad PDF set")
-        for pdf in pdfs:
-            canonical_pdf_url(str(pdf), url, config)
+        if not isinstance(pdfs, list) or len(pdfs) != 1 or sorted(set(pdfs)) != pdfs:
+            raise NbuIntakeError("bad primary PDF set")
+        primary_pdf = canonical_pdf_url(str(pdfs[0]), url, config)
+        if urlsplit(primary_pdf).path.rsplit("/", 1)[-1] != _expected_primary_pdf_name(url):
+            raise NbuIntakeError("non-primary PDF in discovery evidence")
         if not HEX64.fullmatch(str(item.get("page_metadata_sha256", ""))):
             raise NbuIntakeError("bad metadata hash")
     required = {

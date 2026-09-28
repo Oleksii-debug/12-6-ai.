@@ -199,13 +199,17 @@ def validate_discovery_evidence(evidence: Mapping[str, Any], config: Mapping[str
             raise NbuTextMaterializationError("duplicate discovery document")
         seen_documents.add(document_url)
         pdfs = item.get("official_pdf_urls")
-        if not isinstance(pdfs, list) or not pdfs or sorted(set(pdfs)) != pdfs:
-            raise NbuTextMaterializationError("discovery PDF set invalid")
-        for raw_pdf in pdfs:
-            pdf_url = _canonical_source_url(str(raw_pdf), config, "pdf")
-            if pdf_url in pdf_to_document:
-                raise NbuTextMaterializationError("one PDF is mapped to multiple documents")
-            pdf_to_document[pdf_url] = document_url
+        if not isinstance(pdfs, list) or len(pdfs) != 1 or sorted(set(pdfs)) != pdfs:
+            raise NbuTextMaterializationError("discovery primary PDF set invalid")
+        raw_pdf = pdfs[0]
+        pdf_url = _canonical_source_url(str(raw_pdf), config, "pdf")
+        document_name = urlsplit(document_url).path.rsplit("/", 1)[-1]
+        expected_pdf_name = document_name.removeprefix("Resolution_") + ".pdf"
+        if urlsplit(pdf_url).path.rsplit("/", 1)[-1] != expected_pdf_name:
+            raise NbuTextMaterializationError("discovery primary PDF identity mismatch")
+        if pdf_url in pdf_to_document:
+            raise NbuTextMaterializationError("one PDF is mapped to multiple documents")
+        pdf_to_document[pdf_url] = document_url
         if not HEX64.fullmatch(str(item.get("page_metadata_sha256", ""))):
             raise NbuTextMaterializationError("discovery page metadata hash malformed")
 
