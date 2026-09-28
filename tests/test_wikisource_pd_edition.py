@@ -381,6 +381,47 @@ def test_control_contract_is_fail_closed() -> None:
         validate_control_contract(contract)
 
 
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("canonical_capacity_credit_bytes", False),
+        ("canonical_capacity_credit_bytes", 0.0),
+        ("training_authorized_bytes", False),
+        ("authorized_unique_loss_positions", False),
+        ("optimizer_updates", False),
+    ],
+)
+def test_control_contract_rejects_bool_and_non_integer_zero_credit_values(
+    field: str, invalid_value: object
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract = json.loads(
+        (root / "configs/data/d03_wikisource_lesia1892_current_main_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    contract["truth_boundary"][field] = invalid_value
+    with pytest.raises(WikisourceIntakeError, match="zero-credit"):
+        validate_control_contract(contract)
+
+
+@pytest.mark.parametrize("invalid_cadence", [True, False, "0.5", None])
+def test_control_contract_rejects_non_numeric_or_boolean_cadence(
+    invalid_cadence: object,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract = json.loads(
+        (root / "configs/data/d03_wikisource_lesia1892_current_main_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    contract["acquisition"]["minimum_request_cadence_seconds"] = invalid_cadence
+    with pytest.raises(WikisourceIntakeError, match="cadence"):
+        validate_control_contract(contract)
+
+
+
+
 def test_repository_control_file_matches_runtime_contract() -> None:
     root = Path(__file__).resolve().parents[1]
     contract = json.loads(
