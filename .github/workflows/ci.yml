@@ -243,10 +243,18 @@ jobs:
               assert observed == identity, field
 
           # Reject ambiguous/non-finite JSON at every durable convergence input.
-          load("artifacts/pass-1/materializer.json")
-          load("artifacts/pass-2/materializer.json")
-          load("artifacts/pass-1/source-admission.json")
-          load("artifacts/pass-2/source-admission.json")
+          materializers = [
+              load("artifacts/pass-1/materializer.json"),
+              load("artifacts/pass-2/materializer.json"),
+          ]
+          source_admissions = [
+              load("artifacts/pass-1/source-admission.json"),
+              load("artifacts/pass-2/source-admission.json"),
+          ]
+          for value in (*materializers, *source_admissions):
+              # Historical Product/replay authorities use UTF-8 canonical JSON + newline.
+              verify_self_hash(value, "report_identity_sha256", newline=True)
+
           report = load("artifacts/pass-1/global-dedup-report.json")
           survivors = load("artifacts/pass-1/survivors.json")
           # Incumbent V1/V3 report authority uses ensure_ascii=True plus newline.
