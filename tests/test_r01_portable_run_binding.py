@@ -481,6 +481,50 @@ def test_ready_packet_execution_projection_is_closed_world_and_cross_bound() -> 
     )
 
 
+
+
+def test_ready_packet_execution_projection_rejects_nonfinite_and_invalid_ranges() -> None:
+    readiness = _ready_readiness()
+    overlay = _ready_overlay()
+    tokens, refs, _, _, execution = _verified_inputs(readiness)
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        expected_portable_execution=execution,
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
+    )
+    assert result.binding_ready
+    assert result.packet is not None
+
+    for field, invalid in (
+        ("learning_rate", float("nan")),
+        ("eps", float("inf")),
+        ("gradient_clip_norm", float("-inf")),
+    ):
+        packet = copy.deepcopy(result.packet)
+        packet["recipe"]["execution_projection"][field] = invalid
+        assert (
+            f"execution_projection_{field}_invalid"
+            in validate_portable_run_contract(packet)
+        )
+
+    negative_decay = copy.deepcopy(result.packet)
+    negative_decay["recipe"]["execution_projection"]["weight_decay"] = -0.1
+    assert (
+        "execution_projection_weight_decay_must_be_nonnegative"
+        in validate_portable_run_contract(negative_decay)
+    )
+
+    invalid_betas = copy.deepcopy(result.packet)
+    invalid_betas["recipe"]["execution_projection"]["betas"] = [0.9, float("nan")]
+    assert (
+        "execution_projection_betas_invalid"
+        in validate_portable_run_contract(invalid_betas)
+    )
+
+
 def test_ready_cross_provider_resume_binds_parent_lineage() -> None:
     readiness = _ready_readiness()
     overlay = _ready_overlay()

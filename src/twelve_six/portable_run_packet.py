@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -351,20 +352,37 @@ def _validate_execution_projection(
         if not _is_nonempty_string(projection.get(name)):
             errors.append(f"execution_projection_{name}_invalid")
 
+    float_values: dict[str, float] = {}
     for name in (
         "learning_rate",
         "eps",
         "weight_decay",
         "gradient_clip_norm",
     ):
-        if type(projection.get(name)) is not float:
-            errors.append(f"execution_projection_{name}_type_invalid")
+        value = projection.get(name)
+        if type(value) is not float or not math.isfinite(value):
+            errors.append(f"execution_projection_{name}_invalid")
+        else:
+            float_values[name] = value
+    for name in ("learning_rate", "eps", "gradient_clip_norm"):
+        if name in float_values and float_values[name] <= 0:
+            errors.append(f"execution_projection_{name}_must_be_positive")
+    if (
+        "weight_decay" in float_values
+        and float_values["weight_decay"] < 0
+    ):
+        errors.append("execution_projection_weight_decay_must_be_nonnegative")
 
     betas = projection.get("betas")
     if (
         not isinstance(betas, list)
         or len(betas) != 2
-        or any(type(value) is not float for value in betas)
+        or any(
+            type(value) is not float
+            or not math.isfinite(value)
+            or not 0 < value < 1
+            for value in betas
+        )
     ):
         errors.append("execution_projection_betas_invalid")
 
