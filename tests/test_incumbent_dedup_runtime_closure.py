@@ -9,14 +9,24 @@ import re
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
-from twelve_six.data.incumbent_dedup_indexed_execution import (
-    IndexedExecutionError,
-    _attest_executable_module,
-    _attest_loader_frozen_runtime_dependencies,
-)
+class _LazyIndexed:
+    _module: ModuleType | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        module = self._module
+        if module is None:
+            module = importlib.import_module(
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            )
+            self._module = module
+        return getattr(module, name)
+
+
+indexed = _LazyIndexed()
 
 
 def _load_source_module(tmp_path: Path, name: str, source: str) -> ModuleType:
@@ -79,14 +89,14 @@ def test_attestation_rejects_imported_behavior_global_substitution(
     global_name: str,
 ) -> None:
     module = _load_source_module(tmp_path, f"synthetic_{label.lower()}_{global_name}", source)
-    _attest_executable_module(module, label)
+    indexed._attest_executable_module(module, label)
 
     monkeypatch.setattr(module, global_name, object())
     with pytest.raises(
-        IndexedExecutionError,
+        indexed.IndexedExecutionError,
         match=rf"{label} referenced global drift: {global_name}",
     ):
-        _attest_executable_module(module, label)
+        indexed._attest_executable_module(module, label)
 
 
 @pytest.mark.parametrize(
@@ -147,7 +157,7 @@ def test_attestation_rejects_imported_behavior_member_in_place_mutation(
         f"synthetic_{label.lower()}_{global_name}_{member_name}",
         source,
     )
-    _attest_executable_module(module, label)
+    indexed._attest_executable_module(module, label)
 
     imported = getattr(module, global_name)
 
@@ -157,10 +167,10 @@ def test_attestation_rejects_imported_behavior_member_in_place_mutation(
     with monkeypatch.context() as patch:
         patch.setattr(imported, member_name, replacement)
         with pytest.raises(
-            IndexedExecutionError,
+            indexed.IndexedExecutionError,
             match=rf"{label} imported behavior drift: {global_name}\.{member_name}",
         ):
-            _attest_executable_module(module, label)
+            indexed._attest_executable_module(module, label)
 
 
 @pytest.mark.parametrize(
@@ -186,14 +196,14 @@ def test_loader_bootstrap_rejects_python_function_code_drift(
     try:
         function.__code__ = replacement.__code__
         try:
-            _attest_loader_frozen_runtime_dependencies()
-        except IndexedExecutionError as exc:
+            indexed._attest_loader_frozen_runtime_dependencies()
+        except indexed.IndexedExecutionError as exc:
             caught = str(exc)
     finally:
         function.__code__ = original_code
 
     assert caught == f"{label} runtime drift"
-    _attest_loader_frozen_runtime_dependencies()
+    indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_imported_python_member_code_drift_is_rejected_without_rebinding(
@@ -204,7 +214,7 @@ def test_imported_python_member_code_drift_is_rejected_without_rebinding(
         "synthetic_v1_json_dumps_in_place",
         "import json\ndef encode(value):\n    return json.dumps(value)\n",
     )
-    _attest_executable_module(module, "V1")
+    indexed._attest_executable_module(module, "V1")
     original_code = json.dumps.__code__
     caught: str | None = None
 
@@ -216,14 +226,14 @@ def test_imported_python_member_code_drift_is_rejected_without_rebinding(
         json.dumps.__code__ = replacement.__code__
         assert module.json.dumps is json.dumps
         try:
-            _attest_executable_module(module, "V1")
-        except IndexedExecutionError as exc:
+            indexed._attest_executable_module(module, "V1")
+        except indexed.IndexedExecutionError as exc:
             caught = str(exc)
     finally:
         json.dumps.__code__ = original_code
 
     assert caught == "V1 imported behavior drift: json.dumps"
-    _attest_executable_module(module, "V1")
+    indexed._attest_executable_module(module, "V1")
 
 
 def test_loader_rejects_re_compile_transitive_rebinding() -> None:
@@ -237,14 +247,14 @@ def test_loader_rejects_re_compile_transitive_rebinding() -> None:
     try:
         re._compile = replacement
         try:
-            _attest_loader_frozen_runtime_dependencies()
-        except IndexedExecutionError as exc:
+            indexed._attest_loader_frozen_runtime_dependencies()
+        except indexed.IndexedExecutionError as exc:
             caught = str(exc)
     finally:
         re._compile = original
 
     assert caught == "transitive behavior drift: re._compile"
-    _attest_loader_frozen_runtime_dependencies()
+    indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_loader_rejects_json_encoder_transitive_rebinding() -> None:
@@ -257,14 +267,14 @@ def test_loader_rejects_json_encoder_transitive_rebinding() -> None:
     try:
         json.JSONEncoder = ReplacementEncoder
         try:
-            _attest_loader_frozen_runtime_dependencies()
-        except IndexedExecutionError as exc:
+            indexed._attest_loader_frozen_runtime_dependencies()
+        except indexed.IndexedExecutionError as exc:
             caught = str(exc)
     finally:
         json.JSONEncoder = original
 
     assert caught == "transitive behavior drift: json.JSONEncoder"
-    _attest_loader_frozen_runtime_dependencies()
+    indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_verifier_attests_before_reference_callable(
@@ -285,7 +295,7 @@ def test_verifier_attests_before_reference_callable(
     def reject_runtime(module: object) -> None:
         assert module is v3
         events.append("attest")
-        raise IndexedExecutionError("synthetic runtime drift")
+        raise indexed.IndexedExecutionError("synthetic runtime drift")
 
     monkeypatch.setattr(verifier, "attest_incumbent_runtime", reject_runtime)
     monkeypatch.setattr(
@@ -302,7 +312,7 @@ def test_verifier_attests_before_reference_callable(
         ],
     )
 
-    with pytest.raises(IndexedExecutionError, match="synthetic runtime drift"):
+    with pytest.raises(indexed.IndexedExecutionError, match="synthetic runtime drift"):
         verifier.main()
     assert events == ["attest"]
 
@@ -319,12 +329,12 @@ def test_loader_rejects_html_replace_charref_transitive_rebinding(
         assert html.unescape is frozen_unescape
         assert html.unescape("&amp;") == "drifted"
         with pytest.raises(
-            IndexedExecutionError,
+            indexed.IndexedExecutionError,
             match=r"transitive behavior drift: html\._replace_charref",
         ):
-            _attest_loader_frozen_runtime_dependencies()
+            indexed._attest_loader_frozen_runtime_dependencies()
 
-    _attest_loader_frozen_runtime_dependencies()
+    indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_loader_rejects_html_charref_transitive_rebinding(
@@ -333,12 +343,12 @@ def test_loader_rejects_html_charref_transitive_rebinding(
     with monkeypatch.context() as patch:
         patch.setattr(html, "_charref", re.compile(r"never-match"))
         with pytest.raises(
-            IndexedExecutionError,
+            indexed.IndexedExecutionError,
             match=r"transitive behavior drift: html\._charref",
         ):
-            _attest_loader_frozen_runtime_dependencies()
+            indexed._attest_loader_frozen_runtime_dependencies()
 
-    _attest_loader_frozen_runtime_dependencies()
+    indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_loader_rejects_html_invalid_charrefs_in_place_mutation() -> None:
@@ -346,15 +356,15 @@ def test_loader_rejects_html_invalid_charrefs_in_place_mutation() -> None:
     try:
         html._invalid_charrefs[-1] = "drifted"
         with pytest.raises(
-            IndexedExecutionError,
+            indexed.IndexedExecutionError,
             match=r"transitive behavior drift: html\._invalid_charrefs",
         ):
-            _attest_loader_frozen_runtime_dependencies()
+            indexed._attest_loader_frozen_runtime_dependencies()
     finally:
         html._invalid_charrefs.clear()
         html._invalid_charrefs.update(original)
 
-    _attest_loader_frozen_runtime_dependencies()
+    indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_loader_rejects_html_invalid_codepoints_in_place_mutation() -> None:
@@ -362,15 +372,15 @@ def test_loader_rejects_html_invalid_codepoints_in_place_mutation() -> None:
     try:
         html._invalid_codepoints.add(-1)
         with pytest.raises(
-            IndexedExecutionError,
+            indexed.IndexedExecutionError,
             match=r"transitive behavior drift: html\._invalid_codepoints",
         ):
-            _attest_loader_frozen_runtime_dependencies()
+            indexed._attest_loader_frozen_runtime_dependencies()
     finally:
         html._invalid_codepoints.clear()
         html._invalid_codepoints.update(original)
 
-    _attest_loader_frozen_runtime_dependencies()
+    indexed._attest_loader_frozen_runtime_dependencies()
 
 
 def test_loader_rejects_html5_in_place_mutation() -> None:
@@ -378,12 +388,12 @@ def test_loader_rejects_html5_in_place_mutation() -> None:
     try:
         html._html5["__swarm_transitive_probe__"] = "drifted"
         with pytest.raises(
-            IndexedExecutionError,
+            indexed.IndexedExecutionError,
             match=r"transitive behavior drift: html\._html5",
         ):
-            _attest_loader_frozen_runtime_dependencies()
+            indexed._attest_loader_frozen_runtime_dependencies()
     finally:
         html._html5.clear()
         html._html5.update(original)
 
-    _attest_loader_frozen_runtime_dependencies()
+    indexed._attest_loader_frozen_runtime_dependencies()
