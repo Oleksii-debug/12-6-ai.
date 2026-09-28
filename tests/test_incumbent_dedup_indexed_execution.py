@@ -1,5 +1,7 @@
+import ast
 import importlib.util
 import sys
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 
@@ -175,3 +177,35 @@ def test_execution_stats_exact_rada_scale_and_work_telemetry():
 def test_execution_stats_rejects_impossible_candidate_count():
     with pytest.raises(indexed.IndexedExecutionError, match="exceeds all-pairs"):
         indexed.execution_stats(2, 2)
+
+
+def test_dedicated_indexed_harness_never_imports_authority_during_collection():
+    target = "twelve_six.data.incumbent_dedup_indexed_execution"
+    test_dir = Path(__file__).parent
+    dedicated = (
+        "test_incumbent_dedup_direct_import_behavior.py",
+        "test_incumbent_dedup_imported_member_closure.py",
+        "test_incumbent_dedup_indexed_execution.py",
+        "test_incumbent_dedup_json_re_transitive_closure.py",
+        "test_incumbent_dedup_runtime_closure.py",
+    )
+
+    violations: list[str] = []
+    for filename in dedicated:
+        tree = ast.parse((test_dir / filename).read_text(encoding="utf-8"), filename=filename)
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                if any(alias.name == target for alias in node.names):
+                    violations.append(f"{filename}:{node.lineno}: import {target}")
+            elif isinstance(node, ast.ImportFrom):
+                if node.module == target:
+                    violations.append(f"{filename}:{node.lineno}: from {target} import ...")
+                elif node.module == "twelve_six.data" and any(
+                    alias.name == "incumbent_dedup_indexed_execution" for alias in node.names
+                ):
+                    violations.append(
+                        f"{filename}:{node.lineno}: from twelve_six.data import authority"
+                    )
+
+    assert violations == []
+
