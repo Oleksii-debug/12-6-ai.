@@ -1,15 +1,24 @@
 import importlib.util
 import sys
+from types import ModuleType
+from typing import Any
 
 import pytest
 
-from twelve_six.data import incumbent_dedup_indexed_execution as indexed
-from twelve_six.data.incumbent_dedup_indexed_execution import (
-    IndexedExecutionError,
-    candidate_pair_indices,
-    candidate_pair_indices_with_stats,
-    execution_stats,
-)
+class _LazyIndexed:
+    _module: ModuleType | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        module = self._module
+        if module is None:
+            module = importlib.import_module(
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            )
+            self._module = module
+        return getattr(module, name)
+
+
+indexed = _LazyIndexed()
 
 
 class FakeV1:
@@ -73,7 +82,7 @@ def test_executable_attestation_rejects_in_memory_callable_substitution(tmp_path
     spec.loader.exec_module(module)
     indexed._attest_executable_module(module, "FIXTURE")
     module.semantic = lambda value: value
-    with pytest.raises(IndexedExecutionError, match="callable"):
+    with pytest.raises(indexed.IndexedExecutionError, match="callable"):
         indexed._attest_executable_module(module, "FIXTURE")
 
 
@@ -94,7 +103,7 @@ def test_candidate_index_contains_each_incumbent_necessary_condition():
         _fp("l", text=f"other\n{shared_edge}\ntail"),
         _fp("m"),
     ]
-    pairs = set(candidate_pair_indices(FakeV1, rows))
+    pairs = set(indexed.candidate_pair_indices(FakeV1, rows))
     assert (0, 1) in pairs
     assert (2, 3) in pairs
     assert (4, 5) in pairs
@@ -109,25 +118,25 @@ def test_content_shingles_do_not_cross_code_natural_boundary():
         _fp("natural", shingles=frozenset({"same"})),
         _fp("code", modality="code", shingles=frozenset({"same"})),
     ]
-    assert candidate_pair_indices(FakeV1, rows) == []
+    assert indexed.candidate_pair_indices(FakeV1, rows) == []
 
 
 def test_candidate_budget_fails_closed():
     rows = [_fp(str(index), origin="same") for index in range(5)]
-    with pytest.raises(IndexedExecutionError, match="candidate pair budget exceeded"):
-        candidate_pair_indices(FakeV1, rows, max_candidate_pairs=2)
+    with pytest.raises(indexed.IndexedExecutionError, match="candidate pair budget exceeded"):
+        indexed.candidate_pair_indices(FakeV1, rows, max_candidate_pairs=2)
 
 
 def test_index_posting_budget_fails_before_unbounded_growth():
     rows = [_fp("a", shingles=frozenset({"s1", "s2", "s3"}))]
-    with pytest.raises(IndexedExecutionError, match="index posting work budget exceeded"):
-        candidate_pair_indices(FakeV1, rows, max_index_postings=5)
+    with pytest.raises(indexed.IndexedExecutionError, match="index posting work budget exceeded"):
+        indexed.candidate_pair_indices(FakeV1, rows, max_index_postings=5)
 
 
 def test_repeated_key_amplification_collapses_identical_bucket_signature():
     shared = frozenset(f"shared-{index}" for index in range(1_000))
     rows = [_fp(str(index), shingles=shared) for index in range(10)]
-    pairs, stats = candidate_pair_indices_with_stats(
+    pairs, stats = indexed.indexed.candidate_pair_indices_with_stats(
         FakeV1,
         rows,
         max_pair_expansions=100,
@@ -144,8 +153,8 @@ def test_pair_expansion_budget_is_independent_of_unique_candidate_budget():
         _fp("1", shingles=frozenset({"a"})),
         _fp("2", shingles=frozenset({"b"})),
     ]
-    with pytest.raises(IndexedExecutionError, match="pair expansion work budget exceeded"):
-        candidate_pair_indices_with_stats(
+    with pytest.raises(indexed.IndexedExecutionError, match="pair expansion work budget exceeded"):
+        indexed.indexed.candidate_pair_indices_with_stats(
             FakeV1,
             rows,
             max_candidate_pairs=100,
@@ -153,15 +162,15 @@ def test_pair_expansion_budget_is_independent_of_unique_candidate_budget():
         )
 
 
-def test_execution_stats_exact_rada_scale_and_work_telemetry():
-    rada = execution_stats(101_559, 0, index_postings=123, pair_expansion_attempts=45)
+def test_indexed.execution_stats_exact_rada_scale_and_work_telemetry():
+    rada = indexed.execution_stats(101_559, 0, index_postings=123, pair_expansion_attempts=45)
     assert rada["incumbent_all_pair_dispatches"] == 5_157_064_461
     assert rada["index_postings"] == 123
     assert rada["pair_expansion_attempts"] == 45
-    combined = execution_stats(101_821, 0)
+    combined = indexed.execution_stats(101_821, 0)
     assert combined["incumbent_all_pair_dispatches"] == 5_183_707_110
 
 
-def test_execution_stats_rejects_impossible_candidate_count():
-    with pytest.raises(IndexedExecutionError, match="exceeds all-pairs"):
-        execution_stats(2, 2)
+def test_indexed.execution_stats_rejects_impossible_candidate_count():
+    with pytest.raises(indexed.IndexedExecutionError, match="exceeds all-pairs"):
+        indexed.execution_stats(2, 2)
