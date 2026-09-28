@@ -10,7 +10,6 @@ import pytest
 
 from twelve_six.inference.server import make_server
 
-
 _INTERNAL_SECRET = "BACKEND_INTERNAL_SECRET_5f8d67"
 
 
