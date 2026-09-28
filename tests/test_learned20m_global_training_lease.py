@@ -319,12 +319,20 @@ def test_acquire_is_single_winner_and_reread_verified(
     )
 
     first = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, first_lease.as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        first_lease.as_dict(),
         expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     second = acquire_global_training_run_lease(
-        writer_b, str(remote), manifest, second_lease.as_dict(), now=NOW
+        writer_b,
+        str(remote),
+        manifest,
+        second_lease.as_dict(),
         expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
 
     assert first.committed is True
@@ -548,8 +556,12 @@ def test_renew_is_fast_forward_and_stale_tip_cannot_retry_itself_into_authority(
     remote, writer_a, writer_b = git_pair
     manifest, expected_authority = _authorized_manifest()
     acquired = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, _authorized_lease(manifest, expected_authority).as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        _authorized_lease(manifest, expected_authority).as_dict(),
         expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     assert acquired.written_remote_tip is not None
 
@@ -597,8 +609,12 @@ def test_terminal_lineage_remains_immutable_and_cannot_be_freshly_reacquired(
     manifest, expected_authority = _authorized_manifest()
     lease = _authorized_lease(manifest, expected_authority)
     acquired = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, lease.as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
         expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     assert acquired.written_remote_tip is not None
 
@@ -646,8 +662,12 @@ def test_expired_running_lease_cannot_be_renewed_by_backdated_retry(
         ttl_seconds=60,
     )
     acquired = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, short.as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        short.as_dict(),
         expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     assert acquired.written_remote_tip is not None
 
