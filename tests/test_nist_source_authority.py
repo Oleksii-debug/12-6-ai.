@@ -66,3 +66,11 @@ def test_nonfinite_json_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(nist, "SEAL_PATH", path)
     with pytest.raises(nist.NistAuthorityError, match="non-finite"):
         nist.validate_nist_source_authority()
+
+
+def test_overflow_nonfinite_json_is_rejected(tmp_path, monkeypatch):
+    path = tmp_path / "seal.json"
+    path.write_text('{"schema_version":1e400}', encoding="utf-8")
+    monkeypatch.setattr(nist, "SEAL_PATH", path)
+    with pytest.raises(nist.NistAuthorityError, match="non-finite"):
+        nist.validate_nist_source_authority()
