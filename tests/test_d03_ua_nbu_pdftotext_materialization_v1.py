@@ -175,3 +175,123 @@ def test_cross_origin_source_and_evidence_promotion_fail_closed():
     with_identity(promoted)
     with pytest.raises(module.NbuTextMaterializationError, match="pin truth boundary drift"):
         module.validate_pin_evidence(promoted, config)
+
+
+def test_shared_pdf_is_materialized_once_with_complete_document_provenance():
+    config = load_config()
+    discovery, pins, pdf_bytes = sample_inputs(config)
+    shared_pdf = discovery["documents"][0]["official_pdf_urls"][0]
+    second_document = "https://bank.gov.ua/ua/legislation/Resolution_14012026_3"
+    discovery["documents"].append({
+        "document_url": second_document,
+        "official_pdf_urls": [shared_pdf],
+        "page_metadata_sha256": "1" * 64,
+    })
+    discovery["discovered_documents"] = 2
+    with_identity(discovery)
+    pins["parent_discovery_evidence_identity_sha256"] = discovery["evidence_identity_sha256"]
+    with_identity(pins)
+    text = ("Постанова Національного банку України. Shared PDF text.\n" * 2).encode("utf-8")
+    fetch_count = 0
+
+    def fetcher(url, expected_bytes, cfg):
+        nonlocal fetch_count
+        fetch_count += 1
+        assert url == shared_pdf
+        assert expected_bytes == len(pdf_bytes)
+        return pdf_bytes
+
+    artifact, evidence = module.materialize_text(
+        discovery,
+        pins,
+        config,
+        fetcher=fetcher,
+        extractor=lambda *_: text,
+        extractor_version="25.06.0",
+    )
+
+    assert fetch_count == 1
+    assert evidence["materialized_records"] == 1
+    record = evidence["records"][0]
+    assert record["document_urls"] == sorted([
+        discovery["documents"][0]["document_url"],
+        second_document,
+    ])
+    assert record["document_url"] == record["document_urls"][0]
+    artifact_record = json.loads(artifact.decode("utf-8"))
+    assert artifact_record["document_urls"] == record["document_urls"]
+
+
+def test_shared_pdf_document_order_does_not_change_text_artifact():
+    config = load_config()
+    discovery, pins, pdf_bytes = sample_inputs(config)
+    shared_pdf = discovery["documents"][0]["official_pdf_urls"][0]
+    discovery["documents"].append({
+        "document_url": "https://bank.gov.ua/ua/legislation/Resolution_12012026_1",
+        "official_pdf_urls": [shared_pdf],
+        "page_metadata_sha256": "2" * 64,
+    })
+    discovery["discovered_documents"] = 2
+    with_identity(discovery)
+    pins["parent_discovery_evidence_identity_sha256"] = discovery["evidence_identity_sha256"]
+    with_identity(pins)
+    text = b"valid extracted text over thirty-two bytes for shared provenance\n"
+
+    first_artifact, first_evidence = module.materialize_text(
+        discovery,
+        pins,
+        config,
+        fetcher=lambda *_: pdf_bytes,
+        extractor=lambda *_: text,
+        extractor_version="25.06.0",
+    )
+
+    reordered = deepcopy(discovery)
+    reordered["documents"].reverse()
+    with_identity(reordered)
+    reordered_pins = deepcopy(pins)
+    reordered_pins["parent_discovery_evidence_identity_sha256"] = reordered["evidence_identity_sha256"]
+    with_identity(reordered_pins)
+    second_artifact, second_evidence = module.materialize_text(
+        reordered,
+        reordered_pins,
+        config,
+        fetcher=lambda *_: pdf_bytes,
+        extractor=lambda *_: text,
+        extractor_version="25.06.0",
+    )
+
+    assert first_artifact == second_artifact
+    assert first_evidence["records"] == second_evidence["records"]
+
+
+def test_duplicate_document_entry_fails_closed_even_when_pdf_is_shared():
+    config = load_config()
+    discovery, _, _ = sample_inputs(config)
+    discovery["documents"].append(deepcopy(discovery["documents"][0]))
+    discovery["discovered_documents"] = 2
+    with_identity(discovery)
+    with pytest.raises(module.NbuTextMaterializationError, match="duplicate discovery document"):
+        module.validate_discovery_evidence(discovery, config)
+
+
+def test_resealed_manifest_cannot_substitute_document_provenance():
+    config = load_config()
+    discovery, pins, pdf_bytes = sample_inputs(config)
+    text = b"valid extracted text over thirty-two bytes for provenance identity\n"
+    _, evidence = module.materialize_text(
+        discovery,
+        pins,
+        config,
+        fetcher=lambda *_: pdf_bytes,
+        extractor=lambda *_: text,
+        extractor_version="25.06.0",
+    )
+    tampered = deepcopy(evidence)
+    tampered["records"][0]["document_urls"] = [
+        "https://bank.gov.ua/ua/legislation/Resolution_12012026_1"
+    ]
+    tampered["records"][0]["document_url"] = tampered["records"][0]["document_urls"][0]
+    with_identity(tampered)
+    with pytest.raises(module.NbuTextMaterializationError, match="record provenance identity mismatch"):
+        module.validate_materialization_evidence(tampered, config)

@@ -37,7 +37,8 @@ jobs:
           python3 -m pytest -q \
             tests/test_d03_ua_nbu_official_resolutions_intake_v1.py \
             tests/test_d03_ua_nbu_official_pdf_pins_v1.py \
-            tests/test_d03_ua_nbu_pdftotext_materialization_v1.py
+            tests/test_d03_ua_nbu_pdftotext_materialization_v1.py \
+            tests/test_d03_ua_nbu_pdftotext_authority_hardening.py
 
       - name: Build exact Poppler pdftotext from pinned upstream source
         run: |
