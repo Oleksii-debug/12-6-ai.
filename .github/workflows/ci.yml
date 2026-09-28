@@ -299,6 +299,12 @@ jobs:
               "source_admission_reports_byte_identical": True,
               "global_dedup_reports_byte_identical": True,
               "survivor_authorities_byte_identical": True,
+              "materializer_report_file_sha256": sha(
+                  "artifacts/pass-1/materializer.json"
+              ),
+              "source_admission_report_file_sha256": sha(
+                  "artifacts/pass-1/source-admission.json"
+              ),
               "global_dedup_report_file_sha256": sha(
                   "artifacts/pass-1/global-dedup-report.json"
               ),
