@@ -484,6 +484,31 @@ def test_control_contract_binds_exact_downstream_gate_sequence() -> None:
         validate_control_contract(contract)
 
 
+@pytest.mark.parametrize(
+    ("section", "error"),
+    [
+        (None, "control field set"),
+        ("incumbent_authority", "incumbent authority field set"),
+        ("edition", "edition field set"),
+        ("acquisition", "acquisition field set"),
+        ("truth_boundary", "truth boundary field set"),
+    ],
+)
+def test_control_contract_rejects_unknown_fields(
+    section: str | None, error: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract = json.loads(
+        (root / "configs/data/d03_wikisource_lesia1892_current_main_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    target = contract if section is None else contract[section]
+    target["unexpected_self_resealed_field"] = "forbidden"
+    with pytest.raises(WikisourceIntakeError, match=error):
+        validate_control_contract(contract)
+
+
 def test_repository_control_file_matches_runtime_contract() -> None:
     root = Path(__file__).resolve().parents[1]
     contract = json.loads(
