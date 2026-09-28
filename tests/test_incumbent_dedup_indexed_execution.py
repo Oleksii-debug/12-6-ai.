@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+
 class _LazyIndexed:
     _module: ModuleType | None = None
 
@@ -136,7 +137,7 @@ def test_index_posting_budget_fails_before_unbounded_growth():
 def test_repeated_key_amplification_collapses_identical_bucket_signature():
     shared = frozenset(f"shared-{index}" for index in range(1_000))
     rows = [_fp(str(index), shingles=shared) for index in range(10)]
-    pairs, stats = indexed.indexed.candidate_pair_indices_with_stats(
+    pairs, stats = indexed.candidate_pair_indices_with_stats(
         FakeV1,
         rows,
         max_pair_expansions=100,
@@ -154,7 +155,7 @@ def test_pair_expansion_budget_is_independent_of_unique_candidate_budget():
         _fp("2", shingles=frozenset({"b"})),
     ]
     with pytest.raises(indexed.IndexedExecutionError, match="pair expansion work budget exceeded"):
-        indexed.indexed.candidate_pair_indices_with_stats(
+        indexed.candidate_pair_indices_with_stats(
             FakeV1,
             rows,
             max_candidate_pairs=100,
@@ -162,7 +163,7 @@ def test_pair_expansion_budget_is_independent_of_unique_candidate_budget():
         )
 
 
-def test_indexed.execution_stats_exact_rada_scale_and_work_telemetry():
+def test_execution_stats_exact_rada_scale_and_work_telemetry():
     rada = indexed.execution_stats(101_559, 0, index_postings=123, pair_expansion_attempts=45)
     assert rada["incumbent_all_pair_dispatches"] == 5_157_064_461
     assert rada["index_postings"] == 123
@@ -171,6 +172,6 @@ def test_indexed.execution_stats_exact_rada_scale_and_work_telemetry():
     assert combined["incumbent_all_pair_dispatches"] == 5_183_707_110
 
 
-def test_indexed.execution_stats_rejects_impossible_candidate_count():
+def test_execution_stats_rejects_impossible_candidate_count():
     with pytest.raises(indexed.IndexedExecutionError, match="exceeds all-pairs"):
         indexed.execution_stats(2, 2)
