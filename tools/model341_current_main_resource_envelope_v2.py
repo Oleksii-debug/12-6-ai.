@@ -14,6 +14,7 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 
+import twelve_six.model as model_module
 from twelve_six.model import InitSpec, ModelSpec, TwelveSixDecoder, count_trainable_parameters
 
 try:
@@ -198,6 +199,9 @@ def _require_exact_keys(value: dict[str, Any], expected: set[str], name: str) ->
 def validate_source_root(root: Path) -> None:
     model_path = root / "src/twelve_six/model.py"
     pyproject_path = root / "pyproject.toml"
+    runtime_model_file = getattr(model_module, "__file__", None)
+    if runtime_model_file is None or Path(runtime_model_file).resolve() != model_path.resolve():
+        raise ValueError("runtime model import path mismatch")
     if git_blob_sha1(model_path) != MODEL_BLOB_SHA1:
         raise ValueError("current-main model.py identity mismatch")
     if git_blob_sha1(pyproject_path) != PYPROJECT_BLOB_SHA1:
