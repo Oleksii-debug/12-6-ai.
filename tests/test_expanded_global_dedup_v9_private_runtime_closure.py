@@ -11,7 +11,7 @@ from twelve_six.data import expanded_global_dedup_v9 as v9
 def test_copy_deepcopy_dispatch_mutation_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dispatch = getattr(copy, "_deepcopy_dispatch")
+    dispatch = copy._deepcopy_dispatch
 
     def poisoned_dict_copier(value: object, memo: dict[int, object]) -> dict[str, object]:
         del value, memo

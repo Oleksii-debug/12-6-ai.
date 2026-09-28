@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import collections
 import copy
 from collections.abc import Mapping
 from typing import Any
@@ -55,6 +56,27 @@ def test_copy_deepcopy_substitution_fails_before_matcher_callbacks(
     with pytest.raises(
         v9.ExpandedDedupError,
         match=r"stdlib runtime member replaced: copy\.deepcopy",
+    ):
+        v9._verify_matcher_semantic_closure(
+            _never_matcher_audit,
+            _never_matcher_verify,
+        )
+
+
+def test_collections_count_elements_substitution_fails_before_matcher_callbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_count_elements = collections._count_elements
+
+    def substituted_count_elements(mapping: object, iterable: object) -> None:
+        del mapping, iterable
+        return original_count_elements({}, ())
+
+    monkeypatch.setattr(collections, "_count_elements", substituted_count_elements)
+
+    with pytest.raises(
+        v9.ExpandedDedupError,
+        match=r"stdlib runtime member replaced: collections\._count_elements",
     ):
         v9._verify_matcher_semantic_closure(
             _never_matcher_audit,

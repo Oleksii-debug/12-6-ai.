@@ -14,6 +14,7 @@ independent-audit trust-boundary findings before delegating to that implementati
 from __future__ import annotations
 
 import builtins
+import collections
 import copy
 import hashlib
 import html
@@ -59,6 +60,7 @@ _LEGACY_RUN_EXPANDED_DEDUP = _FROZEN_PRIVATE_RUN_EXPANDED_DEDUP
 # ``sys.modules``.  Member-level mutation therefore has to be detected against an
 # earlier immutable reference, not merely against a freshly imported module object.
 _FROZEN_BUILTINS_MODULE = builtins
+_FROZEN_COLLECTIONS_MODULE = collections
 _FROZEN_COPY_MODULE = copy
 _FROZEN_HASHLIB_MODULE = hashlib
 _FROZEN_HTML_MODULE = html
@@ -70,6 +72,7 @@ _FROZEN_IMPORTLIB_UTIL_MODULE = importlib.util
 _FROZEN_IMPORTLIB_MACHINERY_MODULE = importlib.machinery
 _FROZEN_PATH_CLASS = Path
 _FROZEN_COUNTER_CLASS = Counter
+_FROZEN_COLLECTIONS_COUNT_ELEMENTS = collections.__dict__.get("_count_elements")
 
 # Matcher functions resolve Python builtins dynamically through ``__builtins__``.
 # Freeze every callable/type exported by the canonical builtins module rather than
@@ -272,6 +275,7 @@ def _verify_stdlib_runtime_semantic_closure() -> None:
 
     module_checks = (
         (builtins, _FROZEN_BUILTINS_MODULE, "builtins module"),
+        (collections, _FROZEN_COLLECTIONS_MODULE, "collections module"),
         (copy, _FROZEN_COPY_MODULE, "copy module"),
         (hashlib, _FROZEN_HASHLIB_MODULE, "hashlib module"),
         (html, _FROZEN_HTML_MODULE, "html module"),
@@ -298,6 +302,14 @@ def _verify_stdlib_runtime_semantic_closure() -> None:
     _require(
         sys.modules.get("copy") is _FROZEN_COPY_MODULE,
         "stdlib runtime object replaced: copy sys.modules binding",
+    )
+    _require(
+        sys.modules.get("collections") is _FROZEN_COLLECTIONS_MODULE,
+        "stdlib runtime object replaced: collections sys.modules binding",
+    )
+    _require(
+        _FROZEN_COLLECTIONS_COUNT_ELEMENTS is not None,
+        "stdlib runtime member unavailable: collections._count_elements",
     )
     for name, expected in _FROZEN_BUILTIN_CALLABLES:
         _require(
@@ -340,6 +352,11 @@ def _verify_stdlib_runtime_semantic_closure() -> None:
         ),
         (Counter.__init__, _FROZEN_COUNTER_INIT, "Counter.__init__"),
         (Counter.update, _FROZEN_COUNTER_UPDATE, "Counter.update"),
+        (
+            collections.__dict__.get("_count_elements"),
+            _FROZEN_COLLECTIONS_COUNT_ELEMENTS,
+            "collections._count_elements",
+        ),
         (
             importlib.util.spec_from_file_location,
             _FROZEN_SPEC_FROM_FILE_LOCATION,
