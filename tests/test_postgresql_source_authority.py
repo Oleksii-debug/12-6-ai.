@@ -125,3 +125,28 @@ def test_unknown_top_level_authority_is_rejected() -> None:
     assert "config_top_level_keys_mismatch" in (
         validate_postgresql_source_authority(mutated, receipt)
     )
+
+def test_malformed_receipt_shapes_fail_closed_without_exception() -> None:
+    config, receipt = _load()
+    parsed = json.loads(receipt)
+    parsed["documents"][0]["path"] = []
+    parsed["privacy"]["secret_finding_counts"] = []
+    malformed = (
+        json.dumps(parsed, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode()
+    blockers = validate_postgresql_source_authority(config, malformed)
+    assert "historical_receipt_git_blob_sha1_mismatch" in blockers
+    assert "historical_receipt_authority_identity_mismatch" in blockers
+    assert "historical_receipt_document_path_mismatch" in blockers
+    assert "historical_receipt_privacy_boundary_mismatch" in blockers
+
+
+def test_unknown_current_composition_authority_is_rejected() -> None:
+    config, receipt = _load()
+    mutated = copy.deepcopy(config)
+    mutated["current_composition"]["training_authorized"] = True
+    assert "current_composition_keys_mismatch" in (
+        validate_postgresql_source_authority(mutated, receipt)
+    )
+
