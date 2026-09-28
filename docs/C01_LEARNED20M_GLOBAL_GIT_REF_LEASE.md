@@ -30,10 +30,12 @@ the same private manifest snapshot must also pass `assess_terminal_launch_author
 the separately supplied expected terminal-authority SHA-256, including positive optimized-target
 exposure and all fail-closed terminal bindings.
 
-First acquisition is a normal non-force ref creation. Renewal and terminal transitions are child
-commits of the exact expected remote tip and are pushed non-force. A stale/sibling writer fails;
-there is no auto-rebase or retry that could manufacture a newly-authorized transition. Every
-authority-relevant caller mappings are frozen once into private canonical JSON snapshots before
+Every write uses an explicit Git `--force-with-lease` compare-and-swap expectation. First
+acquisition requires the canonical ref to be absent. Renewal and terminal transitions require the
+remote ref to equal the exact authenticated predecessor tip; concurrent movement or deletion fails
+instead of recreating the ref. Transition commits remain children of that exact predecessor. There
+is no auto-rebase or retry that could manufacture a newly-authorized transition. Every
+authority-relevant caller mapping is frozen once into a private canonical JSON snapshot before
 validation. Ref/digest derivation, assessment, state construction, push verification, reread, and
 returned metadata all use those exact snapshots; later caller mutation cannot change the operation.
 
