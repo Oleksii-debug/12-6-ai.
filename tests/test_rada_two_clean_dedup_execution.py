@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from tools import run_d03_rada_two_clean_global_dedup as runner
-from twelve_six.data import rada_two_clean_dedup_execution as carrier
+runner: ModuleType
+carrier: ModuleType
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _load_rada_modules_after_collection() -> None:
+    """Keep Rada module imports out of pytest collection-time global state."""
+    global carrier, runner
+    carrier = importlib.import_module("twelve_six.data.rada_two_clean_dedup_execution")
+    runner = importlib.import_module("tools.run_d03_rada_two_clean_global_dedup")
 
 
 def _canonical(value: object) -> bytes:
@@ -297,7 +306,17 @@ def test_survivor_authority_reuses_incumbent_capacity_representative_rule() -> N
     ]
     assert authority["raw_text_emitted"] is False
     assert authority["truth_boundary"]["authorized_optimized_target_exposure"] == 0
-    assert "text" not in json.dumps(authority, sort_keys=True)
+    expected_survivor_keys = {
+        "source_id",
+        "source_family",
+        "modality",
+        "declared_capacity_bytes",
+        "verified_raw_sha256",
+        "normalized_sha256",
+        "stable_origin_id_sha256",
+        "stable_object_id_sha256",
+    }
+    assert all(set(row) == expected_survivor_keys for row in authority["survivors"])
 
 
 def test_survivor_authority_rejects_overlapping_clusters() -> None:
