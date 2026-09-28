@@ -223,11 +223,19 @@ def run_probe(
         raise ValueError("intraop_threads must be a positive integer")
 
     validate_source_root(root)
+    if torch.get_default_dtype() != torch.float32:
+        raise ValueError("probe requires torch.float32 default dtype")
+    if torch.get_default_device().type != "cpu":
+        raise ValueError("probe requires CPU default device")
     previous_threads = torch.get_num_threads()
 
     try:
         torch.set_num_threads(intraop_threads)
-        with torch.random.fork_rng(devices=[]):
+        with (
+            torch.random.fork_rng(devices=[]),
+            torch.enable_grad(),
+            torch.autocast("cpu", enabled=False),
+        ):
             torch.default_generator.manual_seed(341)
 
             spec = model_spec()
