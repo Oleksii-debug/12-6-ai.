@@ -45,9 +45,17 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
     if edition.get("family_credit_added") is not False:
         raise WikisourceIntakeError("same-edition expansion may not add family credit")
     acquisition = contract.get("acquisition")
-    if not isinstance(acquisition, dict) or acquisition.get("max_pages") != 112:
+    if not isinstance(acquisition, dict):
         raise WikisourceIntakeError("bounded acquisition contract drift")
-    if acquisition.get("minimum_request_cadence_seconds", 0) < 0.5:
+    max_pages = acquisition.get("max_pages")
+    if isinstance(max_pages, bool) or not isinstance(max_pages, int) or max_pages != 112:
+        raise WikisourceIntakeError("bounded acquisition contract drift")
+    cadence = acquisition.get("minimum_request_cadence_seconds")
+    if (
+        isinstance(cadence, bool)
+        or not isinstance(cadence, (int, float))
+        or cadence < 0.5
+    ):
         raise WikisourceIntakeError("request cadence weakened")
     boundary = contract.get("truth_boundary")
     if not isinstance(boundary, dict):
@@ -58,7 +66,12 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
         "authorized_unique_loss_positions",
         "optimizer_updates",
     )
-    if any(boundary.get(field) != 0 for field in zero_fields):
+    if any(
+        isinstance(boundary.get(field), bool)
+        or not isinstance(boundary.get(field), int)
+        or boundary.get(field) != 0
+        for field in zero_fields
+    ):
         raise WikisourceIntakeError("candidate-only zero-credit boundary was promoted")
     false_fields = (
         "tokenizer_fit_authorized",
