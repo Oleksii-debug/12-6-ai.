@@ -59,6 +59,16 @@ def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _report_identity_bytes(value: Any) -> bytes:
+    rendered = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"{rendered}\n".encode("utf-8")
+
+
 def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -139,7 +149,7 @@ def _verify_report_artifact(
         raise RadaTwoCleanExecutionError("report artifact identity differs from receipt")
     core = dict(report)
     core.pop("report_sha256", None)
-    if _sha256(_identity_bytes(core)) != expected:
+    if _sha256(_report_identity_bytes(core)) != expected:
         raise RadaTwoCleanExecutionError("report artifact self-hash mismatch")
     if report.get("local_free_only") is not True:
         raise RadaTwoCleanExecutionError("report artifact weakened LOCAL_FREE")
