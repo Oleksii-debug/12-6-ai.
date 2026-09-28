@@ -213,18 +213,19 @@ def _validate_receipt(receipt_bytes: bytes) -> list[str]:
         errors.append("historical_receipt_scope_mismatch")
 
     license_row = receipt.get("license")
+    expected_receipt_license = {
+        "name": LICENSE["name"],
+        "path": LICENSE["path"],
+        "git_blob_sha1": LICENSE["git_blob_sha1"],
+        "raw_sha256": LICENSE["sha256"],
+        "rights_identity_sha256": LICENSE["rights_identity_sha256"],
+        "model_training": LICENSE["model_training"],
+        "redistribution": LICENSE["redistribution"],
+        "evaluation": LICENSE["evaluation"],
+    }
     if not isinstance(license_row, dict) or any(
-        license_row.get(key) != LICENSE[key]
-        for key in (
-            "name",
-            "path",
-            "git_blob_sha1",
-            "raw_sha256",
-            "rights_identity_sha256",
-            "model_training",
-            "redistribution",
-            "evaluation",
-        )
+        license_row.get(key) != expected
+        for key, expected in expected_receipt_license.items()
     ):
         errors.append("historical_receipt_license_mismatch")
 
