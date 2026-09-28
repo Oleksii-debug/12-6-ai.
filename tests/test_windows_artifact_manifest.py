@@ -114,6 +114,42 @@ def test_runtime_manifest_rejects_non_safetensors_checkpoint_payload(tmp_path: P
     assert not (tmp_path / "runtime-manifest.json").exists()
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"profile_id":"a","profile_id":"b"}',
+        '{"outer":{"manifest_sha256":"a","manifest_sha256":"b"}}',
+        '{"value":NaN}',
+        '{"value":Infinity}',
+        '{"value":-Infinity}',
+        '{"value":1e400}',
+        '{"outer":[{"value":-1e400}]}',
+    ],
+)
+def test_read_json_rejects_ambiguous_or_nonfinite_authority(
+    tmp_path: Path, payload: str
+) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        ARTIFACT_MANIFEST._read_json(path)
+
+
+def test_read_json_preserves_valid_nested_json(tmp_path: Path) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text(
+        '{"profile_id":"windows-x86_64","nested":{"finite":1.25},"items":[0,true,null]}',
+        encoding="utf-8",
+    )
+
+    assert ARTIFACT_MANIFEST._read_json(path) == {
+        "profile_id": "windows-x86_64",
+        "nested": {"finite": 1.25},
+        "items": [0, True, None],
+    }
+
+
 def test_windows_workflow_checks_actual_stderr_variable() -> None:
     workflow = (
         ROOT / ".github" / "workflows" / "d08-windows-product-packaging.yml"
