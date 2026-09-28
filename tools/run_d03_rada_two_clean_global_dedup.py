@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Mapping
 
 from twelve_six.data.rada_two_clean_dedup_execution import (
+    SELECTION_RULE,
+    SURVIVOR_SCHEMA,
     RadaTwoCleanExecutionError,
     build_two_clean_authority,
     execute_once,
+    validate_dependency_authority,
 )
 
 
@@ -40,14 +45,183 @@ def _write_create_only(path: Path, value: Mapping[str, Any]) -> None:
         raise RadaTwoCleanExecutionError(f"cannot write output: {path}") from exc
 
 
-def _read_json(path: Path) -> dict[str, Any]:
+def _identity_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _sha256(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise RadaTwoCleanExecutionError(f"duplicate generated JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _finite_float(token: str) -> float:
+    value = float(token)
+    if not math.isfinite(value):
+        raise RadaTwoCleanExecutionError(f"generated JSON contains non-finite number: {token}")
+    return value
+
+
+def _read_json(path: Path) -> tuple[dict[str, Any], bytes]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RadaTwoCleanExecutionError(f"cannot read generated JSON: {path}") from exc
+        raw = path.read_bytes()
+        value = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=lambda token: (_ for _ in ()).throw(
+                RadaTwoCleanExecutionError(
+                    f"generated JSON contains non-finite constant: {token}"
+                )
+            ),
+            parse_float=_finite_float,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RadaTwoCleanExecutionError(f"cannot read strict generated JSON: {path}") from exc
     if type(value) is not dict:
         raise RadaTwoCleanExecutionError(f"generated JSON root is not object: {path}")
-    return value
+    return value, raw
+
+
+_SURVIVOR_KEYS = frozenset(
+    {
+        "schema_version",
+        "selection_rule",
+        "v3_report_sha256",
+        "pre_dedup_source_object_count",
+        "post_dedup_survivor_source_object_count",
+        "pre_dedup_declared_capacity_bytes",
+        "post_dedup_declared_capacity_bytes",
+        "duplicate_discount_bytes",
+        "duplicate_cluster_count",
+        "duplicate_clusters",
+        "survivors",
+        "raw_text_emitted",
+        "truth_boundary",
+        "survivor_authority_sha256",
+    }
+)
+_SURVIVOR_TRUTH_KEYS = frozenset(
+    {
+        "source_object_authority_only",
+        "canonical_capacity_credited",
+        "authorized_optimized_target_exposure",
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+    }
+)
+
+
+def _verify_report_artifact(
+    report: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+) -> str:
+    expected = receipt.get("v3_report_sha256")
+    if type(expected) is not str or len(expected) != 64:
+        raise RadaTwoCleanExecutionError("receipt report identity is invalid")
+    observed = report.get("report_sha256")
+    if observed != expected:
+        raise RadaTwoCleanExecutionError("report artifact identity differs from receipt")
+    core = dict(report)
+    core.pop("report_sha256", None)
+    if _sha256(_identity_bytes(core)) != expected:
+        raise RadaTwoCleanExecutionError("report artifact self-hash mismatch")
+    if report.get("local_free_only") is not True:
+        raise RadaTwoCleanExecutionError("report artifact weakened LOCAL_FREE")
+    if report.get("model_training_executed") is not False:
+        raise RadaTwoCleanExecutionError("report artifact widened training truth")
+    if report.get("raw_text_emitted") is not False:
+        raise RadaTwoCleanExecutionError("report artifact emitted raw text")
+    if (
+        type(report.get("source_count")) is not int
+        or report.get("source_count") != receipt.get("source_object_count")
+    ):
+        raise RadaTwoCleanExecutionError("report source count differs from receipt")
+    terminal = report.get("terminal_candidates")
+    if type(terminal) is not dict:
+        raise RadaTwoCleanExecutionError("report terminal_candidates missing")
+    if (
+        type(terminal.get("conservative_unique_capacity_bytes_after")) is not int
+        or terminal.get("conservative_unique_capacity_bytes_after")
+        != receipt.get("survivor_declared_capacity_bytes")
+    ):
+        raise RadaTwoCleanExecutionError("report survivor capacity differs from receipt")
+    return expected
+
+
+def _verify_survivor_artifact(
+    survivor: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+) -> str:
+    if set(survivor) != _SURVIVOR_KEYS:
+        raise RadaTwoCleanExecutionError("survivor artifact schema drift")
+    if survivor.get("schema_version") != SURVIVOR_SCHEMA:
+        raise RadaTwoCleanExecutionError("survivor artifact version drift")
+    if survivor.get("selection_rule") != SELECTION_RULE:
+        raise RadaTwoCleanExecutionError("survivor selection rule drift")
+    observed = survivor.get("survivor_authority_sha256")
+    if type(observed) is not str or len(observed) != 64:
+        raise RadaTwoCleanExecutionError("survivor artifact identity is invalid")
+    core = dict(survivor)
+    core.pop("survivor_authority_sha256", None)
+    if _sha256(_identity_bytes(core)) != observed:
+        raise RadaTwoCleanExecutionError("survivor artifact self-hash mismatch")
+    if observed != receipt.get("survivor_authority_sha256"):
+        raise RadaTwoCleanExecutionError("survivor artifact identity differs from receipt")
+    if survivor.get("v3_report_sha256") != receipt.get("v3_report_sha256"):
+        raise RadaTwoCleanExecutionError("survivor report identity differs from receipt")
+    if (
+        type(survivor.get("pre_dedup_source_object_count")) is not int
+        or survivor.get("pre_dedup_source_object_count") != receipt.get("source_object_count")
+    ):
+        raise RadaTwoCleanExecutionError("survivor input count differs from receipt")
+    if (
+        type(survivor.get("post_dedup_survivor_source_object_count")) is not int
+        or survivor.get("post_dedup_survivor_source_object_count")
+        != receipt.get("survivor_source_object_count")
+    ):
+        raise RadaTwoCleanExecutionError("survivor output count differs from receipt")
+    if (
+        type(survivor.get("post_dedup_declared_capacity_bytes")) is not int
+        or survivor.get("post_dedup_declared_capacity_bytes")
+        != receipt.get("survivor_declared_capacity_bytes")
+    ):
+        raise RadaTwoCleanExecutionError("survivor output capacity differs from receipt")
+    if survivor.get("raw_text_emitted") is not False:
+        raise RadaTwoCleanExecutionError("survivor artifact emitted raw text")
+    truth = survivor.get("truth_boundary")
+    if type(truth) is not dict or set(truth) != _SURVIVOR_TRUTH_KEYS:
+        raise RadaTwoCleanExecutionError("survivor truth boundary schema drift")
+    if truth.get("source_object_authority_only") is not True:
+        raise RadaTwoCleanExecutionError("survivor source-object authority truth drift")
+    for key in ("canonical_capacity_credited", "authorized_optimized_target_exposure"):
+        if type(truth.get(key)) is not int or truth.get(key) != 0:
+            raise RadaTwoCleanExecutionError(f"survivor truth drift: {key}")
+    for key in (
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+    ):
+        if truth.get(key) is not False:
+            raise RadaTwoCleanExecutionError(f"survivor truth drift: {key}")
+    return observed
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
@@ -170,6 +344,12 @@ def _run_two_clean(args: argparse.Namespace) -> int:
             f"refusing non-fresh output root: {args.output_root}"
         ) from exc
 
+    dependency_authority = validate_dependency_authority(
+        args.dependency_authority,
+        expected_raw_sha256=args.expected_dependency_authority_sha256,
+    )
+    worker_timeout_seconds = dependency_authority["worker_timeout_seconds"]
+
     script = Path(__file__).resolve()
     common = _common_argv(args)
     runs = (("clean-a", args.output_root / "clean-a"), ("clean-b", args.output_root / "clean-b"))
@@ -188,25 +368,54 @@ def _run_two_clean(args: argparse.Namespace) -> int:
                     str(output_dir),
                 ],
                 check=True,
+                timeout=worker_timeout_seconds,
             )
             completed.append(run_id)
+    except subprocess.TimeoutExpired as exc:
+        _write_incomplete(args.output_root, completed, reason="worker_timeout")
+        raise RadaTwoCleanExecutionError("two-clean worker exceeded authority deadline") from exc
+    except KeyboardInterrupt:
+        _write_incomplete(args.output_root, completed, reason="operator_interrupt")
+        raise
     except (OSError, subprocess.CalledProcessError) as exc:
         _write_incomplete(args.output_root, completed, reason="worker_execution_failed")
         raise RadaTwoCleanExecutionError("two-clean execution did not complete") from exc
 
     try:
-        first = _read_json(args.output_root / "clean-a" / "run-receipt.json")
-        second = _read_json(args.output_root / "clean-b" / "run-receipt.json")
+        first, _ = _read_json(args.output_root / "clean-a" / "run-receipt.json")
+        second, _ = _read_json(args.output_root / "clean-b" / "run-receipt.json")
         authority = build_two_clean_authority(first, second)
 
-        first_survivor_path = args.output_root / "clean-a" / "survivor-authority.json"
-        second_survivor_path = args.output_root / "clean-b" / "survivor-authority.json"
-        first_survivor = _read_json(first_survivor_path)
-        second_survivor = _read_json(second_survivor_path)
-        if first_survivor != second_survivor:
+        first_report, first_report_bytes = _read_json(
+            args.output_root / "clean-a" / "dedup-report.json"
+        )
+        second_report, second_report_bytes = _read_json(
+            args.output_root / "clean-b" / "dedup-report.json"
+        )
+        first_report_id = _verify_report_artifact(first_report, first)
+        second_report_id = _verify_report_artifact(second_report, second)
+        if first_report_id != second_report_id or first_report_bytes != second_report_bytes:
+            raise RadaTwoCleanExecutionError("two-clean report artifacts differ")
+
+        first_survivor, first_survivor_bytes = _read_json(
+            args.output_root / "clean-a" / "survivor-authority.json"
+        )
+        second_survivor, second_survivor_bytes = _read_json(
+            args.output_root / "clean-b" / "survivor-authority.json"
+        )
+        first_survivor_id = _verify_survivor_artifact(first_survivor, first)
+        second_survivor_id = _verify_survivor_artifact(second_survivor, second)
+        if (
+            first_survivor_id != second_survivor_id
+            or first_survivor != second_survivor
+            or first_survivor_bytes != second_survivor_bytes
+        ):
             raise RadaTwoCleanExecutionError("two-clean survivor artifacts differ")
-        if first_survivor_path.read_bytes() != second_survivor_path.read_bytes():
-            raise RadaTwoCleanExecutionError("two-clean survivor artifact bytes differ")
+        if authority["v3_report_sha256"] != first_report_id:
+            raise RadaTwoCleanExecutionError("final authority report identity drift")
+        if authority["survivor_authority_sha256"] != first_survivor_id:
+            raise RadaTwoCleanExecutionError("final authority survivor identity drift")
+
         _write_create_only(args.output_root / "two-clean-authority.json", authority)
     except (OSError, RadaTwoCleanExecutionError) as exc:
         _write_incomplete(
