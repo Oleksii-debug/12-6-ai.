@@ -109,6 +109,27 @@ jobs:
 
           allowed = urlsplit(config["source"]["allowed_origin"])
 
+          class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+                  redirected = urlsplit(newurl)
+                  if (
+                      redirected.scheme != "https"
+                      or redirected.netloc.casefold() != allowed.netloc.casefold()
+                      or redirected.username
+                      or redirected.password
+                      or redirected.port not in (None, 443)
+                  ):
+                      raise urllib.error.HTTPError(
+                          newurl,
+                          code,
+                          "NBU redirect escaped canonical authority",
+                          headers,
+                          fp,
+                      )
+                  return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+          opener = urllib.request.build_opener(SameOriginRedirect())
+
           def fetch_raw(url: str) -> tuple[str, str]:
               request = urllib.request.Request(
                   url,
@@ -117,7 +138,7 @@ jobs:
                   },
                   method="GET",
               )
-              with urllib.request.urlopen(request, timeout=30) as response:
+              with opener.open(request, timeout=30) as response:
                   final_url = response.geturl()
                   final = urlsplit(final_url)
                   if (
