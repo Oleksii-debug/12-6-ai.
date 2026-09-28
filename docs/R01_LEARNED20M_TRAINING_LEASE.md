@@ -28,6 +28,8 @@ The checked contract is deliberately free-only: resource class is `LOCAL_FREE`, 
 
 `build_authorized_training_run_lease()` is the finalized composition entrypoint. It canonicalizes the complete caller manifest once into a private JSON snapshot, performs the external terminal-authority assessment against that snapshot, and builds the **same** `TRAINING_RUN` lease from that exact snapshot. Before returning, it requires the lease manifest SHA-256 to equal the manifest SHA-256 authenticated by the assessment. A caller mutation after the assessment boundary therefore cannot change the emitted lease. It still does not execute an optimizer step and does not prove global exclusivity.
 
+Global Git-ref acquisition is not a second authority path. `acquire_global_training_run_lease()` requires the independently expected terminal-authority SHA-256, snapshots the manifest and lease, re-runs terminal-authority assessment against that fixed external root, and refuses acquisition before any remote publication when the terminal root, manifest identity, positive exposure, or lease binding is not authenticated. A coherent self-resealed manifest/lease B therefore cannot acquire merely by selecting its own global-ref namespace when the canonical expected root is H_A.
+
 A RUNNING lease has a maximum six-hour TTL and an explicit renewal sequence. Expired leases cannot be renewed, including through a manually constructed transition candidate: the candidate renewal instant must still be strictly before the previous lease expiry.
 
 Trusted-time assessment is effectivity-aware. A structurally valid lease whose acquisition time is still in the future, or whose latest renewal is later than the assessor's trusted `now`, remains evidence but cannot open the local duplicate guard and cannot be persisted by the acquisition primitive.
@@ -40,7 +42,7 @@ All enum-like fields supplied through JSON are type-guarded before membership ch
 
 ### Critical scope limit
 
-The exclusive-create primitive proves only `SINGLE_SHARED_FILESYSTEM_ONLY` atomicity. Separate GitHub-hosted runners do not share that filesystem. Therefore this primitive **must not** be treated as a global or distributed training lock. The GitHub-hosted execution carrier must add one canonical cross-runner/global exclusivity mechanism and bind it to the same manifest identity before optimizer step 1.
+The exclusive-create primitive proves only `SINGLE_SHARED_FILESYSTEM_ONLY` atomicity. Separate GitHub-hosted runners do not share that filesystem. The canonical Git-ref CAS lease supplies cooperative cross-runner mechanics for the exact authenticated manifest, but it still does **not** prove provider-backend global exclusivity, training authority, or scientific readiness. Global acquisition requires the independent terminal-authority root described above; optimizer step 1 remains blocked until every launcher gate is independently satisfied.
 
 ## Idempotency
 
@@ -53,6 +55,8 @@ python tools/assess_learned20m_training_lease.py MANIFEST [LEASE] [--now YYYY-MM
 ```
 
 A zero exit from the legacy CLI means the **local duplicate-guard contract** is active for the supplied manifest/lease at that time. It does not mean training is authorized. Missing, malformed, terminal, expired, or not-yet-effective leases fail closed. The canonical launcher must separately call the terminal-authority assessment before it may use the authorized lease-builder path.
+
+For global acquisition, the operator requires `--expected-terminal-authority-sha256 <64-hex>`. That value must come from the canonical coordinator/authority independently of the candidate manifest; deriving it from the same candidate would recreate the self-rooting defect. The acquire operation fails closed before remote publication if the supplied manifest does not authenticate under that exact expected root.
 
 ## Required launcher composition before real training
 
