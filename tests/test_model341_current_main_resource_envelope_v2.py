@@ -34,7 +34,9 @@ def test_current_main_resource_probe_rejects_authority_widening() -> None:
     report = run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
     report["truth_boundary"] = copy.deepcopy(TRUTH_BOUNDARY)
     report["truth_boundary"]["authorized_optimized_target_exposure"] = 1
-    with pytest.raises(ValueError, match="truth boundary mismatch"):
+    with pytest.raises(
+        ValueError, match="truth boundary authorized_optimized_target_exposure mismatch"
+    ):
         validate_probe(report)
 
 
@@ -254,3 +256,19 @@ def test_unknown_platform_hwm_fails_closed_even_with_resource(
     monkeypatch.setattr(probe.sys, "platform", "unsupported-platform")
     monkeypatch.setattr(probe, "_resource", AvailableResource())
     assert probe._process_hwm_mib_approx() == (None, "unavailable")
+
+
+def test_current_main_resource_probe_rejects_truth_boundary_int_as_bool_alias() -> None:
+    report = run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
+    report["truth_boundary"]["tokenizer_fit_authorized"] = 0
+    with pytest.raises(ValueError, match="truth boundary tokenizer_fit_authorized mismatch"):
+        validate_probe(report)
+
+
+def test_current_main_resource_probe_rejects_truth_boundary_bool_as_int_alias() -> None:
+    report = run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
+    report["truth_boundary"]["authorized_optimized_target_exposure"] = False
+    with pytest.raises(
+        ValueError, match="truth boundary authorized_optimized_target_exposure mismatch"
+    ):
+        validate_probe(report)
