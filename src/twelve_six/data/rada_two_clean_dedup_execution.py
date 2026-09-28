@@ -143,6 +143,15 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _finite_json_float(token: str, label: str) -> float:
+    try:
+        value = float(token)
+    except ValueError as exc:
+        raise RadaTwoCleanExecutionError(f"{label} contains invalid JSON float: {token}") from exc
+    _require(math.isfinite(value), f"{label} contains non-finite JSON float: {token}")
+    return value
+
+
 def _strict_json_bytes(raw: bytes, label: str) -> dict[str, Any]:
     _require(type(raw) is bytes and bool(raw), f"{label} is empty")
     try:
@@ -152,6 +161,7 @@ def _strict_json_bytes(raw: bytes, label: str) -> dict[str, Any]:
             parse_constant=lambda token: (_ for _ in ()).throw(
                 RadaTwoCleanExecutionError(f"{label} contains non-finite JSON: {token}")
             ),
+            parse_float=lambda token: _finite_json_float(token, label),
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RadaTwoCleanExecutionError(f"{label} is not strict UTF-8 JSON") from exc
