@@ -405,7 +405,10 @@ def test_control_contract_rejects_bool_and_non_integer_zero_credit_values(
         validate_control_contract(contract)
 
 
-@pytest.mark.parametrize(\n    "invalid_cadence",\n    [True, False, "0.5", None, float("nan"), float("inf"), float("-inf")],\n)
+@pytest.mark.parametrize(
+    "invalid_cadence",
+    [True, False, "0.5", None, float("nan"), float("inf"), float("-inf")],
+)
 def test_control_contract_rejects_non_numeric_or_boolean_cadence(
     invalid_cadence: object,
 ) -> None:
@@ -417,12 +420,7 @@ def test_control_contract_rejects_non_numeric_or_boolean_cadence(
     )
     contract["acquisition"]["minimum_request_cadence_seconds"] = invalid_cadence
     with pytest.raises(WikisourceIntakeError, match="cadence"):
-        validate_control_contract(contract)
-
-
-
-
-def test_repository_control_file_matches_runtime_contract() -> None:
+        validate_control_contract(contract)\n\n\ndef test_repository_control_file_matches_runtime_contract() -> None:
     root = Path(__file__).resolve().parents[1]
     contract = json.loads(
         (root / "configs/data/d03_wikisource_lesia1892_current_main_v1.json").read_text(
