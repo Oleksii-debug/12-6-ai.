@@ -503,10 +503,15 @@ def _push_candidate(
     remote: str,
     candidate_tip: str,
     ref: str,
+    *,
+    expected_remote_tip: str | None,
 ) -> bool:
+    if expected_remote_tip is not None and _GIT_SHA.fullmatch(expected_remote_tip) is None:
+        raise _GlobalLeaseFailure("expected_remote_tip_invalid")
+    lease = f"--force-with-lease={ref}:{expected_remote_tip or ''}"
     pushed = _run_git(
         repo_root,
-        ["push", "--porcelain", "--", remote, f"{candidate_tip}:{ref}"],
+        ["push", "--porcelain", lease, "--", remote, f"{candidate_tip}:{ref}"],
     )
     return pushed.returncode == 0
 
@@ -744,7 +749,13 @@ def acquire_global_training_run_lease(
         candidate_tip = _write_state_commit(
             repo_root, state, parent_tip=None, operation="acquire"
         )
-        pushed = _push_candidate(repo_root, remote, candidate_tip, ref)
+        pushed = _push_candidate(
+            repo_root,
+            remote,
+            candidate_tip,
+            ref,
+            expected_remote_tip=None,
+        )
         if not pushed:
             try:
                 observed_push = _remote_tip(repo_root, remote, ref)
@@ -939,7 +950,13 @@ def _transition_global_training_run_lease(
             parent_tip=snapshot.remote_tip,
             operation=operation.lower(),
         )
-        pushed = _push_candidate(repo_root, remote, candidate_tip, ref)
+        pushed = _push_candidate(
+            repo_root,
+            remote,
+            candidate_tip,
+            ref,
+            expected_remote_tip=snapshot.remote_tip,
+        )
         if not pushed:
             try:
                 observed_push = _remote_tip(repo_root, remote, ref)
