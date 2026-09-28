@@ -32,22 +32,42 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
     incumbent = contract.get("incumbent_authority")
     if not isinstance(incumbent, dict):
         raise WikisourceIntakeError("incumbent authority is missing")
+    if incumbent.get("pr") != 455:
+        raise WikisourceIntakeError("incumbent PR authority drift")
     if incumbent.get("head_sha") != INCUMBENT_HEAD_SHA:
         raise WikisourceIntakeError("incumbent exact head drift")
     if incumbent.get("authority_identity_sha256") != INCUMBENT_AUTHORITY_SHA256:
         raise WikisourceIntakeError("incumbent authority identity drift")
+    if incumbent.get("verdict") != "ADMIT_BOUNDED_PD_EDITION_SNAPSHOT":
+        raise WikisourceIntakeError("incumbent authority verdict drift")
     edition = contract.get("edition")
     if not isinstance(edition, dict):
         raise WikisourceIntakeError("edition contract is missing")
-    if edition.get("index_revision_id") != INDEX_REVISION_ID:
-        raise WikisourceIntakeError("edition index revision drift")
-    if edition.get("source_family_id") != SOURCE_FAMILY_ID:
-        raise WikisourceIntakeError("source family drift")
+    edition_identity = {
+        "author": "Леся Українка",
+        "title": "На крилах пісень",
+        "publication_year": 1892,
+        "publication_place": "Львів",
+        "index_revision_id": INDEX_REVISION_ID,
+        "commons_pages": 112,
+        "source_family_id": SOURCE_FAMILY_ID,
+    }
+    if any(edition.get(key) != value for key, value in edition_identity.items()):
+        raise WikisourceIntakeError("edition identity drift")
     if edition.get("family_credit_added") is not False:
         raise WikisourceIntakeError("same-edition expansion may not add family credit")
     acquisition = contract.get("acquisition")
     if not isinstance(acquisition, dict):
         raise WikisourceIntakeError("bounded acquisition contract drift")
+    acquisition_identity = {
+        "api_origin": "https://uk.wikisource.org",
+        "index_selection": "NUMERIC_PAGE_NAMESPACE_LINKS_FROM_EXACT_INDEX_REVISION",
+        "required_proofread_category": APPROVED_CATEGORY,
+        "page_revision_binding": "CURRENT_REVISION_ID_THEN_EXACT_OLDID_RENDER_FETCH",
+        "normalization": "RENDERED_VISIBLE_TEXT_NFC_LF_STANZA_V1",
+    }
+    if any(acquisition.get(key) != value for key, value in acquisition_identity.items()):
+        raise WikisourceIntakeError("acquisition authority drift")
     max_pages = acquisition.get("max_pages")
     if isinstance(max_pages, bool) or not isinstance(max_pages, int) or max_pages != 112:
         raise WikisourceIntakeError("bounded acquisition contract drift")
@@ -83,6 +103,19 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
     )
     if any(boundary.get(field) is not False for field in false_fields):
         raise WikisourceIntakeError("candidate-only execution boundary was promoted")
+    if boundary.get("real_materialization_not_claimed_by_config") is not True:
+        raise WikisourceIntakeError("config attempted to claim real materialization")
+    required_downstream_gates = [
+        "GLOBAL_CROSS_SOURCE_DEDUP",
+        "FRESH_RESERVED_EVALUATION_DECONTAMINATION",
+        "POST_COMPOSITION_QUALITY_PRIVACY",
+        "BALANCE_AND_FAMILY_CAPS",
+        "CLUSTER_SAFE_SPLIT",
+        "DETERMINISTIC_PACK_AND_TWO_CLEAN_BUILDS",
+        "POSITIVE_EXACT_UNIQUE_LOSS_LEDGER",
+    ]
+    if boundary.get("required_downstream_gates") != required_downstream_gates:
+        raise WikisourceIntakeError("required downstream gate set drift")
 
 
 def normalize_rendered_text(text: str) -> str:
