@@ -192,6 +192,7 @@ jobs:
 
           import hashlib
           import json
+          import math
           import os
           from pathlib import Path
 
@@ -206,12 +207,19 @@ jobs:
           def reject_constant(value: str) -> object:
               raise ValueError(f"non-finite JSON constant: {value}")
 
+          def finite_float(value: str) -> float:
+              parsed = float(value)
+              if not math.isfinite(parsed):
+                  raise ValueError(f"non-finite JSON number: {value}")
+              return parsed
+
           def load(path: str) -> dict:
               raw = Path(path).read_bytes()
               value = json.loads(
                   raw.decode("utf-8", errors="strict"),
                   object_pairs_hook=reject_pairs,
                   parse_constant=reject_constant,
+                  parse_float=finite_float,
               )
               assert type(value) is dict, path
               return value
@@ -262,6 +270,27 @@ jobs:
               # Historical Product/replay authorities use UTF-8 canonical JSON + newline.
               verify_self_hash(value, "report_identity_sha256", newline=True)
 
+          candidate_sha256 = "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273"
+          for materializer in materializers:
+              assert materializer["retained_records"] == 5_658
+              assert materializer["retained_normalized_utf8_bytes"] == 5_962_147
+              assert materializer["candidate_jsonl_sha256"] == candidate_sha256
+              assert materializer["canonical_capacity_credited"] == 0
+              assert materializer["tokenizer_fit_authorized"] is False
+              assert materializer["model_training_executed"] is False
+          for admission in source_admissions:
+              assert admission["historical_product_replay_reproduced"] is True
+              assert admission["input_records"] == 5_658
+              assert admission["input_normalized_utf8_bytes"] == 5_962_147
+              assert admission["input_candidate_sha256"] == candidate_sha256
+              assert admission["source_admitted_records"] == 5_658
+              assert admission["source_admitted_normalized_utf8_bytes"] == 5_962_147
+              assert admission["source_admitted_candidate_sha256"] == candidate_sha256
+              assert admission["global_dedup_completed"] is False
+              assert admission["canonical_capacity_credited"] == 0
+              assert admission["tokenizer_fit_authorized"] is False
+              assert admission["model_training_executed"] is False
+
           report = load("artifacts/pass-1/global-dedup-report.json")
           survivors = load("artifacts/pass-1/survivors.json")
           # Incumbent V1/V3 report authority uses ensure_ascii=True plus newline.
@@ -274,7 +303,15 @@ jobs:
           for evidence in (a, b):
               verify_self_hash(evidence, "evidence_identity_sha256")
               assert evidence["execution_head_sha"] == os.environ["HEAD_SHA"]
+              assert evidence["caselaw"]["candidate_sha256"] == candidate_sha256
               assert evidence["combined"]["reports_byte_identical"] is True
+              execution = evidence["indexed_execution"]
+              assert type(execution["process_max_rss_kib"]) is int
+              assert execution["process_max_rss_kib"] > 0
+              for field in ("reference_wall_clock_seconds", "indexed_wall_clock_seconds"):
+                  value = execution[field]
+                  assert type(value) in (int, float) and not isinstance(value, bool)
+                  assert math.isfinite(value) and value >= 0
               assert evidence["truth_boundary"]["authorized_optimized_target_exposure"] == 0
               assert evidence["truth_boundary"]["tokenizer_fit_authorized"] is False
               assert evidence["truth_boundary"]["training_executed"] is False
@@ -306,6 +343,13 @@ jobs:
               "source_admission_reports_byte_identical": True,
               "global_dedup_reports_byte_identical": True,
               "survivor_authorities_byte_identical": True,
+              "source_admitted_candidate_sha256": candidate_sha256,
+              "materializer_report_identity_sha256": materializers[0][
+                  "report_identity_sha256"
+              ],
+              "source_admission_report_identity_sha256": source_admissions[0][
+                  "report_identity_sha256"
+              ],
               "materializer_report_file_sha256": sha(
                   "artifacts/pass-1/materializer.json"
               ),
