@@ -50,3 +50,195 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           path: artifacts/eval647/current_corpus_overlap_v1.json
+
+
+  caselaw-global-dedup:
+    if: github.event_name == 'pull_request' && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1'
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        pass: [1, 2]
+    env:
+      CASELAW_HEAD: "deaf0730fe04a12e9abb8f3cecb14d6ad2cc7a4d"
+      CASELAW_BRANCH: "d03/1342-caselaw-source-admission-real-replay"
+      V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
+      PASS_ID: ${{ matrix.pass }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout exact execution carrier head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare exact historical authority worktrees
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git fetch --no-tags origin "$CASELAW_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$CASELAW_HEAD"
+          git worktree add --detach "$RUNNER_TEMP/caselaw-pr1347-$PASS_ID" "$CASELAW_HEAD"
+          git cat-file -e "$V7_HEAD^{commit}"
+          git worktree add --detach "$RUNNER_TEMP/v7-$PASS_ID" "$V7_HEAD"
+          test "$(git -C "$RUNNER_TEMP/v7-$PASS_ID" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$RUNNER_TEMP/v7-$PASS_ID" status --porcelain=v1 --untracked-files=all)"
+
+      - name: Independently reproduce exact source-admitted Caselaw candidate
+        run: |
+          set -euxo pipefail
+          RUN_DIR="$RUNNER_TEMP/caselaw-pass-$PASS_ID"
+          PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
+          mkdir -p "$RUN_DIR"
+          python "$PR1347/tools/run_d03_caselaw_source_admission_replay_v1.py"             --product-tool "$PR1347/tools/materialize_d03_common_pile_caselaw.py"             --product-config "$PR1347/configs/data/d03_common_pile_caselaw_zero_credit_v1.json"             --admission-tool "$PR1347/tools/verify_d03_common_pile_caselaw_source_admission.py"             --admission-policy "$PR1347/configs/data/d03_common_pile_caselaw_source_admission_v1.json"             --source-gzip "$RUN_DIR/cap_00044.jsonl.gz"             --source-gzip "$RUN_DIR/cap_00043.jsonl.gz"             --candidate-jsonl "$RUN_DIR/candidate.jsonl"             --admitted-candidate-jsonl "$RUN_DIR/admitted.jsonl"             --materializer-report "$RUN_DIR/materializer.json"             --report "$RUN_DIR/source-admission.json"             --download
+          test "$(sha256sum "$RUN_DIR/admitted.jsonl" | cut -d' ' -f1)" =             "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273"
+
+      - name: Execute incumbent reference plus indexed global dedup
+        run: |
+          set -euxo pipefail
+          RUN_DIR="$RUNNER_TEMP/caselaw-pass-$PASS_ID"
+          PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
+          python tools/run_d03_caselaw_global_dedup_execution_v1.py             --v7-root "$RUNNER_TEMP/v7-$PASS_ID"             --bulk-workspace "$RUN_DIR/bulk-workspace"             --candidate-jsonl "$RUN_DIR/admitted.jsonl"             --execution-evidence-json "$PR1347/evidence/d03-caselaw-source-admission-real-execution-v1.json"             --output-report "$RUN_DIR/global-dedup-report.json"             --output-survivors "$RUN_DIR/survivors.json"             --output-evidence "$RUN_DIR/execution-evidence.json"             --max-candidate-pairs 17532081             --max-index-postings 100000000             --max-pair-expansions 100000000
+
+      - name: Upload text-free pass evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: caselaw-global-dedup-pass-${{ matrix.pass }}-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/materializer.json
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/source-admission.json
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/global-dedup-report.json
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/survivors.json
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/execution-evidence.json
+
+  caselaw-two-clean-compare:
+    if: github.event_name == 'pull_request' && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1'
+    needs: caselaw-global-dedup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Download pass 1
+        uses: actions/download-artifact@v4
+        with:
+          name: caselaw-global-dedup-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@v4
+        with:
+          name: caselaw-global-dedup-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require two clean byte-identical authorities
+        run: |
+          set -euxo pipefail
+          cmp artifacts/pass-1/materializer.json artifacts/pass-2/materializer.json
+          cmp artifacts/pass-1/source-admission.json artifacts/pass-2/source-admission.json
+          cmp artifacts/pass-1/global-dedup-report.json artifacts/pass-2/global-dedup-report.json
+          cmp artifacts/pass-1/survivors.json artifacts/pass-2/survivors.json
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def load(path: str) -> dict:
+              return json.loads(Path(path).read_text(encoding="utf-8"))
+
+          def sha(path: str) -> str:
+              return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+          a = load("artifacts/pass-1/execution-evidence.json")
+          b = load("artifacts/pass-2/execution-evidence.json")
+          for evidence in (a, b):
+              assert evidence["execution_head_sha"] == os.environ["HEAD_SHA"]
+              assert evidence["combined"]["reports_byte_identical"] is True
+              assert evidence["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+              assert evidence["truth_boundary"]["tokenizer_fit_authorized"] is False
+              assert evidence["truth_boundary"]["training_executed"] is False
+              assert evidence["truth_boundary"]["paid_compute_used"] is False
+
+          stable_fields = (
+              "pinned_main_sha",
+              "authority_path_blobs",
+              "baseline_v8",
+              "caselaw",
+              "combined",
+              "survivor_authority_sha256",
+              "content_boundary",
+              "truth_boundary",
+          )
+          for key in stable_fields:
+              assert a[key] == b[key], key
+
+          summary_core = {
+              "schema_version": "12-6.d03-caselaw-global-dedup-two-clean.v1",
+              "execution_profile": "GITHUB_HOSTED_FREE_LOCAL_FREE",
+              "execution_head_sha": os.environ["HEAD_SHA"],
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "two_independent_source_replays": True,
+              "two_independent_global_dedup_executions": True,
+              "materializer_reports_byte_identical": True,
+              "source_admission_reports_byte_identical": True,
+              "global_dedup_reports_byte_identical": True,
+              "survivor_authorities_byte_identical": True,
+              "global_dedup_report_file_sha256": sha(
+                  "artifacts/pass-1/global-dedup-report.json"
+              ),
+              "survivor_authority_file_sha256": sha(
+                  "artifacts/pass-1/survivors.json"
+              ),
+              "matcher_report_sha256": a["combined"]["indexed_report_sha256"],
+              "survivor_authority_sha256": a["survivor_authority_sha256"],
+              "pass_evidence_identity_sha256": [
+                  a["evidence_identity_sha256"],
+                  b["evidence_identity_sha256"],
+              ],
+              "indexed_execution_passes": [
+                  a["indexed_execution"],
+                  b["indexed_execution"],
+              ],
+              "truth_boundary": a["truth_boundary"],
+          }
+          canonical = json.dumps(
+              summary_core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          summary = {
+              **summary_core,
+              "summary_identity_sha256": hashlib.sha256(canonical).hexdigest(),
+          }
+          Path("artifacts/two-clean-summary.json").write_text(
+              json.dumps(
+                  summary,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload two-clean convergence evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: caselaw-global-dedup-two-clean-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: artifacts/two-clean-summary.json
