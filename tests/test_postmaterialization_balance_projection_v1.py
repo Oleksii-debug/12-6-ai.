@@ -800,6 +800,23 @@ def test_current_clean_rejects_source_object_count_drift() -> None:
     expected["expected_composition_receipt_json_sha256"] = hashlib.sha256(
         raw["composition_receipt"]
     ).hexdigest()
+
+    # Keep the upstream repeat proof coherently bound to the resealed receipt so
+    # this adversarial fixture reaches the intended independent inventory-count
+    # check instead of failing earlier at the stricter raw-file cross-bind.
+    repeat = json.loads(raw["repeat_proof"])
+    repeat["output_files_sha256"]["composition_receipt.json"] = expected[
+        "expected_composition_receipt_json_sha256"
+    ]
+    raw["repeat_proof"] = _reseal(repeat, "proof_identity_sha256")
+    resealed_repeat = json.loads(raw["repeat_proof"])
+    expected["expected_repeat_proof_identity_sha256"] = resealed_repeat[
+        "proof_identity_sha256"
+    ]
+    expected["expected_repeat_proof_json_sha256"] = hashlib.sha256(
+        raw["repeat_proof"]
+    ).hexdigest()
+
     expected["expected_source_object_count"] = receipt["survivor_source_objects"]
     with pytest.raises(ProjectionError, match="source_object_count"):
         build_current_clean_family_vector(
