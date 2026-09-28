@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: d03-nbu-pdftotext-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   execute-nbu-chain:
     runs-on: ubuntu-24.04
