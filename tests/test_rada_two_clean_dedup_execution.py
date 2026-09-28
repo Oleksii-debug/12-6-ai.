@@ -603,12 +603,12 @@ def test_parent_worker_timeout_publishes_incomplete(
     args = _runner_args(tmp_path)
     observed: list[int] = []
 
-    def timeout(*cmd: object, **kwargs: object) -> None:
-        del cmd
-        observed.append(int(kwargs["timeout"]))
-        raise subprocess.TimeoutExpired(cmd="worker", timeout=kwargs["timeout"])
+    def timeout(command: list[str], *, timeout_seconds: int) -> None:
+        del command
+        observed.append(timeout_seconds)
+        raise subprocess.TimeoutExpired(cmd="worker", timeout=timeout_seconds)
 
-    monkeypatch.setattr(runner.subprocess, "run", timeout)
+    monkeypatch.setattr(runner, "_run_worker", timeout)
     with pytest.raises(
         carrier.RadaTwoCleanExecutionError,
         match="authority deadline",
@@ -629,14 +629,14 @@ def test_parent_second_worker_timeout_preserves_completed_run_id(
     args = _runner_args(tmp_path)
     calls = 0
 
-    def second_timeout(*cmd: object, **kwargs: object) -> None:
+    def second_timeout(command: list[str], *, timeout_seconds: int) -> None:
         nonlocal calls
-        del cmd
+        del command
         calls += 1
         if calls == 2:
-            raise subprocess.TimeoutExpired(cmd="worker", timeout=kwargs["timeout"])
+            raise subprocess.TimeoutExpired(cmd="worker", timeout=timeout_seconds)
 
-    monkeypatch.setattr(runner.subprocess, "run", second_timeout)
+    monkeypatch.setattr(runner, "_run_worker", second_timeout)
     with pytest.raises(carrier.RadaTwoCleanExecutionError, match="authority deadline"):
         runner._run_two_clean(args)
 
@@ -651,11 +651,11 @@ def test_parent_operator_interrupt_publishes_incomplete(
 ) -> None:
     args = _runner_args(tmp_path)
 
-    def interrupt(*cmd: object, **kwargs: object) -> None:
-        del cmd, kwargs
+    def interrupt(command: list[str], *, timeout_seconds: int) -> None:
+        del command, timeout_seconds
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(runner.subprocess, "run", interrupt)
+    monkeypatch.setattr(runner, "_run_worker", interrupt)
     with pytest.raises(KeyboardInterrupt):
         runner._run_two_clean(args)
 
@@ -663,3 +663,33 @@ def test_parent_operator_interrupt_publishes_incomplete(
     assert incomplete["reason"] == "operator_interrupt"
     assert incomplete["completed_run_ids"] == []
     assert not (args.output_root / "two-clean-authority.json").exists()
+
+
+@pytest.mark.parametrize("failure", ["timeout", "interrupt"])
+def test_worker_helper_kills_and_reaps_on_abort(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    events: list[object] = []
+
+    class FakeProcess:
+        returncode = None
+
+        def wait(self, timeout: int | None = None) -> int:
+            events.append(("wait", timeout))
+            if len([event for event in events if isinstance(event, tuple)]) == 1:
+                if failure == "timeout":
+                    raise subprocess.TimeoutExpired(cmd="worker", timeout=timeout)
+                raise KeyboardInterrupt
+            self.returncode = -9
+            return self.returncode
+
+        def kill(self) -> None:
+            events.append("kill")
+
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda command: FakeProcess())
+    exception = subprocess.TimeoutExpired if failure == "timeout" else KeyboardInterrupt
+    with pytest.raises(exception):
+        runner._run_worker(["worker"], timeout_seconds=17)
+
+    assert events == [("wait", 17), "kill", ("wait", None)]
