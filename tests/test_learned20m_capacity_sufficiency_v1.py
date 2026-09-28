@@ -30,6 +30,34 @@ def test_rejects_stale_main_root() -> None:
         load_and_validate(REPORT, expected_main_sha="0" * 40)
 
 
+def test_rejects_control_issue_drift() -> None:
+    document = _report()
+    document["control_issues"][-1] = 9999
+    with pytest.raises(CapacityReportError, match="control_issues drifted"):
+        validate_report(document)
+
+
+def test_rejects_policy_fraction_bool_alias() -> None:
+    document = _report()
+    document["balance_policy"]["max_family_fraction_total"]["numerator"] = True
+    with pytest.raises(CapacityReportError, match="must be an integer, not bool"):
+        validate_report(document)
+
+
+def test_rejects_policy_strata_drift() -> None:
+    document = _report()
+    document["balance_policy"]["strata"]["ua"]["numerator"] = 8
+    with pytest.raises(CapacityReportError, match="numerator drifted"):
+        validate_report(document)
+
+
+def test_rejects_pending_non_object_structure() -> None:
+    document = _report()
+    document["pending_existing_high_yield_work"] = ["rada_two_clean"]
+    with pytest.raises(CapacityReportError, match="JSON array of objects"):
+        validate_report(document)
+
+
 def test_rejects_bool_as_integer() -> None:
     document = _report()
     document["decision"]["meaningful_unique_loss_floor"] = True

@@ -18,6 +18,8 @@ POLICY_BLOB = "b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f"
 EXECUTOR_HEAD = "2ad5b63bf7107465d6fa7deb25bf8c2f2fa03171"
 EXECUTOR_MERGE = "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
 CLEAN_ID = "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade"
+CONTROL_ISSUES = [548, 723, 2011, 2021, 2277]
+STRATA = {"ua": (9, 20), "en": (7, 20), "code": (1, 5)}
 TRUTH = {
     "current_retained_corpus_launch_authoritative": False,
     "authorized_postpack_unique_loss_positions": 0,
@@ -69,6 +71,28 @@ def hexid(value: Any, name: str, pattern: re.Pattern[str]) -> str:
     return value
 
 
+def json_object(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        fail(f"{name} must be a JSON object")
+    return value
+
+
+def object_list(value: Any, name: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not all(isinstance(row, dict) for row in value):
+        fail(f"{name} must be a JSON array of objects")
+    return value
+
+
+def fraction(value: Any, name: str, numerator: int, denominator: int) -> None:
+    value = json_object(value, name)
+    if set(value) != {"numerator", "denominator"}:
+        fail(f"{name} keys mismatch")
+    if integer(value["numerator"], f"{name}.numerator") != numerator:
+        fail(f"{name} numerator drifted")
+    if integer(value["denominator"], f"{name}.denominator", 1) != denominator:
+        fail(f"{name} denominator drifted")
+
+
 def canonical_sha(report: dict[str, Any]) -> str:
     data = json.dumps(
         report, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
@@ -77,6 +101,7 @@ def canonical_sha(report: dict[str, Any]) -> str:
 
 
 def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = None) -> None:
+    report = json_object(report, "report")
     if set(report) != TOP:
         fail("report keys mismatch")
     if report["schema_version"] != SCHEMA or report["report_id"] != REPORT_ID:
@@ -88,6 +113,8 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
         fail(f"stale report root: {main} != {expected_main_sha}")
     if integer(report["claim_issue"], "claim_issue", 1) != 2277:
         fail("claim_issue drifted")
+    if report["control_issues"] != CONTROL_ISSUES:
+        fail("control_issues drifted")
 
     truth = report["scientific_truth"]
     if not isinstance(truth, dict) or set(truth) != set(TRUTH):
@@ -137,17 +164,26 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
     if boolean(clean["launch_authoritative"], "clean.launch"):
         fail("terminal clean supply is not launch-authoritative")
 
-    policy = report["balance_policy"]
+    policy = json_object(report["balance_policy"], "balance_policy")
+    if policy.get("source_path") != "configs/data/next100_106_balance_gate_policy_v1.json":
+        fail("balance policy source path drifted")
     if hexid(policy["git_blob_sha"], "policy.blob", HEX40) != POLICY_BLOB:
         fail("balance policy blob drifted")
     if hexid(policy["policy_identity_sha256"], "policy.identity", HEX64) != POLICY_SHA:
         fail("balance policy identity drifted")
     if integer(policy["target_total_source_bytes"], "policy.target", 1) != 20_000_000:
         fail("balance target drifted")
-    if policy["max_family_fraction_total"] != {"numerator": 1, "denominator": 4}:
-        fail("global family cap drifted")
+    strata = json_object(policy["strata"], "policy.strata")
+    if set(strata) != set(STRATA):
+        fail("balance strata set drifted")
+    for stratum, expected in STRATA.items():
+        fraction(strata[stratum], f"policy.strata.{stratum}", *expected)
+    fraction(policy["max_family_fraction_total"], "policy.max_family_total", 1, 4)
+    fraction(policy["max_family_fraction_own_stratum"], "policy.max_family_stratum", 3, 5)
     if integer(policy["minimum_independent_families_per_stratum"], "policy.family_min", 1) != 2:
         fail("minimum independent-family rule drifted")
+    if integer(policy["budget_quantum_bytes"], "policy.budget_quantum", 1) != 100:
+        fail("balance budget quantum drifted")
     if boolean(policy["replay_or_duplication_to_meet_quota"], "policy.replay"):
         fail("replay/duplication cannot satisfy balance")
     if not boolean(policy["source_bytes_are_not_unique_loss_positions"], "policy.byte_rule"):
@@ -167,7 +203,7 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
     if integer(executor["capacity_credit_bytes"], "executor.credit"):
         fail("execution mechanics cannot receive capacity credit")
 
-    pending = report["pending_existing_high_yield_work"]
+    pending = object_list(report["pending_existing_high_yield_work"], "pending work")
     pending_ids = {"rada_two_clean", "franko1901_two_clean", "caselaw_two_clean"}
     if len(pending) != len(pending_ids) or {row["id"] for row in pending} != pending_ids:
         fail("pending high-yield work set mismatch")
@@ -195,7 +231,7 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
     if franko_bytes != 1_762_005:
         fail("Franko candidate evidence drifted")
 
-    backlog = report["existing_independent_family_backlog"]
+    backlog = object_list(report["existing_independent_family_backlog"], "family backlog")
     family_ids = {"lesia1892", "edrnpa", "nbu"}
     if len(backlog) != len(family_ids) or {row["id"] for row in backlog} != family_ids:
         fail("independent-family backlog set mismatch")
@@ -203,7 +239,7 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
         hexid(row["observed_head"], "family observed_head", HEX40)
         if integer(row["capacity_credit_bytes"], "family capacity credit"):
             fail("unexecuted independent-family lanes cannot receive capacity credit")
-    downstream = report["downstream_authority_backlog"]
+    downstream = object_list(report["downstream_authority_backlog"], "downstream backlog")
     expected_downstream = {
         "clean_current_composition",
         "balance_execution",
