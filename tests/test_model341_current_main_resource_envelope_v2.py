@@ -236,3 +236,21 @@ def test_unix_hwm_path_fails_closed_when_resource_probe_errors(
     monkeypatch.setattr(probe.sys, "platform", "linux")
     monkeypatch.setattr(probe, "_resource", BrokenResource())
     assert probe._process_hwm_mib_approx() == (None, "unavailable")
+
+
+def test_unknown_platform_hwm_fails_closed_even_with_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class AvailableResource:
+        RUSAGE_SELF = 0
+
+        class Usage:
+            ru_maxrss = 1234
+
+        @staticmethod
+        def getrusage(_who: int):
+            return AvailableResource.Usage()
+
+    monkeypatch.setattr(probe.sys, "platform", "unsupported-platform")
+    monkeypatch.setattr(probe, "_resource", AvailableResource())
+    assert probe._process_hwm_mib_approx() == (None, "unavailable")
