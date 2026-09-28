@@ -21,6 +21,7 @@ from typing import Any
 
 from twelve_six.learned20m_training_lease import (
     TrainingLease,
+    assess_terminal_launch_authority,
     assess_training_run_lease,
     canonical_json_bytes,
     launch_manifest_sha256,
@@ -656,9 +657,10 @@ def acquire_global_training_run_lease(
     manifest: Mapping[str, Any],
     lease: Mapping[str, Any],
     *,
+    expected_terminal_authority_sha256: str,
     now: datetime | None = None,
 ) -> GlobalLeaseOperation:
-    """Atomically create the manifest-derived remote ref once, never overwrite it."""
+    """Create one global lease only from an independently authenticated terminal manifest."""
     _validate_transport(remote)
     try:
         manifest_snapshot = _snapshot_mapping(manifest, field="launch_manifest")
@@ -670,6 +672,35 @@ def acquire_global_training_run_lease(
 
     run_id = str(lease_snapshot.get("run_id", ""))
     status = str(lease_snapshot.get("status", ""))
+    terminal_assessment = assess_terminal_launch_authority(
+        manifest_snapshot,
+        expected_terminal_authority_sha256=expected_terminal_authority_sha256,
+    )
+    terminal_blockers = tuple(
+        dict.fromkeys(
+            (
+                *terminal_assessment.contract_errors,
+                *terminal_assessment.blockers,
+            )
+        )
+    )
+    if (
+        not terminal_assessment.ready_for_training_run_lease
+        or terminal_assessment.manifest_sha256 != digest
+    ):
+        blocker = (
+            terminal_blockers[0]
+            if terminal_blockers
+            else "terminal_launch_authority_not_authenticated"
+        )
+        return _operation_failure(
+            "ACQUIRE",
+            ref,
+            digest,
+            blocker=blocker,
+            run_id=run_id,
+            lease_status=status,
+        )
     assessment = assess_training_run_lease(
         manifest_snapshot,
         lease_snapshot,
