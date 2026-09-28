@@ -291,3 +291,37 @@ def test_current_main_resource_probe_rejects_runtime_model_import_path_mismatch(
     monkeypatch.setattr(probe.model_module, "__file__", str(ROOT / "wrong-model.py"))
     with pytest.raises(ValueError, match="runtime model import path mismatch"):
         validate_source_root(ROOT)
+
+
+def test_current_main_resource_probe_rejects_non_fp32_default_dtype() -> None:
+    previous = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(torch.float64)
+        with pytest.raises(ValueError, match="probe requires torch.float32 default dtype"):
+            run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
+    finally:
+        torch.set_default_dtype(previous)
+
+
+def test_current_main_resource_probe_rejects_non_cpu_default_device() -> None:
+    previous = torch.get_default_device()
+    try:
+        torch.set_default_device("meta")
+        with pytest.raises(ValueError, match="probe requires CPU default device"):
+            run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
+    finally:
+        torch.set_default_device(previous)
+
+
+def test_current_main_resource_probe_enables_grad_inside_no_grad() -> None:
+    with torch.no_grad():
+        report = run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
+    validate_probe(report)
+
+
+def test_current_main_resource_probe_disables_outer_cpu_autocast() -> None:
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        report = run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
+    validate_probe(report)
+    assert report["measurement"]["parameter_bytes"] == EXPECTED_PARAMETER_COUNT * 4
+    assert report["measurement"]["gradient_bytes"] == EXPECTED_PARAMETER_COUNT * 4
