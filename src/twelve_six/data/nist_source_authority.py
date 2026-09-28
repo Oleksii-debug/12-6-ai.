@@ -8,7 +8,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 SEAL_PATH = ROOT / "configs/data/next100_034_nist_terminal_authority_v2.json"
 DETAIL_PATH = ROOT / "configs/data/next100_034_nist_technical_series_authority_v1.json"
-RIGHTS_PATH = ROOT / "data/external/rights-evidence/next100-034/nist-technical-series-rights-20260826.txt"
+RIGHTS_PATH = (
+    ROOT
+    / "data/external/rights-evidence/next100-034/nist-technical-series-rights-20260826.txt"
+)
 
 EXPECTED_SEAL_SHA256 = "3ffba0fcd08ab42e940b2db12ffafb6f7234ad0bae6f7fe523071497485b9d1c"
 EXPECTED_DETAIL_BLOB = "5341f043dc9b98da530a58ce70bc2af530d9be12"
@@ -69,7 +72,12 @@ def validate_nist_source_authority() -> dict[str, Any]:
         raise NistAuthorityError("seal schema drift")
     if seal.get("terminal_status") != "ADMIT" or seal.get("local_free_only") is not True:
         raise NistAuthorityError("terminal/local-free boundary drift")
-    if seal.get("terminal_payload_sha256") != EXPECTED_SEAL_SHA256:
+    seal_core = dict(seal)
+    embedded_identity = seal_core.pop("terminal_payload_sha256", None)
+    actual_identity = hashlib.sha256(
+        json.dumps(seal_core, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if embedded_identity != EXPECTED_SEAL_SHA256 or actual_identity != embedded_identity:
         raise NistAuthorityError("terminal authority identity drift")
     if _git_blob_sha1(detail_bytes) != EXPECTED_DETAIL_BLOB:
         raise NistAuthorityError("supporting authority blob drift")
@@ -125,7 +133,7 @@ def validate_nist_source_authority() -> dict[str, Any]:
             raise NistAuthorityError("supporting source row missing")
         for key in ("raw_bytes", "raw_sha256", "normalized_utf8_bytes", "normalized_sha256"):
             if row.get(key) != source.get(key) or type(row.get(key)) is not type(source.get(key)):
-                raise NistAuthorityError(f"supporting identity drift: {row['publication_id']}:{key}")
+                raise NistAuthorityError("supporting identity drift")
 
     rights = seal.get("rights")
     if type(rights) is not dict:
