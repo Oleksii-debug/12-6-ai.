@@ -129,6 +129,25 @@ _RECIPE_KEYS = {
     "available_unique_loss_positions",
     "max_exposures_per_unique_position",
 }
+_EXECUTION_PROJECTION_KEYS = {
+    "training_config_sha256",
+    "stopping_policy_sha256",
+    "policy_identity_sha256",
+    "optimizer",
+    "learning_rate",
+    "betas",
+    "eps",
+    "weight_decay",
+    "gradient_clip_norm",
+    "scheduler",
+    "warmup_steps",
+    "sequence_length",
+    "micro_batch_size",
+    "gradient_accumulation_steps",
+    "precision",
+    "seed_vector",
+}
+_EXECUTION_SEED_KEYS = {"model_init", "data_order", "dataloader"}
 _CHECKPOINT_KEYS = {
     "mode",
     "lineage",
@@ -298,6 +317,104 @@ def _expect_exact_keys(
         errors.append(f"{name}_fields_mismatch")
 
 
+def _validate_execution_projection(
+    errors: list[str],
+    projection: Any,
+    recipe: dict[str, Any],
+    checkpoint: dict[str, Any],
+    *,
+    required: bool,
+) -> None:
+    if projection is None:
+        if required:
+            errors.append("execution_projection_missing")
+        return
+    if not isinstance(projection, dict):
+        errors.append("execution_projection_must_be_object")
+        return
+    _expect_exact_keys(
+        errors,
+        projection,
+        _EXECUTION_PROJECTION_KEYS,
+        "execution_projection",
+    )
+
+    for name in (
+        "training_config_sha256",
+        "stopping_policy_sha256",
+        "policy_identity_sha256",
+    ):
+        if not _is_sha256(projection.get(name)):
+            errors.append(f"execution_projection_{name}_invalid")
+
+    for name in ("optimizer", "scheduler", "precision"):
+        if not _is_nonempty_string(projection.get(name)):
+            errors.append(f"execution_projection_{name}_invalid")
+
+    for name in (
+        "learning_rate",
+        "eps",
+        "weight_decay",
+        "gradient_clip_norm",
+    ):
+        if type(projection.get(name)) is not float:
+            errors.append(f"execution_projection_{name}_type_invalid")
+
+    betas = projection.get("betas")
+    if (
+        not isinstance(betas, list)
+        or len(betas) != 2
+        or any(type(value) is not float for value in betas)
+    ):
+        errors.append("execution_projection_betas_invalid")
+
+    if not _is_nonnegative_int(projection.get("warmup_steps")):
+        errors.append("execution_projection_warmup_steps_invalid")
+    for name in (
+        "sequence_length",
+        "micro_batch_size",
+        "gradient_accumulation_steps",
+    ):
+        if not _is_positive_int(projection.get(name)):
+            errors.append(f"execution_projection_{name}_invalid")
+
+    seed_vector = projection.get("seed_vector")
+    if not isinstance(seed_vector, dict):
+        errors.append("execution_projection_seed_vector_must_be_object")
+    else:
+        _expect_exact_keys(
+            errors,
+            seed_vector,
+            _EXECUTION_SEED_KEYS,
+            "execution_projection_seed_vector",
+        )
+        for name in sorted(_EXECUTION_SEED_KEYS):
+            if not _is_nonnegative_int(seed_vector.get(name)):
+                errors.append(f"execution_projection_seed_vector_{name}_invalid")
+
+    if projection.get("training_config_sha256") != recipe.get(
+        "training_config_sha256"
+    ):
+        errors.append("execution_projection_training_config_sha256_mismatch")
+    if projection.get("stopping_policy_sha256") != checkpoint.get(
+        "stop_resume_policy_sha256"
+    ):
+        errors.append("execution_projection_stopping_policy_sha256_mismatch")
+
+    optimizer = recipe.get("optimizer_scheduler_precision")
+    if isinstance(optimizer, dict):
+        for name in ("optimizer", "scheduler", "precision"):
+            if projection.get(name) != optimizer.get(name):
+                errors.append(f"execution_projection_{name}_mismatch")
+
+    recipe_seed = recipe.get("seed")
+    if _is_nonnegative_int(recipe_seed) and isinstance(seed_vector, dict):
+        for name in sorted(_EXECUTION_SEED_KEYS):
+            seed = seed_vector.get(name)
+            if _is_nonnegative_int(seed) and seed != recipe_seed:
+                errors.append(f"execution_projection_seed_vector_{name}_mismatch")
+
+
 def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     """Validate immutable safety/shape rules without claiming launch readiness."""
     errors: list[str] = []
@@ -454,6 +571,13 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
             {"optimizer", "scheduler", "precision"},
             "optimizer_scheduler_precision",
         )
+    _validate_execution_projection(
+        errors,
+        recipe.get("execution_projection"),
+        recipe,
+        checkpoint,
+        required=data.get("status") == "READY_CANDIDATE",
+    )
 
     runtime = _get_mapping(data, "runtime", errors)
     _expect_exact_keys(errors, runtime, _RUNTIME_KEYS, "runtime")

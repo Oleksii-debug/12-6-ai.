@@ -426,6 +426,61 @@ def test_ready_fresh_binding_is_exact_and_does_not_mutate_inputs() -> None:
     assert (readiness, template, overlay) == originals
 
 
+
+def test_ready_packet_execution_projection_is_closed_world_and_cross_bound() -> None:
+    readiness = _ready_readiness()
+    overlay = _ready_overlay()
+    tokens, refs, _, _, execution = _verified_inputs(readiness)
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        expected_portable_execution=execution,
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
+    )
+    assert result.binding_ready
+    assert result.packet is not None
+    packet = result.packet
+    assert validate_portable_run_contract(packet) == []
+
+    unknown = copy.deepcopy(packet)
+    unknown["recipe"]["execution_projection"]["final_test_payload_uri"] = (
+        "file:///forbidden"
+    )
+    assert (
+        "execution_projection_fields_mismatch"
+        in validate_portable_run_contract(unknown)
+    )
+
+    missing = copy.deepcopy(packet)
+    missing["recipe"].pop("execution_projection")
+    assert "execution_projection_missing" in validate_portable_run_contract(missing)
+
+    config_drift = copy.deepcopy(packet)
+    config_drift["recipe"]["execution_projection"]["training_config_sha256"] = (
+        "c" * 64
+    )
+    assert (
+        "execution_projection_training_config_sha256_mismatch"
+        in validate_portable_run_contract(config_drift)
+    )
+
+    optimizer_drift = copy.deepcopy(packet)
+    optimizer_drift["recipe"]["execution_projection"]["optimizer"] = "SGD"
+    assert (
+        "execution_projection_optimizer_mismatch"
+        in validate_portable_run_contract(optimizer_drift)
+    )
+
+    seed_alias = copy.deepcopy(packet)
+    seed_alias["recipe"]["execution_projection"]["seed_vector"]["model_init"] = True
+    assert (
+        "execution_projection_seed_vector_model_init_invalid"
+        in validate_portable_run_contract(seed_alias)
+    )
+
+
 def test_ready_cross_provider_resume_binds_parent_lineage() -> None:
     readiness = _ready_readiness()
     overlay = _ready_overlay()
