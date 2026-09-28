@@ -202,3 +202,11 @@ expected = {
 assert expected <= set(mod.AUTHORITY_PATHS)
 """
     )
+
+
+def test_historical_reconstruction_closure_includes_v5_pipeline() -> None:
+    _run_isolated(
+        """
+assert "twelve_six.data.pipeline" in mod._HISTORICAL_MATCHER_MODULES
+"""
+    )
