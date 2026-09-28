@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -26,8 +27,40 @@ def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
 
 
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object member: {key}")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON number is forbidden: {value}")
+
+
+def _require_finite_json_numbers(value: Any) -> None:
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("non-finite JSON number is forbidden")
+        return
+    if isinstance(value, dict):
+        for item in value.values():
+            _require_finite_json_numbers(item)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _require_finite_json_numbers(item)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8-sig"))
+    value = json.loads(
+        path.read_text(encoding="utf-8-sig"),
+        object_pairs_hook=_strict_json_object,
+        parse_constant=_reject_json_constant,
+    )
+    _require_finite_json_numbers(value)
     if not isinstance(value, dict):
         raise TypeError(f"{path} must contain a JSON object")
     return value
