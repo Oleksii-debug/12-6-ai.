@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+
 class _LazyIndexed:
     _module: ModuleType | None = None
 
