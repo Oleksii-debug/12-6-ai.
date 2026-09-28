@@ -332,3 +332,180 @@ def test_export_verifier_rejects_symlink_payload(tmp_path: Path):
 
     with pytest.raises(CheckpointIntegrityError, match="non-symlink"):
         verify_hf_directory(output)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_export_rejects_nonfinite_hf_config_without_publication(
+    tmp_path: Path,
+    value: float,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(8.0), identity=identity("1"))
+
+    with pytest.raises(CheckpointIntegrityError, match="strict finite JSON"):
+        export_hf_directory(
+            checkpoint,
+            output,
+            hf_config={
+                "model_type": "twelve_six_export_transactional",
+                "unsafe": value,
+            },
+        )
+
+    assert not output.exists()
+    assert not list(tmp_path.glob(".hf.staging-*"))
+    assert not list(tmp_path.glob(".hf.hook-candidate-*"))
+    assert not list(tmp_path.glob(".hf.reference-*"))
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_export_rejects_nonfinite_parity_hook_evidence_and_cleans_temp_paths(
+    tmp_path: Path,
+    value: float,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(8.5), identity=identity("2"))
+
+    def parity_hook(_reference: Path, _candidate: Path):
+        return {"status": "PASS", "metric": value}
+
+    with pytest.raises(CheckpointIntegrityError, match="strict finite JSON"):
+        export_hf_directory(
+            checkpoint,
+            output,
+            hf_config={"model_type": "twelve_six_export_transactional"},
+            parity_hook=parity_hook,
+        )
+
+    assert not output.exists()
+    assert not list(tmp_path.glob(".hf.staging-*"))
+    assert not list(tmp_path.glob(".hf.hook-candidate-*"))
+    assert not list(tmp_path.glob(".hf.reference-*"))
+
+
+def test_verifier_rejects_nonfinite_numeric_overflow_in_config(tmp_path: Path):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(9.0), identity=identity("3"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+
+    (output / hf_export.EXPORTED_CONFIG_NAME).write_text(
+        '{"model_type":"twelve_six_export_transactional","unsafe":1e400}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
+        verify_hf_directory(output)
+
+
+def test_verifier_rejects_duplicate_attestation_key_even_with_resealed_checksum(
+    tmp_path: Path,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(9.5), identity=identity("4"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+
+    attestation_path = output / hf_export.EXPORT_ATTESTATION_NAME
+    raw = attestation_path.read_text(encoding="utf-8").rstrip()
+    assert raw.endswith("}")
+    tampered = (
+        raw[:-1]
+        + ',"schema":"12-6.hf-style-export.v2"}\n'
+    ).encode("utf-8")
+    attestation_path.write_bytes(tampered)
+    (output / hf_export.EXPORT_CHECKSUM_NAME).write_text(
+        f"{hf_export.sha256_bytes(tampered)}  {hf_export.EXPORT_ATTESTATION_NAME}\n",
+        encoding="ascii",
+    )
+
+    with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
+        verify_hf_directory(output)
+
+
+def test_verifier_rejects_unknown_attestation_claim_after_reseal(tmp_path: Path):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(10.0), identity=identity("5"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+
+    attestation_path = output / hf_export.EXPORT_ATTESTATION_NAME
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    attestation["training_authorized"] = True
+    tampered = (
+        json.dumps(
+            attestation,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    attestation_path.write_bytes(tampered)
+    (output / hf_export.EXPORT_CHECKSUM_NAME).write_text(
+        f"{hf_export.sha256_bytes(tampered)}  {hf_export.EXPORT_ATTESTATION_NAME}\n",
+        encoding="ascii",
+    )
+
+    with pytest.raises(CheckpointIntegrityError, match="fields mismatch"):
+        verify_hf_directory(output)
+
+
+def test_verifier_rejects_unknown_parity_request_claim(tmp_path: Path):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(10.5), identity=identity("6"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+
+    parity_path = output / hf_export.PARITY_REQUEST_NAME
+    parity = json.loads(parity_path.read_text(encoding="utf-8"))
+    parity["training_authorized"] = True
+    parity_path.write_text(
+        json.dumps(
+            parity,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CheckpointIntegrityError, match="fields mismatch"):
+        verify_hf_directory(output)
+
+
+def test_verifier_rejects_duplicate_config_key_before_hash_checks(tmp_path: Path):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(11.0), identity=identity("7"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+
+    (output / hf_export.EXPORTED_CONFIG_NAME).write_text(
+        '{"model_type":"twelve_six_export_transactional","model_type":"shadow"}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
+        verify_hf_directory(output)

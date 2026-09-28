@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import errno
 import json
+import math
 import os
 import shutil
 import stat
@@ -24,7 +25,6 @@ from .core import (
     WEIGHTS_NAME,
     CheckpointCompatibilityError,
     CheckpointIntegrityError,
-    canonical_json_bytes,
     hash_json,
     prepare_checkpoint_load,
     sha256_bytes,
@@ -57,6 +57,30 @@ _COMPATIBILITY = {
     "transformers_architecture": "NOT_CLAIMED",
     "runtime_logit_generation_parity": "NOT_TESTED",
 }
+_PARITY_REQUEST_FIELDS = frozenset(
+    {
+        "schema",
+        "status",
+        "checkpoint_id",
+        "reference_weights_sha256",
+        "candidate_weights_sha256",
+        "candidate_config_sha256",
+        "required_checks",
+        "authority",
+        "hook_result",
+    }
+)
+_ATTESTATION_FIELDS = frozenset(
+    {
+        "schema",
+        "checkpoint_id",
+        "source_manifest_sha256",
+        "model_safetensors_sha256",
+        "config_sha256",
+        "parity_request_sha256",
+        "compatibility",
+    }
+)
 ParityHook = Callable[[Path, Path], Mapping[str, Any]]
 
 
@@ -111,14 +135,71 @@ def _read_export_snapshot(root: Path) -> dict[str, bytes]:
     return {name: _read_regular_bytes(root, name) for name in sorted(_EXPORT_FILES)}
 
 
+def _strict_json_bytes(value: Any, *, artifact: str) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise CheckpointIntegrityError(
+            f"{artifact} is not strict finite JSON"
+        ) from exc
+
+
+def _reject_json_constant(value: str) -> Any:
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
+def _parse_finite_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("non-finite JSON number")
+    return parsed
+
+
+def _object_without_duplicate_keys(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
 def _json_object(data: bytes, *, artifact: str) -> dict[str, Any]:
     try:
-        value = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CheckpointIntegrityError(f"{artifact} is not valid UTF-8 JSON") from exc
+        value = json.loads(
+            data.decode("utf-8"),
+            object_pairs_hook=_object_without_duplicate_keys,
+            parse_constant=_reject_json_constant,
+            parse_float=_parse_finite_json_float,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise CheckpointIntegrityError(f"{artifact} is not valid strict UTF-8 JSON") from exc
     if not isinstance(value, dict):
         raise CheckpointIntegrityError(f"{artifact} must contain a JSON object")
     return value
+
+
+def _require_exact_fields(
+    value: Mapping[str, Any],
+    expected: frozenset[str],
+    *,
+    artifact: str,
+) -> None:
+    actual = set(value)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        unexpected = sorted(actual - expected)
+        raise CheckpointIntegrityError(
+            f"{artifact} fields mismatch: missing={missing}, unexpected={unexpected}"
+        )
 
 
 def _validate_source_manifest_identity(identity: dict[str, Any]) -> None:
@@ -194,6 +275,11 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         )
 
     parity = _json_object(payloads[PARITY_REQUEST_NAME], artifact=PARITY_REQUEST_NAME)
+    _require_exact_fields(
+        parity,
+        _PARITY_REQUEST_FIELDS,
+        artifact=PARITY_REQUEST_NAME,
+    )
     if parity.get("schema") != "12-6.export-parity-request.v2":
         raise CheckpointCompatibilityError("unsupported export parity request schema")
     expected_parity = {
@@ -222,6 +308,11 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
 
     attestation = _json_object(
         payloads[EXPORT_ATTESTATION_NAME], artifact=EXPORT_ATTESTATION_NAME
+    )
+    _require_exact_fields(
+        attestation,
+        _ATTESTATION_FIELDS,
+        artifact=EXPORT_ATTESTATION_NAME,
     )
     if attestation.get("schema") != "12-6.hf-style-export.v2":
         raise CheckpointCompatibilityError("unsupported HF-style export attestation schema")
@@ -266,7 +357,7 @@ def _cleanup_temp_paths_strict(
             continue
         try:
             _remove_temp_path_strict(path, label=label)
-        except Exception as exc:
+        except (OSError, CheckpointIntegrityError) as exc:
             failures.append((label, exc))
     if failures:
         labels = ", ".join(label for label, _ in failures)
@@ -401,7 +492,10 @@ def export_hf_directory(
         raise FileExistsError(f"export destination already exists: {destination}{suffix}")
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    config_bytes = canonical_json_bytes(dict(hf_config)) + b"\n"
+    config_bytes = _strict_json_bytes(
+        dict(hf_config),
+        artifact=EXPORTED_CONFIG_NAME,
+    ) + b"\n"
     weights_sha = sha256_bytes(source_weights_bytes)
     config_sha = sha256_bytes(config_bytes)
     parity_request: dict[str, Any] = {
@@ -437,7 +531,10 @@ def export_hf_directory(
                 raise TypeError("parity_hook must return a mapping")
             parity_request["hook_result"] = dict(result)
             parity_request["status"] = "EXTERNAL_EVIDENCE_ATTACHED"
-            parity_bytes = canonical_json_bytes(parity_request) + b"\n"
+            parity_bytes = _strict_json_bytes(
+                parity_request,
+                artifact=PARITY_REQUEST_NAME,
+            ) + b"\n"
         finally:
             _cleanup_temp_paths_strict(
                 (
@@ -446,7 +543,10 @@ def export_hf_directory(
                 )
             )
     else:
-        parity_bytes = canonical_json_bytes(parity_request) + b"\n"
+        parity_bytes = _strict_json_bytes(
+            parity_request,
+            artifact=PARITY_REQUEST_NAME,
+        ) + b"\n"
 
     attestation = {
         "schema": "12-6.hf-style-export.v2",
@@ -457,7 +557,10 @@ def export_hf_directory(
         "parity_request_sha256": sha256_bytes(parity_bytes),
         "compatibility": dict(_COMPATIBILITY),
     }
-    attestation_bytes = canonical_json_bytes(attestation) + b"\n"
+    attestation_bytes = _strict_json_bytes(
+        attestation,
+        artifact=EXPORT_ATTESTATION_NAME,
+    ) + b"\n"
 
     staging = Path(
         tempfile.mkdtemp(
