@@ -191,6 +191,12 @@ def test_dependency_authority_rejects_duplicate_json_keys(tmp_path: Path) -> Non
         carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
 
 
+def test_strict_authority_json_rejects_finite_syntax_overflow() -> None:
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError,
+        match="non-finite JSON float",
+    ):
+        carrier._strict_json_bytes(b'{"nested":{"telemetry":1e400}}', "authority fixture")
 
 
 def test_global_payload_composition_requires_incumbent_base_and_exact_rada_segment(
