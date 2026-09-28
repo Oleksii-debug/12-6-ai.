@@ -99,15 +99,29 @@ def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     )
     assert 'numpy.__version__ == "2.4.6"' in job
     assert 'pyarrow.__version__ == "25.0.1"' in job
+    assert 'eval291_venv="$RUNNER_TEMP/eval291-venv"' in job
+    assert 'eval291_environment="$RUNNER_TEMP/eval291-environment.json"' in job
     assert (
-        'PYTHONPATH="$eval291_src/src" python -m '
+        'python "$eval291_src/tools/execution_bootstrap.py" bootstrap '
+        '--repo-root "$eval291_src" --capabilities "runtime,tests" '
+        '--venv "$eval291_venv" --manifest "$eval291_environment" '
+        '--command "python -m pytest -q tests/test_eval291_en_selection_validation.py"'
+        in compact_job
+    )
+    assert (
+        'PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python" -m '
         'twelve_six.eval291_en_selection_validation build --repo-root "$eval291_src"'
         in compact_job
     )
     assert (
-        'PYTHONPATH="$eval291_src/src" python -m '
+        'PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python" -m '
         'twelve_six.eval291_en_selection_validation verify --repo-root "$eval291_src"'
         in compact_job
+    )
+    assert (
+        'PYTHONPATH="$eval291_src/src" python -m '
+        'twelve_six.eval291_en_selection_validation'
+        not in compact_job
     )
     assert 'cmp "$RUNNER_TEMP/eval291-en.jsonl"' in job
     assert "resolve_eval303_selection_payloads_from_reconstructed" in job

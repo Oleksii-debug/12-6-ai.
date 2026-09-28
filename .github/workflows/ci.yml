@@ -140,8 +140,10 @@ jobs:
           eval290_venv="$RUNNER_TEMP/eval290-venv"
           eval290_environment="$RUNNER_TEMP/eval290-environment.json"
           eval291_src="$RUNNER_TEMP/eval291-src"
-          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src" "$eval290_venv"
-          rm -f "$eval290_environment"
+          eval291_venv="$RUNNER_TEMP/eval291-venv"
+          eval291_environment="$RUNNER_TEMP/eval291-environment.json"
+          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src" "$eval290_venv" "$eval291_venv"
+          rm -f "$eval290_environment" "$eval291_environment"
 
           # Historical Actions artifacts were retention-bounded. Recover authority
           # from immutable Git roots instead of weakening to a newer/unbound payload.
@@ -177,14 +179,24 @@ jobs:
           test "$(git -C "$eval291_src" rev-parse HEAD)" = "$EVAL291_HEAD_SHA"
           git -C "$eval291_src" diff --quiet HEAD --
           git -C "$eval291_src" diff --cached --quiet HEAD --
+
+          # Reproduce EVAL291's own frozen producer runtime. Do not rely on
+          # packages incidentally installed in the outer CI interpreter.
+          python "$eval291_src/tools/execution_bootstrap.py" bootstrap \
+            --repo-root "$eval291_src" \
+            --capabilities "runtime,tests" \
+            --venv "$eval291_venv" \
+            --manifest "$eval291_environment" \
+            --command "python -m pytest -q tests/test_eval291_en_selection_validation.py"
+
           cp "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"             "$RUNNER_TEMP/eval291-en.jsonl"
           cp "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"             "$RUNNER_TEMP/eval291-authority.json"
           test "$(sha256sum "$RUNNER_TEMP/eval291-en.jsonl" | cut -d' ' -f1)" = "$EVAL291_DATA_SHA256"
           test "$(sha256sum "$RUNNER_TEMP/eval291-authority.json" | cut -d' ' -f1)" = "$EVAL291_AUTHORITY_SHA256"
-          PYTHONPATH="$eval291_src/src" python -m twelve_six.eval291_en_selection_validation             build --repo-root "$eval291_src"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python" -m twelve_six.eval291_en_selection_validation             build --repo-root "$eval291_src"
           cmp "$RUNNER_TEMP/eval291-en.jsonl"             "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"
           cmp "$RUNNER_TEMP/eval291-authority.json"             "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"
-          PYTHONPATH="$eval291_src/src" python -m twelve_six.eval291_en_selection_validation             verify --repo-root "$eval291_src"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python" -m twelve_six.eval291_en_selection_validation             verify --repo-root "$eval291_src"
 
       - name: Build complete ephemeral reserved-evaluation universe
         shell: bash
