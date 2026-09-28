@@ -132,3 +132,10 @@ def test_candidate_contract_rejects_environment_binding_tamper(
     tampered["evidence_sha256"] = _canonical_hash(tampered)
     with pytest.raises(S0EvidenceContractError, match="training lock_index_sha256 mismatch"):
         validate_s0_training_evidence(tampered)
+
+
+def test_evidence_contract_binds_committed_lock_index() -> None:
+    path = ROOT / LOCK_INDEX_PATH
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == LOCK_INDEX_FILE_SHA256
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["index_sha256"] == LOCK_INDEX_SEMANTIC_SHA256
