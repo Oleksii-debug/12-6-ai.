@@ -599,7 +599,7 @@ def build_native_current_execution_preflight(
         "final_test_outcomes_read": False,
         "paid_compute_used": False,
         "foreign_pretrained_weights": False,
-        "external_llm_or_api_used_for_data_or_intelligence": False,
+        "current_corpus_external_llm_free_claimed_by_this_preflight": False,
     }
     core = {
         "schema": _PREFLIGHT_SCHEMA,
