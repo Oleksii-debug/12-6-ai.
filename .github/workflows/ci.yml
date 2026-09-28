@@ -90,10 +90,12 @@ jobs:
           test "$(git rev-parse FETCH_HEAD)" = "$CASELAW_HEAD"
           PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
           git worktree add --detach "$PR1347" "$CASELAW_HEAD"
-          git fetch --no-tags origin "$PRODUCT_BRANCH"
-          git merge-base --is-ancestor "$PRODUCT_COMMIT" FETCH_HEAD
+          test -z "$(git -C "$PR1347" status --porcelain=v1 --untracked-files=all)"
+          git fetch --no-tags origin "$PRODUCT_COMMIT"
+          test "$(git rev-parse FETCH_HEAD)" = "$PRODUCT_COMMIT"
           git -C "$PR1347" cat-file -e "$PRODUCT_COMMIT^{commit}"
-          git cat-file -e "$V7_HEAD^{commit}"
+          git fetch --no-tags origin "$V7_HEAD"
+          test "$(git rev-parse FETCH_HEAD)" = "$V7_HEAD"
           git worktree add --detach "$RUNNER_TEMP/v7-$PASS_ID" "$V7_HEAD"
           test "$(git -C "$RUNNER_TEMP/v7-$PASS_ID" rev-parse HEAD)" = "$V7_HEAD"
           test -z "$(git -C "$RUNNER_TEMP/v7-$PASS_ID" status --porcelain=v1 --untracked-files=all)"
@@ -110,9 +112,9 @@ jobs:
           git -C "$PR1347" show "$PRODUCT_COMMIT:configs/data/d03_common_pile_caselaw_zero_credit_v1.json" > \
             "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json"
           test "$(git hash-object "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py")" = \
-            "a7fcaeee0302c46c43e5a6ae43da16363810f14a"
+            "$PRODUCT_TOOL_BLOB"
           test "$(git hash-object "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json")" = \
-            "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467"
+            "$PRODUCT_CONFIG_BLOB"
           (
             cd "$PR1347"
             python tools/run_d03_caselaw_source_admission_replay_v1.py \
