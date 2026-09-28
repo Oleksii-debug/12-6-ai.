@@ -90,8 +90,16 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
         fail("claim_issue drifted")
 
     truth = report["scientific_truth"]
-    if not isinstance(truth, dict) or truth != TRUTH:
-        fail("scientific_truth widens authority")
+    if not isinstance(truth, dict) or set(truth) != set(TRUTH):
+        fail("scientific_truth keys mismatch")
+    for key, expected in TRUTH.items():
+        actual = truth[key]
+        if isinstance(expected, bool):
+            boolean(actual, f"scientific_truth.{key}")
+        else:
+            integer(actual, f"scientific_truth.{key}")
+        if actual != expected:
+            fail(f"scientific_truth.{key} widens authority")
 
     clean = report["terminal_physical_clean_supply"]
     if clean["classification"] != "PHYSICAL_TERMINAL_ZERO_CREDIT_PRE_DOWNSTREAM_AUTHORITY":
@@ -154,12 +162,14 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
         fail("indexed executor merge drifted")
     if not boolean(executor["integrated"], "executor.integrated"):
         fail("indexed executor must remain integrated")
+    if boolean(executor["defines_new_matcher_science"], "executor.new_science"):
+        fail("indexed executor cannot claim new matcher science")
     if integer(executor["capacity_credit_bytes"], "executor.credit"):
         fail("execution mechanics cannot receive capacity credit")
 
     pending = report["pending_existing_high_yield_work"]
     pending_ids = {"rada_two_clean", "franko1901_two_clean", "caselaw_two_clean"}
-    if {row["id"] for row in pending} != pending_ids:
+    if len(pending) != len(pending_ids) or {row["id"] for row in pending} != pending_ids:
         fail("pending high-yield work set mismatch")
     franko_bytes = 0
     for row in pending:
@@ -181,7 +191,8 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
         fail("Franko candidate evidence drifted")
 
     backlog = report["existing_independent_family_backlog"]
-    if {row["id"] for row in backlog} != {"lesia1892", "edrnpa", "nbu"}:
+    family_ids = {"lesia1892", "edrnpa", "nbu"}
+    if len(backlog) != len(family_ids) or {row["id"] for row in backlog} != family_ids:
         fail("independent-family backlog set mismatch")
     for row in backlog:
         hexid(row["observed_head"], "family observed_head", HEX40)
@@ -194,7 +205,10 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
         "packing",
         "postpack_unique_loss",
     }
-    if {row["id"] for row in downstream} != expected_downstream:
+    if (
+        len(downstream) != len(expected_downstream)
+        or {row["id"] for row in downstream} != expected_downstream
+    ):
         fail("downstream authority backlog set mismatch")
     if any(boolean(row["terminal_authority"], "downstream terminal") for row in downstream):
         fail("current downstream backlog cannot self-promote to terminal authority")

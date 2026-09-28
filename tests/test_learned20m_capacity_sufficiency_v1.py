@@ -37,6 +37,36 @@ def test_rejects_bool_as_integer() -> None:
         validate_report(document)
 
 
+def test_rejects_bool_integer_alias_in_scientific_truth() -> None:
+    document = _report()
+    document["scientific_truth"]["training_executed"] = 0
+    with pytest.raises(CapacityReportError, match="must be a JSON boolean"):
+        validate_report(document)
+
+
+def test_rejects_integer_bool_alias_in_scientific_truth() -> None:
+    document = _report()
+    document["scientific_truth"]["authorized_optimized_target_exposure"] = False
+    with pytest.raises(CapacityReportError, match="must be an integer, not bool"):
+        validate_report(document)
+
+
+def test_rejects_duplicate_pending_lane() -> None:
+    document = _report()
+    document["pending_existing_high_yield_work"].append(
+        document["pending_existing_high_yield_work"][0].copy()
+    )
+    with pytest.raises(CapacityReportError, match="pending high-yield work set mismatch"):
+        validate_report(document)
+
+
+def test_rejects_indexed_executor_science_promotion() -> None:
+    document = _report()
+    document["indexed_executor"]["defines_new_matcher_science"] = True
+    with pytest.raises(CapacityReportError, match="cannot claim new matcher science"):
+        validate_report(document)
+
+
 def test_rejects_clean_supply_credit_promotion() -> None:
     document = _report()
     document["terminal_physical_clean_supply"]["capacity_credit_bytes"] = 1
@@ -81,7 +111,9 @@ def test_rejects_indexed_executor_head_drift() -> None:
 
 def test_rejects_pending_survivor_promotion() -> None:
     document = _report()
-    document["pending_existing_high_yield_work"][0]["post_global_dedup_survivor_bytes"] = 1
+    document["pending_existing_high_yield_work"][0][
+        "post_global_dedup_survivor_bytes"
+    ] = 1
     with pytest.raises(CapacityReportError, match="cannot assert terminal"):
         validate_report(document)
 
