@@ -4,10 +4,24 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
-from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+class _LazyIndexed:
+    _module: ModuleType | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        module = self._module
+        if module is None:
+            module = importlib.import_module(
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            )
+            self._module = module
+        return getattr(module, name)
+
+
+indexed = _LazyIndexed()
 
 
 def _load_source_module(tmp_path: Path, name: str, source: str) -> ModuleType:
