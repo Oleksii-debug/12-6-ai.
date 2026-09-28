@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from tools import run_d03_rada_two_clean_global_dedup as runner
 from twelve_six.data import rada_two_clean_dedup_execution as carrier
 
 
@@ -47,6 +51,7 @@ def _authority() -> dict[str, object]:
         "max_candidate_pairs": 5_000_000,
         "max_index_postings": 100_000_000,
         "max_pair_expansions": 100_000_000,
+        "worker_timeout_seconds": 3600,
         "canonical_capacity_credit": 0,
         "authorized_optimized_target_exposure": 0,
         "training_executed": False,
@@ -426,7 +431,6 @@ def test_two_clean_authority_rejects_truth_widening_even_if_rehashed(
 
 
 def test_two_clean_authority_rejects_non_finite_telemetry() -> None:
-    first = _receipt("clean-a")
     second = _receipt("clean-b")
     second["match_wall_clock_seconds"] = float("inf")
     unsigned = dict(second)
@@ -445,3 +449,215 @@ def test_two_clean_authority_rejects_impossible_survivor_totals() -> None:
 
     with pytest.raises(carrier.RadaTwoCleanExecutionError, match="exceeds input"):
         carrier.build_two_clean_authority(first, second)
+
+
+def _physical_artifacts(
+    run_id: str,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    report = _report()
+    report.pop("report_sha256")
+    report.update(
+        {
+            "schema_version": "synthetic-v3",
+            "local_free_only": True,
+            "model_training_executed": False,
+            "source_count": 3,
+            "raw_text_emitted": False,
+        }
+    )
+    report["report_sha256"] = hashlib.sha256(_canonical(report)).hexdigest()
+    survivor = carrier.derive_survivor_authority(report)
+    receipt = _receipt(run_id, report_sha=str(report["report_sha256"]))
+    receipt["survivor_authority_sha256"] = survivor["survivor_authority_sha256"]
+    unsigned = dict(receipt)
+    unsigned.pop("receipt_identity_sha256")
+    receipt["receipt_identity_sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+    return report, survivor, receipt
+
+
+def test_dependency_authority_requires_positive_exact_worker_timeout(tmp_path: Path) -> None:
+    path = tmp_path / "authority.json"
+    value = _authority()
+    value["worker_timeout_seconds"] = True
+    identity = _write_json(path, value)
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="worker_timeout_seconds"):
+        carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
+
+
+def test_max_rss_uses_windows_backend_when_resource_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(carrier, "resource", None)
+    monkeypatch.setattr(carrier, "_windows_peak_working_set_kib", lambda: 321)
+
+    assert carrier._max_rss_kib() == 321
+
+
+def test_windows_peak_working_set_normalizes_bytes_to_kib(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeKernel32:
+        def GetCurrentProcess(self) -> int:
+            return 123
+
+        def K32GetProcessMemoryInfo(
+            self,
+            handle: object,
+            counters: object,
+            size: object,
+        ) -> int:
+            del handle, size
+            counters._obj.PeakWorkingSetSize = 4097
+            return 1
+
+    monkeypatch.setattr(
+        carrier.ctypes,
+        "windll",
+        SimpleNamespace(kernel32=FakeKernel32()),
+        raising=False,
+    )
+
+    assert carrier._windows_peak_working_set_kib() == 5
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"x":1,"x":2}',
+        b'{"x":NaN}',
+        b'{"x":Infinity}',
+        b'{"x":-Infinity}',
+        b'{"x":1e400}',
+    ],
+)
+def test_parent_readback_rejects_duplicate_and_nonfinite_json(
+    tmp_path: Path,
+    raw: bytes,
+) -> None:
+    path = tmp_path / "generated.json"
+    path.write_bytes(raw)
+
+    with pytest.raises(carrier.RadaTwoCleanExecutionError):
+        runner._read_json(path)
+
+
+def test_parent_crossbinds_report_and_survivor_artifacts_to_receipt() -> None:
+    report, survivor, receipt = _physical_artifacts("clean-a")
+
+    assert runner._verify_report_artifact(report, receipt) == report["report_sha256"]
+    assert (
+        runner._verify_survivor_artifact(survivor, receipt)
+        == survivor["survivor_authority_sha256"]
+    )
+
+    resealed_survivor = dict(survivor)
+    resealed_survivor["duplicate_cluster_count"] = 99
+    survivor_core = dict(resealed_survivor)
+    survivor_core.pop("survivor_authority_sha256")
+    resealed_survivor["survivor_authority_sha256"] = hashlib.sha256(
+        _canonical(survivor_core)
+    ).hexdigest()
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError,
+        match="identity differs from receipt",
+    ):
+        runner._verify_survivor_artifact(resealed_survivor, receipt)
+
+    resealed_report = dict(report)
+    resealed_report["algorithm"] = "post-child-resealed"
+    report_core = dict(resealed_report)
+    report_core.pop("report_sha256")
+    resealed_report["report_sha256"] = hashlib.sha256(_canonical(report_core)).hexdigest()
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError,
+        match="identity differs from receipt",
+    ):
+        runner._verify_report_artifact(resealed_report, receipt)
+
+
+def _runner_args(tmp_path: Path) -> argparse.Namespace:
+    authority_path = tmp_path / "dependency-authority.json"
+    authority = _authority()
+    authority_sha = _write_json(authority_path, authority)
+    return argparse.Namespace(
+        dependency_authority=authority_path,
+        expected_dependency_authority_sha256=authority_sha,
+        inventory=tmp_path / "inventory.json",
+        expected_inventory_sha256="6" * 64,
+        base_payload_map=tmp_path / "base-payload-map.json",
+        expected_base_payload_map_sha256="7" * 64,
+        candidate_jsonl=tmp_path / "candidate.jsonl",
+        quality_report=tmp_path / "quality.json",
+        execution_evidence=tmp_path / "execution.json",
+        output_root=tmp_path / "two-clean",
+    )
+
+
+def test_parent_worker_timeout_publishes_incomplete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _runner_args(tmp_path)
+    observed: list[int] = []
+
+    def timeout(*cmd: object, **kwargs: object) -> None:
+        del cmd
+        observed.append(int(kwargs["timeout"]))
+        raise subprocess.TimeoutExpired(cmd="worker", timeout=kwargs["timeout"])
+
+    monkeypatch.setattr(runner.subprocess, "run", timeout)
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError,
+        match="authority deadline",
+    ):
+        runner._run_two_clean(args)
+
+    incomplete, _ = runner._read_json(args.output_root / "incomplete.json")
+    assert observed == [3600]
+    assert incomplete["reason"] == "worker_timeout"
+    assert incomplete["completed_run_ids"] == []
+    assert not (args.output_root / "two-clean-authority.json").exists()
+
+
+def test_parent_second_worker_timeout_preserves_completed_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _runner_args(tmp_path)
+    calls = 0
+
+    def second_timeout(*cmd: object, **kwargs: object) -> None:
+        nonlocal calls
+        del cmd
+        calls += 1
+        if calls == 2:
+            raise subprocess.TimeoutExpired(cmd="worker", timeout=kwargs["timeout"])
+
+    monkeypatch.setattr(runner.subprocess, "run", second_timeout)
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="authority deadline"):
+        runner._run_two_clean(args)
+
+    incomplete, _ = runner._read_json(args.output_root / "incomplete.json")
+    assert incomplete["completed_run_ids"] == ["clean-a"]
+    assert incomplete["reason"] == "worker_timeout"
+
+
+def test_parent_operator_interrupt_publishes_incomplete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _runner_args(tmp_path)
+
+    def interrupt(*cmd: object, **kwargs: object) -> None:
+        del cmd, kwargs
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner.subprocess, "run", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        runner._run_two_clean(args)
+
+    incomplete, _ = runner._read_json(args.output_root / "incomplete.json")
+    assert incomplete["reason"] == "operator_interrupt"
+    assert incomplete["completed_run_ids"] == []
+    assert not (args.output_root / "two-clean-authority.json").exists()
