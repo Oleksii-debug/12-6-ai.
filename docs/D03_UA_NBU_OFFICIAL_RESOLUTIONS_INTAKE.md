@@ -10,7 +10,7 @@ The live NBU legislation catalogue exposes a large regulatory collection (the pu
 
 Candidate family: `ua.nbu.official-resolutions`.
 
-Only an exact page whose title begins with `Постанова Правління Національного банку України` and whose official PDF is served from the NBU `admin_uploads/law/` path can enter discovery evidence. The rights candidate is limited to the exact official resolution text under the project's existing Article 8(1)(3) official-act interpretation of Ukrainian Law No. 2811-IX. This package does not claim a site-wide license and does not make a legal conclusion.
+Only an exact page whose title begins with `Постанова Правління Національного банку України` can enter discovery evidence. From that page, the intake admits exactly the primary PDF whose basename matches the canonical page identity (`Resolution_DDMMYYYY_NUMBER` -> `DDMMYYYY_NUMBER.pdf`). Other same-origin PDF links on the page—including consolidated `Allres_*` files, tables, older `*_kp` control copies, translations, and related resolutions—remain outside this source record. The rights candidate is limited to the exact official resolution text under the project's existing Article 8(1)(3) official-act interpretation of Ukrainian Law No. 2811-IX. This package does not claim a site-wide license and does not make a legal conclusion.
 
 News, consultations, explanatory text, images/video/design, third-party material, control copies, consolidated texts, and non-resolution attachments receive no authority from this package.
 

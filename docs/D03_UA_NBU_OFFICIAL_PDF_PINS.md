@@ -12,7 +12,7 @@ Candidate family remains one conservative family: `ua.nbu.official-resolutions`.
 
 ## Exact pinning contract
 
-For every official PDF URL discovered by the parent authority:
+For every exact primary resolution PDF URL admitted by the parent authority (the PDF basename must correspond to that resolution page identity; related/consolidated/control-copy attachments are excluded upstream):
 
 1. the URL must already be canonical HTTPS on `bank.gov.ua` and match the frozen `admin_uploads/law/*.pdf` path allowlist;
 2. redirects must remain on the exact same NBU PDF identity;

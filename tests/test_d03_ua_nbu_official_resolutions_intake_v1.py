@@ -305,3 +305,43 @@ def test_selected_document_builder_never_silently_drops_scope_miss():
             [url],
             {url: [OUT_OF_SCOPE, OUT_OF_SCOPE]},
         )
+
+
+RELATED_ATTACHMENTS = """
+<html><head><title>Постанова Правління Національного банку України від 13.01.2026 № 2</title></head>
+<body>
+<a href="/admin_uploads/law/13012026_2.pdf">primary</a>
+<a href="/admin_uploads/law/Allres_13012026_2.pdf">consolidated</a>
+<a href="/admin_uploads/law/Tabl_zmyny_13012026_2.pdf">table</a>
+<a href="/admin_uploads/law/Resolution_24022022_18_kp.pdf">control copy</a>
+<a href="/admin_uploads/law/Resolution_24022022_18_kp_eng.pdf">english control copy</a>
+</body></html>
+"""
+
+ONLY_RELATED_ATTACHMENT = """
+<html><head><title>Постанова Правління Національного банку України від 13.01.2026 № 2</title></head>
+<body><a href="/admin_uploads/law/Resolution_24022022_18_kp.pdf">related control copy</a></body></html>
+"""
+
+
+def test_resolution_page_keeps_only_exact_primary_pdf():
+    config = load_config()
+    url = "https://bank.gov.ua/ua/legislation/Resolution_13012026_2"
+    page = module.inspect_resolution_page(RELATED_ATTACHMENTS, url, config)
+    assert page.official_pdf_urls == (
+        "https://bank.gov.ua/admin_uploads/law/13012026_2.pdf",
+    )
+
+
+def test_related_attachment_without_exact_primary_is_deterministic_scope_reject():
+    config = load_config()
+    url = "https://bank.gov.ua/ua/legislation/Resolution_13012026_2"
+    with pytest.raises(module.NbuIntakeError, match="no exact primary resolution PDF"):
+        module.inspect_resolution_page(ONLY_RELATED_ATTACHMENT, url, config)
+    page, reason = module.inspect_resolution_page_pair(
+        [ONLY_RELATED_ATTACHMENT, ONLY_RELATED_ATTACHMENT],
+        url,
+        config,
+    )
+    assert page is None
+    assert reason == "no exact primary resolution PDF"

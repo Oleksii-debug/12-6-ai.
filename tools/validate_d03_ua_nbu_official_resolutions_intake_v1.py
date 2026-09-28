@@ -18,7 +18,11 @@ DEFAULT_CONFIG = ROOT / "configs/data/d03_ua_nbu_official_resolutions_intake_v1.
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _SCOPE_REJECTION_REASONS = frozenset(
-    {"not a proven NBU Board resolution", "no official resolution PDF"}
+    {
+        "not a proven NBU Board resolution",
+        "no official resolution PDF",
+        "no exact primary resolution PDF",
+    }
 )
 _SEARCH_QUERY_KEYS = (
     "from",
@@ -340,7 +344,19 @@ def inspect_resolution_page(document_html: str, document_url: str, config: Mappi
             pass
     if not pdfs:
         raise NbuIntakeError("no official resolution PDF")
-    return ResolutionPage(url, title, tuple(sorted(pdfs)))
+
+    document_name = urlsplit(url).path.rsplit("/", 1)[-1]
+    if not document_name.startswith("Resolution_"):
+        raise NbuIntakeError("canonical resolution identity drift")
+    expected_pdf_name = document_name.removeprefix("Resolution_") + ".pdf"
+    primary_pdfs = {
+        pdf_url
+        for pdf_url in pdfs
+        if urlsplit(pdf_url).path.rsplit("/", 1)[-1] == expected_pdf_name
+    }
+    if len(primary_pdfs) != 1:
+        raise NbuIntakeError("no exact primary resolution PDF")
+    return ResolutionPage(url, title, tuple(sorted(primary_pdfs)))
 
 
 def inspect_resolution_page_pair(

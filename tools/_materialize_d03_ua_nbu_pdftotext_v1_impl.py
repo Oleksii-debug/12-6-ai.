@@ -189,7 +189,7 @@ def validate_discovery_evidence(evidence: Mapping[str, Any], config: Mapping[str
     if evidence.get("discovered_documents") != len(documents) or len(documents) > config["materialization"]["hard_max_records"]:
         raise NbuTextMaterializationError("discovery document count invalid")
 
-    pdf_to_documents: dict[str, set[str]] = {}
+    pdf_to_document: dict[str, str] = {}
     seen_documents: set[str] = set()
     for item in documents:
         if not isinstance(item, Mapping):
@@ -203,7 +203,9 @@ def validate_discovery_evidence(evidence: Mapping[str, Any], config: Mapping[str
             raise NbuTextMaterializationError("discovery PDF set invalid")
         for raw_pdf in pdfs:
             pdf_url = _canonical_source_url(str(raw_pdf), config, "pdf")
-            pdf_to_documents.setdefault(pdf_url, set()).add(document_url)
+            if pdf_url in pdf_to_document:
+                raise NbuTextMaterializationError("one PDF is mapped to multiple documents")
+            pdf_to_document[pdf_url] = document_url
         if not HEX64.fullmatch(str(item.get("page_metadata_sha256", ""))):
             raise NbuTextMaterializationError("discovery page metadata hash malformed")
 
@@ -226,10 +228,7 @@ def validate_discovery_evidence(evidence: Mapping[str, Any], config: Mapping[str
         raise NbuTextMaterializationError("discovery evidence identity malformed")
     if self_identity(evidence, "evidence_identity_sha256") != identity:
         raise NbuTextMaterializationError("discovery evidence identity mismatch")
-    return {
-        pdf_url: tuple(sorted(document_urls))
-        for pdf_url, document_urls in sorted(pdf_to_documents.items())
-    }
+    return pdf_to_document
 
 
 def validate_pin_evidence(evidence: Mapping[str, Any], config: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
@@ -390,11 +389,11 @@ def materialize_text(
     extractor_version: str | None = None,
 ) -> tuple[bytes, dict[str, Any]]:
     validate_config(config)
-    pdf_to_documents = validate_discovery_evidence(discovery_evidence, config)
+    pdf_to_document = validate_discovery_evidence(discovery_evidence, config)
     pins = validate_pin_evidence(pin_evidence, config)
     if pin_evidence.get("parent_discovery_evidence_identity_sha256") != discovery_evidence.get("evidence_identity_sha256"):
         raise NbuTextMaterializationError("pin/discovery evidence lineage mismatch")
-    if set(pins) != set(pdf_to_documents):
+    if set(pins) != set(pdf_to_document):
         raise NbuTextMaterializationError("pin set does not equal discovery PDF set")
 
     version = extractor_version if extractor_version is not None else probe_extractor_version(config)
@@ -419,11 +418,9 @@ def materialize_text(
         total_text_bytes += len(first)
         if total_text_bytes > config["materialization"]["hard_max_total_text_bytes"]:
             raise NbuTextMaterializationError("total extracted text byte bound exceeded")
-        document_urls = list(pdf_to_documents[pdf_url])
-        document_url = document_urls[0]
+        document_url = pdf_to_document[pdf_url]
         record_identity_input = {
             "document_url": document_url,
-            "document_urls": document_urls,
             "pdf_url": pdf_url,
             "pdf_sha256": pin["pdf_sha256"],
             "text_sha256": text_digest,
@@ -435,7 +432,6 @@ def materialize_text(
             "source_id": config["source"]["source_id"],
             "family_id": config["source"]["family_id"],
             "document_url": document_url,
-            "document_urls": document_urls,
             "pdf_url": pdf_url,
             "pdf_sha256": pin["pdf_sha256"],
             "text_sha256": text_digest,
@@ -513,27 +509,14 @@ def validate_materialization_evidence(evidence: Mapping[str, Any], config: Mappi
         if not isinstance(record_id, str) or not HEX64.fullmatch(record_id) or record_id in ids:
             raise NbuTextMaterializationError("record identity invalid")
         ids.add(record_id)
-        document_urls = item.get("document_urls")
-        if (
-            not isinstance(document_urls, list)
-            or not document_urls
-            or sorted(set(document_urls)) != document_urls
-        ):
-            raise NbuTextMaterializationError("record document provenance invalid")
-        canonical_document_urls = [
-            _canonical_source_url(str(value), config, "document")
-            for value in document_urls
-        ]
-        if canonical_document_urls != document_urls:
-            raise NbuTextMaterializationError("record document provenance is non-canonical")
-        if item.get("document_url") != document_urls[0]:
-            raise NbuTextMaterializationError("record primary document provenance drift")
+        document_url = _canonical_source_url(
+            str(item.get("document_url", "")), config, "document"
+        )
         pdf_url = _canonical_source_url(str(item.get("pdf_url", "")), config, "pdf")
         if not HEX64.fullmatch(str(item.get("pdf_sha256", ""))) or not HEX64.fullmatch(str(item.get("text_sha256", ""))):
             raise NbuTextMaterializationError("record hash invalid")
         record_identity_input = {
-            "document_url": document_urls[0],
-            "document_urls": document_urls,
+            "document_url": document_url,
             "pdf_url": pdf_url,
             "pdf_sha256": item["pdf_sha256"],
             "text_sha256": item["text_sha256"],
