@@ -45,7 +45,7 @@ EXIT_OK = 0
 EXIT_BLOCKED = 2
 EXIT_ERROR = 3
 _SHA256_HEX = frozenset("0123456789abcdef")
-_UTC_TIMESTAMP = re.compile(r"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$")
+_UTC_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 _SAFE_STOP_MARKER_KEYS = frozenset(
     {
         "schema",
