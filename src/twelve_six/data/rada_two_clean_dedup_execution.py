@@ -6,6 +6,7 @@ V3 runtime attestation remains the executor's responsibility.
 """
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import importlib
 import json
@@ -83,6 +84,7 @@ _AUTHORITY_KEYS = frozenset(
         "max_candidate_pairs",
         "max_index_postings",
         "max_pair_expansions",
+        "worker_timeout_seconds",
         "canonical_capacity_credit",
         "authorized_optimized_target_exposure",
         "training_executed",
@@ -257,6 +259,7 @@ def validate_dependency_authority(
     _exact_positive_int(authority["max_candidate_pairs"], "max_candidate_pairs")
     _exact_positive_int(authority["max_index_postings"], "max_index_postings")
     _exact_positive_int(authority["max_pair_expansions"], "max_pair_expansions")
+    _exact_positive_int(authority["worker_timeout_seconds"], "worker_timeout_seconds")
     _require(
         authority["canonical_capacity_credit"] == 0
         and type(authority["canonical_capacity_credit"]) is int,
@@ -277,10 +280,59 @@ def validate_dependency_authority(
     return authority
 
 
+def _windows_peak_working_set_kib() -> int | None:
+    """Return current-process peak working set in KiB via the Windows API."""
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ("cb", ctypes.c_ulong),
+            ("PageFaultCount", ctypes.c_ulong),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    windll = getattr(ctypes, "windll", None)
+    kernel32 = getattr(windll, "kernel32", None)
+    if kernel32 is None:
+        return None
+    query = getattr(kernel32, "K32GetProcessMemoryInfo", None)
+    if query is None:
+        psapi = getattr(windll, "psapi", None)
+        query = getattr(psapi, "GetProcessMemoryInfo", None)
+    get_current_process = getattr(kernel32, "GetCurrentProcess", None)
+    if query is None or get_current_process is None:
+        return None
+
+    counters = ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    try:
+        handle = get_current_process()
+        ok = query(handle, ctypes.byref(counters), counters.cb)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+    if not ok:
+        return None
+    peak_bytes = int(counters.PeakWorkingSetSize)
+    if peak_bytes <= 0:
+        return None
+    return (peak_bytes + 1023) // 1024
+
+
 def _max_rss_kib() -> int | None:
     if resource is None:
+        return _windows_peak_working_set_kib()
+    try:
+        value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    except (AttributeError, OSError, TypeError, ValueError):
         return None
-    value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    if value <= 0:
+        return None
     return value // 1024 if value > 10_000_000 else value
 
 
