@@ -66,6 +66,7 @@ jobs:
       CASELAW_BRANCH: "d03/1342-caselaw-source-admission-real-replay"
       PRODUCT_COMMIT: "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82"
       PRODUCT_BRANCH: "d03/common-pile-caselaw-zero-credit-20260907"
+      PRODUCT_BRANCH_HEAD: "263598aa49f71d89ec71a2bdd3083a8044decccc"
       PRODUCT_TOOL_BLOB: "a7fcaeee0302c46c43e5a6ae43da16363810f14a"
       PRODUCT_CONFIG_BLOB: "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467"
       V7_BRANCH: "next100-065c/crosssource-dedup-v5-20260826"
