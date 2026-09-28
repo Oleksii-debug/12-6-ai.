@@ -210,3 +210,16 @@ def test_historical_reconstruction_closure_includes_v5_pipeline() -> None:
 assert "twelve_six.data.pipeline" in mod._HISTORICAL_MATCHER_MODULES
 """
     )
+
+def test_incumbent_runtime_attestation_precedes_reference_report_execution() -> None:
+    _run_isolated(
+        """
+import inspect
+
+source = inspect.getsource(mod.execute)
+attest = source.index("indexed.attest_incumbent_runtime(matcher)")
+reference = source.index("reference = matcher.audit_payloads(inventory, payloads)")
+assert attest < reference
+"""
+    )
+
