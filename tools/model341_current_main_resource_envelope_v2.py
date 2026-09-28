@@ -558,8 +558,15 @@ def validate_probe(report: dict[str, Any]) -> None:
     else:
         raise ValueError("process HWM source mismatch")
 
-    if report.get("truth_boundary") != TRUTH_BOUNDARY:
-        raise ValueError("truth boundary mismatch")
+    truth_boundary = report.get("truth_boundary")
+    if type(truth_boundary) is not dict:
+        raise ValueError("truth_boundary must be an object")
+    _require_exact_keys(truth_boundary, set(TRUTH_BOUNDARY), "truth_boundary")
+    for field, expected in TRUTH_BOUNDARY.items():
+        actual = truth_boundary[field]
+        if type(actual) is not type(expected) or actual != expected:
+            raise ValueError(f"truth boundary {field} mismatch")
+
     planning = report.get("planning")
     if type(planning) is not dict:
         raise ValueError("planning must be an object")
