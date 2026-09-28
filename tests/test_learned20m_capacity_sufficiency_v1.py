@@ -120,8 +120,18 @@ def test_rejects_pending_survivor_promotion() -> None:
 
 def test_rejects_rada_cap_above_global_family_limit() -> None:
     document = _report()
-    document["pending_existing_high_yield_work"][0]["balance_credit_bytes"] = 5_000_001
+    document["pending_existing_high_yield_work"][0][
+        "optimistic_balance_upper_bound_bytes"
+    ] = 5_000_001
     with pytest.raises(CapacityReportError, match="one-family global cap"):
+        validate_report(document)
+
+
+def test_rejects_legacy_balance_credit_field() -> None:
+    document = _report()
+    row = document["pending_existing_high_yield_work"][0]
+    row["balance_credit_bytes"] = row["optimistic_balance_upper_bound_bytes"]
+    with pytest.raises(CapacityReportError, match="legacy balance_credit_bytes field is forbidden"):
         validate_report(document)
 
 

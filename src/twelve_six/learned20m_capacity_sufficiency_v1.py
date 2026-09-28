@@ -12,7 +12,7 @@ from typing import Any
 SCHEMA = "12-6.learned20m-capacity-sufficiency.v2"
 MAIN = "7b3df41c10a826183fab0b04ae85a90cdf0ce351"
 REPORT_ID = "LEARNED20M-CAPACITY-SUFFICIENCY-20260929-SWARM2277-V2"
-REPORT_SHA = "59d1e8ca7a9f979f398afb8dd80545325cbf5f28f96e24a7a8ebe9721f8a9118"
+REPORT_SHA = "d84b8639655407aef2f0f195c429eaa34d93b7d8195b66e5becae6acd74d35e3"
 POLICY_SHA = "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
 POLICY_BLOB = "b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f"
 EXECUTOR_HEAD = "2ad5b63bf7107465d6fa7deb25bf8c2f2fa03171"
@@ -174,17 +174,22 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
     franko_bytes = 0
     for row in pending:
         ident = row["id"]
+        if "balance_credit_bytes" in row:
+            fail("legacy balance_credit_bytes field is forbidden")
         if row["post_global_dedup_survivor_bytes"] is not None:
             fail("pending execution cannot assert terminal survivor bytes")
         if integer(row["capacity_credit_bytes"], f"pending.{ident}.credit"):
             fail("pending lanes cannot receive canonical capacity credit")
         if boolean(row["launch_authoritative"], f"pending.{ident}.launch"):
             fail("pending lanes cannot become launch-authoritative")
-        balance_credit = integer(row["balance_credit_bytes"], f"pending.{ident}.balance")
-        if ident == "rada_two_clean" and balance_credit != 5_000_000:
+        optimistic_bound = integer(
+            row["optimistic_balance_upper_bound_bytes"],
+            f"pending.{ident}.optimistic_bound",
+        )
+        if ident == "rada_two_clean" and optimistic_bound != 5_000_000:
             fail("Rada optimistic balance bound must equal the one-family global cap")
-        if ident != "rada_two_clean" and balance_credit:
-            fail("nonterminal pending lanes cannot receive balance credit")
+        if ident != "rada_two_clean" and optimistic_bound:
+            fail("non-Rada pending lanes cannot claim an optimistic balance bound")
         if ident == "franko1901_two_clean":
             franko_bytes = integer(row["candidate_utf8_bytes"], "Franko candidate bytes", 1)
     if franko_bytes != 1_762_005:
