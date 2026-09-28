@@ -897,12 +897,15 @@ def _publish_marker_no_overwrite(marker_path: Path, raw: bytes) -> bool:
     except OSError as exc:
         raise OperatorPreflightError(f"safe_stop_publish_failed:{exc}") from exc
     finally:
-        if fd is not None and temp_path is not None:
-            if _path_still_names_open_file(fd, temp_path):
-                try:
-                    temp_path.unlink()
-                except OSError:
-                    pass
+        if (
+            fd is not None
+            and temp_path is not None
+            and _path_still_names_open_file(fd, temp_path)
+        ):
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
         if fd is not None:
             try:
                 os.close(fd)

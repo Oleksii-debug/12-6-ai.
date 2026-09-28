@@ -11,8 +11,8 @@ from twelve_six.learned20m_current_run_authority import (
     CurrentRunAuthorityInspection,
 )
 from twelve_six.windows_operator_preflight import (
-    OperatorPreflightError,
     _TRUTH_BOUNDARY,
+    OperatorPreflightError,
     _bind_candidate_to_current_run,
     _canonical_sha256,
     read_stop_status,
