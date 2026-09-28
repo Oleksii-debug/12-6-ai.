@@ -465,7 +465,9 @@ def _physical_artifacts(
             "raw_text_emitted": False,
         }
     )
-    report["report_sha256"] = hashlib.sha256(_canonical(report)).hexdigest()
+    report["report_sha256"] = hashlib.sha256(
+        runner._report_identity_bytes(report)
+    ).hexdigest()
     survivor = carrier.derive_survivor_authority(report)
     receipt = _receipt(run_id, report_sha=str(report["report_sha256"]))
     receipt["survivor_authority_sha256"] = survivor["survivor_authority_sha256"]
