@@ -68,6 +68,7 @@ jobs:
       PRODUCT_BRANCH: "d03/common-pile-caselaw-zero-credit-20260907"
       PRODUCT_TOOL_BLOB: "a7fcaeee0302c46c43e5a6ae43da16363810f14a"
       PRODUCT_CONFIG_BLOB: "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467"
+      V7_BRANCH: "next100-065c/crosssource-dedup-v5-20260826"
       V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
       PASS_ID: ${{ matrix.pass }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -91,10 +92,11 @@ jobs:
           PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
           git worktree add --detach "$PR1347" "$CASELAW_HEAD"
           test -z "$(git -C "$PR1347" status --porcelain=v1 --untracked-files=all)"
-          git fetch --no-tags origin "$PRODUCT_COMMIT"
-          test "$(git rev-parse FETCH_HEAD)" = "$PRODUCT_COMMIT"
+          git fetch --no-tags origin "$PRODUCT_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$PRODUCT_BRANCH_HEAD"
+          git merge-base --is-ancestor "$PRODUCT_COMMIT" FETCH_HEAD
           git -C "$PR1347" cat-file -e "$PRODUCT_COMMIT^{commit}"
-          git fetch --no-tags origin "$V7_HEAD"
+          git fetch --no-tags origin "$V7_BRANCH"
           test "$(git rev-parse FETCH_HEAD)" = "$V7_HEAD"
           git worktree add --detach "$RUNNER_TEMP/v7-$PASS_ID" "$V7_HEAD"
           test "$(git -C "$RUNNER_TEMP/v7-$PASS_ID" rev-parse HEAD)" = "$V7_HEAD"
