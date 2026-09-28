@@ -245,7 +245,7 @@ jobs:
           if ($stdinCode -ne 2) { throw "missing-checkpoint generation returned $stdinCode instead of 2" }
           $stderrText = Get-Content -Raw -Encoding UTF8 -LiteralPath $stdinErr
           if ($stderrText -notmatch '^error:') { throw 'generation failure lacks clear error prefix' }
-          if ($stdertText -match 'Український stdin без GUI') { throw 'prompt leaked into stderr' }
+          if ($stderrText -match 'Український stdin без GUI') { throw 'prompt leaked into stderr' }
 
           & $py (Join-Path $app 'artifact_manifest.py') evidence `
             --output (Join-Path $env:RUNNER_TEMP 'windows-product-packaging-evidence.json') `

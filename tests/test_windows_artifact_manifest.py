@@ -112,3 +112,11 @@ def test_runtime_manifest_rejects_non_safetensors_checkpoint_payload(tmp_path: P
         ARTIFACT_MANIFEST._runtime(tmp_path)
 
     assert not (tmp_path / "runtime-manifest.json").exists()
+
+
+def test_windows_workflow_checks_actual_stderr_variable() -> None:
+    workflow = (
+        ROOT / ".github" / "workflows" / "d08-windows-product-packaging.yml"
+    ).read_text(encoding="utf-8")
+    assert "$stdertText" not in workflow
+    assert "if ($stderrText -match 'Український stdin без GUI')" in workflow
