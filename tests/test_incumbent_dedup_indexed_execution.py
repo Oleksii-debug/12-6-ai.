@@ -1,5 +1,6 @@
 import ast
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -208,4 +209,40 @@ def test_dedicated_indexed_harness_never_imports_authority_during_collection():
                     )
 
     assert violations == []
+
+
+    blocker_script = r"""
+import sys
+
+target = "twelve_six.data.incumbent_dedup_indexed_execution"
+
+
+class BlockAuthorityImport:
+    def find_spec(self, fullname, path=None, target=None):
+        del path, target
+        if fullname == "twelve_six.data.incumbent_dedup_indexed_execution":
+            raise RuntimeError(f"collection imported forbidden authority: {fullname}")
+        return None
+
+
+sys.meta_path.insert(0, BlockAuthorityImport())
+import pytest
+
+raise SystemExit(pytest.main(["--collect-only", "-q", *sys.argv[1:]]))
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            blocker_script,
+            *(str(test_dir / filename) for filename in dedicated),
+        ],
+        cwd=test_dir.parent,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
