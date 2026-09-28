@@ -160,10 +160,27 @@ def validate_config(config: Mapping[str, Any]) -> None:
         raise NbuIntakeError("contract identity mismatch")
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise NbuIntakeError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def load_json_object(path: Path, *, context: str) -> dict[str, Any]:
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_keys,
+    )
+    if not isinstance(value, dict):
+        raise NbuIntakeError(f"{context} root must be object")
+    return value
+
+
 def load_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
-    config = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(config, dict):
-        raise NbuIntakeError("config root")
+    config = load_json_object(path, context="config")
     validate_config(config)
     return config
 
@@ -522,7 +539,7 @@ def main() -> int:
     args = ap.parse_args()
     config = load_config(args.config)
     if args.evidence:
-        evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
+        evidence = load_json_object(args.evidence, context="evidence")
         validate_evidence(evidence, config)
         print(f"PASS evidence_identity_sha256={evidence['evidence_identity_sha256']}")
     else:

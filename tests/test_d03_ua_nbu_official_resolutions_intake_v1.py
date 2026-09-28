@@ -392,3 +392,24 @@ def test_resealed_discovery_evidence_cannot_substitute_related_pdf():
     )
     with pytest.raises(module.NbuIntakeError, match="non-primary PDF"):
         module.validate_evidence(tampered, config)
+
+
+def test_duplicate_json_keys_fail_before_intake_validation(tmp_path: Path):
+    canonical = CONFIG.read_text(encoding="utf-8")
+    duplicate_config = canonical.replace(
+        '{\n  "schema":',
+        '{\n  "schema": "duplicate",\n  "schema":',
+        1,
+    )
+    config_path = tmp_path / "duplicate-config.json"
+    config_path.write_text(duplicate_config, encoding="utf-8")
+    with pytest.raises(module.NbuIntakeError, match="duplicate JSON key"):
+        module.load_config(config_path)
+
+    evidence_path = tmp_path / "duplicate-evidence.json"
+    evidence_path.write_text(
+        '{"schema":"first","schema":"second"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(module.NbuIntakeError, match="duplicate JSON key"):
+        module.load_json_object(evidence_path, context="evidence")

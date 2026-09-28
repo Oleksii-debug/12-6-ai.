@@ -151,10 +151,27 @@ def validate_config(config: Mapping[str, Any]) -> None:
         raise NbuTextMaterializationError("contract identity mismatch")
 
 
-def load_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise NbuTextMaterializationError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def load_json_object(path: Path, *, context: str) -> dict[str, Any]:
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_keys,
+    )
     if not isinstance(value, dict):
-        raise NbuTextMaterializationError("config root must be object")
+        raise NbuTextMaterializationError(f"{context} root must be object")
+    return value
+
+
+def load_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
+    value = load_json_object(path, context="config")
     validate_config(value)
     return value
 
@@ -572,10 +589,14 @@ def main() -> int:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    discovery = json.loads(args.discovery_evidence.read_text(encoding="utf-8"))
-    pins = json.loads(args.pdf_pin_evidence.read_text(encoding="utf-8"))
-    if not isinstance(discovery, dict) or not isinstance(pins, dict):
-        raise NbuTextMaterializationError("input evidence root must be object")
+    discovery = load_json_object(
+        args.discovery_evidence,
+        context="discovery evidence",
+    )
+    pins = load_json_object(
+        args.pdf_pin_evidence,
+        context="PDF pin evidence",
+    )
     artifact, evidence = materialize_text(discovery, pins, config)
     args.text_output.write_bytes(artifact)
     args.evidence_output.write_text(

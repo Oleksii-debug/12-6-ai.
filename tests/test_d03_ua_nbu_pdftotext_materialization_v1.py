@@ -250,3 +250,21 @@ def test_resealed_discovery_related_pdf_fails_before_fetch():
             extractor_version="25.06.0",
         )
     assert calls == 0
+
+
+def test_duplicate_json_keys_fail_before_pdftotext_authority(tmp_path: Path):
+    discovery_path = tmp_path / "duplicate-discovery.json"
+    discovery_path.write_text(
+        '{"documents":[],"documents":[{}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(module.NbuTextMaterializationError, match="duplicate JSON key"):
+        module.load_json_object(discovery_path, context="discovery evidence")
+
+    pins_path = tmp_path / "duplicate-pins.json"
+    pins_path.write_text(
+        '{"pins":[],"pins":[{}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(module.NbuTextMaterializationError, match="duplicate JSON key"):
+        module.load_json_object(pins_path, context="PDF pin evidence")

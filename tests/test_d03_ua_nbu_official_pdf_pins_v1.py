@@ -241,3 +241,24 @@ def test_resealed_related_attachment_never_reaches_pdf_fetch():
     with pytest.raises(module.NbuPdfPinError, match="parent discovery evidence invalid"):
         module.materialize_pdf_pins(tampered, config, fetcher)
     assert calls == 0
+
+
+def test_duplicate_json_keys_fail_before_pdf_pin_authority(tmp_path: Path):
+    canonical = CONFIG.read_text(encoding="utf-8")
+    duplicate_config = canonical.replace(
+        '{\n  "schema":',
+        '{\n  "schema": "duplicate",\n  "schema":',
+        1,
+    )
+    config_path = tmp_path / "duplicate-config.json"
+    config_path.write_text(duplicate_config, encoding="utf-8")
+    with pytest.raises(module.NbuPdfPinError, match="duplicate JSON key"):
+        module.load_config(config_path)
+
+    discovery_path = tmp_path / "duplicate-discovery.json"
+    discovery_path.write_text(
+        '{"documents":[],"documents":[{}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(module.NbuPdfPinError, match="duplicate JSON key"):
+        module.load_json_object(discovery_path, context="discovery evidence")

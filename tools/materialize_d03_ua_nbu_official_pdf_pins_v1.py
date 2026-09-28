@@ -145,10 +145,27 @@ def validate_config(config: Mapping[str, Any]) -> None:
         raise NbuPdfPinError("contract identity mismatch")
 
 
-def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise NbuPdfPinError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def load_json_object(path: Path, *, context: str) -> dict[str, Any]:
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_keys,
+    )
     if not isinstance(value, dict):
-        raise NbuPdfPinError("config root must be an object")
+        raise NbuPdfPinError(f"{context} root must be object")
+    return value
+
+
+def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
+    value = load_json_object(path, context="config")
     validate_config(value)
     return value
 
@@ -338,7 +355,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     config = load_config(args.config)
-    discovery = json.loads(args.discovery_evidence.read_text(encoding="utf-8"))
+    discovery = load_json_object(args.discovery_evidence, context="discovery evidence")
     evidence = materialize_pdf_pins(discovery, config)
     validate_pin_evidence(evidence, config)
     args.output.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
