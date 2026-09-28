@@ -359,6 +359,68 @@ def test_acquire_is_single_winner_and_reread_verified(
     assert inspection.optimizer_start_permitted_by_this_module is False
 
 
+def test_acquire_does_not_overwrite_ref_created_after_empty_read(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
+    state = build_global_lease_state(manifest, lease.as_dict())
+    ref = global_training_run_lease_ref(manifest)
+    real_push = global_lease_module._push_candidate
+    competing_tip: str | None = None
+
+    def install_competitor_before_push(
+        repo_root,
+        remote_arg,
+        candidate_tip,
+        ref_arg,
+        *,
+        expected_remote_tip,
+    ):
+        nonlocal competing_tip
+        assert ref_arg == ref
+        assert expected_remote_tip is None
+        competing_tip = global_lease_module._write_state_commit(
+            repo_root,
+            state,
+            parent_tip=None,
+            operation="competing-acquire",
+        )
+        _git("push", str(remote), f"{competing_tip}:{ref}", cwd=writer_a)
+        return real_push(
+            repo_root,
+            remote_arg,
+            candidate_tip,
+            ref_arg,
+            expected_remote_tip=expected_remote_tip,
+        )
+
+    monkeypatch.setattr(
+        global_lease_module,
+        "_push_candidate",
+        install_competitor_before_push,
+    )
+    denied = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+
+    assert competing_tip is not None
+    assert denied.committed is False
+    assert denied.post_write_reread_verified is False
+    assert denied.remote_write_outcome_unknown is False
+    assert denied.written_remote_tip is None
+    assert denied.blockers == ("global_lease_ref_create_rejected",)
+    assert denied.observed_remote_tip == competing_tip
+    assert _git("--git-dir", str(remote), "rev-parse", ref) == competing_tip
+
+
 def test_acquire_freezes_manifest_and_lease_before_assessment(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
