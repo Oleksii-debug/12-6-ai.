@@ -15,7 +15,7 @@ from twelve_six.learned20m_global_training_lease import (
     renew_global_training_run_lease,
     terminate_global_training_run_lease,
 )
-from twelve_six.learned20m_training_lease import build_training_run_lease
+from twelve_six.learned20m_training_lease import build_authorized_training_run_lease
 
 
 class _DuplicateKey(ValueError):
@@ -91,8 +91,11 @@ def main() -> int:
             _emit(result.as_dict())
             return 0 if result.present and result.valid else 3
         if args.operation == "acquire":
-            lease = build_training_run_lease(
+            lease = build_authorized_training_run_lease(
                 manifest,
+                expected_terminal_authority_sha256=(
+                    args.expected_terminal_authority_sha256
+                ),
                 run_id=args.run_id,
                 holder_id=args.holder_id,
                 ttl_seconds=args.ttl_seconds,
