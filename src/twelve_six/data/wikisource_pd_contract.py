@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import math
 import re
 import unicodedata
 from typing import Any
@@ -54,6 +55,7 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
     if (
         isinstance(cadence, bool)
         or not isinstance(cadence, (int, float))
+        or not math.isfinite(cadence)
         or cadence < 0.5
     ):
         raise WikisourceIntakeError("request cadence weakened")
