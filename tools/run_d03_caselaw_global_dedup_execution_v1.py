@@ -12,7 +12,10 @@ import argparse
 import copy
 import hashlib
 import json
-import resource
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows/local fallback
+    resource = None
 import subprocess
 import sys
 import time
@@ -237,7 +240,9 @@ def _outer_survivor_authority(
     return {**core, "survivor_authority_sha256": _sha256(_canonical(core))}
 
 
-def _max_rss_kib() -> int:
+def _max_rss_kib() -> int | None:
+    if resource is None:
+        return None
     value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     return value // 1024 if value > 10_000_000 else value
 
