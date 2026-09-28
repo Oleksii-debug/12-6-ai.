@@ -276,8 +276,11 @@ def test_ref_and_state_bind_fixed_repository_lock_domain_and_manifest() -> None:
 
 
 def test_raw_state_decoder_rejects_duplicate_nonfinite_and_noncanonical_json() -> None:
-    manifest = _manifest()
-    state = build_global_lease_state(manifest, _authorized_lease(manifest, expected_authority).as_dict())
+    manifest, expected_authority = _authorized_manifest()
+    state = build_global_lease_state(
+        manifest,
+        _authorized_lease(manifest, expected_authority).as_dict(),
+    )
 
     with pytest.raises(ValueError, match="duplicate_json_key"):
         decode_global_lease_state(b'{"schema_version":1,"schema_version":1}', manifest)
@@ -289,8 +292,11 @@ def test_raw_state_decoder_rejects_duplicate_nonfinite_and_noncanonical_json() -
 
 
 def test_raw_state_decoder_rejects_lock_domain_substitution_and_extra_fields() -> None:
-    manifest = _manifest()
-    state = build_global_lease_state(manifest, _authorized_lease(manifest, expected_authority).as_dict())
+    manifest, expected_authority = _authorized_manifest()
+    state = build_global_lease_state(
+        manifest,
+        _authorized_lease(manifest, expected_authority).as_dict(),
+    )
 
     substituted = deepcopy(state)
     substituted["lock_domain"] = "github.com/attacker/repository"
