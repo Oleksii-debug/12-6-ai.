@@ -89,7 +89,8 @@ jobs:
           test "$(git rev-parse FETCH_HEAD)" = "$CASELAW_HEAD"
           PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
           git worktree add --detach "$PR1347" "$CASELAW_HEAD"
-          test -z "$(git -C "$PR1347" status --porcelain=v1 --untracked-files=all)"
+          git fetch --no-tags origin "$PRODUCT_BRANCH"
+          git merge-base --is-ancestor "$PRODUCT_COMMIT" FETCH_HEAD
           git -C "$PR1347" cat-file -e "$PRODUCT_COMMIT^{commit}"
           git cat-file -e "$V7_HEAD^{commit}"
           git worktree add --detach "$RUNNER_TEMP/v7-$PASS_ID" "$V7_HEAD"
@@ -103,14 +104,31 @@ jobs:
           PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
           PRODUCT_ROOT="$RUN_DIR/historical-product"
           mkdir -p "$RUN_DIR" "$PRODUCT_ROOT/tools" "$PRODUCT_ROOT/configs/data"
-          git -C "$PR1347" cat-file -e "$PRODUCT_COMMIT^{commit}"
-          git -C "$PR1347" show "$PRODUCT_COMMIT:tools/materialize_d03_common_pile_caselaw.py" > "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py"
-          git -C "$PR1347" show "$PRODUCT_COMMIT:configs/data/d03_common_pile_caselaw_zero_credit_v1.json" > "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json"
-          test "$(git hash-object "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py")" = "$PRODUCT_TOOL_BLOB"
-          test "$(git hash-object "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json")" = "$PRODUCT_CONFIG_BLOB"
-          python "$PR1347/tools/run_d03_caselaw_source_admission_replay_v1.py"             --product-tool "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py"             --product-config "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json"             --admission-tool "$PR1347/tools/verify_d03_common_pile_caselaw_source_admission.py"             --admission-policy "$PR1347/configs/data/d03_common_pile_caselaw_source_admission_v1.json"             --source-gzip "$RUN_DIR/cap_00044.jsonl.gz"             --source-gzip "$RUN_DIR/cap_00043.jsonl.gz"             --candidate-jsonl "$RUN_DIR/candidate.jsonl"             --admitted-candidate-jsonl "$RUN_DIR/admitted.jsonl"             --materializer-report "$RUN_DIR/materializer.json"               --report "$RUN_DIR/source-admission.json" \
+          git -C "$PR1347" show "$PRODUCT_COMMIT:tools/materialize_d03_common_pile_caselaw.py" > \
+            "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py"
+          git -C "$PR1347" show "$PRODUCT_COMMIT:configs/data/d03_common_pile_caselaw_zero_credit_v1.json" > \
+            "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json"
+          test "$(git hash-object "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py")" = \
+            "a7fcaeee0302c46c43e5a6ae43da16363810f14a"
+          test "$(git hash-object "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json")" = \
+            "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467"
+          (
+            cd "$PR1347"
+            python tools/run_d03_caselaw_source_admission_replay_v1.py \
+              --product-tool "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py" \
+              --product-config "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json" \
+              --admission-tool "$PR1347/tools/verify_d03_common_pile_caselaw_source_admission.py" \
+              --admission-policy "$PR1347/configs/data/d03_common_pile_caselaw_source_admission_v1.json" \
+              --source-gzip "$RUN_DIR/cap_00044.jsonl.gz" \
+              --source-gzip "$RUN_DIR/cap_00043.jsonl.gz" \
+              --candidate-jsonl "$RUN_DIR/candidate.jsonl" \
+              --admitted-candidate-jsonl "$RUN_DIR/admitted.jsonl" \
+              --materializer-report "$RUN_DIR/materializer.json" \
+              --report "$RUN_DIR/source-admission.json" \
               --download
-          test "$(sha256sum "$RUN_DIR/admitted.jsonl" | cut -d' ' -f1)" =             "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273"
+          )
+          test "$(sha256sum "$RUN_DIR/admitted.jsonl" | cut -d' ' -f1)" = \
+            "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273"
 
       - name: Execute incumbent reference plus indexed global dedup
         run: |
