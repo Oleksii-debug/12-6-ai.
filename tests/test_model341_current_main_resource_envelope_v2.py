@@ -283,3 +283,11 @@ def test_current_main_resource_probe_does_not_seed_cuda_rng(
     monkeypatch.setattr(torch.cuda, "manual_seed_all", forbidden_cuda_seed)
     report = run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
     validate_probe(report)
+
+
+def test_current_main_resource_probe_rejects_runtime_model_import_path_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(probe.model_module, "__file__", str(ROOT / "wrong-model.py"))
+    with pytest.raises(ValueError, match="runtime model import path mismatch"):
+        validate_source_root(ROOT)
