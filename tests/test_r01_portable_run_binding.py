@@ -11,6 +11,7 @@ from twelve_six.portable_run_binding import (
     bind_portable_run_packet,
     bind_preoptimizer_to_run_binding,
     canonical_sha256,
+    validate_authenticated_portable_execution,
     validate_session_overlay_contract,
 )
 from twelve_six.portable_run_packet import validate_portable_run_contract
@@ -790,4 +791,33 @@ def test_fresh_overlay_rejects_unused_parent_checkpoint_authority() -> None:
     assert (
         "overlay_parent_checkpoint_authority_forbidden_for_fresh_start"
         in validate_session_overlay_contract(overlay)
+    )
+
+
+def test_authenticated_training_projection_rejects_bool_int_aliases() -> None:
+    readiness = _ready_readiness()
+    cases = (
+        ("warmup_steps", False),
+        ("micro_batch_size", True),
+        ("gradient_accumulation_steps", True),
+        ("gradient_clip_norm", True),
+    )
+    for field, invalid in cases:
+        execution = _portable_execution(readiness)
+        execution["training"][field] = invalid
+        errors = validate_authenticated_portable_execution(execution)
+        assert (
+            f"authenticated_portable_execution_training_{field}_mismatch"
+            in errors
+        )
+
+
+def test_authenticated_training_projection_rejects_numeric_type_drift() -> None:
+    readiness = _ready_readiness()
+    execution = _portable_execution(readiness)
+    execution["training"]["gradient_clip_norm"] = 1
+    errors = validate_authenticated_portable_execution(execution)
+    assert (
+        "authenticated_portable_execution_training_gradient_clip_norm_mismatch"
+        in errors
     )

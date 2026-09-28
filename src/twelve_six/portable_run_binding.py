@@ -155,6 +155,22 @@ _LEARN345_FIXED_TRAINING = {
 }
 
 
+def _exact_literal_match(value: Any, expected: Any) -> bool:
+    """Match frozen execution literals without Python bool/int coercion."""
+    if type(value) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return set(value) == set(expected) and all(
+            _exact_literal_match(value[key], expected[key]) for key in expected
+        )
+    if isinstance(expected, list):
+        return len(value) == len(expected) and all(
+            _exact_literal_match(item, expected_item)
+            for item, expected_item in zip(value, expected, strict=True)
+        )
+    return value == expected
+
+
 @dataclass(frozen=True)
 class PortableRunBinding:
     """A packet is exposed only when every upstream and session gate passes."""
@@ -439,7 +455,7 @@ def validate_authenticated_portable_execution(value: Any) -> list[str]:
         "canonical_base": "random_init",
     }
     for key, expected in expected_model.items():
-        if model.get(key) != expected:
+        if not _exact_literal_match(model.get(key), expected):
             errors.append(f"authenticated_portable_execution_model_{key}_mismatch")
 
     if not _is_sha256(training.get("training_config_sha256")):
@@ -447,7 +463,7 @@ def validate_authenticated_portable_execution(value: Any) -> list[str]:
     if not _is_sha256(training.get("stopping_policy_sha256")):
         errors.append("authenticated_portable_execution_stopping_policy_sha256_invalid")
     for key, expected in _LEARN345_FIXED_TRAINING.items():
-        if training.get(key) != expected:
+        if not _exact_literal_match(training.get(key), expected):
             errors.append(f"authenticated_portable_execution_training_{key}_mismatch")
 
     seed_vector = _exact_keys(
