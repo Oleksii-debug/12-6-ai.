@@ -24,7 +24,24 @@ class WikisourceIntakeError(ValueError):
     """Raised when a source or materialization boundary fails closed."""
 
 
+def _require_exact_keys(mapping: dict[str, Any], expected: set[str], label: str) -> None:
+    if set(mapping) != expected:
+        raise WikisourceIntakeError(f"{label} field set drift")
+
+
 def validate_control_contract(contract: dict[str, Any]) -> None:
+    _require_exact_keys(
+        contract,
+        {
+            "schema_version",
+            "execution_class",
+            "incumbent_authority",
+            "edition",
+            "acquisition",
+            "truth_boundary",
+        },
+        "control",
+    )
     if contract.get("schema_version") != "12-6.d03-wikisource-lesia1892-current-main.v1":
         raise WikisourceIntakeError("unexpected Wikisource control schema")
     if contract.get("execution_class") != "LOCAL_FREE":
@@ -32,6 +49,11 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
     incumbent = contract.get("incumbent_authority")
     if not isinstance(incumbent, dict):
         raise WikisourceIntakeError("incumbent authority is missing")
+    _require_exact_keys(
+        incumbent,
+        {"pr", "head_sha", "authority_identity_sha256", "verdict"},
+        "incumbent authority",
+    )
     if incumbent.get("pr") != 455:
         raise WikisourceIntakeError("incumbent PR authority drift")
     if incumbent.get("head_sha") != INCUMBENT_HEAD_SHA:
@@ -43,6 +65,20 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
     edition = contract.get("edition")
     if not isinstance(edition, dict):
         raise WikisourceIntakeError("edition contract is missing")
+    _require_exact_keys(
+        edition,
+        {
+            "author",
+            "title",
+            "publication_year",
+            "publication_place",
+            "index_revision_id",
+            "commons_pages",
+            "source_family_id",
+            "family_credit_added",
+        },
+        "edition",
+    )
     edition_identity = {
         "author": "Леся Українка",
         "title": "На крилах пісень",
@@ -59,6 +95,19 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
     acquisition = contract.get("acquisition")
     if not isinstance(acquisition, dict):
         raise WikisourceIntakeError("bounded acquisition contract drift")
+    _require_exact_keys(
+        acquisition,
+        {
+            "api_origin",
+            "index_selection",
+            "required_proofread_category",
+            "page_revision_binding",
+            "max_pages",
+            "minimum_request_cadence_seconds",
+            "normalization",
+        },
+        "acquisition",
+    )
     acquisition_identity = {
         "api_origin": "https://uk.wikisource.org",
         "index_selection": "NUMERIC_PAGE_NAMESPACE_LINKS_FROM_EXACT_INDEX_REVISION",
@@ -82,6 +131,22 @@ def validate_control_contract(contract: dict[str, Any]) -> None:
     boundary = contract.get("truth_boundary")
     if not isinstance(boundary, dict):
         raise WikisourceIntakeError("truth boundary is missing")
+    _require_exact_keys(
+        boundary,
+        {
+            "canonical_capacity_credit_bytes",
+            "training_authorized_bytes",
+            "authorized_unique_loss_positions",
+            "tokenizer_fit_authorized",
+            "optimizer_updates",
+            "model_training_executed",
+            "final_test_outcomes_read",
+            "paid_compute_used",
+            "real_materialization_not_claimed_by_config",
+            "required_downstream_gates",
+        },
+        "truth boundary",
+    )
     zero_fields = (
         "canonical_capacity_credit_bytes",
         "training_authorized_bytes",
