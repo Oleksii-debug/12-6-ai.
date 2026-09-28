@@ -166,6 +166,8 @@ def _process_hwm_mib_approx() -> tuple[float | None, str]:
 
     if _resource is None:
         return None, "unavailable"
+    if sys.platform != "darwin" and not sys.platform.startswith("linux"):
+        return None, "unavailable"
 
     try:
         hwm_raw = _resource.getrusage(_resource.RUSAGE_SELF).ru_maxrss
@@ -550,7 +552,7 @@ def validate_probe(report: dict[str, Any]) -> None:
             raise ValueError("ru_maxrss_bytes requires darwin platform")
         _finite_positive(hwm, "process HWM")
     elif hwm_source == "ru_maxrss_kib":
-        if runtime_platform in {"win32", "darwin"}:
+        if not runtime_platform.startswith("linux"):
             raise ValueError("ru_maxrss_kib platform mismatch")
         _finite_positive(hwm, "process HWM")
     else:
