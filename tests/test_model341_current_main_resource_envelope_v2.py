@@ -272,3 +272,14 @@ def test_current_main_resource_probe_rejects_truth_boundary_bool_as_int_alias() 
         ValueError, match="truth boundary authorized_optimized_target_exposure mismatch"
     ):
         validate_probe(report)
+
+
+def test_current_main_resource_probe_does_not_seed_cuda_rng(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_cuda_seed(_seed: int) -> None:
+        raise AssertionError("CPU-only probe must not seed CUDA RNG")
+
+    monkeypatch.setattr(torch.cuda, "manual_seed_all", forbidden_cuda_seed)
+    report = run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
+    validate_probe(report)
