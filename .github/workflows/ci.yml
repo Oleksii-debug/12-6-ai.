@@ -161,21 +161,67 @@ jobs:
           import os
           from pathlib import Path
 
+          def reject_pairs(pairs: list[tuple[str, object]]) -> dict:
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  result[key] = value
+              return result
+
+          def reject_constant(value: str) -> object:
+              raise ValueError(f"non-finite JSON constant: {value}")
+
           def load(path: str) -> dict:
-              return json.loads(Path(path).read_text(encoding="utf-8"))
+              raw = Path(path).read_bytes()
+              value = json.loads(
+                  raw.decode("utf-8", errors="strict"),
+                  object_pairs_hook=reject_pairs,
+                  parse_constant=reject_constant,
+              )
+              assert type(value) is dict, path
+              return value
+
+          def canonical(value: dict) -> bytes:
+              return json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  allow_nan=False,
+              ).encode("utf-8")
 
           def sha(path: str) -> str:
               return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
+          def verify_self_hash(value: dict, field: str) -> None:
+              identity = value.get(field)
+              assert type(identity) is str and len(identity) == 64, field
+              core = {key: item for key, item in value.items() if key != field}
+              assert hashlib.sha256(canonical(core)).hexdigest() == identity, field
+
+          # Reject ambiguous/non-finite JSON at every durable convergence input.
+          load("artifacts/pass-1/materializer.json")
+          load("artifacts/pass-2/materializer.json")
+          load("artifacts/pass-1/source-admission.json")
+          load("artifacts/pass-2/source-admission.json")
+          report = load("artifacts/pass-1/global-dedup-report.json")
+          survivors = load("artifacts/pass-1/survivors.json")
+          verify_self_hash(report, "report_sha256")
+          verify_self_hash(survivors, "survivor_authority_sha256")
+
           a = load("artifacts/pass-1/execution-evidence.json")
           b = load("artifacts/pass-2/execution-evidence.json")
           for evidence in (a, b):
+              verify_self_hash(evidence, "evidence_identity_sha256")
               assert evidence["execution_head_sha"] == os.environ["HEAD_SHA"]
               assert evidence["combined"]["reports_byte_identical"] is True
               assert evidence["truth_boundary"]["authorized_optimized_target_exposure"] == 0
               assert evidence["truth_boundary"]["tokenizer_fit_authorized"] is False
               assert evidence["truth_boundary"]["training_executed"] is False
               assert evidence["truth_boundary"]["paid_compute_used"] is False
+              assert report["report_sha256"] == evidence["combined"]["indexed_report_sha256"]
+              assert survivors["survivor_authority_sha256"] == evidence["survivor_authority_sha256"]
 
           stable_fields = (
               "pinned_main_sha",
