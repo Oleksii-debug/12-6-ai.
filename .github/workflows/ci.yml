@@ -164,6 +164,10 @@ jobs:
     env:
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Download pass 1
         uses: actions/download-artifact@v4
         with:
