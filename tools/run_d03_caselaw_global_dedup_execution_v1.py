@@ -374,6 +374,11 @@ def execute(
         "combined payload byte total drift",
     )
 
+    # The merged indexed executor's runtime attestation must protect the original
+    # all-pairs reference too. Differential equality is not authority if both paths
+    # can observe the same mutated stdlib/runtime state before attestation.
+    indexed.attest_incumbent_runtime(matcher)
+
     reference_started = time.perf_counter()
     reference = matcher.audit_payloads(inventory, payloads)
     reference_seconds = time.perf_counter() - reference_started
