@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import re
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -16,6 +18,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "configs/data/d03_ua_nbu_pdftotext_materialization_v1.json"
+PARENT_PIN_TOOL = ROOT / "tools/materialize_d03_ua_nbu_official_pdf_pins_v1.py"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 VERSION_RE = re.compile(r"pdftotext version ([0-9]+(?:\.[0-9]+)+)", re.IGNORECASE)
@@ -23,6 +26,22 @@ VERSION_RE = re.compile(r"pdftotext version ([0-9]+(?:\.[0-9]+)+)", re.IGNORECAS
 
 class NbuTextMaterializationError(ValueError):
     pass
+
+
+def _load_parent_pin_authority():
+    spec = importlib.util.spec_from_file_location(
+        "nbu_parent_pdf_pin_authority",
+        PARENT_PIN_TOOL,
+    )
+    if spec is None or spec.loader is None:
+        raise NbuTextMaterializationError("parent PDF pin authority unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+PARENT_PIN = _load_parent_pin_authority()
 
 
 def canonical_json(value: object) -> str:
@@ -253,6 +272,19 @@ def validate_discovery_evidence(evidence: Mapping[str, Any], config: Mapping[str
 
 
 def validate_pin_evidence(evidence: Mapping[str, Any], config: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+    try:
+        parent_config = PARENT_PIN.load_config()
+        if (
+            parent_config["contract_identity_sha256"]
+            != config["base_authority"]["parent_pdf_pin_contract_identity_sha256"]
+        ):
+            raise NbuTextMaterializationError("parent PDF pin contract binding drift")
+        PARENT_PIN.validate_pin_evidence(evidence, parent_config)
+    except NbuTextMaterializationError:
+        raise
+    except Exception as exc:
+        raise NbuTextMaterializationError("parent PDF pin evidence invalid") from exc
+
     if evidence.get("schema") != "12-6.d03-ua-nbu-official-pdf-pins-evidence.v1":
         raise NbuTextMaterializationError("pin schema drift")
     if evidence.get("status") != "PDF_BYTES_PINNED_ZERO_CREDIT":
@@ -381,6 +413,11 @@ def extract_once(pdf_bytes: bytes, config: Mapping[str, Any]) -> bytes:
         if completed.returncode != 0 or not text_path.is_file():
             detail = completed.stderr.decode("utf-8", errors="replace")[:500]
             raise NbuTextMaterializationError(f"pdftotext failed: {detail}")
+        output_bytes = text_path.stat().st_size
+        if output_bytes > config["materialization"]["hard_max_text_bytes_per_record"]:
+            raise NbuTextMaterializationError(
+                "pdftotext output exceeds per-record byte bound before read"
+            )
         return text_path.read_bytes()
 
 

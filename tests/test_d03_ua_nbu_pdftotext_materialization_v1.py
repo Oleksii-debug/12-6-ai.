@@ -32,7 +32,12 @@ def with_identity(value: dict, field: str = "evidence_identity_sha256") -> dict:
 def sample_inputs(config: dict):
     document_url = "https://bank.gov.ua/ua/legislation/Resolution_13012026_2"
     pdf_url = "https://bank.gov.ua/admin_uploads/law/13012026_2.pdf"
-    pdf_bytes = b"%PDF-1.4\nsynthetic pinned bytes\n%%EOF\n"
+    pdf_bytes = (
+        b"%PDF-1.4\n"
+        + b"synthetic pinned bytes\n" * 16
+        + b"%%EOF\n"
+    )
+    assert len(pdf_bytes) >= 256
     discovery = {
         "schema": "12-6.d03-ua-nbu-official-resolutions-discovery-evidence.v1",
         "status": "DISCOVERY_ONLY_ZERO_CREDIT",
@@ -268,3 +273,36 @@ def test_duplicate_json_keys_fail_before_pdftotext_authority(tmp_path: Path):
     )
     with pytest.raises(module.NbuTextMaterializationError, match="duplicate JSON key"):
         module.load_json_object(pins_path, context="PDF pin evidence")
+
+
+def test_parent_pdf_pin_size_bounds_are_inherited_fail_closed():
+    config = load_config()
+    discovery, pins, _ = sample_inputs(config)
+    oversized = deepcopy(pins)
+    oversized["pins"][0]["pdf_bytes"] = 25_000_001
+    oversized["observed_pdf_bytes"] = 25_000_001
+    with_identity(oversized)
+    with pytest.raises(
+        module.NbuTextMaterializationError,
+        match="parent PDF pin evidence invalid",
+    ):
+        module.validate_pin_evidence(oversized, config)
+
+
+def test_pdftotext_output_is_size_checked_before_read(monkeypatch):
+    config = load_config()
+    maximum = config["materialization"]["hard_max_text_bytes_per_record"]
+
+    def fake_run(command, **_kwargs):
+        output_path = Path(command[-1])
+        with output_path.open("wb") as handle:
+            handle.seek(maximum)
+            handle.write(b"x")
+        return module.subprocess.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    with pytest.raises(
+        module.NbuTextMaterializationError,
+        match="output exceeds per-record byte bound before read",
+    ):
+        module.extract_once(b"%PDF-1.4\n%%EOF\n", config)
