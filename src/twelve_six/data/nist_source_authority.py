@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -39,12 +40,20 @@ def _reject_constant(value: str) -> None:
     raise NistAuthorityError(f"non-finite JSON number: {value}")
 
 
+def _strict_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise NistAuthorityError(f"non-finite JSON number: {value}")
+    return parsed
+
+
 def _load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(
             path.read_text(encoding="utf-8"),
             object_pairs_hook=_strict_object,
             parse_constant=_reject_constant,
+            parse_float=_strict_float,
         )
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise NistAuthorityError(f"cannot read {path}: {exc}") from exc
