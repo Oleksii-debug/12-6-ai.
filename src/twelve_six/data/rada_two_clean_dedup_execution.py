@@ -11,6 +11,8 @@ import hashlib
 import importlib
 import json
 import math
+import subprocess
+import sys
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -77,7 +79,10 @@ _AUTHORITY_KEYS = frozenset(
         "matcher_different_worker_pass",
         "indexed_module",
         "indexed_module_git_blob_sha1",
+        "indexed_core_git_blob_sha1",
+        "v7_head_sha",
         "v3_module",
+        "v3_git_blob_sha1",
         "incumbent_base_authority_ref",
         "combined_inventory_sha256",
         "incumbent_base_payload_map_sha256",
@@ -195,6 +200,80 @@ def _module_blob_sha1(module: Any, label: str) -> str:
     _require(path.suffix == ".py", f"{label} authority must resolve to Python source")
     return _git_blob_sha1(path)
 
+def _load_v3_from_exact_v7(v7_root: Path, authority: Mapping[str, Any]) -> Any:
+    """Load terminal V3 only from an exact clean, authority-bound V7 worktree."""
+    try:
+        root = v7_root.resolve(strict=True)
+    except OSError as exc:
+        raise RadaTwoCleanExecutionError("cannot resolve exact V7 worktree") from exc
+
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RadaTwoCleanExecutionError("cannot attest exact V7 worktree") from exc
+    _require(head == authority["v7_head_sha"], "V7 worktree HEAD drift")
+    _require(dirty == "", "V7 worktree is not clean")
+
+    module_name = authority["v3_module"]
+    dependency_names = (
+        "twelve_six.data.cross_source_capacity_audit",
+        module_name,
+    )
+    for name in dependency_names:
+        _require(name not in sys.modules, f"historical matcher preloaded: {name}")
+
+    twelve_six_pkg = importlib.import_module("twelve_six")
+    data_pkg = importlib.import_module("twelve_six.data")
+    current_package_path = list(twelve_six_pkg.__path__)
+    current_data_path = list(data_pkg.__path__)
+    historical_package = str((root / "src" / "twelve_six").resolve(strict=True))
+    historical_data_path = (root / "src" / "twelve_six" / "data").resolve(strict=True)
+    historical_data = str(historical_data_path)
+    _require(
+        historical_package not in current_package_path
+        and historical_data not in current_data_path,
+        "historical V7 package path already injected",
+    )
+
+    twelve_six_pkg.__path__ = [historical_package, *current_package_path]
+    data_pkg.__path__ = [historical_data, *current_data_path]
+    importlib.invalidate_caches()
+    try:
+        v3 = importlib.import_module(module_name)
+    finally:
+        twelve_six_pkg.__path__ = current_package_path
+        data_pkg.__path__ = current_data_path
+        importlib.invalidate_caches()
+
+    raw_path = getattr(v3, "__file__", None)
+    _require(type(raw_path) is str and bool(raw_path), "V3 module has no source path")
+    v3_path = Path(raw_path).resolve(strict=True)
+    _require(
+        v3_path.is_relative_to(historical_data_path),
+        "V3 module escaped exact V7 worktree",
+    )
+    _require(
+        _git_blob_sha1(v3_path) == authority["v3_git_blob_sha1"],
+        "V3 Git blob drift",
+    )
+    return v3
+
+
 
 def validate_dependency_authority(
     path: Path,
@@ -247,10 +326,17 @@ def validate_dependency_authority(
         40,
         "indexed_module_git_blob_sha1",
     )
+    _require_hex(
+        authority["indexed_core_git_blob_sha1"],
+        40,
+        "indexed_core_git_blob_sha1",
+    )
+    _require_hex(authority["v7_head_sha"], 40, "v7_head_sha")
     _require(
         type(authority["v3_module"]) is str and bool(authority["v3_module"]),
         "v3_module missing",
     )
+    _require_hex(authority["v3_git_blob_sha1"], 40, "v3_git_blob_sha1")
     _require(
         type(authority["incumbent_base_authority_ref"]) is str
         and bool(authority["incumbent_base_authority_ref"]),
@@ -553,6 +639,7 @@ def execute_once(
     expected_inventory_sha256: str,
     base_payload_map_path: Path,
     expected_base_payload_map_sha256: str,
+    v7_root: Path,
     candidate_jsonl: Path,
     quality_report: Path,
     execution_evidence: Path,
@@ -581,7 +668,7 @@ def execute_once(
 
     adapter = importlib.import_module(authority["rada_adapter_module"])
     indexed = importlib.import_module(authority["indexed_module"])
-    v3 = importlib.import_module(authority["v3_module"])
+    v3 = _load_v3_from_exact_v7(v7_root, authority)
 
     _require(
         _module_blob_sha1(adapter, "Rada adapter")
@@ -592,6 +679,13 @@ def execute_once(
         _module_blob_sha1(indexed, "indexed executor")
         == authority["indexed_module_git_blob_sha1"],
         "indexed executor Git blob drift",
+    )
+    indexed_core = getattr(indexed, "_core", None)
+    _require(indexed_core is not None, "indexed executor core module missing")
+    _require(
+        _module_blob_sha1(indexed_core, "indexed executor core")
+        == authority["indexed_core_git_blob_sha1"],
+        "indexed executor core Git blob drift",
     )
     attest = getattr(indexed, "attest_incumbent_runtime", None)
     _require(callable(attest), "indexed executor lacks runtime attestation")

@@ -53,7 +53,10 @@ def _authority() -> dict[str, object]:
         "matcher_different_worker_pass": True,
         "indexed_module": "twelve_six.data.incumbent_dedup_indexed_execution",
         "indexed_module_git_blob_sha1": "4" * 40,
-        "v3_module": "authority_runtime.cross_source_capacity_audit_v3",
+        "indexed_core_git_blob_sha1": "5" * 40,
+        "v7_head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
+        "v3_module": "twelve_six.data.cross_source_capacity_audit_v3",
+        "v3_git_blob_sha1": "11490b1803e0aa2266d8ac0053676efcfb0f91ba",
         "incumbent_base_authority_ref": "clean-base-authority:test",
         "combined_inventory_sha256": "6" * 64,
         "incumbent_base_payload_map_sha256": "7" * 64,
@@ -718,3 +721,22 @@ def test_worker_helper_kills_and_reaps_on_abort(
         runner._run_worker(["worker"], timeout_seconds=17)
 
     assert events == [("wait", 17), "kill", ("wait", None)]
+
+def test_dependency_authority_binds_v7_and_indexed_core(tmp_path: Path) -> None:
+    path = tmp_path / "authority.json"
+    value = _authority()
+    identity = _write_json(path, value)
+    observed = carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
+    assert observed["v7_head_sha"] == "d3333ec1b4a508df232a5aefccd6686adda745fb"
+    assert observed["v3_git_blob_sha1"] == "11490b1803e0aa2266d8ac0053676efcfb0f91ba"
+    assert observed["indexed_core_git_blob_sha1"] == "5" * 40
+
+
+def test_dependency_authority_rejects_missing_indexed_core_binding(tmp_path: Path) -> None:
+    path = tmp_path / "authority.json"
+    value = _authority()
+    del value["indexed_core_git_blob_sha1"]
+    identity = _write_json(path, value)
+    with pytest.raises(carrier.RadaTwoCleanExecutionError, match="schema drift"):
+        carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
+

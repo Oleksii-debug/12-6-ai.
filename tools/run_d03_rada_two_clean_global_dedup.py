@@ -241,6 +241,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--expected-inventory-sha256", required=True)
     parser.add_argument("--base-payload-map", type=Path, required=True)
     parser.add_argument("--expected-base-payload-map-sha256", required=True)
+    parser.add_argument("--v7-root", type=Path, required=True)
     parser.add_argument("--candidate-jsonl", type=Path, required=True)
     parser.add_argument("--quality-report", type=Path, required=True)
     parser.add_argument("--execution-evidence", type=Path, required=True)
@@ -276,6 +277,8 @@ def _common_argv(args: argparse.Namespace) -> list[str]:
         str(args.base_payload_map),
         "--expected-base-payload-map-sha256",
         args.expected_base_payload_map_sha256,
+        "--v7-root",
+        str(args.v7_root),
         "--candidate-jsonl",
         str(args.candidate_jsonl),
         "--quality-report",
@@ -301,6 +304,7 @@ def _worker(args: argparse.Namespace) -> int:
         expected_inventory_sha256=args.expected_inventory_sha256,
         base_payload_map_path=args.base_payload_map,
         expected_base_payload_map_sha256=args.expected_base_payload_map_sha256,
+        v7_root=args.v7_root,
         candidate_jsonl=args.candidate_jsonl,
         quality_report=args.quality_report,
         execution_evidence=args.execution_evidence,
