@@ -210,7 +210,6 @@ def test_dedicated_indexed_harness_never_imports_authority_during_collection():
 
     assert violations == []
 
-
     blocker_script = r"""
 import sys
 
