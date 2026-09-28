@@ -39,6 +39,8 @@ from twelve_six.data import incumbent_dedup_indexed_execution as indexed
 SCHEMA = "12-6.d03-caselaw-global-dedup-execution.v1"
 SURVIVOR_SCHEMA = "12-6.d03-caselaw-global-dedup-survivors.v1"
 EXPECTED_MAIN = "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
+EXECUTION_CLAIM = 2257
+EXECUTION_PR = 2259
 CASELAW_FINAL_HEAD = "deaf0730fe04a12e9abb8f3cecb14d6ad2cc7a4d"
 EXPECTED_BASE_OBJECTS = 264
 EXPECTED_BASE_BYTES = 6_095_624
@@ -267,6 +269,8 @@ def execute(
     max_pair_expansions: int,
 ) -> dict[str, Any]:
     authority_blobs = verify_repository_authority()
+    execution_head = _git("rev-parse", "HEAD").stdout.strip()
+    _require(len(execution_head) == 40, "execution HEAD identity missing")
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
     matcher, base_inventory, base_payloads = v9_runner.reconstruct_v8_source_inputs(
         v7_root=v7_root,
@@ -359,6 +363,9 @@ def execute(
     evidence_core = {
         "schema_version": SCHEMA,
         "execution_profile": "GITHUB_HOSTED_FREE_LOCAL_FREE",
+        "execution_claim_issue": EXECUTION_CLAIM,
+        "execution_pr": EXECUTION_PR,
+        "execution_head_sha": execution_head,
         "pinned_main_sha": EXPECTED_MAIN,
         "authority_path_blobs": authority_blobs,
         "baseline_v8": {
