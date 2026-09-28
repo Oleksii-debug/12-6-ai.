@@ -312,6 +312,17 @@ def _windows_peak_working_set_kib() -> int | None:
     counters = ProcessMemoryCounters()
     counters.cb = ctypes.sizeof(counters)
     try:
+        get_current_process.restype = ctypes.c_void_p
+        query.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ProcessMemoryCounters),
+            ctypes.c_ulong,
+        ]
+        query.restype = ctypes.c_int
+    except (AttributeError, TypeError):
+        # Python test doubles need not expose ctypes function metadata.
+        pass
+    try:
         handle = get_current_process()
         ok = query(handle, ctypes.byref(counters), counters.cb)
     except (AttributeError, OSError, TypeError, ValueError):
