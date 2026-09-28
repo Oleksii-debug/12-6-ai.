@@ -531,7 +531,7 @@ def test_runtime_probe_uses_minimal_windows_environment(
     class Completed:
         returncode = 0
         stderr = ""
-        stdout = '{"sys":{"kind":"built-in"}}'
+        stdout = '{"sys":{"kind":"built-in"}}\n'
 
     def fake_run(command, **kwargs):
         observed["command"] = command
