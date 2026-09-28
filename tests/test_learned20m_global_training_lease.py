@@ -155,6 +155,34 @@ def _lease(manifest: dict, *, run_id: str = "run-a"):
     )
 
 
+def _authorized_manifest() -> tuple[dict, str]:
+    base = _manifest()
+    authority = _terminal_authority(base, exposure=1_000)
+    return (
+        finalize_launch_manifest(base, authority),
+        authority["authority_identity_sha256"],
+    )
+
+
+def _authorized_lease(
+    manifest: dict,
+    expected_terminal_authority_sha256: str,
+    *,
+    run_id: str = "run-a",
+    holder_id: str = "runner-a",
+    ttl_seconds: int = 3600,
+    now: datetime = NOW,
+):
+    return build_authorized_training_run_lease(
+        manifest,
+        expected_terminal_authority_sha256=expected_terminal_authority_sha256,
+        run_id=run_id,
+        holder_id=holder_id,
+        ttl_seconds=ttl_seconds,
+        now=now,
+    )
+
+
 def _git(*args: str, cwd: Path | None = None) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -217,6 +245,7 @@ def test_terminal_authority_lease_composes_with_global_cas_without_authority_wid
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -248,7 +277,7 @@ def test_ref_and_state_bind_fixed_repository_lock_domain_and_manifest() -> None:
 
 def test_raw_state_decoder_rejects_duplicate_nonfinite_and_noncanonical_json() -> None:
     manifest = _manifest()
-    state = build_global_lease_state(manifest, _lease(manifest).as_dict())
+    state = build_global_lease_state(manifest, _authorized_lease(manifest, expected_authority).as_dict())
 
     with pytest.raises(ValueError, match="duplicate_json_key"):
         decode_global_lease_state(b'{"schema_version":1,"schema_version":1}', manifest)
@@ -261,7 +290,7 @@ def test_raw_state_decoder_rejects_duplicate_nonfinite_and_noncanonical_json() -
 
 def test_raw_state_decoder_rejects_lock_domain_substitution_and_extra_fields() -> None:
     manifest = _manifest()
-    state = build_global_lease_state(manifest, _lease(manifest).as_dict())
+    state = build_global_lease_state(manifest, _authorized_lease(manifest, expected_authority).as_dict())
 
     substituted = deepcopy(state)
     substituted["lock_domain"] = "github.com/attacker/repository"
@@ -278,21 +307,24 @@ def test_acquire_is_single_winner_and_reread_verified(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    first_lease = _lease(manifest, run_id="run-a")
-    second_lease = build_training_run_lease(
+    manifest, expected_authority = _authorized_manifest()
+    first_lease = _authorized_lease(
+        manifest, expected_authority, run_id="run-a"
+    )
+    second_lease = _authorized_lease(
         manifest,
+        expected_authority,
         run_id="run-b",
         holder_id="runner-b",
-        ttl_seconds=3600,
-        now=NOW,
     )
 
     first = acquire_global_training_run_lease(
         writer_a, str(remote), manifest, first_lease.as_dict(), now=NOW
+        expected_terminal_authority_sha256=expected_authority,
     )
     second = acquire_global_training_run_lease(
         writer_b, str(remote), manifest, second_lease.as_dict(), now=NOW
+        expected_terminal_authority_sha256=expected_authority,
     )
 
     assert first.committed is True
@@ -318,9 +350,9 @@ def test_acquire_freezes_manifest_and_lease_before_assessment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
+    manifest, expected_authority = _authorized_manifest()
     original_manifest = deepcopy(manifest)
-    lease = _lease(manifest).as_dict()
+    lease = _authorized_lease(manifest, expected_authority).as_dict()
     original_lease = deepcopy(lease)
     real_assess = global_lease_module.assess_training_run_lease
 
@@ -341,6 +373,7 @@ def test_acquire_freezes_manifest_and_lease_before_assessment(
         str(remote),
         manifest,
         lease,
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
 
@@ -363,7 +396,7 @@ def test_acquire_recovers_when_push_reports_failure_after_remote_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
+    manifest, expected_authority = _authorized_manifest()
     real_push = global_lease_module._push_candidate
 
     def push_then_report_failure(repo_root, remote_arg, candidate_tip, ref):
@@ -375,7 +408,8 @@ def test_acquire_recovers_when_push_reports_failure_after_remote_commit(
         writer_a,
         str(remote),
         manifest,
-        _lease(manifest).as_dict(),
+        _authorized_lease(manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
 
@@ -394,7 +428,7 @@ def test_acquire_reports_committed_unverified_after_post_write_transport_failure
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
+    manifest, expected_authority = _authorized_manifest()
     real_remote_tip = global_lease_module._remote_tip
     calls = 0
 
@@ -410,7 +444,8 @@ def test_acquire_reports_committed_unverified_after_post_write_transport_failure
         writer_a,
         str(remote),
         manifest,
-        _lease(manifest).as_dict(),
+        _authorized_lease(manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
 
@@ -425,17 +460,54 @@ def test_acquire_reports_committed_unverified_after_post_write_transport_failure
     )
 
 
+def test_global_acquire_rejects_self_consistent_manifest_under_wrong_expected_root(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, _ = git_pair
+    base_a = _manifest()
+    authority_a = _terminal_authority(base_a, exposure=1_000)
+    expected_authority_a = authority_a["authority_identity_sha256"]
+
+    base_b = deepcopy(base_a)
+    base_b["recipe"]["seed"] += 1
+    authority_b = _terminal_authority(base_b, exposure=1_000)
+    manifest_b = finalize_launch_manifest(base_b, authority_b)
+    ordinary_lease_b = build_training_run_lease(
+        manifest_b,
+        run_id="bypass-run",
+        holder_id="bypass-holder",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+
+    denied = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest_b,
+        ordinary_lease_b.as_dict(),
+        expected_terminal_authority_sha256=expected_authority_a,
+        now=NOW,
+    )
+
+    assert denied.committed is False
+    assert "terminal_authority_not_independently_expected" in denied.blockers
+    assert denied.written_remote_tip is None
+    assert denied.training_authority_granted_by_this_module is False
+    assert denied.optimizer_start_permitted_by_this_module is False
+
+
 def test_renew_freezes_manifest_before_post_write_reread(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    original_manifest = _manifest()
+    original_manifest, expected_authority = _authorized_manifest()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         original_manifest,
-        _lease(original_manifest).as_dict(),
+        _authorized_lease(original_manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.written_remote_tip is not None
@@ -474,9 +546,10 @@ def test_renew_is_fast_forward_and_stale_tip_cannot_retry_itself_into_authority(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
+    manifest, expected_authority = _authorized_manifest()
     acquired = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, _lease(manifest).as_dict(), now=NOW
+        writer_a, str(remote), manifest, _authorized_lease(manifest, expected_authority).as_dict(), now=NOW
+        expected_terminal_authority_sha256=expected_authority,
     )
     assert acquired.written_remote_tip is not None
 
@@ -521,10 +594,11 @@ def test_terminal_lineage_remains_immutable_and_cannot_be_freshly_reacquired(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    lease = _lease(manifest)
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
     acquired = acquire_global_training_run_lease(
         writer_a, str(remote), manifest, lease.as_dict(), now=NOW
+        expected_terminal_authority_sha256=expected_authority,
     )
     assert acquired.written_remote_tip is not None
 
@@ -540,11 +614,11 @@ def test_terminal_lineage_remains_immutable_and_cannot_be_freshly_reacquired(
     assert terminal.lease_status == "ABORTED"
     _assert_no_authority_widening(terminal)
 
-    replacement = build_training_run_lease(
+    replacement = _authorized_lease(
         manifest,
+        expected_authority,
         run_id="replacement",
         holder_id="runner-new",
-        ttl_seconds=3600,
         now=NOW + timedelta(minutes=20),
     )
     denied = acquire_global_training_run_lease(
@@ -552,6 +626,7 @@ def test_terminal_lineage_remains_immutable_and_cannot_be_freshly_reacquired(
         str(remote),
         manifest,
         replacement.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW + timedelta(minutes=20),
     )
     assert denied.committed is False
@@ -563,16 +638,16 @@ def test_expired_running_lease_cannot_be_renewed_by_backdated_retry(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
-    short = build_training_run_lease(
+    manifest, expected_authority = _authorized_manifest()
+    short = _authorized_lease(
         manifest,
+        expected_authority,
         run_id="short",
-        holder_id="runner-a",
         ttl_seconds=60,
-        now=NOW,
     )
     acquired = acquire_global_training_run_lease(
         writer_a, str(remote), manifest, short.as_dict(), now=NOW
+        expected_terminal_authority_sha256=expected_authority,
     )
     assert acquired.written_remote_tip is not None
 
