@@ -1,0 +1,78 @@
+{
+  "schema_version": "12-6.d03-rada-trees-quality-window-real-replay-baseline.v1",
+  "repository": "Oleksii-debug/12-6-ai.",
+  "execution_profile": "LOCAL_FREE",
+  "classification": "NONTERMINAL_BASELINE_ZERO_CREDIT",
+  "execution": {
+    "workflow_run_id": 34530632484,
+    "workflow_job_id": 103050205158,
+    "pr": 1017,
+    "pr_head_sha": "6c0ddac3898575eb36154af04f7670de8d56de21",
+    "checkout_merge_sha": "59a1759028115f9665175555cc50c42eaf78713e",
+    "checkout_main_parent_sha": "82a2cacfec2670feff957d64904f1b8fe310dbd4",
+    "conclusion": "success",
+    "artifact_id": 10174050570,
+    "artifact_zip_sha256": "b28040173a498e25377b76fb4781d13e8867766bf5a5215ac4db791d59cfecb1",
+    "artifact_zip_bytes": 199887367
+  },
+  "source": {
+    "dataset": "uacorpus/Rada_Trees",
+    "revision": "1b994a5804dcda122721e8d33a03fd172cf8d867",
+    "archive_sha256": "737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e",
+    "archive_bytes": 697768591
+  },
+  "rights_scoped_candidate": {
+    "records": 4384,
+    "source_bytes": 877899128,
+    "semantic_report_sha256": "83b2cc636aa4cf9a754cd55534035c44782722d2b457755c00f6780112ebfffa",
+    "candidate_jsonl_sha256": "778be40135facef3b86168643673cb1df819e81a376679ac8418130f3104f59a"
+  },
+  "quality_privacy_baseline": {
+    "privacy_implementation_git_blob": "a84395daf6f07726d6a730cf6ccb04c35bdc4e67",
+    "quality_statuses": {
+      "REJECT_DOCUMENT": 1,
+      "RETAIN_ALL": 4359,
+      "RETAIN_PARTIAL": 24
+    },
+    "partial_records_materialized": 24,
+    "partial_units_materialized_before_privacy": 337,
+    "privacy_actions": {
+      "ALLOW": 4619,
+      "REDACT": 77
+    },
+    "privacy_held_units": 77,
+    "privacy_held_utf8_bytes": 18234797,
+    "survivor_records": 4619,
+    "survivor_text_utf8_bytes": 858698060,
+    "survivor_jsonl_sha256": "9c76085e47b514ab0a49ba8ccf0b51f692859b60360275b4dd0eb5e9d78305a8",
+    "semantic_report_sha256": "8887602674cda01e04b3d67dd4a0d8011b7ef92e05e23229a100dbbbc13fa17e",
+    "report_file_sha256": "404104b1f207b82b7cbacb6f8f38e56b6ebb33ee4519a255af04eaeb9ab4580a",
+    "execution_summary_sha256": "55f94b1adfccb2538db8ec652e2fab874850c738fb79020dd48d9a4d01eb377f",
+    "execution_summary_file_sha256": "fc012391ec856f7eda2b5d0b580b519628e489d34c6f0356d036edcae1b2de0b"
+  },
+  "nonterminal_reasons": [
+    "execution used tools/materialize_d03_rada_trees_quality_windows.py with a locally derived expected candidate SHA rather than the merged #1021 authoritative wrapper and independently fixed upstream report authority",
+    "privacy implementation a84395daf6f07726d6a730cf6ccb04c35bdc4e67 is superseded if #1033 or its canonical successor integrates the malformed-sensitive-key-wrapper fail-closed repair"
+  ],
+  "next_authoritative_replay_requirements": {
+    "tool": "tools/materialize_d03_rada_trees_quality_windows_authoritative.py",
+    "expected_upstream_report_sha256": "83b2cc636aa4cf9a754cd55534035c44782722d2b457755c00f6780112ebfffa",
+    "requires_current_main_qualified_privacy_implementation": true,
+    "requires_external_candidate_authority": true
+  },
+  "claim_boundary": {
+    "language_authority_bound": false,
+    "language_quality_privacy_complete": false,
+    "global_dedup_complete": false,
+    "reserved_evaluation_decontamination_complete": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false
+  },
+  "evidence_identity_sha256": "f756117f3cfcc6e58d37e0cdfdda54bcb358b1201b6eaa3b2587d21a794d5732"
+}
