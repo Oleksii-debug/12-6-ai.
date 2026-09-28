@@ -423,6 +423,67 @@ def test_control_contract_rejects_non_numeric_or_boolean_cadence(
         validate_control_contract(contract)
 
 
+@pytest.mark.parametrize(
+    ("section", "field", "invalid_value", "error"),
+    [
+        ("incumbent_authority", "pr", 999, "PR authority"),
+        ("incumbent_authority", "verdict", "ADMIT", "verdict"),
+        ("edition", "author", "Інший автор", "edition identity"),
+        ("edition", "commons_pages", 111, "edition identity"),
+        ("acquisition", "api_origin", "https://example.invalid", "acquisition authority"),
+        (
+            "acquisition",
+            "required_proofread_category",
+            "Неперевірені",
+            "acquisition authority",
+        ),
+        (
+            "acquisition",
+            "normalization",
+            "UNBOUND_NORMALIZATION",
+            "acquisition authority",
+        ),
+    ],
+)
+def test_control_contract_rejects_provenance_and_acquisition_drift(
+    section: str, field: str, invalid_value: object, error: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract = json.loads(
+        (root / "configs/data/d03_wikisource_lesia1892_current_main_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    contract[section][field] = invalid_value
+    with pytest.raises(WikisourceIntakeError, match=error):
+        validate_control_contract(contract)
+
+
+def test_control_contract_cannot_claim_physical_materialization() -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract = json.loads(
+        (root / "configs/data/d03_wikisource_lesia1892_current_main_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    contract["truth_boundary"]["real_materialization_not_claimed_by_config"] = False
+    with pytest.raises(WikisourceIntakeError, match="real materialization"):
+        validate_control_contract(contract)
+
+
+def test_control_contract_binds_exact_downstream_gate_sequence() -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract = json.loads(
+        (root / "configs/data/d03_wikisource_lesia1892_current_main_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    gates = contract["truth_boundary"]["required_downstream_gates"]
+    contract["truth_boundary"]["required_downstream_gates"] = list(reversed(gates))
+    with pytest.raises(WikisourceIntakeError, match="downstream gate"):
+        validate_control_contract(contract)
+
+
 def test_repository_control_file_matches_runtime_contract() -> None:
     root = Path(__file__).resolve().parents[1]
     contract = json.loads(
