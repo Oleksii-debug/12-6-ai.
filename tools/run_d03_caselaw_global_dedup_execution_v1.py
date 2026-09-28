@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import importlib
 import json
 try:
     import resource
@@ -118,6 +119,67 @@ def verify_repository_authority() -> dict[str, str]:
         _require(bool(expected) and observed == expected, f"authority path drift: {path}")
         blobs[path] = observed
     return blobs
+
+
+_HISTORICAL_MATCHER_MODULES = (
+    "twelve_six.data._data232_decontamination_matching",
+    "twelve_six.data.cross_source_capacity_audit",
+    "twelve_six.data.cross_source_capacity_audit_v3",
+    "twelve_six.data.cross_source_capacity_audit_v4",
+    "twelve_six.data.cross_source_capacity_audit_v5",
+    "twelve_six.data.cross_source_capacity_audit_v6",
+    "twelve_six.data.cross_source_capacity_audit_v7",
+)
+
+
+def _reconstruct_v8_with_historical_namespace(
+    *,
+    v7_root: Path,
+    bulk_workspace: Path,
+    config: Mapping[str, Any],
+) -> tuple[Any, dict[str, Any], dict[str, bytes]]:
+    """Load exact V7 matcher modules ahead of the cached current-main package paths."""
+    for module_name in _HISTORICAL_MATCHER_MODULES:
+        _require(module_name not in sys.modules, f"historical matcher preloaded: {module_name}")
+
+    twelve_six_pkg = importlib.import_module("twelve_six")
+    data_pkg = importlib.import_module("twelve_six.data")
+    current_package_path = list(twelve_six_pkg.__path__)
+    current_data_path = list(data_pkg.__path__)
+    historical_package = str((v7_root / "src" / "twelve_six").resolve(strict=True))
+    historical_data = str(
+        (v7_root / "src" / "twelve_six" / "data").resolve(strict=True)
+    )
+    _require(
+        historical_package not in current_package_path
+        and historical_data not in current_data_path,
+        "historical V7 package path already injected",
+    )
+
+    twelve_six_pkg.__path__ = [historical_package, *current_package_path]
+    data_pkg.__path__ = [historical_data, *current_data_path]
+    importlib.invalidate_caches()
+    try:
+        matcher, inventory, payloads = v9_runner.reconstruct_v8_source_inputs(
+            v7_root=v7_root,
+            bulk_workspace=bulk_workspace,
+            v8_config=dict(config),
+        )
+    finally:
+        twelve_six_pkg.__path__ = current_package_path
+        data_pkg.__path__ = current_data_path
+        importlib.invalidate_caches()
+
+    historical_root = Path(historical_data)
+    for module_name in _HISTORICAL_MATCHER_MODULES:
+        module = sys.modules.get(module_name)
+        _require(module is not None, f"historical matcher failed to load: {module_name}")
+        module_path = Path(str(getattr(module, "__file__", ""))).resolve(strict=True)
+        _require(
+            module_path.is_relative_to(historical_root),
+            f"historical matcher escaped exact V7 worktree: {module_name}",
+        )
+    return matcher, inventory, payloads
 
 
 def _compose_graph(
@@ -272,10 +334,10 @@ def execute(
     execution_head = _git("rev-parse", "HEAD").stdout.strip()
     _require(len(execution_head) == 40, "execution HEAD identity missing")
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
-    matcher, base_inventory, base_payloads = v9_runner.reconstruct_v8_source_inputs(
+    matcher, base_inventory, base_payloads = _reconstruct_v8_with_historical_namespace(
         v7_root=v7_root,
         bulk_workspace=bulk_workspace,
-        v8_config=config,
+        config=config,
     )
     _require(len(base_payloads) == EXPECTED_BASE_OBJECTS, "V8 base object count drift")
     _require(
