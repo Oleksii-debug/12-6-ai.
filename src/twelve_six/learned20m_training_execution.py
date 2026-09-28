@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 from collections.abc import Mapping
@@ -141,6 +142,26 @@ def assess_training_execution(
     )
 
 
+def _reject_duplicate_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"manifest_duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_json_constant(value: str) -> None:
+    raise ValueError(f"manifest_nonfinite_json_number:{value}")
+
+
+def _finite_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(f"manifest_nonfinite_json_number:{value}")
+    return parsed
+
+
 def _read_repo_json(repo_root: Path, locator: str) -> dict[str, Any]:
     candidate = Path(locator)
     if candidate.is_absolute():
@@ -151,7 +172,12 @@ def _read_repo_json(repo_root: Path, locator: str) -> dict[str, Any]:
         resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError("manifest_path_escapes_repository") from exc
-    payload = json.loads(resolved.read_text(encoding="utf-8"))
+    payload = json.loads(
+        resolved.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_json_object,
+        parse_constant=_reject_nonfinite_json_constant,
+        parse_float=_finite_json_float,
+    )
     if not isinstance(payload, dict):
         raise TypeError("manifest_root_must_be_object")
     return payload

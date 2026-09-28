@@ -142,6 +142,37 @@ def test_manifest_locator_cannot_escape_repo(tmp_path: Path):
         _read_repo_json(tmp_path, "../outside.json")
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"value":1,"value":1}',
+        '{"nested":{"value":1,"value":1}}',
+    ],
+)
+def test_manifest_locator_rejects_duplicate_json_keys(tmp_path: Path, payload: str):
+    path = tmp_path / "manifest.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError, match="manifest_duplicate_json_key:value"):
+        _read_repo_json(tmp_path, "manifest.json")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"value":NaN}',
+        '{"value":Infinity}',
+        '{"value":-Infinity}',
+        '{"value":1e400}',
+        '{"nested":{"value":-1e400}}',
+    ],
+)
+def test_manifest_locator_rejects_nonfinite_json_numbers(tmp_path: Path, payload: str):
+    path = tmp_path / "manifest.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError, match="manifest_nonfinite_json_number"):
+        _read_repo_json(tmp_path, "manifest.json")
+
+
 def test_manifest_locator_reads_repo_relative_object(tmp_path: Path):
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps({"ok": True}), encoding="utf-8")
