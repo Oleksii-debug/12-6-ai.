@@ -209,23 +209,38 @@ jobs:
               assert type(value) is dict, path
               return value
 
-          def canonical(value: dict) -> bytes:
-              return json.dumps(
+          def canonical(
+              value: dict,
+              *,
+              ascii_only: bool = False,
+              newline: bool = False,
+          ) -> bytes:
+              raw = json.dumps(
                   value,
-                  ensure_ascii=False,
+                  ensure_ascii=ascii_only,
                   sort_keys=True,
                   separators=(",", ":"),
                   allow_nan=False,
               ).encode("utf-8")
+              return raw + (b"\\n" if newline else b"")
 
           def sha(path: str) -> str:
               return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
-          def verify_self_hash(value: dict, field: str) -> None:
+          def verify_self_hash(
+              value: dict,
+              field: str,
+              *,
+              ascii_only: bool = False,
+              newline: bool = False,
+          ) -> None:
               identity = value.get(field)
               assert type(identity) is str and len(identity) == 64, field
               core = {key: item for key, item in value.items() if key != field}
-              assert hashlib.sha256(canonical(core)).hexdigest() == identity, field
+              observed = hashlib.sha256(
+                  canonical(core, ascii_only=ascii_only, newline=newline)
+              ).hexdigest()
+              assert observed == identity, field
 
           # Reject ambiguous/non-finite JSON at every durable convergence input.
           load("artifacts/pass-1/materializer.json")
@@ -234,7 +249,9 @@ jobs:
           load("artifacts/pass-2/source-admission.json")
           report = load("artifacts/pass-1/global-dedup-report.json")
           survivors = load("artifacts/pass-1/survivors.json")
-          verify_self_hash(report, "report_sha256")
+          # Incumbent V1/V3 report authority uses ensure_ascii=True plus newline.
+          verify_self_hash(report, "report_sha256", ascii_only=True, newline=True)
+          # Carrier survivor/evidence authorities use UTF-8 canonical JSON without newline.
           verify_self_hash(survivors, "survivor_authority_sha256")
 
           a = load("artifacts/pass-1/execution-evidence.json")
