@@ -51,6 +51,28 @@ REQUIRED_AUTHORITIES = {
     "evaluation_firewall",
     "backend",
 }
+_TERMINAL_AUTHORITY_KEYS = frozenset(
+    {
+        "repository",
+        "git_sha",
+        "evidence_sha256",
+        "workflow_run_id",
+        "workflow_conclusion",
+        "terminal",
+    }
+)
+_AUTHORITY_KEYS_BY_ROLE = {
+    "code": _TERMINAL_AUTHORITY_KEYS,
+    "model": _TERMINAL_AUTHORITY_KEYS | {"modelspec_sha256"},
+    "tokenizer": _TERMINAL_AUTHORITY_KEYS,
+    "data": _TERMINAL_AUTHORITY_KEYS,
+    "loss_ledger": _TERMINAL_AUTHORITY_KEYS,
+    "checkpoint_integrity": _TERMINAL_AUTHORITY_KEYS,
+    "evaluation_firewall": _TERMINAL_AUTHORITY_KEYS,
+    "backend": _TERMINAL_AUTHORITY_KEYS
+    | {"backend_id", "environment_lock_sha256"},
+    "parent_checkpoint": _TERMINAL_AUTHORITY_KEYS,
+}
 
 ALLOWED_BACKENDS = {
     "PROJECT_NATIVE_PYTORCH",
@@ -227,8 +249,11 @@ def _expect(errors: list[str], condition: bool, message: str) -> None:
         errors.append(message)
 
 
-def _valid_terminal_authority(value: Any) -> bool:
+def _valid_terminal_authority(value: Any, *, role: str) -> bool:
     if not isinstance(value, dict):
+        return False
+    expected_keys = _AUTHORITY_KEYS_BY_ROLE.get(role)
+    if expected_keys is None or set(value) != expected_keys:
         return False
     run_id = value.get("workflow_run_id")
     return (
@@ -406,6 +431,13 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
         set(authorities) == expected_authorities,
         "authority_slots_mismatch",
     )
+    for role in sorted(expected_authorities):
+        authority = authorities.get(role)
+        if authority is None:
+            continue
+        expected_keys = _AUTHORITY_KEYS_BY_ROLE[role]
+        if not isinstance(authority, dict) or set(authority) != expected_keys:
+            errors.append(f"{role}_authority_fields_mismatch")
 
     recipe = _get_mapping(data, "recipe", errors)
     recipe_keys = set(recipe)
@@ -445,7 +477,7 @@ def _require_sha256(blockers: list[str], value: Any, name: str) -> None:
 
 
 def _require_authority(blockers: list[str], value: Any, name: str) -> None:
-    if not _valid_terminal_authority(value):
+    if not _valid_terminal_authority(value, role=name):
         blockers.append(f"{name}_authority_invalid")
 
 

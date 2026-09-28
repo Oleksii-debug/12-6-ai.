@@ -708,3 +708,86 @@ def test_preoptimizer_finalization_rejects_tokenizer_decision_identity_substitut
         assert "tokenizer_decision_authority_identity_packet_mismatch" in str(exc)
     else:
         raise AssertionError("tokenizer decision identity substitution must fail closed")
+
+
+def test_matched_overlay_and_execution_unknown_backend_authority_field_fail_closed() -> None:
+    readiness = _ready_readiness()
+    overlay = _ready_overlay()
+    tokens, refs, _, _, execution = _verified_inputs(readiness)
+    forbidden_field = "final_test_payload_uri"
+    overlay["scientific_bindings"]["authorities"]["backend"][forbidden_field] = (
+        "file:///forbidden"
+    )
+    execution["session"]["scientific_bindings"]["authorities"]["backend"][
+        forbidden_field
+    ] = "file:///forbidden"
+
+    result = bind_portable_run_packet(
+        readiness,
+        _load(PACKET),
+        overlay,
+        expected_portable_execution=execution,
+        verified_scientific_authorities=tokens,
+        verified_authorization_refs=refs,
+    )
+
+    assert not result.binding_ready
+    assert result.packet is None
+    assert (
+        "overlay:overlay_authority_backend_final_test_payload_uri_unexpected"
+        in result.blockers
+    )
+    assert (
+        "binding:authenticated_portable_execution_session:"
+        "overlay_authority_backend_final_test_payload_uri_unexpected"
+        in result.blockers
+    )
+
+
+def test_portable_packet_authorities_are_role_specific_closed_world() -> None:
+    template = _load(PACKET)
+    template["authorities"]["code"] = _authority()
+    template["authorities"]["model"] = _authority(modelspec_sha256=SHA64)
+    template["authorities"]["backend"] = _authority(
+        backend_id="PROJECT_NATIVE_PYTORCH",
+        environment_lock_sha256=SHA64,
+    )
+    errors = validate_portable_run_contract(template)
+    assert "code_authority_fields_mismatch" not in errors
+    assert "model_authority_fields_mismatch" not in errors
+    assert "backend_authority_fields_mismatch" not in errors
+
+    for role in ("code", "model", "backend"):
+        tampered = copy.deepcopy(template)
+        tampered["authorities"][role]["final_test_payload_uri"] = "file:///forbidden"
+        assert (
+            f"{role}_authority_fields_mismatch"
+            in validate_portable_run_contract(tampered)
+        )
+
+
+def test_resume_parent_checkpoint_authority_is_closed_world() -> None:
+    packet = _load(PACKET)
+    packet["checkpoint"]["mode"] = "RESUME"
+    packet["authorities"]["parent_checkpoint"] = _authority()
+    assert (
+        "parent_checkpoint_authority_fields_mismatch"
+        not in validate_portable_run_contract(packet)
+    )
+
+    packet["authorities"]["parent_checkpoint"]["final_test_payload_uri"] = (
+        "file:///forbidden"
+    )
+    assert (
+        "parent_checkpoint_authority_fields_mismatch"
+        in validate_portable_run_contract(packet)
+    )
+
+
+def test_fresh_overlay_rejects_unused_parent_checkpoint_authority() -> None:
+    overlay = _ready_overlay()
+    overlay["checkpoint"]["parent_checkpoint_authority"] = _authority()
+    assert (
+        "overlay_parent_checkpoint_authority_forbidden_for_fresh_start"
+        in validate_session_overlay_contract(overlay)
+    )

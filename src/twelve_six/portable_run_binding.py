@@ -16,8 +16,8 @@ from twelve_six.portable_run_packet import (
     assess_portable_run_packet,
     validate_portable_run_contract,
 )
+from twelve_six.preoptimizer_authority import bind_preoptimizer_to_packet
 from twelve_six.preoptimizer_authority import (
-    bind_preoptimizer_to_packet,
     canonical_sha256 as preoptimizer_sha256,
 )
 
@@ -29,6 +29,22 @@ _MODEL341_INITSPEC_SHA256 = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c13
 _MODEL341_PARAMETER_COUNT = 20_613_440
 _LEARN345_POLICY_IDENTITY_SHA256 = "84152a673c4ed8fd34f4b81b03a96b4a3f5b40a22d961f436cbed11af23000e7"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_TERMINAL_AUTHORITY_KEYS = frozenset(
+    {
+        "repository",
+        "git_sha",
+        "evidence_sha256",
+        "workflow_run_id",
+        "workflow_conclusion",
+        "terminal",
+    }
+)
+_OVERLAY_AUTHORITY_KEYS = {
+    "code": _TERMINAL_AUTHORITY_KEYS,
+    "model": _TERMINAL_AUTHORITY_KEYS | {"modelspec_sha256"},
+    "backend": _TERMINAL_AUTHORITY_KEYS
+    | {"backend_id", "environment_lock_sha256"},
+}
 
 _ROOT_KEYS = {
     "schema_version",
@@ -318,12 +334,24 @@ def validate_session_overlay_contract(value: Any) -> list[str]:
         "optimizer_scheduler_precision",
         _SECTION_KEYS["optimizer_scheduler_precision"],
     )
-    _exact_mapping(
+    authorities = _exact_mapping(
         errors,
         scientific,
         "authorities",
         _SECTION_KEYS["authorities"],
     )
+    ready_candidate = value.get("status") == "READY_CANDIDATE"
+    for role, expected_keys in _OVERLAY_AUTHORITY_KEYS.items():
+        authority = authorities.get(role)
+        if authority is None and not ready_candidate:
+            continue
+        _exact_keys(
+            errors,
+            authority,
+            set(expected_keys),
+            f"overlay_authority_{role}",
+        )
+
     checkpoint = _exact_mapping(
         errors,
         value,
@@ -331,12 +359,24 @@ def validate_session_overlay_contract(value: Any) -> list[str]:
         _SECTION_KEYS["checkpoint"],
     )
     lineage = _exact_mapping(errors, checkpoint, "lineage", _SECTION_KEYS["lineage"])
+    parent_checkpoint_authority = checkpoint.get("parent_checkpoint_authority")
+    if checkpoint.get("mode") == "RESUME":
+        if parent_checkpoint_authority is not None or ready_candidate:
+            _exact_keys(
+                errors,
+                parent_checkpoint_authority,
+                set(_TERMINAL_AUTHORITY_KEYS),
+                "overlay_parent_checkpoint_authority",
+            )
+    elif parent_checkpoint_authority is not None:
+        errors.append("overlay_parent_checkpoint_authority_forbidden_for_fresh_start")
+
     resource = _exact_mapping(errors, value, "resource", _SECTION_KEYS["resource"])
     output = _exact_mapping(errors, value, "output", _SECTION_KEYS["output"])
     for section in ("evaluation", "runtime"):
         _exact_mapping(errors, value, section, _SECTION_KEYS[section])
 
-    if value.get("status") == "READY_CANDIDATE":
+    if ready_candidate:
         _validate_ready_candidate_scalars(
             errors,
             scientific,
