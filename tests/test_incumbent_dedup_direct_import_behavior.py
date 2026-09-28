@@ -8,6 +8,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+
 class _LazyIndexed:
     _module: ModuleType | None = None
 
