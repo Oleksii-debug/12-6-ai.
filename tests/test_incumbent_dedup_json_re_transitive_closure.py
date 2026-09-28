@@ -1,12 +1,27 @@
 from __future__ import annotations
 
+import importlib
 import json
 import re
 from types import ModuleType
+from typing import Any
 
 import pytest
 
-from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+class _LazyIndexed:
+    _module: ModuleType | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        module = self._module
+        if module is None:
+            module = importlib.import_module(
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            )
+            self._module = module
+        return getattr(module, name)
+
+
+indexed = _LazyIndexed()
 
 
 def test_core_executor_bytes_are_preserved_exactly() -> None:
