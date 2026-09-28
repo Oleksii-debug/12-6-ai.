@@ -211,6 +211,7 @@ assert "twelve_six.data.pipeline" in mod._HISTORICAL_MATCHER_MODULES
 """
     )
 
+
 def test_incumbent_runtime_attestation_precedes_reference_report_execution() -> None:
     _run_isolated(
         """
