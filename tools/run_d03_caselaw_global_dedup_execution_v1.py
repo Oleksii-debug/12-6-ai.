@@ -122,6 +122,9 @@ def verify_repository_authority() -> dict[str, str]:
 
 
 _HISTORICAL_MATCHER_MODULES = (
+    # V5 imports pipeline during exact V7 graph reconstruction. Current main no
+    # longer carries this path, so require the module to originate from V7 too.
+    "twelve_six.data.pipeline",
     "twelve_six.data._data232_decontamination_matching",
     "twelve_six.data.cross_source_capacity_audit",
     "twelve_six.data.cross_source_capacity_audit_v3",
