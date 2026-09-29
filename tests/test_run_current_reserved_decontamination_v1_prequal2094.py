@@ -25,6 +25,13 @@ def test_clean_exact_checkout_matches_isolated_behavior_closure() -> None:
     assert runner.require_exact_implementation(ROOT, head) == head
 
 
+def test_warmed_code_snapshot_still_matches_isolated_behavior_closure() -> None:
+    head = _head()
+    for _ in range(256):
+        runner._code_sha256(runner._normalized_code.__code__)
+    assert runner.require_exact_implementation(ROOT, head) == head
+
+
 def test_matching_re_substitution_is_rejected_before_payload_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
