@@ -462,6 +462,20 @@ def test_fresh_process_restores_exact_d05_d04_trainer_and_rng_state(
         },
     }
 
+    _step(trainer, 1)
+    with pytest.raises(RecoveryPointerUpdateInterrupted, match="after D04 sidecar"):
+        _publish(
+            root,
+            model,
+            trainer,
+            cfg,
+            failpoint="after_sidecar_before_pointer",
+        )
+    still_current = resolve_recovery_generation(root, expected_reference=reference)
+    assert still_current.reference["checkpoint_id"] == reference["checkpoint_id"]
+    assert (root / "generations/generation-00000002").is_dir()
+    assert (root / "resume-states/generation-00000002").is_dir()
+
     reference_path = tmp_path / "reference.json"
     reference_path.write_text(
         json.dumps(reference, sort_keys=True, separators=(",", ":")),
