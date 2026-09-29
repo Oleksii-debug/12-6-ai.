@@ -247,10 +247,14 @@ def _outer_survivor_authority(
         for source_id in survivor_ids
         if by_id[source_id].get("source_family") == caselaw.SOURCE_FAMILY
     ]
-    caselaw_survivor_bytes = sum(
-        int(by_id[source_id]["declared_capacity_bytes"])
-        for source_id in caselaw_survivors
-    )
+    caselaw_survivor_bytes = 0
+    for source_id in caselaw_survivors:
+        declared_capacity = by_id[source_id].get("declared_capacity_bytes")
+        _require(
+            type(declared_capacity) is int and declared_capacity >= 0,
+            "Caselaw survivor declared capacity must be exact nonnegative int",
+        )
+        caselaw_survivor_bytes += declared_capacity
     core = {
         "schema_version": SURVIVOR_SCHEMA,
         "selection_projection_schema": selection_projection.get("schema_version"),
@@ -301,7 +305,7 @@ def _outer_survivor_authority(
             "final_test_outcomes_read": False,
             "paid_compute_used": False,
             "foreign_pretrained_weights_used": False,
-            "external_llm_or_api_used_for_data_or_intelligence": False,
+            "whole_corpus_external_llm_cleanliness_claimed": False,
         },
     }
     return {**core, "survivor_authority_sha256": _sha256(_canonical(core))}
@@ -494,7 +498,7 @@ def execute(
             "final_test_outcomes_read": False,
             "paid_compute_used": False,
             "foreign_pretrained_weights_used": False,
-            "external_llm_or_api_used_for_data_or_intelligence": False,
+            "whole_corpus_external_llm_cleanliness_claimed": False,
         },
     }
     evidence = {

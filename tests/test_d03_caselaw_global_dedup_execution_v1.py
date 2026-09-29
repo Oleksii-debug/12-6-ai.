@@ -223,3 +223,66 @@ reference = source.index("reference = matcher.audit_payloads(inventory, payloads
 assert attest < reference
 """
     )
+
+
+def test_survivor_wrapper_rejects_nonexact_declared_capacity() -> None:
+    _run_isolated(
+        """
+for bad in (True, 11.0, "11", -1):
+    try:
+        mod._outer_survivor_authority(
+            {
+                "report_sha256": "1" * 64,
+                "sources": [
+                    row(
+                        "caselaw:a",
+                        family=mod.caselaw.SOURCE_FAMILY,
+                        size=bad,
+                    )
+                ],
+            },
+            {
+                "schema_version": "fixture",
+                "survivor_authority_sha256": "2" * 64,
+                "survivor_source_ids": ["caselaw:a"],
+            },
+        )
+    except mod.CaselawGlobalDedupError as exc:
+        assert "exact nonnegative int" in str(exc)
+    else:
+        raise AssertionError(f"nonexact declared capacity accepted: {bad!r}")
+"""
+    )
+
+
+def test_provenance_truth_uses_scoped_nonclaim() -> None:
+    _run_isolated(
+        """
+import inspect
+
+authority = mod._outer_survivor_authority(
+    {
+        "report_sha256": "1" * 64,
+        "sources": [
+            row(
+                "caselaw:a",
+                family=mod.caselaw.SOURCE_FAMILY,
+                size=11,
+            )
+        ],
+    },
+    {
+        "schema_version": "fixture",
+        "survivor_authority_sha256": "2" * 64,
+        "survivor_source_ids": ["caselaw:a"],
+    },
+)
+truth = authority["truth_boundary"]
+assert truth["whole_corpus_external_llm_cleanliness_claimed"] is False
+assert "external_llm_or_api_used_for_data_or_intelligence" not in truth
+
+execute_source = inspect.getsource(mod.execute)
+assert '"whole_corpus_external_llm_cleanliness_claimed": False' in execute_source
+assert '"external_llm_or_api_used_for_data_or_intelligence": False' not in execute_source
+"""
+    )
