@@ -54,10 +54,14 @@ def _copy_checkout_authority_files(tmp_path: Path) -> None:
         target.write_bytes(source.read_bytes())
 
 
-def test_v2_receipt_fails_closed_until_external_capture_is_published() -> None:
-    receipt.validate_probe_artifacts(ROOT)
-    with pytest.raises(ValueError, match="capture authority is not published"):
-        receipt.validate_receipt(_minimal_candidate(), root=ROOT)
+def test_v2_terminal_receipt_validates_published_capture_authority() -> None:
+    assert receipt.CAPTURE_AUTHORITY_PUBLISHED is True
+    candidate = receipt.validate_receipt_file(
+        ROOT / receipt.REPORT_RELATIVE_PATH,
+        root=ROOT,
+    )
+    assert candidate["capture"] == receipt.EXPECTED_CAPTURE
+    assert candidate["probe_report_sha256"] == receipt.EXPECTED_PROBE_REPORT_SHA256
 
 
 def test_v2_receipt_does_not_top_level_import_probe_before_blob_check() -> None:
