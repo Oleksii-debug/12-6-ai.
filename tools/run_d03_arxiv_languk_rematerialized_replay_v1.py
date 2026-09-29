@@ -451,12 +451,22 @@ def _build_current_clean_replay(
     )
 
     intake = _load_module("_pr1851_source_intake", ROOT / CURRENT_INTAKE_REL)
-    extension_rows, extension_payloads, intake_receipt = intake.build_post_admission_intake(
-        arxiv_authority_raw=_repo_rooted(args.arxiv_authority).read_bytes(),
-        arxiv_candidate_raw=arxiv_candidate.read_bytes(),
-        languk_authority_raw=_repo_rooted(args.languk_authority).read_bytes(),
-        languk_candidate_raw=languk_candidate.read_bytes(),
+    arxiv_rows, arxiv_payloads, arxiv_receipt = intake._prepare_source(
+        intake.ARXIV,
+        authority_raw=_repo_rooted(args.arxiv_authority).read_bytes(),
+        candidate_raw=arxiv_candidate.read_bytes(),
     )
+    languk_rows, languk_payloads, languk_receipt = intake._prepare_source(
+        intake.LANGUK,
+        authority_raw=_repo_rooted(args.languk_authority).read_bytes(),
+        candidate_raw=languk_candidate.read_bytes(),
+    )
+    source_overlap = set(arxiv_payloads) & set(languk_payloads)
+    if source_overlap:
+        raise RematerializationError("ArXiv/LangUK source-local matcher id collision")
+    extension_rows = [*arxiv_rows, *languk_rows]
+    extension_payloads = {**arxiv_payloads, **languk_payloads}
+    source_receipts = [arxiv_receipt, languk_receipt]
     if len(extension_rows) != EXPECTED_EXTENSION_SOURCE_COUNT:
         raise RematerializationError("ArXiv+LangUK extension source-count drift")
     if sum(len(raw) for raw in extension_payloads.values()) != EXPECTED_EXTENSION_BYTES:
@@ -514,7 +524,7 @@ def _build_current_clean_replay(
             "performance_executor_product_pr": CURRENT_INDEXED_EXECUTOR_PR,
             "performance_equivalent_indexing": True,
         },
-        "post_admission_sources": copy.deepcopy(intake_receipt["sources"]),
+        "post_admission_sources": copy.deepcopy(source_receipts),
         "source_vector": source_vector,
         "dedup_v3": copy.deepcopy(dict(dedup)),
         "raw_text_emitted": False,
