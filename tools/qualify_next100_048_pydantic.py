@@ -26,6 +26,10 @@ HISTORICAL_AUTHORITY_IDENTITY_SHA256 = (
     "a25e618f4e26dd7c0df643768ab867a7ae080ca6ad2e5a88bda89bc757ae183a"
 )
 PYDANTIC_POLICY_BLOB = "504ef934145ed0711743f781dc9f47b07ad7accd"
+TERMINAL_AUTHORITY_BLOB = "8595dfb6c1028960c0274b22c8390a7e238e2235"
+TERMINAL_AUTHORITY_PATH = Path(
+    "evidence/next100-048/pydantic-terminal-source-authority.json"
+)
 DATA227_HEAD = "8ebdb2e132ed7bae5245e9d4c140752640ab9885"
 DATA227_POLICY_BLOB = "0ce5223a1cade10031899bf27348a1a65121d4c6"
 DATA227_POLICY_PATH = Path("configs/data/data227_code_rights_policy_v1.json")
@@ -433,6 +437,151 @@ def _verify_self_hash(value: dict[str, Any]) -> None:
         json.dumps(unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
     ).encode("utf-8")
     require(supplied == sha256(canonical), "authority self-hash mismatch")
+
+
+def verify_historical_terminal_authority_bytes(raw: bytes) -> None:
+    """Verify the immutable terminal authority as exact bytes plus critical semantics."""
+    require(
+        git_blob_sha1(raw) == TERMINAL_AUTHORITY_BLOB,
+        "historical terminal authority blob drift",
+    )
+    value = _load_json_bytes(raw, context="historical terminal authority")
+    _require_keys(
+        value,
+        {
+            "authority_scope",
+            "concurrency",
+            "evaluation_reservation_boundary",
+            "execution_profile",
+            "generated_and_noncapacity_material",
+            "license",
+            "local_validation_provenance",
+            "schema_version",
+            "selected_implementation_objects",
+            "source_family_accounting",
+            "subject",
+            "terminal_verdict",
+            "validation",
+            "worker_id",
+        },
+        "historical terminal authority",
+    )
+    require(
+        value.get("schema_version")
+        == "12-6.next100-048-pydantic-terminal-source-authority.v1",
+        "historical terminal schema drift",
+    )
+    require(value.get("worker_id") == WORKER, "historical terminal worker drift")
+    require(
+        value.get("authority_scope") == "EXTERNAL_REAL_CODE_SOURCE_AUTHORITY_ONLY",
+        "historical terminal scope drift",
+    )
+    require(value.get("execution_profile") == "LOCAL_FREE", "historical terminal execution drift")
+    require(value.get("terminal_verdict") == "ADMIT", "historical terminal verdict drift")
+
+    subject = value.get("subject")
+    require(type(subject) is dict, "historical terminal subject missing")
+    require(
+        subject.get("repository") == "https://github.com/pydantic/pydantic"
+        and subject.get("source_family") == "github:pydantic/pydantic"
+        and subject.get("upstream_tag") == "v2.13.4"
+        and subject.get("tag_object_sha1") == TAG_OBJECT
+        and subject.get("tag_signature_status") == "UNSIGNED"
+        and subject.get("upstream_commit") == UPSTREAM_COMMIT,
+        "historical terminal subject drift",
+    )
+
+    license_authority = value.get("license")
+    require(type(license_authority) is dict, "historical terminal license missing")
+    require(
+        license_authority.get("license_id") == "MIT"
+        and license_authority.get("path") == "LICENSE"
+        and license_authority.get("git_blob_sha1") == LICENSE_BLOB
+        and license_authority.get("sha256") == LICENSE_SHA256
+        and type(license_authority.get("size_bytes")) is int
+        and license_authority.get("size_bytes") == 1129
+        and license_authority.get("model_training_authority") == "ALLOWED"
+        and license_authority.get("derivative_processing_authority") == "ALLOWED"
+        and license_authority.get("redistribution_authority")
+        == "ALLOWED_WITH_MIT_NOTICE",
+        "historical terminal license drift",
+    )
+
+    objects = value.get("selected_implementation_objects")
+    require(
+        type(objects) is list and len(objects) == len(EXPECTED_OBJECTS),
+        "historical terminal object cardinality drift",
+    )
+    expected_by_path = {
+        path: (blob, size, digest)
+        for _, path, blob, size, digest in EXPECTED_OBJECTS
+    }
+    seen_paths: set[str] = set()
+    for row in objects:
+        require(type(row) is dict, "historical terminal object row must be object")
+        path = row.get("path")
+        require(type(path) is str and path in expected_by_path, "historical terminal path drift")
+        require(path not in seen_paths, "historical terminal duplicate path")
+        seen_paths.add(path)
+        blob, size, digest = expected_by_path[path]
+        require(
+            row.get("git_blob_sha1") == blob
+            and type(row.get("size_bytes")) is int
+            and row.get("size_bytes") == size
+            and row.get("raw_sha256") == digest
+            and row.get("normalized_sha256") == digest
+            and row.get("normalization") == "STRICT_UTF8_IDENTITY_PRESERVE_V1"
+            and row.get("ast_parse") == "PASS"
+            and row.get("secret_scan") == "PASS"
+            and row.get("privacy_scan") == "PASS"
+            and row.get("generated") is False
+            and row.get("capacity_counted") is True
+            and row.get("authorship_class") == "UPSTREAM_AUTHORED_IMPLEMENTATION",
+            f"historical terminal object drift: {path}",
+        )
+    require(seen_paths == set(expected_by_path), "historical terminal object set drift")
+
+    accounting = value.get("source_family_accounting")
+    require(type(accounting) is dict, "historical terminal accounting missing")
+    require(
+        accounting.get("admitted_family") == "github:pydantic/pydantic"
+        and type(accounting.get("admitted_authored_implementation_bytes")) is int
+        and accounting.get("admitted_authored_implementation_bytes") == 235_204
+        and type(accounting.get("predecessor_family_count")) is int
+        and accounting.get("predecessor_family_count") == 2
+        and accounting.get("predecessor_external_real_code_families")
+        == ["github:encode/httpx", "github:psf/requests"]
+        and type(accounting.get("post_admission_family_count")) is int
+        and accounting.get("post_admission_family_count") == 3
+        and type(accounting.get("source_authority_family_delta")) is int
+        and accounting.get("source_authority_family_delta") == 1
+        and accounting.get("corpus_inclusion") is False
+        and accounting.get("current_training_corpus_mutation") is False
+        and accounting.get("training_exposure_created_by_this_authority") is False
+        and type(accounting.get("generated_capacity_delta_bytes")) is int
+        and accounting.get("generated_capacity_delta_bytes") == 0,
+        "historical terminal accounting drift",
+    )
+
+    evaluation = value.get("evaluation_reservation_boundary")
+    require(type(evaluation) is dict, "historical terminal evaluation boundary missing")
+    require(
+        evaluation.get("reservation_active_at_admission_check") is False
+        and evaluation.get("reserved_objects_at_admission_check") == []
+        and evaluation.get("overlap_with_reserved_objects") == [],
+        "historical terminal evaluation boundary drift",
+    )
+
+    generated = value.get("generated_and_noncapacity_material")
+    require(type(generated) is dict, "historical terminal generated boundary missing")
+    require(
+        type(generated.get("generated_capacity_credit_bytes")) is int
+        and generated.get("generated_capacity_credit_bytes") == 0
+        and type(generated.get("generated_selected_bytes")) is int
+        and generated.get("generated_selected_bytes") == 0
+        and generated.get("selected_generated_files") == [],
+        "historical terminal generated-capacity drift",
+    )
 
 
 def verify_historical_evidence(value: dict[str, Any]) -> None:

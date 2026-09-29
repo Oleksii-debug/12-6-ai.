@@ -15,6 +15,8 @@ def test_committed_pydantic_terminal_evidence_is_self_consistent() -> None:
     value = qualifier._load_json_bytes(path.read_bytes(), context=str(path))
 
     qualifier.verify_historical_evidence(value)
+    terminal_path = ROOT / qualifier.TERMINAL_AUTHORITY_PATH
+    qualifier.verify_historical_terminal_authority_bytes(terminal_path.read_bytes())
 
     predecessor = value["predecessor_code_authority"]
     assert predecessor["data227_head_sha"] == qualifier.DATA227_HEAD
@@ -442,3 +444,40 @@ def test_generated_v2_rejects_resealed_known_field_semantic_drift(
     _reseal_v2(value)
     with pytest.raises(qualifier.QualificationError, match=match):
         qualifier.verify_evidence(value, expected_source_sha="1" * 40)
+
+
+def test_terminal_authority_byte_or_semantic_substitution_fails_closed() -> None:
+    path = ROOT / qualifier.TERMINAL_AUTHORITY_PATH
+    raw = path.read_bytes()
+    value = qualifier._load_json_bytes(raw, context=str(path))
+    value["source_family_accounting"]["training_exposure_created_by_this_authority"] = True
+    changed = (
+        qualifier.json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    with pytest.raises(
+        qualifier.QualificationError,
+        match="historical terminal authority blob drift",
+    ):
+        qualifier.verify_historical_terminal_authority_bytes(changed)
+
+
+def test_terminal_authority_duplicate_json_key_fails_closed_after_blob_binding(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    raw = b'{"schema_version":"x","schema_version":"y"}'
+    monkeypatch.setattr(
+        qualifier,
+        "TERMINAL_AUTHORITY_BLOB",
+        qualifier.git_blob_sha1(raw),
+    )
+    with pytest.raises(
+        qualifier.QualificationError,
+        match="duplicate JSON key",
+    ):
+        qualifier.verify_historical_terminal_authority_bytes(raw)
