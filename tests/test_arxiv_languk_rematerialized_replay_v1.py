@@ -378,8 +378,7 @@ def test_build_retains_terminal_namespace_through_indexed_replay(
         fake_finish,
     )
 
-    args = _runner_args(tmp_path)
-    args.v7_root = v7_root
+    args = SimpleNamespace(v7_root=v7_root)
     try:
         report, survivors = REPLAY_RUNNER._build_current_clean_replay(
             args,
