@@ -71,11 +71,13 @@ def test_current_main_resource_probe_restores_torch_process_state() -> None:
 
 
 def test_process_hwm_unavailable_is_honest_and_valid(monkeypatch: pytest.MonkeyPatch) -> None:
+    actual_platform = probe.sys.platform
     monkeypatch.setattr(probe, "_resource", None)
     monkeypatch.setattr(probe.sys, "platform", "unsupported-platform")
     value, source = probe._process_hwm_mib_approx()
     assert value is None
     assert source == "unavailable"
+    monkeypatch.setattr(probe.sys, "platform", actual_platform)
 
     report = run_probe(ROOT, warmup_samples=0, measured_samples=1, intraop_threads=1)
     report["measurement"]["process_hwm_mib_approx"] = None
