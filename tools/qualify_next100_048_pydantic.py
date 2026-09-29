@@ -419,6 +419,10 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
     return {**core, "authority_identity_sha256": sha256(canonical)}
 
 
+def _require_keys(value: dict[str, Any], expected: set[str], context: str) -> None:
+    require(set(value) == expected, f"{context} schema is not closed")
+
+
 def _verify_self_hash(value: dict[str, Any]) -> None:
     supplied = value.get("authority_identity_sha256")
     unsigned = dict(value)
@@ -478,13 +482,46 @@ def verify_evidence(
         "expected source SHA must be lowercase 40-hex",
     )
     _verify_self_hash(value)
+    _require_keys(
+        value,
+        {
+            "schema_version",
+            "worker_id",
+            "status",
+            "authority",
+            "worker_source_sha",
+            "candidate_policy_authority",
+            "predecessor_code_authority",
+            "upstream",
+            "license",
+            "objects",
+            "checks",
+            "source_family_accounting",
+            "excluded_capacity",
+            "evaluation_boundary",
+            "execution",
+            "terminal_decision",
+            "authority_identity_sha256",
+        },
+        "generated evidence",
+    )
     require(value.get("schema_version") == SCHEMA, "generated evidence schema drift")
+    require(value.get("worker_id") == WORKER, "generated worker id drift")
+    require(
+        value.get("authority") == "EXTERNAL_REAL_CODE_SOURCE_TERMINAL_LOCAL_FREE",
+        "generated authority class drift",
+    )
     require(
         value.get("worker_source_sha") == expected_source_sha,
         "generated worker source SHA drift",
     )
     candidate_policy = value.get("candidate_policy_authority")
     require(type(candidate_policy) is dict, "candidate policy authority missing")
+    _require_keys(
+        candidate_policy,
+        {"schema_version", "git_blob_sha1"},
+        "candidate policy authority",
+    )
     require(
         candidate_policy
         == {
@@ -495,6 +532,17 @@ def verify_evidence(
     )
     predecessor = value.get("predecessor_code_authority")
     require(type(predecessor) is dict, "generated predecessor authority missing")
+    _require_keys(
+        predecessor,
+        {
+            "data227_head_sha",
+            "rights_policy_git_blob_sha1",
+            "near_duplicate_policy",
+            "source_family_count",
+            "source_families",
+        },
+        "generated predecessor authority",
+    )
     require(
         predecessor.get("data227_head_sha") == DATA227_HEAD,
         "generated DATA-227 head drift",
@@ -523,6 +571,19 @@ def verify_evidence(
     )
     upstream = value.get("upstream")
     require(type(upstream) is dict, "generated upstream authority missing")
+    _require_keys(
+        upstream,
+        {
+            "repository",
+            "tag",
+            "tag_object_sha1",
+            "commit",
+            "tag_signature_status",
+            "repository_fork",
+            "repository_mirror",
+        },
+        "generated upstream authority",
+    )
     require(
         upstream.get("repository") == "https://github.com/pydantic/pydantic"
         and upstream.get("commit") == UPSTREAM_COMMIT
@@ -531,6 +592,20 @@ def verify_evidence(
     )
     license_authority = value.get("license")
     require(type(license_authority) is dict, "generated license authority missing")
+    _require_keys(
+        license_authority,
+        {
+            "license_id",
+            "path",
+            "git_blob_sha1",
+            "sha256",
+            "model_training",
+            "derivatives",
+            "redistribution",
+            "notice_required",
+        },
+        "generated license authority",
+    )
     require(
         license_authority.get("license_id") == "MIT"
         and license_authority.get("git_blob_sha1") == LICENSE_BLOB
@@ -549,6 +624,29 @@ def verify_evidence(
     seen_ids: set[str] = set()
     for row in objects:
         require(type(row) is dict, "generated object row must be an object")
+        _require_keys(
+            row,
+            {
+                "source_id",
+                "source_family",
+                "commit",
+                "path",
+                "git_blob_sha1",
+                "size_bytes",
+                "raw_sha256",
+                "normalized_sha256",
+                "normalization_policy",
+                "parse_validity",
+                "secret_scan",
+                "privacy_credential_scan",
+                "generated_material",
+                "authorship_class",
+                "capacity_counted",
+                "training_purpose_decision",
+                "redistribution_decision",
+            },
+            "generated object row",
+        )
         source_id = row.get("source_id")
         require(type(source_id) is str and source_id in expected_rows, "generated source id drift")
         require(source_id not in seen_ids, "generated duplicate source id")
@@ -578,6 +676,15 @@ def verify_evidence(
     require(seen_ids == set(expected_rows), "generated object set drift")
     evaluation = value.get("evaluation_boundary")
     require(type(evaluation) is dict, "generated evaluation boundary missing")
+    _require_keys(
+        evaluation,
+        {
+            "eval289_head_sha",
+            "active_reserved_objects",
+            "selected_objects_overlap_active_reservation",
+        },
+        "generated evaluation boundary",
+    )
     require(
         evaluation.get("eval289_head_sha") == EVAL289_HEAD
         and evaluation.get("active_reserved_objects") == 0
@@ -587,6 +694,23 @@ def verify_evidence(
     )
     checks = value.get("checks")
     require(type(checks) is dict, "generated checks boundary missing")
+    _require_keys(
+        checks,
+        {
+            "strict_utf8_identity_normalization",
+            "parse_validity",
+            "secret_privacy",
+            "generated_selected_count",
+            "generated_selected_bytes",
+            "exact_duplicate_sha256",
+            "near_duplicate_threshold",
+            "near_duplicate_pairs",
+            "max_observed_pair",
+            "max_observed_jaccard",
+            "current_eval_reservation_active_at_eval289_head",
+        },
+        "generated checks boundary",
+    )
     require(
         checks.get("strict_utf8_identity_normalization") == "PASS"
         and checks.get("parse_validity") == "PASS_4_OF_4"
@@ -610,6 +734,20 @@ def verify_evidence(
     require(value.get("status") == "ADMIT", "terminal status is not ADMIT")
     accounting = value.get("source_family_accounting")
     require(type(accounting) is dict, "source-family accounting missing")
+    _require_keys(
+        accounting,
+        {
+            "new_source_family",
+            "independent_new_family_count",
+            "predecessor_family_count",
+            "resulting_family_count_if_registered",
+            "selected_implementation_object_count",
+            "selected_authored_capacity_bytes",
+            "generated_capacity_bytes",
+            "generated_capacity_objects",
+        },
+        "generated source-family accounting",
+    )
     require(
         type(accounting.get("selected_implementation_object_count")) is int
         and accounting["selected_implementation_object_count"] == 4,
@@ -636,6 +774,17 @@ def verify_evidence(
     )
     execution = value.get("execution")
     require(type(execution) is dict, "execution boundary missing")
+    _require_keys(
+        execution,
+        {
+            "class",
+            "paid_compute_used",
+            "model_training_executed",
+            "network_use",
+            "github_api_authenticated",
+        },
+        "generated execution boundary",
+    )
     require(execution.get("class") == "LOCAL_FREE", "execution class drift")
     require(execution.get("paid_compute_used") is False, "paid compute used")
     require(execution.get("model_training_executed") is False, "model training executed")

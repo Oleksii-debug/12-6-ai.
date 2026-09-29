@@ -430,3 +430,42 @@ def test_generated_v2_rejects_resealed_aggregate_boundary_substitution(
     _reseal_v2(value)
     with pytest.raises(qualifier.QualificationError, match=match):
         qualifier.verify_evidence(value, expected_source_sha="1" * 40)
+
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        (
+            lambda value: value.__setitem__(
+                "canonical_capacity_credit_bytes",
+                235_204,
+            ),
+            "generated evidence schema is not closed",
+        ),
+        (
+            lambda value: value["source_family_accounting"].__setitem__(
+                "training_authorized_bytes",
+                235_204,
+            ),
+            "generated source-family accounting schema is not closed",
+        ),
+        (
+            lambda value: value["objects"][0].__setitem__(
+                "evaluation_eligible",
+                True,
+            ),
+            "generated object row schema is not closed",
+        ),
+    ],
+)
+def test_generated_v2_rejects_resealed_unknown_authority_fields(
+    mutation, match: str
+) -> None:
+    value = _minimal_valid_v2_packet()
+    value["execution"]["network_use"] = "bounded immutable-source qualification only"
+    value["execution"]["github_api_authenticated"] = False
+    mutation(value)
+    _reseal_v2(value)
+    with pytest.raises(qualifier.QualificationError, match=match):
+        qualifier.verify_evidence(value, expected_source_sha="1" * 40)
