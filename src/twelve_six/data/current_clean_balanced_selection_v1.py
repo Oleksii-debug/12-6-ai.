@@ -157,7 +157,10 @@ def _exact_record_subset(
         raise ProjectionError(f"allocation[{family}] must be positive")
 
     ordered = [dict(row) for row in sorted(rows, key=lambda item: str(item["record_id"]))]
-    total = sum(_require_nonnegative_int(row.get("payload_bytes"), "payload_bytes") for row in ordered)
+    total = sum(
+        _require_nonnegative_int(row.get("payload_bytes"), "payload_bytes")
+        for row in ordered
+    )
     if target > total:
         raise ProjectionError(f"allocation[{family}] exceeds authenticated family capacity")
     if target == total:
