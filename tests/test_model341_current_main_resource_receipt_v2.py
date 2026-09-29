@@ -191,3 +191,181 @@ def test_v2_authority_payload_changes_under_coherent_loss_reseal() -> None:
         receipt.canonical_json_sha256(receipt.measurement_authority_payload(resealed))
         != original
     )
+
+
+class _NoopVerifiedProbe:
+    @staticmethod
+    def validate_probe(_report: dict) -> None:
+        return None
+
+
+def _publish_test_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate: dict,
+) -> str:
+    report_sha = receipt.canonical_json_sha256(candidate["probe_report"])
+    candidate["probe_report_sha256"] = report_sha
+    monkeypatch.setattr(receipt, "CAPTURE_AUTHORITY_PUBLISHED", True)
+    monkeypatch.setattr(receipt, "EXPECTED_CAPTURE", copy.deepcopy(candidate["capture"]))
+    monkeypatch.setattr(receipt, "EXPECTED_PROBE_REPORT_SHA256", report_sha)
+    authority_sha = receipt.canonical_json_sha256(
+        receipt.measurement_authority_payload(candidate)
+    )
+    monkeypatch.setattr(
+        receipt,
+        "PREPUBLISHED_MEASUREMENT_AUTHORITY_SHA256",
+        authority_sha,
+    )
+    monkeypatch.setattr(
+        receipt,
+        "_load_verified_probe_module",
+        lambda _root: _NoopVerifiedProbe(),
+    )
+    return authority_sha
+
+
+def test_v2_prepublished_authority_rejects_coherent_timing_reseal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = _minimal_candidate()
+    candidate["capture"] = {"run_id": 1, "job_id": 2, "head_sha": "a" * 40}
+    candidate["probe_report"] = {
+        "measurement": {
+            "elapsed_seconds": [1.0, 1.0, 1.0],
+            "median_forward_loss_backward_seconds": 1.0,
+            "median_causal_targets_per_second": 127.0,
+        },
+        "planning": {
+            "mechanics_only_lower_bound_seconds_example": 20_000_000 / 127.0,
+            "mechanics_only_lower_bound_hours_example": 20_000_000 / 127.0 / 3600.0,
+        },
+    }
+    authority_sha = _publish_test_authority(monkeypatch, candidate)
+    receipt.validate_receipt(candidate, root=ROOT)
+
+    resealed = copy.deepcopy(candidate)
+    resealed["probe_report"]["measurement"]["elapsed_seconds"] = [2.0, 2.0, 2.0]
+    resealed["probe_report"]["measurement"]["median_forward_loss_backward_seconds"] = 2.0
+    resealed["probe_report"]["measurement"]["median_causal_targets_per_second"] = 63.5
+    resealed["probe_report"]["planning"]["mechanics_only_lower_bound_seconds_example"] = (
+        20_000_000 / 63.5
+    )
+    resealed["probe_report"]["planning"]["mechanics_only_lower_bound_hours_example"] = (
+        20_000_000 / 63.5 / 3600.0
+    )
+    resealed_sha = receipt.canonical_json_sha256(resealed["probe_report"])
+    resealed["probe_report_sha256"] = resealed_sha
+    monkeypatch.setattr(receipt, "EXPECTED_PROBE_REPORT_SHA256", resealed_sha)
+    assert receipt.PREPUBLISHED_MEASUREMENT_AUTHORITY_SHA256 == authority_sha
+
+    with pytest.raises(
+        ValueError,
+        match="prepublished v2 measurement authority mismatch",
+    ):
+        receipt.validate_receipt(resealed, root=ROOT)
+
+
+def test_v2_prepublished_authority_rejects_coherent_loss_reseal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = _minimal_candidate()
+    candidate["capture"] = {"run_id": 1}
+    candidate["probe_report"] = {
+        "measurement": {
+            "synthetic_loss_samples": [5.0, 5.0, 5.0],
+            "synthetic_loss_median": 5.0,
+        }
+    }
+    _publish_test_authority(monkeypatch, candidate)
+    receipt.validate_receipt(candidate, root=ROOT)
+
+    resealed = copy.deepcopy(candidate)
+    resealed["probe_report"]["measurement"]["synthetic_loss_samples"] = [6.0, 6.0, 6.0]
+    resealed["probe_report"]["measurement"]["synthetic_loss_median"] = 6.0
+    resealed_sha = receipt.canonical_json_sha256(resealed["probe_report"])
+    resealed["probe_report_sha256"] = resealed_sha
+    monkeypatch.setattr(receipt, "EXPECTED_PROBE_REPORT_SHA256", resealed_sha)
+
+    with pytest.raises(
+        ValueError,
+        match="prepublished v2 measurement authority mismatch",
+    ):
+        receipt.validate_receipt(resealed, root=ROOT)
+
+
+def test_v2_prepublished_authority_rejects_equal_fingerprint_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = _minimal_candidate()
+    candidate["capture"] = {"run_id": 1}
+    candidate["probe_report"] = {
+        "measurement": {
+            "parameter_fingerprint_before_sha256": "1" * 64,
+            "parameter_fingerprint_after_sha256": "1" * 64,
+            "parameter_fingerprint_unchanged": True,
+        }
+    }
+    _publish_test_authority(monkeypatch, candidate)
+    receipt.validate_receipt(candidate, root=ROOT)
+
+    resealed = copy.deepcopy(candidate)
+    resealed["probe_report"]["measurement"]["parameter_fingerprint_before_sha256"] = "0" * 64
+    resealed["probe_report"]["measurement"]["parameter_fingerprint_after_sha256"] = "0" * 64
+    resealed_sha = receipt.canonical_json_sha256(resealed["probe_report"])
+    resealed["probe_report_sha256"] = resealed_sha
+    monkeypatch.setattr(receipt, "EXPECTED_PROBE_REPORT_SHA256", resealed_sha)
+
+    with pytest.raises(
+        ValueError,
+        match="prepublished v2 measurement authority mismatch",
+    ):
+        receipt.validate_receipt(resealed, root=ROOT)
+
+
+def test_v2_prepublished_authority_rejects_capture_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = _minimal_candidate()
+    candidate["capture"] = {"run_id": 1, "job_id": 2}
+    candidate["probe_report"] = {"measurement": {"value": 1}}
+    _publish_test_authority(monkeypatch, candidate)
+    receipt.validate_receipt(candidate, root=ROOT)
+
+    resealed = copy.deepcopy(candidate)
+    resealed["capture"]["run_id"] = 999
+    monkeypatch.setattr(receipt, "EXPECTED_CAPTURE", copy.deepcopy(resealed["capture"]))
+
+    with pytest.raises(
+        ValueError,
+        match="prepublished v2 measurement authority mismatch",
+    ):
+        receipt.validate_receipt(resealed, root=ROOT)
+
+
+def test_v2_receipt_rejects_bad_authority_before_loading_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = _minimal_candidate()
+    candidate["capture"] = {"run_id": 1}
+    candidate["probe_report"] = {"measurement": {"value": 1}}
+    _publish_test_authority(monkeypatch, candidate)
+    candidate["probe_report"]["measurement"]["value"] = 2
+    resealed_sha = receipt.canonical_json_sha256(candidate["probe_report"])
+    candidate["probe_report_sha256"] = resealed_sha
+    monkeypatch.setattr(receipt, "EXPECTED_PROBE_REPORT_SHA256", resealed_sha)
+
+    loaded = False
+
+    def forbidden_loader(_root: Path):
+        nonlocal loaded
+        loaded = True
+        raise AssertionError("probe must not load before authority verification")
+
+    monkeypatch.setattr(receipt, "_load_verified_probe_module", forbidden_loader)
+
+    with pytest.raises(
+        ValueError,
+        match="prepublished v2 measurement authority mismatch",
+    ):
+        receipt.validate_receipt(candidate, root=ROOT)
+    assert loaded is False
