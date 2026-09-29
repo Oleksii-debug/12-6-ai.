@@ -33,22 +33,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python -m twelve_six.ci_workflow_policy --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: ruff check src tests
-      - name: Run shared suite excluding loader-attestation isolation group
-        run: |
-          pytest -q \
-            --ignore=tests/test_incumbent_dedup_direct_import_behavior.py \
-            --ignore=tests/test_incumbent_dedup_imported_member_closure.py \
-            --ignore=tests/test_incumbent_dedup_indexed_execution.py \
-            --ignore=tests/test_incumbent_dedup_json_re_transitive_closure.py \
-            --ignore=tests/test_incumbent_dedup_runtime_closure.py
-      - name: Run incumbent loader-attestation suite in a fresh process
-        run: |
-          pytest -q \
-            tests/test_incumbent_dedup_direct_import_behavior.py \
-            tests/test_incumbent_dedup_imported_member_closure.py \
-            tests/test_incumbent_dedup_indexed_execution.py \
-            tests/test_incumbent_dedup_json_re_transitive_closure.py \
-            tests/test_incumbent_dedup_runtime_closure.py
+      - run: pytest -q
       - name: "#1801 — execute EVAL-647 overlap on exact retained corpus"
         if: github.event_name == 'pull_request' && github.head_ref == 'd06/eval647-code-selection-1640'
         env:
