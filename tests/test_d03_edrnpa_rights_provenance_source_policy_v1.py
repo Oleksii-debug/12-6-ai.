@@ -32,6 +32,86 @@ def _reject(payload: dict) -> None:
         mod.validate_policy(payload, root=ROOT)
 
 
+def _reject_raw(tmp_path: Path, raw: str) -> None:
+    path = tmp_path / "policy.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(mod.EdrnpaSourcePolicyError):
+        mod.load_policy(path)
+
+
+def test_exact_raw_source_policy_loads_strictly() -> None:
+    loaded = mod.load_policy(
+        ROOT / "configs/data/d03_edrnpa_rights_provenance_source_policy_v1.json"
+    )
+    assert loaded == _base()
+
+
+@pytest.mark.parametrize(
+    ("needle", "duplicate"),
+    [
+        (
+            '  "execution_profile": "LOCAL_FREE",',
+            '  "execution_profile": "REMOTE",\n'
+            '  "execution_profile": "LOCAL_FREE",',
+        ),
+        (
+            '    "parent_product_pr": 910,',
+            '    "parent_product_pr": 1,\n'
+            '    "parent_product_pr": 910,',
+        ),
+        (
+            '    "dataset_license_alone_sufficient_for_payload_admission": false,',
+            '    "dataset_license_alone_sufficient_for_payload_admission": true,\n'
+            '    "dataset_license_alone_sufficient_for_payload_admission": false,',
+        ),
+        (
+            '    "training_authorized_bytes": 0,',
+            '    "training_authorized_bytes": 1,\n'
+            '    "training_authorized_bytes": 0,',
+        ),
+    ],
+)
+def test_raw_duplicate_members_fail_closed_even_when_expected_value_is_last(
+    tmp_path: Path, needle: str, duplicate: str
+) -> None:
+    raw = (
+        ROOT / "configs/data/d03_edrnpa_rights_provenance_source_policy_v1.json"
+    ).read_text(encoding="utf-8")
+    assert needle in raw
+    _reject_raw(tmp_path, raw.replace(needle, duplicate, 1))
+
+
+def test_raw_decoded_equivalent_duplicate_member_fails_closed(tmp_path: Path) -> None:
+    raw = (
+        ROOT / "configs/data/d03_edrnpa_rights_provenance_source_policy_v1.json"
+    ).read_text(encoding="utf-8")
+    needle = (
+        '  "schema_version": '
+        '"12-6.d03-edrnpa-rights-provenance-source-policy.v1",'
+    )
+    duplicate = (
+        '  "schema\\u005fversion": "forbidden",\n'
+        + needle
+    )
+    assert needle in raw
+    _reject_raw(tmp_path, raw.replace(needle, duplicate, 1))
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"])
+def test_raw_nonfinite_or_overflow_number_fails_closed(
+    tmp_path: Path, token: str
+) -> None:
+    raw = (
+        ROOT / "configs/data/d03_edrnpa_rights_provenance_source_policy_v1.json"
+    ).read_text(encoding="utf-8")
+    needle = '    "source_bytes": 611865397,'
+    assert needle in raw
+    _reject_raw(
+        tmp_path,
+        raw.replace(needle, f'    "source_bytes": {token},', 1),
+    )
+
+
 def test_exact_source_policy_validates_and_keeps_zero_credit() -> None:
     result = mod.validate_policy(_base(), root=ROOT)
     assert result["admission_policy"]["decision_class"] == (
