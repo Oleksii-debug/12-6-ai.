@@ -174,10 +174,27 @@ def build_delegate_argv(
     return [*injected, *argv]
 
 
+def _bootstrap_error_result(exc: OSError | RuntimeError) -> dict[str, object]:
+    return {
+        "status": "ERROR",
+        "error": f"installed_operator_bootstrap_failed:{exc}",
+        "launch_authorized": False,
+        "training_authorized": False,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     """Delegate to the canonical operator after install-aware path injection."""
     supplied = list(sys.argv[1:] if argv is None else argv)
-    return windows_operator_preflight.main(build_delegate_argv(supplied))
+    try:
+        delegated = build_delegate_argv(supplied)
+    except (OSError, RuntimeError) as exc:
+        windows_operator_preflight._print_result(
+            _bootstrap_error_result(exc),
+            as_json=_has_option(supplied, "--json"),
+        )
+        return windows_operator_preflight.EXIT_ERROR
+    return windows_operator_preflight.main(delegated)
 
 
 if __name__ == "__main__":

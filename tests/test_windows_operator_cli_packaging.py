@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.windows_operator_cli as windows_operator_cli
 from twelve_six.windows_operator_cli import build_delegate_argv, resolve_default_paths
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -240,6 +241,79 @@ def test_delegate_argv_resolves_only_missing_installed_asset(tmp_path: Path) -> 
         str(owner_home / ".twelve-six-local"),
     ]
     assert delegated[4:] == supplied
+
+
+def test_main_fails_closed_on_bootstrap_runtime_error_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_bootstrap(_argv: object) -> list[str]:
+        raise RuntimeError("broken\nmetadata")
+
+    monkeypatch.setattr(windows_operator_cli, "build_delegate_argv", fail_bootstrap)
+
+    result = windows_operator_cli.main(["verify"])
+    captured = capsys.readouterr()
+
+    assert result == windows_operator_cli.windows_operator_preflight.EXIT_ERROR
+    assert captured.err == ""
+    assert "Traceback" not in captured.out
+    assert captured.out.splitlines() == [
+        "OPERATOR_STATUS: ERROR",
+        r"ERROR: installed_operator_bootstrap_failed:broken\x0ametadata",
+        "LAUNCH_AUTHORIZED: false",
+        "TRAINING_AUTHORIZED: false",
+    ]
+
+
+def test_main_bootstrap_os_error_is_one_line_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_bootstrap(_argv: object) -> list[str]:
+        raise OSError("record\nread")
+
+    monkeypatch.setattr(windows_operator_cli, "build_delegate_argv", fail_bootstrap)
+
+    result = windows_operator_cli.main(["--json", "verify"])
+    captured = capsys.readouterr()
+
+    assert result == windows_operator_cli.windows_operator_preflight.EXIT_ERROR
+    assert captured.err == ""
+    assert captured.out.count("\n") == 1
+    assert "\\n" in captured.out
+    assert json.loads(captured.out) == {
+        "error": "installed_operator_bootstrap_failed:record\nread",
+        "launch_authorized": False,
+        "status": "ERROR",
+        "training_authorized": False,
+    }
+
+
+def test_main_preserves_successful_delegate_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    delegated = ["--state-dir", "state", "verify"]
+    observed: list[list[str]] = []
+
+    monkeypatch.setattr(
+        windows_operator_cli,
+        "build_delegate_argv",
+        lambda argv: delegated,
+    )
+
+    def fake_preflight_main(argv: list[str]) -> int:
+        observed.append(argv)
+        return 41
+
+    monkeypatch.setattr(
+        windows_operator_cli.windows_operator_preflight,
+        "main",
+        fake_preflight_main,
+    )
+
+    assert windows_operator_cli.main(["verify"]) == 41
+    assert observed == [delegated]
 
 
 def test_pyproject_packages_exact_canonical_assets_and_one_cli() -> None:
