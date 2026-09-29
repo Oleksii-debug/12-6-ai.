@@ -95,6 +95,8 @@ def load_trainer_checkpoint(
     trainer: Any,
     strict_model: bool = True,
     restore_rng: bool = True,
+    expected_checkpoint_id: str | None = None,
+    expected_manifest_sha256: str | None = None,
     expected_git_sha: str | None = None,
     expected_model_spec_hash: str | None = None,
     expected_init_spec_hash: str | None = None,
@@ -121,6 +123,14 @@ def load_trainer_checkpoint(
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
+    _require_expected_sha256(
+        expected_checkpoint_id,
+        field="expected_checkpoint_id",
+    )
+    _require_expected_sha256(
+        expected_manifest_sha256,
+        field="expected_manifest_sha256",
+    )
     _validate_expected_canonical_binding(
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
@@ -133,6 +143,20 @@ def load_trainer_checkpoint(
 
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
+    if (
+        expected_checkpoint_id is not None
+        and manifest.get("checkpoint_id") != expected_checkpoint_id
+    ):
+        raise _core.CheckpointCompatibilityError(
+            "checkpoint_id does not match the independently expected D05 identity"
+        )
+    if (
+        expected_manifest_sha256 is not None
+        and verified.manifest_sha256 != expected_manifest_sha256
+    ):
+        raise _core.CheckpointCompatibilityError(
+            "manifest SHA-256 does not match the independently expected D05 identity"
+        )
     _assert_progress(
         _core,
         manifest,
