@@ -335,7 +335,10 @@ def _minimal_valid_v2_packet() -> dict[str, object]:
             "class": "LOCAL_FREE",
             "paid_compute_used": False,
             "model_training_executed": False,
+            "network_use": "bounded immutable-source qualification only",
+            "github_api_authenticated": False,
         },
+        "terminal_decision": qualifier.TERMINAL_DECISION,
     }
     _reseal_v2(value)
     return value
@@ -432,7 +435,6 @@ def test_generated_v2_rejects_resealed_aggregate_boundary_substitution(
         qualifier.verify_evidence(value, expected_source_sha="1" * 40)
 
 
-
 @pytest.mark.parametrize(
     ("mutation", "match"),
     [
@@ -465,6 +467,54 @@ def test_generated_v2_rejects_resealed_unknown_authority_fields(
     value = _minimal_valid_v2_packet()
     value["execution"]["network_use"] = "bounded immutable-source qualification only"
     value["execution"]["github_api_authenticated"] = False
+    mutation(value)
+    _reseal_v2(value)
+    with pytest.raises(qualifier.QualificationError, match=match):
+        qualifier.verify_evidence(value, expected_source_sha="1" * 40)
+
+
+def test_minimal_valid_v2_packet_passes_full_verifier() -> None:
+    value = _minimal_valid_v2_packet()
+    qualifier.verify_evidence(value, expected_source_sha="1" * 40)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        (
+            lambda value: value["upstream"].__setitem__(
+                "tag_signature_status",
+                "VERIFIED",
+            ),
+            "generated upstream identity drift",
+        ),
+        (
+            lambda value: value["license"].__setitem__(
+                "redistribution",
+                "ALLOWED",
+            ),
+            "generated license authority drift",
+        ),
+        (
+            lambda value: value["execution"].__setitem__(
+                "network_use",
+                "unbounded",
+            ),
+            "execution network-use drift",
+        ),
+        (
+            lambda value: value.__setitem__(
+                "terminal_decision",
+                "ADMIT EVERYTHING",
+            ),
+            "generated terminal decision drift",
+        ),
+    ],
+)
+def test_generated_v2_rejects_resealed_known_field_semantic_drift(
+    mutation, match: str
+) -> None:
+    value = _minimal_valid_v2_packet()
     mutation(value)
     _reseal_v2(value)
     with pytest.raises(qualifier.QualificationError, match=match):

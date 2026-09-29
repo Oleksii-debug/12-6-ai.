@@ -46,6 +46,11 @@ EXPECTED_MAX_PAIR = [
     "code.pydantic.pydantic.type_adapter",
 ]
 EXPECTED_MAX_JACCARD = 0.07706586003024886
+TERMINAL_DECISION = (
+    "ADMIT exact four-object Pydantic v2.13.4 implementation snapshot for "
+    "training-source registration; do not count generated, legacy v1, "
+    "docs/tests/examples, stubs, or pydantic-core as this family capacity."
+)
 EXPECTED_OBJECTS = (
     (
         "code.pydantic.pydantic.main",
@@ -408,10 +413,7 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
             "network_use": "bounded immutable-source qualification only",
             "github_api_authenticated": bool(os.environ.get("GITHUB_TOKEN")),
         },
-        "terminal_decision": (
-            "ADMIT exact four-object Pydantic v2.13.4 implementation snapshot for training-source registration; "
-            "do not count generated, legacy v1, docs/tests/examples, stubs, or pydantic-core as this family capacity."
-        ),
+        "terminal_decision": TERMINAL_DECISION,
     }
     canonical = (
         json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
@@ -586,8 +588,12 @@ def verify_evidence(
     )
     require(
         upstream.get("repository") == "https://github.com/pydantic/pydantic"
+        and upstream.get("tag") == "v2.13.4"
         and upstream.get("commit") == UPSTREAM_COMMIT
-        and upstream.get("tag_object_sha1") == TAG_OBJECT,
+        and upstream.get("tag_object_sha1") == TAG_OBJECT
+        and upstream.get("tag_signature_status") == "UNSIGNED"
+        and upstream.get("repository_fork") is False
+        and upstream.get("repository_mirror") is False,
         "generated upstream identity drift",
     )
     license_authority = value.get("license")
@@ -608,8 +614,14 @@ def verify_evidence(
     )
     require(
         license_authority.get("license_id") == "MIT"
+        and license_authority.get("path") == "LICENSE"
         and license_authority.get("git_blob_sha1") == LICENSE_BLOB
-        and license_authority.get("sha256") == LICENSE_SHA256,
+        and license_authority.get("sha256") == LICENSE_SHA256
+        and license_authority.get("model_training")
+        == "ALLOWED_BY_REVIEWED_MIT_GRANT"
+        and license_authority.get("derivatives") == "ALLOWED"
+        and license_authority.get("redistribution") == "ALLOWED_WITH_NOTICE"
+        and license_authority.get("notice_required") is True,
         "generated license authority drift",
     )
     objects = value.get("objects")
@@ -788,6 +800,19 @@ def verify_evidence(
     require(execution.get("class") == "LOCAL_FREE", "execution class drift")
     require(execution.get("paid_compute_used") is False, "paid compute used")
     require(execution.get("model_training_executed") is False, "model training executed")
+    require(
+        execution.get("network_use")
+        == "bounded immutable-source qualification only",
+        "execution network-use drift",
+    )
+    require(
+        type(execution.get("github_api_authenticated")) is bool,
+        "execution GitHub-auth flag drift",
+    )
+    require(
+        value.get("terminal_decision") == TERMINAL_DECISION,
+        "generated terminal decision drift",
+    )
 
 
 def main() -> int:
