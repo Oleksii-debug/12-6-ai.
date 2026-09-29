@@ -160,11 +160,9 @@ def test_receipt_requires_two_identical_passes_and_preserves_zero_truth() -> Non
     one = _pass_result()
     receipt = build_receipt(
         pass_results=[one, dict(one)],
-        incumbent_runner_blob_sha1=PARENT_RUNNER_BLOB_SHA1,
-        incumbent_intake_blob_sha1=PARENT_INTAKE_BLOB_SHA1,
     )
     assert receipt["status"] == (
-        "PHYSICAL_REMATERIALIZATION_AND_V9_REPLAY_EXECUTED_ZERO_CREDIT"
+        "PHYSICAL_REMATERIALIZATION_AND_CURRENT_CLEAN_DEDUP_REPLAY_EXECUTED_ZERO_CREDIT"
     )
     assert receipt["reproducibility"]["report_files_byte_identical"] is True
     assert receipt["reproducibility"]["raw_payloads_retained_after_success"] is False
@@ -190,8 +188,6 @@ def test_receipt_fails_on_second_pass_drift() -> None:
     with pytest.raises(RematerializationError, match="two-pass replay mismatch"):
         build_receipt(
             pass_results=[one, two],
-            incumbent_runner_blob_sha1=PARENT_RUNNER_BLOB_SHA1,
-            incumbent_intake_blob_sha1=PARENT_INTAKE_BLOB_SHA1,
         )
 
 
@@ -199,8 +195,6 @@ def test_receipt_serialization_contains_no_payload_text() -> None:
     one = _pass_result()
     receipt = build_receipt(
         pass_results=[one, dict(one)],
-        incumbent_runner_blob_sha1=PARENT_RUNNER_BLOB_SHA1,
-        incumbent_intake_blob_sha1=PARENT_INTAKE_BLOB_SHA1,
     )
     serialized = canonical_json_bytes(receipt)
     decoded = json.loads(serialized)
