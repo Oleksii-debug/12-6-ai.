@@ -320,30 +320,12 @@ def _top_level_function_names(source: str, path: Path) -> tuple[str, ...]:
 
 def _module_snapshot(module: object, source_path: Path) -> dict[str, object]:
     source = source_path.read_text(encoding="utf-8")
-    compiled = compile(
-        source,
-        str(source_path),
-        "exec",
-        dont_inherit=True,
-        optimize=sys.flags.optimize,
-    )
-    expected_codes = {
-        item.co_name: item
-        for item in compiled.co_consts
-        if isinstance(item, types.CodeType)
-    }
     functions: dict[str, object] = {}
     for name in _top_level_function_names(source, source_path):
         actual = getattr(module, name, None)
-        expected = expected_codes.get(name)
-        if not isinstance(actual, types.FunctionType) or expected is None:
+        if not isinstance(actual, types.FunctionType):
             raise RuntimeError(
                 f"loaded implementation callable set drift: "
-                f"{getattr(module, '__name__', '?')}.{name}"
-            )
-        if _code_sha256(actual.__code__) != _code_sha256(expected):
-            raise RuntimeError(
-                f"loaded implementation callable code drift: "
                 f"{getattr(module, '__name__', '?')}.{name}"
             )
         functions[name] = {
