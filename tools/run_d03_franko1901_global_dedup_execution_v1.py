@@ -509,6 +509,11 @@ def execute(
     )
     selection_projection = v9_semantics._derive_survivors(indexed_report)
     survivors = _outer_survivor_authority(indexed_report, selection_projection)
+    process_max_rss_kib = _max_rss_kib()
+    _require(
+        type(process_max_rss_kib) is int and process_max_rss_kib > 0,
+        "process max RSS unavailable; refusing terminal execution evidence",
+    )
 
     evidence_core = {
         "schema_version": SCHEMA,
@@ -551,7 +556,7 @@ def execute(
             "max_index_postings": max_index_postings,
             "max_pair_expansions": max_pair_expansions,
             "indexed_wall_clock_seconds": round(indexed_seconds, 6),
-            "process_max_rss_kib": _max_rss_kib(),
+            "process_max_rss_kib": process_max_rss_kib,
         },
         "survivor_authority_sha256": survivors["survivor_authority_sha256"],
         "content_boundary": {
