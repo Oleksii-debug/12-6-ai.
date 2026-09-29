@@ -31,6 +31,10 @@ from twelve_six.checkpoint.pinned_directory import (
     pinned_real_directory,
 )
 from twelve_six.checkpoint.recovery_lock import exclusive_recovery_lock
+from twelve_six.scale141_strict_json import (
+    Scale141StrictJsonError,
+    strict_json_loads,
+)
 from twelve_six.scale141_resume_sidecar import (
     SIDECAR_ROOT,
     ResumeSidecarContext,
@@ -237,8 +241,8 @@ def _read_pointer_snapshot(path: Path) -> bytes:
 def _read_pointer(root: Path) -> dict[str, Any]:
     path = root / CURRENT_NAME
     try:
-        value = json.loads(_read_pointer_snapshot(path).decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = strict_json_loads(_read_pointer_snapshot(path).decode("utf-8"))
+    except (UnicodeDecodeError, Scale141StrictJsonError) as exc:
         raise RecoveryLifecycleError("recovery pointer is unreadable") from exc
     if not isinstance(value, dict):
         raise RecoveryLifecycleError("recovery pointer must be a JSON object")
@@ -267,7 +271,19 @@ def _atomic_publish_pointer(
     temp = Path(raw_temp)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(value, handle, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            try:
+                json.dump(
+                    value,
+                    handle,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+            except (TypeError, ValueError) as exc:
+                raise RecoveryLifecycleError(
+                    "recovery pointer is not standards-strict JSON"
+                ) from exc
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
