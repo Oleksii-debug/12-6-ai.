@@ -410,5 +410,6 @@ def test_caselaw_physical_workflow_pins_exact_poppler_pdftotext() -> None:
 
 def test_two_clean_report_hash_uses_real_lf_byte() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert r'return raw + (b"\n" if newline else b"")' in workflow
-    assert r'return raw + (b"\\n" if newline else b"")' not in workflow
+    assert r'return raw + (b"\n" if newline else b"")' not in workflow
+    assert 'return raw + (b"\\n" if newline else b"")' not in workflow
+    assert 'return raw + (b"\n" if newline else b"")' in workflow
