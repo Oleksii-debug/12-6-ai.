@@ -20,19 +20,24 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from twelve_six.data.arxiv_languk_rematerialized_replay_v1 import (
-    ARXIV,
-    LANGUK,
-    PARENT_PR1800_HEAD,
-    HistoricalMaterializerSpec,
-    RematerializationError,
-    build_receipt,
-    canonical_json_bytes,
-    git_blob_sha1,
-    sha256_bytes,
-    verify_candidate,
-    verify_git_blob,
-)
+_HELPER_PATH = SRC / "twelve_six/data/arxiv_languk_rematerialized_replay_v1.py"
+_HELPER_SPEC = importlib.util.spec_from_file_location("_pr1851_replay_helper", _HELPER_PATH)
+if _HELPER_SPEC is None or _HELPER_SPEC.loader is None:
+    raise RuntimeError(f"cannot load PR1851 replay helper: {_HELPER_PATH}")
+_HELPER = importlib.util.module_from_spec(_HELPER_SPEC)
+_HELPER_SPEC.loader.exec_module(_HELPER)
+
+ARXIV = _HELPER.ARXIV
+LANGUK = _HELPER.LANGUK
+PARENT_PR1800_HEAD = _HELPER.PARENT_PR1800_HEAD
+HistoricalMaterializerSpec = _HELPER.HistoricalMaterializerSpec
+RematerializationError = _HELPER.RematerializationError
+build_receipt = _HELPER.build_receipt
+canonical_json_bytes = _HELPER.canonical_json_bytes
+git_blob_sha1 = _HELPER.git_blob_sha1
+sha256_bytes = _HELPER.sha256_bytes
+verify_candidate = _HELPER.verify_candidate
+verify_git_blob = _HELPER.verify_git_blob
 
 INCUMBENT_RUNNER_REL = Path("tools/run_d03_arxiv_languk_postadmission_global_dedup_v2.py")
 INCUMBENT_INTAKE_REL = Path("src/twelve_six/data/post_admission_dedup_intake_v2.py")
@@ -56,6 +61,8 @@ EXPECTED_EXTENSION_SOURCE_COUNT = 1_280
 EXPECTED_EXTENSION_BYTES = 3_949_184
 EXPECTED_COMBINED_PRE_DEDUP_SOURCE_COUNT = 1_543
 EXPECTED_COMBINED_PRE_DEDUP_BYTES = 10_043_149
+EXPECTED_V7_HEAD = "d3333ec1b4a508df232a5aefccd6686adda745fb"
+EXPECTED_V7_TREE = "f6bb58379e9e249583480c246b844b673be38b4c"
 
 REPAIRED_RECEIPT_SCHEMA = "12-6.d03-arxiv-languk-current-clean-indexed-replay.v3"
 CURRENT_REPORT_SCHEMA = "12-6.d03-arxiv-languk-current-clean-global-dedup.v1"
@@ -320,6 +327,45 @@ def _load_module(name: str, path: Path) -> Any:
     return module
 
 
+def _load_current_execution_modules() -> tuple[Any, Any]:
+    """Load current source-local/indexed code, then release current package namespace."""
+    existing = sorted(
+        name
+        for name in sys.modules
+        if name == "twelve_six" or name.startswith("twelve_six.")
+    )
+    if existing:
+        raise RematerializationError(
+            "current execution modules must load before terminal V7 namespace"
+        )
+    intake = _load_module("_pr1851_source_intake", ROOT / CURRENT_INTAKE_REL)
+    indexed = _load_module("_pr1851_indexed_executor", ROOT / INDEXED_EXECUTOR_REL)
+    imported = [
+        name
+        for name in sys.modules
+        if name == "twelve_six" or name.startswith("twelve_six.")
+    ]
+    if not imported:
+        raise RematerializationError("current execution namespace was not established")
+    for name in imported:
+        sys.modules.pop(name, None)
+    return intake, indexed
+
+
+def _verify_v7_checkout(v7_root: Path) -> None:
+    root = v7_root.resolve()
+    if not root.is_dir():
+        raise RematerializationError(f"terminal V7 checkout missing: {root}")
+    if _git_text(root, "for-each-ref", "--format=%(refname)", "refs/replace"):
+        raise RematerializationError("terminal V7 replace refs are forbidden")
+    if _git_text(root, "rev-parse", "HEAD") != EXPECTED_V7_HEAD:
+        raise RematerializationError("terminal V7 HEAD drift")
+    if _git_text(root, "rev-parse", "HEAD^{tree}") != EXPECTED_V7_TREE:
+        raise RematerializationError("terminal V7 tree drift")
+    if _git_text(root, "status", "--porcelain=v1", "--untracked-files=all"):
+        raise RematerializationError("terminal V7 checkout must be clean")
+
+
 def _verify_current_clean_dependencies() -> dict[str, str]:
     bindings = {
         "clean_successor_tool_git_blob_sha1": (
@@ -354,6 +400,7 @@ def _reconstruct_current_clean_base(
     v7_root: Path,
     workspace: Path,
 ) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    _verify_v7_checkout(v7_root)
     clean = _load_module("_pr1851_clean_successor", ROOT / CLEAN_SUCCESSOR_REL)
     clean.validate_runtime_bindings(ROOT)
 
@@ -441,6 +488,8 @@ def _build_current_clean_replay(
     pass_root: Path,
     arxiv_candidate: Path,
     languk_candidate: Path,
+    source_intake: Any,
+    indexed_executor: Any,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     runtime_bindings = _verify_current_clean_dependencies()
     matcher, base_inventory, base_payloads, clean_authority = (
@@ -450,7 +499,7 @@ def _build_current_clean_replay(
         )
     )
 
-    intake = _load_module("_pr1851_source_intake", ROOT / CURRENT_INTAKE_REL)
+    intake = source_intake
     arxiv_rows, arxiv_payloads, arxiv_receipt = intake._prepare_source(
         intake.ARXIV,
         authority_raw=_repo_rooted(args.arxiv_authority).read_bytes(),
@@ -495,7 +544,7 @@ def _build_current_clean_replay(
     if sum(len(raw) for raw in combined_payloads.values()) != EXPECTED_COMBINED_PRE_DEDUP_BYTES:
         raise RematerializationError("combined byte-total drift")
 
-    indexed = _load_module("_pr1851_indexed_executor", ROOT / INDEXED_EXECUTOR_REL)
+    indexed = indexed_executor
     indexed.attest_incumbent_runtime(matcher)
     dedup = indexed.audit_payloads_indexed(
         matcher,
@@ -674,6 +723,7 @@ def main() -> int:
         _require_pyarrow()
         wrapper_authority = _verify_wrapper_checkout(ROOT)
         clean_execution_authority = _verify_current_clean_dependencies()
+        source_intake, indexed_executor = _load_current_execution_modules()
         workspace = args.workspace.resolve()
         historical = workspace / "historical"
         for spec in (ARXIV, LANGUK):
@@ -704,6 +754,8 @@ def main() -> int:
                     pass_root=pass_root,
                     arxiv_candidate=arxiv_candidate,
                     languk_candidate=languk_candidate,
+                    source_intake=source_intake,
+                    indexed_executor=indexed_executor,
                 )
                 _write_pass_authorities(
                     report_path=report_path,
