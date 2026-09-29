@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -90,10 +89,13 @@ def test_load_rejects_non_object_root(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("bad_target", ["selection", "application", "report"])
-def test_cli_malformed_authority_fails_machine_readably_without_output(
+def test_main_malformed_authority_fails_machine_readably_without_output(
     tmp_path: Path,
     bad_target: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    cli = _module()
     selection = tmp_path / "selection.json"
     application = tmp_path / "application.json"
     report = tmp_path / "report.json"
@@ -110,8 +112,7 @@ def test_cli_malformed_authority_fails_machine_readably_without_output(
     }[bad_target]
     bad_path.write_text(malformed, encoding="utf-8")
 
-    command = [
-        sys.executable,
+    argv = [
         str(TOOL),
         "--balanced-selection",
         str(selection),
@@ -122,19 +123,13 @@ def test_cli_malformed_authority_fails_machine_readably_without_output(
         str(output),
     ]
     if bad_target == "report":
-        command.extend(["--verify-report", str(report)])
+        argv.extend(["--verify-report", str(report)])
+    monkeypatch.setattr(sys, "argv", argv)
 
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert completed.returncode == 2
-    assert completed.stderr == ""
-    payload = json.loads(completed.stdout)
+    assert cli.main() == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
     assert payload["contract_valid"] is False
     assert "duplicate_json_key:same" in payload["error"]
     assert not output.exists()
