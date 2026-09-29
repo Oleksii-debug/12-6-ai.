@@ -89,7 +89,7 @@ def main() -> int:
 
     try:
         policy = _load_json(args.policy)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeError, ValueError) as exc:
         return _print_input_failure("policy JSON", exc)
     validate_policy(policy)
     if args.bindings is None:
@@ -109,11 +109,11 @@ def main() -> int:
             )
         try:
             bindings = _load_json(args.bindings)
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        except (OSError, UnicodeError, ValueError) as exc:
             return _print_input_failure("bindings JSON", exc)
         try:
             trusted_authorities = _load_json(args.trusted_authorities)
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        except (OSError, UnicodeError, ValueError) as exc:
             return _print_input_failure("trusted-authorities JSON", exc)
         result = bind_terminal_authorities(
             policy,
