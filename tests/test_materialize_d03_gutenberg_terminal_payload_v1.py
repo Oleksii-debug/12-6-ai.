@@ -130,6 +130,16 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
         self.assertEqual(boundary["authorized_optimized_target_exposure"], 0)
         self.assertFalse(boundary["tokenizer_fit_authorized"])
         self.assertFalse(boundary["training_executed"])
+        self.assertNotIn(
+            "external_llm_or_api_used_for_data_or_intelligence",
+            boundary,
+        )
+        self.assertFalse(
+            boundary["upstream_source_evidence_external_llm_or_api_used"]
+        )
+        self.assertFalse(
+            boundary["current_corpus_external_llm_free_claimed_by_this_rematerializer"]
+        )
         serialized = json.dumps(receipt)
         self.assertNotIn("Ludvig Holberg, The Founder", serialized)
         self.assertNotIn("A Literary History of the Arabs", serialized)
