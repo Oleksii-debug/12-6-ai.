@@ -1,6 +1,9 @@
 name: D03 PDR attributable subset replay temporary
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - d03/2324-pdr-attributable-subset-authority
