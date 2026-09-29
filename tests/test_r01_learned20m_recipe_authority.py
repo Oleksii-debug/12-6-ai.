@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -430,3 +432,58 @@ def test_recipe_cli_routes_all_authority_inputs_through_one_strict_loader() -> N
     assert "json.loads(args.policy.read_text" not in source
     assert "json.loads(args.bindings.read_text" not in source
     assert "args.trusted_authorities.read_text" not in source
+
+
+
+@pytest.mark.parametrize(
+    ("bad_role", "bad_raw"),
+    [
+        ("policy", '{"schema_version":1,"schema_version":1}'),
+        ("bindings", '{"code":{},"code":{}}'),
+        ("trusted", '{"tokenizer":{},"tokenizer":{}}'),
+    ],
+)
+def test_recipe_cli_reports_malformed_authority_json_without_traceback(
+    tmp_path: Path, bad_role: str, bad_raw: str
+) -> None:
+    bad = tmp_path / f"{bad_role}.json"
+    bad.write_text(bad_raw, encoding="utf-8")
+    valid_empty = tmp_path / "empty.json"
+    valid_empty.write_text("{}", encoding="utf-8")
+
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(bad)]
+    elif bad_role == "bindings":
+        command += [
+            "--bindings",
+            str(bad),
+            "--trusted-authorities",
+            str(valid_empty),
+            "--expected-trusted-authorities-identity-sha256",
+            "0" * 64,
+        ]
+    else:
+        command += [
+            "--bindings",
+            str(valid_empty),
+            "--trusted-authorities",
+            str(bad),
+            "--expected-trusted-authorities-identity-sha256",
+            "0" * 64,
+        ]
+
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert f"invalid {bad_role if bad_role != 'trusted' else 'trusted-authorities'}" in response["error"]
+    assert "duplicate object member" in response["error"]
