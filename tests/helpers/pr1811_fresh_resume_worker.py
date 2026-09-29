@@ -12,10 +12,11 @@ import numpy as np
 import torch
 from torch import nn
 
-from twelve_six.checkpoint import load_trainer_checkpoint
+from twelve_six.portable_run_binding import PortableRunBinding, canonical_sha256
 from twelve_six.scale141_recovery import resolve_recovery_generation
 from twelve_six.training import Trainer, TrainerConfig
 from twelve_six.trusted_parent_recovery_binding import (
+    restore_trusted_same_provider_resume,
     trusted_parent_recovery_binding_from_resolution,
     trusted_recovery_authority_token,
 )
@@ -98,23 +99,6 @@ def main() -> int:
     )
 
     model, trainer = _stack()
-    load_trainer_checkpoint(
-        resolution.path,
-        model=model,
-        trainer=trainer,
-        restore_rng=True,
-        expected_checkpoint_id=reference["checkpoint_id"],
-        expected_manifest_sha256=reference["manifest_sha256"],
-        expected_git_sha=SOURCE_SHA,
-        expected_run_manifest_hash=RUN_HASH,
-        expected_step=reference["optimizer_step"],
-        expected_tokens_seen=reference["tokens_seen"],
-        expected_ledger_identity_sha256=LEDGER_HASH,
-        expected_materialization_identity_sha256=MATERIALIZATION_HASH,
-        expected_packing_identity_sha256=PACKING_IDENTITY_HASH,
-        expected_exposure_plan_identity_sha256=EXPOSURE_PLAN_HASH,
-        expected_ordered_next_exposure_identity_sha256=ORDERED_NEXT_HASH,
-    )
 
     resume_state = resolution.resume_state
     if resume_state is None:
@@ -148,6 +132,34 @@ def main() -> int:
     )
     if trusted["binding_sha256"] != authority["evidence_sha256"]:
         raise RuntimeError("trusted parent binding did not remain stable after authority binding")
+    authority_token = trusted_recovery_authority_token(authority)
+    packet = {
+        "binding": {
+            "trusted_parent_recovery": trusted,
+            "trusted_parent_recovery_authority_token": authority_token,
+        }
+    }
+    binding = PortableRunBinding(
+        binding_ready=True,
+        mode="RESUME",
+        readiness_ready=True,
+        overlay_contract_valid=True,
+        packet_contract_valid=True,
+        blockers=(),
+        readiness_sha256="8" * 64,
+        overlay_sha256="9" * 64,
+        packet_sha256=canonical_sha256(packet),
+        packet=packet,
+    )
+    restore_trusted_same_provider_resume(
+        binding,
+        resolution,
+        model=model,
+        trainer=trainer,
+        expected_trusted_parent_binding_sha256=trusted["binding_sha256"],
+        verified_trusted_recovery_authorities=(authority_token,),
+        restore_rng=True,
+    )
 
     result = {
         "model_state_sha256": _stable_digest(model.state_dict()),
@@ -164,7 +176,7 @@ def main() -> int:
         "trusted_parent_binding_sha256": trusted["binding_sha256"],
         "trusted_parent_checkpoint_id": trusted["checkpoint_id"],
         "trusted_parent_manifest_sha256": trusted["checkpoint_manifest_sha256"],
-        "trusted_recovery_authority_token": trusted_recovery_authority_token(authority),
+        "trusted_recovery_authority_token": authority_token,
         "rng_probe": {
             "python": random.random(),
             "numpy": float(np.random.random()),
