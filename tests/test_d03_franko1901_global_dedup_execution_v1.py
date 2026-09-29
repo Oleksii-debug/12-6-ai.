@@ -294,6 +294,25 @@ def test_cli_requires_both_franko_authority_documents() -> None:
     )
 
 
+def test_write_json_is_true_create_only(tmp_path: Path) -> None:
+    mod = _load()
+    output = tmp_path / "evidence.json"
+    mod._write_json(output, {"b": 2, "a": 1})
+    assert output.read_bytes() == b'{"a":1,"b":2}\n'
+
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="refusing to overwrite"):
+        mod._write_json(output, {"changed": True})
+    assert output.read_bytes() == b'{"a":1,"b":2}\n'
+
+
+def test_write_json_nonfinite_fails_before_publication(tmp_path: Path) -> None:
+    mod = _load()
+    output = tmp_path / "evidence.json"
+    with pytest.raises(ValueError):
+        mod._write_json(output, {"rss": float("nan")})
+    assert not output.exists()
+
+
 def test_no_training_or_capacity_promotion_in_execution_evidence() -> None:
     raw = MODULE.read_text(encoding="utf-8")
     assert '"canonical_capacity_credited": 0' in raw
