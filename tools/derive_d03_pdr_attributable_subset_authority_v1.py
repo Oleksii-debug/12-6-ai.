@@ -229,14 +229,6 @@ def derive_subset(
 
     _require(len(seen) == EXPECTED_ATTRIBUTABLE_RECORDS, "subset cardinality drift")
     projection_identity = _sha256(_canonical_bytes(projection))
-    _require(
-        subset_bytes == EXPECTED_ATTRIBUTABLE_NORMALIZED_BYTES,
-        "attributable normalized byte count drift",
-    )
-    _require(
-        projection_identity == EXPECTED_ATTRIBUTABLE_PROJECTION,
-        "attributable projection identity drift",
-    )
     core = {
         "schema_version": SCHEMA,
         "status": "ATTRIBUTABLE_SUBSET_ACCOUNTED_REVIEW_REQUIRED_ZERO_CREDIT",
@@ -270,10 +262,6 @@ def derive_subset(
         "foreign_pretrained_weights_used": False,
     }
     authority_identity = _sha256(_canonical_bytes(core))
-    _require(
-        authority_identity == EXPECTED_AUTHORITY_IDENTITY,
-        "subset authority identity drift",
-    )
     return {**core, "authority_identity_sha256": authority_identity}
 
 
@@ -320,6 +308,20 @@ def main() -> int:
     _validate_historical_report(report)
 
     authority = derive_subset(candidate_rows, sidecar_rows)
+    _require(
+        authority["attributable_normalized_utf8_bytes"]
+        == EXPECTED_ATTRIBUTABLE_NORMALIZED_BYTES,
+        "attributable normalized byte count drift",
+    )
+    _require(
+        authority["attributable_projection_identity_sha256"]
+        == EXPECTED_ATTRIBUTABLE_PROJECTION,
+        "attributable projection identity drift",
+    )
+    _require(
+        authority["authority_identity_sha256"] == EXPECTED_AUTHORITY_IDENTITY,
+        "subset authority identity drift",
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(authority, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
