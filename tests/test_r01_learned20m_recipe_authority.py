@@ -434,7 +434,6 @@ def test_recipe_cli_routes_all_authority_inputs_through_one_strict_loader() -> N
     assert "args.trusted_authorities.read_text" not in source
 
 
-
 @pytest.mark.parametrize(
     ("bad_role", "bad_raw"),
     [
@@ -485,5 +484,6 @@ def test_recipe_cli_reports_malformed_authority_json_without_traceback(
     assert completed.stderr == ""
     response = json.loads(completed.stdout)
     assert response["status"] == "FAIL"
-    assert f"invalid {bad_role if bad_role != 'trusted' else 'trusted-authorities'}" in response["error"]
+    expected_label = bad_role if bad_role != "trusted" else "trusted-authorities"
+    assert f"invalid {expected_label}" in response["error"]
     assert "duplicate object member" in response["error"]
