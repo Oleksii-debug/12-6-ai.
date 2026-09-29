@@ -1,0 +1,61 @@
+{
+  "schema_version": "12-6.d03-cpython-stdlib-source-rights-policy.v1",
+  "authority_id": "D03-CPYTHON-STDLIB-SOURCE-RIGHTS-V1",
+  "scope": {
+    "repository": "python/cpython",
+    "commit": "23180c50082fe98784c78511b335d7274ed87fb7",
+    "tree": "8853f9fbbf23d2a8c8b7afc9ecab242a482125f2",
+    "root_license_blob_sha1": "20cf39097c68baa17cc566b64e76d34ebf034044",
+    "family_id": "code.python.cpython",
+    "product_pr": 903,
+    "product_head_sha": "c5bdf8527c6117f7e41693d84aad4295f69f78fb",
+    "execution_head_sha": "e339007b7a295f2262f927819778fd0d22b5a474",
+    "execution_run_id": 34563978371,
+    "execution_report_identity_sha256": "1ae69b91ad0eb2e99592563814b054cfe16b3f3800604d9dee54e6184a89b75a",
+    "inventory_identity_sha256": "e786370430e73b674ed5b4d09829cddffa6a943fc550b5316f2cb1da93bca654",
+    "selected_objects": 52,
+    "selected_bytes": 1199986
+  },
+  "policy": {
+    "root_default_license": "PSF-2.0",
+    "root_default_basis": "PINNED_ROOT_LICENSE_APPLIES_EXCEPT_WHERE_DIFFERENT_LICENSE_IS_LISTED_WITH_CODE",
+    "direct_notice_markers": [
+      "copyright",
+      "license",
+      "licence",
+      "spdx-license-identifier"
+    ],
+    "ancestor_marker_names": [
+      "license",
+      "license.txt",
+      "license.md",
+      "copying",
+      "copying.txt",
+      "notice",
+      "notice.txt",
+      "copyright",
+      "copyright.txt"
+    ],
+    "direct_notice_decision": "HOLD_FILE_LEVEL_RIGHTS_REVIEW",
+    "ancestor_marker_decision": "HOLD_ANCESTOR_RIGHTS_REVIEW",
+    "no_marker_decision": "ADMIT_PSF2_ROOT_DEFAULT",
+    "blanket_incorporated_software_admission": false,
+    "evidence_window_chars": 12000
+  },
+  "truth_boundary": {
+    "source_admission_only": true,
+    "canonical_capacity_credit_bytes": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "final_test_payload_accessed": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  }
+}
