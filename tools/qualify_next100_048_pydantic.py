@@ -228,6 +228,11 @@ def near_jaccard(left: str, right: str) -> float:
     return len(a & b) / len(a | b)
 
 
+def has_generated_material_marker(text: str) -> bool:
+    """Scan the complete bounded source text for generated-material markers."""
+    return any(pattern.search(text) is not None for pattern in GENERATED_PATTERNS)
+
+
 def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str, Any]:
     policy_raw = (repo_root / policy_path).read_bytes()
     require(
@@ -280,8 +285,10 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
         text = raw.decode("utf-8", errors="strict")
         require("\ufffd" not in text, f"{decision['source_id']}: replacement character")
         require(not any(0xD800 <= ord(ch) <= 0xDFFF for ch in text), f"{decision['source_id']}: surrogate code point")
-        header = text[:8192]
-        require(not any(pattern.search(header) for pattern in GENERATED_PATTERNS), f"{decision['source_id']}: generated-material marker")
+        require(
+            not has_generated_material_marker(text),
+            f"{decision['source_id']}: generated-material marker",
+        )
         require(not any(pattern.search(raw) for pattern in SECRET_PATTERNS), f"{decision['source_id']}: secret pattern")
         require(not any(pattern.search(raw) for pattern in PRIVACY_CREDENTIAL_PATTERNS), f"{decision['source_id']}: credential literal")
         ast.parse(text, filename=decision["path"])
