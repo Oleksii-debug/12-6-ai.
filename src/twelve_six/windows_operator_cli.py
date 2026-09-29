@@ -180,6 +180,7 @@ def _bootstrap_error_result(exc: OSError | RuntimeError) -> dict[str, object]:
         "error": f"installed_operator_bootstrap_failed:{exc}",
         "launch_authorized": False,
         "training_authorized": False,
+        "truth_boundary": dict(windows_operator_preflight._TRUTH_BOUNDARY),
     }
 
 
