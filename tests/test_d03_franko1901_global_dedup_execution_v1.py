@@ -284,8 +284,8 @@ def test_unknown_platform_max_rss_fails_closed(monkeypatch) -> None:
 
 def test_cli_requires_both_franko_authority_documents() -> None:
     raw = MODULE.read_text(encoding="utf-8")
-    assert 'parser.add_argument("--historical-terminal-evidence-json", type=Path, required=True)' in raw
-    assert 'parser.add_argument("--fresh-execution-authority-json", type=Path, required=True)' in raw
+    assert (\n        'parser.add_argument("--historical-terminal-evidence-json", type=Path, required=True)'\n        in raw\n    )
+    assert (\n        'parser.add_argument("--fresh-execution-authority-json", type=Path, required=True)'\n        in raw\n    )
 
 
 def test_no_training_or_capacity_promotion_in_execution_evidence() -> None:
