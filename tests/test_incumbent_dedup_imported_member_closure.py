@@ -1,13 +1,78 @@
 from __future__ import annotations
 
+import functools
 import importlib.util
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
-from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+_ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
+
+
+def _isolated_indexed_test(test):
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        current = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+        if os.environ.get(_ISOLATED_INDEXED_TEST_NODE) == current and current:
+            return test(*args, **kwargs)
+        if not current:
+            return test(*args, **kwargs)
+
+        env = os.environ.copy()
+        env[_ISOLATED_INDEXED_TEST_NODE] = current
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", current],
+            cwd=Path(__file__).resolve().parent.parent,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+        )
+        assert completed.returncode == 0, (
+            f"isolated indexed test failed: {current}\n"
+            f"STDOUT:\n{completed.stdout}\n"
+            f"STDERR:\n{completed.stderr}"
+        )
+
+    return wrapper
+
+
+class _LazyIndexed:
+    _module: ModuleType | None = None
+
+    def _load_module(self) -> ModuleType:
+        module = object.__getattribute__(self, "_module")
+        if module is None:
+            module = importlib.import_module(
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            )
+            object.__setattr__(self, "_module", module)
+        return module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._load_module(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_module":
+            object.__setattr__(self, name, value)
+            return
+        setattr(self._load_module(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name == "_module":
+            object.__delattr__(self, name)
+            return
+        delattr(self._load_module(), name)
+
+
+indexed = _LazyIndexed()
 
 
 def _load_source_module(tmp_path: Path, name: str, source: str) -> ModuleType:
@@ -42,6 +107,7 @@ EXPECTED_FROZEN_MEMBERS = {
 }
 
 
+@_isolated_indexed_test
 def test_frozen_member_inventory_matches_exact_pinned_closure() -> None:
     actual = {
         (label, global_name, member_name)
@@ -170,6 +236,7 @@ def test_frozen_member_inventory_matches_exact_pinned_closure() -> None:
         ),
     ),
 )
+@_isolated_indexed_test
 def test_attestation_rejects_every_exact_imported_member_in_place_drift(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -194,6 +261,7 @@ def test_attestation_rejects_every_exact_imported_member_in_place_drift(
     assert str(exc_info.value) == f"{label} imported behavior drift: {global_name}.{member_name}"
 
 
+@_isolated_indexed_test
 def test_attestation_fails_closed_on_unfrozen_direct_member_reference(tmp_path: Path) -> None:
     module = _load_source_module(
         tmp_path,
@@ -207,6 +275,7 @@ def test_attestation_fails_closed_on_unfrozen_direct_member_reference(tmp_path: 
         indexed._attest_executable_module(module, "V1")
 
 
+@_isolated_indexed_test
 def test_git_blob_identity_uses_loader_frozen_sha1(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = b"authority-bytes"
     expected = indexed._git_blob_sha1(payload)
@@ -220,6 +289,7 @@ def test_git_blob_identity_uses_loader_frozen_sha1(monkeypatch: pytest.MonkeyPat
         assert indexed._git_blob_sha1(payload) == expected
 
 
+@_isolated_indexed_test
 def test_code_attestation_uses_loader_frozen_marshal_dumps(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
