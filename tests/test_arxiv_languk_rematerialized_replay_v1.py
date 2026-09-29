@@ -312,3 +312,13 @@ def test_legacy_contaminated_execution_helpers_are_not_exposed() -> None:
     assert "build_post_admission_intake(" not in source
     assert "PARENT_RUNNER_BLOB_SHA1" not in source
     assert "PARENT_INTAKE_BLOB_SHA1" not in source
+
+
+def test_wrapper_keeps_current_package_out_of_terminal_v7_bootstrap_path() -> None:
+    source = Path(REPLAY_RUNNER.__file__).read_text(encoding="utf-8")
+    assert "from twelve_six.data.arxiv_languk_rematerialized_replay_v1 import" not in source
+    assert REPLAY_RUNNER.EXPECTED_V7_HEAD == (
+        "d3333ec1b4a508df232a5aefccd6686adda745fb"
+    )
+    assert REPLAY_RUNNER.EXPECTED_V7_TREE == "f6bb58379e9e249583480c246b844b673be38b4c"
+    assert REPLAY_RUNNER.sys.dont_write_bytecode is True
