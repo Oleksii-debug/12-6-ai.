@@ -16,6 +16,7 @@ from twelve_six.split_robustness import (
     eligible_corpus_identity,
     legacy_record_hash_assignments,
     pairwise_ranking_stability,
+    split_sensitivity,
     verify_split_family_manifest,
 )
 
@@ -178,3 +179,32 @@ def test_pairwise_ranking_stability_detects_rank_reversal() -> None:
     )
     assert unstable["all_pairs_stable"] is False
     assert unstable["pairs"][0]["rank_reversal_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "invalid_metric",
+    [True, float("nan"), float("inf"), float("-inf")],
+)
+def test_split_metric_evidence_rejects_nonfinite_and_bool_values(
+    invalid_metric: float,
+) -> None:
+    with pytest.raises(SplitRobustnessError, match="finite real number"):
+        split_sensitivity([1.0, invalid_metric])
+
+    with pytest.raises(SplitRobustnessError, match="finite real number"):
+        pairwise_ranking_stability(
+            {
+                "small": [5.0, invalid_metric],
+                "large": [4.5, 4.7],
+            }
+        )
+
+
+def test_split_metric_evidence_keeps_finite_integer_and_float_semantics() -> None:
+    sensitivity = split_sensitivity([1, 2.5, 4])
+    assert sensitivity["mean"] == 2.5
+
+    stable = pairwise_ranking_stability(
+        {"small": [5, 5.1], "large": [4.5, 4]}
+    )
+    assert stable["all_pairs_stable"] is True
