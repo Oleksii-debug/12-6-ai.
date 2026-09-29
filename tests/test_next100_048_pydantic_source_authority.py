@@ -101,47 +101,7 @@ def test_historical_coherent_rehash_substitution_is_rejected() -> None:
 
 
 def test_generated_v2_requires_external_source_sha_binding() -> None:
-    value = {
-        "schema_version": qualifier.SCHEMA,
-        "status": "ADMIT",
-        "worker_source_sha": "1" * 40,
-        "predecessor_code_authority": {},
-        "source_family_accounting": {
-            "selected_implementation_object_count": 4,
-            "selected_authored_capacity_bytes": 235_204,
-        },
-        "checks": {
-            "strict_utf8_identity_normalization": "PASS",
-            "parse_validity": "PASS_4_OF_4",
-            "secret_privacy": "PASS_4_OF_4",
-            "generated_selected_count": 0,
-            "generated_selected_bytes": 0,
-            "exact_duplicate_sha256": [],
-            "near_duplicate_threshold": qualifier.NEAR_THRESHOLD,
-            "near_duplicate_pairs": [],
-            "max_observed_pair": qualifier.EXPECTED_MAX_PAIR,
-            "max_observed_jaccard": qualifier.EXPECTED_MAX_JACCARD,
-            "current_eval_reservation_active_at_eval289_head": False,
-        },
-        "excluded_capacity": dict(qualifier.EXPECTED_EXCLUDED_CAPACITY),
-        "execution": {
-            "class": "LOCAL_FREE",
-            "paid_compute_used": False,
-            "model_training_executed": False,
-        },
-    }
-    unsigned = dict(value)
-    canonical = (
-        qualifier.json.dumps(
-            unsigned,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n"
-    ).encode("utf-8")
-    value["authority_identity_sha256"] = qualifier.sha256(canonical)
-
+    value = _minimal_valid_v2_packet()
     with pytest.raises(
         qualifier.QualificationError,
         match="generated worker source SHA drift",
@@ -172,57 +132,9 @@ def test_policy_bytes_are_pinned_before_semantic_use(
 
 
 def test_generated_v2_rejects_coherent_upstream_substitution() -> None:
-    value = {
-        "schema_version": qualifier.SCHEMA,
-        "status": "ADMIT",
-        "worker_source_sha": "1" * 40,
-        "candidate_policy_authority": {
-            "schema_version": "12-6.next100-048-pydantic-code-rights.v1",
-            "git_blob_sha1": qualifier.PYDANTIC_POLICY_BLOB,
-        },
-        "predecessor_code_authority": {
-            "data227_head_sha": qualifier.DATA227_HEAD,
-            "rights_policy_git_blob_sha1": qualifier.DATA227_POLICY_BLOB,
-            "source_family_count": 2,
-            "source_families": [
-                "github:encode/httpx",
-                "github:psf/requests",
-            ],
-            "near_duplicate_policy": {
-                "reject_at_or_above_jaccard": qualifier.NEAR_THRESHOLD,
-                "shingle_tokens": qualifier.SHINGLE_SIZE,
-            },
-        },
-        "upstream": {
-            "repository": "https://github.com/attacker/pydantic",
-            "commit": qualifier.UPSTREAM_COMMIT,
-            "tag_object_sha1": qualifier.TAG_OBJECT,
-        },
-        "license": {
-            "license_id": "MIT",
-            "git_blob_sha1": qualifier.LICENSE_BLOB,
-        },
-        "source_family_accounting": {
-            "selected_implementation_object_count": 4,
-            "selected_authored_capacity_bytes": 235_204,
-        },
-        "execution": {
-            "class": "LOCAL_FREE",
-            "paid_compute_used": False,
-            "model_training_executed": False,
-        },
-    }
-    unsigned = dict(value)
-    canonical = (
-        qualifier.json.dumps(
-            unsigned,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n"
-    ).encode("utf-8")
-    value["authority_identity_sha256"] = qualifier.sha256(canonical)
+    value = _minimal_valid_v2_packet()
+    value["upstream"]["repository"] = "https://github.com/attacker/pydantic"
+    _reseal_v2(value)
 
     with pytest.raises(
         qualifier.QualificationError,
@@ -272,7 +184,9 @@ def _minimal_valid_v2_packet() -> dict[str, object]:
         )
     value: dict[str, object] = {
         "schema_version": qualifier.SCHEMA,
+        "worker_id": qualifier.WORKER,
         "status": "ADMIT",
+        "authority": "EXTERNAL_REAL_CODE_SOURCE_TERMINAL_LOCAL_FREE",
         "worker_source_sha": "1" * 40,
         "candidate_policy_authority": {
             "schema_version": "12-6.next100-048-pydantic-code-rights.v1",
@@ -293,13 +207,22 @@ def _minimal_valid_v2_packet() -> dict[str, object]:
         },
         "upstream": {
             "repository": "https://github.com/pydantic/pydantic",
-            "commit": qualifier.UPSTREAM_COMMIT,
+            "tag": "v2.13.4",
             "tag_object_sha1": qualifier.TAG_OBJECT,
+            "commit": qualifier.UPSTREAM_COMMIT,
+            "tag_signature_status": "UNSIGNED",
+            "repository_fork": False,
+            "repository_mirror": False,
         },
         "license": {
             "license_id": "MIT",
+            "path": "LICENSE",
             "git_blob_sha1": qualifier.LICENSE_BLOB,
             "sha256": qualifier.LICENSE_SHA256,
+            "model_training": "ALLOWED_BY_REVIEWED_MIT_GRANT",
+            "derivatives": "ALLOWED",
+            "redistribution": "ALLOWED_WITH_NOTICE",
+            "notice_required": True,
         },
         "objects": objects,
         "evaluation_boundary": {
