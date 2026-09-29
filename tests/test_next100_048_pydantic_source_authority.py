@@ -347,3 +347,60 @@ def test_generated_v2_rejects_coherent_resealed_semantic_substitution(
     _reseal_v2(value)
     with pytest.raises(qualifier.QualificationError, match=match):
         qualifier.verify_evidence(value, expected_source_sha="1" * 40)
+
+
+
+def test_strict_json_rejects_python_integer_digit_overflow() -> None:
+    raw = ('{"value":' + ('9' * 10000) + '}').encode("ascii")
+    with pytest.raises(qualifier.QualificationError, match="invalid JSON"):
+        qualifier._load_json_bytes(raw, context="huge-int")
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        (
+            lambda value: value["checks"].__setitem__(
+                "near_duplicate_pairs",
+                [{"left": "a", "right": "b", "jaccard": 0.9}],
+            ),
+            "generated checks boundary drift",
+        ),
+        (
+            lambda value: value.__setitem__(
+                "excluded_capacity",
+                {"docs_tests_examples": "included"},
+            ),
+            "generated excluded-capacity boundary drift",
+        ),
+        (
+            lambda value: value["objects"][0].__setitem__(
+                "secret_scan",
+                "NOT_RUN",
+            ),
+            "generated object authority drift",
+        ),
+    ],
+)
+def test_generated_v2_rejects_resealed_aggregate_boundary_substitution(
+    mutation, match: str
+) -> None:
+    value = _minimal_valid_v2_packet()
+    value["checks"] = {
+        "strict_utf8_identity_normalization": "PASS",
+        "parse_validity": "PASS_4_OF_4",
+        "secret_privacy": "PASS_4_OF_4",
+        "generated_selected_count": 0,
+        "generated_selected_bytes": 0,
+        "exact_duplicate_sha256": [],
+        "near_duplicate_threshold": qualifier.NEAR_THRESHOLD,
+        "near_duplicate_pairs": [],
+        "max_observed_pair": qualifier.EXPECTED_MAX_PAIR,
+        "max_observed_jaccard": qualifier.EXPECTED_MAX_JACCARD,
+        "current_eval_reservation_active_at_eval289_head": False,
+    }
+    value["excluded_capacity"] = dict(qualifier.EXPECTED_EXCLUDED_CAPACITY)
+    mutation(value)
+    _reseal_v2(value)
+    with pytest.raises(qualifier.QualificationError, match=match):
+        qualifier.verify_evidence(value, expected_source_sha="1" * 40)

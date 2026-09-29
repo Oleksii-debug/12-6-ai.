@@ -34,6 +34,18 @@ UPSTREAM_COMMIT = "cf67d4b3193c3fe43ede18612ed62785eee11382"
 TAG_OBJECT = "07b73712023f052c7c008c4a9c5121b4894e44ec"
 LICENSE_BLOB = "488c6260c10f2e88fa1fae58a63fccec8d600cd1"
 LICENSE_SHA256 = "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3"
+EXPECTED_EXCLUDED_CAPACITY = {
+    "generated_material": "SEPARATE_BUCKET_NOT_COUNTED",
+    "legacy_compatibility_subtree": "pydantic/v1/** excluded from this bounded family snapshot",
+    "compatibility_reexport_stubs": "excluded",
+    "docs_tests_examples": "excluded",
+    "pydantic_core_dependency": "separate upstream source family; not counted here",
+}
+EXPECTED_MAX_PAIR = [
+    "code.pydantic.pydantic.main",
+    "code.pydantic.pydantic.type_adapter",
+]
+EXPECTED_MAX_JACCARD = 0.07706586003024886
 EXPECTED_OBJECTS = (
     (
         "code.pydantic.pydantic.main",
@@ -129,7 +141,7 @@ def _load_json_bytes(raw: bytes, *, context: str) -> dict[str, Any]:
             parse_constant=_reject_constant,
             parse_float=_strict_float,
         )
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise QualificationError(f"invalid JSON for {context}: {exc}") from exc
     require(type(value) is dict, f"JSON root is not an object: {context}")
     return value
@@ -552,6 +564,10 @@ def verify_evidence(
             and row.get("raw_sha256") == digest
             and row.get("normalized_sha256") == digest
             and row.get("normalization_policy") == "STRICT_UTF8_IDENTITY_PRESERVE_V1"
+            and row.get("parse_validity") == "PASS_AST_PARSE_PY311"
+            and row.get("secret_scan") == "PASS_DATA227_SECRET_PATTERNS"
+            and row.get("privacy_credential_scan")
+            == "PASS_NO_CREDENTIAL_BEARING_LITERAL_PATTERN"
             and row.get("capacity_counted") is True
             and row.get("generated_material") is False
             and row.get("authorship_class") == "UPSTREAM_AUTHORED_IMPLEMENTATION"
@@ -568,6 +584,28 @@ def verify_evidence(
         and type(evaluation.get("active_reserved_objects")) is int
         and evaluation.get("selected_objects_overlap_active_reservation") is False,
         "generated evaluation boundary drift",
+    )
+    checks = value.get("checks")
+    require(type(checks) is dict, "generated checks boundary missing")
+    require(
+        checks.get("strict_utf8_identity_normalization") == "PASS"
+        and checks.get("parse_validity") == "PASS_4_OF_4"
+        and checks.get("secret_privacy") == "PASS_4_OF_4"
+        and type(checks.get("generated_selected_count")) is int
+        and checks.get("generated_selected_count") == 0
+        and type(checks.get("generated_selected_bytes")) is int
+        and checks.get("generated_selected_bytes") == 0
+        and checks.get("exact_duplicate_sha256") == []
+        and checks.get("near_duplicate_threshold") == NEAR_THRESHOLD
+        and checks.get("near_duplicate_pairs") == []
+        and checks.get("max_observed_pair") == EXPECTED_MAX_PAIR
+        and checks.get("max_observed_jaccard") == EXPECTED_MAX_JACCARD
+        and checks.get("current_eval_reservation_active_at_eval289_head") is False,
+        "generated checks boundary drift",
+    )
+    require(
+        value.get("excluded_capacity") == EXPECTED_EXCLUDED_CAPACITY,
+        "generated excluded-capacity boundary drift",
     )
     require(value.get("status") == "ADMIT", "terminal status is not ADMIT")
     accounting = value.get("source_family_accounting")
