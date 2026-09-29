@@ -14,7 +14,13 @@
     "execution_report_identity_sha256": "1ae69b91ad0eb2e99592563814b054cfe16b3f3800604d9dee54e6184a89b75a",
     "inventory_identity_sha256": "e786370430e73b674ed5b4d09829cddffa6a943fc550b5316f2cb1da93bca654",
     "selected_objects": 52,
-    "selected_bytes": 1199986
+    "selected_bytes": 1199986,
+    "complete_tree_entry_count": 6710,
+    "complete_tree_blob_count": 6232,
+    "complete_tree_tree_count": 478,
+    "complete_tree_commit_count": 0,
+    "complete_tree_semantics_identity_sha256": "a3e9589836fb21749442e5d3475c0b019914a8aea597776340dcde2804c9b198",
+    "complete_tree_blob_map_identity_sha256": "4134496fea301cc7781f5cb2096293394f826cb8d364aad17a3b8650708ce5db"
   },
   "policy": {
     "root_default_license": "PSF-2.0",

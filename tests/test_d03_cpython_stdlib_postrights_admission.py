@@ -7,11 +7,13 @@ from pathlib import Path
 
 import pytest
 
+import twelve_six.d03_cpython_stdlib_postrights_admission as rights
 from twelve_six.d03_cpython_stdlib_postrights_admission import (
     EXPECTED_POLICY_IDENTITY_SHA256,
     HISTORICAL_INVENTORY_IDENTITY_SHA256,
     ROOT_LICENSE_BLOB_SHA1,
     UPSTREAM_TREE,
+    PinnedTreeAuthority,
     CPythonRightsAdmissionError,
     build_admission,
     candidate_inventory_identity,
@@ -138,19 +140,183 @@ def test_text_free_report_and_closed_world_decisions() -> None:
     assert report["candidate"]["inventory_identity_sha256"] == candidate_inventory_identity(rows)
 
 
-def test_complete_tree_response_is_required() -> None:
+def _synthetic_complete_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    *rows: dict[str, object],
+    extra: list[dict[str, object]] | None = None,
+) -> tuple[dict[str, object], PinnedTreeAuthority]:
+    entries: list[dict[str, object]] = [
+        {
+            "path": "LICENSE",
+            "mode": "100644",
+            "type": "blob",
+            "sha": ROOT_LICENSE_BLOB_SHA1,
+            "size": 13_804,
+        }
+    ]
+    for row in rows:
+        entries.append(
+            {
+                "path": row["source_path"],
+                "mode": "100644",
+                "type": "blob",
+                "sha": row["git_blob_sha1"],
+                "size": row["payload_bytes"],
+            }
+        )
+    if extra:
+        entries.extend(extra)
+    entries.sort(key=lambda item: str(item["path"]))
+    semantics = {"entries": entries, "sha": UPSTREAM_TREE, "truncated": False}
+    blob_projection = [
+        {"path": item["path"], "sha": item["sha"]}
+        for item in entries
+        if item["type"] == "blob"
+    ]
+    semantics_bytes = rights.canonical_json_bytes(semantics)
+    blob_bytes = rights.canonical_json_bytes(blob_projection)
+    monkeypatch.setattr(rights, "EXPECTED_TREE_ENTRY_COUNT", len(entries))
+    monkeypatch.setattr(
+        rights,
+        "EXPECTED_TREE_BLOB_COUNT",
+        sum(item["type"] == "blob" for item in entries),
+    )
+    monkeypatch.setattr(
+        rights,
+        "EXPECTED_TREE_TREE_COUNT",
+        sum(item["type"] == "tree" for item in entries),
+    )
+    monkeypatch.setattr(
+        rights,
+        "EXPECTED_TREE_COMMIT_COUNT",
+        sum(item["type"] == "commit" for item in entries),
+    )
+    monkeypatch.setattr(rights, "EXPECTED_TREE_SEMANTICS_BYTES", len(semantics_bytes))
+    monkeypatch.setattr(rights, "EXPECTED_TREE_BLOB_MAP_BYTES", len(blob_bytes))
+    monkeypatch.setattr(
+        rights,
+        "EXPECTED_TREE_SEMANTICS_IDENTITY_SHA256",
+        rights.sha256_bytes(semantics_bytes),
+    )
+    monkeypatch.setattr(
+        rights,
+        "EXPECTED_TREE_BLOB_MAP_IDENTITY_SHA256",
+        rights.sha256_bytes(blob_bytes),
+    )
+    payload: dict[str, object] = {
+        "sha": UPSTREAM_TREE,
+        "truncated": False,
+        "tree": deepcopy(entries),
+    }
+    return payload, parse_pinned_tree_response(payload)
+
+
+def test_incomplete_tree_response_is_rejected_even_with_root_license() -> None:
     payload = {
         "sha": UPSTREAM_TREE,
         "truncated": False,
         "tree": [
-            {"path": "LICENSE", "type": "blob", "sha": ROOT_LICENSE_BLOB_SHA1},
-            {"path": "Lib/a.py", "type": "blob", "sha": "2" * 40},
+            {
+                "path": "LICENSE",
+                "mode": "100644",
+                "type": "blob",
+                "sha": ROOT_LICENSE_BLOB_SHA1,
+                "size": 13_804,
+            },
+            {
+                "path": "Lib/a.py",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "2" * 40,
+                "size": 5,
+            },
         ],
     }
-    assert parse_pinned_tree_response(payload)["LICENSE"] == ROOT_LICENSE_BLOB_SHA1
+    with pytest.raises(CPythonRightsAdmissionError, match="complete tree entry count drift"):
+        parse_pinned_tree_response(payload)
     payload["truncated"] = True
     with pytest.raises(CPythonRightsAdmissionError, match="must be complete"):
         parse_pinned_tree_response(payload)
+
+
+def test_canonical_build_rejects_partial_raw_tree_before_classification() -> None:
+    row = _row("Lib/example.py", "value = 3\n")
+    with pytest.raises(
+        CPythonRightsAdmissionError,
+        match="authenticated complete pinned tree authority required",
+    ):
+        build_admission([row], _tree(row), _policy())
+
+
+def test_authenticated_tree_snapshot_isolated_from_caller_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _row("Lib/example.py", "value = 3\n")
+    payload, authority = _synthetic_complete_authority(monkeypatch, row)
+    blobs_before, evidence_before = rights._validated_tree_snapshot(authority)
+    payload["tree"].clear()
+    blobs_after, evidence_after = rights._validated_tree_snapshot(authority)
+    assert blobs_before == blobs_after
+    assert evidence_before == evidence_after
+    assert blobs_after["Lib/example.py"] == row["git_blob_sha1"]
+
+
+def test_authenticated_tree_omission_addition_and_substitution_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _row("Lib/example.py", "value = 3\n")
+    _, authority = _synthetic_complete_authority(
+        monkeypatch,
+        row,
+        extra=[
+            {
+                "path": "Lib/example/LICENSE",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "1" * 40,
+                "size": 7,
+            }
+        ],
+    )
+    snapshot, _ = rights._validated_tree_snapshot(authority)
+    assert classify_row(row, snapshot, _policy())["reason"] == "ANCESTOR_RIGHTS_MARKER_PRESENT"
+
+    omitted = PinnedTreeAuthority(
+        tuple(item for item in authority.entries if item[0] != "Lib/example/LICENSE")
+    )
+    with pytest.raises(CPythonRightsAdmissionError):
+        rights._validated_tree_snapshot(omitted)
+
+    added = PinnedTreeAuthority(
+        authority.entries
+        + (("Lib/unrelated.py", "100644", "blob", "3" * 40, 9),)
+    )
+    with pytest.raises(CPythonRightsAdmissionError):
+        rights._validated_tree_snapshot(added)
+
+    replaced_entries = list(authority.entries)
+    target = next(i for i, item in enumerate(replaced_entries) if item[0] == "Lib/example.py")
+    path, mode, kind, _sha, size = replaced_entries[target]
+    replaced_entries[target] = (path, mode, kind, "4" * 40, size)
+    with pytest.raises(CPythonRightsAdmissionError):
+        rights._validated_tree_snapshot(PinnedTreeAuthority(tuple(replaced_entries)))
+
+
+def test_complete_tree_rejects_duplicate_path_and_bool_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _row("Lib/example.py", "value = 3\n")
+    payload, _ = _synthetic_complete_authority(monkeypatch, row)
+    duplicate = deepcopy(payload)
+    duplicate["tree"].append(deepcopy(duplicate["tree"][-1]))
+    monkeypatch.setattr(rights, "EXPECTED_TREE_ENTRY_COUNT", len(duplicate["tree"]))
+    with pytest.raises(CPythonRightsAdmissionError, match="duplicate tree path"):
+        parse_pinned_tree_response(duplicate)
+
+    bad_size = deepcopy(payload)
+    bad_size["tree"][-1]["size"] = True
+    with pytest.raises(CPythonRightsAdmissionError, match="tree object size invalid"):
+        parse_pinned_tree_response(bad_size)
 
 
 def test_fake_candidate_cannot_claim_historical_inventory() -> None:
