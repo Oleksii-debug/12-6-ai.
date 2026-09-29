@@ -492,11 +492,10 @@ def _reconstruct_current_clean_base(
     quarantine_authority = clean._read_json(ROOT / clean.QUARANTINE_CONFIG_PATH)
     v8_config = v8.load_config(ROOT / clean.INCUMBENT_V8_CONFIG_PATH)
 
-    with _isolated_terminal_v7_namespace(v7_root):
-        v7, baseline_report, inventory, payloads = v8._capture_terminal_v7(
-            v7_root,
-            v8_config,
-        )
+    v7, baseline_report, inventory, payloads = v8._capture_terminal_v7(
+        v7_root,
+        v8_config,
+    )
     clean_inventory, clean_payloads, removal = clean.deauthorize_exact_nomis(
         inventory,
         payloads,
@@ -570,13 +569,43 @@ def _build_current_clean_replay(
     indexed_executor: Any,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     runtime_bindings = _verify_current_clean_dependencies()
-    matcher, base_inventory, base_payloads, clean_authority = (
-        _reconstruct_current_clean_base(
-            v7_root=_repo_rooted(args.v7_root),
-            workspace=pass_root / "clean-base-workspace",
+    v7_root = _repo_rooted(args.v7_root)
+    with _isolated_terminal_v7_namespace(v7_root):
+        matcher, base_inventory, base_payloads, clean_authority = (
+            _reconstruct_current_clean_base(
+                v7_root=v7_root,
+                workspace=pass_root / "clean-base-workspace",
+            )
         )
-    )
+        return _build_current_clean_replay_with_base(
+            args,
+            pass_root=pass_root,
+            arxiv_candidate=arxiv_candidate,
+            languk_candidate=languk_candidate,
+            source_intake=source_intake,
+            indexed_executor=indexed_executor,
+            matcher=matcher,
+            base_inventory=base_inventory,
+            base_payloads=base_payloads,
+            clean_authority=clean_authority,
+            runtime_bindings=runtime_bindings,
+        )
 
+
+def _build_current_clean_replay_with_base(
+    args: argparse.Namespace,
+    *,
+    pass_root: Path,
+    arxiv_candidate: Path,
+    languk_candidate: Path,
+    source_intake: Any,
+    indexed_executor: Any,
+    matcher: Any,
+    base_inventory: dict[str, Any],
+    base_payloads: dict[str, bytes],
+    clean_authority: dict[str, Any],
+    runtime_bindings: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     intake = source_intake
     arxiv_rows, arxiv_payloads, arxiv_receipt = intake._prepare_source(
         intake.ARXIV,
