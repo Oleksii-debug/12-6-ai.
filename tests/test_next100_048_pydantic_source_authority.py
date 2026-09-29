@@ -11,10 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_committed_pydantic_terminal_evidence_is_self_consistent() -> None:
-    path = ROOT / "evidence/next100-048/pydantic-source-admission-v1.json"
-    value = qualifier._load_json_bytes(path.read_bytes(), context=str(path))
+    path = ROOT / qualifier.HISTORICAL_EVIDENCE_PATH
+    raw = path.read_bytes()
+    qualifier.verify_historical_evidence_bytes(raw)
+    value = qualifier._load_json_bytes(raw, context=str(path))
 
-    qualifier.verify_historical_evidence(value)
     terminal_path = ROOT / qualifier.TERMINAL_AUTHORITY_PATH
     qualifier.verify_historical_terminal_authority_bytes(terminal_path.read_bytes())
 
@@ -481,3 +482,31 @@ def test_terminal_authority_duplicate_json_key_fails_closed_after_blob_binding(
         match="duplicate JSON key",
     ):
         qualifier.verify_historical_terminal_authority_bytes(raw)
+
+
+def test_committed_candidate_policy_and_predecessor_policy_are_exact() -> None:
+    candidate_path = ROOT / "configs/data/next100_048_pydantic_code_rights_v1.json"
+    candidate_raw = candidate_path.read_bytes()
+    assert qualifier.git_blob_sha1(candidate_raw) == qualifier.PYDANTIC_POLICY_BLOB
+    candidate = qualifier._load_json_bytes(candidate_raw, context=str(candidate_path))
+    assert candidate["schema_version"] == "12-6.next100-048-pydantic-code-rights.v1"
+    assert candidate["source_family"] == "github:pydantic/pydantic"
+    assert candidate["upstream_commit"] == qualifier.UPSTREAM_COMMIT
+
+    predecessor = qualifier.load_data227_policy(ROOT)
+    assert sorted({row["source_family"] for row in predecessor["decisions"]}) == [
+        "github:encode/httpx",
+        "github:psf/requests",
+    ]
+
+
+def test_historical_evidence_byte_substitution_fails_closed() -> None:
+    path = ROOT / qualifier.HISTORICAL_EVIDENCE_PATH
+    raw = path.read_bytes()
+    changed = raw.replace(b'"status":"ADMIT"', b'"status":"RETEST"', 1)
+    assert changed != raw
+    with pytest.raises(
+        qualifier.QualificationError,
+        match="historical evidence blob drift",
+    ):
+        qualifier.verify_historical_evidence_bytes(changed)

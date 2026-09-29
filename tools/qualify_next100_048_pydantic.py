@@ -26,6 +26,10 @@ HISTORICAL_AUTHORITY_IDENTITY_SHA256 = (
     "a25e618f4e26dd7c0df643768ab867a7ae080ca6ad2e5a88bda89bc757ae183a"
 )
 PYDANTIC_POLICY_BLOB = "504ef934145ed0711743f781dc9f47b07ad7accd"
+HISTORICAL_EVIDENCE_BLOB = "7ba531a8acbfdc9eb49b2067375081563043949a"
+HISTORICAL_EVIDENCE_PATH = Path(
+    "evidence/next100-048/pydantic-source-admission-v1.json"
+)
 TERMINAL_AUTHORITY_BLOB = "8595dfb6c1028960c0274b22c8390a7e238e2235"
 TERMINAL_AUTHORITY_PATH = Path(
     "evidence/next100-048/pydantic-terminal-source-authority.json"
@@ -582,6 +586,16 @@ def verify_historical_terminal_authority_bytes(raw: bytes) -> None:
         and generated.get("selected_generated_files") == [],
         "historical terminal generated-capacity drift",
     )
+
+
+def verify_historical_evidence_bytes(raw: bytes) -> None:
+    """Verify exact historical evidence bytes before semantic verification."""
+    require(
+        git_blob_sha1(raw) == HISTORICAL_EVIDENCE_BLOB,
+        "historical evidence blob drift",
+    )
+    value = _load_json_bytes(raw, context="historical source-admission evidence")
+    verify_historical_evidence(value)
 
 
 def verify_historical_evidence(value: dict[str, Any]) -> None:
