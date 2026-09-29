@@ -218,19 +218,9 @@ def verify_candidate(spec: HistoricalMaterializerSpec, raw: bytes) -> dict[str, 
 def build_receipt(
     *,
     pass_results: list[dict[str, Any]],
-    incumbent_runner_blob_sha1: str,
-    incumbent_intake_blob_sha1: str,
 ) -> dict[str, Any]:
-    """Build a text-free receipt only after two byte-identical physical replay passes."""
+    """Build a text-free receipt only after two byte-identical clean replay passes."""
     _require(len(pass_results) == 2, "exactly two clean replay passes are required")
-    _require(
-        incumbent_runner_blob_sha1 == PARENT_RUNNER_BLOB_SHA1,
-        "incumbent runner blob drift",
-    )
-    _require(
-        incumbent_intake_blob_sha1 == PARENT_INTAKE_BLOB_SHA1,
-        "incumbent intake blob drift",
-    )
 
     required_pass_keys = {
         "arxiv_candidate_sha256",
@@ -275,11 +265,11 @@ def build_receipt(
         "schema_version": RECEIPT_SCHEMA,
         "status": "PHYSICAL_REMATERIALIZATION_AND_CURRENT_CLEAN_DEDUP_REPLAY_EXECUTED_ZERO_CREDIT",
         "execution_profile": "LOCAL_FREE",
-        "parent_authority": {
+        "historical_parent_lineage": {
             "product_pr": 1800,
             "exact_head_sha": PARENT_PR1800_HEAD,
-            "intake_blob_sha1": PARENT_INTAKE_BLOB_SHA1,
-            "runner_blob_sha1": PARENT_RUNNER_BLOB_SHA1,
+            "used_as_current_corpus_execution_authority": False,
+            "reason": "superseded by merged Nomis-free clean successor authority",
         },
         "historical_materializers": {
             spec.key: {
