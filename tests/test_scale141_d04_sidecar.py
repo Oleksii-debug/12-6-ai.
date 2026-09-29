@@ -11,6 +11,7 @@ from torch import nn
 
 from twelve_six.checkpoint import (
     D04_RESUME_BINDING_SCHEMA,
+    CheckpointCompatibilityError,
     CheckpointIdentity,
     load_trainer_checkpoint,
     save_trainer_checkpoint,
@@ -186,6 +187,8 @@ def test_sidecar_publishes_after_manifest_and_resolves_exact_d04_state(tmp_path:
         model=fresh_model,
         trainer=fresh_trainer,
         restore_rng=False,
+        expected_checkpoint_id=reference["checkpoint_id"],
+        expected_manifest_sha256=reference["manifest_sha256"],
         expected_git_sha=SOURCE_SHA,
         expected_run_manifest_hash=RUN_HASH,
         expected_step=trainer.optimizer_step,
@@ -284,3 +287,68 @@ def test_interruption_after_sidecar_keeps_last_known_good_and_cleanup_removes_or
     assert not (root / "generations/generation-00000002").exists()
     assert not (root / "resume-states/generation-00000002").exists()
     assert resolve_recovery_generation(root, expected_reference=first).resume_state is not None
+
+
+@pytest.mark.parametrize(
+    ("expected_field", "message"),
+    [
+        (
+            "expected_checkpoint_id",
+            "checkpoint_id does not match the independently expected D05 identity",
+        ),
+        (
+            "expected_manifest_sha256",
+            "manifest SHA-256 does not match the independently expected D05 identity",
+        ),
+    ],
+)
+def test_exact_d05_identity_mismatch_rejects_before_restore_mutation(
+    tmp_path: Path,
+    expected_field: str,
+    message: str,
+) -> None:
+    model, trainer, cfg = _stack()
+    _step(trainer)
+    root = tmp_path / expected_field
+    reference = _publish(root, model, trainer, cfg)
+    resolution = resolve_recovery_generation(root, expected_reference=reference)
+
+    fresh_model, fresh_trainer, _ = _stack()
+    model_before = {
+        name: tensor.detach().clone()
+        for name, tensor in fresh_model.state_dict().items()
+    }
+    trainer_before = trainer_state_before = fresh_trainer.state_dict()
+    del trainer_state_before
+    rng_before = torch.get_rng_state().clone()
+
+    kwargs = {
+        "expected_checkpoint_id": reference["checkpoint_id"],
+        "expected_manifest_sha256": reference["manifest_sha256"],
+    }
+    actual = kwargs[expected_field]
+    replacement = "0" * 64 if actual != "0" * 64 else "f" * 64
+    kwargs[expected_field] = replacement
+
+    with pytest.raises(CheckpointCompatibilityError, match=message):
+        load_trainer_checkpoint(
+            resolution.path,
+            model=fresh_model,
+            trainer=fresh_trainer,
+            restore_rng=True,
+            expected_git_sha=SOURCE_SHA,
+            expected_run_manifest_hash=RUN_HASH,
+            expected_step=trainer.optimizer_step,
+            expected_tokens_seen=trainer.tokens_seen,
+            expected_ledger_identity_sha256=LEDGER_HASH,
+            expected_materialization_identity_sha256=MATERIALIZATION_HASH,
+            expected_packing_identity_sha256=PACKING_IDENTITY_HASH,
+            expected_exposure_plan_identity_sha256=EXPOSURE_PLAN_HASH,
+            expected_ordered_next_exposure_identity_sha256=ORDERED_NEXT_HASH,
+            **kwargs,
+        )
+
+    for name, tensor in fresh_model.state_dict().items():
+        assert torch.equal(tensor, model_before[name])
+    assert fresh_trainer.state_dict() == trainer_before
+    assert torch.equal(torch.get_rng_state(), rng_before)
