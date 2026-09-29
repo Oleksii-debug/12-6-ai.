@@ -178,7 +178,7 @@ def test_cross_origin_source_and_evidence_promotion_fail_closed():
     promoted = deepcopy(pins)
     promoted["training_authorized_bytes"] = 1
     with_identity(promoted)
-    with pytest.raises(module.NbuTextMaterializationError, match="pin truth boundary drift"):
+    with pytest.raises(module.NbuTextMaterializationError, match="parent PDF pin evidence invalid"):
         module.validate_pin_evidence(promoted, config)
 
 
@@ -193,7 +193,7 @@ def test_duplicate_document_entry_fails_closed():
         module.validate_discovery_evidence(discovery, config)
 
 
-def test_one_pdf_cannot_be_owned_by_multiple_documents():
+def test_cross_document_primary_pdf_substitution_fails_on_identity():
     config = load_config()
     discovery, _, _ = sample_inputs(config)
     shared_pdf = discovery["documents"][0]["official_pdf_urls"][0]
@@ -204,7 +204,7 @@ def test_one_pdf_cannot_be_owned_by_multiple_documents():
     })
     discovery["discovered_documents"] = 2
     with_identity(discovery)
-    with pytest.raises(module.NbuTextMaterializationError, match="one PDF is mapped to multiple documents"):
+    with pytest.raises(module.NbuTextMaterializationError, match="discovery primary PDF identity mismatch"):
         module.validate_discovery_evidence(discovery, config)
 
 
