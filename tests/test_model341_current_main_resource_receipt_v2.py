@@ -137,7 +137,7 @@ def test_v2_receipt_strict_json_rejects_duplicate_keys() -> None:
 
 def test_v2_authority_payload_changes_under_coherent_timing_reseal() -> None:
     candidate = _minimal_candidate()
-    candidate["capture"] = {"run_id": 1}
+    candidate["capture"] = {"workflow_run_id": 1}
     candidate["probe_report"] = {
         "measurement": {
             "elapsed_seconds": [1.0, 1.0, 1.0],
@@ -175,7 +175,7 @@ def test_v2_authority_payload_changes_under_coherent_timing_reseal() -> None:
 
 def test_v2_authority_payload_changes_under_coherent_fingerprint_substitution() -> None:
     candidate = _minimal_candidate()
-    candidate["capture"] = {"run_id": 1}
+    candidate["capture"] = {"workflow_run_id": 1}
     candidate["probe_report"] = {
         "measurement": {
             "parameter_fingerprint_before_sha256": "1" * 64,
@@ -202,7 +202,7 @@ def test_v2_authority_payload_changes_under_coherent_fingerprint_substitution() 
 
 def test_v2_authority_payload_changes_under_coherent_loss_reseal() -> None:
     candidate = _minimal_candidate()
-    candidate["capture"] = {"run_id": 1}
+    candidate["capture"] = {"workflow_run_id": 1}
     candidate["probe_report"] = {
         "measurement": {
             "synthetic_loss_samples": [5.0, 5.0, 5.0],
@@ -265,7 +265,7 @@ def test_v2_prepublished_authority_rejects_coherent_timing_reseal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     candidate = _minimal_candidate()
-    candidate["capture"] = {"run_id": 1, "job_id": 2, "head_sha": "a" * 40}
+    candidate["capture"] = {"workflow_run_id": 1, "job_id": 2, "head_sha": "a" * 40}
     candidate["probe_report"] = {
         "measurement": {
             "elapsed_seconds": [1.0, 1.0, 1.0],
@@ -306,7 +306,7 @@ def test_v2_prepublished_authority_rejects_coherent_loss_reseal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     candidate = _minimal_candidate()
-    candidate["capture"] = {"run_id": 1}
+    candidate["capture"] = {"workflow_run_id": 1}
     candidate["probe_report"] = {
         "measurement": {
             "synthetic_loss_samples": [5.0, 5.0, 5.0],
@@ -334,7 +334,7 @@ def test_v2_prepublished_authority_rejects_equal_fingerprint_substitution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     candidate = _minimal_candidate()
-    candidate["capture"] = {"run_id": 1}
+    candidate["capture"] = {"workflow_run_id": 1}
     candidate["probe_report"] = {
         "measurement": {
             "parameter_fingerprint_before_sha256": "1" * 64,
@@ -363,13 +363,13 @@ def test_v2_prepublished_authority_rejects_capture_substitution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     candidate = _minimal_candidate()
-    candidate["capture"] = {"run_id": 1, "job_id": 2}
+    candidate["capture"] = {"workflow_run_id": 1, "job_id": 2}
     candidate["probe_report"] = {"measurement": {"value": 1}}
     _publish_test_authority(monkeypatch, candidate)
     receipt.validate_receipt(candidate, root=ROOT)
 
     resealed = copy.deepcopy(candidate)
-    resealed["capture"]["run_id"] = 999
+    resealed["capture"]["workflow_run_id"] = 999
     monkeypatch.setattr(receipt, "EXPECTED_CAPTURE", copy.deepcopy(resealed["capture"]))
 
     with pytest.raises(
@@ -383,7 +383,7 @@ def test_v2_receipt_rejects_bad_authority_before_loading_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     candidate = _minimal_candidate()
-    candidate["capture"] = {"run_id": 1}
+    candidate["capture"] = {"workflow_run_id": 1}
     candidate["probe_report"] = {"measurement": {"value": 1}}
     _publish_test_authority(monkeypatch, candidate)
     candidate["probe_report"]["measurement"]["value"] = 2
