@@ -82,6 +82,7 @@ def _canonical(value: Any) -> bytes:
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
 
 
@@ -407,9 +408,15 @@ def _max_rss_kib() -> int | None:
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
-    _require(not path.exists() and not path.is_symlink(), f"refusing to overwrite: {path}")
+    payload = _canonical(dict(value)) + b"\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(_canonical(dict(value)) + b"\n")
+    try:
+        with path.open("xb") as handle:
+            handle.write(payload)
+    except FileExistsError as exc:
+        raise Franko1901GlobalDedupError(f"refusing to overwrite: {path}") from exc
+    except OSError as exc:
+        raise Franko1901GlobalDedupError(f"cannot write output: {path}") from exc
 
 
 def execute(
