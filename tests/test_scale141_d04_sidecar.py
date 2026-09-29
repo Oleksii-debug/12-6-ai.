@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
+import subprocess
+import sys
+from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 import pytest
 import torch
 from torch import nn
@@ -109,6 +115,41 @@ def _state_hash(value: dict[str, object]) -> str:
         + "\n"
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _stable_digest(value: Any) -> str:
+    digest = hashlib.sha256()
+
+    def visit(item: Any) -> None:
+        if torch.is_tensor(item):
+            tensor = item.detach().cpu().contiguous()
+            digest.update(b"T")
+            digest.update(str(tensor.dtype).encode("ascii"))
+            digest.update(repr(tuple(tensor.shape)).encode("ascii"))
+            digest.update(tensor.numpy().tobytes())
+            return
+        if isinstance(item, Mapping):
+            digest.update(b"D")
+            for key in sorted(item, key=lambda candidate: repr(candidate)):
+                visit(key)
+                visit(item[key])
+            return
+        if isinstance(item, list):
+            digest.update(b"L")
+            for child in item:
+                visit(child)
+            return
+        if isinstance(item, tuple):
+            digest.update(b"U")
+            for child in item:
+                visit(child)
+            return
+        digest.update(type(item).__name__.encode("utf-8"))
+        digest.update(b":")
+        digest.update(repr(item).encode("utf-8"))
+
+    visit(value)
+    return digest.hexdigest()
 
 
 def _resume_state(context: ResumeSidecarContext) -> dict[str, object]:
@@ -353,6 +394,58 @@ def test_metadata_compatible_alternate_checkpoint_rejected_before_mutation(
         target_trainer.tokens_seen,
     ) == counters_before
     assert torch.equal(torch.get_rng_state(), rng_before)
+
+
+def test_fresh_process_restores_exact_d05_d04_trainer_and_rng_state(
+    tmp_path: Path,
+) -> None:
+    random.seed(211)
+    np.random.seed(211)
+    model, trainer, cfg = _stack()
+    _step(trainer)
+    root = tmp_path / "fresh-process"
+    reference = _publish(root, model, trainer, cfg)
+
+    expected = {
+        "model_state_sha256": _stable_digest(model.state_dict()),
+        "trainer_state_sha256": _stable_digest(trainer.state_dict()),
+        "micro_step": trainer.micro_step,
+        "optimizer_step": trainer.optimizer_step,
+        "tokens_seen": trainer.tokens_seen,
+        "checkpoint_id": reference["checkpoint_id"],
+        "manifest_sha256": reference["manifest_sha256"],
+        "d04_state_identity_sha256": reference["resume_state"][
+            "state_identity_sha256"
+        ],
+        "ordered_next_exposure_identity_sha256": reference["resume_state"][
+            "ordered_next_exposure_identity_sha256"
+        ],
+        "rng_probe": {
+            "python": random.random(),
+            "numpy": float(np.random.random()),
+            "torch": float(torch.rand(1).item()),
+        },
+    }
+
+    reference_path = tmp_path / "reference.json"
+    reference_path.write_text(
+        json.dumps(reference, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    worker = (
+        Path(__file__).parent
+        / "helpers"
+        / "pr1811_fresh_resume_worker.py"
+    )
+    completed = subprocess.run(
+        [sys.executable, str(worker), str(root), str(reference_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    observed = json.loads(completed.stdout)
+    assert observed == expected
 
 
 @pytest.mark.parametrize(
