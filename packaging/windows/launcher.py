@@ -7,6 +7,7 @@ import hashlib
 import importlib
 import importlib.metadata
 import json
+import math
 import os
 import platform
 import re
@@ -31,6 +32,26 @@ def _canonical_name(name: str) -> str:
     return _NAME_NORMALIZER.sub("-", name.strip()).lower()
 
 
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object member: {key}")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON number is forbidden: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("non-finite JSON number is forbidden")
+    return parsed
+
+
 def _canonical_json_bytes(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
 
@@ -53,8 +74,13 @@ def _lock_dir() -> Path:
 def _load_profile(lock_dir: Path) -> dict[str, Any]:
     profile_path = lock_dir / "profile.json"
     try:
-        profile = json.loads(profile_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        profile = json.loads(
+            profile_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+            parse_float=_parse_finite_float,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise RuntimeError("cannot read installed D08 Windows lock profile") from exc
     if not isinstance(profile, dict):
         raise RuntimeError("installed D08 Windows lock profile must be an object")

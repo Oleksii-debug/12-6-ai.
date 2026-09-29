@@ -253,3 +253,27 @@ def test_windows_locked_profile_forces_utf8_for_unicode_path() -> None:
     ).read_text(encoding="utf-8")
     assert "$env:PYTHONUTF8 = '1'" in workflow
     assert "$env:PYTHONIOENCODING = 'utf-8'" in workflow
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"profile_id":"windows-x86_64","profile_id":"other"}',
+        '{"nested":{"version":"a","version":"b"}}',
+        '{"value":NaN}',
+        '{"value":Infinity}',
+        '{"value":-Infinity}',
+        '{"value":1e400}',
+        '{"nested":[{"value":-1e400}]}',
+    ],
+)
+def test_launcher_profile_rejects_ambiguous_or_nonfinite_json(
+    tmp_path: Path,
+    raw: str,
+) -> None:
+    lock = tmp_path / "12-6-lock"
+    lock.mkdir()
+    (lock / "profile.json").write_text(raw, encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="cannot read installed D08 Windows lock profile"):
+        WINDOWS_LAUNCHER._load_profile(lock)
