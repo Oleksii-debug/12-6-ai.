@@ -191,3 +191,18 @@ def test_strict_authority_loader_requires_object_root(tmp_path: Path) -> None:
     path.write_text("[]", encoding="utf-8")
     with pytest.raises(ValueError, match="must contain a JSON object"):
         validator._load_mapping(path)
+
+
+
+def test_programmatic_reservation_rejects_nested_non_finite_float() -> None:
+    mutated = copy.deepcopy(_manifest())
+    mutated["truth_boundary"]["diagnostic"] = float("inf")
+    with pytest.raises(ValueError, match="contains non-finite float"):
+        validator.validate_document(mutated)
+
+
+def test_programmatic_evidence_rejects_nested_non_finite_float() -> None:
+    mutated = copy.deepcopy(_evidence())
+    mutated["truth_boundary"]["diagnostic"] = float("nan")
+    with pytest.raises(ValueError, match="contains non-finite float"):
+        validator.validate_materialization_evidence(_manifest(), mutated)
