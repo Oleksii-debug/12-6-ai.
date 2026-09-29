@@ -51,33 +51,45 @@ def test_exact_raw_source_policy_loads_strictly() -> None:
     [
         (
             '  "execution_profile": "LOCAL_FREE",',
-            '  "execution_profile": "REMOTE",\n'
-            '  "execution_profile": "LOCAL_FREE",',
+            (
+                '  "execution_profile": "REMOTE",\n'
+                '  "execution_profile": "LOCAL_FREE",'
+            ),
         ),
         (
             '    "parent_product_pr": 910,',
-            '    "parent_product_pr": 1,\n'
-            '    "parent_product_pr": 910,',
+            (
+                '    "parent_product_pr": 1,\n'
+                '    "parent_product_pr": 910,'
+            ),
         ),
         (
             '    "resource_md5": "0ea96e1582e5584ced79be1027f0ae55",',
-            '    "resource_md5": "forged",\n'
-            '    "resource_md5": "0ea96e1582e5584ced79be1027f0ae55",',
+            (
+                '    "resource_md5": "forged",\n'
+                '    "resource_md5": "0ea96e1582e5584ced79be1027f0ae55",'
+            ),
         ),
         (
             '      "accessed_utc": "2026-09-29",',
-            '      "accessed_utc": "1900-01-01",\n'
-            '      "accessed_utc": "2026-09-29",',
+            (
+                '      "accessed_utc": "1900-01-01",\n'
+                '      "accessed_utc": "2026-09-29",'
+            ),
         ),
         (
             '    "dataset_license_alone_sufficient_for_payload_admission": false,',
-            '    "dataset_license_alone_sufficient_for_payload_admission": true,\n'
-            '    "dataset_license_alone_sufficient_for_payload_admission": false,',
+            (
+                '    "dataset_license_alone_sufficient_for_payload_admission": true,\n'
+                '    "dataset_license_alone_sufficient_for_payload_admission": false,'
+            ),
         ),
         (
             '    "training_authorized_bytes": 0,',
-            '    "training_authorized_bytes": 1,\n'
-            '    "training_authorized_bytes": 0,',
+            (
+                '    "training_authorized_bytes": 1,\n'
+                '    "training_authorized_bytes": 0,'
+            ),
         ),
     ],
 )
