@@ -75,3 +75,63 @@ def test_generated_and_historical_evidence_use_distinct_schema_versions() -> Non
         "12-6.next100-048-pydantic-source-admission.v1"
     )
     assert qualifier.SCHEMA == "12-6.next100-048-pydantic-source-admission.v2"
+
+
+
+def test_historical_coherent_rehash_substitution_is_rejected() -> None:
+    path = ROOT / "evidence/next100-048/pydantic-source-admission-v1.json"
+    value = qualifier._load_json_bytes(path.read_bytes(), context=str(path))
+    value["status"] = "RETEST"
+    unsigned = dict(value)
+    unsigned.pop("authority_identity_sha256")
+    canonical = (
+        qualifier.json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    value["authority_identity_sha256"] = qualifier.sha256(canonical)
+
+    with pytest.raises(
+        qualifier.QualificationError,
+        match="historical authority identity drift",
+    ):
+        qualifier.verify_historical_evidence(value)
+
+
+def test_generated_v2_requires_external_source_sha_binding() -> None:
+    value = {
+        "schema_version": qualifier.SCHEMA,
+        "status": "ADMIT",
+        "worker_source_sha": "1" * 40,
+        "predecessor_code_authority": {},
+        "source_family_accounting": {
+            "selected_implementation_object_count": 4,
+            "selected_authored_capacity_bytes": 235_204,
+        },
+        "execution": {
+            "class": "LOCAL_FREE",
+            "paid_compute_used": False,
+            "model_training_executed": False,
+        },
+    }
+    unsigned = dict(value)
+    canonical = (
+        qualifier.json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    value["authority_identity_sha256"] = qualifier.sha256(canonical)
+
+    with pytest.raises(
+        qualifier.QualificationError,
+        match="generated worker source SHA drift",
+    ):
+        qualifier.verify_evidence(value, expected_source_sha="2" * 40)

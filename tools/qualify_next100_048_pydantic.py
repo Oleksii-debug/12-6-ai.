@@ -22,6 +22,9 @@ from typing import Any
 WORKER = "NEXT100-048-CODE-PYDANTIC"
 HISTORICAL_SCHEMA = "12-6.next100-048-pydantic-source-admission.v1"
 SCHEMA = "12-6.next100-048-pydantic-source-admission.v2"
+HISTORICAL_AUTHORITY_IDENTITY_SHA256 = (
+    "a25e618f4e26dd7c0df643768ab867a7ae080ca6ad2e5a88bda89bc757ae183a"
+)
 DATA227_HEAD = "8ebdb2e132ed7bae5245e9d4c140752640ab9885"
 DATA227_POLICY_BLOB = "0ce5223a1cade10031899bf27348a1a65121d4c6"
 DATA227_POLICY_PATH = Path("configs/data/data227_code_rights_policy_v1.json")
@@ -379,6 +382,10 @@ def _verify_self_hash(value: dict[str, Any]) -> None:
 def verify_historical_evidence(value: dict[str, Any]) -> None:
     """Verify the immutable v1 evidence without relabeling it as regenerated v2."""
     _verify_self_hash(value)
+    require(
+        value.get("authority_identity_sha256") == HISTORICAL_AUTHORITY_IDENTITY_SHA256,
+        "historical authority identity drift",
+    )
     require(value.get("schema_version") == HISTORICAL_SCHEMA, "historical schema drift")
     require(value.get("status") == "ADMIT", "historical terminal status is not ADMIT")
     predecessor = value.get("predecessor_code_authority")
@@ -409,10 +416,23 @@ def verify_historical_evidence(value: dict[str, Any]) -> None:
     )
 
 
-def verify_evidence(value: dict[str, Any]) -> None:
-    """Verify newly generated v2 evidence."""
+def verify_evidence(
+    value: dict[str, Any],
+    *,
+    expected_source_sha: str,
+) -> None:
+    """Verify newly generated v2 evidence against the externally expected source SHA."""
+    require(
+        len(expected_source_sha) == 40
+        and all(ch in "0123456789abcdef" for ch in expected_source_sha),
+        "expected source SHA must be lowercase 40-hex",
+    )
     _verify_self_hash(value)
     require(value.get("schema_version") == SCHEMA, "generated evidence schema drift")
+    require(
+        value.get("worker_source_sha") == expected_source_sha,
+        "generated worker source SHA drift",
+    )
     require(value.get("status") == "ADMIT", "terminal status is not ADMIT")
     accounting = value.get("source_family_accounting")
     require(type(accounting) is dict, "source-family accounting missing")
@@ -450,7 +470,7 @@ def main() -> int:
         policy_path=args.policy,
         source_sha=args.source_sha,
     )
-    verify_evidence(evidence)
+    verify_evidence(evidence, expected_source_sha=args.source_sha)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
