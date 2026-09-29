@@ -7,6 +7,12 @@ import json
 import pytest
 
 import tools.next100_106_balance_gate as next100_gate
+from twelve_six.data.current_clean_balanced_selection_v1 import (
+    SELECTION_REALIZATION_POLICY,
+    _exact_record_subset,
+    build_current_clean_balanced_selection,
+    project_selected_current_clean_raw_records,
+)
 from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
 from twelve_six.data.postmaterialization_balance_projection_v1 import (
     BALANCE_BINDING_SCHEMA,
@@ -1015,4 +1021,249 @@ def test_current_clean_rejects_noncanonical_survivor_jsonl() -> None:
             repeat_proof_raw=raw["repeat_proof"],
             survivor_records_raw=raw["survivor_records"],
             **expected,
+        )
+
+
+def _current_clean_target_selection_fixture() -> tuple[
+    dict, dict[str, bytes], dict[str, object], dict, dict, dict
+]:
+    vector, raw, expected = _build_current_clean(_target_rows())
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    assert balance["status"] == "TARGET_20M_SOURCE_MIX_FEASIBLE"
+    binding = build_balance_result_binding(
+        family_vector=vector,
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        next100_input=adapted,
+        balance_result=balance,
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    return vector, raw, expected, adapted, balance, binding
+
+
+def _build_current_clean_target_selection() -> tuple[dict, list[dict], dict]:
+    vector, raw, _expected, adapted, balance, binding = (
+        _current_clean_target_selection_fixture()
+    )
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    selection = build_current_clean_balanced_selection(
+        family_vector=vector,
+        next100_input=adapted,
+        balance_result=balance,
+        balance_binding=binding,
+        composition_receipt_raw=raw["composition_receipt"],
+        survivor_records_raw=raw["survivor_records"],
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        expected_balance_binding_identity_sha256=binding[
+            "binding_identity_sha256"
+        ],
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    projected = project_selected_current_clean_raw_records(
+        selection,
+        raw["survivor_records"],
+    )
+    return selection, projected, balance
+
+
+def test_current_clean_balanced_selection_materializes_exact_target() -> None:
+    selection, projected, balance = _build_current_clean_target_selection()
+    assert selection["schema"] == "12-6.d03-balanced-selection-authority.v1"
+    assert selection["terminal"] is True
+    assert selection["status"] == "PASS"
+    assert selection["totals"]["record_count"] == 6
+    assert selection["totals"]["source_bytes"] == 20_000_000
+    assert selection["totals"]["source_bytes"] == balance[
+        "maximum_feasible_total_source_bytes"
+    ]
+    assert sum(
+        selection["totals"]["family_source_bytes"].values()
+    ) == 20_000_000
+    assert len(projected) == 6
+    assert all(row["training_eligible"] is False for row in projected)
+    assert all(row["evaluation_eligible"] is False for row in projected)
+    assert all(row["evaluation_reserved"] is False for row in projected)
+
+
+def test_current_clean_balanced_selection_is_deterministic() -> None:
+    first, first_projected, _ = _build_current_clean_target_selection()
+    second, second_projected, _ = _build_current_clean_target_selection()
+    assert second == first
+    assert second_projected == first_projected
+
+
+def test_current_clean_balanced_selection_groups_same_source_as_one_cluster() -> None:
+    rows = _target_rows()
+    rows[1]["source_id"] = rows[0]["source_id"]
+    vector, raw, _expected = _build_current_clean(rows)
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    binding = build_balance_result_binding(
+        family_vector=vector,
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        next100_input=adapted,
+        balance_result=balance,
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    selection = build_current_clean_balanced_selection(
+        family_vector=vector,
+        next100_input=adapted,
+        balance_result=balance,
+        balance_binding=binding,
+        composition_receipt_raw=raw["composition_receipt"],
+        survivor_records_raw=raw["survivor_records"],
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        expected_balance_binding_identity_sha256=binding[
+            "binding_identity_sha256"
+        ],
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    selected = {row["record_id"]: row for row in selection["records"]}
+    assert selected["ua-a"]["near_duplicate_cluster_id"] == selected["ua-b"][
+        "near_duplicate_cluster_id"
+    ]
+
+
+def test_exact_record_realization_rejects_unrepresentable_allocation() -> None:
+    rows = [
+        {"record_id": "a", "payload_bytes": 2},
+        {"record_id": "b", "payload_bytes": 4},
+    ]
+    with pytest.raises(ProjectionError, match="no exact whole-record realization"):
+        _exact_record_subset(rows, target_bytes=3, family="family")
+    assert SELECTION_REALIZATION_POLICY in (
+        "record-id-ascending-exact-family-byte-subset-v1"
+    )
+
+
+def test_current_clean_balanced_selection_rejects_raw_survivor_substitution() -> None:
+    vector, raw, _expected, adapted, balance, binding = (
+        _current_clean_target_selection_fixture()
+    )
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    tampered = raw["survivor_records"].replace(b'"ua-a"', b'"ua-x"', 1)
+    with pytest.raises(ProjectionError, match="survivor JSONL bytes differ"):
+        build_current_clean_balanced_selection(
+            family_vector=vector,
+            next100_input=adapted,
+            balance_result=balance,
+            balance_binding=binding,
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_records_raw=tampered,
+            expected_family_vector_identity_sha256=vector[
+                "family_vector_identity_sha256"
+            ],
+            expected_balance_binding_identity_sha256=binding[
+                "binding_identity_sha256"
+            ],
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=balance["result_identity_sha256"],
+        )
+
+
+def test_current_clean_balanced_selection_rejects_result_reseal_under_external_root() -> None:
+    vector, raw, _expected, adapted, balance, binding = (
+        _current_clean_target_selection_fixture()
+    )
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    tampered = copy.deepcopy(balance)
+    tampered["deterministic_maximum_allocation"][0]["allocated_bytes"] -= 1
+    tampered["result_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {
+                key: value
+                for key, value in tampered.items()
+                if key != "result_identity_sha256"
+            }
+        )
+    ).hexdigest()
+    with pytest.raises(ProjectionError, match="external expectation"):
+        build_current_clean_balanced_selection(
+            family_vector=vector,
+            next100_input=adapted,
+            balance_result=tampered,
+            balance_binding=binding,
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_records_raw=raw["survivor_records"],
+            expected_family_vector_identity_sha256=vector[
+                "family_vector_identity_sha256"
+            ],
+            expected_balance_binding_identity_sha256=binding[
+                "binding_identity_sha256"
+            ],
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=balance["result_identity_sha256"],
+        )
+
+
+def test_current_clean_balanced_selection_rejects_nonterminal_balance() -> None:
+    vector, raw, _expected = _build_current_clean(_partial_rows())
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    binding = build_balance_result_binding(
+        family_vector=vector,
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        next100_input=adapted,
+        balance_result=balance,
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    with pytest.raises(
+        ProjectionError,
+        match="balanced selection blocked until TARGET_20M_SOURCE_MIX_FEASIBLE",
+    ):
+        build_current_clean_balanced_selection(
+            family_vector=vector,
+            next100_input=adapted,
+            balance_result=balance,
+            balance_binding=binding,
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_records_raw=raw["survivor_records"],
+            expected_family_vector_identity_sha256=vector[
+                "family_vector_identity_sha256"
+            ],
+            expected_balance_binding_identity_sha256=binding[
+                "binding_identity_sha256"
+            ],
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=balance["result_identity_sha256"],
+        )
+
+
+def test_selected_raw_projection_rejects_self_resealed_metadata_substitution() -> None:
+    selection, _projected, _balance = _build_current_clean_target_selection()
+    _, raw, _expected = _current_clean_bytes(_target_rows())
+    tampered = copy.deepcopy(selection)
+    tampered["records"][0]["source_id"] = "substituted-source"
+    tampered["records"][0]["near_duplicate_cluster_id"] = "substituted-source"
+    tampered["balanced_selection_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {
+                key: value
+                for key, value in tampered.items()
+                if key != "balanced_selection_identity_sha256"
+            }
+        )
+    ).hexdigest()
+    with pytest.raises(ProjectionError, match="selection/raw survivor drift"):
+        project_selected_current_clean_raw_records(
+            tampered,
+            raw["survivor_records"],
         )
