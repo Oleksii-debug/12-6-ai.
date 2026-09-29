@@ -43,20 +43,36 @@ def test_strict_policy_loader_rejects_ambiguous_and_nonfinite_json(
             "duplicate.json",
             '{"evaluation_protocol":{"phase":"a","phase":"b"}}',
             "duplicate object member",
+            ValueError,
         ),
-        ("nan.json", '{"value":NaN}', "non-finite JSON constant"),
-        ("infinity.json", '{"value":Infinity}', "non-finite JSON constant"),
-        ("negative-infinity.json", '{"value":-Infinity}', "non-finite JSON constant"),
-        ("overflow.json", '{"value":1e400}', "JSON number is not finite"),
-        ("negative-overflow.json", '{"value":-1e400}', "JSON number is not finite"),
-        ("nonobject.json", "[]", "evaluation firewall policy root must be an object"),
+        ("nan.json", '{"value":NaN}', "non-finite JSON constant", ValueError),
+        ("infinity.json", '{"value":Infinity}', "non-finite JSON constant", ValueError),
+        (
+            "negative-infinity.json",
+            '{"value":-Infinity}',
+            "non-finite JSON constant",
+            ValueError,
+        ),
+        ("overflow.json", '{"value":1e400}', "JSON number is not finite", ValueError),
+        (
+            "negative-overflow.json",
+            '{"value":-1e400}',
+            "JSON number is not finite",
+            ValueError,
+        ),
+        (
+            "nonobject.json",
+            "[]",
+            "evaluation firewall policy root must be an object",
+            TypeError,
+        ),
     )
-    for name, raw, expected in cases:
+    for name, raw, expected, exception_type in cases:
         path = tmp_path / name
         path.write_text(raw, encoding="utf-8")
         try:
             cli._load_policy(path)
-        except ValueError as exc:
+        except exception_type as exc:
             assert expected in str(exc)
         else:
             raise AssertionError(f"{name} unexpectedly passed strict JSON loading")
