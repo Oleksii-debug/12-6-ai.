@@ -60,6 +60,16 @@ def test_exact_raw_source_policy_loads_strictly() -> None:
             '    "parent_product_pr": 910,',
         ),
         (
+            '    "resource_md5": "0ea96e1582e5584ced79be1027f0ae55",',
+            '    "resource_md5": "forged",\n'
+            '    "resource_md5": "0ea96e1582e5584ced79be1027f0ae55",',
+        ),
+        (
+            '      "accessed_utc": "2026-09-29",',
+            '      "accessed_utc": "1900-01-01",\n'
+            '      "accessed_utc": "2026-09-29",',
+        ),
+        (
             '    "dataset_license_alone_sufficient_for_payload_admission": false,',
             '    "dataset_license_alone_sufficient_for_payload_admission": true,\n'
             '    "dataset_license_alone_sufficient_for_payload_admission": false,',
