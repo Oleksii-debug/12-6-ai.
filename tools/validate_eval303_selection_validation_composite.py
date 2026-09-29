@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import shutil
 from collections import Counter
 from copy import deepcopy
@@ -65,10 +66,42 @@ def self_identity(obj: dict, field: str) -> str:
     return sha256_bytes((canonical(clone) + '\n').encode('utf-8'))
 
 
-def load_json(path: Path) -> dict:
-    value = json.loads(path.read_text(encoding='utf-8'))
-    _require(isinstance(value, dict), f'{path} must contain a JSON object')
+def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise Eval303ValidationError(f'duplicate JSON key: {key}')
+        value[key] = item
     return value
+
+
+def _reject_constant(value: str) -> None:
+    raise Eval303ValidationError(f'non-finite JSON constant: {value}')
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise Eval303ValidationError('JSON number is not finite')
+    return parsed
+
+
+def _decode_json_object(raw: str, *, label: str) -> dict[str, object]:
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_constant,
+            parse_float=_parse_finite_float,
+        )
+    except json.JSONDecodeError as exc:
+        raise Eval303ValidationError(f'{label} contains invalid JSON') from exc
+    _require(type(value) is dict, f'{label} must contain a JSON object')
+    return value
+
+
+def load_json(path: Path) -> dict:
+    return _decode_json_object(path.read_text(encoding='utf-8'), label=str(path))
 
 
 def load_records(path: Path) -> list[dict]:
@@ -76,8 +109,7 @@ def load_records(path: Path) -> list[dict]:
     raw = path.read_bytes()
     _require(not raw or raw.endswith(b'\n'), f'{path} must end with LF')
     for index, line in enumerate(raw.decode('utf-8').splitlines(), start=1):
-        record = json.loads(line)
-        _require(isinstance(record, dict), f'{path}:{index} must be a JSON object')
+        record = _decode_json_object(line, label=f'{path}:{index}')
         _require(line == canonical(record), f'{path}:{index} is not canonical JSON')
         records.append(record)
     return records
