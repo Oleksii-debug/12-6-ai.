@@ -277,3 +277,30 @@ def test_launcher_profile_rejects_ambiguous_or_nonfinite_json(
 
     with pytest.raises(RuntimeError, match="cannot read installed D08 Windows lock profile"):
         WINDOWS_LAUNCHER._load_profile(lock)
+
+
+def test_launcher_pins_committed_windows_profile_authority() -> None:
+    profile = json.loads(
+        (ROOT / "requirements" / "locks" / "windows-x86_64" / "profile.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert profile["manifest_sha256"] == WINDOWS_LAUNCHER.PROFILE_MANIFEST_SHA256
+
+
+def test_launcher_rejects_self_consistent_noncanonical_profile(tmp_path: Path) -> None:
+    lock = tmp_path / "12-6-lock"
+    lock.mkdir()
+    profile = {
+        "profile_id": "windows-x86_64",
+        "python": {"version": "3.11.9"},
+        "locks": {"runtime": {"sha256": "f" * 64}},
+        "extra_policy": "attacker-controlled",
+    }
+    profile["manifest_sha256"] = WINDOWS_LAUNCHER.hashlib.sha256(
+        WINDOWS_LAUNCHER._canonical_json_bytes(profile)
+    ).hexdigest()
+    (lock / "profile.json").write_text(json.dumps(profile), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="not the canonical profile"):
+        WINDOWS_LAUNCHER._load_profile(lock)

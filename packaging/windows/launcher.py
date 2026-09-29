@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 PROFILE_ID = "windows-x86_64"
+PROFILE_MANIFEST_SHA256 = "a855d6840bc26392a7c1b515749bbdedff6bb88fdfe19c223687ee0757576299"
 STATUS_SCHEMA = "12-6.windows-product-status.v1"
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -92,6 +93,8 @@ def _load_profile(lock_dir: Path) -> dict[str, Any]:
     actual = hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
     if actual != claimed:
         raise RuntimeError("installed D08 Windows lock profile self-hash mismatch")
+    if claimed != PROFILE_MANIFEST_SHA256:
+        raise RuntimeError("installed D08 Windows lock profile is not the canonical profile")
     if profile.get("profile_id") != PROFILE_ID:
         raise RuntimeError("installed dependency profile is not windows-x86_64")
     return profile
