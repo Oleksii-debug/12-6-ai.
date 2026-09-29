@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import collections
+import functools
 import importlib.util
+import os
 import subprocess
 import sys
 from collections import Counter
@@ -9,6 +11,38 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+
+_ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
+
+
+def _isolated_indexed_test(test):
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        current = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+        if os.environ.get(_ISOLATED_INDEXED_TEST_NODE) == current and current:
+            return test(*args, **kwargs)
+        if not current:
+            return test(*args, **kwargs)
+
+        env = os.environ.copy()
+        env[_ISOLATED_INDEXED_TEST_NODE] = current
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", current],
+            cwd=Path(__file__).resolve().parent.parent,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+        )
+        assert completed.returncode == 0, (
+            f"isolated indexed test failed: {current}\n"
+            f"STDOUT:\n{completed.stdout}\n"
+            f"STDERR:\n{completed.stderr}"
+        )
+
+    return wrapper
 
 class _LazyIndexed:
     _module: ModuleType | None = None
@@ -88,6 +122,7 @@ assert actual == expected
     assert completed.returncode == 0, completed.stderr
 
 
+@_isolated_indexed_test
 def test_attestation_rejects_counter_class_member_replacement(tmp_path: Path) -> None:
     module = _load_source_module(
         tmp_path,
@@ -118,6 +153,7 @@ def test_attestation_rejects_counter_class_member_replacement(tmp_path: Path) ->
     assert caught == "V3 direct imported behavior drift: collections.Counter"
 
 
+@_isolated_indexed_test
 def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() -> None:
     counter_state = next(
         state
@@ -161,6 +197,7 @@ def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() 
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_attestation_rejects_unfrozen_direct_behavior_import(tmp_path: Path) -> None:
     module = _load_source_module(
         tmp_path,
@@ -183,6 +220,7 @@ def test_attestation_rejects_unfrozen_direct_behavior_import(tmp_path: Path) -> 
     )
 
 
+@_isolated_indexed_test
 def test_counter_restored_after_adversarial_regression() -> None:
     counter = Counter(["a", "a", "b"])
     assert counter == Counter({"a": 2, "b": 1})

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import ast
+import functools
 import html
 import importlib.util
 import inspect
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -13,6 +16,38 @@ from typing import Any
 
 import pytest
 
+
+_ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
+
+
+def _isolated_indexed_test(test):
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        current = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+        if os.environ.get(_ISOLATED_INDEXED_TEST_NODE) == current and current:
+            return test(*args, **kwargs)
+        if not current:
+            return test(*args, **kwargs)
+
+        env = os.environ.copy()
+        env[_ISOLATED_INDEXED_TEST_NODE] = current
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", current],
+            cwd=Path(__file__).resolve().parent.parent,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+        )
+        assert completed.returncode == 0, (
+            f"isolated indexed test failed: {current}\n"
+            f"STDOUT:\n{completed.stdout}\n"
+            f"STDERR:\n{completed.stderr}"
+        )
+
+    return wrapper
 
 class _LazyIndexed:
     _module: ModuleType | None = None
@@ -97,6 +132,7 @@ def _load_source_module(tmp_path: Path, name: str, source: str) -> ModuleType:
         ),
     ),
 )
+@_isolated_indexed_test
 def test_attestation_rejects_imported_behavior_global_substitution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -160,6 +196,7 @@ def test_attestation_rejects_imported_behavior_global_substitution(
         ),
     ),
 )
+@_isolated_indexed_test
 def test_attestation_rejects_imported_behavior_member_in_place_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -197,6 +234,7 @@ def test_attestation_rejects_imported_behavior_member_in_place_mutation(
         ("inspect.isfunction", inspect, "isfunction"),
     ),
 )
+@_isolated_indexed_test
 def test_loader_bootstrap_rejects_python_function_code_drift(
     label: str,
     module: ModuleType,
@@ -222,6 +260,7 @@ def test_loader_bootstrap_rejects_python_function_code_drift(
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_imported_python_member_code_drift_is_rejected_without_rebinding(
     tmp_path: Path,
 ) -> None:
@@ -252,6 +291,7 @@ def test_imported_python_member_code_drift_is_rejected_without_rebinding(
     indexed._attest_executable_module(module, "V1")
 
 
+@_isolated_indexed_test
 def test_loader_rejects_re_compile_transitive_rebinding() -> None:
     original = re._compile
     caught: str | None = None
@@ -273,6 +313,7 @@ def test_loader_rejects_re_compile_transitive_rebinding() -> None:
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_json_encoder_transitive_rebinding() -> None:
     original = json.JSONEncoder
     caught: str | None = None
@@ -293,6 +334,7 @@ def test_loader_rejects_json_encoder_transitive_rebinding() -> None:
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_verifier_attests_before_reference_callable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -332,6 +374,7 @@ def test_verifier_attests_before_reference_callable(
         verifier.main()
     assert events == ["attest"]
 
+@_isolated_indexed_test
 def test_loader_rejects_html_replace_charref_transitive_rebinding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -353,6 +396,7 @@ def test_loader_rejects_html_replace_charref_transitive_rebinding(
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_html_charref_transitive_rebinding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -367,6 +411,7 @@ def test_loader_rejects_html_charref_transitive_rebinding(
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_html_invalid_charrefs_in_place_mutation() -> None:
     original = dict(html._invalid_charrefs)
     try:
@@ -383,6 +428,7 @@ def test_loader_rejects_html_invalid_charrefs_in_place_mutation() -> None:
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_html_invalid_codepoints_in_place_mutation() -> None:
     original = set(html._invalid_codepoints)
     try:
@@ -399,6 +445,7 @@ def test_loader_rejects_html_invalid_codepoints_in_place_mutation() -> None:
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_html5_in_place_mutation() -> None:
     original = dict(html._html5)
     try:

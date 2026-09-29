@@ -1,5 +1,7 @@
 import ast
+import functools
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +10,38 @@ from typing import Any
 
 import pytest
 
+
+_ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
+
+
+def _isolated_indexed_test(test):
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        current = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+        if os.environ.get(_ISOLATED_INDEXED_TEST_NODE) == current and current:
+            return test(*args, **kwargs)
+        if not current:
+            return test(*args, **kwargs)
+
+        env = os.environ.copy()
+        env[_ISOLATED_INDEXED_TEST_NODE] = current
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", current],
+            cwd=Path(__file__).resolve().parent.parent,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+        )
+        assert completed.returncode == 0, (
+            f"isolated indexed test failed: {current}\n"
+            f"STDOUT:\n{completed.stdout}\n"
+            f"STDERR:\n{completed.stderr}"
+        )
+
+    return wrapper
 
 class _LazyIndexed:
     _module: ModuleType | None = None
@@ -72,6 +106,7 @@ def _fp(
     }
 
 
+@_isolated_indexed_test
 def test_terminal_science_constants_are_exact_and_non_overridable():
     assert indexed.EXPECTED_DATA232_GIT_BLOB_SHA1 == "dab5da98dfc43133aa8f3c2e3c78c809252b741b"
     assert indexed.EXPECTED_THRESHOLDS == {
@@ -91,6 +126,7 @@ def test_terminal_science_constants_are_exact_and_non_overridable():
     assert "expected_v1_blob" not in indexed.inspect.signature(indexed.audit_payloads_indexed).parameters
 
 
+@_isolated_indexed_test
 def test_executable_attestation_rejects_in_memory_callable_substitution(tmp_path):
     path = tmp_path / "authority.py"
     path.write_text("VALUE = 7\ndef semantic(value):\n    return value + VALUE\n", encoding="utf-8")
@@ -105,6 +141,7 @@ def test_executable_attestation_rejects_in_memory_callable_substitution(tmp_path
         indexed._attest_executable_module(module, "FIXTURE")
 
 
+@_isolated_indexed_test
 def test_candidate_index_contains_each_incumbent_necessary_condition():
     shared_edge = "This shared publisher footer has comfortably more than thirty two characters."
     rows = [
@@ -132,6 +169,7 @@ def test_candidate_index_contains_each_incumbent_necessary_condition():
     assert all(12 not in pair for pair in pairs)
 
 
+@_isolated_indexed_test
 def test_content_shingles_do_not_cross_code_natural_boundary():
     rows = [
         _fp("natural", shingles=frozenset({"same"})),
@@ -140,18 +178,21 @@ def test_content_shingles_do_not_cross_code_natural_boundary():
     assert indexed.candidate_pair_indices(FakeV1, rows) == []
 
 
+@_isolated_indexed_test
 def test_candidate_budget_fails_closed():
     rows = [_fp(str(index), origin="same") for index in range(5)]
     with pytest.raises(indexed.IndexedExecutionError, match="candidate pair budget exceeded"):
         indexed.candidate_pair_indices(FakeV1, rows, max_candidate_pairs=2)
 
 
+@_isolated_indexed_test
 def test_index_posting_budget_fails_before_unbounded_growth():
     rows = [_fp("a", shingles=frozenset({"s1", "s2", "s3"}))]
     with pytest.raises(indexed.IndexedExecutionError, match="index posting work budget exceeded"):
         indexed.candidate_pair_indices(FakeV1, rows, max_index_postings=5)
 
 
+@_isolated_indexed_test
 def test_repeated_key_amplification_collapses_identical_bucket_signature():
     shared = frozenset(f"shared-{index}" for index in range(1_000))
     rows = [_fp(str(index), shingles=shared) for index in range(10)]
@@ -166,6 +207,7 @@ def test_repeated_key_amplification_collapses_identical_bucket_signature():
     assert stats["unique_bucket_signatures"] == 1
 
 
+@_isolated_indexed_test
 def test_pair_expansion_budget_is_independent_of_unique_candidate_budget():
     rows = [
         _fp("0", shingles=frozenset({"a", "b"})),
@@ -181,6 +223,7 @@ def test_pair_expansion_budget_is_independent_of_unique_candidate_budget():
         )
 
 
+@_isolated_indexed_test
 def test_execution_stats_exact_rada_scale_and_work_telemetry():
     rada = indexed.execution_stats(101_559, 0, index_postings=123, pair_expansion_attempts=45)
     assert rada["incumbent_all_pair_dispatches"] == 5_157_064_461
@@ -190,6 +233,7 @@ def test_execution_stats_exact_rada_scale_and_work_telemetry():
     assert combined["incumbent_all_pair_dispatches"] == 5_183_707_110
 
 
+@_isolated_indexed_test
 def test_execution_stats_rejects_impossible_candidate_count():
     with pytest.raises(indexed.IndexedExecutionError, match="exceeds all-pairs"):
         indexed.execution_stats(2, 2)
