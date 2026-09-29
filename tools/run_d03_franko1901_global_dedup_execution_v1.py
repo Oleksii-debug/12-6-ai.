@@ -321,6 +321,39 @@ def _outer_survivor_authority(
     return {**core, "survivor_authority_sha256": _sha256(_canonical(core))}
 
 
+def _validated_terminal_summary(
+    report: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    _require(
+        type(report.get("source_count")) is int
+        and report.get("source_count") == EXPECTED_COMBINED_OBJECTS,
+        "combined report source count drift",
+    )
+    terminal = report.get("terminal_candidates")
+    _require(isinstance(terminal, Mapping), "terminal dedup summary missing")
+    before = terminal.get("declared_capacity_bytes_before")
+    after = terminal.get("conservative_unique_capacity_bytes_after")
+    discount = terminal.get("duplicate_discount_bytes")
+    cluster_count = terminal.get("duplicate_cluster_count")
+    _require(
+        type(before) is int and before == EXPECTED_COMBINED_BYTES,
+        "combined declared capacity drift",
+    )
+    _require(
+        type(after) is int and 0 < after <= before,
+        "post-dedup conservative capacity invalid",
+    )
+    _require(
+        type(discount) is int and discount >= 0 and before - after == discount,
+        "duplicate discount arithmetic drift",
+    )
+    _require(
+        type(cluster_count) is int and cluster_count >= 0,
+        "duplicate cluster count invalid",
+    )
+    return terminal
+
+
 def _source_admission_provenance_scope(receipt: Mapping[str, Any]) -> dict[str, bool]:
     truth = receipt.get("truth_boundary")
     _require(type(truth) is dict, "source-admission truth boundary missing")
@@ -501,12 +534,7 @@ def execute(
     indexed_seconds = time.perf_counter() - indexed_started
     matcher.verify_report(indexed_report)
 
-    terminal = indexed_report.get("terminal_candidates")
-    _require(isinstance(terminal, Mapping), "terminal dedup summary missing")
-    _require(
-        terminal.get("declared_capacity_bytes_before") == EXPECTED_COMBINED_BYTES,
-        "combined declared capacity drift",
-    )
+    terminal = _validated_terminal_summary(indexed_report)
     selection_projection = v9_semantics._derive_survivors(indexed_report)
     survivors = _outer_survivor_authority(indexed_report, selection_projection)
     process_max_rss_kib = _max_rss_kib()
