@@ -11,9 +11,12 @@ import shutil
 import subprocess
 import sys
 import tarfile
+from contextlib import contextmanager
 from importlib import metadata
+from importlib.machinery import ModuleSpec
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, Iterator
 
 sys.dont_write_bytecode = True
 
@@ -364,6 +367,51 @@ def _load_current_execution_modules() -> tuple[Any, Any]:
     return intake, indexed
 
 
+def _namespace_package(name: str, path: Path) -> ModuleType:
+    """Create a package shell that exposes only the authenticated directory."""
+    module = ModuleType(name)
+    module.__package__ = name
+    module.__path__ = [str(path)]
+    spec = ModuleSpec(name, loader=None, is_package=True)
+    spec.submodule_search_locations = [str(path)]
+    module.__spec__ = spec
+    return module
+
+
+@contextmanager
+def _isolated_terminal_v7_namespace(v7_root: Path) -> Iterator[None]:
+    """Load terminal V7 data modules without executing historical package initializers."""
+    source_root = (v7_root / "src").resolve()
+    package_root = source_root / "twelve_six"
+    data_root = package_root / "data"
+    if not package_root.is_dir() or not data_root.is_dir():
+        raise RematerializationError("terminal V7 package layout missing")
+
+    prefix = "twelve_six"
+    previous_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == prefix or name.startswith(f"{prefix}.")
+    }
+    previous_sys_path = list(sys.path)
+    for name in list(previous_modules):
+        sys.modules.pop(name, None)
+
+    package = _namespace_package("twelve_six", package_root)
+    data_package = _namespace_package("twelve_six.data", data_root)
+    package.data = data_package
+    sys.modules["twelve_six"] = package
+    sys.modules["twelve_six.data"] = data_package
+    try:
+        yield
+    finally:
+        for name in list(sys.modules):
+            if name == prefix or name.startswith(f"{prefix}."):
+                sys.modules.pop(name, None)
+        sys.modules.update(previous_modules)
+        sys.path[:] = previous_sys_path
+
+
 def _verify_v7_checkout(v7_root: Path) -> None:
     root = v7_root.resolve()
     if not root.is_dir():
@@ -427,10 +475,11 @@ def _reconstruct_current_clean_base(
     quarantine_authority = clean._read_json(ROOT / clean.QUARANTINE_CONFIG_PATH)
     v8_config = v8.load_config(ROOT / clean.INCUMBENT_V8_CONFIG_PATH)
 
-    v7, baseline_report, inventory, payloads = v8._capture_terminal_v7(
-        v7_root,
-        v8_config,
-    )
+    with _isolated_terminal_v7_namespace(v7_root):
+        v7, baseline_report, inventory, payloads = v8._capture_terminal_v7(
+            v7_root,
+            v8_config,
+        )
     clean_inventory, clean_payloads, removal = clean.deauthorize_exact_nomis(
         inventory,
         payloads,
