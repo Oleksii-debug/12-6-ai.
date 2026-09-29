@@ -11,6 +11,7 @@ from twelve_six.checkpoint.core import (
     CheckpointIdentity,
     CheckpointIntegrityError,
     VerifiedCheckpoint,
+    canonical_json_bytes,
     hash_json,
     load_checkpoint,
     save_checkpoint,
@@ -247,6 +248,16 @@ def test_save_rejects_nonfinite_identity_before_publication(
         )
 
     assert not checkpoint.exists()
+
+
+def test_finite_checkpoint_json_bytes_remain_canonical_v1(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "canonical-v1"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+
+    for name in ("manifest.json", "state.json"):
+        raw = (checkpoint / name).read_bytes()
+        parsed = json.loads(raw.decode("utf-8"))
+        assert raw == canonical_json_bytes(parsed) + b"\n"
 
 
 def test_valid_checkpoint_still_verifies_and_loads(tmp_path: Path) -> None:
