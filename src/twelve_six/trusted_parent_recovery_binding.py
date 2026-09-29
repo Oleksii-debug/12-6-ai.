@@ -511,7 +511,14 @@ def restore_trusted_same_provider_resume(
 
     if not isinstance(binding, PortableRunBinding):
         raise TrustedParentRecoveryBindingError("portable_binding_type_invalid")
-    if not binding.binding_ready or binding.mode != "RESUME" or binding.blockers:
+    if (
+        not binding.binding_ready
+        or binding.mode != "RESUME"
+        or binding.blockers
+        or not binding.readiness_ready
+        or not binding.overlay_contract_valid
+        or not binding.packet_contract_valid
+    ):
         raise TrustedParentRecoveryBindingError("portable_binding_not_ready")
     if not isinstance(binding.packet, Mapping):
         raise TrustedParentRecoveryBindingError("portable_binding_packet_missing")
