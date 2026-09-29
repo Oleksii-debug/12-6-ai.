@@ -395,6 +395,7 @@ jobs:
               build_current_clean_balanced_selection,
               project_selected_current_clean_raw_records,
           )
+          from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
           from twelve_six.data.postmaterialization_balance_projection_v1 import (
               adapt_postmaterialization_family_vector_to_next100_106,
               build_balance_result_binding,
@@ -510,7 +511,7 @@ jobs:
                       "binding_identity_sha256"
                   ],
               )
-          except Exception as exc:
+          except ProjectionError as exc:
               selection_ready = False
               selection_error = str(exc)
 
