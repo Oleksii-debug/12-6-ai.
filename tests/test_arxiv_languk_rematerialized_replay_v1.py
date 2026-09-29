@@ -4,9 +4,10 @@ import copy
 import hashlib
 import importlib.util
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -312,6 +313,51 @@ def test_legacy_contaminated_execution_helpers_are_not_exposed() -> None:
     assert "build_post_admission_intake(" not in source
     assert "PARENT_RUNNER_BLOB_SHA1" not in source
     assert "PARENT_INTAKE_BLOB_SHA1" not in source
+
+
+def test_terminal_v7_namespace_bypasses_init_and_restores_current_modules(
+    tmp_path: Path,
+) -> None:
+    v7_root = tmp_path / "v7"
+    package = v7_root / "src/twelve_six"
+    data = package / "data"
+    data.mkdir(parents=True)
+    (package / "__init__.py").write_text(
+        "raise RuntimeError('historical root init must not run')\n",
+        encoding="utf-8",
+    )
+    (data / "__init__.py").write_text(
+        "raise RuntimeError('historical data init must not run')\n",
+        encoding="utf-8",
+    )
+    (data / "probe.py").write_text("AUTHORITY = 'terminal-v7'\n", encoding="utf-8")
+
+    foreign = ModuleType("twelve_six.data.probe")
+    foreign.AUTHORITY = "current-main"
+    previous = {
+        name: sys.modules.get(name)
+        for name in ("twelve_six", "twelve_six.data", "twelve_six.data.probe")
+    }
+    sys.modules["twelve_six.data.probe"] = foreign
+    old_path = list(sys.path)
+    try:
+        with REPLAY_RUNNER._isolated_terminal_v7_namespace(v7_root):
+            loaded = __import__(
+                "twelve_six.data.probe",
+                fromlist=["AUTHORITY"],
+            )
+            assert loaded.AUTHORITY == "terminal-v7"
+            assert loaded is not foreign
+            assert sys.modules["twelve_six"].__path__ == [str(package.resolve())]
+            assert sys.modules["twelve_six.data"].__path__ == [str(data.resolve())]
+        assert sys.modules.get("twelve_six.data.probe") is foreign
+        assert sys.path == old_path
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = value
 
 
 def test_wrapper_keeps_current_package_out_of_terminal_v7_bootstrap_path() -> None:
