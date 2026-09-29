@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Rematerialize exact ArXiv+LangUK candidates twice and replay audited PR #1800 V9."""
+"""Rematerialize ArXiv+LangUK twice and replay them on the current clean D03 graph."""
 from __future__ import annotations
 
 import argparse
+import copy
+import importlib.util
 import io
 import json
 import shutil
@@ -38,7 +40,27 @@ INCUMBENT_RUNNER_REL = Path("tools/run_d03_arxiv_languk_postadmission_global_ded
 INCUMBENT_INTAKE_REL = Path("src/twelve_six/data/post_admission_dedup_intake_v2.py")
 WRAPPER_RUNNER_REL = Path("tools/run_d03_arxiv_languk_rematerialized_replay_v1.py")
 WRAPPER_HELPER_REL = Path("src/twelve_six/data/arxiv_languk_rematerialized_replay_v1.py")
-REPAIRED_RECEIPT_SCHEMA = "12-6.d03-arxiv-languk-rematerialized-v9-replay.v2"
+CLEAN_SUCCESSOR_REL = Path("tools/run_d03_nomis_free_clean_successor_v1.py")
+SURVIVOR_TOOL_REL = Path("tools/derive_next100_065f_v8_survivors.py")
+INDEXED_EXECUTOR_REL = Path("src/twelve_six/data/incumbent_dedup_indexed_execution.py")
+CURRENT_INTAKE_REL = Path("src/twelve_six/data/post_admission_dedup_intake_v2.py")
+
+EXPECTED_CLEAN_SUCCESSOR_BLOB = "bcc5c40c54f0a93f42acfd584f800048bbf49e7e"
+EXPECTED_SURVIVOR_TOOL_BLOB = "ae91d60e5d62466c69394abb1c4b27d2e49f40e3"
+EXPECTED_INDEXED_EXECUTOR_BLOB = "f75336008839198b6d46bea4954f120e2d81613c"
+EXPECTED_CURRENT_INTAKE_BLOB = "322f1441326ca17447581be8ebf2d98c2385bd38"
+CURRENT_CLEAN_BASE_PR = 2107
+CURRENT_INDEXED_EXECUTOR_PR = 1459
+CURRENT_MAIN_AT_CONVERGENCE = "7b3df41c10a826183fab0b04ae85a90cdf0ce351"
+EXPECTED_BASE_PRE_DEDUP_SOURCE_COUNT = 263
+EXPECTED_BASE_PRE_DEDUP_BYTES = 6_093_965
+EXPECTED_EXTENSION_SOURCE_COUNT = 1_280
+EXPECTED_EXTENSION_BYTES = 3_949_184
+EXPECTED_COMBINED_PRE_DEDUP_SOURCE_COUNT = 1_543
+EXPECTED_COMBINED_PRE_DEDUP_BYTES = 10_043_149
+
+REPAIRED_RECEIPT_SCHEMA = "12-6.d03-arxiv-languk-current-clean-indexed-replay.v3"
+CURRENT_REPORT_SCHEMA = "12-6.d03-arxiv-languk-current-clean-global-dedup.v1"
 EXPECTED_PYARROW = "17.0.0"
 
 
@@ -366,10 +388,273 @@ def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
         raise RematerializationError(f"refusing to overwrite {label}: {path}") from exc
 
 
+
+def _load_module(name: str, path: Path) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RematerializationError(f"cannot load module: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _verify_current_clean_dependencies() -> dict[str, str]:
+    bindings = {
+        "clean_successor_tool_git_blob_sha1": (
+            CLEAN_SUCCESSOR_REL,
+            EXPECTED_CLEAN_SUCCESSOR_BLOB,
+        ),
+        "survivor_tool_git_blob_sha1": (
+            SURVIVOR_TOOL_REL,
+            EXPECTED_SURVIVOR_TOOL_BLOB,
+        ),
+        "indexed_executor_git_blob_sha1": (
+            INDEXED_EXECUTOR_REL,
+            EXPECTED_INDEXED_EXECUTOR_BLOB,
+        ),
+        "source_intake_git_blob_sha1": (
+            CURRENT_INTAKE_REL,
+            EXPECTED_CURRENT_INTAKE_BLOB,
+        ),
+    }
+    result: dict[str, str] = {}
+    for key, (relative, expected) in bindings.items():
+        candidate = ROOT / relative
+        if candidate.is_symlink() or not candidate.is_file():
+            raise RematerializationError(f"current clean dependency missing: {relative}")
+        verify_git_blob(candidate.read_bytes(), expected, label=relative.as_posix())
+        result[key] = expected
+    return result
+
+
+def _reconstruct_current_clean_base(
+    *,
+    v7_root: Path,
+    workspace: Path,
+) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    clean = _load_module("_pr1851_clean_successor", ROOT / CLEAN_SUCCESSOR_REL)
+    clean.validate_runtime_bindings(ROOT)
+
+    v8 = clean._load_module(
+        "_pr1851_incumbent_v8",
+        ROOT / clean.INCUMBENT_V8_PATH,
+    )
+    quarantine = clean._load_module(
+        "_pr1851_quarantine",
+        ROOT / clean.QUARANTINE_MODULE_PATH,
+    )
+    quarantine_authority = clean._read_json(ROOT / clean.QUARANTINE_CONFIG_PATH)
+    v8_config = v8.load_config(ROOT / clean.INCUMBENT_V8_CONFIG_PATH)
+
+    v7, baseline_report, inventory, payloads = v8._capture_terminal_v7(
+        v7_root,
+        v8_config,
+    )
+    clean_inventory, clean_payloads, removal = clean.deauthorize_exact_nomis(
+        inventory,
+        payloads,
+        quarantine_authority,
+        quarantine,
+    )
+
+    matcher = v7.v6.v3
+    historical_dedup = matcher.audit_payloads(clean_inventory, clean_payloads)
+    matcher.verify_report(historical_dedup)
+    clean._assert_clean_dedup(
+        historical_dedup,
+        clean.EXPECTED_CLEAN_HISTORICAL,
+        label="clean historical",
+    )
+
+    bulk_report, bulk_rows, bulk_payloads = v8._materialize_bulk(
+        ROOT,
+        workspace,
+        v8_config,
+    )
+    combined_inventory = copy.deepcopy(clean_inventory)
+    existing_ids = {row["source_id"] for row in combined_inventory["sources"]}
+    if existing_ids & set(bulk_payloads):
+        raise RematerializationError("bulk source id collides with clean historical graph")
+    combined_inventory["sources"] = [*combined_inventory["sources"], *bulk_rows]
+    combined_inventory["final_refresh_required"] = False
+    combined_inventory["terminal_refresh_cutoff_utc"] = "2026-09-14T19:14:21Z"
+    combined_inventory["terminal_refresh_rule"] = (
+        "PR1851 reuses merged PR2107 clean-successor mechanics: authenticate terminal "
+        "V7, remove exact quarantined Nomis1864 before matcher invocation, then append "
+        "unchanged DATA-BULK-CODE-1 source objects. No training/corpus credit is implied."
+    )
+    combined_payloads = dict(clean_payloads)
+    combined_payloads.update(bulk_payloads)
+
+    base_dedup = matcher.audit_payloads(combined_inventory, combined_payloads)
+    matcher.verify_report(base_dedup)
+    clean._assert_clean_dedup(
+        base_dedup,
+        clean.EXPECTED_CLEAN_COMPOSED,
+        label="clean composed",
+    )
+    base_vector = clean._source_vector(base_dedup)
+    if base_vector["source_object_count"] != EXPECTED_BASE_PRE_DEDUP_SOURCE_COUNT:
+        raise RematerializationError("clean base source-count drift")
+    if (
+        base_vector["source_capacity_bytes_before_global_dedup"]
+        != EXPECTED_BASE_PRE_DEDUP_BYTES
+    ):
+        raise RematerializationError("clean base byte-capacity drift")
+
+    authority = {
+        "clean_successor_product_pr": CURRENT_CLEAN_BASE_PR,
+        "historical_v7_report_sha256": baseline_report["report_sha256"],
+        "bulk_terminal_report_identity_sha256": bulk_report["report_identity_sha256"],
+        "deauthorization": removal,
+        "clean_base_matcher_report_sha256": base_dedup["report_sha256"],
+        "clean_base_source_vector": base_vector,
+    }
+    return matcher, combined_inventory, combined_payloads, authority
+
+
+def _build_current_clean_replay(
+    args: argparse.Namespace,
+    *,
+    pass_root: Path,
+    arxiv_candidate: Path,
+    languk_candidate: Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    runtime_bindings = _verify_current_clean_dependencies()
+    matcher, base_inventory, base_payloads, clean_authority = (
+        _reconstruct_current_clean_base(
+            v7_root=_repo_rooted(args.v7_root),
+            workspace=pass_root / "clean-base-workspace",
+        )
+    )
+
+    intake = _load_module("_pr1851_source_intake", ROOT / CURRENT_INTAKE_REL)
+    extension_rows, extension_payloads, intake_receipt = intake.build_post_admission_intake(
+        arxiv_authority_raw=_repo_rooted(args.arxiv_authority).read_bytes(),
+        arxiv_candidate_raw=arxiv_candidate.read_bytes(),
+        languk_authority_raw=_repo_rooted(args.languk_authority).read_bytes(),
+        languk_candidate_raw=languk_candidate.read_bytes(),
+    )
+    if len(extension_rows) != EXPECTED_EXTENSION_SOURCE_COUNT:
+        raise RematerializationError("ArXiv+LangUK extension source-count drift")
+    if sum(len(raw) for raw in extension_payloads.values()) != EXPECTED_EXTENSION_BYTES:
+        raise RematerializationError("ArXiv+LangUK extension byte-total drift")
+
+    base_ids = set(base_payloads)
+    overlap = base_ids & set(extension_payloads)
+    if overlap:
+        raise RematerializationError("ArXiv+LangUK source id collides with clean base")
+
+    combined_inventory = copy.deepcopy(base_inventory)
+    combined_inventory["sources"] = [
+        *combined_inventory["sources"],
+        *copy.deepcopy(extension_rows),
+    ]
+    combined_inventory["final_refresh_required"] = False
+    combined_inventory["terminal_refresh_rule"] = (
+        "Exact merged PR2107 Nomis-free source graph plus authenticated ArXiv/LangUK "
+        "source-admission rows; execution delegates duplicate science to exact incumbent "
+        "V3 semantics through merged PR1459 performance-equivalent indexing."
+    )
+    combined_payloads = dict(base_payloads)
+    combined_payloads.update(extension_payloads)
+    if len(combined_payloads) != EXPECTED_COMBINED_PRE_DEDUP_SOURCE_COUNT:
+        raise RematerializationError("combined source-count drift")
+    if sum(len(raw) for raw in combined_payloads.values()) != EXPECTED_COMBINED_PRE_DEDUP_BYTES:
+        raise RematerializationError("combined byte-total drift")
+
+    indexed = _load_module("_pr1851_indexed_executor", ROOT / INDEXED_EXECUTOR_REL)
+    indexed.attest_incumbent_runtime(matcher)
+    dedup = indexed.audit_payloads_indexed(
+        matcher,
+        combined_inventory,
+        combined_payloads,
+    )
+    matcher.verify_report(dedup)
+    terminal = dedup.get("terminal_candidates")
+    if not isinstance(terminal, dict):
+        raise RematerializationError("current-clean matcher terminal result missing")
+    if dedup.get("source_count") != EXPECTED_COMBINED_PRE_DEDUP_SOURCE_COUNT:
+        raise RematerializationError("current-clean matcher source-count drift")
+    if terminal.get("declared_capacity_bytes_before") != EXPECTED_COMBINED_PRE_DEDUP_BYTES:
+        raise RematerializationError("current-clean matcher pre-dedup byte-total drift")
+
+    clean = _load_module("_pr1851_clean_vector", ROOT / CLEAN_SUCCESSOR_REL)
+    source_vector = clean._source_vector(dedup)
+    core: dict[str, Any] = {
+        "schema_version": CURRENT_REPORT_SCHEMA,
+        "execution_profile": "LOCAL_FREE",
+        "current_main_at_convergence": CURRENT_MAIN_AT_CONVERGENCE,
+        "clean_base_authority": clean_authority,
+        "runtime_bindings": runtime_bindings,
+        "matcher_lineage": {
+            "science": "INCUMBENT_NEXT100_065_V3_UNCHANGED",
+            "performance_executor_product_pr": CURRENT_INDEXED_EXECUTOR_PR,
+            "performance_equivalent_indexing": True,
+        },
+        "post_admission_sources": copy.deepcopy(intake_receipt["sources"]),
+        "source_vector": source_vector,
+        "dedup_v3": copy.deepcopy(dict(dedup)),
+        "raw_text_emitted": False,
+        "truth_boundary": {
+            "clean_nomis_free_base_used": True,
+            "arxiv_source_admission_authenticated": True,
+            "languk_source_admission_authenticated": True,
+            "global_dedup_execution_complete": True,
+            "current_corpus_external_llm_free_claimed_by_this_replay": False,
+            "reserved_evaluation_decontamination_complete": False,
+            "canonical_quality_privacy_complete": False,
+            "balance_and_family_caps_complete": False,
+            "cluster_safe_split_complete": False,
+            "packing_complete": False,
+            "canonical_capacity_credited": 0,
+            "training_authorized_bytes": 0,
+            "authorized_unique_loss_positions": 0,
+            "authorized_optimized_target_exposure": 0,
+            "tokenizer_fit_authorized": False,
+            "optimizer_updates": 0,
+            "training_executed": False,
+            "learned_weights_created": False,
+            "final_test_payload_accessed": False,
+            "final_test_outcomes_read": False,
+            "paid_compute_used": False,
+            "foreign_pretrained_weights_used": False,
+        },
+    }
+    report = {
+        **core,
+        "report_sha256": sha256_bytes(canonical_json_bytes(core)),
+    }
+
+    survivor_tool = _load_module("_pr1851_survivor_tool", ROOT / SURVIVOR_TOOL_REL)
+    survivors = survivor_tool.derive_survivor_authority(report)
+    survivor_tool.verify_survivor_authority(report, survivors)
+    return report, survivors
+
+
+def _write_pass_authorities(
+    *,
+    report_path: Path,
+    survivor_path: Path,
+    report: dict[str, Any],
+    survivors: dict[str, Any],
+) -> None:
+    _write_new_bytes(
+        report_path,
+        canonical_json_bytes(report),
+        label="pass report",
+    )
+    _write_new_bytes(
+        survivor_path,
+        canonical_json_bytes(survivors),
+        label="pass survivor authority",
+    )
+
 def _finalize_receipt(
     receipt: dict[str, Any],
     *,
     wrapper_execution_authority: dict[str, str],
+    current_clean_execution_authority: dict[str, str],
 ) -> dict[str, Any]:
     required_wrapper_keys = {
         "source_head_sha",
@@ -396,53 +681,40 @@ def _finalize_receipt(
     if wrapper_execution_authority["helper_path"] != WRAPPER_HELPER_REL.as_posix():
         raise RematerializationError("wrapper helper path drift")
 
-    result = dict(receipt)
+    if current_clean_execution_authority != _verify_current_clean_dependencies():
+        raise RematerializationError("current clean execution authority drift")
+
+    result = copy.deepcopy(receipt)
+    historical_parent = dict(result.pop("parent_authority", {}))
+    if historical_parent.get("exact_head_sha") != PARENT_PR1800_HEAD:
+        raise RematerializationError("historical parent exact head drift")
     result["schema_version"] = REPAIRED_RECEIPT_SCHEMA
-    parent = dict(result.get("parent_authority", {}))
-    if parent.get("exact_head_sha") != PARENT_PR1800_HEAD:
-        raise RematerializationError("receipt parent exact head drift")
-    parent["execution_tree_mode"] = "EXTRACTED_EXACT_GIT_TREE"
-    parent["isolated_python_mode"] = True
-    result["parent_authority"] = parent
+    result["status"] = (
+        "PHYSICAL_REMATERIALIZATION_AND_CURRENT_CLEAN_INDEXED_DEDUP_REPLAY_"
+        "EXECUTED_ZERO_CREDIT"
+    )
+    result["historical_parent_lineage"] = {
+        **historical_parent,
+        "used_as_current_corpus_execution_authority": False,
+        "reason": "superseded by merged Nomis-free clean successor authority",
+    }
+    result["current_clean_execution_authority"] = {
+        "clean_successor_product_pr": CURRENT_CLEAN_BASE_PR,
+        "indexed_executor_product_pr": CURRENT_INDEXED_EXECUTOR_PR,
+        "main_at_convergence": CURRENT_MAIN_AT_CONVERGENCE,
+        **current_clean_execution_authority,
+    }
     result["wrapper_execution_authority"] = dict(wrapper_execution_authority)
+    truth = dict(result.get("truth_boundary", {}))
+    truth.pop("external_llm_or_api_used_for_data_or_intelligence", None)
+    truth["global_dedup_replay_executed"] = True
+    truth["current_corpus_external_llm_free_claimed_by_this_replay"] = False
+    result["truth_boundary"] = truth
     return result
-
-
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--v7-root", type=Path, required=True)
-    parser.add_argument("--bulk-workspace", type=Path, required=True)
-    parser.add_argument(
-        "--v8-config",
-        type=Path,
-        default=ROOT / "configs/data/next100_065f_global_dedup_v8.json",
-    )
-    parser.add_argument(
-        "--data526-config",
-        type=Path,
-        default=ROOT / "configs/data/data526_v8_record_composition_v1.json",
-    )
-    parser.add_argument("--v8-report", type=Path, required=True)
-    parser.add_argument("--v8-survivors", type=Path, required=True)
-    parser.add_argument(
-        "--data526-evidence",
-        type=Path,
-        default=ROOT / "evidence/data526/v8/materialization_evidence.json",
-    )
-    parser.add_argument(
-        "--data526-record-inventory",
-        type=Path,
-        default=ROOT / "evidence/data526/v8/record_inventory.json",
-    )
-    parser.add_argument(
-        "--rada-language-report",
-        type=Path,
-        default=ROOT / "evidence/d03-rada-trees/secondary-plaintext-language-gate-v1.json",
-    )
-    parser.add_argument("--rada-quality-privacy-jsonl", type=Path, required=True)
-    parser.add_argument("--rada-quality-privacy-report", type=Path, required=True)
-    parser.add_argument("--expected-rada-report-sha256", required=True)
     parser.add_argument(
         "--arxiv-authority",
         type=Path,
@@ -467,8 +739,8 @@ def main() -> int:
         _verify_outer_output_targets(args)
         _require_pyarrow()
         wrapper_authority = _verify_wrapper_checkout(ROOT)
+        clean_execution_authority = _verify_current_clean_dependencies()
         workspace = args.workspace.resolve()
-        parent_root = _prepare_parent_execution_tree(ROOT, workspace)
         historical = workspace / "historical"
         for spec in (ARXIV, LANGUK):
             _verify_historical_program(ROOT, spec)
@@ -491,25 +763,26 @@ def main() -> int:
                     historical_root=historical / LANGUK.key,
                     pass_root=pass_root,
                 )
-                report = pass_root / "postadmission-report.json"
-                survivors = pass_root / "postadmission-survivors.json"
-                _run(
-                    _replay_command(
-                        args,
-                        parent_root=parent_root,
-                        arxiv_candidate=arxiv_candidate,
-                        languk_candidate=languk_candidate,
-                        report=report,
-                        survivors=survivors,
-                    ),
-                    cwd=parent_root,
+                report_path = pass_root / "current-clean-report.json"
+                survivor_path = pass_root / "current-clean-survivors.json"
+                report, survivors = _build_current_clean_replay(
+                    args,
+                    pass_root=pass_root,
+                    arxiv_candidate=arxiv_candidate,
+                    languk_candidate=languk_candidate,
+                )
+                _write_pass_authorities(
+                    report_path=report_path,
+                    survivor_path=survivor_path,
+                    report=report,
+                    survivors=survivors,
                 )
                 results.append(
                     _pass_result(
                         arxiv_candidate=arxiv_candidate,
                         languk_candidate=languk_candidate,
-                        report=report,
-                        survivors=survivors,
+                        report=report_path,
+                        survivors=survivor_path,
                     )
                 )
             finally:
@@ -517,25 +790,22 @@ def main() -> int:
 
         receipt = build_receipt(
             pass_results=results,
-            incumbent_runner_blob_sha1=git_blob_sha1(
-                (parent_root / INCUMBENT_RUNNER_REL).read_bytes()
-            ),
-            incumbent_intake_blob_sha1=git_blob_sha1(
-                (parent_root / INCUMBENT_INTAKE_REL).read_bytes()
-            ),
+            incumbent_runner_blob_sha1=PARENT_RUNNER_BLOB_SHA1,
+            incumbent_intake_blob_sha1=PARENT_INTAKE_BLOB_SHA1,
         )
         receipt = _finalize_receipt(
             receipt,
             wrapper_execution_authority=wrapper_authority,
+            current_clean_execution_authority=clean_execution_authority,
         )
         _write_new_bytes(
             args.output_report,
-            (workspace / "pass-1/postadmission-report.json").read_bytes(),
+            (workspace / "pass-1/current-clean-report.json").read_bytes(),
             label="outer report",
         )
         _write_new_bytes(
             args.output_survivors,
-            (workspace / "pass-1/postadmission-survivors.json").read_bytes(),
+            (workspace / "pass-1/current-clean-survivors.json").read_bytes(),
             label="outer survivors",
         )
         _write_new_bytes(
@@ -547,7 +817,7 @@ def main() -> int:
         print(f"BLOCKED: {exc}")
         return 2
 
-    print("D03_ARXIV_LANGUK_REMATERIALIZED_V9_REPLAY=PASS_ZERO_CREDIT")
+    print("D03_ARXIV_LANGUK_CURRENT_CLEAN_INDEXED_REPLAY=PASS_ZERO_CREDIT")
     print("TWO_CLEAN_REPLAY_PASSES=true")
     print("CANONICAL_CAPACITY_CREDITED=0")
     print("AUTHORIZED_OPTIMIZED_TARGET_EXPOSURE=0")
