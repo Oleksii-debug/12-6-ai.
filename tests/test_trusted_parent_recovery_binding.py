@@ -11,6 +11,7 @@ from twelve_six.scale141_recovery import RecoveryResolution
 from twelve_six.scale141_resume_sidecar import SIDECAR_SCHEMA
 from twelve_six.trusted_parent_recovery_binding import (
     bind_trusted_same_provider_resume,
+    restore_trusted_same_provider_resume,
     trusted_parent_recovery_binding_from_resolution,
     trusted_recovery_authority_token,
 )
@@ -422,3 +423,62 @@ def test_projection_requires_fresh_process_session_identity() -> None:
             previous_provider_session_id=PREVIOUS_SESSION,
             terminal_recovery_authority=_authority("0" * 64),
         )
+
+
+def test_operational_restore_rejects_unrelated_verified_terminal_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolution = _resolution()
+    authority, expected, _ = _binding_material(resolution)
+    trusted = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class=PROVIDER_CLASS,
+        provider_id=PROVIDER_ID,
+        provider_session_id=CURRENT_SESSION,
+        previous_provider_session_id=PREVIOUS_SESSION,
+        terminal_recovery_authority=authority,
+    )
+
+    unrelated_authority = dict(authority)
+    unrelated_authority["workflow_run_id"] = authority["workflow_run_id"] + 1
+    unrelated_token = trusted_recovery_authority_token(unrelated_authority)
+    packet = {
+        "binding": {
+            "trusted_parent_recovery": trusted,
+            "trusted_parent_recovery_authority_token": unrelated_token,
+        }
+    }
+    binding = PortableRunBinding(
+        binding_ready=True,
+        mode="RESUME",
+        readiness_ready=True,
+        overlay_contract_valid=True,
+        packet_contract_valid=True,
+        blockers=(),
+        readiness_sha256="8" * 64,
+        overlay_sha256="9" * 64,
+        packet_sha256=trusted_module.canonical_sha256(packet),
+        packet=packet,
+    )
+
+    restore_called = False
+
+    def fail_if_restored(*args: object, **kwargs: object) -> None:
+        nonlocal restore_called
+        restore_called = True
+        raise AssertionError("checkpoint restore must not run")
+
+    monkeypatch.setattr(trusted_module, "load_trainer_checkpoint", fail_if_restored)
+
+    with pytest.raises(ValueError, match="trusted_parent_binding_resolution_mismatch"):
+        restore_trusted_same_provider_resume(
+            binding,
+            resolution,
+            model=object(),
+            trainer=object(),
+            terminal_recovery_authority=unrelated_authority,
+            expected_trusted_parent_binding_sha256=expected,
+            verified_trusted_recovery_authorities=(unrelated_token,),
+        )
+
+    assert not restore_called
