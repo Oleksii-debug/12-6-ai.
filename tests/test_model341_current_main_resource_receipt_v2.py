@@ -21,6 +21,39 @@ def _minimal_candidate() -> dict:
     }
 
 
+def _valid_capture() -> dict:
+    return {
+        "repository": "Oleksii-debug/12-6-ai.",
+        "issue": 2280,
+        "pull_request": 2281,
+        "workflow_name": "CI",
+        "workflow_run_id": 1,
+        "workflow_run_number": 1,
+        "job_id": 2,
+        "head_sha": "a" * 40,
+        "base_sha": "b" * 40,
+        "tested_merge_sha": "c" * 40,
+        "probe_tool_blob_sha1": receipt.EXPECTED_PROBE_TOOL_BLOB_SHA1,
+        "focused_test_blob_sha1": receipt.EXPECTED_FOCUSED_TEST_BLOB_SHA1,
+        "workflow_conclusion": "success",
+        "job_conclusion": "success",
+        "capture_line_count": 1,
+    }
+
+
+def _copy_checkout_authority_files(tmp_path: Path) -> None:
+    for relative_path in (
+        receipt.PROBE_TOOL_RELATIVE_PATH,
+        receipt.FOCUSED_TEST_RELATIVE_PATH,
+        receipt.CURRENT_MODEL_RELATIVE_PATH,
+        receipt.CURRENT_PYPROJECT_RELATIVE_PATH,
+    ):
+        source = ROOT / relative_path
+        target = tmp_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+
+
 def test_v2_receipt_fails_closed_until_external_capture_is_published() -> None:
     receipt.validate_probe_artifacts(ROOT)
     with pytest.raises(ValueError, match="capture authority is not published"):
@@ -203,9 +236,13 @@ def _publish_test_authority(
     monkeypatch: pytest.MonkeyPatch,
     candidate: dict,
 ) -> str:
+    merged_capture = _valid_capture()
+    merged_capture.update(candidate["capture"])
+    candidate["capture"] = merged_capture
     report_sha = receipt.canonical_json_sha256(candidate["probe_report"])
     candidate["probe_report_sha256"] = report_sha
     monkeypatch.setattr(receipt, "CAPTURE_AUTHORITY_PUBLISHED", True)
+    monkeypatch.setattr(receipt, "CAPTURE_PRECOMMIT_COMMENT_ID", 123456)
     monkeypatch.setattr(receipt, "EXPECTED_CAPTURE", copy.deepcopy(candidate["capture"]))
     monkeypatch.setattr(receipt, "EXPECTED_PROBE_REPORT_SHA256", report_sha)
     authority_sha = receipt.canonical_json_sha256(
@@ -368,4 +405,84 @@ def test_v2_receipt_rejects_bad_authority_before_loading_probe(
         match="prepublished v2 measurement authority mismatch",
     ):
         receipt.validate_receipt(candidate, root=ROOT)
+    assert loaded is False
+
+
+def test_v2_capture_shape_rejects_extra_member() -> None:
+    capture = _valid_capture()
+    capture["runner_image"] = "ubuntu-24.04"
+    with pytest.raises(ValueError, match="capture key set mismatch"):
+        receipt._validate_capture(capture)
+
+
+def test_v2_capture_shape_rejects_bool_line_count_alias() -> None:
+    capture = _valid_capture()
+    capture["capture_line_count"] = True
+    with pytest.raises(ValueError, match="capture_line_count must be an exact integer"):
+        receipt._validate_capture(capture)
+
+
+def test_v2_capture_shape_rejects_non_success_terminal_state() -> None:
+    capture = _valid_capture()
+    capture["job_conclusion"] = "failure"
+    with pytest.raises(ValueError, match="job conclusion mismatch"):
+        receipt._validate_capture(capture)
+
+
+def test_v2_authority_payload_binds_external_precommit_comment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = _minimal_candidate()
+    candidate["capture"] = _valid_capture()
+    monkeypatch.setattr(receipt, "CAPTURE_PRECOMMIT_COMMENT_ID", 123456)
+    first = receipt.canonical_json_sha256(receipt.measurement_authority_payload(candidate))
+    monkeypatch.setattr(receipt, "CAPTURE_PRECOMMIT_COMMENT_ID", 654321)
+    second = receipt.canonical_json_sha256(receipt.measurement_authority_payload(candidate))
+    assert first != second
+
+
+def test_v2_current_checkout_allows_packaging_only_pyproject_change(tmp_path: Path) -> None:
+    _copy_checkout_authority_files(tmp_path)
+    pyproject = tmp_path / receipt.CURRENT_PYPROJECT_RELATIVE_PATH
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8") + "\n[tool.model341-test]\nflag = true\n",
+        encoding="utf-8",
+    )
+    receipt.validate_current_checkout_compatibility(tmp_path)
+
+
+def test_v2_current_checkout_rejects_runtime_dependency_drift(tmp_path: Path) -> None:
+    _copy_checkout_authority_files(tmp_path)
+    pyproject = tmp_path / receipt.CURRENT_PYPROJECT_RELATIVE_PATH
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace('"torch>=2.5"', '"torch>=99"'),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="runtime project dependency projection mismatch"):
+        receipt.validate_current_checkout_compatibility(tmp_path)
+
+
+def test_v2_current_checkout_rejects_model_drift_before_probe_load(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _copy_checkout_authority_files(tmp_path)
+    model_path = tmp_path / receipt.CURRENT_MODEL_RELATIVE_PATH
+    model_path.write_bytes(model_path.read_bytes() + b"\n")
+
+    candidate = _minimal_candidate()
+    candidate["capture"] = _valid_capture()
+    candidate["probe_report"] = {"measurement": {"value": 1}}
+    _publish_test_authority(monkeypatch, candidate)
+
+    loaded = False
+
+    def forbidden_loader(_root: Path):
+        nonlocal loaded
+        loaded = True
+        raise AssertionError("probe must not load before current checkout verification")
+
+    monkeypatch.setattr(receipt, "_load_verified_probe_module", forbidden_loader)
+    with pytest.raises(ValueError, match="current checkout model.py identity mismatch"):
+        receipt.validate_receipt(candidate, root=tmp_path)
     assert loaded is False
