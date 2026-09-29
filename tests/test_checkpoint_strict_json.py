@@ -108,23 +108,30 @@ def _write_nonfinite_manifest(checkpoint: Path, *, value: float, token: str) -> 
 
 
 @pytest.mark.parametrize(
-    "needle",
+    ("needle", "duplicated"),
     [
-        '"format":"12-6-checkpoint"',
-        '"lr":0.25',
+        (
+            '"format":"12-6-checkpoint"',
+            '"format":"attacker-controlled","format":"12-6-checkpoint"',
+        ),
+        (
+            '"lr":0.25',
+            '"lr":999.0,"lr":0.25',
+        ),
     ],
 )
 def test_checksum_consistent_manifest_duplicate_keys_fail_closed(
     tmp_path: Path,
     needle: str,
+    duplicated: str,
 ) -> None:
     checkpoint = tmp_path / "manifest-duplicate"
     _save(checkpoint)
     path = checkpoint / "manifest.json"
     raw = path.read_text(encoding="utf-8")
     assert needle in raw
-    duplicated = raw.replace(needle, f"{needle},{needle}", 1)
-    _write_manifest_bytes(checkpoint, duplicated.encode("utf-8"))
+    raw = raw.replace(needle, duplicated, 1)
+    _write_manifest_bytes(checkpoint, raw.encode("utf-8"))
 
     with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
         verify_checkpoint(checkpoint)
@@ -160,7 +167,14 @@ def test_state_tree_duplicate_object_key_fails_before_model_mutation(tmp_path: P
     raw = path.read_text(encoding="utf-8")
     needle = '"__kind__":"mapping"'
     assert needle in raw
-    path.write_text(raw.replace(needle, f"{needle},{needle}", 1), encoding="utf-8")
+    path.write_text(
+        raw.replace(
+            needle,
+            '"__kind__":"attacker-controlled","__kind__":"mapping"',
+            1,
+        ),
+        encoding="utf-8",
+    )
     _rebind_manifest_for_payload(checkpoint, "state.json")
 
     target = NumpyModel([9.0, 9.0, 9.0])
