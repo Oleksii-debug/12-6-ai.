@@ -292,6 +292,20 @@ def test_repaired_receipt_binds_current_clean_execution_and_scopes_provenance() 
         )
 
 
+def test_declared_capacity_arithmetic_is_distinct_from_raw_payload_bytes() -> None:
+    inventory = {
+        "sources": [
+            {"declared_capacity_bytes": 7, "expected_raw_bytes": 11},
+            {"declared_capacity_bytes": 5, "expected_raw_bytes": 5},
+        ]
+    }
+    assert REPLAY_RUNNER._declared_capacity_bytes(inventory) == 12
+    with pytest.raises(RematerializationError, match="declared capacity invalid"):
+        REPLAY_RUNNER._declared_capacity_bytes(
+            {"sources": [{"declared_capacity_bytes": True}]}
+        )
+
+
 def test_current_clean_bindings_and_combined_capacity_are_exact() -> None:
     assert REPLAY_RUNNER.CURRENT_MAIN_AT_CONVERGENCE == (
         "7b3df41c10a826183fab0b04ae85a90cdf0ce351"
