@@ -23,9 +23,7 @@ if str(SRC) not in sys.path:
 from twelve_six.data.arxiv_languk_rematerialized_replay_v1 import (
     ARXIV,
     LANGUK,
-    PARENT_INTAKE_BLOB_SHA1,
     PARENT_PR1800_HEAD,
-    PARENT_RUNNER_BLOB_SHA1,
     HistoricalMaterializerSpec,
     RematerializationError,
     build_receipt,
@@ -190,30 +188,6 @@ def _verify_wrapper_checkout(repo_root: Path) -> dict[str, str]:
     return authority
 
 
-def _prepare_parent_execution_tree(repo_root: Path, workspace: Path) -> Path:
-    """Extract and verify the exact audited PR1800 tree used for all replay code/imports."""
-    _ensure_commit(repo_root, PARENT_PR1800_HEAD)
-    parent_root = workspace / "parent-pr1800"
-    _extract_commit(repo_root, PARENT_PR1800_HEAD, parent_root)
-    runner = parent_root / INCUMBENT_RUNNER_REL
-    intake = parent_root / INCUMBENT_INTAKE_REL
-    if runner.is_symlink() or not runner.is_file():
-        raise RematerializationError("PR1800 incumbent runner missing from exact parent tree")
-    if intake.is_symlink() or not intake.is_file():
-        raise RematerializationError("PR1800 incumbent intake missing from exact parent tree")
-    verify_git_blob(
-        runner.read_bytes(),
-        PARENT_RUNNER_BLOB_SHA1,
-        label="PR1800 incumbent runner",
-    )
-    verify_git_blob(
-        intake.read_bytes(),
-        PARENT_INTAKE_BLOB_SHA1,
-        label="PR1800 incumbent intake",
-    )
-    return parent_root
-
-
 def _run_historical_materializer(
     *,
     spec: HistoricalMaterializerSpec,
@@ -250,58 +224,6 @@ def _run_historical_materializer(
 def _repo_rooted(path: Path) -> Path:
     """Preserve the incumbent wrapper's repo-root-relative child-argument semantics."""
     return (path if path.is_absolute() else ROOT / path).resolve()
-
-
-def _replay_command(
-    args: argparse.Namespace,
-    *,
-    parent_root: Path,
-    arxiv_candidate: Path,
-    languk_candidate: Path,
-    report: Path,
-    survivors: Path,
-) -> list[str]:
-    return [
-        sys.executable,
-        "-I",
-        str(parent_root / INCUMBENT_RUNNER_REL),
-        "--v7-root",
-        str(_repo_rooted(args.v7_root)),
-        "--bulk-workspace",
-        str(_repo_rooted(args.bulk_workspace)),
-        "--v8-config",
-        str(_repo_rooted(args.v8_config)),
-        "--data526-config",
-        str(_repo_rooted(args.data526_config)),
-        "--v8-report",
-        str(_repo_rooted(args.v8_report)),
-        "--v8-survivors",
-        str(_repo_rooted(args.v8_survivors)),
-        "--data526-evidence",
-        str(_repo_rooted(args.data526_evidence)),
-        "--data526-record-inventory",
-        str(_repo_rooted(args.data526_record_inventory)),
-        "--rada-language-report",
-        str(_repo_rooted(args.rada_language_report)),
-        "--rada-quality-privacy-jsonl",
-        str(_repo_rooted(args.rada_quality_privacy_jsonl)),
-        "--rada-quality-privacy-report",
-        str(_repo_rooted(args.rada_quality_privacy_report)),
-        "--expected-rada-report-sha256",
-        args.expected_rada_report_sha256,
-        "--arxiv-authority",
-        str(_repo_rooted(args.arxiv_authority)),
-        "--arxiv-candidate",
-        str(arxiv_candidate.resolve()),
-        "--languk-authority",
-        str(_repo_rooted(args.languk_authority)),
-        "--languk-candidate",
-        str(languk_candidate.resolve()),
-        "--output-report",
-        str(report.resolve()),
-        "--output-survivors",
-        str(survivors.resolve()),
-    ]
 
 
 def _load_json_object(path: Path, *, label: str) -> dict[str, Any]:
@@ -685,19 +607,18 @@ def _finalize_receipt(
         raise RematerializationError("current clean execution authority drift")
 
     result = copy.deepcopy(receipt)
-    historical_parent = dict(result.pop("parent_authority", {}))
+    historical_parent = result.get("historical_parent_lineage")
+    if not isinstance(historical_parent, dict):
+        raise RematerializationError("historical parent lineage missing")
     if historical_parent.get("exact_head_sha") != PARENT_PR1800_HEAD:
         raise RematerializationError("historical parent exact head drift")
+    if historical_parent.get("used_as_current_corpus_execution_authority") is not False:
+        raise RematerializationError("historical parent must remain execution-nonauthoritative")
     result["schema_version"] = REPAIRED_RECEIPT_SCHEMA
     result["status"] = (
         "PHYSICAL_REMATERIALIZATION_AND_CURRENT_CLEAN_INDEXED_DEDUP_REPLAY_"
         "EXECUTED_ZERO_CREDIT"
     )
-    result["historical_parent_lineage"] = {
-        **historical_parent,
-        "used_as_current_corpus_execution_authority": False,
-        "reason": "superseded by merged Nomis-free clean successor authority",
-    }
     result["current_clean_execution_authority"] = {
         "clean_successor_product_pr": CURRENT_CLEAN_BASE_PR,
         "indexed_executor_product_pr": CURRENT_INDEXED_EXECUTOR_PR,
@@ -788,11 +709,7 @@ def main() -> int:
             finally:
                 _remove_ephemeral_payloads(pass_root)
 
-        receipt = build_receipt(
-            pass_results=results,
-            incumbent_runner_blob_sha1=PARENT_RUNNER_BLOB_SHA1,
-            incumbent_intake_blob_sha1=PARENT_INTAKE_BLOB_SHA1,
-        )
+        receipt = build_receipt(pass_results=results)
         receipt = _finalize_receipt(
             receipt,
             wrapper_execution_authority=wrapper_authority,
