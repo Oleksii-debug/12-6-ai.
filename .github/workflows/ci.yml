@@ -35,19 +35,28 @@ jobs:
           set -euo pipefail
           BRIDGE_PATH=src/twelve_six/data/postmaterialization_balance_projection_v1.py
           SELECTION_PATH=src/twelve_six/data/current_clean_balanced_selection_v1.py
+          VERIFIER_PATH=src/twelve_six/data/balanced_split_application_v1.py
           TEST_PATH=tests/test_postmaterialization_balance_projection_v1.py
           git cat-file -e "$CARRIER_HEAD^{commit}"
+          git fetch --no-tags origin main
+          BOUND_MAIN_SHA="$(git rev-parse origin/main)"
           BRIDGE_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$BRIDGE_PATH")"
           SELECTION_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$SELECTION_PATH")"
+          VERIFIER_BLOB_SHA="$(git rev-parse "$BOUND_MAIN_SHA:$VERIFIER_PATH")"
           TEST_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$TEST_PATH")"
+          test "$VERIFIER_BLOB_SHA" = "adba0bd518c537b668a010daf095cde00db80a60"
           git show "$CARRIER_HEAD:$BRIDGE_PATH" > "$BRIDGE_PATH"
           git show "$CARRIER_HEAD:$SELECTION_PATH" > "$SELECTION_PATH"
+          git show "$BOUND_MAIN_SHA:$VERIFIER_PATH" > "$VERIFIER_PATH"
           git show "$CARRIER_HEAD:$TEST_PATH" > "$TEST_PATH"
           test "$(git hash-object "$BRIDGE_PATH")" = "$BRIDGE_BLOB_SHA"
           test "$(git hash-object "$SELECTION_PATH")" = "$SELECTION_BLOB_SHA"
+          test "$(git hash-object "$VERIFIER_PATH")" = "$VERIFIER_BLOB_SHA"
           test "$(git hash-object "$TEST_PATH")" = "$TEST_BLOB_SHA"
           echo "bridge_blob_sha=$BRIDGE_BLOB_SHA" >> "$GITHUB_OUTPUT"
           echo "selection_blob_sha=$SELECTION_BLOB_SHA" >> "$GITHUB_OUTPUT"
+          echo "balanced_selection_verifier_blob_sha=$VERIFIER_BLOB_SHA" >> "$GITHUB_OUTPUT"
+          echo "bound_main_sha=$BOUND_MAIN_SHA" >> "$GITHUB_OUTPUT"
           echo "test_blob_sha=$TEST_BLOB_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         with:
@@ -70,6 +79,7 @@ jobs:
           CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
           BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
           SELECTION_BLOB_SHA: ${{ steps.bridge_repair.outputs.selection_blob_sha }}
+          VERIFIER_BLOB_SHA: ${{ steps.bridge_repair.outputs.balanced_selection_verifier_blob_sha }}
           TEST_BLOB_SHA: ${{ steps.bridge_repair.outputs.test_blob_sha }}
         run: |
           set -euo pipefail
@@ -83,6 +93,7 @@ jobs:
           test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:tools/materialize_d03_postmaterialization_balance_v1.py)" = "$(git rev-parse "$CARRIER_HEAD":tools/materialize_d03_postmaterialization_balance_v1.py)"
           test "$(git hash-object src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$BRIDGE_BLOB_SHA"
           test "$(git hash-object src/twelve_six/data/current_clean_balanced_selection_v1.py)" = "$SELECTION_BLOB_SHA"
+          test "$(git hash-object src/twelve_six/data/balanced_split_application_v1.py)" = "$VERIFIER_BLOB_SHA"
           test "$(git hash-object tests/test_postmaterialization_balance_projection_v1.py)" = "$TEST_BLOB_SHA"
           git show "$CARRIER_HEAD":.github/workflows/ci.yml > /tmp/pr945-carrier-workflow.yml
           git show "$CARRIER_HEAD":src/twelve_six/data/postmaterialization_balance_projection_v1.py > /tmp/pr945-carrier-bridge.py
@@ -100,10 +111,11 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 1753 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'exec/1752-pr945-real-balance-20260913'
         env:
           AUTH_PATH: reports/d03/clean_post_g05_g06_balance_authority_v1.json
+          BOUND_MAIN_SHA: ${{ steps.bridge_repair.outputs.bound_main_sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main
-          AUTH_MAIN_SHA="$(git rev-parse origin/main)"
+          AUTH_MAIN_SHA="$BOUND_MAIN_SHA"
+          git cat-file -e "$AUTH_MAIN_SHA^{commit}"
           echo "main_sha=$AUTH_MAIN_SHA" >> "$GITHUB_OUTPUT"
           echo "authority_path=$AUTH_PATH" >> "$GITHUB_OUTPUT"
 
@@ -369,6 +381,8 @@ jobs:
           CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
           BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
           SELECTION_BLOB_SHA: ${{ steps.bridge_repair.outputs.selection_blob_sha }}
+          VERIFIER_BLOB_SHA: ${{ steps.bridge_repair.outputs.balanced_selection_verifier_blob_sha }}
+          BOUND_MAIN_SHA: ${{ steps.bridge_repair.outputs.bound_main_sha }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -544,7 +558,7 @@ jobs:
               selected_raw_record_count = len(selected_raw)
 
           receipt = {
-              "schema": "12-6.d03-real-current-clean-balance-execution.v4",
+              "schema": "12-6.d03-real-current-clean-balance-execution.v5",
               "execution_profile": "LOCAL_FREE",
               "authority_main_sha": os.environ["AUTH_MAIN_SHA"],
               "authority_path": os.environ["AUTH_PATH"],
@@ -555,6 +569,12 @@ jobs:
               "postmaterialization_bridge_blob_sha": os.environ["BRIDGE_BLOB_SHA"],
               "balanced_selection_module_blob_sha": os.environ[
                   "SELECTION_BLOB_SHA"
+              ],
+              "canonical_balanced_selection_verifier_blob_sha": os.environ[
+                  "VERIFIER_BLOB_SHA"
+              ],
+              "canonical_balanced_selection_verifier_main_sha": os.environ[
+                  "BOUND_MAIN_SHA"
               ],
               "composition_artifact_id": authority["composition_artifact_id"],
               "current_clean_execution_head_sha": authority[
