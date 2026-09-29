@@ -58,6 +58,23 @@ class CheckpointCompatibilityError(CheckpointError):
     """Raised when a checkpoint cannot be applied to the requested target."""
 
 
+def _strict_json_bytes(value: Any, *, artifact: str) -> bytes:
+    """Encode checkpoint JSON without Python's non-finite extensions."""
+
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise CheckpointIntegrityError(
+            f"{artifact} is not strict finite JSON"
+        ) from exc
+
+
 def _reject_json_constant(value: str) -> Any:
     """Reject Python's non-standard NaN/Infinity JSON extensions."""
 
@@ -784,7 +801,7 @@ def _artifact_record(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.write_bytes(canonical_json_bytes(value) + b"\n")
+    path.write_bytes(_strict_json_bytes(value, artifact=path.name) + b"\n")
 
 
 def _build_identity(identity: CheckpointIdentity, environment: Mapping[str, Any]) -> dict[str, Any]:
