@@ -285,15 +285,6 @@ def _runtime(root: Path) -> None:
         for path in root.rglob("*")
         if path.is_file() and path.suffix.casefold() == ".whl"
     )
-    unexpected_wheel_locations = [
-        path.relative_to(root).as_posix()
-        for path in runtime_wheels
-        if path.parent != root / "wheelhouse"
-    ]
-    if unexpected_wheel_locations:
-        raise RuntimeError(
-            f"runtime artifact wheel is outside canonical wheelhouse: {unexpected_wheel_locations}"
-        )
     application_wheels = [
         path
         for path in runtime_wheels
@@ -303,6 +294,15 @@ def _runtime(root: Path) -> None:
         relative = [path.relative_to(root).as_posix() for path in application_wheels]
         raise RuntimeError(
             f"runtime artifact must not contain the application wheel: {relative}"
+        )
+    unexpected_wheel_locations = [
+        path.relative_to(root).as_posix()
+        for path in runtime_wheels
+        if path.parent != root / "wheelhouse"
+    ]
+    if unexpected_wheel_locations:
+        raise RuntimeError(
+            f"runtime artifact wheel is outside canonical wheelhouse: {unexpected_wheel_locations}"
         )
     checkpoint_bytes = sorted(
         path.relative_to(root).as_posix()
