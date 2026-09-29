@@ -503,7 +503,7 @@ def test_committed_candidate_policy_and_predecessor_policy_are_exact() -> None:
 def test_historical_evidence_byte_substitution_fails_closed() -> None:
     path = ROOT / qualifier.HISTORICAL_EVIDENCE_PATH
     raw = path.read_bytes()
-    changed = raw.replace(b'"status":"ADMIT"', b'"status":"RETEST"', 1)
+    changed = raw.replace(b'"status": "ADMIT"', b'"status": "RETEST"', 1)
     assert changed != raw
     with pytest.raises(
         qualifier.QualificationError,
