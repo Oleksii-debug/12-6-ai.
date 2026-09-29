@@ -34,8 +34,8 @@ for location in (str(TOOLS), str(SRC)):
 
 import run_d03_expanded_global_dedup_v9 as v9_runner
 import run_next100_065f_global_dedup_v8 as v8
-from twelve_six.data import franko1901_dedup_intake as franko1901
 from twelve_six.data import expanded_global_dedup_v9 as v9_semantics
+from twelve_six.data import franko1901_dedup_intake as franko1901
 from twelve_six.data import incumbent_dedup_indexed_execution as indexed
 
 SCHEMA = "12-6.d03-franko1901-global-dedup-execution.v1"
