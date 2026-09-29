@@ -598,12 +598,19 @@ def _build_current_clean_replay(
         "source-admission rows; execution delegates duplicate science to exact incumbent "
         "V3 semantics through merged PR1459 performance-equivalent indexing."
     )
+    base_payload_bytes = sum(len(raw) for raw in base_payloads.values())
+    extension_payload_bytes = sum(len(raw) for raw in extension_payloads.values())
     combined_payloads = dict(base_payloads)
     combined_payloads.update(extension_payloads)
     if len(combined_payloads) != EXPECTED_COMBINED_PRE_DEDUP_SOURCE_COUNT:
         raise RematerializationError("combined source-count drift")
-    if sum(len(raw) for raw in combined_payloads.values()) != EXPECTED_COMBINED_PRE_DEDUP_BYTES:
-        raise RematerializationError("combined byte-total drift")
+    combined_payload_bytes = sum(len(raw) for raw in combined_payloads.values())
+    if combined_payload_bytes != EXPECTED_COMBINED_PRE_DEDUP_BYTES:
+        raise RematerializationError(
+            "combined byte-total drift: "
+            f"base={base_payload_bytes}, extension={extension_payload_bytes}, "
+            f"combined={combined_payload_bytes}, expected={EXPECTED_COMBINED_PRE_DEDUP_BYTES}"
+        )
 
     indexed = indexed_executor
     indexed.attest_incumbent_runtime(matcher)
