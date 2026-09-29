@@ -13,6 +13,8 @@ from typing import Any
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ARTIFACT_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_WINDOWS_PROFILE_MANIFEST_SHA256 = "a855d6840bc26392a7c1b515749bbdedff6bb88fdfe19c223687ee0757576299"
 
 _MODEL_PAYLOAD_SUFFIXES = frozenset(
     {
@@ -92,6 +94,15 @@ def _read_self_hashed_manifest(
     return value
 
 
+def _validate_manifest_files(path: Path, manifest: dict[str, Any]) -> None:
+    expected = manifest.get("files")
+    if not isinstance(expected, dict):
+        raise ValueError(f"{path} files must be an object")
+    actual = _files(path.parent, exclude={path.name})
+    if actual != expected:
+        raise ValueError(f"{path} file inventory/hash mismatch")
+
+
 def _validate_evidence_inputs(args: argparse.Namespace) -> tuple[
     dict[str, Any],
     dict[str, Any],
@@ -131,6 +142,8 @@ def _validate_evidence_inputs(args: argparse.Namespace) -> tuple[
         ),
     )
 
+    if not isinstance(args.source_sha, str) or _GIT_SHA_RE.fullmatch(args.source_sha) is None:
+        raise ValueError("evidence source_sha must be a full lowercase Git SHA")
     if app_manifest.get("source_sha") != args.source_sha:
         raise ValueError("application manifest source_sha does not match evidence source_sha")
     if app_manifest.get("contains_runtime_wheels") is not False:
@@ -139,12 +152,17 @@ def _validate_evidence_inputs(args: argparse.Namespace) -> tuple[
         raise ValueError("application manifest must exclude checkpoint bytes")
     if runtime_manifest.get("profile_id") != "windows-x86_64":
         raise ValueError("runtime manifest must bind windows-x86_64")
+    if runtime_manifest.get("profile_manifest_sha256") != _WINDOWS_PROFILE_MANIFEST_SHA256:
+        raise ValueError("runtime manifest must bind the canonical Windows profile")
     if runtime_manifest.get("python_version") != "3.11.9":
         raise ValueError("runtime manifest must bind CPython 3.11.9")
     if runtime_manifest.get("contains_application_wheel") is not False:
         raise ValueError("runtime manifest must exclude application wheel")
     if runtime_manifest.get("contains_checkpoint") is not False:
         raise ValueError("runtime manifest must exclude checkpoint bytes")
+
+    _validate_manifest_files(args.app_manifest, app_manifest)
+    _validate_manifest_files(args.runtime_manifest, runtime_manifest)
 
     runtime = status.get("runtime")
     if (
@@ -153,6 +171,7 @@ def _validate_evidence_inputs(args: argparse.Namespace) -> tuple[
         or status.get("errors") != []
         or not isinstance(runtime, dict)
         or runtime.get("profile_id") != "windows-x86_64"
+        or runtime.get("profile_manifest_sha256") != _WINDOWS_PROFILE_MANIFEST_SHA256
         or runtime.get("python_actual") != "3.11.9"
     ):
         raise ValueError("installed status is not an exact ready Windows runtime status")

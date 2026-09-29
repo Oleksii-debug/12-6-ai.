@@ -412,3 +412,30 @@ def test_validate_evidence_inputs_rejects_nonready_status(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="exact ready Windows runtime status"):
         ARTIFACT_MANIFEST._validate_evidence_inputs(args)
+
+
+def test_artifact_manifest_pins_committed_windows_profile_authority() -> None:
+    profile = json.loads(
+        (ROOT / "requirements" / "locks" / "windows-x86_64" / "profile.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        profile["manifest_sha256"]
+        == ARTIFACT_MANIFEST._WINDOWS_PROFILE_MANIFEST_SHA256
+    )
+
+
+def test_validate_manifest_files_rejects_post_manifest_mutation(tmp_path: Path) -> None:
+    payload = tmp_path / "launcher.py"
+    payload.write_text("original", encoding="utf-8")
+    manifest = {
+        "schema_version": "fixture",
+        "files": ARTIFACT_MANIFEST._files(tmp_path, exclude={"app-manifest.json"}),
+    }
+    manifest_path = tmp_path / "app-manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    payload.write_text("tampered", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="file inventory/hash mismatch"):
+        ARTIFACT_MANIFEST._validate_manifest_files(manifest_path, manifest)
