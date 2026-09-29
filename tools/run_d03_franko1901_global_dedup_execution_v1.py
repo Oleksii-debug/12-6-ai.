@@ -447,13 +447,19 @@ def execute(
         fresh_execution_authority_json,
         retain_payloads=True,
     )
-    _require(\n        projection.sources is not None and projection.payloads is not None,\n        "payload projection missing",\n    )
+    _require(
+        projection.sources is not None and projection.payloads is not None,
+        "payload projection missing",
+    )
     source_admission_provenance_scope = _source_admission_provenance_scope(
         projection.receipt
     )
     extension_sources = [dict(row) for row in projection.sources]
     extension_payloads = dict(projection.payloads)
-    _require(\n        len(extension_sources) == EXPECTED_FRANKO1901_OBJECTS,\n        "Franko1901 projection count drift",\n    )
+    _require(
+        len(extension_sources) == EXPECTED_FRANKO1901_OBJECTS,
+        "Franko1901 projection count drift",
+    )
     _require(
         sum(len(raw) for raw in extension_payloads.values()) == EXPECTED_FRANKO1901_BYTES,
         "Franko1901 projection bytes drift",
@@ -494,7 +500,10 @@ def execute(
 
     reference_bytes = matcher.v1._canonical_bytes(reference)
     indexed_bytes = matcher.v1._canonical_bytes(indexed_report)
-    _require(\n        reference_bytes == indexed_bytes,\n        "indexed report differs from incumbent all-pairs report",\n    )
+    _require(
+        reference_bytes == indexed_bytes,
+        "indexed report differs from incumbent all-pairs report",
+    )
 
     rows, _ = matcher._validate_inventory(inventory)
     validated = matcher.v1._validate_inventory(matcher._as_v1_inventory(rows))
