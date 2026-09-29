@@ -59,7 +59,10 @@ def test_matching_unicodedata_substitution_is_rejected_before_payload_access(
         FakeUnicodeData,
     )
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(
+        RuntimeError,
+        match="isolated executable behavior closure drift",
+    ):
         runner.require_exact_implementation(ROOT, head)
 
 
@@ -68,6 +71,24 @@ def test_matching_defaultdict_substitution_is_rejected_before_payload_access(
 ) -> None:
     head = _head()
     monkeypatch.setattr(runner.matching_impl, "defaultdict", dict)
+
+    with pytest.raises(
+        RuntimeError,
+        match="isolated executable behavior closure drift",
+    ):
+        runner.require_exact_implementation(ROOT, head)
+
+
+def test_matching_python_callable_rebinding_is_rejected_before_payload_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = _head()
+    original = runner.matching_impl._fingerprint
+
+    def replacement(*args: object, **kwargs: object) -> object:
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runner.matching_impl, "_fingerprint", replacement)
 
     with pytest.raises(
         RuntimeError,
