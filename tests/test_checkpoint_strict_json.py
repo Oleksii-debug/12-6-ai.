@@ -205,6 +205,19 @@ def test_verified_checkpoint_manifest_reparse_rejects_duplicate_members() -> Non
         _ = verified.manifest
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_save_rejects_nonfinite_state_before_publication(
+    tmp_path: Path,
+    value: float,
+) -> None:
+    checkpoint = tmp_path / "save-nonfinite"
+
+    with pytest.raises(CheckpointIntegrityError, match="strict finite JSON"):
+        _save(checkpoint, trainer_state={"loss": value})
+
+    assert not checkpoint.exists()
+
+
 def test_valid_checkpoint_still_verifies_and_loads(tmp_path: Path) -> None:
     checkpoint = tmp_path / "valid"
     _save(checkpoint, trainer_state={"loss": 0.25})
