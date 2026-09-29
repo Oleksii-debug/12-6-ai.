@@ -85,7 +85,9 @@ def init_spec() -> InitSpec:
 
 
 def git_blob_sha1(path: Path) -> str:
-    content = path.read_bytes()
+    content = path.read_bytes().replace(b"\r\n", b"\n")
+    if b"\r" in content:
+        raise ValueError("source text contains unsupported bare CR")
     header = f"blob {len(content)}\0".encode("ascii")
     return hashlib.sha1(header + content).hexdigest()
 
