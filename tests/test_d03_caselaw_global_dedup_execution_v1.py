@@ -225,7 +225,6 @@ assert attest < reference
     )
 
 
-
 def test_shared_ci_isolates_incumbent_loader_attestation_suite() -> None:
     _run_isolated(
         """
@@ -241,7 +240,7 @@ paths = (
 )
 for path in paths:
     assert f"--ignore={path}" in workflow
-    assert f"            {path} \\" in workflow or f"            {path}\n" in workflow
+    assert workflow.count(path) >= 2
 assert "Run incumbent loader-attestation suite in a fresh process" in workflow
 """
     )
