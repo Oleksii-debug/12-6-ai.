@@ -1,11 +1,10 @@
 """Authenticated ArXiv + LangUK candidate rematerialization helpers.
 
-This module owns no source-selection, privacy, rights, matcher, or dedup science.  It
+This module owns no source-selection, privacy, rights, matcher, or dedup science. It
 pins the exact historical materializer programs that already produced the terminal
 source-admitted candidates, verifies reconstructed candidate bytes, and builds a
-text-free two-pass replay receipt.  The actual source acquisition/materialization and
-global-dedup execution remain delegated to those historical programs and to the exact
-audited PR #1800 runner respectively.
+text-free two-pass replay receipt. Source acquisition stays delegated to those exact
+historical programs; current clean global-dedup execution is owned by the wrapper.
 """
 from __future__ import annotations
 
@@ -16,8 +15,6 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 PARENT_PR1800_HEAD: Final = "6187887c01bdbc1857ca9f63145374d2a2ccb20b"
-PARENT_INTAKE_BLOB_SHA1: Final = "322f1441326ca17447581be8ebf2d98c2385bd38"
-PARENT_RUNNER_BLOB_SHA1: Final = "6f7e68e4d7f36d0ae0bf792e1d07db767374a3cf"
 RECEIPT_SCHEMA: Final = "12-6.d03-arxiv-languk-rematerialized-v9-replay.v1"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
