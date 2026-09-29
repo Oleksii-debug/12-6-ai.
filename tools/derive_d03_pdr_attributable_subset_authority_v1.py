@@ -29,6 +29,9 @@ EXPECTED_SIDECAR_SHA256 = "d4702f8c2c0fb92a9ab813c3578b91ff849ca1f98b785c1f5ae10
 EXPECTED_SIDECAR_BYTES = 481_511
 EXPECTED_ATTRIBUTABLE_RECORDS = 498
 EXPECTED_EXCLUDED_RECORDS = 668
+EXPECTED_ATTRIBUTABLE_NORMALIZED_BYTES = 3_727_864
+EXPECTED_ATTRIBUTABLE_PROJECTION = "79cff661429f365c412e3113a72a0d8b35566f19f61facca3bc643d86299e32b"
+EXPECTED_AUTHORITY_IDENTITY = "0fd7388521c693028f999a58737ca40b4ce9640eedcb33dda8a9559d62d77832"
 EXPECTED_EXCLUSION_IDENTITY = "5e4d99ab35bc08c3544fa99d0eb362a40e2873b75b443f74bdfc31b9eaf0dbb1"
 EXPECTED_REPORT_FILE_SHA256 = "cc598d0c9765bc17c7e0e584630009ad299c909135c3442eb99b2af1b8c82dff"
 EXPECTED_REPORT_IDENTITY = "8de53f55e602264d6d3401269faf270253e6f162fd99dfbdd00907c816cf47d9"
@@ -226,6 +229,14 @@ def derive_subset(
 
     _require(len(seen) == EXPECTED_ATTRIBUTABLE_RECORDS, "subset cardinality drift")
     projection_identity = _sha256(_canonical_bytes(projection))
+    _require(
+        subset_bytes == EXPECTED_ATTRIBUTABLE_NORMALIZED_BYTES,
+        "attributable normalized byte count drift",
+    )
+    _require(
+        projection_identity == EXPECTED_ATTRIBUTABLE_PROJECTION,
+        "attributable projection identity drift",
+    )
     core = {
         "schema_version": SCHEMA,
         "status": "ATTRIBUTABLE_SUBSET_ACCOUNTED_REVIEW_REQUIRED_ZERO_CREDIT",
@@ -258,7 +269,12 @@ def derive_subset(
         "paid_compute_used": False,
         "foreign_pretrained_weights_used": False,
     }
-    return {**core, "authority_identity_sha256": _sha256(_canonical_bytes(core))}
+    authority_identity = _sha256(_canonical_bytes(core))
+    _require(
+        authority_identity == EXPECTED_AUTHORITY_IDENTITY,
+        "subset authority identity drift",
+    )
+    return {**core, "authority_identity_sha256": authority_identity}
 
 
 def _validate_historical_report(report: dict[str, Any]) -> None:
