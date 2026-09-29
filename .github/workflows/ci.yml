@@ -242,6 +242,9 @@ jobs:
           def sha(path: str) -> str:
               return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
+          def require_exact_int(value: object, expected: int, field: str) -> None:
+              assert type(value) is int and value == expected, field
+
           def verify_self_hash(
               value: dict,
               field: str,
@@ -272,19 +275,35 @@ jobs:
 
           candidate_sha256 = "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273"
           for materializer in materializers:
-              assert materializer["retained_records"] == 5_658
-              assert materializer["retained_normalized_utf8_bytes"] == 5_962_147
+              require_exact_int(materializer["retained_records"], 5_658, "retained_records")
+              require_exact_int(
+                  materializer["retained_normalized_utf8_bytes"],
+                  5_962_147,
+                  "retained_normalized_utf8_bytes",
+              )
               assert materializer["candidate_jsonl_sha256"] == candidate_sha256
               assert materializer["canonical_capacity_credited"] == 0
               assert materializer["tokenizer_fit_authorized"] is False
               assert materializer["model_training_executed"] is False
           for admission in source_admissions:
               assert admission["historical_product_replay_reproduced"] is True
-              assert admission["input_records"] == 5_658
-              assert admission["input_normalized_utf8_bytes"] == 5_962_147
+              require_exact_int(admission["input_records"], 5_658, "input_records")
+              require_exact_int(
+                  admission["input_normalized_utf8_bytes"],
+                  5_962_147,
+                  "input_normalized_utf8_bytes",
+              )
               assert admission["input_candidate_sha256"] == candidate_sha256
-              assert admission["source_admitted_records"] == 5_658
-              assert admission["source_admitted_normalized_utf8_bytes"] == 5_962_147
+              require_exact_int(
+                  admission["source_admitted_records"],
+                  5_658,
+                  "source_admitted_records",
+              )
+              require_exact_int(
+                  admission["source_admitted_normalized_utf8_bytes"],
+                  5_962_147,
+                  "source_admitted_normalized_utf8_bytes",
+              )
               assert admission["source_admitted_candidate_sha256"] == candidate_sha256
               assert admission["global_dedup_completed"] is False
               assert admission["canonical_capacity_credited"] == 0
@@ -302,8 +321,33 @@ jobs:
           b = load("artifacts/pass-2/execution-evidence.json")
           for evidence in (a, b):
               verify_self_hash(evidence, "evidence_identity_sha256")
+              assert evidence["schema_version"] == "12-6.d03-caselaw-global-dedup-execution.v1"
+              assert evidence["execution_profile"] == "GITHUB_HOSTED_FREE_LOCAL_FREE"
+              require_exact_int(evidence["execution_claim_issue"], 2257, "execution_claim_issue")
+              require_exact_int(evidence["execution_pr"], 2259, "execution_pr")
               assert evidence["execution_head_sha"] == os.environ["HEAD_SHA"]
+              assert evidence["pinned_main_sha"] == "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
               assert evidence["caselaw"]["candidate_sha256"] == candidate_sha256
+              require_exact_int(
+                  evidence["caselaw"]["source_object_count"],
+                  5_658,
+                  "caselaw.source_object_count",
+              )
+              require_exact_int(
+                  evidence["caselaw"]["payload_bytes"],
+                  5_962_147,
+                  "caselaw.payload_bytes",
+              )
+              require_exact_int(
+                  evidence["combined"]["source_object_count"],
+                  5_922,
+                  "combined.source_object_count",
+              )
+              require_exact_int(
+                  evidence["combined"]["payload_bytes"],
+                  12_057_771,
+                  "combined.payload_bytes",
+              )
               assert evidence["combined"]["reports_byte_identical"] is True
               execution = evidence["indexed_execution"]
               assert type(execution["process_max_rss_kib"]) is int
@@ -328,6 +372,11 @@ jobs:
               assert survivors["survivor_authority_sha256"] == evidence["survivor_authority_sha256"]
 
           stable_fields = (
+              "schema_version",
+              "execution_profile",
+              "execution_claim_issue",
+              "execution_pr",
+              "execution_head_sha",
               "pinned_main_sha",
               "authority_path_blobs",
               "baseline_v8",
