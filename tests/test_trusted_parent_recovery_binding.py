@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -479,6 +480,67 @@ def test_operational_restore_rejects_unrelated_verified_terminal_authority(
             terminal_recovery_authority=unrelated_authority,
             expected_trusted_parent_binding_sha256=expected,
             verified_trusted_recovery_authorities=(unrelated_token,),
+        )
+
+    assert not restore_called
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["readiness_ready", "overlay_contract_valid", "packet_contract_valid"],
+)
+def test_operational_restore_requires_all_incumbent_ready_gates(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    resolution = _resolution()
+    authority, expected, token = _binding_material(resolution)
+    trusted = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class=PROVIDER_CLASS,
+        provider_id=PROVIDER_ID,
+        provider_session_id=CURRENT_SESSION,
+        previous_provider_session_id=PREVIOUS_SESSION,
+        terminal_recovery_authority=authority,
+    )
+    packet = {
+        "binding": {
+            "trusted_parent_recovery": trusted,
+            "trusted_parent_recovery_authority_token": token,
+        }
+    }
+    binding = PortableRunBinding(
+        binding_ready=True,
+        mode="RESUME",
+        readiness_ready=True,
+        overlay_contract_valid=True,
+        packet_contract_valid=True,
+        blockers=(),
+        readiness_sha256="8" * 64,
+        overlay_sha256="9" * 64,
+        packet_sha256=trusted_module.canonical_sha256(packet),
+        packet=packet,
+    )
+    binding = replace(binding, **{field: False})
+
+    restore_called = False
+
+    def fail_if_restored(*args: object, **kwargs: object) -> None:
+        nonlocal restore_called
+        restore_called = True
+        raise AssertionError("checkpoint restore must not run")
+
+    monkeypatch.setattr(trusted_module, "load_trainer_checkpoint", fail_if_restored)
+
+    with pytest.raises(ValueError, match="portable_binding_not_ready"):
+        restore_trusted_same_provider_resume(
+            binding,
+            resolution,
+            model=object(),
+            trainer=object(),
+            terminal_recovery_authority=authority,
+            expected_trusted_parent_binding_sha256=expected,
+            verified_trusted_recovery_authorities=(token,),
         )
 
     assert not restore_called
