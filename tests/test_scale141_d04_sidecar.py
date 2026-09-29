@@ -289,6 +289,72 @@ def test_interruption_after_sidecar_keeps_last_known_good_and_cleanup_removes_or
     assert resolve_recovery_generation(root, expected_reference=first).resume_state is not None
 
 
+
+def test_metadata_compatible_alternate_checkpoint_rejected_before_mutation(
+    tmp_path: Path,
+) -> None:
+    model_a, trainer_a, cfg_a = _stack()
+    _step(trainer_a)
+    reference_a = _publish(tmp_path / "trusted", model_a, trainer_a, cfg_a)
+
+    model_b, trainer_b, cfg_b = _stack()
+    _step(trainer_b)
+    with torch.no_grad():
+        first_parameter = next(model_b.parameters())
+        first_parameter.view(-1)[0].add_(0.125)
+    reference_b = _publish(tmp_path / "alternate", model_b, trainer_b, cfg_b)
+
+    assert reference_b["checkpoint_id"] != reference_a["checkpoint_id"]
+    assert reference_b["manifest_sha256"] != reference_a["manifest_sha256"]
+    resolution_b = resolve_recovery_generation(
+        tmp_path / "alternate",
+        expected_reference=reference_b,
+    )
+
+    target_model, target_trainer, _ = _stack()
+    model_before = {
+        name: tensor.detach().clone()
+        for name, tensor in target_model.state_dict().items()
+    }
+    counters_before = (
+        target_trainer.micro_step,
+        target_trainer.optimizer_step,
+        target_trainer.tokens_seen,
+    )
+    rng_before = torch.get_rng_state().clone()
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="checkpoint_id does not match the independently expected D05 identity",
+    ):
+        load_trainer_checkpoint(
+            resolution_b.path,
+            model=target_model,
+            trainer=target_trainer,
+            restore_rng=True,
+            expected_checkpoint_id=reference_a["checkpoint_id"],
+            expected_manifest_sha256=reference_a["manifest_sha256"],
+            expected_git_sha=SOURCE_SHA,
+            expected_run_manifest_hash=RUN_HASH,
+            expected_step=trainer_a.optimizer_step,
+            expected_tokens_seen=trainer_a.tokens_seen,
+            expected_ledger_identity_sha256=LEDGER_HASH,
+            expected_materialization_identity_sha256=MATERIALIZATION_HASH,
+            expected_packing_identity_sha256=PACKING_IDENTITY_HASH,
+            expected_exposure_plan_identity_sha256=EXPOSURE_PLAN_HASH,
+            expected_ordered_next_exposure_identity_sha256=ORDERED_NEXT_HASH,
+        )
+
+    for name, tensor in target_model.state_dict().items():
+        assert torch.equal(tensor, model_before[name])
+    assert (
+        target_trainer.micro_step,
+        target_trainer.optimizer_step,
+        target_trainer.tokens_seen,
+    ) == counters_before
+    assert torch.equal(torch.get_rng_state(), rng_before)
+
+
 @pytest.mark.parametrize(
     ("expected_field", "message"),
     [
