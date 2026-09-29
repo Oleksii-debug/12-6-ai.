@@ -43,6 +43,7 @@ def _isolated_indexed_test(test):
 
     return wrapper
 
+
 class _LazyIndexed:
     _module: ModuleType | None = None
 
