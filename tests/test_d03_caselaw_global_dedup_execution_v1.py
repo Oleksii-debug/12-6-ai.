@@ -224,3 +224,24 @@ assert attest < reference
 """
     )
 
+
+
+def test_shared_ci_isolates_incumbent_loader_attestation_suite() -> None:
+    _run_isolated(
+        """
+workflow = (MODULE.parents[1] / ".github" / "workflows" / "ci.yml").read_text(
+    encoding="utf-8"
+)
+paths = (
+    "tests/test_incumbent_dedup_direct_import_behavior.py",
+    "tests/test_incumbent_dedup_imported_member_closure.py",
+    "tests/test_incumbent_dedup_indexed_execution.py",
+    "tests/test_incumbent_dedup_json_re_transitive_closure.py",
+    "tests/test_incumbent_dedup_runtime_closure.py",
+)
+for path in paths:
+    assert f"--ignore={path}" in workflow
+    assert f"            {path} \\" in workflow or f"            {path}\n" in workflow
+assert "Run incumbent loader-attestation suite in a fresh process" in workflow
+"""
+    )
