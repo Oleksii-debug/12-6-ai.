@@ -1145,7 +1145,7 @@ def test_exact_record_realization_rejects_unrepresentable_allocation() -> None:
     ]
     with pytest.raises(ProjectionError, match="no exact whole-record realization"):
         _exact_record_subset(rows, target_bytes=3, family="family")
-    assert SELECTION_REALIZATION_POLICY in (
+    assert SELECTION_REALIZATION_POLICY == (
         "record-id-ascending-exact-family-byte-subset-v1"
     )
 
