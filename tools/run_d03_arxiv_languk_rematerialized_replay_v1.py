@@ -572,6 +572,7 @@ def _write_pass_authorities(
         label="pass survivor authority",
     )
 
+
 def _finalize_receipt(
     receipt: dict[str, Any],
     *,
@@ -632,6 +633,8 @@ def _finalize_receipt(
     truth["current_corpus_external_llm_free_claimed_by_this_replay"] = False
     result["truth_boundary"] = truth
     return result
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
