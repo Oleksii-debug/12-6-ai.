@@ -382,3 +382,27 @@ for mutated in (
         raise AssertionError(f"invalid provenance scope accepted: {mutated!r}")
 """
     )
+
+
+def test_caselaw_physical_workflow_pins_exact_poppler_pdftotext() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert 'POPPLER_VERSION: "25.06.0"' in workflow
+    assert (
+        'POPPLER_TARBALL_SHA256: '
+        '"8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"'
+        in workflow
+    )
+    install = workflow.index("- name: Install local-free pinned Poppler build prerequisites")
+    build = workflow.index("- name: Build exact Poppler pdftotext from pinned upstream source")
+    prepare = workflow.index("- name: Prepare exact historical authority worktrees")
+    execute = workflow.index("- name: Execute incumbent reference plus indexed global dedup")
+    assert install < build < prepare < execute
+    for marker in (
+        "sha256sum --check --strict",
+        "command -v pdftotext",
+        'grep -F "pdftotext version ${POPPLER_VERSION}"',
+        "-DENABLE_UTILS=ON",
+        "-DENABLE_GLIB=OFF",
+        "-DENABLE_QT6=OFF",
+    ):
+        assert marker in workflow
