@@ -308,6 +308,16 @@ def test_unknown_platform_max_rss_fails_closed(monkeypatch) -> None:
     assert mod._max_rss_kib() is None
 
 
+def test_execute_requires_positive_measured_rss_before_evidence() -> None:
+    mod = _load()
+    source = inspect.getsource(mod.execute)
+    rss_measure = source.index("process_max_rss_kib = _max_rss_kib()")
+    rss_gate = source.index('"process max RSS unavailable; refusing terminal execution evidence"')
+    evidence = source.index("evidence_core = {")
+    assert rss_measure < rss_gate < evidence
+    assert '"process_max_rss_kib": process_max_rss_kib' in source
+
+
 def test_cli_requires_both_franko_authority_documents() -> None:
     raw = MODULE.read_text(encoding="utf-8")
     assert (
