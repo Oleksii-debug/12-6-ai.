@@ -5,6 +5,7 @@ import hashlib
 import json
 
 import pytest
+import tools.next100_106_balance_gate as next100_gate
 
 from twelve_six.data.current_clean_balanced_selection_v1 import (
     SELECTION_REALIZATION_POLICY,
@@ -26,8 +27,6 @@ from twelve_six.data.postmaterialization_balance_projection_v1 import (
     require_balanced_selection_ready,
     verify_postmaterialization_family_vector,
 )
-
-import tools.next100_106_balance_gate as next100_gate
 
 GIT_SHA = "2" * 40
 MATERIALIZATION_SHA = "3" * 64
