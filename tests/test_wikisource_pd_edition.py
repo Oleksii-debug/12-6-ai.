@@ -349,32 +349,12 @@ def test_non_ua_or_privacy_like_content_fails_closed() -> None:
 
 
 def test_control_contract_is_fail_closed() -> None:
-    contract = {
-        "schema_version": "12-6.d03-wikisource-lesia1892-current-main.v1",
-        "execution_class": "LOCAL_FREE",
-        "incumbent_authority": {
-            "head_sha": "84c51e42b6daa51796fd20d793b5ef1ff01cc9d2",
-            "authority_identity_sha256": (
-                "6b443faa7fef777214022028d5fdb356dae0ab1a9b71822b4e16bea8f92cd0d6"
-            ),
-        },
-        "edition": {
-            "index_revision_id": INDEX_REVISION_ID,
-            "source_family_id": SOURCE_FAMILY_ID,
-            "family_credit_added": False,
-        },
-        "acquisition": {"max_pages": 112, "minimum_request_cadence_seconds": 0.5},
-        "truth_boundary": {
-            "canonical_capacity_credit_bytes": 0,
-            "training_authorized_bytes": 0,
-            "authorized_unique_loss_positions": 0,
-            "optimizer_updates": 0,
-            "tokenizer_fit_authorized": False,
-            "model_training_executed": False,
-            "final_test_outcomes_read": False,
-            "paid_compute_used": False,
-        },
-    }
+    root = Path(__file__).resolve().parents[1]
+    contract = json.loads(
+        (root / "configs/data/d03_wikisource_lesia1892_current_main_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
     validate_control_contract(contract)
     contract["truth_boundary"]["training_authorized_bytes"] = 1
     with pytest.raises(WikisourceIntakeError, match="zero-credit"):
