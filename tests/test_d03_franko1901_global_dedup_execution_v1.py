@@ -193,13 +193,19 @@ def test_historical_matcher_namespace_includes_pipeline() -> None:
     assert "twelve_six.data.pipeline" in mod._HISTORICAL_MATCHER_MODULES
 
 
-def test_runtime_attestation_precedes_both_matcher_paths() -> None:
+def test_runtime_attestation_precedes_indexed_matcher_path() -> None:
     mod = _load()
     source = inspect.getsource(mod.execute)
     attest = source.index("indexed.attest_incumbent_runtime(matcher)")
-    reference = source.index("reference = matcher.audit_payloads(inventory, payloads)")
     indexed = source.index("indexed_report = indexed.audit_payloads_indexed(")
-    assert attest < reference < indexed
+    assert attest < indexed
+
+
+def test_production_execution_does_not_reintroduce_all_pairs_reference() -> None:
+    mod = _load()
+    source = inspect.getsource(mod.execute)
+    assert "matcher.audit_payloads(inventory, payloads)" not in source
+    assert '"indexed_executor_performance_equivalence_authority": "MERGED_PR_1459"' in source
 
 
 def test_execute_uses_exact_three_part_franko_authority() -> None:
