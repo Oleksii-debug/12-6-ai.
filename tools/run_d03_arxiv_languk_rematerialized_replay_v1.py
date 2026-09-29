@@ -27,7 +27,12 @@ _HELPER_SPEC = importlib.util.spec_from_file_location("_pr1851_replay_helper", _
 if _HELPER_SPEC is None or _HELPER_SPEC.loader is None:
     raise RuntimeError(f"cannot load PR1851 replay helper: {_HELPER_PATH}")
 _HELPER = importlib.util.module_from_spec(_HELPER_SPEC)
-_HELPER_SPEC.loader.exec_module(_HELPER)
+sys.modules[_HELPER_SPEC.name] = _HELPER
+try:
+    _HELPER_SPEC.loader.exec_module(_HELPER)
+except BaseException:
+    sys.modules.pop(_HELPER_SPEC.name, None)
+    raise
 
 ARXIV = _HELPER.ARXIV
 LANGUK = _HELPER.LANGUK
@@ -325,7 +330,12 @@ def _load_module(name: str, path: Path) -> Any:
     if spec is None or spec.loader is None:
         raise RematerializationError(f"cannot load module: {path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
     return module
 
 
