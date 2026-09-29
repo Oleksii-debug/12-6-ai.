@@ -273,7 +273,7 @@ def build_receipt(
 
     return {
         "schema_version": RECEIPT_SCHEMA,
-        "status": "PHYSICAL_REMATERIALIZATION_AND_V9_REPLAY_EXECUTED_ZERO_CREDIT",
+        "status": "PHYSICAL_REMATERIALIZATION_AND_CURRENT_CLEAN_DEDUP_REPLAY_EXECUTED_ZERO_CREDIT",
         "execution_profile": "LOCAL_FREE",
         "parent_authority": {
             "product_pr": 1800,
@@ -317,7 +317,7 @@ def build_receipt(
             "final_test_outcomes_read": False,
             "paid_compute_used": False,
             "foreign_pretrained_weights_used": False,
-            "external_llm_or_api_used_for_data_or_intelligence": False,
+            "current_corpus_external_llm_free_claimed_by_this_replay": False,
         },
     }
 
