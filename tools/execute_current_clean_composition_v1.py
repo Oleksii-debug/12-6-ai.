@@ -9,6 +9,7 @@ import errno
 import hashlib
 import importlib
 import importlib.abc
+import importlib.machinery
 import importlib.util
 import json
 import math
@@ -137,6 +138,18 @@ def _git_bytes_optional(repo_root: Path, git_sha: str, repo_path: str) -> bytes 
     return completed.stdout
 
 
+def _git_tree_exists(repo_root: Path, git_sha: str, repo_path: str) -> bool:
+    completed = subprocess.run(
+        ["git", "cat-file", "-t", f"{git_sha}:{repo_path}"],
+        cwd=repo_root,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+    )
+    return completed.returncode == 0 and completed.stdout.strip() == "tree"
+
+
 class _AuthenticatedGitFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     """Load twelve_six modules directly from immutable Git object bytes."""
 
@@ -165,9 +178,33 @@ class _AuthenticatedGitFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader
         if fullname != "twelve_six" and not fullname.startswith("twelve_six."):
             return None
         source = self._source(fullname)
-        if source is None:
-            raise ImportError(f"authenticated Git module is unavailable: {fullname}")
-        return importlib.util.spec_from_loader(fullname, self, is_package=source[2])
+        if source is not None:
+            return importlib.util.spec_from_loader(fullname, self, is_package=source[2])
+
+        relative = fullname.replace(".", "/")
+        repo_path = f"src/{relative}"
+        if _git_tree_exists(self.repo_root, self.git_sha, repo_path):
+            physical = self.repo_root / repo_path
+            if physical.is_symlink():
+                raise ImportError(
+                    f"authenticated namespace package is a symlink: {fullname}"
+                )
+            try:
+                resolved = physical.resolve(strict=True)
+                source_root = (self.repo_root / "src").resolve(strict=True)
+            except OSError as exc:
+                raise ImportError(
+                    f"authenticated namespace package is unavailable physically: {fullname}"
+                ) from exc
+            if not resolved.is_dir() or not resolved.is_relative_to(source_root):
+                raise ImportError(
+                    f"authenticated namespace package path is invalid: {fullname}"
+                )
+            spec = importlib.machinery.ModuleSpec(fullname, loader=None, is_package=True)
+            spec.submodule_search_locations = [str(resolved)]
+            return spec
+
+        raise ImportError(f"authenticated Git module is unavailable: {fullname}")
 
     def create_module(self, spec):
         return None

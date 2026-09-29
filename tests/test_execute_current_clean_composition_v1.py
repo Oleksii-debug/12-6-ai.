@@ -426,6 +426,32 @@ def test_authenticated_git_finder_uses_verified_physical_source_path(
     assert module.__file__ == str(physical.resolve(strict=True))
 
 
+def test_authenticated_git_finder_accepts_git_attested_namespace_package(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    carrier_sha = "d" * 40
+    namespace_dir = tmp_path / "src" / "twelve_six" / "data"
+    namespace_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        cli,
+        "_git_bytes_optional",
+        lambda repo_root, git_sha, repo_path: None,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_git_tree_exists",
+        lambda repo_root, git_sha, repo_path: repo_path == "src/twelve_six/data",
+    )
+
+    finder = cli._AuthenticatedGitFinder(tmp_path, carrier_sha)
+    spec = finder.find_spec("twelve_six.data")
+
+    assert spec is not None
+    assert spec.loader is None
+    assert list(spec.submodule_search_locations or ()) == [str(namespace_dir.resolve())]
+
 def test_authenticated_git_finder_rejects_physical_source_drift(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
