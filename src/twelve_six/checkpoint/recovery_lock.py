@@ -9,10 +9,7 @@ from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
-from twelve_six.checkpoint.pinned_directory import (
-    PinnedDirectoryError,
-    pinned_real_directory,
-)
+from twelve_six.checkpoint.pinned_directory import pinned_real_directory
 
 LOCK_NAME = ".publication.lock"
 _PATH_LOCK_SUFFIX = ".publication-path.lock"
@@ -189,19 +186,16 @@ def _windows_directory_pin(
     *,
     role: str,
 ) -> Iterator[Path]:
-    """Hold the incumbent no-delete Windows directory pin as an OSError seam."""
+    """Hold the incumbent no-delete Windows directory pin through caller mutation."""
 
-    try:
-        with pinned_real_directory(path) as pinned:
-            _verify_visible_directory(
-                path,
-                expected,
-                role=role,
-                phase="while Windows directory pin was acquired",
-            )
-            yield pinned.path
-    except PinnedDirectoryError as exc:
-        raise OSError(f"{role} cannot be pinned safely on Windows") from exc
+    with pinned_real_directory(path) as pinned:
+        _verify_visible_directory(
+            path,
+            expected,
+            role=role,
+            phase="while Windows directory pin was acquired",
+        )
+        yield pinned.path
 
 
 @contextmanager
