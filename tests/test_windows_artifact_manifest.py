@@ -339,8 +339,12 @@ def test_read_self_hashed_manifest_rejects_tamper(tmp_path: Path) -> None:
 def test_validate_evidence_inputs_rejects_nonready_status(tmp_path: Path) -> None:
     status = tmp_path / "status.json"
     missing = tmp_path / "missing.json"
-    app = tmp_path / "app-manifest.json"
-    runtime = tmp_path / "runtime-manifest.json"
+    app_root = tmp_path / "application"
+    runtime_root = tmp_path / "runtime"
+    app_root.mkdir()
+    runtime_root.mkdir()
+    app = app_root / "app-manifest.json"
+    runtime = runtime_root / "runtime-manifest.json"
     status.write_text(
         json.dumps(
             {
