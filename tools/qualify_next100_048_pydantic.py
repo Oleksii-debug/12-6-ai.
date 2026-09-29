@@ -11,6 +11,7 @@ import argparse
 import ast
 import hashlib
 import json
+import math
 import os
 import re
 import urllib.parse
@@ -19,7 +20,8 @@ from pathlib import Path
 from typing import Any
 
 WORKER = "NEXT100-048-CODE-PYDANTIC"
-SCHEMA = "12-6.next100-048-pydantic-source-admission.v1"
+HISTORICAL_SCHEMA = "12-6.next100-048-pydantic-source-admission.v1"
+SCHEMA = "12-6.next100-048-pydantic-source-admission.v2"
 DATA227_HEAD = "8ebdb2e132ed7bae5245e9d4c140752640ab9885"
 DATA227_POLICY_BLOB = "0ce5223a1cade10031899bf27348a1a65121d4c6"
 DATA227_POLICY_PATH = Path("configs/data/data227_code_rights_policy_v1.json")
@@ -60,6 +62,44 @@ def require(condition: bool, message: str) -> None:
         raise QualificationError(message)
 
 
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise QualificationError(f"duplicate JSON key: {key}")
+        value[key] = item
+    return value
+
+
+def _reject_constant(value: str) -> None:
+    raise QualificationError(f"non-finite JSON number: {value}")
+
+
+def _strict_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise QualificationError(f"non-finite JSON number: {value}")
+    return parsed
+
+
+def _load_json_bytes(raw: bytes, *, context: str) -> dict[str, Any]:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise QualificationError(f"invalid UTF-8 JSON for {context}: {exc}") from exc
+    try:
+        value = json.loads(
+            text,
+            object_pairs_hook=_strict_object,
+            parse_constant=_reject_constant,
+            parse_float=_strict_float,
+        )
+    except json.JSONDecodeError as exc:
+        raise QualificationError(f"invalid JSON for {context}: {exc}") from exc
+    require(type(value) is dict, f"JSON root is not an object: {context}")
+    return value
+
+
 def git_blob_sha1(data: bytes) -> str:
     return hashlib.sha1(f"blob {len(data)}\0".encode("ascii") + data).hexdigest()  # noqa: S324
 
@@ -91,12 +131,7 @@ def download(url: str, max_bytes: int = 300_000) -> bytes:
 
 
 def load_json(url: str, max_bytes: int = 200_000) -> dict[str, Any]:
-    try:
-        value = json.loads(download(url, max_bytes).decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise QualificationError(f"invalid JSON from {url}: {exc}") from exc
-    require(isinstance(value, dict), f"JSON root is not an object: {url}")
-    return value
+    return _load_json_bytes(download(url, max_bytes), context=url)
 
 
 def load_data227_policy(repo_root: Path) -> dict[str, Any]:
@@ -113,12 +148,7 @@ def load_data227_policy(repo_root: Path) -> dict[str, Any]:
             max_bytes=100_000,
         )
     require(git_blob_sha1(raw) == DATA227_POLICY_BLOB, "DATA-227 policy blob drift")
-    try:
-        value = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise QualificationError(f"invalid DATA-227 policy JSON: {exc}") from exc
-    require(isinstance(value, dict), "DATA-227 policy root is not an object")
-    return value
+    return _load_json_bytes(raw, context="DATA-227 policy")
 
 
 def token_shingles(text: str) -> set[tuple[str, ...]]:
@@ -139,7 +169,10 @@ def near_jaccard(left: str, right: str) -> float:
 
 
 def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str, Any]:
-    policy = json.loads((repo_root / policy_path).read_text(encoding="utf-8"))
+    policy = _load_json_bytes(
+        (repo_root / policy_path).read_bytes(),
+        context=str(policy_path),
+    )
     require(policy["schema_version"] == "12-6.next100-048-pydantic-code-rights.v1", "policy schema drift")
     require(policy["policy_ref"] == "policy://12-6/data/explicit-model-training-evidence-v1", "policy purpose drift")
     require(policy["source_family"] == "github:pydantic/pydantic", "source family drift")
@@ -258,7 +291,11 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
         "worker_source_sha": source_sha,
         "predecessor_code_authority": {
             "data227_head_sha": DATA227_HEAD,
-            "policy_git_blob_sha1": DATA227_POLICY_BLOB,
+            "rights_policy_git_blob_sha1": DATA227_POLICY_BLOB,
+            "near_duplicate_policy": {
+                "reject_at_or_above_jaccard": NEAR_THRESHOLD,
+                "shingle_tokens": SHINGLE_SIZE,
+            },
             "source_family_count": 2,
             "source_families": prior_families,
         },
@@ -329,7 +366,7 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
     return {**core, "authority_identity_sha256": sha256(canonical)}
 
 
-def verify_evidence(value: dict[str, Any]) -> None:
+def _verify_self_hash(value: dict[str, Any]) -> None:
     supplied = value.get("authority_identity_sha256")
     unsigned = dict(value)
     unsigned.pop("authority_identity_sha256", None)
@@ -337,12 +374,63 @@ def verify_evidence(value: dict[str, Any]) -> None:
         json.dumps(unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
     ).encode("utf-8")
     require(supplied == sha256(canonical), "authority self-hash mismatch")
+
+
+def verify_historical_evidence(value: dict[str, Any]) -> None:
+    """Verify the immutable v1 evidence without relabeling it as regenerated v2."""
+    _verify_self_hash(value)
+    require(value.get("schema_version") == HISTORICAL_SCHEMA, "historical schema drift")
+    require(value.get("status") == "ADMIT", "historical terminal status is not ADMIT")
+    predecessor = value.get("predecessor_code_authority")
+    require(type(predecessor) is dict, "historical predecessor authority missing")
+    require(
+        predecessor.get("rights_policy_git_blob_sha1") == DATA227_POLICY_BLOB,
+        "historical DATA-227 policy blob drift",
+    )
+    accounting = value.get("source_family_accounting")
+    require(type(accounting) is dict, "historical source-family accounting missing")
+    require(
+        type(accounting.get("selected_implementation_object_count")) is int
+        and accounting["selected_implementation_object_count"] == 4,
+        "historical object-count drift",
+    )
+    require(
+        type(accounting.get("selected_authored_capacity_bytes")) is int
+        and accounting["selected_authored_capacity_bytes"] == 235_204,
+        "historical capacity drift",
+    )
+    execution = value.get("execution")
+    require(type(execution) is dict, "historical execution boundary missing")
+    require(execution.get("class") == "LOCAL_FREE", "historical execution class drift")
+    require(execution.get("paid_compute_used") is False, "historical paid compute used")
+    require(
+        execution.get("model_training_executed") is False,
+        "historical model training executed",
+    )
+
+
+def verify_evidence(value: dict[str, Any]) -> None:
+    """Verify newly generated v2 evidence."""
+    _verify_self_hash(value)
+    require(value.get("schema_version") == SCHEMA, "generated evidence schema drift")
     require(value.get("status") == "ADMIT", "terminal status is not ADMIT")
-    require(value["source_family_accounting"]["selected_implementation_object_count"] == 4, "object-count drift")
-    require(value["source_family_accounting"]["selected_authored_capacity_bytes"] == 235_204, "capacity drift")
-    require(value["execution"]["class"] == "LOCAL_FREE", "execution class drift")
-    require(value["execution"]["paid_compute_used"] is False, "paid compute used")
-    require(value["execution"]["model_training_executed"] is False, "model training executed")
+    accounting = value.get("source_family_accounting")
+    require(type(accounting) is dict, "source-family accounting missing")
+    require(
+        type(accounting.get("selected_implementation_object_count")) is int
+        and accounting["selected_implementation_object_count"] == 4,
+        "object-count drift",
+    )
+    require(
+        type(accounting.get("selected_authored_capacity_bytes")) is int
+        and accounting["selected_authored_capacity_bytes"] == 235_204,
+        "capacity drift",
+    )
+    execution = value.get("execution")
+    require(type(execution) is dict, "execution boundary missing")
+    require(execution.get("class") == "LOCAL_FREE", "execution class drift")
+    require(execution.get("paid_compute_used") is False, "paid compute used")
+    require(execution.get("model_training_executed") is False, "model training executed")
 
 
 def main() -> int:

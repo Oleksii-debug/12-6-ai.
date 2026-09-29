@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+import pytest
 from pytest import MonkeyPatch
 
 from tools import qualify_next100_048_pydantic as qualifier
@@ -11,13 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_committed_pydantic_terminal_evidence_is_self_consistent() -> None:
-    value = json.loads(
-        (ROOT / "evidence/next100-048/pydantic-source-admission-v1.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    path = ROOT / "evidence/next100-048/pydantic-source-admission-v1.json"
+    value = qualifier._load_json_bytes(path.read_bytes(), context=str(path))
 
-    qualifier.verify_evidence(value)
+    qualifier.verify_historical_evidence(value)
 
     predecessor = value["predecessor_code_authority"]
     assert predecessor["data227_head_sha"] == qualifier.DATA227_HEAD
@@ -53,3 +50,28 @@ def test_data227_policy_fallback_is_pinned_and_bounded(
             100_000,
         )
     ]
+
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"schema_version":"x","schema_version":"y"}',
+        b'{"schema_version":NaN}',
+        b'{"schema_version":Infinity}',
+        b'{"schema_version":1e400}',
+    ],
+)
+def test_strict_json_rejects_duplicate_and_nonfinite_values(raw: bytes) -> None:
+    with pytest.raises(
+        qualifier.QualificationError,
+        match="duplicate JSON key|non-finite JSON number",
+    ):
+        qualifier._load_json_bytes(raw, context="adversarial")
+
+
+def test_generated_and_historical_evidence_use_distinct_schema_versions() -> None:
+    assert qualifier.HISTORICAL_SCHEMA == (
+        "12-6.next100-048-pydantic-source-admission.v1"
+    )
+    assert qualifier.SCHEMA == "12-6.next100-048-pydantic-source-admission.v2"
