@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import math
+import tomllib
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -13,9 +14,17 @@ RECEIPT_STATUS = "CAPTURED_SYNTHETIC_MECHANICS_ONLY"
 PROBE_TOOL_RELATIVE_PATH = Path("tools/model341_current_main_resource_envelope_v2.py")
 FOCUSED_TEST_RELATIVE_PATH = Path("tests/test_model341_current_main_resource_envelope_v2.py")
 REPORT_RELATIVE_PATH = Path("reports/model341_current_main_resource_receipt_v2.json")
+CURRENT_MODEL_RELATIVE_PATH = Path("src/twelve_six/model.py")
+CURRENT_PYPROJECT_RELATIVE_PATH = Path("pyproject.toml")
 
 EXPECTED_PROBE_TOOL_BLOB_SHA1 = "f4476ea9bb7c9d400a133d56df5c311673bf3c85"
-EXPECTED_FOCUSED_TEST_BLOB_SHA1 = "14088f9a996cbadbb8d9e443a68c18fdd43af1d6"
+EXPECTED_FOCUSED_TEST_BLOB_SHA1 = "d3d1a34b1bdbd0f38b4f9304852591933c7d5758"
+EXPECTED_MODEL_BLOB_SHA1 = "c3879fe0ba9193d5a8176c284e1942f058ef7885"
+EXPECTED_RUNTIME_PROJECT = {
+    "requires-python": ">=3.11",
+    "dependencies": ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"],
+}
+CAPTURE_PRECOMMIT_COMMENT_ID: int | None = None
 
 # Terminal v2 measurement authority is intentionally fail-closed until one exact
 # shared-CI execution has been captured and independently prepublished.
@@ -30,6 +39,23 @@ _EXPECTED_TOP_LEVEL_KEYS = {
     "probe_report_sha256",
     "schema",
     "status",
+}
+_EXPECTED_CAPTURE_KEYS = {
+    "repository",
+    "issue",
+    "pull_request",
+    "workflow_name",
+    "workflow_run_id",
+    "workflow_run_number",
+    "job_id",
+    "head_sha",
+    "base_sha",
+    "tested_merge_sha",
+    "probe_tool_blob_sha1",
+    "focused_test_blob_sha1",
+    "workflow_conclusion",
+    "job_conclusion",
+    "capture_line_count",
 }
 
 
@@ -89,11 +115,91 @@ def validate_probe_artifacts(root: Path) -> None:
         raise ValueError("v2 focused test blob mismatch")
 
 
+def runtime_project_projection(pyproject: dict[str, Any]) -> dict[str, Any]:
+    project = pyproject.get("project")
+    if type(project) is not dict:
+        raise ValueError("pyproject project table missing")
+    requires_python = project.get("requires-python")
+    dependencies = project.get("dependencies")
+    if type(requires_python) is not str:
+        raise ValueError("pyproject requires-python type mismatch")
+    if type(dependencies) is not list or any(type(item) is not str for item in dependencies):
+        raise ValueError("pyproject dependencies type mismatch")
+    return {
+        "requires-python": requires_python,
+        "dependencies": list(dependencies),
+    }
+
+
+def validate_current_checkout_compatibility(root: Path) -> None:
+    model_path = root / CURRENT_MODEL_RELATIVE_PATH
+    if git_blob_sha1(model_path) != EXPECTED_MODEL_BLOB_SHA1:
+        raise ValueError("current checkout model.py identity mismatch")
+
+    pyproject_path = root / CURRENT_PYPROJECT_RELATIVE_PATH
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    projection = runtime_project_projection(pyproject)
+    if projection != EXPECTED_RUNTIME_PROJECT:
+        raise ValueError("current checkout runtime project dependency projection mismatch")
+
+
+def _validate_capture(capture: dict[str, Any]) -> None:
+    if set(capture) != _EXPECTED_CAPTURE_KEYS:
+        raise ValueError("v2 capture key set mismatch")
+
+    exact_int_fields = (
+        "issue",
+        "pull_request",
+        "workflow_run_id",
+        "workflow_run_number",
+        "job_id",
+        "capture_line_count",
+    )
+    for name in exact_int_fields:
+        if type(capture.get(name)) is not int:
+            raise ValueError(f"v2 capture {name} must be an exact integer")
+
+    exact_string_fields = (
+        "repository",
+        "workflow_name",
+        "head_sha",
+        "base_sha",
+        "tested_merge_sha",
+        "probe_tool_blob_sha1",
+        "focused_test_blob_sha1",
+        "workflow_conclusion",
+        "job_conclusion",
+    )
+    for name in exact_string_fields:
+        if type(capture.get(name)) is not str:
+            raise ValueError(f"v2 capture {name} must be an exact string")
+
+    if capture["repository"] != "Oleksii-debug/12-6-ai.":
+        raise ValueError("v2 capture repository mismatch")
+    if capture["issue"] != 2280 or capture["pull_request"] != 2281:
+        raise ValueError("v2 capture control identity mismatch")
+    if capture["workflow_name"] != "CI":
+        raise ValueError("v2 capture workflow mismatch")
+    if capture["probe_tool_blob_sha1"] != EXPECTED_PROBE_TOOL_BLOB_SHA1:
+        raise ValueError("v2 capture probe blob mismatch")
+    if capture["focused_test_blob_sha1"] != EXPECTED_FOCUSED_TEST_BLOB_SHA1:
+        raise ValueError("v2 capture focused test blob mismatch")
+    if capture["workflow_conclusion"] != "success":
+        raise ValueError("v2 capture workflow conclusion mismatch")
+    if capture["job_conclusion"] != "success":
+        raise ValueError("v2 capture job conclusion mismatch")
+    if capture["capture_line_count"] != 1:
+        raise ValueError("v2 capture line count must be exact integer one")
+
+
 def _require_published_capture_authority() -> None:
     if CAPTURE_AUTHORITY_PUBLISHED is not True:
         raise ValueError("v2 capture authority is not published")
     if type(EXPECTED_CAPTURE) is not dict:
         raise ValueError("v2 expected capture authority is missing")
+    if type(CAPTURE_PRECOMMIT_COMMENT_ID) is not int or CAPTURE_PRECOMMIT_COMMENT_ID <= 0:
+        raise ValueError("v2 capture precommit comment id is missing")
+    _validate_capture(EXPECTED_CAPTURE)
     for name, value in (
         ("expected report SHA-256", EXPECTED_PROBE_REPORT_SHA256),
         ("prepublished measurement authority SHA-256", PREPUBLISHED_MEASUREMENT_AUTHORITY_SHA256),
@@ -107,6 +213,7 @@ def _require_published_capture_authority() -> None:
 def measurement_authority_payload(receipt: dict[str, Any]) -> dict[str, Any]:
     return {
         "authority_schema": "12-6.model341.current-main-measurement-authority.v2",
+        "capture_precommit_comment_id": CAPTURE_PRECOMMIT_COMMENT_ID,
         "capture": receipt["capture"],
         "probe_tool_blob_sha1": EXPECTED_PROBE_TOOL_BLOB_SHA1,
         "focused_test_blob_sha1": EXPECTED_FOCUSED_TEST_BLOB_SHA1,
@@ -132,8 +239,9 @@ def _load_verified_probe_module(root: Path) -> ModuleType:
 
 
 def validate_receipt(receipt: dict[str, Any], *, root: Path) -> None:
-    # Verify executable/test bytes before trusting any live v2 validator code.
+    # Authenticate all current executable/runtime bytes before dynamic import.
     validate_probe_artifacts(root)
+    validate_current_checkout_compatibility(root)
     _require_published_capture_authority()
 
     if type(receipt) is not dict:
