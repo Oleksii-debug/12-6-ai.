@@ -617,11 +617,19 @@ def _runner_args(tmp_path: Path) -> argparse.Namespace:
         expected_inventory_sha256="6" * 64,
         base_payload_map=tmp_path / "base-payload-map.json",
         expected_base_payload_map_sha256="7" * 64,
+        v7_root=tmp_path / "v7",
         candidate_jsonl=tmp_path / "candidate.jsonl",
         quality_report=tmp_path / "quality.json",
         execution_evidence=tmp_path / "execution.json",
         output_root=tmp_path / "two-clean",
     )
+
+
+def test_runner_common_argv_propagates_exact_v7_root(tmp_path: Path) -> None:
+    args = _runner_args(tmp_path)
+    argv = runner._common_argv(args)
+    index = argv.index("--v7-root")
+    assert argv[index + 1] == str(args.v7_root)
 
 
 def test_parent_worker_timeout_publishes_incomplete(
