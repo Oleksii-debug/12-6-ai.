@@ -135,3 +135,86 @@ def test_generated_v2_requires_external_source_sha_binding() -> None:
         match="generated worker source SHA drift",
     ):
         qualifier.verify_evidence(value, expected_source_sha="2" * 40)
+
+
+
+def test_policy_bytes_are_pinned_before_semantic_use(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    policy = (
+        ROOT / "configs/data/next100_048_pydantic_code_rights_v1.json"
+    ).read_bytes()
+    changed = policy.replace(b'"MIT"', b'"BSD"', 1)
+    assert changed != policy
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_bytes(changed)
+
+    with pytest.raises(
+        qualifier.QualificationError,
+        match="Pydantic rights policy blob drift",
+    ):
+        qualifier.qualify(
+            repo_root=tmp_path,
+            policy_path=Path("policy.json"),
+            source_sha="1" * 40,
+        )
+
+
+def test_generated_v2_rejects_coherent_upstream_substitution() -> None:
+    value = {
+        "schema_version": qualifier.SCHEMA,
+        "status": "ADMIT",
+        "worker_source_sha": "1" * 40,
+        "candidate_policy_authority": {
+            "schema_version": "12-6.next100-048-pydantic-code-rights.v1",
+            "git_blob_sha1": qualifier.PYDANTIC_POLICY_BLOB,
+        },
+        "predecessor_code_authority": {
+            "data227_head_sha": qualifier.DATA227_HEAD,
+            "rights_policy_git_blob_sha1": qualifier.DATA227_POLICY_BLOB,
+            "source_family_count": 2,
+            "source_families": [
+                "github:encode/httpx",
+                "github:psf/requests",
+            ],
+            "near_duplicate_policy": {
+                "reject_at_or_above_jaccard": qualifier.NEAR_THRESHOLD,
+                "shingle_tokens": qualifier.SHINGLE_SIZE,
+            },
+        },
+        "upstream": {
+            "repository": "https://github.com/attacker/pydantic",
+            "commit": qualifier.UPSTREAM_COMMIT,
+            "tag_object_sha1": qualifier.TAG_OBJECT,
+        },
+        "license": {
+            "license_id": "MIT",
+            "git_blob_sha1": qualifier.LICENSE_BLOB,
+        },
+        "source_family_accounting": {
+            "selected_implementation_object_count": 4,
+            "selected_authored_capacity_bytes": 235_204,
+        },
+        "execution": {
+            "class": "LOCAL_FREE",
+            "paid_compute_used": False,
+            "model_training_executed": False,
+        },
+    }
+    unsigned = dict(value)
+    canonical = (
+        qualifier.json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    value["authority_identity_sha256"] = qualifier.sha256(canonical)
+
+    with pytest.raises(
+        qualifier.QualificationError,
+        match="generated upstream identity drift",
+    ):
+        qualifier.verify_evidence(value, expected_source_sha="1" * 40)

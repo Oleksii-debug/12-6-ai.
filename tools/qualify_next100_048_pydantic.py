@@ -25,6 +25,7 @@ SCHEMA = "12-6.next100-048-pydantic-source-admission.v2"
 HISTORICAL_AUTHORITY_IDENTITY_SHA256 = (
     "a25e618f4e26dd7c0df643768ab867a7ae080ca6ad2e5a88bda89bc757ae183a"
 )
+PYDANTIC_POLICY_BLOB = "504ef934145ed0711743f781dc9f47b07ad7accd"
 DATA227_HEAD = "8ebdb2e132ed7bae5245e9d4c140752640ab9885"
 DATA227_POLICY_BLOB = "0ce5223a1cade10031899bf27348a1a65121d4c6"
 DATA227_POLICY_PATH = Path("configs/data/data227_code_rights_policy_v1.json")
@@ -172,10 +173,12 @@ def near_jaccard(left: str, right: str) -> float:
 
 
 def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str, Any]:
-    policy = _load_json_bytes(
-        (repo_root / policy_path).read_bytes(),
-        context=str(policy_path),
+    policy_raw = (repo_root / policy_path).read_bytes()
+    require(
+        git_blob_sha1(policy_raw) == PYDANTIC_POLICY_BLOB,
+        "Pydantic rights policy blob drift",
     )
+    policy = _load_json_bytes(policy_raw, context=str(policy_path))
     require(policy["schema_version"] == "12-6.next100-048-pydantic-code-rights.v1", "policy schema drift")
     require(policy["policy_ref"] == "policy://12-6/data/explicit-model-training-evidence-v1", "policy purpose drift")
     require(policy["source_family"] == "github:pydantic/pydantic", "source family drift")
@@ -292,6 +295,10 @@ def qualify(*, repo_root: Path, policy_path: Path, source_sha: str) -> dict[str,
         "status": "ADMIT",
         "authority": "EXTERNAL_REAL_CODE_SOURCE_TERMINAL_LOCAL_FREE",
         "worker_source_sha": source_sha,
+        "candidate_policy_authority": {
+            "schema_version": "12-6.next100-048-pydantic-code-rights.v1",
+            "git_blob_sha1": PYDANTIC_POLICY_BLOB,
+        },
         "predecessor_code_authority": {
             "data227_head_sha": DATA227_HEAD,
             "rights_policy_git_blob_sha1": DATA227_POLICY_BLOB,
@@ -432,6 +439,59 @@ def verify_evidence(
     require(
         value.get("worker_source_sha") == expected_source_sha,
         "generated worker source SHA drift",
+    )
+    candidate_policy = value.get("candidate_policy_authority")
+    require(type(candidate_policy) is dict, "candidate policy authority missing")
+    require(
+        candidate_policy
+        == {
+            "schema_version": "12-6.next100-048-pydantic-code-rights.v1",
+            "git_blob_sha1": PYDANTIC_POLICY_BLOB,
+        },
+        "candidate policy authority drift",
+    )
+    predecessor = value.get("predecessor_code_authority")
+    require(type(predecessor) is dict, "generated predecessor authority missing")
+    require(
+        predecessor.get("data227_head_sha") == DATA227_HEAD,
+        "generated DATA-227 head drift",
+    )
+    require(
+        predecessor.get("rights_policy_git_blob_sha1") == DATA227_POLICY_BLOB,
+        "generated DATA-227 policy blob drift",
+    )
+    require(
+        predecessor.get("source_family_count") == 2
+        and type(predecessor.get("source_family_count")) is int,
+        "generated predecessor family count drift",
+    )
+    require(
+        predecessor.get("source_families")
+        == ["github:encode/httpx", "github:psf/requests"],
+        "generated predecessor family drift",
+    )
+    require(
+        predecessor.get("near_duplicate_policy")
+        == {
+            "reject_at_or_above_jaccard": NEAR_THRESHOLD,
+            "shingle_tokens": SHINGLE_SIZE,
+        },
+        "generated predecessor near-dedup policy drift",
+    )
+    upstream = value.get("upstream")
+    require(type(upstream) is dict, "generated upstream authority missing")
+    require(
+        upstream.get("repository") == "https://github.com/pydantic/pydantic"
+        and upstream.get("commit") == UPSTREAM_COMMIT
+        and upstream.get("tag_object_sha1") == TAG_OBJECT,
+        "generated upstream identity drift",
+    )
+    license_authority = value.get("license")
+    require(type(license_authority) is dict, "generated license authority missing")
+    require(
+        license_authority.get("license_id") == "MIT"
+        and license_authority.get("git_blob_sha1") == LICENSE_BLOB,
+        "generated license authority drift",
     )
     require(value.get("status") == "ADMIT", "terminal status is not ADMIT")
     accounting = value.get("source_family_accounting")
