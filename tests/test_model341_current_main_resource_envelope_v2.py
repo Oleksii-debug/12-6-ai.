@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -342,3 +343,20 @@ def test_git_blob_sha1_rejects_bare_cr(tmp_path: Path) -> None:
     path.write_bytes(b"alpha\rbeta\n")
     with pytest.raises(ValueError, match="unsupported bare CR"):
         git_blob_sha1(path)
+
+
+def test_ci_capture_emits_canonical_v2_report(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        pytest.skip("shared-CI-only physical measurement capture")
+    report = run_probe(ROOT, warmup_samples=1, measured_samples=3, intraop_threads=2)
+    validate_probe(report)
+    payload = json.dumps(
+        report,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    with capsys.disabled():
+        print(f"MODEL341_V2_CAPTURE_JSON={payload}", flush=True)
