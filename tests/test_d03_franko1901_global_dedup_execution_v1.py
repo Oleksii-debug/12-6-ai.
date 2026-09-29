@@ -225,6 +225,48 @@ def test_execute_uses_exact_three_part_franko_authority() -> None:
     assert "validate_and_project_franko1901" not in source
 
 
+def test_terminal_summary_requires_exact_arithmetic() -> None:
+    mod = _load()
+    good = {
+        "source_count": mod.EXPECTED_COMBINED_OBJECTS,
+        "terminal_candidates": {
+            "declared_capacity_bytes_before": mod.EXPECTED_COMBINED_BYTES,
+            "conservative_unique_capacity_bytes_after": mod.EXPECTED_COMBINED_BYTES - 17,
+            "duplicate_discount_bytes": 17,
+            "duplicate_cluster_count": 3,
+        },
+    }
+    assert mod._validated_terminal_summary(good) == good["terminal_candidates"]
+
+    for field, bad in (
+        ("conservative_unique_capacity_bytes_after", mod.EXPECTED_COMBINED_BYTES + 1),
+        ("duplicate_discount_bytes", 18),
+        ("duplicate_cluster_count", -1),
+    ):
+        broken = {
+            "source_count": good["source_count"],
+            "terminal_candidates": dict(good["terminal_candidates"]),
+        }
+        broken["terminal_candidates"][field] = bad
+        with pytest.raises(mod.Franko1901GlobalDedupError):
+            mod._validated_terminal_summary(broken)
+
+
+def test_terminal_summary_rejects_bool_aliases() -> None:
+    mod = _load()
+    report = {
+        "source_count": mod.EXPECTED_COMBINED_OBJECTS,
+        "terminal_candidates": {
+            "declared_capacity_bytes_before": mod.EXPECTED_COMBINED_BYTES,
+            "conservative_unique_capacity_bytes_after": True,
+            "duplicate_discount_bytes": mod.EXPECTED_COMBINED_BYTES - 1,
+            "duplicate_cluster_count": 0,
+        },
+    }
+    with pytest.raises(mod.Franko1901GlobalDedupError):
+        mod._validated_terminal_summary(report)
+
+
 def test_source_provenance_negative_is_explicitly_source_local() -> None:
     mod = _load()
     scope = mod._source_admission_provenance_scope(
