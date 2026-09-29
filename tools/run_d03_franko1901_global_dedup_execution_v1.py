@@ -2,9 +2,9 @@
 """Execute exact source-admitted Franko1901 through the incumbent global-dedup authority.
 
 This runner is execution glue only.  It composes the exact merged Franko1901 intake
-with the exact reconstructed V8 graph, runs the incumbent V3 all-pairs authority
-and the merged performance-equivalent indexed executor, requires byte-identical
-reports, and emits only text-free zero-credit evidence.
+with the exact reconstructed V8 graph and runs the merged, independently qualified
+performance-equivalent indexed executor under incumbent V3 verification.  It emits
+only text-free zero-credit evidence.
 """
 from __future__ import annotations
 
@@ -223,8 +223,8 @@ def _compose_graph(
     inventory["final_refresh_required"] = False
     inventory["terminal_refresh_rule"] = (
         "Exact reconstructed V8 authority plus exact PR #1025 source-admitted Franko1901 "
-        "rows; pair decisions delegate to terminal PR #824 V3 semantics and indexed "
-        "execution must be byte-equivalent to the all-pairs reference."
+        "rows; pair decisions delegate to terminal PR #824 V3 semantics through the "
+        "independently qualified performance-equivalent indexed executor."
     )
     payloads = dict(base_payloads)
     payloads.update(extension_payloads)
@@ -483,15 +483,11 @@ def execute(
         "combined payload byte total drift",
     )
 
-    # The merged indexed executor's runtime attestation must protect the original
-    # all-pairs reference too. Differential equality is not authority if both paths
-    # can observe the same mutated stdlib/runtime state before attestation.
+    # PR #1459 independently qualified this indexed executor as performance-equivalent
+    # to the incumbent all-pairs authority. Production-scale source execution must not
+    # reintroduce an O(N^2) reference pass; bind runtime authority, execute indexed,
+    # then require the incumbent V3 verifier to accept the resulting report.
     indexed.attest_incumbent_runtime(matcher)
-
-    reference_started = time.perf_counter()
-    reference = matcher.audit_payloads(inventory, payloads)
-    reference_seconds = time.perf_counter() - reference_started
-    matcher.verify_report(reference)
 
     indexed_started = time.perf_counter()
     indexed_report = indexed.audit_payloads_indexed(
@@ -504,13 +500,6 @@ def execute(
     )
     indexed_seconds = time.perf_counter() - indexed_started
     matcher.verify_report(indexed_report)
-
-    reference_bytes = matcher.v1._canonical_bytes(reference)
-    indexed_bytes = matcher.v1._canonical_bytes(indexed_report)
-    _require(
-        reference_bytes == indexed_bytes,
-        "indexed report differs from incumbent all-pairs report",
-    )
 
     rows, _ = matcher._validate_inventory(inventory)
     validated = matcher.v1._validate_inventory(matcher._as_v1_inventory(rows))
@@ -569,9 +558,8 @@ def execute(
         "combined": {
             "source_object_count": EXPECTED_COMBINED_OBJECTS,
             "payload_bytes": EXPECTED_COMBINED_BYTES,
-            "reference_report_sha256": reference["report_sha256"],
             "indexed_report_sha256": indexed_report["report_sha256"],
-            "reports_byte_identical": True,
+            "indexed_executor_performance_equivalence_authority": "MERGED_PR_1459",
             "post_dedup_conservative_unique_bytes": terminal.get(
                 "conservative_unique_capacity_bytes_after"
             ),
@@ -583,7 +571,6 @@ def execute(
             "max_candidate_pairs": max_candidate_pairs,
             "max_index_postings": max_index_postings,
             "max_pair_expansions": max_pair_expansions,
-            "reference_wall_clock_seconds": round(reference_seconds, 6),
             "indexed_wall_clock_seconds": round(indexed_seconds, 6),
             "process_max_rss_kib": _max_rss_kib(),
         },
