@@ -222,7 +222,7 @@ def _compose_graph(
     inventory["sources"] = [*copy.deepcopy(rows), *copy.deepcopy(extension_sources)]
     inventory["final_refresh_required"] = False
     inventory["terminal_refresh_rule"] = (
-        "Exact reconstructed V8 authority plus exact PR #1347 source-admitted Franko1901 "
+        "Exact reconstructed V8 authority plus exact PR #1025 source-admitted Franko1901 "
         "rows; pair decisions delegate to terminal PR #824 V3 semantics and indexed "
         "execution must be byte-equivalent to the all-pairs reference."
     )
