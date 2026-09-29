@@ -59,6 +59,8 @@ For D05/C01/D10 artifact provenance, use the physical SHA-256 of `requirements/l
 10. verify wheel imports and console script again;
 11. emit source-SHA-bound environment evidence JSON with lock identities, wheel SHA-256, installed distribution inventory and a self-hash. Linux keeps `12-6.locked-environment-evidence.v1` / `editable_install_import_cli` for the existing S0 evidence consumer; Windows emits v2 / `source_wheel_build_install_import_cli` so the evidence never falsely claims an editable install.
 
+The offline build/install environment pins `SOURCE_DATE_EPOCH=315532800` (1980-01-01 UTC). This is the deterministic ZIP-safe floor: Python wheel files and Windows console-script launchers use ZIP metadata that cannot encode the Unix epoch year 1970.
+
 The resolver/bootstrap utility is not an authority path. It may be used only to propose refreshed lock artifacts. A refresh becomes authoritative only after the generated files are committed and consuming clean-install CI passes on the exact resulting head.
 
 ## Windows repository-identity boundary

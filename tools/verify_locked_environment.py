@@ -21,6 +21,9 @@ _LOCK_LINE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9._-]*==[^\s;@/\\]+(?: --hash=sha256:[0-9a-f]{64})+$"
 )
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+# ZIP timestamps cannot represent dates before 1980-01-01. Keep reproducible
+# wheel/script ZIP metadata deterministic without asking distlib for year 1970.
+_ZIP_SAFE_SOURCE_DATE_EPOCH = "315532800"
 
 
 def _load_contract() -> Any:
@@ -173,7 +176,7 @@ def _offline_env() -> dict[str, str]:
         {
             "PIP_NO_INDEX": "1",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
-            "SOURCE_DATE_EPOCH": "0",
+            "SOURCE_DATE_EPOCH": _ZIP_SAFE_SOURCE_DATE_EPOCH,
         }
     )
     return env

@@ -138,6 +138,20 @@ def test_subprocess_environment_forces_utf8_and_preserves_overrides(
     assert env["PYTHONIOENCODING"] == "utf-8"
 
 
+def test_offline_environment_uses_zip_safe_reproducible_epoch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    verifier = _load_verifier()
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
+
+    env = verifier._offline_env()
+
+    assert env["PIP_NO_INDEX"] == "1"
+    assert env["PIP_DISABLE_PIP_VERSION_CHECK"] == "1"
+    assert env["SOURCE_DATE_EPOCH"] == "315532800"
+    assert int(env["SOURCE_DATE_EPOCH"]) >= 315532800
+
+
 def test_project_wheel_build_avoids_editable_pth_on_unicode_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
