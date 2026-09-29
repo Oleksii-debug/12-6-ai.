@@ -426,6 +426,23 @@ def _verify_v7_checkout(v7_root: Path) -> None:
         raise RematerializationError("terminal V7 checkout must be clean")
 
 
+def _declared_capacity_bytes(inventory: dict[str, Any]) -> int:
+    rows = inventory.get("sources")
+    if not isinstance(rows, list):
+        raise RematerializationError("inventory sources missing for capacity arithmetic")
+    total = 0
+    for index, row in enumerate(rows, 1):
+        if not isinstance(row, dict):
+            raise RematerializationError(f"inventory source {index} must be object")
+        value = row.get("declared_capacity_bytes")
+        if type(value) is not int or value <= 0:
+            raise RematerializationError(
+                f"inventory source {index} declared capacity invalid"
+            )
+        total += value
+    return total
+
+
 def _verify_current_clean_dependencies() -> dict[str, str]:
     bindings = {
         "clean_successor_tool_git_blob_sha1": (
@@ -598,18 +615,30 @@ def _build_current_clean_replay(
         "source-admission rows; execution delegates duplicate science to exact incumbent "
         "V3 semantics through merged PR1459 performance-equivalent indexing."
     )
-    base_payload_bytes = sum(len(raw) for raw in base_payloads.values())
-    extension_payload_bytes = sum(len(raw) for raw in extension_payloads.values())
+    base_declared_capacity = _declared_capacity_bytes(base_inventory)
+    extension_declared_capacity = sum(
+        row["declared_capacity_bytes"] for row in extension_rows
+    )
+    if base_declared_capacity != EXPECTED_BASE_PRE_DEDUP_BYTES:
+        raise RematerializationError(
+            "clean base declared-capacity drift: "
+            f"{base_declared_capacity} != {EXPECTED_BASE_PRE_DEDUP_BYTES}"
+        )
+    if extension_declared_capacity != EXPECTED_EXTENSION_BYTES:
+        raise RematerializationError(
+            "extension declared-capacity drift: "
+            f"{extension_declared_capacity} != {EXPECTED_EXTENSION_BYTES}"
+        )
+
     combined_payloads = dict(base_payloads)
     combined_payloads.update(extension_payloads)
     if len(combined_payloads) != EXPECTED_COMBINED_PRE_DEDUP_SOURCE_COUNT:
         raise RematerializationError("combined source-count drift")
-    combined_payload_bytes = sum(len(raw) for raw in combined_payloads.values())
-    if combined_payload_bytes != EXPECTED_COMBINED_PRE_DEDUP_BYTES:
+    combined_declared_capacity = _declared_capacity_bytes(combined_inventory)
+    if combined_declared_capacity != EXPECTED_COMBINED_PRE_DEDUP_BYTES:
         raise RematerializationError(
-            "combined byte-total drift: "
-            f"base={base_payload_bytes}, extension={extension_payload_bytes}, "
-            f"combined={combined_payload_bytes}, expected={EXPECTED_COMBINED_PRE_DEDUP_BYTES}"
+            "combined declared-capacity drift: "
+            f"{combined_declared_capacity} != {EXPECTED_COMBINED_PRE_DEDUP_BYTES}"
         )
 
     indexed = indexed_executor
