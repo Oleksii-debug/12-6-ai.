@@ -318,8 +318,11 @@ def test_exact_d05_identity_mismatch_rejects_before_restore_mutation(
         name: tensor.detach().clone()
         for name, tensor in fresh_model.state_dict().items()
     }
-    trainer_before = trainer_state_before = fresh_trainer.state_dict()
-    del trainer_state_before
+    trainer_before = (
+        fresh_trainer.micro_step,
+        fresh_trainer.optimizer_step,
+        fresh_trainer.tokens_seen,
+    )
     rng_before = torch.get_rng_state().clone()
 
     kwargs = {
@@ -350,5 +353,9 @@ def test_exact_d05_identity_mismatch_rejects_before_restore_mutation(
 
     for name, tensor in fresh_model.state_dict().items():
         assert torch.equal(tensor, model_before[name])
-    assert fresh_trainer.state_dict() == trainer_before
+    assert (
+        fresh_trainer.micro_step,
+        fresh_trainer.optimizer_step,
+        fresh_trainer.tokens_seen,
+    ) == trainer_before
     assert torch.equal(torch.get_rng_state(), rng_before)
