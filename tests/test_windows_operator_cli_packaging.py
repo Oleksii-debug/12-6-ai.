@@ -282,12 +282,12 @@ def test_main_bootstrap_os_error_is_one_line_json(
     assert captured.err == ""
     assert captured.out.count("\n") == 1
     assert "\\n" in captured.out
-    assert json.loads(captured.out) == {
-        "error": "installed_operator_bootstrap_failed:record\nread",
-        "launch_authorized": False,
-        "status": "ERROR",
-        "training_authorized": False,
-    }
+    payload = json.loads(captured.out)
+    assert payload["error"] == "installed_operator_bootstrap_failed:record\nread"
+    assert payload["launch_authorized"] is False
+    assert payload["status"] == "ERROR"
+    assert payload["training_authorized"] is False
+    assert payload["truth_boundary"] == windows_operator_cli.windows_operator_preflight._TRUTH_BOUNDARY
 
 
 def test_main_preserves_successful_delegate_path(
