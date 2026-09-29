@@ -31,6 +31,10 @@ from twelve_six.scale141_recovery import (
 )
 from twelve_six.scale141_resume_sidecar import ResumeSidecarContext
 from twelve_six.training import Trainer, TrainerConfig
+from twelve_six.trusted_parent_recovery_binding import (
+    trusted_parent_recovery_binding_from_resolution,
+    trusted_recovery_authority_token,
+)
 
 SOURCE_SHA = "2" * 40
 RUN_HASH = "3" * 64
@@ -405,6 +409,33 @@ def test_fresh_process_restores_exact_d05_d04_trainer_and_rng_state(
     _step(trainer)
     root = tmp_path / "fresh-process"
     reference = _publish(root, model, trainer, cfg)
+    resolution = resolve_recovery_generation(root, expected_reference=reference)
+    placeholder_authority = {
+        "repository": "Oleksii-debug/12-6-ai.",
+        "git_sha": SOURCE_SHA,
+        "evidence_sha256": "0" * 64,
+        "workflow_run_id": 1811,
+        "workflow_conclusion": "success",
+        "terminal": True,
+    }
+    projected = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class="OTHER_FREE",
+        provider_id="GITHUB_ACTIONS_STANDARD_LINUX_X64",
+        provider_session_id="fresh-process-b",
+        previous_provider_session_id="publisher-process-a",
+        terminal_recovery_authority=placeholder_authority,
+    )
+    authority = dict(placeholder_authority)
+    authority["evidence_sha256"] = projected["binding_sha256"]
+    trusted = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class="OTHER_FREE",
+        provider_id="GITHUB_ACTIONS_STANDARD_LINUX_X64",
+        provider_session_id="fresh-process-b",
+        previous_provider_session_id="publisher-process-a",
+        terminal_recovery_authority=authority,
+    )
 
     expected = {
         "model_state_sha256": _stable_digest(model.state_dict()),
@@ -420,6 +451,10 @@ def test_fresh_process_restores_exact_d05_d04_trainer_and_rng_state(
         "ordered_next_exposure_identity_sha256": reference["resume_state"][
             "ordered_next_exposure_identity_sha256"
         ],
+        "trusted_parent_binding_sha256": trusted["binding_sha256"],
+        "trusted_parent_checkpoint_id": trusted["checkpoint_id"],
+        "trusted_parent_manifest_sha256": trusted["checkpoint_manifest_sha256"],
+        "trusted_recovery_authority_token": trusted_recovery_authority_token(authority),
         "rng_probe": {
             "python": random.random(),
             "numpy": float(np.random.random()),
