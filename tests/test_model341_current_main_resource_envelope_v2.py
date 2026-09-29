@@ -11,8 +11,8 @@ import torch
 import tools.model341_current_main_resource_envelope_v2 as probe
 from tools.model341_current_main_resource_envelope_v2 import (
     EXPECTED_PARAMETER_COUNT,
-    git_blob_sha1,
     TRUTH_BOUNDARY,
+    git_blob_sha1,
     run_probe,
     validate_probe,
     validate_source_root,
