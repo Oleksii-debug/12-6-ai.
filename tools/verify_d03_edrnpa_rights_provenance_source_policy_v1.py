@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 from pathlib import Path
 from typing import Any, Mapping
@@ -209,6 +210,26 @@ def _require_bool(value: object, *, label: str, expected: bool) -> None:
     _require(value is expected, f"{label} drift")
 
 
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise EdrnpaSourcePolicyError(f"duplicate JSON object member: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(token: str) -> None:
+    raise EdrnpaSourcePolicyError(f"non-finite JSON constant is forbidden: {token}")
+
+
+def _parse_finite_json_float(token: str) -> float:
+    value = float(token)
+    if not math.isfinite(value):
+        raise EdrnpaSourcePolicyError("non-finite JSON number is forbidden")
+    return value
+
+
 def _git_blob_sha1(raw: bytes) -> str:
     prefix = f"blob {len(raw)}\0".encode("ascii")
     return hashlib.sha1(prefix + raw, usedforsecurity=False).hexdigest()
@@ -345,7 +366,13 @@ def validate_policy(
 
 def load_policy(path: Path = POLICY_PATH) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_text(encoding="utf-8")
+        payload = json.loads(
+            raw,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+            parse_float=_parse_finite_json_float,
+        )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise EdrnpaSourcePolicyError("cannot load EDRNPA source policy") from exc
     _require(type(payload) is dict, "policy root must be an object")
