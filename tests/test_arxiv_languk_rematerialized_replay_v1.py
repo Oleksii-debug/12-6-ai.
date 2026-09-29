@@ -329,6 +329,77 @@ def test_legacy_contaminated_execution_helpers_are_not_exposed() -> None:
     assert "PARENT_INTAKE_BLOB_SHA1" not in source
 
 
+def test_build_retains_terminal_namespace_through_indexed_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    v7_root = tmp_path / "v7"
+    data_root = v7_root / "src/twelve_six/data"
+    data_root.mkdir(parents=True)
+
+    foreign = ModuleType("twelve_six.data.sentinel")
+    previous = sys.modules.get("twelve_six.data.sentinel")
+    sys.modules["twelve_six.data.sentinel"] = foreign
+    observed: list[str] = []
+
+    def fake_reconstruct(*, v7_root: Path, workspace: Path):
+        del workspace
+        assert sys.modules["twelve_six"].__path__ == [
+            str((v7_root / "src/twelve_six").resolve())
+        ]
+        assert sys.modules["twelve_six.data"].__path__ == [
+            str((v7_root / "src/twelve_six/data").resolve())
+        ]
+        assert "twelve_six.data.sentinel" not in sys.modules
+        observed.append("reconstruct")
+        return object(), {"sources": []}, {}, {}
+
+    def fake_finish(*args, **kwargs):
+        del args, kwargs
+        assert "twelve_six" in sys.modules
+        assert "twelve_six.data" in sys.modules
+        assert "twelve_six.data.sentinel" not in sys.modules
+        observed.append("indexed-replay")
+        return {"report": True}, {"survivors": True}
+
+    monkeypatch.setattr(
+        REPLAY_RUNNER,
+        "_verify_current_clean_dependencies",
+        lambda: {"binding": "ok"},
+    )
+    monkeypatch.setattr(
+        REPLAY_RUNNER,
+        "_reconstruct_current_clean_base",
+        fake_reconstruct,
+    )
+    monkeypatch.setattr(
+        REPLAY_RUNNER,
+        "_build_current_clean_replay_with_base",
+        fake_finish,
+    )
+
+    args = _runner_args(tmp_path)
+    args.v7_root = v7_root
+    try:
+        report, survivors = REPLAY_RUNNER._build_current_clean_replay(
+            args,
+            pass_root=tmp_path / "pass",
+            arxiv_candidate=tmp_path / "arxiv.jsonl",
+            languk_candidate=tmp_path / "languk.jsonl",
+            source_intake=object(),
+            indexed_executor=object(),
+        )
+        assert report == {"report": True}
+        assert survivors == {"survivors": True}
+        assert observed == ["reconstruct", "indexed-replay"]
+        assert sys.modules.get("twelve_six.data.sentinel") is foreign
+    finally:
+        if previous is None:
+            sys.modules.pop("twelve_six.data.sentinel", None)
+        else:
+            sys.modules["twelve_six.data.sentinel"] = previous
+
+
 def test_terminal_v7_namespace_bypasses_init_and_restores_current_modules(
     tmp_path: Path,
 ) -> None:
