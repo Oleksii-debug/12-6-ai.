@@ -377,7 +377,6 @@ def test_readiness_fragment_rejects_session_self_authorization():
         readiness_fragment(session, authority("e"))
 
 
-
 @pytest.mark.parametrize(
     "raw",
     [
@@ -399,7 +398,7 @@ def test_recipe_cli_strict_loader_rejects_nonstandard_nonfinite_constants(
 ) -> None:
     tool = _load_tool()
     with pytest.raises(ValueError, match="non-finite JSON constant"):
-        tool._load_json(_write_json(tmp_path, f'{"{"}"value":{constant}{"}"}'))
+        tool._load_json(_write_json(tmp_path, '{"value":' + constant + "}"))
 
 
 @pytest.mark.parametrize("number", ["1e400", "-1e400"])
@@ -408,7 +407,7 @@ def test_recipe_cli_strict_loader_rejects_float_overflow(
 ) -> None:
     tool = _load_tool()
     with pytest.raises(ValueError, match="JSON number is not finite"):
-        tool._load_json(_write_json(tmp_path, f'{"{"}"value":{number}{"}"}'))
+        tool._load_json(_write_json(tmp_path, '{"value":' + number + "}"))
 
 
 def test_recipe_cli_strict_loader_preserves_valid_finite_json(tmp_path: Path) -> None:
