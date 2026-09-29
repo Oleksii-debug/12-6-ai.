@@ -318,6 +318,24 @@ def _outer_survivor_authority(
     return {**core, "survivor_authority_sha256": _sha256(_canonical(core))}
 
 
+def _source_admission_provenance_scope(receipt: Mapping[str, Any]) -> dict[str, bool]:
+    truth = receipt.get("truth_boundary")
+    _require(type(truth) is dict, "source-admission truth boundary missing")
+    _require(
+        truth.get("upstream_source_evidence_external_llm_or_api_used") is False,
+        "source-admission upstream external-LLM scope drift",
+    )
+    _require(
+        truth.get("current_corpus_external_llm_free_claimed_by_this_adapter") is False,
+        "source-admission corpus-cleanliness non-claim drift",
+    )
+    return {
+        "upstream_source_evidence_external_llm_or_api_used": False,
+        "current_corpus_external_llm_free_claimed_by_this_adapter": False,
+        "historical_source_admission_report_promoted_as_corpus_global_truth": False,
+    }
+
+
 def _max_rss_kib() -> int | None:
     if resource is None:
         return None
@@ -366,6 +384,9 @@ def execute(
         retain_payloads=True,
     )
     _require(projection.sources is not None and projection.payloads is not None, "payload projection missing")
+    source_admission_provenance_scope = _source_admission_provenance_scope(
+        projection.receipt
+    )
     extension_sources = [dict(row) for row in projection.sources]
     extension_payloads = dict(projection.payloads)
     _require(len(extension_sources) == EXPECTED_CASELAW_OBJECTS, "Caselaw projection count drift")
@@ -463,6 +484,7 @@ def execute(
             "intake_receipt_identity_sha256": projection.receipt[
                 "receipt_identity_sha256"
             ],
+            "source_admission_provenance_scope": source_admission_provenance_scope,
         },
         "combined": {
             "source_object_count": EXPECTED_COMBINED_OBJECTS,

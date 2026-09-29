@@ -328,6 +328,24 @@ jobs:
               assert evidence["execution_head_sha"] == os.environ["HEAD_SHA"]
               assert evidence["pinned_main_sha"] == "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
               assert evidence["caselaw"]["candidate_sha256"] == candidate_sha256
+              provenance_scope = evidence["caselaw"]["source_admission_provenance_scope"]
+              assert type(provenance_scope) is dict
+              assert (
+                  provenance_scope["upstream_source_evidence_external_llm_or_api_used"]
+                  is False
+              )
+              assert (
+                  provenance_scope[
+                      "current_corpus_external_llm_free_claimed_by_this_adapter"
+                  ]
+                  is False
+              )
+              assert (
+                  provenance_scope[
+                      "historical_source_admission_report_promoted_as_corpus_global_truth"
+                  ]
+                  is False
+              )
               require_exact_int(
                   evidence["caselaw"]["source_object_count"],
                   5_658,
@@ -401,6 +419,9 @@ jobs:
               "global_dedup_reports_byte_identical": True,
               "survivor_authorities_byte_identical": True,
               "source_admitted_candidate_sha256": candidate_sha256,
+              "source_admission_provenance_scope": a["caselaw"][
+                  "source_admission_provenance_scope"
+              ],
               "materializer_report_identity_sha256": materializers[0][
                   "report_identity_sha256"
               ],

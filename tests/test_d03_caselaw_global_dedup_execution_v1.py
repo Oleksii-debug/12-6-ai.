@@ -340,3 +340,45 @@ def test_two_clean_workflow_uses_exact_numeric_and_stable_identity_checks() -> N
         '"execution_head_sha"',
     ):
         assert field in workflow
+
+
+def test_source_admission_provenance_scope_is_explicit_and_fail_closed() -> None:
+    _run_isolated(
+        """
+valid = {
+    "truth_boundary": {
+        "upstream_source_evidence_external_llm_or_api_used": False,
+        "current_corpus_external_llm_free_claimed_by_this_adapter": False,
+    }
+}
+scope = mod._source_admission_provenance_scope(valid)
+assert scope == {
+    "upstream_source_evidence_external_llm_or_api_used": False,
+    "current_corpus_external_llm_free_claimed_by_this_adapter": False,
+    "historical_source_admission_report_promoted_as_corpus_global_truth": False,
+}
+
+for mutated in (
+    {},
+    {"truth_boundary": {}},
+    {
+        "truth_boundary": {
+            "upstream_source_evidence_external_llm_or_api_used": True,
+            "current_corpus_external_llm_free_claimed_by_this_adapter": False,
+        }
+    },
+    {
+        "truth_boundary": {
+            "upstream_source_evidence_external_llm_or_api_used": False,
+            "current_corpus_external_llm_free_claimed_by_this_adapter": True,
+        }
+    },
+):
+    try:
+        mod._source_admission_provenance_scope(mutated)
+    except mod.CaselawGlobalDedupError:
+        pass
+    else:
+        raise AssertionError(f"invalid provenance scope accepted: {mutated!r}")
+"""
+    )
