@@ -218,3 +218,132 @@ def test_generated_v2_rejects_coherent_upstream_substitution() -> None:
         match="generated upstream identity drift",
     ):
         qualifier.verify_evidence(value, expected_source_sha="1" * 40)
+
+
+
+def _reseal_v2(value: dict[str, object]) -> None:
+    unsigned = dict(value)
+    unsigned.pop("authority_identity_sha256", None)
+    canonical = (
+        qualifier.json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    value["authority_identity_sha256"] = qualifier.sha256(canonical)
+
+
+def _minimal_valid_v2_packet() -> dict[str, object]:
+    objects = []
+    for source_id, path, blob, size, digest in qualifier.EXPECTED_OBJECTS:
+        objects.append(
+            {
+                "source_id": source_id,
+                "source_family": "github:pydantic/pydantic",
+                "commit": qualifier.UPSTREAM_COMMIT,
+                "path": path,
+                "git_blob_sha1": blob,
+                "size_bytes": size,
+                "raw_sha256": digest,
+                "normalized_sha256": digest,
+                "normalization_policy": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+                "capacity_counted": True,
+                "generated_material": False,
+                "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+                "training_purpose_decision": "ALLOWED",
+                "redistribution_decision": "ALLOWED_WITH_MIT_NOTICE",
+            }
+        )
+    value: dict[str, object] = {
+        "schema_version": qualifier.SCHEMA,
+        "status": "ADMIT",
+        "worker_source_sha": "1" * 40,
+        "candidate_policy_authority": {
+            "schema_version": "12-6.next100-048-pydantic-code-rights.v1",
+            "git_blob_sha1": qualifier.PYDANTIC_POLICY_BLOB,
+        },
+        "predecessor_code_authority": {
+            "data227_head_sha": qualifier.DATA227_HEAD,
+            "rights_policy_git_blob_sha1": qualifier.DATA227_POLICY_BLOB,
+            "source_family_count": 2,
+            "source_families": [
+                "github:encode/httpx",
+                "github:psf/requests",
+            ],
+            "near_duplicate_policy": {
+                "reject_at_or_above_jaccard": qualifier.NEAR_THRESHOLD,
+                "shingle_tokens": qualifier.SHINGLE_SIZE,
+            },
+        },
+        "upstream": {
+            "repository": "https://github.com/pydantic/pydantic",
+            "commit": qualifier.UPSTREAM_COMMIT,
+            "tag_object_sha1": qualifier.TAG_OBJECT,
+        },
+        "license": {
+            "license_id": "MIT",
+            "git_blob_sha1": qualifier.LICENSE_BLOB,
+            "sha256": qualifier.LICENSE_SHA256,
+        },
+        "objects": objects,
+        "evaluation_boundary": {
+            "eval289_head_sha": qualifier.EVAL289_HEAD,
+            "active_reserved_objects": 0,
+            "selected_objects_overlap_active_reservation": False,
+        },
+        "source_family_accounting": {
+            "new_source_family": "github:pydantic/pydantic",
+            "independent_new_family_count": 1,
+            "predecessor_family_count": 2,
+            "resulting_family_count_if_registered": 3,
+            "selected_implementation_object_count": 4,
+            "selected_authored_capacity_bytes": 235_204,
+            "generated_capacity_bytes": 0,
+            "generated_capacity_objects": 0,
+        },
+        "execution": {
+            "class": "LOCAL_FREE",
+            "paid_compute_used": False,
+            "model_training_executed": False,
+        },
+    }
+    _reseal_v2(value)
+    return value
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        (
+            lambda value: value["objects"][0].__setitem__("path", "pydantic/evil.py"),
+            "generated object authority drift",
+        ),
+        (
+            lambda value: value["objects"][0].__setitem__("raw_sha256", "0" * 64),
+            "generated object authority drift",
+        ),
+        (
+            lambda value: value["evaluation_boundary"].__setitem__(
+                "selected_objects_overlap_active_reservation", True
+            ),
+            "generated evaluation boundary drift",
+        ),
+        (
+            lambda value: value["source_family_accounting"].__setitem__(
+                "resulting_family_count_if_registered", 4
+            ),
+            "generated source-family accounting drift",
+        ),
+    ],
+)
+def test_generated_v2_rejects_coherent_resealed_semantic_substitution(
+    mutation, match: str
+) -> None:
+    value = _minimal_valid_v2_packet()
+    mutation(value)
+    _reseal_v2(value)
+    with pytest.raises(qualifier.QualificationError, match=match):
+        qualifier.verify_evidence(value, expected_source_sha="1" * 40)

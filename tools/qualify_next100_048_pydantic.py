@@ -33,6 +33,37 @@ EVAL289_HEAD = "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc"
 UPSTREAM_COMMIT = "cf67d4b3193c3fe43ede18612ed62785eee11382"
 TAG_OBJECT = "07b73712023f052c7c008c4a9c5121b4894e44ec"
 LICENSE_BLOB = "488c6260c10f2e88fa1fae58a63fccec8d600cd1"
+LICENSE_SHA256 = "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3"
+EXPECTED_OBJECTS = (
+    (
+        "code.pydantic.pydantic.main",
+        "pydantic/main.py",
+        "2ed62e5f3eded5d1e6b0052130e8d5f8627a60c6",
+        85_334,
+        "35b842cfe92ef300e060b40c062ef93afee1cb075cf0b7b0037a1434867c2554",
+    ),
+    (
+        "code.pydantic.pydantic.fields",
+        "pydantic/fields.py",
+        "ede966fa8010c070fede69d8f048b618a1b38f17",
+        82_023,
+        "6bc66125f23c143e934030fbf9c58c9b5657950bdad3031d4f6132e55bd57be3",
+    ),
+    (
+        "code.pydantic.pydantic.type_adapter",
+        "pydantic/type_adapter.py",
+        "d962305f2c923a6046b8234a334bdca0e644b159",
+        36_123,
+        "4f4e60f1641ccc1b1553fdf945d2b1823222ed8ecb222a7aee9177348ed7e061",
+    ),
+    (
+        "code.pydantic.pydantic.functional_validators",
+        "pydantic/functional_validators.py",
+        "558e99c1e7a09e3c894d769c96cb28e25dc537ca",
+        31_724,
+        "ee9fb88ef3ffffd8d9caf71d5e289d7b9a406bf26533b7c9d41824a9b8f14963",
+    ),
+)
 NEAR_THRESHOLD = 0.85
 SHINGLE_SIZE = 5
 
@@ -490,8 +521,53 @@ def verify_evidence(
     require(type(license_authority) is dict, "generated license authority missing")
     require(
         license_authority.get("license_id") == "MIT"
-        and license_authority.get("git_blob_sha1") == LICENSE_BLOB,
+        and license_authority.get("git_blob_sha1") == LICENSE_BLOB
+        and license_authority.get("sha256") == LICENSE_SHA256,
         "generated license authority drift",
+    )
+    objects = value.get("objects")
+    require(
+        type(objects) is list and len(objects) == len(EXPECTED_OBJECTS),
+        "generated object cardinality drift",
+    )
+    expected_rows = {
+        source_id: (path, blob, size, digest)
+        for source_id, path, blob, size, digest in EXPECTED_OBJECTS
+    }
+    seen_ids: set[str] = set()
+    for row in objects:
+        require(type(row) is dict, "generated object row must be an object")
+        source_id = row.get("source_id")
+        require(type(source_id) is str and source_id in expected_rows, "generated source id drift")
+        require(source_id not in seen_ids, "generated duplicate source id")
+        seen_ids.add(source_id)
+        path, blob, size, digest = expected_rows[source_id]
+        require(
+            row.get("source_family") == "github:pydantic/pydantic"
+            and row.get("commit") == UPSTREAM_COMMIT
+            and row.get("path") == path
+            and row.get("git_blob_sha1") == blob
+            and type(row.get("size_bytes")) is int
+            and row.get("size_bytes") == size
+            and row.get("raw_sha256") == digest
+            and row.get("normalized_sha256") == digest
+            and row.get("normalization_policy") == "STRICT_UTF8_IDENTITY_PRESERVE_V1"
+            and row.get("capacity_counted") is True
+            and row.get("generated_material") is False
+            and row.get("authorship_class") == "UPSTREAM_AUTHORED_IMPLEMENTATION"
+            and row.get("training_purpose_decision") == "ALLOWED"
+            and row.get("redistribution_decision") == "ALLOWED_WITH_MIT_NOTICE",
+            f"generated object authority drift: {source_id}",
+        )
+    require(seen_ids == set(expected_rows), "generated object set drift")
+    evaluation = value.get("evaluation_boundary")
+    require(type(evaluation) is dict, "generated evaluation boundary missing")
+    require(
+        evaluation.get("eval289_head_sha") == EVAL289_HEAD
+        and evaluation.get("active_reserved_objects") == 0
+        and type(evaluation.get("active_reserved_objects")) is int
+        and evaluation.get("selected_objects_overlap_active_reservation") is False,
+        "generated evaluation boundary drift",
     )
     require(value.get("status") == "ADMIT", "terminal status is not ADMIT")
     accounting = value.get("source_family_accounting")
@@ -505,6 +581,20 @@ def verify_evidence(
         type(accounting.get("selected_authored_capacity_bytes")) is int
         and accounting["selected_authored_capacity_bytes"] == 235_204,
         "capacity drift",
+    )
+    require(
+        accounting.get("new_source_family") == "github:pydantic/pydantic"
+        and type(accounting.get("independent_new_family_count")) is int
+        and accounting.get("independent_new_family_count") == 1
+        and type(accounting.get("predecessor_family_count")) is int
+        and accounting.get("predecessor_family_count") == 2
+        and type(accounting.get("resulting_family_count_if_registered")) is int
+        and accounting.get("resulting_family_count_if_registered") == 3
+        and type(accounting.get("generated_capacity_bytes")) is int
+        and accounting.get("generated_capacity_bytes") == 0
+        and type(accounting.get("generated_capacity_objects")) is int
+        and accounting.get("generated_capacity_objects") == 0,
+        "generated source-family accounting drift",
     )
     execution = value.get("execution")
     require(type(execution) is dict, "execution boundary missing")
