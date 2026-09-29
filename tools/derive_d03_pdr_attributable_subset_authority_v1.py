@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +12,10 @@ SCHEMA = "12-6.d03-pdr-attributable-subset-accounting.v1"
 SOURCE_DATASET = "common-pile/public_domain_review"
 SOURCE_REVISION = "177f70f044bd7a347616727c0f33ab4af9baa495"
 SOURCE_FAMILY = "en.common-pile.public-domain-review"
+SIDECAR_SCHEMA = "12-6.d03-pdr-attribution-sidecar.v1"
+PUBLISHER = "The Public Domain Review"
+LICENSE_URL = "https://creativecommons.org/licenses/by-sa/4.0/"
+REUSE_TERMS_URL = "https://publicdomainreview.org/reusing-material"
 EXPECTED_LICENSE = (
     "Creative Commons - Attribution Share-Alike - "
     "https://creativecommons.org/licenses/by-sa/4.0/"
@@ -162,6 +165,7 @@ def _validate_candidate(row: dict[str, Any]) -> tuple[str, str, str, int]:
 
 def _validate_sidecar(row: dict[str, Any]) -> tuple[str, str, str, int]:
     _require(set(row) == SIDECAR_KEYS, "sidecar schema drift")
+    _require(row["schema_version"] == SIDECAR_SCHEMA, "sidecar version drift")
     _require(row["source_dataset"] == SOURCE_DATASET, "sidecar dataset drift")
     _require(row["source_revision"] == SOURCE_REVISION, "sidecar revision drift")
     _require(row["license"] == EXPECTED_LICENSE, "sidecar license drift")
@@ -173,7 +177,10 @@ def _validate_sidecar(row: dict[str, Any]) -> tuple[str, str, str, int]:
     author = attribution["author"]
     _require(type(author) is str and bool(author.strip()) and len(author) <= 512, "attribution author invalid")
     _require(not any(ord(ch) < 32 for ch in author), "attribution author control character")
+    _require(attribution["publisher"] == PUBLISHER, "attribution publisher drift")
     _require(attribution["source_url"] == row["origin_url"], "attribution source URL drift")
+    _require(attribution["license_url"] == LICENSE_URL, "attribution license URL drift")
+    _require(attribution["reuse_terms_url"] == REUSE_TERMS_URL, "attribution reuse terms drift")
     record_id = row["record_id"]
     origin_url = row["origin_url"]
     digest = row["normalized_sha256"]
