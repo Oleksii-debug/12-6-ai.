@@ -52,7 +52,6 @@ def test_data227_policy_fallback_is_pinned_and_bounded(
     ]
 
 
-
 @pytest.mark.parametrize(
     "raw",
     [
@@ -75,7 +74,6 @@ def test_generated_and_historical_evidence_use_distinct_schema_versions() -> Non
         "12-6.next100-048-pydantic-source-admission.v1"
     )
     assert qualifier.SCHEMA == "12-6.next100-048-pydantic-source-admission.v2"
-
 
 
 def test_historical_coherent_rehash_substitution_is_rejected() -> None:
@@ -112,6 +110,20 @@ def test_generated_v2_requires_external_source_sha_binding() -> None:
             "selected_implementation_object_count": 4,
             "selected_authored_capacity_bytes": 235_204,
         },
+        "checks": {
+            "strict_utf8_identity_normalization": "PASS",
+            "parse_validity": "PASS_4_OF_4",
+            "secret_privacy": "PASS_4_OF_4",
+            "generated_selected_count": 0,
+            "generated_selected_bytes": 0,
+            "exact_duplicate_sha256": [],
+            "near_duplicate_threshold": qualifier.NEAR_THRESHOLD,
+            "near_duplicate_pairs": [],
+            "max_observed_pair": qualifier.EXPECTED_MAX_PAIR,
+            "max_observed_jaccard": qualifier.EXPECTED_MAX_JACCARD,
+            "current_eval_reservation_active_at_eval289_head": False,
+        },
+        "excluded_capacity": dict(qualifier.EXPECTED_EXCLUDED_CAPACITY),
         "execution": {
             "class": "LOCAL_FREE",
             "paid_compute_used": False,
@@ -135,7 +147,6 @@ def test_generated_v2_requires_external_source_sha_binding() -> None:
         match="generated worker source SHA drift",
     ):
         qualifier.verify_evidence(value, expected_source_sha="2" * 40)
-
 
 
 def test_policy_bytes_are_pinned_before_semantic_use(
@@ -220,7 +231,6 @@ def test_generated_v2_rejects_coherent_upstream_substitution() -> None:
         qualifier.verify_evidence(value, expected_source_sha="1" * 40)
 
 
-
 def _reseal_v2(value: dict[str, object]) -> None:
     unsigned = dict(value)
     unsigned.pop("authority_identity_sha256", None)
@@ -250,6 +260,9 @@ def _minimal_valid_v2_packet() -> dict[str, object]:
                 "raw_sha256": digest,
                 "normalized_sha256": digest,
                 "normalization_policy": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+                "parse_validity": "PASS_AST_PARSE_PY311",
+                "secret_scan": "PASS_DATA227_SECRET_PATTERNS",
+                "privacy_credential_scan": "PASS_NO_CREDENTIAL_BEARING_LITERAL_PATTERN",
                 "capacity_counted": True,
                 "generated_material": False,
                 "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
@@ -347,7 +360,6 @@ def test_generated_v2_rejects_coherent_resealed_semantic_substitution(
     _reseal_v2(value)
     with pytest.raises(qualifier.QualificationError, match=match):
         qualifier.verify_evidence(value, expected_source_sha="1" * 40)
-
 
 
 def test_strict_json_rejects_python_integer_digit_overflow() -> None:
