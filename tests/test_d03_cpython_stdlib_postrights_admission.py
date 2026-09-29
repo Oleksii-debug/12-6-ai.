@@ -264,7 +264,7 @@ def test_authenticated_tree_snapshot_isolated_from_caller_mutation(
 def test_authenticated_tree_omission_addition_and_substitution_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = _row("Lib/example.py", "value = 3\n")
+    row = _row("Lib/example/module.py", "value = 3\n")
     policy = _policy()
     _, authority = _synthetic_complete_authority(
         monkeypatch,
@@ -296,7 +296,9 @@ def test_authenticated_tree_omission_addition_and_substitution_fail_closed(
         rights._validated_tree_snapshot(added)
 
     replaced_entries = list(authority.entries)
-    target = next(i for i, item in enumerate(replaced_entries) if item[0] == "Lib/example.py")
+    target = next(
+        i for i, item in enumerate(replaced_entries) if item[0] == row["source_path"]
+    )
     path, mode, kind, _sha, size = replaced_entries[target]
     replaced_entries[target] = (path, mode, kind, "4" * 40, size)
     with pytest.raises(CPythonRightsAdmissionError):
