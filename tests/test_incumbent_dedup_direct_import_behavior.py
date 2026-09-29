@@ -12,14 +12,29 @@ from typing import Any
 class _LazyIndexed:
     _module: ModuleType | None = None
 
-    def __getattr__(self, name: str) -> Any:
-        module = self._module
+    def _load_module(self) -> ModuleType:
+        module = object.__getattribute__(self, "_module")
         if module is None:
             module = importlib.import_module(
                 "twelve_six.data.incumbent_dedup_indexed_execution"
             )
-            self._module = module
-        return getattr(module, name)
+            object.__setattr__(self, "_module", module)
+        return module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._load_module(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_module":
+            object.__setattr__(self, name, value)
+            return
+        setattr(self._load_module(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name == "_module":
+            object.__delattr__(self, name)
+            return
+        delattr(self._load_module(), name)
 
 
 indexed = _LazyIndexed()

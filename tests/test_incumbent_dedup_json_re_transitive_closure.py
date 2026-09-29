@@ -12,14 +12,29 @@ import pytest
 class _LazyIndexed:
     _module: ModuleType | None = None
 
-    def __getattr__(self, name: str) -> Any:
-        module = self._module
+    def _load_module(self) -> ModuleType:
+        module = object.__getattribute__(self, "_module")
         if module is None:
             module = importlib.import_module(
                 "twelve_six.data.incumbent_dedup_indexed_execution"
             )
-            self._module = module
-        return getattr(module, name)
+            object.__setattr__(self, "_module", module)
+        return module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._load_module(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_module":
+            object.__setattr__(self, name, value)
+            return
+        setattr(self._load_module(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name == "_module":
+            object.__delattr__(self, name)
+            return
+        delattr(self._load_module(), name)
 
 
 indexed = _LazyIndexed()
@@ -235,6 +250,24 @@ def test_verified_regex_cache_is_neutralized_not_trusted() -> None:
         cache.update(original)
 
     indexed._attest_loader_frozen_runtime_dependencies()
+
+
+def test_lazy_proxy_monkeypatch_mutates_real_authority_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = indexed._load_module()
+    original = module._CORE_RUNTIME_ATTEST
+
+    def replacement(_v3: object) -> None:
+        return None
+
+    with monkeypatch.context() as patch:
+        patch.setattr(indexed, "_CORE_RUNTIME_ATTEST", replacement)
+        assert module._CORE_RUNTIME_ATTEST is replacement
+        assert indexed._CORE_RUNTIME_ATTEST is replacement
+
+    assert module._CORE_RUNTIME_ATTEST is original
+    assert indexed._CORE_RUNTIME_ATTEST is original
 
 
 def test_runtime_attestation_neutralizes_cache_before_and_after_core(
