@@ -38,6 +38,12 @@ def _load_replay_runner():
 REPLAY_RUNNER = _load_replay_runner()
 
 
+def test_runner_uses_private_helper_exception_identity() -> None:
+    assert REPLAY_RUNNER.RematerializationError is not RematerializationError
+    assert REPLAY_RUNNER.RematerializationError.__name__ == RematerializationError.__name__
+    assert REPLAY_RUNNER.RematerializationError.__module__ == "_pr1851_replay_helper"
+
+
 def _candidate_row(
     *,
     record_id: str = "7",
@@ -216,21 +222,21 @@ def _runner_args(tmp_path: Path) -> SimpleNamespace:
 def test_outer_outputs_reject_existing_and_symlink_targets(tmp_path: Path) -> None:
     args = _runner_args(tmp_path)
     args.output_report.write_bytes(b"do-not-overwrite")
-    with pytest.raises(RematerializationError, match="refusing to overwrite outer report"):
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="refusing to overwrite outer report"):
         REPLAY_RUNNER._verify_outer_output_targets(args)
     assert args.output_report.read_bytes() == b"do-not-overwrite"
 
     args.output_report.unlink()
     dangling = tmp_path / "missing-target"
     args.output_receipt.symlink_to(dangling)
-    with pytest.raises(RematerializationError, match="refusing to overwrite outer receipt"):
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="refusing to overwrite outer receipt"):
         REPLAY_RUNNER._verify_outer_output_targets(args)
 
 
 def test_outer_outputs_must_be_distinct(tmp_path: Path) -> None:
     args = _runner_args(tmp_path)
     args.output_survivors = args.output_report
-    with pytest.raises(RematerializationError, match="must be distinct"):
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="must be distinct"):
         REPLAY_RUNNER._verify_outer_output_targets(args)
 
 
@@ -238,7 +244,7 @@ def test_exclusive_output_publication_never_clobbers(tmp_path: Path) -> None:
     output = tmp_path / "authority.json"
     REPLAY_RUNNER._write_new_bytes(output, b"first", label="authority")
     assert output.read_bytes() == b"first"
-    with pytest.raises(RematerializationError, match="refusing to overwrite authority"):
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="refusing to overwrite authority"):
         REPLAY_RUNNER._write_new_bytes(output, b"second", label="authority")
     assert output.read_bytes() == b"first"
 
@@ -284,7 +290,7 @@ def test_repaired_receipt_binds_current_clean_execution_and_scopes_provenance() 
 
     bad = dict(wrapper)
     bad["source_head_sha"] = "not-a-git-sha"
-    with pytest.raises(RematerializationError, match="wrapper source head malformed"):
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="wrapper source head malformed"):
         REPLAY_RUNNER._finalize_receipt(
             receipt,
             wrapper_execution_authority=bad,
@@ -300,7 +306,7 @@ def test_declared_capacity_arithmetic_is_distinct_from_raw_payload_bytes() -> No
         ]
     }
     assert REPLAY_RUNNER._declared_capacity_bytes(inventory) == 12
-    with pytest.raises(RematerializationError, match="declared capacity invalid"):
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="declared capacity invalid"):
         REPLAY_RUNNER._declared_capacity_bytes(
             {"sources": [{"declared_capacity_bytes": True}]}
         )
