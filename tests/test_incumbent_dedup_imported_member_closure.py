@@ -11,7 +11,6 @@ from typing import Any
 
 import pytest
 
-
 _ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
 
 

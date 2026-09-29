@@ -11,7 +11,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-
 _ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
 
 
