@@ -325,3 +325,18 @@ def test_current_main_resource_probe_disables_outer_cpu_autocast() -> None:
     validate_probe(report)
     assert report["measurement"]["parameter_bytes"] == EXPECTED_PARAMETER_COUNT * 4
     assert report["measurement"]["gradient_bytes"] == EXPECTED_PARAMETER_COUNT * 4
+
+
+def test_git_blob_sha1_normalizes_windows_crlf(tmp_path: Path) -> None:
+    lf_path = tmp_path / "lf.txt"
+    crlf_path = tmp_path / "crlf.txt"
+    lf_path.write_bytes(b"alpha\nbeta\n")
+    crlf_path.write_bytes(b"alpha\r\nbeta\r\n")
+    assert git_blob_sha1(lf_path) == git_blob_sha1(crlf_path)
+
+
+def test_git_blob_sha1_rejects_bare_cr(tmp_path: Path) -> None:
+    path = tmp_path / "bad.txt"
+    path.write_bytes(b"alpha\rbeta\n")
+    with pytest.raises(ValueError, match="unsupported bare CR"):
+        git_blob_sha1(path)
