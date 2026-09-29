@@ -304,3 +304,111 @@ def test_launcher_rejects_self_consistent_noncanonical_profile(tmp_path: Path) -
 
     with pytest.raises(RuntimeError, match="not the canonical profile"):
         WINDOWS_LAUNCHER._load_profile(lock)
+
+
+def _self_hashed_manifest(payload: dict[str, object]) -> dict[str, object]:
+    unsigned = dict(payload)
+    unsigned["manifest_sha256"] = ARTIFACT_MANIFEST.hashlib.sha256(
+        ARTIFACT_MANIFEST._canonical(payload)
+    ).hexdigest()
+    return unsigned
+
+
+def test_read_self_hashed_manifest_rejects_tamper(tmp_path: Path) -> None:
+    path = tmp_path / "app-manifest.json"
+    payload = _self_hashed_manifest(
+        {
+            "schema_version": "12-6.windows-application-artifact.v1",
+            "source_sha": "a" * 40,
+            "contains_runtime_wheels": False,
+            "contains_checkpoint": False,
+            "files": {},
+        }
+    )
+    payload["contains_checkpoint"] = True
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="self-hash mismatch"):
+        ARTIFACT_MANIFEST._read_self_hashed_manifest(
+            path,
+            expected_schema="12-6.windows-application-artifact.v1",
+            expected_keys=frozenset(payload),
+        )
+
+
+def test_validate_evidence_inputs_rejects_nonready_status(tmp_path: Path) -> None:
+    status = tmp_path / "status.json"
+    missing = tmp_path / "missing.json"
+    app = tmp_path / "app-manifest.json"
+    runtime = tmp_path / "runtime-manifest.json"
+    status.write_text(
+        json.dumps(
+            {
+                "schema_version": "12-6.windows-product-status.v1",
+                "ready": False,
+                "runtime": {
+                    "profile_id": "windows-x86_64",
+                    "python_actual": "3.11.9",
+                },
+                "checkpoint": None,
+                "errors": ["runtime failed"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    missing.write_text(
+        json.dumps(
+            {
+                "schema_version": "12-6.windows-product-status.v1",
+                "ready": False,
+                "runtime": {},
+                "checkpoint": None,
+                "errors": ["checkpoint does not exist: fixture"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    app.write_text(
+        json.dumps(
+            _self_hashed_manifest(
+                {
+                    "schema_version": "12-6.windows-application-artifact.v1",
+                    "source_sha": "a" * 40,
+                    "contains_runtime_wheels": False,
+                    "contains_checkpoint": False,
+                    "files": {},
+                }
+            )
+        ),
+        encoding="utf-8",
+    )
+    runtime.write_text(
+        json.dumps(
+            _self_hashed_manifest(
+                {
+                    "schema_version": "12-6.windows-runtime-artifact.v1",
+                    "profile_id": "windows-x86_64",
+                    "python_version": "3.11.9",
+                    "profile_manifest_sha256": "b" * 64,
+                    "contains_application_wheel": False,
+                    "contains_checkpoint": False,
+                    "files": {},
+                }
+            )
+        ),
+        encoding="utf-8",
+    )
+    args = ARTIFACT_MANIFEST.argparse.Namespace(
+        status=status,
+        missing_status=missing,
+        app_manifest=app,
+        runtime_manifest=runtime,
+        source_sha="a" * 40,
+        app_artifact_id="1",
+        app_artifact_digest="sha256:" + "c" * 64,
+        runtime_artifact_id="2",
+        runtime_artifact_digest="sha256:" + "d" * 64,
+    )
+
+    with pytest.raises(ValueError, match="exact ready Windows runtime status"):
+        ARTIFACT_MANIFEST._validate_evidence_inputs(args)

@@ -6,9 +6,13 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import zipfile
 from pathlib import Path
 from typing import Any
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_ARTIFACT_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 _MODEL_PAYLOAD_SUFFIXES = frozenset(
     {
@@ -64,6 +68,118 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise TypeError(f"{path} must contain a JSON object")
     return value
+
+
+def _read_self_hashed_manifest(
+    path: Path,
+    *,
+    expected_schema: str,
+    expected_keys: frozenset[str],
+) -> dict[str, Any]:
+    value = _read_json(path)
+    if set(value) != expected_keys:
+        raise ValueError(f"{path} has unexpected manifest fields")
+    if value.get("schema_version") != expected_schema:
+        raise ValueError(f"{path} has unexpected schema_version")
+    claimed = value.get("manifest_sha256")
+    if not isinstance(claimed, str) or _SHA256_RE.fullmatch(claimed) is None:
+        raise ValueError(f"{path} has invalid manifest_sha256")
+    unsigned = dict(value)
+    unsigned.pop("manifest_sha256")
+    actual = hashlib.sha256(_canonical(unsigned)).hexdigest()
+    if actual != claimed:
+        raise ValueError(f"{path} manifest self-hash mismatch")
+    return value
+
+
+def _validate_evidence_inputs(args: argparse.Namespace) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+]:
+    status = _read_json(args.status)
+    missing_status = _read_json(args.missing_status)
+    app_manifest = _read_self_hashed_manifest(
+        args.app_manifest,
+        expected_schema="12-6.windows-application-artifact.v1",
+        expected_keys=frozenset(
+            {
+                "schema_version",
+                "source_sha",
+                "contains_runtime_wheels",
+                "contains_checkpoint",
+                "files",
+                "manifest_sha256",
+            }
+        ),
+    )
+    runtime_manifest = _read_self_hashed_manifest(
+        args.runtime_manifest,
+        expected_schema="12-6.windows-runtime-artifact.v1",
+        expected_keys=frozenset(
+            {
+                "schema_version",
+                "profile_id",
+                "python_version",
+                "profile_manifest_sha256",
+                "contains_application_wheel",
+                "contains_checkpoint",
+                "files",
+                "manifest_sha256",
+            }
+        ),
+    )
+
+    if app_manifest.get("source_sha") != args.source_sha:
+        raise ValueError("application manifest source_sha does not match evidence source_sha")
+    if app_manifest.get("contains_runtime_wheels") is not False:
+        raise ValueError("application manifest must exclude runtime wheels")
+    if app_manifest.get("contains_checkpoint") is not False:
+        raise ValueError("application manifest must exclude checkpoint bytes")
+    if runtime_manifest.get("profile_id") != "windows-x86_64":
+        raise ValueError("runtime manifest must bind windows-x86_64")
+    if runtime_manifest.get("python_version") != "3.11.9":
+        raise ValueError("runtime manifest must bind CPython 3.11.9")
+    if runtime_manifest.get("contains_application_wheel") is not False:
+        raise ValueError("runtime manifest must exclude application wheel")
+    if runtime_manifest.get("contains_checkpoint") is not False:
+        raise ValueError("runtime manifest must exclude checkpoint bytes")
+
+    runtime = status.get("runtime")
+    if (
+        status.get("schema_version") != "12-6.windows-product-status.v1"
+        or status.get("ready") is not True
+        or status.get("errors") != []
+        or not isinstance(runtime, dict)
+        or runtime.get("profile_id") != "windows-x86_64"
+        or runtime.get("python_actual") != "3.11.9"
+    ):
+        raise ValueError("installed status is not an exact ready Windows runtime status")
+
+    missing_errors = missing_status.get("errors")
+    if (
+        missing_status.get("schema_version") != "12-6.windows-product-status.v1"
+        or missing_status.get("ready") is not False
+        or missing_status.get("checkpoint") is not None
+        or not isinstance(missing_errors, list)
+        or not any(
+            isinstance(item, str) and item.startswith("checkpoint does not exist:")
+            for item in missing_errors
+        )
+    ):
+        raise ValueError("missing-checkpoint status is not the expected fail-closed result")
+
+    for label, artifact_id, digest in (
+        ("application", args.app_artifact_id, args.app_artifact_digest),
+        ("runtime", args.runtime_artifact_id, args.runtime_artifact_digest),
+    ):
+        if not isinstance(artifact_id, str) or not artifact_id.isdecimal() or int(artifact_id) <= 0:
+            raise ValueError(f"{label} artifact id must be a positive decimal integer")
+        if not isinstance(digest, str) or _ARTIFACT_DIGEST_RE.fullmatch(digest) is None:
+            raise ValueError(f"{label} artifact digest must be sha256:<64 lowercase hex>")
+
+    return status, missing_status, app_manifest, runtime_manifest
 
 
 def _file_record(path: Path) -> dict[str, Any]:
@@ -161,14 +277,15 @@ def _runtime(root: Path) -> None:
 
 
 def _evidence(args: argparse.Namespace) -> None:
+    status, missing_status, app_manifest, runtime_manifest = _validate_evidence_inputs(args)
     payload = {
         "schema_version": "12-6.windows-product-packaging-evidence.v1",
         "source_sha": args.source_sha,
         "installation_root": str(args.install_root),
-        "status": _read_json(args.status),
-        "missing_checkpoint_status": _read_json(args.missing_status),
-        "application_manifest": _read_json(args.app_manifest),
-        "runtime_manifest": _read_json(args.runtime_manifest),
+        "status": status,
+        "missing_checkpoint_status": missing_status,
+        "application_manifest": app_manifest,
+        "runtime_manifest": runtime_manifest,
         "github_artifacts": {
             "application": {"id": args.app_artifact_id, "digest": args.app_artifact_digest},
             "runtime": {"id": args.runtime_artifact_id, "digest": args.runtime_artifact_digest},
