@@ -233,14 +233,21 @@ def _outer_survivor_authority(
     selection_projection: Mapping[str, Any],
 ) -> dict[str, Any]:
     sources = dedup_report.get("sources")
-    _require(isinstance(sources, list), "dedup source vector missing")
-    by_id = {
-        row["source_id"]: row
-        for row in sources
-        if isinstance(row, Mapping) and isinstance(row.get("source_id"), str)
-    }
+    _require(type(sources) is list, "dedup source vector missing")
+    _require(
+        all(type(row) is dict and type(row.get("source_id")) is str for row in sources),
+        "dedup source row invalid",
+    )
+    source_ids = [row["source_id"] for row in sources]
+    _require(len(set(source_ids)) == len(source_ids), "duplicate dedup source id")
+    by_id = {row["source_id"]: row for row in sources}
     survivor_ids = selection_projection.get("survivor_source_ids")
-    _require(isinstance(survivor_ids, list), "selection projection survivor ids missing")
+    _require(type(survivor_ids) is list, "selection projection survivor ids missing")
+    _require(
+        all(type(source_id) is str for source_id in survivor_ids),
+        "survivor source id invalid",
+    )
+    _require(len(set(survivor_ids)) == len(survivor_ids), "duplicate survivor source id")
     _require(all(source_id in by_id for source_id in survivor_ids), "unknown survivor id")
     caselaw_survivors = [
         source_id
