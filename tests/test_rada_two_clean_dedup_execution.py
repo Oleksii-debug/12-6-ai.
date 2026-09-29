@@ -518,10 +518,39 @@ def test_dependency_authority_requires_positive_exact_worker_timeout(tmp_path: P
 def test_max_rss_uses_windows_backend_when_resource_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(carrier.sys, "platform", "win32")
     monkeypatch.setattr(carrier, "resource", None)
     monkeypatch.setattr(carrier, "_windows_peak_working_set_kib", lambda: 321)
 
     assert carrier._max_rss_kib() == 321
+
+
+@pytest.mark.parametrize("raw_kib", [321, 12_000_000])
+def test_linux_max_rss_preserves_kib_independent_of_magnitude(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_kib: int,
+) -> None:
+    fake_resource = SimpleNamespace(
+        RUSAGE_SELF=0,
+        getrusage=lambda _: SimpleNamespace(ru_maxrss=raw_kib),
+    )
+    monkeypatch.setattr(carrier.sys, "platform", "linux")
+    monkeypatch.setattr(carrier, "resource", fake_resource)
+
+    assert carrier._max_rss_kib() == raw_kib
+
+
+def test_max_rss_fails_closed_for_unknown_posix_unit_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_resource = SimpleNamespace(
+        RUSAGE_SELF=0,
+        getrusage=lambda _: SimpleNamespace(ru_maxrss=321),
+    )
+    monkeypatch.setattr(carrier.sys, "platform", "freebsd14")
+    monkeypatch.setattr(carrier, "resource", fake_resource)
+
+    assert carrier._max_rss_kib() is None
 
 
 def test_windows_peak_working_set_normalizes_bytes_to_kib(

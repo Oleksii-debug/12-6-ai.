@@ -432,15 +432,21 @@ def _windows_peak_working_set_kib() -> int | None:
 
 
 def _max_rss_kib() -> int | None:
-    if resource is None:
+    if sys.platform == "win32":
         return _windows_peak_working_set_kib()
+    if resource is None:
+        return None
     try:
         value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     except (AttributeError, OSError, TypeError, ValueError):
         return None
     if value <= 0:
         return None
-    return value // 1024 if value > 10_000_000 else value
+    if sys.platform.startswith("linux"):
+        return value
+    if sys.platform == "darwin":
+        return (value + 1023) // 1024
+    return None
 
 
 def _load_base_payloads(
