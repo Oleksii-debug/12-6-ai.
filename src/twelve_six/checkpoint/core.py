@@ -155,6 +155,12 @@ class VerifiedCheckpoint:
     def manifest(self) -> dict[str, Any]:
         return json.loads(self._manifest_bytes.decode("utf-8"))
 
+    @property
+    def manifest_sha256(self) -> str:
+        """SHA-256 of the exact verified manifest bytes held by this snapshot."""
+
+        return sha256_bytes(self._manifest_bytes)
+
 
 def canonical_json_bytes(value: Any) -> bytes:
     """Canonical JSON encoding used for all identity hashes."""
