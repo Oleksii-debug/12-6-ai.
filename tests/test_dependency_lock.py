@@ -142,6 +142,9 @@ def test_project_wheel_build_avoids_editable_pth_on_unicode_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     verifier = _load_verifier()
+    unicode_root = tmp_path / "12-6 Locked Windows Україна"
+    unicode_root.mkdir()
+    monkeypatch.setattr(verifier, "ROOT", unicode_root)
     wheel_dir = tmp_path / "dist"
     captured: list[tuple[list[str], dict[str, str] | None]] = []
 
@@ -160,6 +163,34 @@ def test_project_wheel_build_avoids_editable_pth_on_unicode_source(
     assert command[:4] == ["python", "-m", "pip", "wheel"]
     assert "-e" not in command
     assert "--editable" not in command
-    assert command[-1] == str(verifier.ROOT)
+    assert command[-1] == str(unicode_root)
+    assert "Україна" in command[-1]
     assert env == offline
     assert wheel.name == "twelve_six_ai-0.2.0.dev0-py3-none-any.whl"
+
+
+@pytest.mark.parametrize(
+    ("profile_id", "schema_version", "verification_key"),
+    [
+        (
+            "windows-x86_64",
+            "12-6.locked-environment-evidence.v2",
+            "source_wheel_build_install_import_cli",
+        ),
+        (
+            "linux-x86_64",
+            "12-6.locked-environment-evidence.v1",
+            "editable_install_import_cli",
+        ),
+        (
+            "linux-aarch64",
+            "12-6.locked-environment-evidence.v1",
+            "editable_install_import_cli",
+        ),
+    ],
+)
+def test_environment_evidence_contract_preserves_linux_training_compatibility(
+    profile_id: str, schema_version: str, verification_key: str
+) -> None:
+    verifier = _load_verifier()
+    assert verifier._evidence_contract(profile_id) == (schema_version, verification_key)

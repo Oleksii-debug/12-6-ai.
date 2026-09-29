@@ -52,13 +52,12 @@ For D05/C01/D10 artifact provenance, use the physical SHA-256 of `requirements/l
 3. require every non-comment lock line to be an exact `name==version` with SHA-256 and reject duplicates;
 4. create a clean build/dev virtual environment using the platform-native `bin` or `Scripts` layout;
 5. install toolchain, runtime and dev closures with `pip --require-hashes --no-deps`;
-6. build the project wheel directly from the exact source tree with build isolation and network disabled, then install that exact wheel into the build/dev environment;
-7. verify project imports and the installed `twelve-six-generate --help` console script from the wheel installed in the build/dev environment;
-8. retain that same exact wheel as the artifact under qualification;
-9. create a second clean runtime virtual environment, install only locked toolchain/runtime dependencies and then the wheel with no dependency resolution;
+6. on Linux profiles, preserve the established locked editable install used by the S0 training-evidence v1 contract; on `windows-x86_64`, build the exact wheel directly from the Unicode/space-containing source tree and install that wheel instead of creating a locale-encoded editable `.pth` file;
+7. build or retain exactly one project wheel with build isolation and network disabled, then verify project imports and the installed `twelve-six-generate --help` console script;
+8. run repository policy, Ruff, focused S0 convergence integration, full pytest and stage-candidate validation from the locked build/dev environment when explicitly requested;
+9. create a second clean runtime virtual environment, install only locked toolchain/runtime dependencies and then the same wheel with no dependency resolution;
 10. verify wheel imports and console script again;
-11. when explicitly requested by an authority workflow, run repository policy, Ruff, focused S0 convergence integration, full pytest and stage-candidate validation from the locked build/dev environment;
-12. emit a source-SHA-bound environment evidence JSON with lock identities, wheel SHA-256, installed distribution inventory and a self-hash.
+11. emit source-SHA-bound environment evidence JSON with lock identities, wheel SHA-256, installed distribution inventory and a self-hash. Linux keeps `12-6.locked-environment-evidence.v1` / `editable_install_import_cli` for the existing S0 evidence consumer; Windows emits v2 / `source_wheel_build_install_import_cli` so the evidence never falsely claims an editable install.
 
 The resolver/bootstrap utility is not an authority path. It may be used only to propose refreshed lock artifacts. A refresh becomes authoritative only after the generated files are committed and consuming clean-install CI passes on the exact resulting head.
 

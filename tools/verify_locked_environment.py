@@ -249,6 +249,15 @@ def _build_project_wheel(python: Path, wheel_dir: Path, *, env: dict[str, str]) 
     return wheels[0]
 
 
+def _evidence_contract(profile_id: str) -> tuple[str, str]:
+    if profile_id == "windows-x86_64":
+        return (
+            "12-6.locked-environment-evidence.v2",
+            "source_wheel_build_install_import_cli",
+        )
+    return ("12-6.locked-environment-evidence.v1", "editable_install_import_cli")
+
+
 def verify_install(
     *,
     profile_id: str | None,
@@ -269,19 +278,36 @@ def verify_install(
         dev_python = _venv_python(dev_env)
         _install_locked(dev_python, profile, ("toolchain", "runtime", "dev"))
         offline = _offline_env()
-        wheel = _build_project_wheel(dev_python, wheel_dir, env=offline)
-        _run(
-            [
-                dev_python,
-                "-m",
-                "pip",
-                "install",
-                "--no-deps",
-                "--no-build-isolation",
-                wheel,
-            ],
-            env=offline,
-        )
+        evidence_schema, development_verification_key = _evidence_contract(profile["profile_id"])
+        if profile["profile_id"] == "windows-x86_64":
+            wheel = _build_project_wheel(dev_python, wheel_dir, env=offline)
+            _run(
+                [
+                    dev_python,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-deps",
+                    "--no-build-isolation",
+                    wheel,
+                ],
+                env=offline,
+            )
+        else:
+            _run(
+                [
+                    dev_python,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-deps",
+                    "--no-build-isolation",
+                    "-e",
+                    ROOT,
+                ],
+                env=offline,
+            )
+            wheel = _build_project_wheel(dev_python, wheel_dir, env=offline)
         _smoke(dev_python, dev_env)
         if run_repo_checks:
             _run_repo_checks(dev_python)
@@ -305,7 +331,7 @@ def verify_install(
         installed = _installed_distributions(wheel_python)
 
         evidence: dict[str, Any] = {
-            "schema_version": "12-6.locked-environment-evidence.v2",
+            "schema_version": evidence_schema,
             "source_sha": source_sha or "UNBOUND_LOCAL",
             "profile_id": profile["profile_id"],
             "python": profile["python"],
@@ -326,7 +352,7 @@ def verify_install(
             "installed_distributions_sha256": hashlib.sha256(_canonical_bytes(installed)).hexdigest(),
             "verification": {
                 "committed_lock_validation": "PASS",
-                "source_wheel_build_install_import_cli": "PASS",
+                development_verification_key: "PASS",
                 "wheel_install_import_cli": "PASS",
                 "repo_checks": "PASS" if run_repo_checks else "NOT_RUN",
             },
