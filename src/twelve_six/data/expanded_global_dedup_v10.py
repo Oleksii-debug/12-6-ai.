@@ -146,7 +146,7 @@ _LOC_ROW_KEYS = frozenset(
 
 
 class ExpandedDedupV10Error(RuntimeError):
-    """Raised when PEP/LoC authority or post-V9 composition fails closed."""
+    """Raised when clean-retained/PEP/LoC composition fails closed."""
 
 
 def _require(condition: bool, message: str) -> None:
@@ -158,13 +158,14 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def _canonical(value: Any) -> bytes:
-    return json.dumps(
+def _canonical(value: Any, *, newline: bool = False) -> bytes:
+    raw = json.dumps(
         value,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+    return raw + (b"\n" if newline else b"")
 
 
 def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
