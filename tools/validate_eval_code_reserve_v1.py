@@ -82,6 +82,19 @@ def _parse_finite_float(value: str) -> float:
     return parsed
 
 
+def _require_finite_json_value(value: object, *, label: str) -> None:
+    if isinstance(value, float):
+        _require(math.isfinite(value), f"{label} contains non-finite float")
+        return
+    if type(value) is dict:
+        for key, item in value.items():
+            _require_finite_json_value(item, label=f"{label}.{key}")
+        return
+    if type(value) is list:
+        for index, item in enumerate(value):
+            _require_finite_json_value(item, label=f"{label}[{index}]")
+
+
 def _load_mapping(path: Path) -> dict[str, Any]:
     value = json.loads(
         path.read_text(encoding="utf-8"),
@@ -90,10 +103,12 @@ def _load_mapping(path: Path) -> dict[str, Any]:
         parse_float=_parse_finite_float,
     )
     _require(type(value) is dict, f"{path} must contain a JSON object")
+    _require_finite_json_value(value, label=str(path))
     return value
 
 
 def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
+    _require_finite_json_value(doc, label="reservation document")
     _require(doc.get("schema_version") == "12-6.eval-code-reserve-v1.contract.v1", "schema drift")
     _require(doc.get("worker_id") == "EVAL-647-CODE-SELECTION-RESERVE-V1", "worker drift")
     _require(doc.get("issue") == 647, "issue binding drift")
@@ -152,6 +167,8 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, Any]) -> None:
+    _require_finite_json_value(doc, label="reservation document")
+    _require_finite_json_value(evidence, label="materialization evidence")
     _require(evidence.get("schema_version") == "12-6.eval-code-reserve-v1.source-materialization-terminal.v1", "evidence schema drift")
     claimed = evidence.get("evidence_identity_sha256")
     _require(claimed == EXPECTED_EVIDENCE_IDENTITY, "evidence claimed identity drift")
