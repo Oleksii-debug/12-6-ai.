@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,37 @@ def _require(condition: bool, message: str) -> None:
 
 def _canonical_bytes(value: object) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str) -> None:
+    raise ValueError(f"non_finite_json_constant:{value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("json_number_not_finite")
+    return parsed
+
+
+def _load_mapping(path: Path) -> dict[str, Any]:
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_pairs,
+        parse_constant=_reject_constant,
+        parse_float=_parse_finite_float,
+    )
+    _require(type(value) is dict, f"{path} must contain a JSON object")
+    return value
 
 
 def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
@@ -163,9 +195,9 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
 
 
 def validate(path: Path = DEFAULT_MANIFEST, evidence_path: Path = DEFAULT_EVIDENCE) -> dict[str, Any]:
-    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc = _load_mapping(path)
     result = validate_document(doc)
-    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence = _load_mapping(evidence_path)
     validate_materialization_evidence(doc, evidence)
     return result
 
