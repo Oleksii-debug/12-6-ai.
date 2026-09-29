@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
+from typing import Any
 
 from twelve_six.data.wikisource_pd_contract import (
     WikisourceIntakeError,
@@ -18,6 +20,41 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONTRACT = ROOT / "configs/data/d03_wikisource_lesia1892_current_main_v1.json"
 
 
+def _reject_duplicate_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise WikisourceIntakeError("control contract has duplicate JSON object member")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_constant(value: str) -> None:
+    raise WikisourceIntakeError(f"control contract has non-finite JSON constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise WikisourceIntakeError("control contract has non-finite JSON number")
+    return parsed
+
+
+def load_strict_json_object(raw: str) -> dict[str, Any]:
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_members,
+            parse_constant=_reject_nonstandard_constant,
+            parse_float=_parse_finite_float,
+        )
+    except json.JSONDecodeError as exc:
+        raise WikisourceIntakeError(f"invalid control contract JSON: {exc.msg}") from exc
+    if not isinstance(value, dict):
+        raise WikisourceIntakeError("control contract must be a JSON object")
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--contract", type=Path, default=DEFAULT_CONTRACT)
@@ -26,9 +63,7 @@ def main() -> int:
     parser.add_argument("--max-pages", type=int, default=112)
     args = parser.parse_args()
     try:
-        contract = json.loads(args.contract.read_text(encoding="utf-8"))
-        if not isinstance(contract, dict):
-            raise WikisourceIntakeError("control contract must be a JSON object")
+        contract = load_strict_json_object(args.contract.read_text(encoding="utf-8"))
         validate_control_contract(contract)
         result = materialize_live(max_pages=args.max_pages)
     except (OSError, ValueError, WikisourceIntakeError) as exc:
