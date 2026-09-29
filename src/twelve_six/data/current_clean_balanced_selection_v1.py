@@ -13,6 +13,10 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from twelve_six.data.balanced_split_application_v1 import (
+    BalancedSplitApplicationError,
+    verify_balanced_selection,
+)
 from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
 from twelve_six.data.postmaterialization_balance_projection_v1 import (
     CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA,
@@ -31,6 +35,8 @@ from twelve_six.data.trusted_family_authority_v1 import TRUSTED_FAMILY_SEMANTICS
 
 SELECTION_SCHEMA = "12-6.d03-balanced-selection-authority.v1"
 SELECTION_REALIZATION_POLICY = "record-id-ascending-exact-family-byte-subset-v1"
+DEFAULT_MAX_EXACT_SUBSET_STATES = 250_000
+DEFAULT_MAX_EXACT_SUBSET_EXPANSIONS = 5_000_000
 _ALLOWED_ALLOCATION_FIELDS = {
     "family_id",
     "stratum",
@@ -149,10 +155,16 @@ def _exact_record_subset(
     *,
     target_bytes: int,
     family: str,
+    max_states: int = DEFAULT_MAX_EXACT_SUBSET_STATES,
+    max_expansions: int = DEFAULT_MAX_EXACT_SUBSET_EXPANSIONS,
 ) -> list[dict[str, Any]]:
     """Return one deterministic exact whole-record realization of a byte allocation."""
 
     target = _require_nonnegative_int(target_bytes, f"allocation[{family}].allocated_bytes")
+    state_budget = _require_nonnegative_int(max_states, "max_states")
+    expansion_budget = _require_nonnegative_int(max_expansions, "max_expansions")
+    if state_budget <= 0 or expansion_budget <= 0:
+        raise ProjectionError("exact-subset budgets must be positive")
     if target <= 0:
         raise ProjectionError(f"allocation[{family}] must be positive")
 
@@ -171,15 +183,25 @@ def _exact_record_subset(
     # No partial record, padding, replay or byte truncation is permitted.
     parent: dict[int, tuple[int, int] | None] = {0: None}
     reached_at = -1
+    expansions = 0
     for index, row in enumerate(ordered):
         weight = _require_nonnegative_int(row.get("payload_bytes"), "payload_bytes")
         if weight <= 0:
             raise ProjectionError("selected survivor payload_bytes must be positive")
         existing = tuple(parent)
         for current in existing:
+            expansions += 1
+            if expansions > expansion_budget:
+                raise ProjectionError(
+                    f"allocation[{family}] exact-subset work budget exceeded"
+                )
             candidate = current + weight
             if candidate > target or candidate in parent:
                 continue
+            if len(parent) >= state_budget:
+                raise ProjectionError(
+                    f"allocation[{family}] exact-subset state budget exceeded"
+                )
             parent[candidate] = (current, index)
             if candidate == target:
                 reached_at = index
@@ -446,34 +468,62 @@ def build_current_clean_balanced_selection(
         document,
         "balanced_selection_identity_sha256",
     )
+    try:
+        verify_balanced_selection(
+            document,
+            expected_selection_identity_sha256=document[
+                "balanced_selection_identity_sha256"
+            ],
+            expected_retained_inventory_identity_sha256=family_vector[
+                "record_inventory_digest_sha256"
+            ],
+            expected_decontamination_authority_sha256=decontamination_identity,
+            expected_dedup_authority_sha256=dedup_identity,
+            expected_balance_policy_identity_sha256=policy_identity,
+            expected_balance_result_identity_sha256=result_identity,
+        )
+    except BalancedSplitApplicationError as exc:
+        raise ProjectionError(
+            "built balanced selection violates canonical PR1091 contract"
+        ) from exc
     return document
 
 
 def project_selected_current_clean_raw_records(
     selection: Mapping[str, Any],
     survivor_records_raw: bytes,
+    *,
+    expected_selection_identity_sha256: str,
+    expected_retained_inventory_identity_sha256: str,
+    expected_decontamination_authority_sha256: str,
+    expected_dedup_authority_sha256: str,
+    expected_balance_policy_identity_sha256: str,
+    expected_balance_result_identity_sha256: str,
 ) -> list[dict[str, Any]]:
-    """Project selected current-clean payloads into canonical split raw-record shape."""
+    """Project selected current-clean payloads after canonical authority verification."""
 
-    if set(selection) != _SELECTION_FIELDS or selection.get("schema") != SELECTION_SCHEMA:
-        raise ProjectionError("balanced selection fields/schema are not closed-world")
-    claimed = _require_sha256(
-        selection.get("balanced_selection_identity_sha256"),
-        "balanced_selection_identity_sha256",
-    )
-    if claimed != _self_hash(selection, "balanced_selection_identity_sha256"):
-        raise ProjectionError("balanced selection self-hash mismatch")
-    rows = selection.get("records")
-    if not isinstance(rows, list) or not rows:
-        raise ProjectionError("balanced selection has no records")
-    selected: dict[str, Mapping[str, Any]] = {}
-    for index, row in enumerate(rows):
-        if not isinstance(row, Mapping) or set(row) != _SELECTION_ROW_FIELDS:
-            raise ProjectionError(f"balanced selection record[{index}] fields are not closed-world")
-        record_id = _require_text(row.get("record_id"), f"records[{index}].record_id")
-        if record_id in selected:
-            raise ProjectionError(f"duplicate balanced selection record_id: {record_id}")
-        selected[record_id] = row
+    try:
+        selected, _totals = verify_balanced_selection(
+            selection,
+            expected_selection_identity_sha256=expected_selection_identity_sha256,
+            expected_retained_inventory_identity_sha256=(
+                expected_retained_inventory_identity_sha256
+            ),
+            expected_decontamination_authority_sha256=(
+                expected_decontamination_authority_sha256
+            ),
+            expected_dedup_authority_sha256=expected_dedup_authority_sha256,
+            expected_balance_policy_identity_sha256=(
+                expected_balance_policy_identity_sha256
+            ),
+            expected_balance_result_identity_sha256=(
+                expected_balance_result_identity_sha256
+            ),
+        )
+    except BalancedSplitApplicationError as exc:
+        raise ProjectionError(
+            "canonical balanced selection verification failed"
+        ) from exc
 
     physical = {row["record_id"]: row for row in _parse_survivor_records(survivor_records_raw)}
     if not set(selected) <= set(physical):

@@ -6,7 +6,6 @@ import json
 
 import pytest
 
-import tools.next100_106_balance_gate as next100_gate
 from twelve_six.data.current_clean_balanced_selection_v1 import (
     SELECTION_REALIZATION_POLICY,
     _exact_record_subset,
@@ -27,6 +26,8 @@ from twelve_six.data.postmaterialization_balance_projection_v1 import (
     require_balanced_selection_ready,
     verify_postmaterialization_family_vector,
 )
+
+import tools.next100_106_balance_gate as next100_gate
 
 GIT_SHA = "2" * 40
 MATERIALIZATION_SHA = "3" * 64
@@ -1045,6 +1046,35 @@ def _current_clean_target_selection_fixture() -> tuple[
     return vector, raw, expected, adapted, balance, binding
 
 
+def _project_current_clean_selection(
+    selection: dict,
+    survivor_records_raw: bytes,
+    *,
+    expected_authority: dict | None = None,
+) -> list[dict]:
+    authority = selection if expected_authority is None else expected_authority
+    return project_selected_current_clean_raw_records(
+        selection,
+        survivor_records_raw,
+        expected_selection_identity_sha256=authority[
+            "balanced_selection_identity_sha256"
+        ],
+        expected_retained_inventory_identity_sha256=authority[
+            "retained_inventory_identity_sha256"
+        ],
+        expected_decontamination_authority_sha256=authority[
+            "decontamination_authority_sha256"
+        ],
+        expected_dedup_authority_sha256=authority["dedup_authority_sha256"],
+        expected_balance_policy_identity_sha256=authority[
+            "balance_policy_identity_sha256"
+        ],
+        expected_balance_result_identity_sha256=authority[
+            "balance_result_identity_sha256"
+        ],
+    )
+
+
 def _build_current_clean_target_selection() -> tuple[dict, list[dict], dict]:
     vector, raw, _expected, adapted, balance, binding = (
         _current_clean_target_selection_fixture()
@@ -1066,7 +1096,7 @@ def _build_current_clean_target_selection() -> tuple[dict, list[dict], dict]:
         expected_policy_identity_sha256=policy["policy_identity_sha256"],
         expected_result_identity_sha256=balance["result_identity_sha256"],
     )
-    projected = project_selected_current_clean_raw_records(
+    projected = _project_current_clean_selection(
         selection,
         raw["survivor_records"],
     )
@@ -1148,6 +1178,39 @@ def test_exact_record_realization_rejects_unrepresentable_allocation() -> None:
     assert SELECTION_REALIZATION_POLICY == (
         "record-id-ascending-exact-family-byte-subset-v1"
     )
+
+
+def test_exact_record_realization_fails_closed_on_state_budget() -> None:
+    rows = [
+        {"record_id": "a", "payload_bytes": 1},
+        {"record_id": "b", "payload_bytes": 2},
+        {"record_id": "c", "payload_bytes": 4},
+        {"record_id": "d", "payload_bytes": 8},
+    ]
+    with pytest.raises(ProjectionError, match="exact-subset state budget exceeded"):
+        _exact_record_subset(
+            rows,
+            target_bytes=14,
+            family="family",
+            max_states=3,
+            max_expansions=100,
+        )
+
+
+def test_exact_record_realization_fails_closed_on_work_budget() -> None:
+    rows = [
+        {"record_id": "a", "payload_bytes": 2},
+        {"record_id": "b", "payload_bytes": 4},
+        {"record_id": "c", "payload_bytes": 6},
+    ]
+    with pytest.raises(ProjectionError, match="exact-subset work budget exceeded"):
+        _exact_record_subset(
+            rows,
+            target_bytes=11,
+            family="family",
+            max_states=100,
+            max_expansions=1,
+        )
 
 
 def test_current_clean_balanced_selection_rejects_raw_survivor_substitution() -> None:
@@ -1247,6 +1310,51 @@ def test_current_clean_balanced_selection_rejects_nonterminal_balance() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("mutation"),
+    (
+        "terminal",
+        "status",
+        "claim_boundary",
+        "totals",
+    ),
+)
+def test_selected_raw_projection_rejects_self_resealed_authority_semantics(
+    mutation: str,
+) -> None:
+    selection, _projected, _balance = _build_current_clean_target_selection()
+    _, raw, _expected = _current_clean_bytes(_target_rows())
+    tampered = copy.deepcopy(selection)
+    if mutation == "terminal":
+        tampered["terminal"] = False
+    elif mutation == "status":
+        tampered["status"] = "FAIL"
+    elif mutation == "claim_boundary":
+        tampered["claim_boundary"]["model_training_authorized"] = True
+    elif mutation == "totals":
+        tampered["totals"]["source_bytes"] += 1
+    else:  # pragma: no cover - parametrization is closed above.
+        raise AssertionError(mutation)
+    tampered["balanced_selection_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {
+                key: value
+                for key, value in tampered.items()
+                if key != "balanced_selection_identity_sha256"
+            }
+        )
+    ).hexdigest()
+    with pytest.raises(
+        ProjectionError,
+        match="canonical balanced selection verification failed",
+    ):
+        _project_current_clean_selection(
+            tampered,
+            raw["survivor_records"],
+            expected_authority=selection,
+        )
+
+
 def test_selected_raw_projection_rejects_self_resealed_metadata_substitution() -> None:
     selection, _projected, _balance = _build_current_clean_target_selection()
     _, raw, _expected = _current_clean_bytes(_target_rows())
@@ -1262,8 +1370,12 @@ def test_selected_raw_projection_rejects_self_resealed_metadata_substitution() -
             }
         )
     ).hexdigest()
-    with pytest.raises(ProjectionError, match="selection/raw survivor drift"):
-        project_selected_current_clean_raw_records(
+    with pytest.raises(
+        ProjectionError,
+        match="canonical balanced selection verification failed",
+    ):
+        _project_current_clean_selection(
             tampered,
             raw["survivor_records"],
+            expected_authority=selection,
         )

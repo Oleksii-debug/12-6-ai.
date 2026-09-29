@@ -34,15 +34,20 @@ jobs:
         run: |
           set -euo pipefail
           BRIDGE_PATH=src/twelve_six/data/postmaterialization_balance_projection_v1.py
+          SELECTION_PATH=src/twelve_six/data/current_clean_balanced_selection_v1.py
           TEST_PATH=tests/test_postmaterialization_balance_projection_v1.py
           git cat-file -e "$CARRIER_HEAD^{commit}"
           BRIDGE_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$BRIDGE_PATH")"
+          SELECTION_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$SELECTION_PATH")"
           TEST_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$TEST_PATH")"
           git show "$CARRIER_HEAD:$BRIDGE_PATH" > "$BRIDGE_PATH"
+          git show "$CARRIER_HEAD:$SELECTION_PATH" > "$SELECTION_PATH"
           git show "$CARRIER_HEAD:$TEST_PATH" > "$TEST_PATH"
           test "$(git hash-object "$BRIDGE_PATH")" = "$BRIDGE_BLOB_SHA"
+          test "$(git hash-object "$SELECTION_PATH")" = "$SELECTION_BLOB_SHA"
           test "$(git hash-object "$TEST_PATH")" = "$TEST_BLOB_SHA"
           echo "bridge_blob_sha=$BRIDGE_BLOB_SHA" >> "$GITHUB_OUTPUT"
+          echo "selection_blob_sha=$SELECTION_BLOB_SHA" >> "$GITHUB_OUTPUT"
           echo "test_blob_sha=$TEST_BLOB_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         with:
@@ -64,17 +69,20 @@ jobs:
         env:
           CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
           BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
+          SELECTION_BLOB_SHA: ${{ steps.bridge_repair.outputs.selection_blob_sha }}
           TEST_BLOB_SHA: ${{ steps.bridge_repair.outputs.test_blob_sha }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "67aa1218924508d4caf4a1e999bdfb8b1b861f19"
           git diff --name-only eddc498cc330b1e4b255eb4e5712f13391dd8169 "$CARRIER_HEAD" > /tmp/pr945-carrier-files.txt
-          test "$(wc -l < /tmp/pr945-carrier-files.txt)" -eq 3
+          test "$(wc -l < /tmp/pr945-carrier-files.txt)" -eq 4
           grep -Fxq '.github/workflows/ci.yml' /tmp/pr945-carrier-files.txt
+          grep -Fxq 'src/twelve_six/data/current_clean_balanced_selection_v1.py' /tmp/pr945-carrier-files.txt
           grep -Fxq 'src/twelve_six/data/postmaterialization_balance_projection_v1.py' /tmp/pr945-carrier-files.txt
           grep -Fxq 'tests/test_postmaterialization_balance_projection_v1.py' /tmp/pr945-carrier-files.txt
           test "$(git rev-parse eddc498cc330b1e4b255eb4e5712f13391dd8169:tools/materialize_d03_postmaterialization_balance_v1.py)" = "$(git rev-parse "$CARRIER_HEAD":tools/materialize_d03_postmaterialization_balance_v1.py)"
           test "$(git hash-object src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$BRIDGE_BLOB_SHA"
+          test "$(git hash-object src/twelve_six/data/current_clean_balanced_selection_v1.py)" = "$SELECTION_BLOB_SHA"
           test "$(git hash-object tests/test_postmaterialization_balance_projection_v1.py)" = "$TEST_BLOB_SHA"
           git show "$CARRIER_HEAD":.github/workflows/ci.yml > /tmp/pr945-carrier-workflow.yml
           git show "$CARRIER_HEAD":src/twelve_six/data/postmaterialization_balance_projection_v1.py > /tmp/pr945-carrier-bridge.py
@@ -360,6 +368,7 @@ jobs:
           AUTH_BLOB_SHA: ${{ steps.clean_authority.outputs.authority_blob_sha }}
           CARRIER_HEAD: ${{ github.event.pull_request.head.sha }}
           BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
+          SELECTION_BLOB_SHA: ${{ steps.bridge_repair.outputs.selection_blob_sha }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -368,6 +377,10 @@ jobs:
           from pathlib import Path
 
           import tools.next100_106_balance_gate as gate
+          from twelve_six.data.current_clean_balanced_selection_v1 import (
+              build_current_clean_balanced_selection,
+              project_selected_current_clean_raw_records,
+          )
           from twelve_six.data.postmaterialization_balance_projection_v1 import (
               adapt_postmaterialization_family_vector_to_next100_106,
               build_balance_result_binding,
@@ -393,11 +406,17 @@ jobs:
               label="integrated current-clean balance authority",
           )
           root = Path("/tmp/current-clean")
+          composition_receipt_raw = (root / "composition_receipt.json").read_bytes()
+          survivor_records_raw = (root / "survivor_records.jsonl").read_bytes()
+          composition_receipt = load_strict_json_object(
+              composition_receipt_raw,
+              label="current-clean composition receipt",
+          )
           vector = build_current_clean_family_vector(
-              composition_receipt_raw=(root / "composition_receipt.json").read_bytes(),
+              composition_receipt_raw=composition_receipt_raw,
               survivor_inventory_raw=(root / "survivor_inventory.json").read_bytes(),
               repeat_proof_raw=(root / "repeat_proof.json").read_bytes(),
-              survivor_records_raw=(root / "survivor_records.jsonl").read_bytes(),
+              survivor_records_raw=survivor_records_raw,
               expected_composition_receipt_json_sha256=authority[
                   "composition_receipt_json_sha256"
               ],
@@ -468,6 +487,8 @@ jobs:
           )
           selection_ready = True
           selection_error = None
+          selection = None
+          selected_raw_record_count = 0
           try:
               require_balanced_selection_ready(
                   binding,
@@ -475,9 +496,52 @@ jobs:
                       "binding_identity_sha256"
                   ],
               )
+              selection = build_current_clean_balanced_selection(
+                  family_vector=vector,
+                  next100_input=adapted,
+                  balance_result=balance,
+                  balance_binding=binding,
+                  composition_receipt_raw=composition_receipt_raw,
+                  survivor_records_raw=survivor_records_raw,
+                  expected_family_vector_identity_sha256=vector[
+                      "family_vector_identity_sha256"
+                  ],
+                  expected_balance_binding_identity_sha256=binding[
+                      "binding_identity_sha256"
+                  ],
+                  expected_policy_identity_sha256=policy["policy_identity_sha256"],
+                  expected_result_identity_sha256=balance[
+                      "result_identity_sha256"
+                  ],
+              )
+              selected_raw = project_selected_current_clean_raw_records(
+                  selection,
+                  survivor_records_raw,
+                  expected_selection_identity_sha256=selection[
+                      "balanced_selection_identity_sha256"
+                  ],
+                  expected_retained_inventory_identity_sha256=vector[
+                      "record_inventory_digest_sha256"
+                  ],
+                  expected_decontamination_authority_sha256=composition_receipt[
+                      "decontamination_execution_identity_sha256"
+                  ],
+                  expected_dedup_authority_sha256=dedup[
+                      "evidence_identity_sha256"
+                  ],
+                  expected_balance_policy_identity_sha256=policy[
+                      "policy_identity_sha256"
+                  ],
+                  expected_balance_result_identity_sha256=balance[
+                      "result_identity_sha256"
+                  ],
+              )
+              selected_raw_record_count = len(selected_raw)
           except Exception as exc:
               selection_ready = False
               selection_error = str(exc)
+              selection = None
+              selected_raw_record_count = 0
 
           receipt = {
               "schema": "12-6.d03-real-current-clean-balance-execution.v4",
@@ -489,6 +553,9 @@ jobs:
               "product_candidate_merge_sha": "67aa1218924508d4caf4a1e999bdfb8b1b861f19",
               "carrier_head_sha": os.environ["CARRIER_HEAD"],
               "postmaterialization_bridge_blob_sha": os.environ["BRIDGE_BLOB_SHA"],
+              "balanced_selection_module_blob_sha": os.environ[
+                  "SELECTION_BLOB_SHA"
+              ],
               "composition_artifact_id": authority["composition_artifact_id"],
               "current_clean_execution_head_sha": authority[
                   "expected_execution_head_sha"
@@ -539,6 +606,12 @@ jobs:
                   "deterministic_maximum_allocation"
               ],
               "balanced_selection_ready": selection_ready,
+              "balanced_selection_identity_sha256": (
+                  None
+                  if selection is None
+                  else selection["balanced_selection_identity_sha256"]
+              ),
+              "balanced_selection_record_count": selected_raw_record_count,
               "selection_blocker": selection_error,
               "authorized_optimized_target_exposure": 0,
               "tokenizer_fit_authorized": False,
@@ -549,6 +622,8 @@ jobs:
           dump("/tmp/balance-out/next100-input.json", adapted)
           dump("/tmp/balance-out/balance-result.json", balance)
           dump("/tmp/balance-out/balance-binding.json", binding)
+          if selection is not None:
+              dump("/tmp/balance-out/balanced-selection.json", selection)
           dump("/tmp/balance-out/execution-receipt.json", receipt)
           print(json.dumps(receipt, sort_keys=True))
           PY
