@@ -156,6 +156,7 @@ def main() -> int:
         resolution,
         model=model,
         trainer=trainer,
+        terminal_recovery_authority=authority,
         expected_trusted_parent_binding_sha256=trusted["binding_sha256"],
         verified_trusted_recovery_authorities=(authority_token,),
         restore_rng=True,
