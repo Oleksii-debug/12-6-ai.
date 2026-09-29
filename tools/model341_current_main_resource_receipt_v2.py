@@ -24,14 +24,30 @@ EXPECTED_RUNTIME_PROJECT = {
     "requires-python": ">=3.11",
     "dependencies": ["numpy>=1.26", "safetensors>=0.5", "torch>=2.5"],
 }
-CAPTURE_PRECOMMIT_COMMENT_ID: int | None = None
+CAPTURE_PRECOMMIT_COMMENT_ID: int | None = 5887435637
 
 # Terminal v2 measurement authority is intentionally fail-closed until one exact
 # shared-CI execution has been captured and independently prepublished.
-CAPTURE_AUTHORITY_PUBLISHED = False
-EXPECTED_CAPTURE: dict[str, Any] | None = None
-EXPECTED_PROBE_REPORT_SHA256: str | None = None
-PREPUBLISHED_MEASUREMENT_AUTHORITY_SHA256: str | None = None
+CAPTURE_AUTHORITY_PUBLISHED = True
+EXPECTED_CAPTURE: dict[str, Any] | None = {
+    "repository": "Oleksii-debug/12-6-ai.",
+    "issue": 2280,
+    "pull_request": 2281,
+    "workflow_name": "CI",
+    "workflow_run_id": 36549101208,
+    "workflow_run_number": 4618,
+    "job_id": 109342583358,
+    "head_sha": "fd70099fe8a9bf44501762fa8c612624b597b132",
+    "base_sha": "b8257d174d11bf1d61728229312659f5eb3305b8",
+    "tested_merge_sha": "09f55ddc488e79a9d40d8b14f8e6aefd9e459f10",
+    "probe_tool_blob_sha1": EXPECTED_PROBE_TOOL_BLOB_SHA1,
+    "focused_test_blob_sha1": EXPECTED_FOCUSED_TEST_BLOB_SHA1,
+    "workflow_conclusion": "success",
+    "job_conclusion": "success",
+    "capture_line_count": 1,
+}
+EXPECTED_PROBE_REPORT_SHA256: str | None = "f0e2b7024abaac32976ffe2d38b6dd15aedf1a7e7608be142ee599e690f2dbe8"
+PREPUBLISHED_MEASUREMENT_AUTHORITY_SHA256: str | None = "a784ca37cef5b2aa419a9203665c7b4ee9000fc7deb1df05703bd2e89319bc68"
 
 _EXPECTED_TOP_LEVEL_KEYS = {
     "capture",
