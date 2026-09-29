@@ -1360,3 +1360,245 @@ def test_mutations_fail_closed_on_pointer_type_error(
     )
     assert retired.committed is False
     assert retired.blockers == ("current_run_pointer_not_object",)
+
+def test_activate_uses_absent_ref_force_with_lease(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+
+    original_run_git = current_run._run_git
+    pointer_push_args: list[str] | None = None
+
+    def capture_pointer_push(
+        repo_root: str | Path,
+        args: list[str],
+        *,
+        input_bytes: bytes | None = None,
+    ):
+        nonlocal pointer_push_args
+        if args and args[0] == "push" and args[-1].endswith(
+            f":{CURRENT_RUN_POINTER_REF}"
+        ):
+            pointer_push_args = list(args)
+        return original_run_git(repo_root, args, input_bytes=input_bytes)
+
+    monkeypatch.setattr(current_run, "_run_git", capture_pointer_push)
+    activated = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+
+    assert activated.committed is True
+    assert activated.post_write_reread_verified is True
+    assert pointer_push_args is not None
+    assert (
+        f"--force-with-lease={CURRENT_RUN_POINTER_REF}:"
+        in pointer_push_args
+    )
+
+
+def test_refresh_pointer_deletion_race_fails_closed_without_recreation(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    pointer = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert pointer.committed is True
+    assert pointer.written_remote_tip is not None
+    renewed = renew_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        expected_remote_tip=acquired.written_remote_tip,
+        ttl_seconds=3600,
+        now=NOW + timedelta(minutes=10),
+    )
+    assert renewed.committed is True
+
+    original_run_git = current_run._run_git
+    deleted = False
+    observed_push_args: list[str] | None = None
+
+    def delete_pointer_before_push(
+        repo_root: str | Path,
+        args: list[str],
+        *,
+        input_bytes: bytes | None = None,
+    ):
+        nonlocal deleted, observed_push_args
+        if (
+            not deleted
+            and args
+            and args[0] == "push"
+            and args[-1].endswith(f":{CURRENT_RUN_POINTER_REF}")
+        ):
+            deleted = True
+            observed_push_args = list(args)
+            _git(
+                "--git-dir",
+                str(remote),
+                "update-ref",
+                "-d",
+                CURRENT_RUN_POINTER_REF,
+            )
+        return original_run_git(repo_root, args, input_bytes=input_bytes)
+
+    monkeypatch.setattr(current_run, "_run_git", delete_pointer_before_push)
+    refreshed = refresh_current_run_authority(
+        writer_b,
+        str(remote),
+        manifest,
+        expected_pointer_tip=pointer.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW + timedelta(minutes=10),
+    )
+
+    assert deleted is True
+    assert observed_push_args is not None
+    assert (
+        f"--force-with-lease={CURRENT_RUN_POINTER_REF}:"
+        f"{pointer.written_remote_tip}"
+        in observed_push_args
+    )
+    assert refreshed.committed is False
+    assert refreshed.blockers == ("current_run_pointer_cas_conflict",)
+    assert refreshed.observed_remote_tip is None
+    assert (
+        _git("ls-remote", "--refs", str(remote), CURRENT_RUN_POINTER_REF)
+        == ""
+    )
+
+
+def test_retire_pointer_deletion_race_fails_closed_without_recreation(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    pointer = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert pointer.committed is True
+    assert pointer.written_remote_tip is not None
+
+    original_run_git = current_run._run_git
+    deleted = False
+    observed_push_args: list[str] | None = None
+
+    def delete_pointer_before_push(
+        repo_root: str | Path,
+        args: list[str],
+        *,
+        input_bytes: bytes | None = None,
+    ):
+        nonlocal deleted, observed_push_args
+        if (
+            not deleted
+            and args
+            and args[0] == "push"
+            and args[-1].endswith(f":{CURRENT_RUN_POINTER_REF}")
+        ):
+            deleted = True
+            observed_push_args = list(args)
+            _git(
+                "--git-dir",
+                str(remote),
+                "update-ref",
+                "-d",
+                CURRENT_RUN_POINTER_REF,
+            )
+        return original_run_git(repo_root, args, input_bytes=input_bytes)
+
+    monkeypatch.setattr(current_run, "_run_git", delete_pointer_before_push)
+    retired = retire_current_run_authority(
+        writer_a,
+        str(remote),
+        expected_pointer_tip=pointer.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+    )
+
+    assert deleted is True
+    assert observed_push_args is not None
+    assert (
+        f"--force-with-lease={CURRENT_RUN_POINTER_REF}:"
+        f"{pointer.written_remote_tip}"
+        in observed_push_args
+    )
+    assert retired.committed is False
+    assert retired.blockers == ("current_run_pointer_cas_conflict",)
+    assert retired.observed_remote_tip is None
+    assert (
+        _git("ls-remote", "--refs", str(remote), CURRENT_RUN_POINTER_REF)
+        == ""
+    )
+

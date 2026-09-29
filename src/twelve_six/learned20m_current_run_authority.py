@@ -900,6 +900,7 @@ def activate_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
@@ -1145,6 +1146,7 @@ def refresh_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
@@ -1284,6 +1286,7 @@ def retire_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
