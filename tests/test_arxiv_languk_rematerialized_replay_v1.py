@@ -308,3 +308,7 @@ def test_current_clean_bindings_and_combined_capacity_are_exact() -> None:
 def test_legacy_contaminated_execution_helpers_are_not_exposed() -> None:
     assert not hasattr(REPLAY_RUNNER, "_prepare_parent_execution_tree")
     assert not hasattr(REPLAY_RUNNER, "_replay_command")
+    source = Path(REPLAY_RUNNER.__file__).read_text(encoding="utf-8")
+    assert "build_post_admission_intake(" not in source
+    assert "PARENT_RUNNER_BLOB_SHA1" not in source
+    assert "PARENT_INTAKE_BLOB_SHA1" not in source
