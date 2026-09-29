@@ -136,3 +136,58 @@ def test_live_pinned_source_materialization_is_deterministic() -> None:
         "EVAL647_LIVE_SOURCE_DISCOVERY=" + json.dumps(discovered, sort_keys=True),
         stacklevel=1,
     )
+
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"value":NaN}',
+        '{"value":Infinity}',
+        '{"value":-Infinity}',
+        '{"value":1e400}',
+        '{"value":-1e400}',
+    ],
+)
+def test_strict_authority_loader_rejects_non_finite_numbers(
+    tmp_path: Path,
+    raw: str,
+) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError):
+        validator._load_mapping(path)
+
+
+def test_strict_authority_loader_rejects_nested_duplicate_members(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text(
+        '{"outer":{"training_allowed":false,"training_allowed":true}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate_json_key:training_allowed"):
+        validator._load_mapping(path)
+
+
+def test_strict_authority_loader_preserves_valid_finite_object(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text(
+        '{"count":2,"ratio":1e-3,"nested":{"allowed":false}}',
+        encoding="utf-8",
+    )
+    assert validator._load_mapping(path) == {
+        "count": 2,
+        "ratio": 1e-3,
+        "nested": {"allowed": False},
+    }
+
+
+def test_strict_authority_loader_requires_object_root(tmp_path: Path) -> None:
+    path = tmp_path / "authority.json"
+    path.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match="must contain a JSON object"):
+        validator._load_mapping(path)
