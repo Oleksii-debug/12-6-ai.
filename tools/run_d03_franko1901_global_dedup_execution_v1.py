@@ -501,27 +501,6 @@ def execute(
     indexed_seconds = time.perf_counter() - indexed_started
     matcher.verify_report(indexed_report)
 
-    rows, _ = matcher._validate_inventory(inventory)
-    validated = matcher.v1._validate_inventory(matcher._as_v1_inventory(rows))
-    fingerprints = [
-        matcher._fingerprint(row, payloads[row["source_id"]])
-        for row in validated
-    ]
-    pairs, work = indexed.candidate_pair_indices_with_stats(
-        matcher.v1,
-        fingerprints,
-        max_candidate_pairs=max_candidate_pairs,
-        max_index_postings=max_index_postings,
-        max_pair_expansions=max_pair_expansions,
-    )
-    work_stats = indexed.execution_stats(
-        len(fingerprints),
-        len(pairs),
-        index_postings=work["index_postings"],
-        pair_expansion_attempts=work["pair_expansion_attempts"],
-        unique_bucket_signatures=work["unique_bucket_signatures"],
-    )
-
     terminal = indexed_report.get("terminal_candidates")
     _require(isinstance(terminal, Mapping), "terminal dedup summary missing")
     _require(
@@ -567,7 +546,7 @@ def execute(
             "duplicate_cluster_count": terminal.get("duplicate_cluster_count"),
         },
         "indexed_execution": {
-            **work_stats,
+            "source_count": EXPECTED_COMBINED_OBJECTS,
             "max_candidate_pairs": max_candidate_pairs,
             "max_index_postings": max_index_postings,
             "max_pair_expansions": max_pair_expansions,
