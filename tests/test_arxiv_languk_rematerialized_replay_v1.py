@@ -13,8 +13,6 @@ import pytest
 from twelve_six.data.arxiv_languk_rematerialized_replay_v1 import (
     ARXIV,
     LANGUK,
-    PARENT_INTAKE_BLOB_SHA1,
-    PARENT_RUNNER_BLOB_SHA1,
     RematerializationError,
     build_receipt,
     canonical_json_bytes,
@@ -181,7 +179,8 @@ def test_receipt_requires_two_identical_passes_and_preserves_zero_truth() -> Non
     assert boundary["final_test_outcomes_read"] is False
     assert boundary["paid_compute_used"] is False
     assert boundary["foreign_pretrained_weights_used"] is False
-    assert boundary["external_llm_or_api_used_for_data_or_intelligence"] is False
+    assert "external_llm_or_api_used_for_data_or_intelligence" not in boundary
+    assert boundary["current_corpus_external_llm_free_claimed_by_this_replay"] is False
 
 
 def test_receipt_fails_on_second_pass_drift() -> None:
@@ -192,16 +191,6 @@ def test_receipt_fails_on_second_pass_drift() -> None:
         build_receipt(
             pass_results=[one, two],
             incumbent_runner_blob_sha1=PARENT_RUNNER_BLOB_SHA1,
-            incumbent_intake_blob_sha1=PARENT_INTAKE_BLOB_SHA1,
-        )
-
-
-def test_receipt_fails_on_incumbent_blob_drift() -> None:
-    one = _pass_result()
-    with pytest.raises(RematerializationError, match="incumbent runner blob drift"):
-        build_receipt(
-            pass_results=[one, dict(one)],
-            incumbent_runner_blob_sha1="0" * 40,
             incumbent_intake_blob_sha1=PARENT_INTAKE_BLOB_SHA1,
         )
 
@@ -222,71 +211,12 @@ def test_receipt_serialization_contains_no_payload_text() -> None:
 def _runner_args(tmp_path: Path) -> SimpleNamespace:
     return SimpleNamespace(
         v7_root=Path("v7-root"),
-        bulk_workspace=Path("bulk-workspace"),
-        v8_config=Path("configs/v8.json"),
-        data526_config=Path("configs/data526.json"),
-        v8_report=Path("authority/v8-report.json"),
-        v8_survivors=Path("authority/v8-survivors.json"),
-        data526_evidence=Path("authority/data526-evidence.json"),
-        data526_record_inventory=Path("authority/data526-inventory.json"),
-        rada_language_report=Path("authority/rada-language.json"),
-        rada_quality_privacy_jsonl=Path("authority/rada-quality-privacy.jsonl"),
-        rada_quality_privacy_report=Path("authority/rada-quality-privacy.json"),
-        expected_rada_report_sha256="a" * 64,
         arxiv_authority=Path("authority/arxiv.json"),
         languk_authority=Path("authority/languk.json"),
         output_report=tmp_path / "outer-report.json",
         output_survivors=tmp_path / "outer-survivors.json",
         output_receipt=tmp_path / "outer-receipt.json",
     )
-
-
-def test_replay_command_uses_extracted_exact_parent_tree_and_isolated_python(
-    tmp_path: Path,
-) -> None:
-    args = _runner_args(tmp_path)
-    parent_root = tmp_path / "parent-pr1800"
-    command = REPLAY_RUNNER._replay_command(
-        args,
-        parent_root=parent_root,
-        arxiv_candidate=tmp_path / "arxiv.jsonl",
-        languk_candidate=tmp_path / "languk.jsonl",
-        report=tmp_path / "report.json",
-        survivors=tmp_path / "survivors.json",
-    )
-
-    assert command[1] == "-I"
-    assert Path(command[2]) == parent_root / REPLAY_RUNNER.INCUMBENT_RUNNER_REL
-    assert Path(command[2]) != REPLAY_RUNNER.ROOT / REPLAY_RUNNER.INCUMBENT_RUNNER_REL
-
-
-def test_replay_command_ignores_substituted_current_checkout_runner(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    poison_root = tmp_path / "poison-current-checkout"
-    poison_runner = poison_root / REPLAY_RUNNER.INCUMBENT_RUNNER_REL
-    poison_runner.parent.mkdir(parents=True)
-    poison_runner.write_text("raise RuntimeError('substituted current checkout')\n")
-    poison_dependency = poison_root / "tools/run_d03_expanded_global_dedup_v9.py"
-    poison_dependency.write_text("raise RuntimeError('substituted transitive dependency')\n")
-    monkeypatch.setattr(REPLAY_RUNNER, "ROOT", poison_root)
-
-    args = _runner_args(tmp_path)
-    parent_root = tmp_path / "exact-parent-tree"
-    command = REPLAY_RUNNER._replay_command(
-        args,
-        parent_root=parent_root,
-        arxiv_candidate=tmp_path / "arxiv.jsonl",
-        languk_candidate=tmp_path / "languk.jsonl",
-        report=tmp_path / "report.json",
-        survivors=tmp_path / "survivors.json",
-    )
-
-    assert Path(command[2]) == parent_root / REPLAY_RUNNER.INCUMBENT_RUNNER_REL
-    assert Path(command[2]) != poison_runner
-    assert command[1] == "-I"
-
 
 def test_outer_outputs_reject_existing_and_symlink_targets(tmp_path: Path) -> None:
     args = _runner_args(tmp_path)
@@ -318,13 +248,9 @@ def test_exclusive_output_publication_never_clobbers(tmp_path: Path) -> None:
     assert output.read_bytes() == b"first"
 
 
-def test_repaired_receipt_binds_wrapper_and_exact_parent_execution() -> None:
+def test_repaired_receipt_binds_current_clean_execution_and_scopes_provenance() -> None:
     one = _pass_result()
-    receipt = build_receipt(
-        pass_results=[one, dict(one)],
-        incumbent_runner_blob_sha1=PARENT_RUNNER_BLOB_SHA1,
-        incumbent_intake_blob_sha1=PARENT_INTAKE_BLOB_SHA1,
-    )
+    receipt = build_receipt(pass_results=[one, dict(one)])
     wrapper = {
         "source_head_sha": "a" * 40,
         "runner_path": REPLAY_RUNNER.WRAPPER_RUNNER_REL.as_posix(),
@@ -332,18 +258,34 @@ def test_repaired_receipt_binds_wrapper_and_exact_parent_execution() -> None:
         "helper_path": REPLAY_RUNNER.WRAPPER_HELPER_REL.as_posix(),
         "helper_blob_sha1": "c" * 40,
     }
+    current = {
+        "clean_successor_tool_git_blob_sha1": REPLAY_RUNNER.EXPECTED_CLEAN_SUCCESSOR_BLOB,
+        "survivor_tool_git_blob_sha1": REPLAY_RUNNER.EXPECTED_SURVIVOR_TOOL_BLOB,
+        "indexed_executor_git_blob_sha1": REPLAY_RUNNER.EXPECTED_INDEXED_EXECUTOR_BLOB,
+        "source_intake_git_blob_sha1": REPLAY_RUNNER.EXPECTED_CURRENT_INTAKE_BLOB,
+    }
+
     repaired = REPLAY_RUNNER._finalize_receipt(
         receipt,
         wrapper_execution_authority=wrapper,
+        current_clean_execution_authority=current,
     )
 
     assert repaired["schema_version"] == REPLAY_RUNNER.REPAIRED_RECEIPT_SCHEMA
-    assert repaired["parent_authority"]["execution_tree_mode"] == (
-        "EXTRACTED_EXACT_GIT_TREE"
-    )
-    assert repaired["parent_authority"]["isolated_python_mode"] is True
-    assert repaired["wrapper_execution_authority"] == wrapper
-    assert repaired["truth_boundary"]["canonical_capacity_credited"] == 0
+    assert repaired["historical_parent_lineage"][
+        "used_as_current_corpus_execution_authority"
+    ] is False
+    assert repaired["current_clean_execution_authority"][
+        "clean_successor_product_pr"
+    ] == 2107
+    assert repaired["current_clean_execution_authority"][
+        "indexed_executor_product_pr"
+    ] == 1459
+    truth = repaired["truth_boundary"]
+    assert "external_llm_or_api_used_for_data_or_intelligence" not in truth
+    assert truth["current_corpus_external_llm_free_claimed_by_this_replay"] is False
+    assert truth["canonical_capacity_credited"] == 0
+    assert truth["authorized_optimized_target_exposure"] == 0
 
     bad = dict(wrapper)
     bad["source_head_sha"] = "not-a-git-sha"
@@ -351,4 +293,24 @@ def test_repaired_receipt_binds_wrapper_and_exact_parent_execution() -> None:
         REPLAY_RUNNER._finalize_receipt(
             receipt,
             wrapper_execution_authority=bad,
+            current_clean_execution_authority=current,
         )
+
+
+def test_current_clean_bindings_and_combined_capacity_are_exact() -> None:
+    assert REPLAY_RUNNER.CURRENT_MAIN_AT_CONVERGENCE == (
+        "7b3df41c10a826183fab0b04ae85a90cdf0ce351"
+    )
+    assert REPLAY_RUNNER.CURRENT_CLEAN_BASE_PR == 2107
+    assert REPLAY_RUNNER.CURRENT_INDEXED_EXECUTOR_PR == 1459
+    assert REPLAY_RUNNER.EXPECTED_BASE_PRE_DEDUP_SOURCE_COUNT == 263
+    assert REPLAY_RUNNER.EXPECTED_BASE_PRE_DEDUP_BYTES == 6_093_965
+    assert REPLAY_RUNNER.EXPECTED_EXTENSION_SOURCE_COUNT == 1_280
+    assert REPLAY_RUNNER.EXPECTED_EXTENSION_BYTES == 3_949_184
+    assert REPLAY_RUNNER.EXPECTED_COMBINED_PRE_DEDUP_SOURCE_COUNT == 1_543
+    assert REPLAY_RUNNER.EXPECTED_COMBINED_PRE_DEDUP_BYTES == 10_043_149
+
+
+def test_legacy_contaminated_execution_helpers_are_not_exposed() -> None:
+    assert not hasattr(REPLAY_RUNNER, "_prepare_parent_execution_tree")
+    assert not hasattr(REPLAY_RUNNER, "_replay_command")
