@@ -118,3 +118,21 @@ def test_lock_text_rejects_duplicate_distribution(tmp_path: Path) -> None:
     )
     with pytest.raises(verifier.LOCK.DependencyLockError, match="duplicate locked distribution"):
         verifier._validate_lock_text(path, 2)
+
+
+def test_subprocess_environment_forces_utf8_and_preserves_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    verifier = _load_verifier()
+    monkeypatch.setenv("TWELVE_SIX_ENV_BASE_MARKER", "base")
+    env = verifier._subprocess_env(
+        {
+            "TWELVE_SIX_ENV_OVERRIDE_MARKER": "override",
+            "PYTHONUTF8": "0",
+            "PYTHONIOENCODING": "cp1252",
+        }
+    )
+    assert env["TWELVE_SIX_ENV_BASE_MARKER"] == "base"
+    assert env["TWELVE_SIX_ENV_OVERRIDE_MARKER"] == "override"
+    assert env["PYTHONUTF8"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8"

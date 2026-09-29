@@ -245,3 +245,11 @@ def test_windows_workflow_rejects_failed_generation_stdout() -> None:
     ).read_text(encoding="utf-8")
     assert "prompt leaked into stdout" in workflow
     assert "failed generation unexpectedly wrote stdout" in workflow
+
+
+def test_windows_locked_profile_forces_utf8_for_unicode_path() -> None:
+    workflow = (
+        ROOT / ".github" / "workflows" / "d08-windows-product-packaging.yml"
+    ).read_text(encoding="utf-8")
+    assert "$env:PYTHONUTF8 = '1'" in workflow
+    assert "$env:PYTHONIOENCODING = 'utf-8'" in workflow

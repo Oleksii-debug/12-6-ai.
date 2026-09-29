@@ -118,6 +118,8 @@ jobs:
           New-Item -ItemType Directory -Path $root | Out-Null
           Expand-Archive -LiteralPath $zip -DestinationPath $root
           Set-Location -LiteralPath $root
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
           python tools/verify_locked_environment.py `
             --profile windows-x86_64 `
             --source-sha '${{ needs.source-and-app.outputs.source_sha }}' `

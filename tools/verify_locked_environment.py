@@ -120,18 +120,28 @@ def _venv_script(directory: Path, name: str) -> Path:
     return directory / "bin" / name
 
 
+def _subprocess_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ)
+    if overrides is not None:
+        env.update(overrides)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
 def _run(command: list[str | Path], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
     rendered = [str(item) for item in command]
-    subprocess.run(rendered, cwd=cwd, env=env, check=True)
+    subprocess.run(rendered, cwd=cwd, env=_subprocess_env(env), check=True)
 
 
 def _output(command: list[str | Path], *, cwd: Path = ROOT) -> str:
     completed = subprocess.run(
         [str(item) for item in command],
         cwd=cwd,
+        env=_subprocess_env(),
         check=True,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     )
     return completed.stdout.strip()
 
@@ -158,12 +168,11 @@ def _install_locked(python: Path, profile: dict[str, Any], groups: tuple[str, ..
 
 
 def _offline_env() -> dict[str, str]:
-    env = dict(os.environ)
+    env = _subprocess_env()
     env.update(
         {
             "PIP_NO_INDEX": "1",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
-            "PYTHONUTF8": "1",
             "SOURCE_DATE_EPOCH": "0",
         }
     )
@@ -189,9 +198,10 @@ def _smoke(python: Path, environment: Path) -> None:
     completed = subprocess.run(
         [str(command), "--help"],
         cwd=ROOT,
+        env=_subprocess_env(),
         check=True,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     )
     if "usage: twelve-six-generate" not in completed.stdout:
         raise RuntimeError("console-script help smoke did not expose expected CLI")
