@@ -213,14 +213,11 @@ def test_runtime_report_normalizes_missing_runtime_lock(
 ) -> None:
     lock = tmp_path / "12-6-lock"
     lock.mkdir()
-    profile = {
-        "profile_id": "windows-x86_64",
-        "python": {"version": "3.11.9"},
-        "locks": {"runtime": {"sha256": "e" * 64}},
-    }
-    profile["manifest_sha256"] = WINDOWS_LAUNCHER.hashlib.sha256(
-        WINDOWS_LAUNCHER._canonical_json_bytes(profile)
-    ).hexdigest()
+    profile = json.loads(
+        (ROOT / "requirements" / "locks" / "windows-x86_64" / "profile.json").read_text(
+            encoding="utf-8"
+        )
+    )
     (lock / "profile.json").write_text(
         json.dumps(profile),
         encoding="utf-8",
@@ -353,6 +350,7 @@ def test_validate_evidence_inputs_rejects_nonready_status(tmp_path: Path) -> Non
                 "runtime": {
                     "profile_id": "windows-x86_64",
                     "python_actual": "3.11.9",
+                    "profile_manifest_sha256": ARTIFACT_MANIFEST._WINDOWS_PROFILE_MANIFEST_SHA256,
                 },
                 "checkpoint": None,
                 "errors": ["runtime failed"],
@@ -393,7 +391,7 @@ def test_validate_evidence_inputs_rejects_nonready_status(tmp_path: Path) -> Non
                     "schema_version": "12-6.windows-runtime-artifact.v1",
                     "profile_id": "windows-x86_64",
                     "python_version": "3.11.9",
-                    "profile_manifest_sha256": "b" * 64,
+                    "profile_manifest_sha256": ARTIFACT_MANIFEST._WINDOWS_PROFILE_MANIFEST_SHA256,
                     "contains_application_wheel": False,
                     "contains_checkpoint": False,
                     "files": {},

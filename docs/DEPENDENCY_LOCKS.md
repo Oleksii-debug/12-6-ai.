@@ -50,14 +50,14 @@ For D05/C01/D10 artifact provenance, use the physical SHA-256 of `requirements/l
 1. identify the native committed profile and require its exact CPython patch;
 2. validate index/profile self-hashes, `pyproject.toml` freshness and every lock file checksum;
 3. require every non-comment lock line to be an exact `name==version` with SHA-256 and reject duplicates;
-4. create a clean editable/dev virtual environment using the platform-native `bin` or `Scripts` layout;
+4. create a clean build/dev virtual environment using the platform-native `bin` or `Scripts` layout;
 5. install toolchain, runtime and dev closures with `pip --require-hashes --no-deps`;
-6. install the project editable with build isolation disabled and network disabled;
-7. verify project imports and the installed `twelve-six-generate --help` console script;
-8. build a wheel with build isolation disabled and network disabled;
+6. build the project wheel directly from the exact source tree with build isolation and network disabled, then install that exact wheel into the build/dev environment;
+7. verify project imports and the installed `twelve-six-generate --help` console script from the wheel installed in the build/dev environment;
+8. retain that same exact wheel as the artifact under qualification;
 9. create a second clean runtime virtual environment, install only locked toolchain/runtime dependencies and then the wheel with no dependency resolution;
 10. verify wheel imports and console script again;
-11. when explicitly requested by an authority workflow, run repository policy, Ruff, focused S0 convergence integration, full pytest and stage-candidate validation from the locked editable environment;
+11. when explicitly requested by an authority workflow, run repository policy, Ruff, focused S0 convergence integration, full pytest and stage-candidate validation from the locked build/dev environment;
 12. emit a source-SHA-bound environment evidence JSON with lock identities, wheel SHA-256, installed distribution inventory and a self-hash.
 
 The resolver/bootstrap utility is not an authority path. It may be used only to propose refreshed lock artifacts. A refresh becomes authoritative only after the generated files are committed and consuming clean-install CI passes on the exact resulting head.

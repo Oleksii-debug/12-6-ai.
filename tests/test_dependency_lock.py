@@ -136,3 +136,30 @@ def test_subprocess_environment_forces_utf8_and_preserves_overrides(
     assert env["TWELVE_SIX_ENV_OVERRIDE_MARKER"] == "override"
     assert env["PYTHONUTF8"] == "1"
     assert env["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_project_wheel_build_avoids_editable_pth_on_unicode_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    verifier = _load_verifier()
+    wheel_dir = tmp_path / "dist"
+    captured: list[tuple[list[str], dict[str, str] | None]] = []
+
+    def fake_run(command, *, cwd=verifier.ROOT, env=None):
+        del cwd
+        rendered = [str(item) for item in command]
+        captured.append((rendered, env))
+        wheel_dir.mkdir(parents=True, exist_ok=True)
+        (wheel_dir / "twelve_six_ai-0.2.0.dev0-py3-none-any.whl").write_bytes(b"fixture")
+
+    monkeypatch.setattr(verifier, "_run", fake_run)
+    offline = {"PIP_NO_INDEX": "1"}
+    wheel = verifier._build_project_wheel(Path("python"), wheel_dir, env=offline)
+
+    command, env = captured[0]
+    assert command[:4] == ["python", "-m", "pip", "wheel"]
+    assert "-e" not in command
+    assert "--editable" not in command
+    assert command[-1] == str(verifier.ROOT)
+    assert env == offline
+    assert wheel.name == "twelve_six_ai-0.2.0.dev0-py3-none-any.whl"

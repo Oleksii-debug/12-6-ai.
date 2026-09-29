@@ -1,4 +1,4 @@
-"""Verify committed dependency locks and clean wheel/editable installs."""
+"""Verify committed dependency locks and clean wheel installs from source."""
 
 from __future__ import annotations
 
@@ -227,6 +227,28 @@ def _run_repo_checks(python: Path) -> None:
     _run([python, "tools/validate_stage_candidate.py", "configs/releases/s0_candidate.template.json"])
 
 
+def _build_project_wheel(python: Path, wheel_dir: Path, *, env: dict[str, str]) -> Path:
+    wheel_dir.mkdir()
+    _run(
+        [
+            python,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--no-build-isolation",
+            "--wheel-dir",
+            wheel_dir,
+            ROOT,
+        ],
+        env=env,
+    )
+    wheels = sorted(wheel_dir.glob("twelve_six_ai-*.whl"))
+    if len(wheels) != 1:
+        raise RuntimeError(f"expected exactly one project wheel, found {len(wheels)}")
+    return wheels[0]
+
+
 def verify_install(
     *,
     profile_id: str | None,
@@ -240,48 +262,29 @@ def verify_install(
 
     with tempfile.TemporaryDirectory(prefix="twelve-six-lock-") as temp_name:
         temp = Path(temp_name)
-        editable_env = temp / "editable"
+        dev_env = temp / "dev"
         wheel_env = temp / "wheel"
         wheel_dir = temp / "dist"
-        venv.EnvBuilder(with_pip=True, clear=True).create(editable_env)
-        editable_python = _venv_python(editable_env)
-        _install_locked(editable_python, profile, ("toolchain", "runtime", "dev"))
+        venv.EnvBuilder(with_pip=True, clear=True).create(dev_env)
+        dev_python = _venv_python(dev_env)
+        _install_locked(dev_python, profile, ("toolchain", "runtime", "dev"))
         offline = _offline_env()
+        wheel = _build_project_wheel(dev_python, wheel_dir, env=offline)
         _run(
             [
-                editable_python,
+                dev_python,
                 "-m",
                 "pip",
                 "install",
                 "--no-deps",
                 "--no-build-isolation",
-                "-e",
-                ROOT,
+                wheel,
             ],
             env=offline,
         )
-        _smoke(editable_python, editable_env)
-        wheel_dir.mkdir()
-        _run(
-            [
-                editable_python,
-                "-m",
-                "pip",
-                "wheel",
-                "--no-deps",
-                "--no-build-isolation",
-                "--wheel-dir",
-                wheel_dir,
-                ROOT,
-            ],
-            env=offline,
-        )
-        wheels = sorted(wheel_dir.glob("twelve_six_ai-*.whl"))
-        if len(wheels) != 1:
-            raise RuntimeError(f"expected exactly one project wheel, found {len(wheels)}")
-        wheel = wheels[0]
+        _smoke(dev_python, dev_env)
         if run_repo_checks:
-            _run_repo_checks(editable_python)
+            _run_repo_checks(dev_python)
 
         venv.EnvBuilder(with_pip=True, clear=True).create(wheel_env)
         wheel_python = _venv_python(wheel_env)
@@ -302,7 +305,7 @@ def verify_install(
         installed = _installed_distributions(wheel_python)
 
         evidence: dict[str, Any] = {
-            "schema_version": "12-6.locked-environment-evidence.v1",
+            "schema_version": "12-6.locked-environment-evidence.v2",
             "source_sha": source_sha or "UNBOUND_LOCAL",
             "profile_id": profile["profile_id"],
             "python": profile["python"],
@@ -323,7 +326,7 @@ def verify_install(
             "installed_distributions_sha256": hashlib.sha256(_canonical_bytes(installed)).hexdigest(),
             "verification": {
                 "committed_lock_validation": "PASS",
-                "editable_install_import_cli": "PASS",
+                "source_wheel_build_install_import_cli": "PASS",
                 "wheel_install_import_cli": "PASS",
                 "repo_checks": "PASS" if run_repo_checks else "NOT_RUN",
             },
