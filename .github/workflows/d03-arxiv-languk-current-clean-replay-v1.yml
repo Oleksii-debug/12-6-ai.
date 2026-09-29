@@ -1,0 +1,179 @@
+name: D03 ArXiv LangUK Current-Clean Replay V1
+
+on:
+  pull_request:
+    paths:
+      - "src/twelve_six/data/arxiv_languk_rematerialized_replay_v1.py"
+      - "tools/run_d03_arxiv_languk_rematerialized_replay_v1.py"
+      - "tests/test_arxiv_languk_rematerialized_replay_v1.py"
+      - ".github/workflows/d03-arxiv-languk-current-clean-replay-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-arxiv-languk-current-clean-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  physical-current-clean-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Prove exact Product checkout and syntax
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python -m py_compile \
+            src/twelve_six/data/arxiv_languk_rematerialized_replay_v1.py \
+            tools/run_d03_arxiv_languk_rematerialized_replay_v1.py \
+            tests/test_arxiv_languk_rematerialized_replay_v1.py
+
+      - name: Checkout exact terminal V7 authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d3333ec1b4a508df232a5aefccd6686adda745fb
+          path: _terminal_v7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install exact physical replay dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-cache-dir "pyarrow==17.0.0"
+          python - <<'PY'
+          import pyarrow
+          assert pyarrow.__version__ == "17.0.0"
+          print("PYARROW_EXACT=17.0.0")
+          PY
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Execute two-pass current-clean ArXiv LangUK replay
+        run: >-
+          python tools/run_d03_arxiv_languk_rematerialized_replay_v1.py
+          --workspace "$RUNNER_TEMP/arxiv-languk-current-clean"
+          --v7-root _terminal_v7
+          --output-report "$RUNNER_TEMP/current-clean-report.json"
+          --output-survivors "$RUNNER_TEMP/current-clean-survivors.json"
+          --output-receipt "$RUNNER_TEMP/current-clean-receipt.json"
+
+      - name: Verify text-free terminal replay authority
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          report_path = root / "current-clean-report.json"
+          survivor_path = root / "current-clean-survivors.json"
+          receipt_path = root / "current-clean-receipt.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          survivors = json.loads(survivor_path.read_text(encoding="utf-8"))
+          receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+          vector = report["source_vector"]
+          assert vector["source_object_count"] == 1543
+          assert vector["source_capacity_bytes_before_global_dedup"] == 10_043_149
+          assert report["clean_base_authority"]["clean_successor_product_pr"] == 2107
+          assert report["matcher_lineage"]["performance_executor_product_pr"] == 1459
+          truth = report["truth_boundary"]
+          assert truth["clean_nomis_free_base_used"] is True
+          assert truth["global_dedup_execution_complete"] is True
+          assert truth["current_corpus_external_llm_free_claimed_by_this_replay"] is False
+          assert "external_llm_or_api_used_for_data_or_intelligence" not in truth
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+
+          passes = receipt["two_clean_passes"]
+          assert len(passes) == 2
+          assert passes[0] == passes[1]
+          assert receipt["reproducibility"]["report_files_byte_identical"] is True
+          assert receipt["reproducibility"]["survivor_files_byte_identical"] is True
+          assert receipt["historical_parent_lineage"][
+              "used_as_current_corpus_execution_authority"
+          ] is False
+          assert receipt["current_clean_execution_authority"][
+              "clean_successor_product_pr"
+          ] == 2107
+          assert receipt["current_clean_execution_authority"][
+              "indexed_executor_product_pr"
+          ] == 1459
+
+          for path in (report_path, survivor_path, receipt_path):
+              raw = path.read_bytes()
+              assert b'"text":' not in raw
+              assert b"232_616_926" not in raw
+              print(f"{path.name.upper().replace('-', '_')}_SHA256={hashlib.sha256(raw).hexdigest()}")
+
+          summary = {
+              "schema_version": "12-6.d03-arxiv-languk-current-clean-terminal-summary.v1",
+              "execution_head_sha": os.environ["SOURCE_SHA"],
+              "two_clean_replay_passes_byte_identical": True,
+              "clean_base_product_pr": 2107,
+              "indexed_executor_product_pr": 1459,
+              "pre_global_dedup_source_objects": vector["source_object_count"],
+              "pre_global_dedup_bytes": vector["source_capacity_bytes_before_global_dedup"],
+              "post_global_dedup_unique_bytes": vector[
+                  "conservative_unique_capacity_bytes_after_global_dedup"
+              ],
+              "duplicate_discount_bytes": vector["duplicate_discount_bytes"],
+              "duplicate_cluster_count": vector["duplicate_cluster_count"],
+              "survivor_source_objects": survivors[
+                  "post_dedup_survivor_source_object_count"
+              ],
+              "survivor_bytes": survivors["post_dedup_declared_capacity_bytes"],
+              "report_sha256": report["report_sha256"],
+              "survivor_authority_sha256": survivors["survivor_authority_sha256"],
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "raw_payloads_uploaded": False,
+          }
+          (root / "terminal-summary.json").write_text(
+              json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload text-free current-clean replay evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-arxiv-languk-current-clean-${{ env.SOURCE_SHA }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            ${{ runner.temp }}/current-clean-report.json
+            ${{ runner.temp }}/current-clean-survivors.json
+            ${{ runner.temp }}/current-clean-receipt.json
+            ${{ runner.temp }}/terminal-summary.json
