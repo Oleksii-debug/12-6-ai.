@@ -48,6 +48,16 @@ def _load_json(path: Path) -> Any:
     )
 
 
+def _print_input_failure(label: str, exc: BaseException) -> int:
+    print(
+        json.dumps(
+            {"status": "FAIL", "error": f"invalid {label}: {exc}"},
+            sort_keys=True,
+        )
+    )
+    return 2
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
@@ -77,7 +87,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    policy = _load_json(args.policy)
+    try:
+        policy = _load_json(args.policy)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        return _print_input_failure("policy JSON", exc)
     validate_policy(policy)
     if args.bindings is None:
         if args.trusted_authorities is not None:
@@ -94,8 +107,14 @@ def main() -> int:
             parser.error(
                 "--expected-trusted-authorities-identity-sha256 is required with --bindings"
             )
-        bindings = _load_json(args.bindings)
-        trusted_authorities = _load_json(args.trusted_authorities)
+        try:
+            bindings = _load_json(args.bindings)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            return _print_input_failure("bindings JSON", exc)
+        try:
+            trusted_authorities = _load_json(args.trusted_authorities)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            return _print_input_failure("trusted-authorities JSON", exc)
         result = bind_terminal_authorities(
             policy,
             bindings,
