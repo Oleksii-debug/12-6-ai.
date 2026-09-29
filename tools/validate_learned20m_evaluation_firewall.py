@@ -40,7 +40,7 @@ def _load_policy(path: Path) -> dict[str, Any]:
         parse_float=_parse_finite_float,
     )
     if not isinstance(value, dict):
-        raise ValueError("evaluation firewall policy root must be an object")
+        raise TypeError("evaluation firewall policy root must be an object")
     return value
 
 
@@ -52,7 +52,7 @@ def main() -> int:
     path = args.policy if args.policy.is_absolute() else args.repo_root / args.policy
     try:
         policy = _load_policy(path)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         print(json.dumps({"status": "FAIL", "error": str(exc)}, sort_keys=True))
         return 2
     result = validate_policy(policy)
