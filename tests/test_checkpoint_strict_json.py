@@ -32,7 +32,7 @@ class NumpyModel:
         self.weights = state["weights"].copy()
 
 
-def _identity() -> CheckpointIdentity:
+def _identity(*, training_lr: float = 0.25) -> CheckpointIdentity:
     return CheckpointIdentity(
         git_sha="a" * 40,
         model_spec={"kind": "strict-json-regression", "parameters": 3},
@@ -41,7 +41,7 @@ def _identity() -> CheckpointIdentity:
         tokenizer_vocab_hash="c" * 64,
         dataset_manifest_hash="d" * 64,
         run_manifest_hash="e" * 64,
-        training_config={"lr": 0.25},
+        training_config={"lr": training_lr},
         seed=7,
         precision="float64",
         step=1,
@@ -214,6 +214,23 @@ def test_save_rejects_nonfinite_state_before_publication(
 
     with pytest.raises(CheckpointIntegrityError, match="strict finite JSON"):
         _save(checkpoint, trainer_state={"loss": value})
+
+    assert not checkpoint.exists()
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_save_rejects_nonfinite_identity_before_publication(
+    tmp_path: Path,
+    value: float,
+) -> None:
+    checkpoint = tmp_path / "save-nonfinite-identity"
+
+    with pytest.raises(CheckpointIntegrityError, match="strict finite JSON"):
+        save_checkpoint(
+            checkpoint,
+            model=NumpyModel([1.0, 2.0, 3.0]),
+            identity=_identity(training_lr=value),
+        )
 
     assert not checkpoint.exists()
 
