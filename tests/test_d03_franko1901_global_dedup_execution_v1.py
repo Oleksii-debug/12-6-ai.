@@ -208,6 +208,13 @@ def test_production_execution_does_not_reintroduce_all_pairs_reference() -> None
     assert '"indexed_executor_performance_equivalence_authority": "MERGED_PR_1459"' in source
 
 
+def test_execution_does_not_rebuild_index_only_for_telemetry() -> None:
+    mod = _load()
+    source = inspect.getsource(mod.execute)
+    assert "candidate_pair_indices_with_stats" not in source
+    assert "execution_stats(" not in source
+
+
 def test_execute_uses_exact_three_part_franko_authority() -> None:
     mod = _load()
     source = inspect.getsource(mod.execute)
