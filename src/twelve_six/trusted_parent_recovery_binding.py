@@ -495,6 +495,7 @@ def restore_trusted_same_provider_resume(
     *,
     model: Any,
     trainer: Any,
+    terminal_recovery_authority: Mapping[str, Any],
     expected_trusted_parent_binding_sha256: str,
     verified_trusted_recovery_authorities: Collection[str],
     strict_model: bool = True,
@@ -529,11 +530,18 @@ def restore_trusted_same_provider_resume(
     if trusted["binding_sha256"] != expected_trusted_parent_binding_sha256:
         raise TrustedParentRecoveryBindingError("trusted_parent_binding_expected_mismatch")
 
+    authority = _exact_authority(terminal_recovery_authority)
+    if authority["evidence_sha256"] != expected_trusted_parent_binding_sha256:
+        raise TrustedParentRecoveryBindingError(
+            "terminal_recovery_authority_evidence_binding_mismatch"
+        )
+    expected_authority_token = trusted_recovery_authority_token(authority)
     authority_token = binding_section.get("trusted_parent_recovery_authority_token")
-    if (
-        not isinstance(authority_token, str)
-        or authority_token not in set(verified_trusted_recovery_authorities)
-    ):
+    if authority_token != expected_authority_token:
+        raise TrustedParentRecoveryBindingError(
+            "trusted_parent_recovery_authority_token_mismatch"
+        )
+    if expected_authority_token not in set(verified_trusted_recovery_authorities):
         raise TrustedParentRecoveryBindingError(
             "trusted_parent_recovery_authority_not_verified"
         )
@@ -551,35 +559,18 @@ def restore_trusted_same_provider_resume(
     if sidecar.get("schema") != SIDECAR_SCHEMA:
         raise TrustedParentRecoveryBindingError("validated_d04_resume_state_schema_invalid")
 
-    exact_checks = {
-        "checkpoint_id": reference["checkpoint_id"],
-        "checkpoint_manifest_sha256": reference["manifest_sha256"],
-        "recovery_pointer_sha256": reference["pointer_sha256"],
-        "recovery_generation": reference["generation"],
-        "recovery_object_key": reference["object_key"],
-        "source_git_sha": reference["source_sha"],
-        "run_manifest_sha256": reference["run_manifest_hash"],
-        "previous_run_id": _manifest_previous_run_id(resolution.manifest),
-        "optimizer_step": reference["optimizer_step"],
-        "tokens_seen": reference["tokens_seen"],
-        "d04_state_identity_sha256": sidecar.get("state_identity_sha256"),
-        "ordered_next_exposure_identity_sha256": sidecar.get(
-            "ordered_next_exposure_identity_sha256"
-        ),
-        "ledger_identity_sha256": sidecar.get("ledger_identity_sha256"),
-        "materialization_identity_sha256": sidecar.get(
-            "materialization_identity_sha256"
-        ),
-        "packing_identity_sha256": sidecar.get("packing_identity_sha256"),
-        "exposure_plan_identity_sha256": sidecar.get(
-            "exposure_plan_identity_sha256"
-        ),
-    }
-    for field, expected in exact_checks.items():
-        if trusted.get(field) != expected:
-            raise TrustedParentRecoveryBindingError(
-                f"trusted_parent_{field}_resolution_mismatch"
-            )
+    reprojection = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class=trusted["provider_class"],
+        provider_id=trusted["provider_id"],
+        provider_session_id=trusted["provider_session_id"],
+        previous_provider_session_id=trusted["previous_provider_session_id"],
+        terminal_recovery_authority=authority,
+    )
+    if reprojection != trusted:
+        raise TrustedParentRecoveryBindingError(
+            "trusted_parent_binding_resolution_mismatch"
+        )
 
     return load_trainer_checkpoint(
         resolution.content_path,
