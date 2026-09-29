@@ -1361,6 +1361,7 @@ def test_mutations_fail_closed_on_pointer_type_error(
     assert retired.committed is False
     assert retired.blockers == ("current_run_pointer_not_object",)
 
+
 def test_activate_uses_absent_ref_force_with_lease(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
