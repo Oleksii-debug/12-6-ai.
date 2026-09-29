@@ -443,3 +443,34 @@ def test_validate_manifest_files_rejects_post_manifest_mutation(tmp_path: Path) 
 
     with pytest.raises(ValueError, match="file inventory/hash mismatch"):
         ARTIFACT_MANIFEST._validate_manifest_files(manifest_path, manifest)
+
+
+def test_application_manifest_rejects_nested_runtime_wheel(tmp_path: Path) -> None:
+    _write_wheel(tmp_path, ["twelve_six/__init__.py"])
+    nested = tmp_path / "nested" / "numpy-2.4.6-py3-none-any.whl"
+    nested.parent.mkdir()
+    nested.write_bytes(b"dependency-wheel-fixture")
+
+    with pytest.raises(RuntimeError, match="unexpected wheel bytes"):
+        ARTIFACT_MANIFEST._application(tmp_path, "e" * 40)
+
+
+def test_runtime_manifest_rejects_wheel_outside_wheelhouse(tmp_path: Path) -> None:
+    lock = tmp_path / "12-6-lock"
+    lock.mkdir()
+    (lock / "profile.json").write_text(
+        json.dumps(
+            {
+                "profile_id": "windows-x86_64",
+                "python": {"version": "3.11.9"},
+                "manifest_sha256": "f" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+    wheel = tmp_path / "cache" / "numpy-2.4.6-py3-none-any.whl"
+    wheel.parent.mkdir()
+    wheel.write_bytes(b"dependency-wheel-fixture")
+
+    with pytest.raises(RuntimeError, match="outside canonical wheelhouse"):
+        ARTIFACT_MANIFEST._runtime(tmp_path)

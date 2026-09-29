@@ -239,6 +239,18 @@ def _application(root: Path, source_sha: str) -> None:
     wheels = sorted(root.glob("twelve_six_ai-*.whl"))
     if len(wheels) != 1:
         raise RuntimeError(f"expected exactly one application wheel, found {len(wheels)}")
+    artifact_wheels = sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix.casefold() == ".whl"
+    )
+    if artifact_wheels != wheels:
+        unexpected = [
+            path.relative_to(root).as_posix()
+            for path in artifact_wheels
+            if path not in wheels
+        ]
+        raise RuntimeError(f"application artifact contains unexpected wheel bytes: {unexpected}")
     with zipfile.ZipFile(wheels[0]) as archive:
         names = archive.namelist()
     forbidden = sorted(name for name in names if _is_model_checkpoint_payload(name))
@@ -268,7 +280,25 @@ def _application(root: Path, source_sha: str) -> None:
 
 def _runtime(root: Path) -> None:
     profile = _read_json(root / "12-6-lock" / "profile.json")
-    application_wheels = sorted(root.rglob("twelve_six_ai-*.whl"))
+    runtime_wheels = sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix.casefold() == ".whl"
+    )
+    unexpected_wheel_locations = [
+        path.relative_to(root).as_posix()
+        for path in runtime_wheels
+        if path.parent != root / "wheelhouse"
+    ]
+    if unexpected_wheel_locations:
+        raise RuntimeError(
+            f"runtime artifact wheel is outside canonical wheelhouse: {unexpected_wheel_locations}"
+        )
+    application_wheels = [
+        path
+        for path in runtime_wheels
+        if path.name.casefold().startswith("twelve_six_ai-")
+    ]
     if application_wheels:
         relative = [path.relative_to(root).as_posix() for path in application_wheels]
         raise RuntimeError(
