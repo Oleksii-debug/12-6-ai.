@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from twelve_six.checkpoint import recovery_lock
 from twelve_six.checkpoint.recovery_lock import exclusive_recovery_lock
 
 
@@ -110,3 +113,68 @@ def test_parent_replacement_cannot_create_second_logical_lock_lane(
     drift = [message for status, message in outcomes if status == "drift"]
     assert len(drift) == 1, outcomes
     assert "recovery parent changed during publication critical section" in drift[0]
+
+
+def test_windows_directory_pin_reuses_incumbent_context_until_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "recovery"
+    root.mkdir()
+    expected = root.lstat()
+    events: list[tuple[str, Path]] = []
+
+    @contextmanager
+    def fake_pin(path: str | Path):
+        pinned_path = Path(path)
+        events.append(("enter", pinned_path))
+        try:
+            yield SimpleNamespace(path=pinned_path)
+        finally:
+            events.append(("exit", pinned_path))
+
+    monkeypatch.setattr(recovery_lock, "pinned_real_directory", fake_pin)
+
+    with recovery_lock._windows_directory_pin(
+        root,
+        expected,
+        role="recovery root",
+    ) as mutation_root:
+        assert mutation_root == root
+        assert events == [("enter", root)]
+
+    assert events == [("enter", root), ("exit", root)]
+
+
+def test_windows_recovery_lock_denies_parent_and_root_replacement(
+    tmp_path: Path,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("requires real Windows HANDLE delete-sharing semantics")
+
+    base = tmp_path / "base"
+    root = base / "workspace" / "recovery"
+    moved_parent = base / "moved-workspace"
+    moved_root = root.parent / "moved-recovery"
+    base.mkdir()
+
+    with exclusive_recovery_lock(root) as mutation_root:
+        with pytest.raises(OSError):
+            os.replace(root.parent, moved_parent)
+        assert root.parent.is_dir()
+        assert not moved_parent.exists()
+
+        with pytest.raises(OSError):
+            os.replace(root, moved_root)
+        assert root.is_dir()
+        assert not moved_root.exists()
+
+        (mutation_root / "windows-pinned-write.txt").write_text(
+            "original-root\n",
+            encoding="utf-8",
+        )
+
+    assert (root / "windows-pinned-write.txt").read_text(
+        encoding="utf-8"
+    ) == "original-root\n"
+

@@ -6,8 +6,13 @@ import hashlib
 import os
 import stat
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
+
+from twelve_six.checkpoint.pinned_directory import (
+    PinnedDirectoryError,
+    pinned_real_directory,
+)
 
 LOCK_NAME = ".publication.lock"
 _PATH_LOCK_SUFFIX = ".publication-path.lock"
@@ -178,6 +183,28 @@ def _verify_visible_directory(
 
 
 @contextmanager
+def _windows_directory_pin(
+    path: Path,
+    expected: os.stat_result,
+    *,
+    role: str,
+) -> Iterator[Path]:
+    """Hold the incumbent no-delete Windows directory pin as an OSError seam."""
+
+    try:
+        with pinned_real_directory(path) as pinned:
+            _verify_visible_directory(
+                path,
+                expected,
+                role=role,
+                phase="while Windows directory pin was acquired",
+            )
+            yield pinned.path
+    except PinnedDirectoryError as exc:
+        raise OSError(f"{role} cannot be pinned safely on Windows") from exc
+
+
+@contextmanager
 def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
     """Serialize publication/cleanup and pin the root for the full critical section.
 
@@ -189,9 +216,12 @@ def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
 
     On POSIX, mutation callers receive a directory-fd alias, so descendant path
     operations stay on the opened root inode even if the visible pathname is renamed
-    after this context yields.  The guarantee is intentionally scoped to immediate
-    recovery-parent replacement under a stable containing namespace; it does not
-    claim safety against replacement of that containing namespace itself.
+    after this context yields. On Windows, the incumbent pinned-directory primitive
+    holds parent/root HANDLEs without delete sharing, so pathname mutations cannot be
+    redirected through parent/root rename or deletion during the yielded section.
+    The guarantee is intentionally scoped to immediate recovery-parent replacement
+    under a stable containing namespace; it does not claim safety against replacement
+    of that containing namespace itself.
 
     All lock files are intentionally persistent. Kernel advisory locks are released
     when the owning process exits, including abnormal termination.
@@ -212,6 +242,7 @@ def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
     root_fd: int | None = None
     lock_fd: int | None = None
     lock_locked = False
+    windows_pins = ExitStack()
     try:
         _lock_path_guard_fd(namespace_guard_fd)
         namespace_guard_locked = True
@@ -220,6 +251,14 @@ def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
         parent_before = _real_directory(parent, role="recovery parent")
         if os.name == "posix":
             parent_fd = _open_root_fd(parent, parent_before)
+        elif os.name == "nt":
+            windows_pins.enter_context(
+                _windows_directory_pin(
+                    parent,
+                    parent_before,
+                    role="recovery parent",
+                )
+            )
 
         recovery_root.mkdir(exist_ok=True)
         _verify_visible_directory(
@@ -239,6 +278,14 @@ def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
         if os.name == "posix":
             root_fd = _open_root_fd(recovery_root, before)
             mutation_root = _stable_root_alias(root_fd, before)
+        elif os.name == "nt":
+            mutation_root = windows_pins.enter_context(
+                _windows_directory_pin(
+                    recovery_root,
+                    before,
+                    role="recovery root",
+                )
+            )
         else:
             mutation_root = recovery_root
 
@@ -286,15 +333,18 @@ def exclusive_recovery_lock(root: str | Path) -> Iterator[Path]:
             if root_fd is not None:
                 os.close(root_fd)
             try:
-                if path_guard_fd is not None and path_guard_locked:
-                    _unlock_path_guard_fd(path_guard_fd)
+                windows_pins.close()
             finally:
-                if path_guard_fd is not None:
-                    os.close(path_guard_fd)
-                if parent_fd is not None:
-                    os.close(parent_fd)
                 try:
-                    if namespace_guard_locked:
-                        _unlock_path_guard_fd(namespace_guard_fd)
+                    if path_guard_fd is not None and path_guard_locked:
+                        _unlock_path_guard_fd(path_guard_fd)
                 finally:
-                    os.close(namespace_guard_fd)
+                    if path_guard_fd is not None:
+                        os.close(path_guard_fd)
+                    if parent_fd is not None:
+                        os.close(parent_fd)
+                    try:
+                        if namespace_guard_locked:
+                            _unlock_path_guard_fd(namespace_guard_fd)
+                    finally:
+                        os.close(namespace_guard_fd)
