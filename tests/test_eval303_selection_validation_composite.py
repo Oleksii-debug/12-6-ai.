@@ -80,7 +80,6 @@ def test_final_test_outcomes_and_payload_not_consumed_by_eval303():
     assert firewall["final_test_bytes_copied_into_composite"] is False
 
 
-
 @pytest.mark.parametrize(
     "raw",
     [
