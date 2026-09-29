@@ -485,6 +485,7 @@ def test_cli_never_writes_current_blocked_inputs(tmp_path: Path) -> None:
     assert result.returncode == 1, result.stderr or result.stdout
     assert not output_path.exists()
 
+
 def test_builder_strict_json_loader_rejects_ambiguous_and_nonfinite_values(
     tmp_path: Path,
 ) -> None:
