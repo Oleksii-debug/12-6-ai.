@@ -31,10 +31,6 @@ from twelve_six.checkpoint.pinned_directory import (
     pinned_real_directory,
 )
 from twelve_six.checkpoint.recovery_lock import exclusive_recovery_lock
-from twelve_six.scale141_strict_json import (
-    Scale141StrictJsonError,
-    strict_json_loads,
-)
 from twelve_six.scale141_resume_sidecar import (
     SIDECAR_ROOT,
     ResumeSidecarContext,
@@ -44,6 +40,10 @@ from twelve_six.scale141_resume_sidecar import (
     publish_resume_sidecar,
     remove_resume_sidecar,
     validate_resume_reference,
+)
+from twelve_six.scale141_strict_json import (
+    Scale141StrictJsonError,
+    strict_json_loads,
 )
 
 POINTER_SCHEMA = "12-6.scale141-recovery-pointer.v1"
