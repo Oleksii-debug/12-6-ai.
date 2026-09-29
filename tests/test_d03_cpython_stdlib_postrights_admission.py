@@ -265,6 +265,7 @@ def test_authenticated_tree_omission_addition_and_substitution_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = _row("Lib/example.py", "value = 3\n")
+    policy = _policy()
     _, authority = _synthetic_complete_authority(
         monkeypatch,
         row,
@@ -279,7 +280,7 @@ def test_authenticated_tree_omission_addition_and_substitution_fail_closed(
         ],
     )
     snapshot, _ = rights._validated_tree_snapshot(authority)
-    assert classify_row(row, snapshot, _policy())["reason"] == "ANCESTOR_RIGHTS_MARKER_PRESENT"
+    assert classify_row(row, snapshot, policy)["reason"] == "ANCESTOR_RIGHTS_MARKER_PRESENT"
 
     omitted = PinnedTreeAuthority(
         tuple(item for item in authority.entries if item[0] != "Lib/example/LICENSE")
@@ -315,6 +316,7 @@ def test_complete_tree_rejects_duplicate_path_and_bool_size(
 
     bad_size = deepcopy(payload)
     bad_size["tree"][-1]["size"] = True
+    monkeypatch.setattr(rights, "EXPECTED_TREE_ENTRY_COUNT", len(bad_size["tree"]))
     with pytest.raises(CPythonRightsAdmissionError, match="tree object size invalid"):
         parse_pinned_tree_response(bad_size)
 
