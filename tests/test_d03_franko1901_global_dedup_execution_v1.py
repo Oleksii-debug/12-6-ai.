@@ -155,6 +155,19 @@ def test_production_arithmetic_binds_exact_franko_candidate() -> None:
     assert mod.EXPECTED_MAIN == "c4e948e1207a1ece0753ad586cb8cb0b7ca8b540"
 
 
+def test_composed_inventory_names_exact_franko_product_authority() -> None:
+    mod = _load()
+    inventory, _ = mod._compose_graph(
+        {"sources": [_row("base:a")]},
+        {"base:a": b"alpha"},
+        [_row("franko:a", family=mod.franko1901.SOURCE_FAMILY, size=4)],
+        {"franko:a": b"beta"},
+    )
+    rule = inventory["terminal_refresh_rule"]
+    assert "PR #1025 source-admitted Franko1901" in rule
+    assert "PR #1347" not in rule
+
+
 def test_authority_surface_binds_franko_and_incumbent_execution() -> None:
     mod = _load()
     expected = {
