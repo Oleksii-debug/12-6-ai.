@@ -31,11 +31,18 @@ def _authority() -> dict:
         "packing": "5" * 64,
     }
     value = {
-        "schema_version": "12-6.learned20m-launch-input-authority.v1",
+        "schema_version": "12-6.learned20m-launch-input-authority.v2",
         "binding_status": "READY_FOR_READINESS_BINDING",
         "data_spine": {
             "terminal_corpus_authority_identity_sha256": "6" * 64,
             "stage_bindings": stages,
+            "deterministic_double_pack_proof_identity_sha256": "0" * 64,
+            "terminal_record_inventory_digest_sha256": "a" * 64,
+            "terminal_payload_inventory_digest_sha256": "b" * 64,
+            "terminal_split_application_identity_sha256": "c" * 64,
+            "terminal_split_spec_identity_sha256": "d" * 64,
+            "terminal_split_train_record_membership_sha256": "e" * 64,
+            "canonical_build_sha256": "f" * 64,
             "two_clean_proof_identity_sha256": "7" * 64,
             "two_clean_input_packet_identity_sha256": "8" * 64,
             "two_clean_runtime_identity_sha256": "9" * 64,

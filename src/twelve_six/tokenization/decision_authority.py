@@ -11,6 +11,7 @@ from typing import Any
 from twelve_six.data.balanced_split_application_v1 import (
     APPLICATION_SCHEMA,
     CANONICAL_SPLIT_GIT_BLOB_SHA1,
+    CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
     SELECTION_SCHEMA,
     BalancedSplitApplicationError,
     verify_balanced_selection,
@@ -42,6 +43,7 @@ _APPLICATION_KEYS = {
     "balanced_selection_identity_sha256",
     *_UPSTREAM_IDENTITY_FIELDS,
     "canonical_split_git_blob_sha1",
+    "split_spec_identity_sha256",
     "selected_record_count",
     "selected_source_bytes",
     "selected_family_source_bytes",
@@ -58,6 +60,7 @@ _REPORT_KEYS = {
     "split_application_identity_sha256",
     *_UPSTREAM_IDENTITY_FIELDS,
     "canonical_split_git_blob_sha1",
+    "split_spec_identity_sha256",
     "canonical_byte_tokenizer_git_blob_sha1",
     "tokenizer_version",
     "tokenizer_config_sha256",
@@ -224,6 +227,14 @@ def _verify_split_application(
 
     if application.get("canonical_split_git_blob_sha1") != CANONICAL_SPLIT_GIT_BLOB_SHA1:
         raise TokenizerDecisionError("split mechanics identity drift")
+    split_spec_identity = _require_sha256(
+        application.get("split_spec_identity_sha256"),
+        field="split_spec_identity_sha256",
+    )
+    if split_spec_identity != CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
+        raise TokenizerDecisionError(
+            "split application does not bind canonical split spec authority"
+        )
     if application.get("claim_boundary") != _ZERO_CREDIT_BOUNDARY:
         raise TokenizerDecisionError("split application truth boundary widened")
     accounting = {
@@ -317,6 +328,7 @@ def bind_byte_baseline_decision(
         "split_application_identity_sha256": application_identity,
         **{field: selection[field] for field in _UPSTREAM_IDENTITY_FIELDS},
         "canonical_split_git_blob_sha1": CANONICAL_SPLIT_GIT_BLOB_SHA1,
+        "split_spec_identity_sha256": application["split_spec_identity_sha256"],
         "canonical_byte_tokenizer_git_blob_sha1": tokenizer_implementation_git_blob_sha1,
         "tokenizer_version": tokenizer.version,
         "tokenizer_config_sha256": tokenizer.config_sha256,
@@ -369,6 +381,14 @@ def verify_byte_baseline_decision(
         raise TokenizerDecisionError("report balanced-selection identity mismatch")
     if report.get("split_application_identity_sha256") != application_identity:
         raise TokenizerDecisionError("report split-application identity mismatch")
+    report_split_spec_identity = _require_sha256(
+        report.get("split_spec_identity_sha256"),
+        field="split_spec_identity_sha256",
+    )
+    if report_split_spec_identity != CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
+        raise TokenizerDecisionError("report split-spec authority identity drift")
+    if report_split_spec_identity != application.get("split_spec_identity_sha256"):
+        raise TokenizerDecisionError("report split-spec authority lineage mismatch")
     for field in _UPSTREAM_IDENTITY_FIELDS:
         if report.get(field) != selection.get(field):
             raise TokenizerDecisionError(f"report {field} drift")

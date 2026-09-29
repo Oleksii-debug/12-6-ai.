@@ -12,26 +12,44 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+import types
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
-
-from twelve_six.split_robustness import (
-    SplitFamilySpec,
-    SplitRecord,
-    build_split_family,
-    verify_split_family_manifest,
-)
 
 SELECTION_SCHEMA = "12-6.d03-balanced-selection-authority.v1"
 APPLICATION_SCHEMA = "12-6.d03-balanced-split-application.v1"
-CANONICAL_SPLIT_GIT_BLOB_SHA1 = "76f18ad4dea7439e20312289d1d259b773e36d26"
+SPLIT_SPEC_SCHEMA = "12-6.d03-split-spec-authority.v1"
+CANONICAL_SPLIT_GIT_BLOB_SHA1 = "5a5395748bed6b666391268b605e428af18baf0c"
+CANONICAL_SPLIT_ALGORITHM = "cluster-hash-ranked-greedy-v1"
+CANONICAL_SPLIT_VARIANT_SEEDS = ("split-a", "split-b", "split-c")
+CANONICAL_SPLIT_VALIDATION_FRACTION = 0.2
+CANONICAL_SPLIT_SPEC_IDENTITY_SHA256 = (
+    "b0b745ab890343b705c7f02222b3541058513fdaaf5813940b7f8ac9c7bf63e7"
+)
 _ALLOWED_PURPOSES = frozenset({"pretraining", "pretraining_eligible", "training_eligible"})
 _FORBIDDEN_PURPOSES = frozenset(
     {"benchmark", "evaluation", "evaluation_test", "heldout_test", "test", "probe_test"}
 )
 _ALLOWED_STRATA = frozenset({"uk", "ua", "en", "code"})
 _HEX = frozenset("0123456789abcdef")
+_CANONICAL_SPLIT_SOURCE_PATH = Path(__file__).resolve().parents[1] / "split_robustness.py"
+_REQUIRED_SPLIT_EXPORTS = (
+    "SplitRecord",
+    "SplitFamilySpec",
+    "eligible_corpus_identity",
+    "dedup_relations_identity",
+    "build_split_family",
+    "verify_split_family_manifest",
+)
+_SPLIT_FUNCTION_EXPORTS = (
+    "eligible_corpus_identity",
+    "dedup_relations_identity",
+    "build_split_family",
+    "verify_split_family_manifest",
+)
 _SELECTION_FIELDS = frozenset(
     {
         "schema",
@@ -75,6 +93,7 @@ _APPLICATION_FIELDS = frozenset(
         "balance_policy_identity_sha256",
         "balance_result_identity_sha256",
         "canonical_split_git_blob_sha1",
+        "split_spec_identity_sha256",
         "selected_record_count",
         "selected_source_bytes",
         "selected_family_source_bytes",
@@ -103,6 +122,42 @@ def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _git_blob_sha1(payload: bytes) -> str:
+    header = f"blob {len(payload)}\0".encode("ascii")
+    return hashlib.sha1(header + payload, usedforsecurity=False).hexdigest()
+
+
+def _canonical_split_spec_authority() -> dict[str, Any]:
+    return {
+        "schema": SPLIT_SPEC_SCHEMA,
+        "canonical_split_git_blob_sha1": CANONICAL_SPLIT_GIT_BLOB_SHA1,
+        "algorithm": CANONICAL_SPLIT_ALGORITHM,
+        "variant_seeds": list(CANONICAL_SPLIT_VARIANT_SEEDS),
+        "validation_fraction": CANONICAL_SPLIT_VALIDATION_FRACTION,
+    }
+
+
+def _require_canonical_split_spec(
+    variant_seeds: Sequence[str], validation_fraction: float
+) -> str:
+    if isinstance(variant_seeds, (str, bytes)) or tuple(variant_seeds) != CANONICAL_SPLIT_VARIANT_SEEDS:
+        raise BalancedSplitApplicationError(
+            "variant_seeds do not match independently fixed canonical split spec"
+        )
+    if isinstance(validation_fraction, bool) or not isinstance(validation_fraction, (int, float)):
+        raise BalancedSplitApplicationError(
+            "validation_fraction does not match independently fixed canonical split spec"
+        )
+    if float(validation_fraction) != CANONICAL_SPLIT_VALIDATION_FRACTION:
+        raise BalancedSplitApplicationError(
+            "validation_fraction does not match independently fixed canonical split spec"
+        )
+    identity = _sha256_bytes(_canonical_bytes(_canonical_split_spec_authority()))
+    if identity != CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
+        raise BalancedSplitApplicationError("canonical split spec authority identity drift")
+    return identity
+
+
 def _require_text(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value.strip() or value == "UNRESOLVED":
         raise BalancedSplitApplicationError(f"{field} must be resolved non-empty text")
@@ -123,10 +178,77 @@ def _require_sha1(value: Any, field: str) -> str:
     return text
 
 
+def _read_canonical_split_source() -> bytes:
+    try:
+        return _CANONICAL_SPLIT_SOURCE_PATH.read_bytes()
+    except OSError as exc:
+        raise BalancedSplitApplicationError(
+            "canonical split mechanics source bytes are unavailable"
+        ) from exc
+
+
+def _load_canonical_split_module(expected_blob_sha1: str) -> types.ModuleType:
+    """Execute only split mechanics whose actual checkout bytes match the expected Git blob."""
+
+    expected = _require_sha1(expected_blob_sha1, "expected_split_git_blob_sha1")
+    source = _read_canonical_split_source()
+    actual = _git_blob_sha1(source)
+    if actual != expected or actual != CANONICAL_SPLIT_GIT_BLOB_SHA1:
+        raise BalancedSplitApplicationError(
+            "canonical split mechanics executable provenance mismatch"
+        )
+
+    module_name = f"_twelve_six_authenticated_split_robustness_{actual}"
+    module = types.ModuleType(module_name)
+    module.__file__ = str(_CANONICAL_SPLIT_SOURCE_PATH)
+    previous = sys.modules.get(module_name)
+    sys.modules[module_name] = module
+    try:
+        code = compile(
+            source,
+            str(_CANONICAL_SPLIT_SOURCE_PATH),
+            "exec",
+            dont_inherit=True,
+        )
+        exec(code, module.__dict__)  # noqa: S102
+    except Exception as exc:
+        raise BalancedSplitApplicationError(
+            "canonical split mechanics exact-byte execution failed"
+        ) from exc
+    finally:
+        if previous is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous
+
+    for name in _REQUIRED_SPLIT_EXPORTS:
+        if not callable(module.__dict__.get(name)):
+            raise BalancedSplitApplicationError(
+                f"canonical split mechanics export missing or not callable: {name}"
+            )
+    for name in _SPLIT_FUNCTION_EXPORTS:
+        function = module.__dict__[name]
+        if getattr(function, "__globals__", None) is not module.__dict__:
+            raise BalancedSplitApplicationError(
+                f"canonical split mechanics export escaped authenticated namespace: {name}"
+            )
+    return module
+
+
 def _require_nonnegative_int(value: Any, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise BalancedSplitApplicationError(f"{field} must be a non-negative integer")
     return value
+
+
+def _require_nonnegative_int_map(value: Any, field: str) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        raise BalancedSplitApplicationError(f"{field} must be a mapping")
+    validated: dict[str, int] = {}
+    for key, count in value.items():
+        _require_text(key, f"{field}.key")
+        validated[key] = _require_nonnegative_int(count, f"{field}[{key!r}]")
+    return validated
 
 
 def _self_hash(document: Mapping[str, Any], identity_field: str) -> str:
@@ -148,17 +270,27 @@ def _verify_expected_identity(
 
 
 def _require_zero_credit_boundary(boundary: Any) -> None:
-    expected = {
-        "training_eligible": False,
-        "evaluation_eligible": False,
-        "tokenizer_fit_authorized": False,
-        "model_training_authorized": False,
-        "paid_compute_authorized": False,
-        "final_test_outcomes_read": False,
-        "authorized_optimized_target_exposure": 0,
+    expected_boolean_fields = {
+        "training_eligible",
+        "evaluation_eligible",
+        "tokenizer_fit_authorized",
+        "model_training_authorized",
+        "paid_compute_authorized",
+        "final_test_outcomes_read",
     }
-    if boundary != expected:
-        raise BalancedSplitApplicationError("balanced selection claim boundary widened")
+    expected_fields = expected_boolean_fields | {"authorized_optimized_target_exposure"}
+    if not isinstance(boundary, Mapping) or set(boundary) != expected_fields:
+        raise BalancedSplitApplicationError("balanced selection claim boundary is not closed-world")
+    for field in expected_boolean_fields:
+        value = boundary.get(field)
+        if not isinstance(value, bool) or value is not False:
+            raise BalancedSplitApplicationError(f"balanced selection claim boundary {field} widened")
+    exposure = _require_nonnegative_int(
+        boundary.get("authorized_optimized_target_exposure"),
+        "claim_boundary.authorized_optimized_target_exposure",
+    )
+    if exposure != 0:
+        raise BalancedSplitApplicationError("balanced selection claim boundary exposure widened")
 
 
 def _record_id(row: Mapping[str, Any], index: int) -> str:
@@ -250,20 +382,33 @@ def verify_balanced_selection(
         "stratum_source_bytes",
     }:
         raise BalancedSplitApplicationError("balanced selection totals are not closed-world")
-    if totals.get("record_count") != len(by_id) or totals.get("source_bytes") != source_bytes:
+    record_count = _require_nonnegative_int(totals.get("record_count"), "totals.record_count")
+    declared_source_bytes = _require_nonnegative_int(
+        totals.get("source_bytes"), "totals.source_bytes"
+    )
+    declared_family_bytes = _require_nonnegative_int_map(
+        totals.get("family_source_bytes"), "totals.family_source_bytes"
+    )
+    declared_stratum_bytes = _require_nonnegative_int_map(
+        totals.get("stratum_source_bytes"), "totals.stratum_source_bytes"
+    )
+    if record_count != len(by_id) or declared_source_bytes != source_bytes:
         raise BalancedSplitApplicationError("balanced selection total count/bytes mismatch")
-    if totals.get("family_source_bytes") != dict(sorted(family_bytes.items())):
+    if declared_family_bytes != dict(sorted(family_bytes.items())):
         raise BalancedSplitApplicationError("balanced selection family byte accounting mismatch")
-    if totals.get("stratum_source_bytes") != dict(sorted(stratum_bytes.items())):
+    if declared_stratum_bytes != dict(sorted(stratum_bytes.items())):
         raise BalancedSplitApplicationError("balanced selection stratum byte accounting mismatch")
     return by_id, dict(totals)
 
 
 def _project_records(
-    selected_by_id: Mapping[str, Mapping[str, Any]], raw_records: Sequence[Mapping[str, Any]]
-) -> list[SplitRecord]:
+    selected_by_id: Mapping[str, Mapping[str, Any]],
+    raw_records: Sequence[Mapping[str, Any]],
+    *,
+    split_record_type: type[Any],
+) -> list[Any]:
     seen: set[str] = set()
-    projected: list[SplitRecord] = []
+    projected: list[Any] = []
     for index, raw in enumerate(raw_records):
         if not isinstance(raw, Mapping):
             raise BalancedSplitApplicationError(f"raw_records[{index}] must be an object")
@@ -301,7 +446,7 @@ def _project_records(
         # Canonical #938 uses this flag as a mechanics precondition. It is an in-memory
         # projection only; the returned authority below explicitly remains zero-credit.
         projected.append(
-            SplitRecord(
+            split_record_type(
                 id=record_id,
                 text=payload,
                 source_id=selected["source_id"],
@@ -339,6 +484,8 @@ def build_balanced_split_application(
     expected_split_blob = _require_sha1(expected_split_git_blob_sha1, "expected_split_git_blob_sha1")
     if expected_split_blob != CANONICAL_SPLIT_GIT_BLOB_SHA1:
         raise BalancedSplitApplicationError("canonical split mechanics blob does not match merged #938")
+    split_spec_identity = _require_canonical_split_spec(variant_seeds, validation_fraction)
+    split_module = _load_canonical_split_module(expected_split_blob)
     selected_by_id, totals = verify_balanced_selection(
         selection,
         expected_selection_identity_sha256=expected_selection_identity_sha256,
@@ -348,18 +495,21 @@ def build_balanced_split_application(
         expected_balance_policy_identity_sha256=expected_balance_policy_identity_sha256,
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
-    projected = _project_records(selected_by_id, raw_records)
-
-    from twelve_six.split_robustness import dedup_relations_identity, eligible_corpus_identity
-
-    spec = SplitFamilySpec(
-        eligible_corpus_sha256=eligible_corpus_identity(projected),
-        dedup_relations_sha256=dedup_relations_identity(projected),
-        variant_seeds=tuple(variant_seeds),
-        validation_fraction=validation_fraction,
+    projected = _project_records(
+        selected_by_id,
+        raw_records,
+        split_record_type=split_module.SplitRecord,
     )
-    split_family = build_split_family(projected, spec)
-    verify_split_family_manifest(projected, split_family)
+
+    spec = split_module.SplitFamilySpec(
+        eligible_corpus_sha256=split_module.eligible_corpus_identity(projected),
+        dedup_relations_sha256=split_module.dedup_relations_identity(projected),
+        variant_seeds=CANONICAL_SPLIT_VARIANT_SEEDS,
+        validation_fraction=CANONICAL_SPLIT_VALIDATION_FRACTION,
+        algorithm=CANONICAL_SPLIT_ALGORITHM,
+    )
+    split_family = split_module.build_split_family(projected, spec)
+    split_module.verify_split_family_manifest(projected, split_family)
 
     core: dict[str, Any] = {
         "schema": APPLICATION_SCHEMA,
@@ -371,6 +521,7 @@ def build_balanced_split_application(
         "balance_policy_identity_sha256": selection["balance_policy_identity_sha256"],
         "balance_result_identity_sha256": selection["balance_result_identity_sha256"],
         "canonical_split_git_blob_sha1": CANONICAL_SPLIT_GIT_BLOB_SHA1,
+        "split_spec_identity_sha256": split_spec_identity,
         "selected_record_count": totals["record_count"],
         "selected_source_bytes": totals["source_bytes"],
         "selected_family_source_bytes": totals["family_source_bytes"],
@@ -411,6 +562,12 @@ def verify_balanced_split_application(
     claimed = _require_sha256(application.get("application_identity_sha256"), "application_identity_sha256")
     if claimed != _self_hash(application, "application_identity_sha256"):
         raise BalancedSplitApplicationError("split application self-hash mismatch")
+    split_spec_identity = _require_sha256(
+        application.get("split_spec_identity_sha256"), "split_spec_identity_sha256"
+    )
+    if split_spec_identity != CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
+        raise BalancedSplitApplicationError("split application does not bind canonical split spec authority")
+    _require_zero_credit_boundary(application.get("claim_boundary"))
     expected = build_balanced_split_application(
         selection,
         raw_records,
@@ -424,7 +581,7 @@ def verify_balanced_split_application(
         variant_seeds=variant_seeds,
         validation_fraction=validation_fraction,
     )
-    if dict(application) != expected:
+    if _canonical_bytes(dict(application)) != _canonical_bytes(expected):
         raise BalancedSplitApplicationError("split application semantic content mismatch")
 
 

@@ -17,6 +17,28 @@ REQUIRED_STAGE_BINDINGS = (
     "split",
     "packing",
 )
+LEDGER_KEYS = frozenset(
+    {
+        "schema_version",
+        "position_policy",
+        "materialization_identity_sha256",
+        "stage_bindings",
+        "tokenizer",
+        "packing_identity_sha256",
+        "complete_one_pass",
+        "eligible_causal_targets_before_packing",
+        "one_pass_unique_nonignored_causal_loss_positions",
+        "eligible_targets_not_packed",
+        "by_language",
+        "by_modality",
+        "by_family",
+        "segments",
+        "padding_loss_positions",
+        "cross_document_loss_positions",
+        "source_bytes_relabelled_as_loss_positions",
+        "ledger_identity_sha256",
+    }
+)
 EXPOSURE_STATE_KEYS = frozenset(
     {
         "schema_version",
@@ -502,14 +524,31 @@ class ExposureReplayGuard:
         self,
         ledger: Mapping[str, Any],
         *,
+        expected_ledger_identity_sha256: str,
         authorized_budget: int,
         trainer_state_binding: Mapping[str, Any],
     ) -> None:
+        if not isinstance(ledger, Mapping):
+            raise LedgerError("ledger must be an object")
+        if set(ledger) != LEDGER_KEYS:
+            raise LedgerError("ledger fields do not match the V2 guard schema")
         if ledger.get("schema_version") != LEDGER_SCHEMA:
             raise LedgerError("guard requires a V2 ledger")
-        self.ledger_identity_sha256 = _require_sha256(
-            ledger.get("ledger_identity_sha256"), "ledger_identity_sha256"
+
+        expected_ledger_identity = _require_sha256(
+            expected_ledger_identity_sha256, "expected_ledger_identity_sha256"
         )
+        ledger_copy = deepcopy(dict(ledger))
+        observed_ledger_identity = _require_sha256(
+            ledger_copy.pop("ledger_identity_sha256", None),
+            "ledger_identity_sha256",
+        )
+        if _sha256_obj(ledger_copy) != observed_ledger_identity:
+            raise LedgerError("ledger self-hash mismatch")
+        if observed_ledger_identity != expected_ledger_identity:
+            raise LedgerError("ledger identity does not match expected authority")
+
+        self.ledger_identity_sha256 = observed_ledger_identity
         self.materialization_identity_sha256 = _require_sha256(
             ledger.get("materialization_identity_sha256"),
             "materialization_identity_sha256",
@@ -526,8 +565,13 @@ class ExposureReplayGuard:
         )
         if self.authorized_budget > self.one_pass_maximum:
             raise LedgerError("authorized_budget exceeds ledger one-pass maximum")
+        segments = ledger.get("segments")
+        if not isinstance(segments, list):
+            raise LedgerError("ledger segments must be a list")
         self._segments: dict[str, int] = {}
-        for segment in ledger.get("segments", []):
+        for index, segment in enumerate(segments):
+            if not isinstance(segment, Mapping):
+                raise LedgerError(f"ledger segments[{index}] must be an object")
             segment_id = _require_sha256(
                 segment.get("segment_identity_sha256"), "segment_identity_sha256"
             )
@@ -685,6 +729,7 @@ class ExposureReplayGuard:
         self,
         state: Mapping[str, Any],
         *,
+        expected_state_identity_sha256: str,
         expected_trainer_state_binding: Mapping[str, Any],
     ) -> None:
         if not isinstance(state, Mapping):
@@ -693,6 +738,9 @@ class ExposureReplayGuard:
             raise LedgerError("exposure state fields do not match the V2 schema")
         if state.get("schema_version") != EXPOSURE_STATE_SCHEMA:
             raise LedgerError("exposure state schema mismatch")
+        expected_state_identity = _require_sha256(
+            expected_state_identity_sha256, "expected_state_identity_sha256"
+        )
         state_copy = deepcopy(dict(state))
         observed_hash = _require_sha256(
             state_copy.pop("state_identity_sha256", None),
@@ -700,6 +748,8 @@ class ExposureReplayGuard:
         )
         if _sha256_obj(state_copy) != observed_hash:
             raise LedgerError("exposure state self-hash mismatch")
+        if observed_hash != expected_state_identity:
+            raise LedgerError("resume exposure state identity mismatch")
         if state_copy.get("ledger_identity_sha256") != self.ledger_identity_sha256:
             raise LedgerError("resume ledger identity mismatch")
         if (

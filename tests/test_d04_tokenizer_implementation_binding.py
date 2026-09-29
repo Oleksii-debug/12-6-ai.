@@ -30,7 +30,11 @@ def _bind_with_stub(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     _stub_upstreams(monkeypatch)
     return decision_authority.bind_byte_baseline_decision(
         _UPSTREAMS,
-        {},
+        {
+            "split_spec_identity_sha256": (
+                decision_authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+            )
+        },
         expected_selection_identity_sha256="a" * 64,
         expected_application_identity_sha256="b" * 64,
         expected_retained_inventory_identity_sha256="1" * 64,
