@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import inspect
 import json
+from pathlib import Path
 
 import pytest
 
 from twelve_six.data import expanded_global_dedup_v10 as v10
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _canonical_line(row: dict[str, object]) -> bytes:
@@ -362,3 +366,182 @@ def test_outer_survivor_authority_cannot_promote_training() -> None:
     assert boundary["tokenizer_fit_authorized"] is False
     assert boundary["optimizer_updates"] == 0
     assert boundary["model_training_executed"] is False
+
+def _clean_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    source_id: str = "physical-source-1",
+) -> tuple[bytes, bytes, str]:
+    record_id = "clean-record-1"
+    text = "independently qualified clean retained text"
+    payload = text.encode("utf-8")
+    projection = [
+        {
+            "record_id": record_id,
+            "source_id": source_id,
+            "source_family": "clean.fixture",
+            "modality": "en",
+            "text_sha256": hashlib.sha256(payload).hexdigest(),
+            "text_utf8_bytes": len(payload),
+        }
+    ]
+    record = {
+        "record_id": record_id,
+        "source_id": source_id,
+        "source_family": "clean.fixture",
+        "modality": "en",
+        "text": text,
+    }
+    records_raw = _canonical_line(record)
+    handoff_core = {
+        "schema_version": v10.CLEAN_HANDOFF_SCHEMA,
+        "postdedup_inventory_identity_sha256": v10.CLEAN_MATERIALIZATION_IDENTITY_SHA256,
+        "input_survivor_authority_sha256": v10.CLEAN_COMPOSITION_PREFLIGHT_SHA256,
+        "retained_source_count": 1,
+        "matcher_input_projection": projection,
+        "matcher_input_projection_sha256": hashlib.sha256(
+            v10._canonical(projection)
+        ).hexdigest(),
+        "raw_text_persisted_in_evidence": False,
+        "final_test_payload_accessed": False,
+        "final_test_outcomes_accessed": False,
+        "authorized_training_exposure": 0,
+    }
+    handoff = {
+        **handoff_core,
+        "handoff_identity_sha256": hashlib.sha256(
+            v10._canonical(handoff_core)
+        ).hexdigest(),
+    }
+    handoff_raw = v10._canonical(handoff, newline=True)
+
+    monkeypatch.setattr(v10, "CLEAN_TRAINING_RECORDS_BYTES", len(records_raw))
+    monkeypatch.setattr(
+        v10,
+        "CLEAN_TRAINING_RECORDS_SHA256",
+        hashlib.sha256(records_raw).hexdigest(),
+    )
+    monkeypatch.setattr(
+        v10,
+        "CLEAN_TRAINING_HANDOFF_SHA256",
+        hashlib.sha256(handoff_raw).hexdigest(),
+    )
+    monkeypatch.setattr(v10, "CLEAN_RETAINED_SOURCE_COUNT", 1)
+    monkeypatch.setattr(v10, "CLEAN_DISTINCT_PHYSICAL_SOURCE_COUNT", 1)
+    monkeypatch.setattr(v10, "CLEAN_RETAINED_PAYLOAD_BYTES", len(payload))
+    return records_raw, handoff_raw, record_id
+
+
+def test_clean_retained_outputs_crossbind_records_projection_and_physical_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records_raw, handoff_raw, record_id = _clean_fixture(monkeypatch)
+
+    inventory, payloads, handoff = v10._validate_clean_retained(
+        records_raw,
+        handoff_raw,
+    )
+
+    assert len(inventory) == 1
+    row = inventory[0]
+    assert row["source_id"] == f"clean-retained:{record_id}"
+    assert row["stable_origin_id"] == "clean-data232-source:physical-source-1"
+    assert row["origin_key"] == f"clean-data232-record:{record_id}"
+    assert row["authority_ref"] == f"PR2183:{v10.CLEAN_PRODUCT_HEAD}"
+    assert payloads[row["source_id"]] == b"independently qualified clean retained text"
+    assert handoff["authorized_training_exposure"] == 0
+
+
+def test_clean_retained_projection_cannot_be_coherently_resealed_to_other_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records_raw, handoff_raw, _ = _clean_fixture(monkeypatch)
+    handoff = json.loads(handoff_raw)
+    handoff["matcher_input_projection"][0]["source_id"] = "other-source"
+    handoff["matcher_input_projection_sha256"] = hashlib.sha256(
+        v10._canonical(handoff["matcher_input_projection"])
+    ).hexdigest()
+    core = dict(handoff)
+    core.pop("handoff_identity_sha256")
+    handoff["handoff_identity_sha256"] = hashlib.sha256(
+        v10._canonical(core)
+    ).hexdigest()
+    tampered_raw = v10._canonical(handoff, newline=True)
+    monkeypatch.setattr(
+        v10,
+        "CLEAN_TRAINING_HANDOFF_SHA256",
+        hashlib.sha256(tampered_raw).hexdigest(),
+    )
+
+    with pytest.raises(v10.ExpandedDedupV10Error, match="row/projection source_id drift"):
+        v10._validate_clean_retained(records_raw, tampered_raw)
+
+
+def test_v10_execution_has_no_caller_matcher_or_private_v9_execution_seam() -> None:
+    parameters = inspect.signature(v10.run_expanded_dedup_v10).parameters
+    assert "matcher_audit" not in parameters
+    assert "matcher_verify" not in parameters
+    assert "reconstructed_v8_inventory" not in parameters
+    assert "data526_evidence" not in parameters
+    source = inspect.getsource(v10.run_expanded_dedup_v10)
+    assert "v9." not in source
+    assert "run_expanded_dedup(" not in source
+    assert "_FROZEN_INDEXED_AUDIT(" in source
+    assert not hasattr(v10, "v9")
+
+
+def test_indexed_executor_is_code_bound_and_frozen_at_import() -> None:
+    assert v10.INDEXED_EXECUTOR_GIT_BLOB_SHA1 == (
+        "f75336008839198b6d46bea4954f120e2d81613c"
+    )
+    assert v10.INDEXED_CORE_GIT_BLOB_SHA1 == (
+        "af7be7909501ea9d76604ebed084cec32fbd9456"
+    )
+    assert v10.indexed.audit_payloads_indexed is v10._FROZEN_INDEXED_AUDIT
+    assert v10.indexed.attest_incumbent_runtime is v10._FROZEN_INDEXED_ATTEST
+
+
+def test_local_survivor_projection_preserves_terminal_selection_rule() -> None:
+    dedup = {
+        "report_sha256": "a" * 64,
+        "sources": [
+            {"source_id": "a", "declared_capacity_bytes": 10},
+            {"source_id": "b", "declared_capacity_bytes": 20},
+            {"source_id": "c", "declared_capacity_bytes": 5},
+        ],
+        "terminal_candidates": {
+            "declared_capacity_bytes_before": 35,
+            "conservative_unique_capacity_bytes_after": 25,
+            "duplicate_discount_bytes": 10,
+            "duplicate_cluster_count": 1,
+            "duplicate_clusters": [["a", "b"]],
+        },
+    }
+
+    projection = v10._derive_selection_projection(dedup)
+
+    assert projection["selection_rule"] == v10.SELECTION_RULE
+    assert projection["survivor_source_ids"] == ["b", "c"]
+    assert projection["post_dedup_declared_capacity_bytes"] == 25
+    assert projection["duplicate_clusters"] == [
+        {
+            "member_source_ids": ["a", "b"],
+            "selected_source_id": "b",
+            "selected_declared_capacity_bytes": 20,
+        }
+    ]
+    assert projection["truth_boundary"]["training_authorized_bytes"] == 0
+
+
+def test_runner_consumes_clean_handoff_and_drops_historical_v8_data526_inputs() -> None:
+    source = (ROOT / "tools/run_d03_expanded_global_dedup_v10_pep_loc.py").read_text(
+        encoding="utf-8"
+    )
+    assert "--clean-training-records" in source
+    assert "--clean-training-handoff" in source
+    assert "--data526-evidence" not in source
+    assert "--data526-record-inventory" not in source
+    assert "--v8-report" not in source
+    assert "--v8-survivors" not in source
+    assert "--rada-quality-privacy-jsonl" not in source
+

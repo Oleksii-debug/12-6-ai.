@@ -1,12 +1,11 @@
-"""Bind real PEP+LoC candidate materializations into incumbent D03 global dedup.
+"""Bind clean retained DATA-232 plus real PEP+LoC bytes into canonical global dedup.
 
-This is an additive post-V9 composition layer.  It does not implement matching.
-The exact real LOCAL_FREE materialization bytes are authenticated, parsed with
-duplicate-key rejection, cross-bound to their zero-credit reports, converted to
-the incumbent #824 matcher inventory shape, and compared together with the exact
-DATA-526+Rada V9 graph.
+This module owns composition and authority validation only; duplicate matching is
+delegated to the already-integrated canonical indexed incumbent V3 executor.
+The clean retained carrier is bound to the independently qualified PR #2183
+outputs, while PEP and LoC remain bound to their exact LOCAL_FREE materializations.
 
-All outputs remain zero-credit.  Decontamination, canonical quality/privacy,
+All outputs remain zero-credit. Decontamination, canonical quality/privacy,
 balance, split, packing, tokenizer fit and training authorization are downstream.
 """
 from __future__ import annotations
@@ -15,13 +14,50 @@ import copy
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, Final
 
-from twelve_six.data import expanded_global_dedup_v9 as v9
+from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+
+_FROZEN_INDEXED_AUDIT = indexed.audit_payloads_indexed
+_FROZEN_INDEXED_ATTEST = indexed.attest_incumbent_runtime
+_FROZEN_INDEXED_AUDIT_CODE = _FROZEN_INDEXED_AUDIT.__code__
+_FROZEN_INDEXED_ATTEST_CODE = _FROZEN_INDEXED_ATTEST.__code__
+_FROZEN_INDEXED_AUDIT_DEFAULTS = _FROZEN_INDEXED_AUDIT.__defaults__
+_FROZEN_INDEXED_ATTEST_DEFAULTS = _FROZEN_INDEXED_ATTEST.__defaults__
 
 REPORT_SCHEMA: Final = "12-6.d03-expanded-global-dedup-v10-pep-loc-report.v1"
 SURVIVOR_SCHEMA: Final = "12-6.d03-expanded-global-dedup-v10-pep-loc-survivors.v1"
+
+SELECTION_PROJECTION_SCHEMA: Final = "12-6.d03-expanded-global-dedup-v10-selection.v1"
+SELECTION_RULE: Final = "largest_declared_capacity_then_lexicographically_smallest_source_id"
+V3_INVENTORY_SCHEMA: Final = "12-6.next100-065-cross-source-dedup.v3"
+
+CLEAN_HANDOFF_SCHEMA: Final = "12-6.postdedup-decontam-handoff.v1"
+CLEAN_PRODUCT_HEAD: Final = "22cdc8696a11cb3490538d6060fe41f9b4d67a95"
+CLEAN_TRAINING_RECORDS_SHA256: Final = (
+    "3458afe0380ea45d328ad3f004b21845a188ca69f2f7a83c24999e9e53268e53"
+)
+CLEAN_TRAINING_RECORDS_BYTES: Final = 5_851_879
+CLEAN_TRAINING_HANDOFF_SHA256: Final = (
+    "80bcf2dd28f0d13795ceea01b358c7149b636f55f17b29575d14313b5cee99ee"
+)
+CLEAN_MATERIALIZATION_IDENTITY_SHA256: Final = (
+    "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade"
+)
+CLEAN_COMPOSITION_PREFLIGHT_SHA256: Final = (
+    "1b3adfffab2a9d65af78e88b805ef221714a0cc94fca4055105665a6a155ce95"
+)
+CLEAN_RETAINED_SOURCE_COUNT: Final = 257
+CLEAN_DISTINCT_PHYSICAL_SOURCE_COUNT: Final = 244
+CLEAN_RETAINED_PAYLOAD_BYTES: Final = 5_601_716
+
+INDEXED_EXECUTOR_GIT_BLOB_SHA1: Final = "f75336008839198b6d46bea4954f120e2d81613c"
+INDEXED_CORE_GIT_BLOB_SHA1: Final = "af7be7909501ea9d76604ebed084cec32fbd9456"
+DEFAULT_MAX_CANDIDATE_PAIRS: Final = 5_000_000
+DEFAULT_MAX_INDEX_POSTINGS: Final = indexed.DEFAULT_MAX_INDEX_POSTINGS
+DEFAULT_MAX_PAIR_EXPANSIONS: Final = indexed.DEFAULT_MAX_PAIR_EXPANSIONS
 
 PEP_FAMILY: Final = "en.python.peps.public-domain"
 PEP_REVISION: Final = "24419b92ae550bf2878716f57c257cba00d3c1a1"
@@ -484,6 +520,368 @@ def _loc_matcher_inputs(
     return inventory, payloads
 
 
+
+_CLEAN_RECORD_KEYS = frozenset(
+    {"record_id", "source_id", "source_family", "modality", "text"}
+)
+_CLEAN_PROJECTION_KEYS = frozenset(
+    {
+        "record_id",
+        "source_id",
+        "source_family",
+        "modality",
+        "text_sha256",
+        "text_utf8_bytes",
+    }
+)
+_CLEAN_HANDOFF_KEYS = frozenset(
+    {
+        "schema_version",
+        "postdedup_inventory_identity_sha256",
+        "input_survivor_authority_sha256",
+        "retained_source_count",
+        "matcher_input_projection",
+        "matcher_input_projection_sha256",
+        "raw_text_persisted_in_evidence",
+        "final_test_payload_accessed",
+        "final_test_outcomes_accessed",
+        "authorized_training_exposure",
+        "handoff_identity_sha256",
+    }
+)
+
+
+def _git_blob_sha1(raw: bytes) -> str:
+    prefix = b"blob " + str(len(raw)).encode("ascii") + b"\0"
+    return hashlib.sha1(prefix + raw).hexdigest()
+
+
+def _module_blob_sha1(module: Any, *, label: str) -> str:
+    raw_path = getattr(module, "__file__", None)
+    _require(type(raw_path) is str and bool(raw_path), f"{label} source path missing")
+    path = Path(raw_path)
+    _require(path.suffix == ".py", f"{label} must resolve to Python source")
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise ExpandedDedupV10Error(f"cannot read {label} source") from exc
+    return _git_blob_sha1(raw)
+
+
+def _verify_indexed_runtime(v3_module: Any) -> None:
+    _require(
+        _module_blob_sha1(indexed, label="indexed executor")
+        == INDEXED_EXECUTOR_GIT_BLOB_SHA1,
+        "indexed executor Git blob drift",
+    )
+    core = getattr(indexed, "_core", None)
+    _require(core is not None, "indexed executor core missing")
+    _require(
+        _module_blob_sha1(core, label="indexed executor core")
+        == INDEXED_CORE_GIT_BLOB_SHA1,
+        "indexed executor core Git blob drift",
+    )
+    _require(
+        indexed.audit_payloads_indexed is _FROZEN_INDEXED_AUDIT
+        and _FROZEN_INDEXED_AUDIT.__code__ is _FROZEN_INDEXED_AUDIT_CODE
+        and _FROZEN_INDEXED_AUDIT.__defaults__ is _FROZEN_INDEXED_AUDIT_DEFAULTS,
+        "indexed audit callable drift",
+    )
+    _require(
+        indexed.attest_incumbent_runtime is _FROZEN_INDEXED_ATTEST
+        and _FROZEN_INDEXED_ATTEST.__code__ is _FROZEN_INDEXED_ATTEST_CODE
+        and _FROZEN_INDEXED_ATTEST.__defaults__ is _FROZEN_INDEXED_ATTEST_DEFAULTS,
+        "indexed attestation callable drift",
+    )
+    _require(
+        _FROZEN_INDEXED_AUDIT.__globals__.get("attest_incumbent_runtime")
+        is _FROZEN_INDEXED_ATTEST,
+        "indexed core attestation binding drift",
+    )
+    _FROZEN_INDEXED_ATTEST(v3_module)
+
+
+def _validate_clean_retained(
+    records_raw: bytes,
+    handoff_raw: bytes,
+) -> tuple[list[dict[str, Any]], dict[str, bytes], dict[str, Any]]:
+    _require_exact_raw(
+        records_raw,
+        label="clean DATA-232 training records",
+        expected_bytes=CLEAN_TRAINING_RECORDS_BYTES,
+        expected_sha256=CLEAN_TRAINING_RECORDS_SHA256,
+    )
+    _require(
+        type(handoff_raw) is bytes and bool(handoff_raw),
+        "clean DATA-232 handoff is empty",
+    )
+    _require(
+        _sha256(handoff_raw) == CLEAN_TRAINING_HANDOFF_SHA256,
+        "clean DATA-232 handoff SHA-256 drift",
+    )
+
+    records = _load_jsonl(records_raw, label="clean DATA-232 training records")
+    handoff = _load_json_object(handoff_raw, label="clean DATA-232 handoff")
+    _require(set(handoff) == _CLEAN_HANDOFF_KEYS, "clean handoff keyset drift")
+    _require(handoff.get("schema_version") == CLEAN_HANDOFF_SCHEMA, "clean handoff schema drift")
+    _require(
+        handoff.get("postdedup_inventory_identity_sha256")
+        == CLEAN_MATERIALIZATION_IDENTITY_SHA256,
+        "clean materialization identity drift",
+    )
+    _require(
+        handoff.get("input_survivor_authority_sha256")
+        == CLEAN_COMPOSITION_PREFLIGHT_SHA256,
+        "clean composition-preflight identity drift",
+    )
+    _require(
+        type(handoff.get("retained_source_count")) is int
+        and handoff["retained_source_count"] == CLEAN_RETAINED_SOURCE_COUNT,
+        "clean retained source count drift",
+    )
+    for key in (
+        "raw_text_persisted_in_evidence",
+        "final_test_payload_accessed",
+        "final_test_outcomes_accessed",
+    ):
+        _require(handoff.get(key) is False, f"clean handoff truth drift: {key}")
+    _require(
+        type(handoff.get("authorized_training_exposure")) is int
+        and handoff["authorized_training_exposure"] == 0,
+        "clean handoff widens training exposure",
+    )
+
+    handoff_identity = handoff.get("handoff_identity_sha256")
+    _require(
+        isinstance(handoff_identity, str)
+        and _SHA256_RE.fullmatch(handoff_identity) is not None,
+        "clean handoff identity missing",
+    )
+    handoff_core = dict(handoff)
+    handoff_core.pop("handoff_identity_sha256")
+    _require(
+        _sha256(_canonical(handoff_core)) == handoff_identity,
+        "clean handoff self-hash mismatch",
+    )
+
+    projection = handoff.get("matcher_input_projection")
+    _require(type(projection) is list, "clean matcher projection must be a list")
+    _require(
+        len(projection) == CLEAN_RETAINED_SOURCE_COUNT,
+        "clean matcher projection count drift",
+    )
+    _require(
+        handoff.get("matcher_input_projection_sha256")
+        == _sha256(_canonical(projection)),
+        "clean matcher projection identity drift",
+    )
+    by_record: dict[str, dict[str, Any]] = {}
+    for raw_projection in projection:
+        _require(type(raw_projection) is dict, "clean projection row must be exact dict")
+        _require(
+            set(raw_projection) == _CLEAN_PROJECTION_KEYS,
+            "clean projection row keyset drift",
+        )
+        record_id = raw_projection.get("record_id")
+        _require(
+            isinstance(record_id, str) and record_id and record_id not in by_record,
+            "clean projection record_id invalid/duplicate",
+        )
+        for key in ("source_id", "source_family", "modality", "text_sha256"):
+            _require(
+                isinstance(raw_projection.get(key), str) and bool(raw_projection[key]),
+                f"clean projection {key} invalid: {record_id}",
+            )
+        _require(
+            _SHA256_RE.fullmatch(str(raw_projection["text_sha256"])) is not None,
+            f"clean projection text SHA malformed: {record_id}",
+        )
+        _require(
+            type(raw_projection.get("text_utf8_bytes")) is int
+            and raw_projection["text_utf8_bytes"] > 0,
+            f"clean projection text bytes invalid: {record_id}",
+        )
+        by_record[record_id] = raw_projection
+
+    _require(
+        len(records) == CLEAN_RETAINED_SOURCE_COUNT,
+        "clean training record count drift",
+    )
+    matcher_rows: list[dict[str, Any]] = []
+    payloads: dict[str, bytes] = {}
+    seen_records: set[str] = set()
+    physical_sources: set[str] = set()
+    total_payload_bytes = 0
+    for row in records:
+        _require(type(row) is dict, "clean training row must be exact dict")
+        _require(set(row) == _CLEAN_RECORD_KEYS, "clean training row keyset drift")
+        record_id = row.get("record_id")
+        _require(
+            isinstance(record_id, str) and record_id and record_id not in seen_records,
+            "clean training record_id invalid/duplicate",
+        )
+        seen_records.add(record_id)
+        expected = by_record.get(record_id)
+        _require(expected is not None, f"clean projection missing record: {record_id}")
+        for key in ("source_id", "source_family", "modality"):
+            _require(
+                isinstance(row.get(key), str)
+                and bool(row[key])
+                and row[key] == expected[key],
+                f"clean row/projection {key} drift: {record_id}",
+            )
+        text = row.get("text")
+        _require(isinstance(text, str) and bool(text), f"clean text missing: {record_id}")
+        payload = text.encode("utf-8")
+        _require(
+            len(payload) == expected["text_utf8_bytes"],
+            f"clean text bytes drift: {record_id}",
+        )
+        _require(
+            _sha256(payload) == expected["text_sha256"],
+            f"clean text SHA drift: {record_id}",
+        )
+        source_id = str(row["source_id"])
+        physical_sources.add(source_id)
+        matcher_source_id = f"clean-retained:{record_id}"
+        _require(
+            matcher_source_id not in payloads,
+            f"clean matcher source-id collision: {matcher_source_id}",
+        )
+        matcher_rows.append(
+            {
+                "source_id": matcher_source_id,
+                "source_family": row["source_family"],
+                "stable_origin_id": f"clean-data232-source:{source_id}",
+                "stable_object_id": f"sha256:{expected['text_sha256']}",
+                "modality": row["modality"],
+                "evidence_status": "DEDICATED_TERMINAL",
+                "authority_ref": f"PR2183:{CLEAN_PRODUCT_HEAD}",
+                "declared_capacity_bytes": len(payload),
+                "expected_raw_bytes": len(payload),
+                "expected_raw_sha256": expected["text_sha256"],
+                "acquisition_url": "https://github.com/Oleksii-debug/12-6-ai./pull/2183",
+                "origin_key": f"clean-data232-record:{record_id}",
+            }
+        )
+        payloads[matcher_source_id] = payload
+        total_payload_bytes += len(payload)
+
+    _require(
+        set(by_record) == seen_records,
+        "clean handoff/training record coverage drift",
+    )
+    _require(
+        len(physical_sources) == CLEAN_DISTINCT_PHYSICAL_SOURCE_COUNT,
+        "clean distinct physical source count drift",
+    )
+    _require(
+        total_payload_bytes == CLEAN_RETAINED_PAYLOAD_BYTES,
+        "clean retained payload byte total drift",
+    )
+    return matcher_rows, payloads, handoff
+
+
+def _derive_selection_projection(dedup_report: Mapping[str, Any]) -> dict[str, Any]:
+    source_rows = dedup_report.get("sources")
+    _require(isinstance(source_rows, list) and bool(source_rows), "matcher report source rows missing")
+    by_id: dict[str, Mapping[str, Any]] = {}
+    for row in source_rows:
+        _require(isinstance(row, Mapping), "matcher source row must be object")
+        source_id = row.get("source_id")
+        capacity = row.get("declared_capacity_bytes")
+        _require(
+            isinstance(source_id, str) and source_id and source_id not in by_id,
+            "matcher source id invalid/duplicate",
+        )
+        _require(
+            type(capacity) is int and capacity > 0,
+            f"matcher capacity invalid: {source_id}",
+        )
+        by_id[source_id] = row
+
+    terminal = dedup_report.get("terminal_candidates")
+    _require(isinstance(terminal, Mapping), "matcher terminal candidates missing")
+    clusters = terminal.get("duplicate_clusters")
+    _require(isinstance(clusters, list), "matcher duplicate clusters missing")
+    dropped: set[str] = set()
+    cluster_members: set[str] = set()
+    normalized_clusters: list[dict[str, Any]] = []
+    for raw_cluster in clusters:
+        _require(
+            isinstance(raw_cluster, Sequence) and not isinstance(raw_cluster, (str, bytes)),
+            "invalid matcher duplicate cluster",
+        )
+        cluster = sorted(str(source_id) for source_id in raw_cluster)
+        _require(
+            len(cluster) >= 2 and len(cluster) == len(set(cluster)),
+            "matcher cluster cardinality invalid",
+        )
+        _require(
+            all(source_id in by_id for source_id in cluster),
+            "matcher cluster references unknown source",
+        )
+        _require(
+            not (cluster_members & set(cluster)),
+            "matcher duplicate clusters overlap",
+        )
+        cluster_members.update(cluster)
+        maximum = max(int(by_id[source_id]["declared_capacity_bytes"]) for source_id in cluster)
+        selected = min(
+            source_id
+            for source_id in cluster
+            if int(by_id[source_id]["declared_capacity_bytes"]) == maximum
+        )
+        dropped.update(source_id for source_id in cluster if source_id != selected)
+        normalized_clusters.append(
+            {
+                "member_source_ids": cluster,
+                "selected_source_id": selected,
+                "selected_declared_capacity_bytes": maximum,
+            }
+        )
+
+    survivors = sorted(source_id for source_id in by_id if source_id not in dropped)
+    capacity = sum(int(by_id[source_id]["declared_capacity_bytes"]) for source_id in survivors)
+    _require(
+        capacity == terminal.get("conservative_unique_capacity_bytes_after"),
+        "derived survivor bytes do not reproduce matcher report",
+    )
+    core = {
+        "schema_version": SELECTION_PROJECTION_SCHEMA,
+        "selection_rule": SELECTION_RULE,
+        "matcher_report_sha256": dedup_report.get("report_sha256"),
+        "pre_dedup_source_object_count": len(by_id),
+        "post_dedup_survivor_source_object_count": len(survivors),
+        "pre_dedup_declared_capacity_bytes": terminal.get("declared_capacity_bytes_before"),
+        "post_dedup_declared_capacity_bytes": capacity,
+        "duplicate_discount_bytes": terminal.get("duplicate_discount_bytes"),
+        "duplicate_cluster_count": len(normalized_clusters),
+        "duplicate_clusters": sorted(
+            normalized_clusters,
+            key=lambda item: tuple(item["member_source_ids"]),
+        ),
+        "survivor_source_ids": survivors,
+        "truth_boundary": {
+            "global_dedup_execution_complete": True,
+            "retained_inventory_freeze_complete": False,
+            "reserved_evaluation_decontamination_complete": False,
+            "canonical_quality_privacy_complete": False,
+            "family_caps_complete": False,
+            "cluster_safe_split_complete": False,
+            "packing_complete": False,
+            "training_authorized_bytes": 0,
+            "unique_causal_loss_positions_authorized": 0,
+            "tokenizer_fit_authorized": False,
+            "optimizer_updates": 0,
+            "model_training_executed": False,
+            "final_test_payload_accessed": False,
+            "paid_compute_used": False,
+        },
+    }
+    return {**core, "survivor_authority_sha256": _sha256(_canonical(core))}
+
+
 def _outer_survivor_authority(
     dedup: Mapping[str, Any],
     selection_projection: Mapping[str, Any],
@@ -536,113 +934,67 @@ def _outer_survivor_authority(
 
 def run_expanded_dedup_v10(
     *,
-    matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
-    matcher_verify: Callable[[Mapping[str, Any]], None],
-    reconstructed_v8_inventory: Mapping[str, Any],
-    reconstructed_v8_payloads: Mapping[str, bytes],
-    v8_survivor_authority: Mapping[str, Any],
-    data526_evidence: Mapping[str, Any],
-    data526_record_inventory: Mapping[str, Any],
-    rada_language_report: Mapping[str, Any],
-    rada_quality_privacy_report: Mapping[str, Any],
-    expected_rada_report_sha256: str,
-    rada_rows: Sequence[Mapping[str, Any]],
-    rada_raw_jsonl: bytes,
+    v3_module: Any,
+    clean_training_records_raw: bytes,
+    clean_training_handoff_raw: bytes,
     pep_candidate_raw: bytes,
     pep_report_raw: bytes,
     loc_candidate_raw: bytes,
     loc_report_raw: bytes,
+    max_candidate_pairs: int = DEFAULT_MAX_CANDIDATE_PAIRS,
+    max_index_postings: int = DEFAULT_MAX_INDEX_POSTINGS,
+    max_pair_expansions: int = DEFAULT_MAX_PAIR_EXPANSIONS,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run exact V9 authority first, then add authenticated PEP+LoC to the same matcher."""
+    """Compose exact clean retained + PEP + LoC inputs and run canonical indexed V3."""
 
-    v9_report, _ = v9.run_expanded_dedup(
-        matcher_audit=matcher_audit,
-        matcher_verify=matcher_verify,
-        reconstructed_v8_inventory=reconstructed_v8_inventory,
-        reconstructed_v8_payloads=reconstructed_v8_payloads,
-        v8_survivor_authority=v8_survivor_authority,
-        data526_evidence=data526_evidence,
-        data526_record_inventory=data526_record_inventory,
-        rada_language_report=rada_language_report,
-        rada_quality_privacy_report=rada_quality_privacy_report,
-        expected_rada_report_sha256=expected_rada_report_sha256,
-        rada_rows=rada_rows,
-        rada_raw_jsonl=rada_raw_jsonl,
+    _verify_indexed_runtime(v3_module)
+    clean_inventory, clean_payloads, clean_handoff = _validate_clean_retained(
+        clean_training_records_raw,
+        clean_training_handoff_raw,
     )
-
-    # Re-bind runtime semantics immediately before the expanded call.  V9 already
-    # proves the complete DATA526+Rada authority; this second closure check prevents
-    # a caller from swapping executable matcher state between V9 and V10.
-    v9._verify_matcher_semantic_closure(matcher_audit, matcher_verify)
     pep_rows, _ = _validate_pep(pep_candidate_raw, pep_report_raw)
     loc_rows, _ = _validate_loc(loc_candidate_raw, loc_report_raw)
-    verified_rada_rows = v9.validate_rada_rows(
-        rada_rows,
-        rada_raw_jsonl,
-        rada_quality_privacy_report,
-    )
-    rada_report_sha = v9.validate_rada_quality_privacy_report(
-        rada_quality_privacy_report,
-        expected_report_sha256=expected_rada_report_sha256,
-    )
-
-    prepared_inventory = v9._restrict_lineage_to_survivors(
-        reconstructed_v8_inventory,
-        v8_survivor_authority,
-    )
-    base_rows, base_payloads = v9.filter_v8_survivor_inputs(
-        prepared_inventory,
-        reconstructed_v8_payloads,
-        v8_survivor_authority,
-    )
-    rada_inventory, rada_payloads = v9.build_rada_matcher_inputs(
-        verified_rada_rows,
-        authority_report_sha256=rada_report_sha,
-    )
     pep_inventory, pep_payloads = _pep_matcher_inputs(pep_rows)
     loc_inventory, loc_payloads = _loc_matcher_inputs(loc_rows)
 
-    input_groups = (base_payloads, rada_payloads, pep_payloads, loc_payloads)
+    input_groups = (clean_payloads, pep_payloads, loc_payloads)
     seen_ids: set[str] = set()
     for group in input_groups:
         _require(not (seen_ids & set(group)), "V10 matcher source-id collision")
         seen_ids.update(group)
 
-    v9_vector = v9_report.get("source_vector")
-    _require(isinstance(v9_vector, Mapping), "V9 source vector missing")
-    base_rada_count = len(base_payloads) + len(rada_payloads)
-    base_rada_bytes = sum(len(raw) for raw in base_payloads.values()) + sum(
-        len(raw) for raw in rada_payloads.values()
-    )
-    _require(
-        v9_vector.get("pre_dedup_source_object_count") == base_rada_count,
-        "V9 reconstructed source count drift before V10",
-    )
-    _require(
-        v9_vector.get("pre_dedup_declared_capacity_bytes") == base_rada_bytes,
-        "V9 reconstructed byte total drift before V10",
-    )
-
-    combined_inventory = copy.deepcopy(dict(prepared_inventory))
-    combined_inventory["sources"] = [
-        *base_rows,
-        *rada_inventory,
-        *pep_inventory,
-        *loc_inventory,
-    ]
-    combined_inventory["final_refresh_required"] = False
-    combined_inventory["terminal_refresh_rule"] = (
-        "V10 composes exact hardened V9 DATA526+Rada inputs with independently "
-        "qualified real PEP and LoC materialization bytes; matching delegates to "
-        "the exact incumbent PR #824 V3 semantic closure."
-    )
+    combined_inventory = {
+        "schema_version": V3_INVENTORY_SCHEMA,
+        "local_free_only": True,
+        "model_training_executed": False,
+        "sources": [
+            *clean_inventory,
+            *pep_inventory,
+            *loc_inventory,
+        ],
+        "lineage_edges": [],
+    }
     combined_payloads: dict[str, bytes] = {}
     for group in input_groups:
         combined_payloads.update(group)
 
-    dedup = matcher_audit(combined_inventory, combined_payloads)
-    _require(isinstance(dedup, Mapping), "incumbent matcher returned non-object report")
+    dedup = _FROZEN_INDEXED_AUDIT(
+        v3_module,
+        combined_inventory,
+        combined_payloads,
+        max_candidate_pairs=max_candidate_pairs,
+        max_index_postings=max_index_postings,
+        max_pair_expansions=max_pair_expansions,
+    )
+    _require(isinstance(dedup, Mapping), "indexed matcher returned non-object report")
+
+    # Re-attest immediately before invoking the incumbent report verifier so a
+    # post-execution in-memory swap cannot turn verification into caller policy.
+    _verify_indexed_runtime(v3_module)
+    matcher_verify = getattr(v3_module, "verify_report", None)
+    _require(callable(matcher_verify), "incumbent V3 report verifier missing")
     matcher_verify(dedup)
+
     matcher_sha = dedup.get("report_sha256")
     _require(
         isinstance(matcher_sha, str) and _SHA256_RE.fullmatch(matcher_sha) is not None,
@@ -650,22 +1002,52 @@ def run_expanded_dedup_v10(
     )
     terminal = dedup.get("terminal_candidates")
     _require(isinstance(terminal, Mapping), "V10 matcher terminal result missing")
-    expected_before = base_rada_bytes + PEP_ACCEPTED_UTF8_BYTES + LOC_ACCEPTED_UTF8_BYTES
+    expected_before = (
+        CLEAN_RETAINED_PAYLOAD_BYTES
+        + PEP_ACCEPTED_UTF8_BYTES
+        + LOC_ACCEPTED_UTF8_BYTES
+    )
+    expected_source_count = (
+        CLEAN_RETAINED_SOURCE_COUNT + PEP_ACCEPTED_RECORDS + LOC_ACCEPTED_RECORDS
+    )
+    expected_stable_origins = (
+        CLEAN_DISTINCT_PHYSICAL_SOURCE_COUNT + PEP_ACCEPTED_RECORDS + LOC_ACCEPTED_RECORDS
+    )
     _require(
         terminal.get("declared_capacity_bytes_before") == expected_before,
         "V10 pre-dedup byte total drift",
     )
-    _require(dedup.get("source_count") == len(combined_payloads), "V10 source count drift")
+    _require(
+        dedup.get("source_count") == expected_source_count == len(combined_payloads),
+        "V10 source count drift",
+    )
+    _require(
+        terminal.get("stable_origin_count") == expected_stable_origins,
+        "V10 stable-origin count drift",
+    )
 
     core = {
         "schema_version": REPORT_SCHEMA,
         "execution_profile": "LOCAL_FREE",
-        "matcher_lineage": "MERGED_PR_824_V3_REUSED_WITHOUT_SEMANTIC_CHANGES",
-        "v9_dependency": {
-            "product_head_sha": "5dbf143c7ca15999eadb28fecb952118b59040de",
-            "validated_v9_report_sha256": v9_report["report_sha256"],
-            "source_object_count": base_rada_count,
-            "pre_dedup_payload_bytes": base_rada_bytes,
+        "matcher_lineage": "MERGED_PR_1459_INDEXED_INCUMBENT_V3",
+        "clean_retained_dependency": {
+            "product_head_sha": CLEAN_PRODUCT_HEAD,
+            "training_records_sha256": CLEAN_TRAINING_RECORDS_SHA256,
+            "training_handoff_sha256": CLEAN_TRAINING_HANDOFF_SHA256,
+            "handoff_identity_sha256": clean_handoff["handoff_identity_sha256"],
+            "materialization_identity_sha256": CLEAN_MATERIALIZATION_IDENTITY_SHA256,
+            "composition_preflight_identity_sha256": CLEAN_COMPOSITION_PREFLIGHT_SHA256,
+            "source_object_count": CLEAN_RETAINED_SOURCE_COUNT,
+            "distinct_physical_source_count": CLEAN_DISTINCT_PHYSICAL_SOURCE_COUNT,
+            "payload_bytes": CLEAN_RETAINED_PAYLOAD_BYTES,
+            "corpus_credit_added": 0,
+        },
+        "indexed_executor": {
+            "module_git_blob_sha1": INDEXED_EXECUTOR_GIT_BLOB_SHA1,
+            "core_git_blob_sha1": INDEXED_CORE_GIT_BLOB_SHA1,
+            "max_candidate_pairs": max_candidate_pairs,
+            "max_index_postings": max_index_postings,
+            "max_pair_expansions": max_pair_expansions,
         },
         "pep_public_domain": {
             "product_head_sha": PEP_PRODUCT_HEAD,
@@ -705,6 +1087,7 @@ def run_expanded_dedup_v10(
         "dedup_v3": copy.deepcopy(dict(dedup)),
         "raw_text_emitted": False,
         "claim_boundary": {
+            "clean_retained_authority_authenticated": True,
             "pep_real_materialization_authenticated": True,
             "loc_real_materialization_authenticated": True,
             "expanded_global_dedup_complete": True,
@@ -723,6 +1106,7 @@ def run_expanded_dedup_v10(
         },
     }
     report = {**core, "report_sha256": _sha256(_canonical(core))}
-    projection = v9._derive_survivors(dedup)
+    projection = _derive_selection_projection(dedup)
     survivors = _outer_survivor_authority(dedup, projection)
     return report, survivors
+

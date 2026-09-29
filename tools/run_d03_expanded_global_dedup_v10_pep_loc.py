@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Run post-V9 global dedup with exact real PEP+LoC materialization bytes."""
+"""Run clean-retained + PEP + LoC global dedup through canonical indexed V3."""
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,37 +17,25 @@ for location in (str(TOOLS), str(SRC)):
     if location not in sys.path:
         sys.path.insert(0, location)
 
-import compose_data526_records_from_v8 as data526
-import run_d03_expanded_global_dedup_v9 as v9_runner
-import run_next100_065f_global_dedup_v8 as v8
+import twelve_six
+import twelve_six.data
 from twelve_six.data.expanded_global_dedup_v10 import (
+    DEFAULT_MAX_CANDIDATE_PAIRS,
+    DEFAULT_MAX_INDEX_POSTINGS,
+    DEFAULT_MAX_PAIR_EXPANSIONS,
     ExpandedDedupV10Error,
     run_expanded_dedup_v10,
 )
 
-
-def read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise ExpandedDedupV10Error(f"JSON root must be object: {path}")
-    return value
+EXPECTED_V7_HEAD = "d3333ec1b4a508df232a5aefccd6686adda745fb"
+V3_MODULE = "twelve_six.data.cross_source_capacity_audit_v3"
+V1_MODULE = "twelve_six.data.cross_source_capacity_audit"
+DATA232_MODULE = "twelve_six.data._data232_decontamination_matching"
 
 
-def read_jsonl(path: Path) -> tuple[list[dict[str, Any]], bytes]:
-    if not path.is_file() or path.is_symlink():
-        raise ExpandedDedupV10Error(f"JSONL must be a regular file: {path}")
-    raw = path.read_bytes()
-    if not raw:
-        raise ExpandedDedupV10Error(f"JSONL is empty: {path}")
-    rows: list[dict[str, Any]] = []
-    for line_no, line in enumerate(raw.splitlines(), 1):
-        if not line.strip():
-            raise ExpandedDedupV10Error(f"blank JSONL line at {line_no}")
-        value = json.loads(line)
-        if not isinstance(value, dict):
-            raise ExpandedDedupV10Error(f"JSONL row {line_no} must be object")
-        rows.append(value)
-    return rows, raw
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ExpandedDedupV10Error(message)
 
 
 def read_exact_bytes(path: Path, *, label: str) -> bytes:
@@ -65,78 +55,111 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         + "\n",
         encoding="utf-8",
+        newline="\n",
     )
+
+
+def _load_exact_v3(v7_root: Path) -> Any:
+    """Load only the historical V3 bytes from the exact clean terminal V7 worktree."""
+    try:
+        root = v7_root.resolve(strict=True)
+    except OSError as exc:
+        raise ExpandedDedupV10Error("cannot resolve exact V7 worktree") from exc
+    _require(root.is_dir(), "V7 root must be a directory")
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ExpandedDedupV10Error("cannot attest exact V7 worktree") from exc
+    _require(head == EXPECTED_V7_HEAD, "V7 worktree HEAD drift")
+    _require(dirty == "", "V7 worktree is not clean")
+
+    historical_package = (root / "src" / "twelve_six").resolve(strict=True)
+    historical_data = (historical_package / "data").resolve(strict=True)
+    for name in (DATA232_MODULE, V1_MODULE, V3_MODULE):
+        _require(name not in sys.modules, f"historical matcher preloaded: {name}")
+
+    current_package_path = list(twelve_six.__path__)
+    current_data_path = list(twelve_six.data.__path__)
+    historical_package_text = str(historical_package)
+    historical_data_text = str(historical_data)
+    _require(
+        historical_package_text not in current_package_path
+        and historical_data_text not in current_data_path,
+        "historical V7 package path already injected",
+    )
+
+    twelve_six.__path__ = [historical_package_text, *current_package_path]
+    twelve_six.data.__path__ = [historical_data_text, *current_data_path]
+    importlib.invalidate_caches()
+    try:
+        v3 = importlib.import_module(V3_MODULE)
+    finally:
+        twelve_six.__path__ = current_package_path
+        twelve_six.data.__path__ = current_data_path
+        importlib.invalidate_caches()
+
+    raw_path = getattr(v3, "__file__", None)
+    _require(type(raw_path) is str and bool(raw_path), "V3 module source path missing")
+    v3_path = Path(raw_path).resolve(strict=True)
+    _require(v3_path.is_relative_to(historical_data), "V3 module escaped exact V7 worktree")
+    return v3
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--v7-root", type=Path, required=True)
-    parser.add_argument("--bulk-workspace", type=Path, required=True)
-    parser.add_argument(
-        "--v8-config",
-        type=Path,
-        default=ROOT / "configs/data/next100_065f_global_dedup_v8.json",
-    )
-    parser.add_argument(
-        "--data526-config",
-        type=Path,
-        default=ROOT / "configs/data/data526_v8_record_composition_v1.json",
-    )
-    parser.add_argument("--v8-report", type=Path, required=True)
-    parser.add_argument("--v8-survivors", type=Path, required=True)
-    parser.add_argument(
-        "--data526-evidence",
-        type=Path,
-        default=ROOT / "evidence/data526/v8/materialization_evidence.json",
-    )
-    parser.add_argument(
-        "--data526-record-inventory",
-        type=Path,
-        default=ROOT / "evidence/data526/v8/record_inventory.json",
-    )
-    parser.add_argument(
-        "--rada-language-report",
-        type=Path,
-        default=ROOT
-        / "evidence/d03-rada-trees/secondary-plaintext-language-gate-v1.json",
-    )
-    parser.add_argument("--rada-quality-privacy-jsonl", type=Path, required=True)
-    parser.add_argument("--rada-quality-privacy-report", type=Path, required=True)
-    parser.add_argument("--expected-rada-report-sha256", required=True)
+    parser.add_argument("--clean-training-records", type=Path, required=True)
+    parser.add_argument("--clean-training-handoff", type=Path, required=True)
     parser.add_argument("--pep-candidate", type=Path, required=True)
     parser.add_argument("--pep-report", type=Path, required=True)
     parser.add_argument("--loc-candidate", type=Path, required=True)
     parser.add_argument("--loc-report", type=Path, required=True)
+    parser.add_argument(
+        "--max-candidate-pairs",
+        type=int,
+        default=DEFAULT_MAX_CANDIDATE_PAIRS,
+    )
+    parser.add_argument(
+        "--max-index-postings",
+        type=int,
+        default=DEFAULT_MAX_INDEX_POSTINGS,
+    )
+    parser.add_argument(
+        "--max-pair-expansions",
+        type=int,
+        default=DEFAULT_MAX_PAIR_EXPANSIONS,
+    )
     parser.add_argument("--output-report", type=Path, required=True)
     parser.add_argument("--output-survivors", type=Path, required=True)
     args = parser.parse_args()
 
     try:
-        v8_config = v8.load_config(args.v8_config)
-        data526_config = read_json(args.data526_config)
-        data526.verify_config(data526_config, require_terminal_v8=True)
-        v8_report = read_json(args.v8_report)
-        v8_survivors = read_json(args.v8_survivors)
-        data526.validate_v8_inputs(v8_report, v8_survivors, data526_config)
-        matcher_module, v8_inventory, v8_payloads = v9_runner.reconstruct_v8_source_inputs(
-            v7_root=args.v7_root,
-            bulk_workspace=args.bulk_workspace,
-            v8_config=v8_config,
-        )
-        rada_rows, rada_raw = read_jsonl(args.rada_quality_privacy_jsonl)
+        v3 = _load_exact_v3(args.v7_root)
         report, survivors = run_expanded_dedup_v10(
-            matcher_audit=matcher_module.audit_payloads,
-            matcher_verify=matcher_module.verify_report,
-            reconstructed_v8_inventory=v8_inventory,
-            reconstructed_v8_payloads=v8_payloads,
-            v8_survivor_authority=v8_survivors,
-            data526_evidence=read_json(args.data526_evidence),
-            data526_record_inventory=read_json(args.data526_record_inventory),
-            rada_language_report=read_json(args.rada_language_report),
-            rada_quality_privacy_report=read_json(args.rada_quality_privacy_report),
-            expected_rada_report_sha256=args.expected_rada_report_sha256,
-            rada_rows=rada_rows,
-            rada_raw_jsonl=rada_raw,
+            v3_module=v3,
+            clean_training_records_raw=read_exact_bytes(
+                args.clean_training_records,
+                label="clean DATA-232 training records",
+            ),
+            clean_training_handoff_raw=read_exact_bytes(
+                args.clean_training_handoff,
+                label="clean DATA-232 handoff",
+            ),
             pep_candidate_raw=read_exact_bytes(
                 args.pep_candidate,
                 label="PEP candidate",
@@ -147,17 +170,13 @@ def main() -> int:
                 label="LoC candidate",
             ),
             loc_report_raw=read_exact_bytes(args.loc_report, label="LoC report"),
+            max_candidate_pairs=args.max_candidate_pairs,
+            max_index_postings=args.max_index_postings,
+            max_pair_expansions=args.max_pair_expansions,
         )
         write_json(args.output_report, report)
         write_json(args.output_survivors, survivors)
-    except (
-        ExpandedDedupV10Error,
-        data526.Data526V8Error,
-        v8.V8Error,
-        v9_runner.ExpandedDedupError,
-        OSError,
-        ValueError,
-    ) as exc:
+    except (ExpandedDedupV10Error, OSError, ValueError) as exc:
         print(f"BLOCKED: {exc}")
         return 2
 
@@ -165,6 +184,9 @@ def main() -> int:
     print("REPORT_SHA256=" + report["report_sha256"])
     print("SURVIVOR_AUTHORITY_SHA256=" + survivors["survivor_authority_sha256"])
     print("AUTHORIZED_OPTIMIZED_TARGET_EXPOSURE=0")
+    print("TOKENIZER_FIT_AUTHORIZED=false")
+    print("OPTIMIZER_UPDATES_EXECUTED_ON_REAL_TARGETS=0")
+    print("TRAINING_EXECUTED=false")
     return 0
 
 
