@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from twelve_six.accelerated_scaling import REPOSITORY
+from twelve_six.checkpoint import LoadResult, load_trainer_checkpoint
 from twelve_six.portable_run_binding import (
     PortableRunBinding,
     _build_candidate,
@@ -87,6 +88,7 @@ _BINDING_KEYS_WITHOUT_HASH = frozenset(
         "terminal_recovery_authority_identity",
     }
 )
+_BINDING_KEYS = _BINDING_KEYS_WITHOUT_HASH | {"binding_sha256"}
 
 
 class TrustedParentRecoveryBindingError(ValueError):
@@ -467,4 +469,135 @@ def bind_trusted_same_provider_resume(
         overlay_sha256=base.overlay_sha256,
         packet_sha256=canonical_sha256(candidate),
         packet=candidate,
+    )
+
+
+def _exact_trusted_parent_binding(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TrustedParentRecoveryBindingError("trusted_parent_binding_invalid")
+    trusted = dict(value)
+    if set(trusted) != _BINDING_KEYS:
+        raise TrustedParentRecoveryBindingError("trusted_parent_binding_fields_invalid")
+    claimed = _require_sha64(
+        trusted.get("binding_sha256"),
+        "trusted_parent_binding_sha256",
+    )
+    payload = dict(trusted)
+    payload.pop("binding_sha256")
+    if canonical_sha256(payload) != claimed:
+        raise TrustedParentRecoveryBindingError("trusted_parent_binding_sha256_mismatch")
+    return trusted
+
+
+def restore_trusted_same_provider_resume(
+    binding: PortableRunBinding,
+    resolution: RecoveryResolution,
+    *,
+    model: Any,
+    trainer: Any,
+    expected_trusted_parent_binding_sha256: str,
+    verified_trusted_recovery_authorities: Collection[str],
+    strict_model: bool = True,
+    restore_rng: bool = True,
+) -> LoadResult:
+    """Restore exactly the D05 checkpoint authenticated by one READY resume binding.
+
+    This is a thin operational consumer of the existing D05/D04 checkpoint stack.
+    It does not resolve a second checkpoint path or define a new recovery format.
+    Every exact checkpoint, manifest, progress and D04 identity is checked before
+    the canonical loader mutates model, trainer or RNG state.
+    """
+
+    if not isinstance(binding, PortableRunBinding):
+        raise TrustedParentRecoveryBindingError("portable_binding_type_invalid")
+    if not binding.binding_ready or binding.mode != "RESUME" or binding.blockers:
+        raise TrustedParentRecoveryBindingError("portable_binding_not_ready")
+    if not isinstance(binding.packet, Mapping):
+        raise TrustedParentRecoveryBindingError("portable_binding_packet_missing")
+    packet = dict(binding.packet)
+    if binding.packet_sha256 != canonical_sha256(packet):
+        raise TrustedParentRecoveryBindingError("portable_binding_packet_sha256_mismatch")
+    if not _is_sha64(expected_trusted_parent_binding_sha256):
+        raise TrustedParentRecoveryBindingError("expected_binding_sha256_invalid")
+
+    binding_section = packet.get("binding")
+    if not isinstance(binding_section, Mapping):
+        raise TrustedParentRecoveryBindingError("portable_binding_section_missing")
+    trusted = _exact_trusted_parent_binding(
+        binding_section.get("trusted_parent_recovery")
+    )
+    if trusted["binding_sha256"] != expected_trusted_parent_binding_sha256:
+        raise TrustedParentRecoveryBindingError("trusted_parent_binding_expected_mismatch")
+
+    authority_token = binding_section.get("trusted_parent_recovery_authority_token")
+    if (
+        not isinstance(authority_token, str)
+        or authority_token not in set(verified_trusted_recovery_authorities)
+    ):
+        raise TrustedParentRecoveryBindingError(
+            "trusted_parent_recovery_authority_not_verified"
+        )
+
+    if not isinstance(resolution, RecoveryResolution):
+        raise TrustedParentRecoveryBindingError("recovery_resolution_type_invalid")
+    reference = _exact_recovery_reference(resolution.reference)
+    sidecar = resolution.resume_state
+    if not isinstance(sidecar, Mapping):
+        raise TrustedParentRecoveryBindingError("validated_d04_resume_state_missing")
+    if sidecar.get("schema") != SIDECAR_SCHEMA:
+        raise TrustedParentRecoveryBindingError("validated_d04_resume_state_schema_invalid")
+
+    exact_checks = {
+        "checkpoint_id": reference["checkpoint_id"],
+        "checkpoint_manifest_sha256": reference["manifest_sha256"],
+        "recovery_pointer_sha256": reference["pointer_sha256"],
+        "recovery_generation": reference["generation"],
+        "recovery_object_key": reference["object_key"],
+        "source_git_sha": reference["source_sha"],
+        "run_manifest_sha256": reference["run_manifest_hash"],
+        "previous_run_id": _manifest_previous_run_id(resolution.manifest),
+        "optimizer_step": reference["optimizer_step"],
+        "tokens_seen": reference["tokens_seen"],
+        "d04_state_identity_sha256": sidecar.get("state_identity_sha256"),
+        "ordered_next_exposure_identity_sha256": sidecar.get(
+            "ordered_next_exposure_identity_sha256"
+        ),
+        "ledger_identity_sha256": sidecar.get("ledger_identity_sha256"),
+        "materialization_identity_sha256": sidecar.get(
+            "materialization_identity_sha256"
+        ),
+        "packing_identity_sha256": sidecar.get("packing_identity_sha256"),
+        "exposure_plan_identity_sha256": sidecar.get(
+            "exposure_plan_identity_sha256"
+        ),
+    }
+    for field, expected in exact_checks.items():
+        if trusted.get(field) != expected:
+            raise TrustedParentRecoveryBindingError(
+                f"trusted_parent_{field}_resolution_mismatch"
+            )
+
+    return load_trainer_checkpoint(
+        resolution.path,
+        model=model,
+        trainer=trainer,
+        strict_model=strict_model,
+        restore_rng=restore_rng,
+        expected_checkpoint_id=trusted["checkpoint_id"],
+        expected_manifest_sha256=trusted["checkpoint_manifest_sha256"],
+        expected_git_sha=trusted["source_git_sha"],
+        expected_run_manifest_hash=trusted["run_manifest_sha256"],
+        expected_step=trusted["optimizer_step"],
+        expected_tokens_seen=trusted["tokens_seen"],
+        expected_ledger_identity_sha256=trusted["ledger_identity_sha256"],
+        expected_materialization_identity_sha256=trusted[
+            "materialization_identity_sha256"
+        ],
+        expected_packing_identity_sha256=trusted["packing_identity_sha256"],
+        expected_exposure_plan_identity_sha256=trusted[
+            "exposure_plan_identity_sha256"
+        ],
+        expected_ordered_next_exposure_identity_sha256=trusted[
+            "ordered_next_exposure_identity_sha256"
+        ],
     )
