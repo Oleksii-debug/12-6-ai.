@@ -286,3 +286,57 @@ assert '"whole_corpus_external_llm_cleanliness_claimed": False' in execute_sourc
 assert '"external_llm_or_api_used_for_data_or_intelligence": False' not in execute_source
 """
     )
+
+
+def test_survivor_wrapper_rejects_malformed_or_duplicate_source_ids() -> None:
+    _run_isolated(
+        """
+cases = (
+    (
+        {"report_sha256": "1" * 64, "sources": [{"source_family": "base"}]},
+        ["base:a"],
+        "source row invalid",
+    ),
+    (
+        {
+            "report_sha256": "1" * 64,
+            "sources": [row("base:a"), row("base:a")],
+        },
+        ["base:a"],
+        "duplicate dedup source id",
+    ),
+    (
+        {"report_sha256": "1" * 64, "sources": [row("base:a")]},
+        ["base:a", "base:a"],
+        "duplicate survivor source id",
+    ),
+)
+for dedup, survivor_ids, expected in cases:
+    try:
+        mod._outer_survivor_authority(
+            dedup,
+            {
+                "schema_version": "fixture",
+                "survivor_authority_sha256": "2" * 64,
+                "survivor_source_ids": survivor_ids,
+            },
+        )
+    except mod.CaselawGlobalDedupError as exc:
+        assert expected in str(exc)
+    else:
+        raise AssertionError(f"{expected} was accepted")
+"""
+    )
+
+
+def test_two_clean_workflow_uses_exact_numeric_and_stable_identity_checks() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "def require_exact_int(value: object, expected: int, field: str) -> None:" in workflow
+    for field in (
+        '"schema_version"',
+        '"execution_profile"',
+        '"execution_claim_issue"',
+        '"execution_pr"',
+        '"execution_head_sha"',
+    ):
+        assert field in workflow
