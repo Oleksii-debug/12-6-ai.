@@ -496,6 +496,11 @@ jobs:
                       "binding_identity_sha256"
                   ],
               )
+          except Exception as exc:
+              selection_ready = False
+              selection_error = str(exc)
+
+          if selection_ready:
               selection = build_current_clean_balanced_selection(
                   family_vector=vector,
                   next100_input=adapted,
@@ -537,11 +542,6 @@ jobs:
                   ],
               )
               selected_raw_record_count = len(selected_raw)
-          except Exception as exc:
-              selection_ready = False
-              selection_error = str(exc)
-              selection = None
-              selected_raw_record_count = 0
 
           receipt = {
               "schema": "12-6.d03-real-current-clean-balance-execution.v4",
