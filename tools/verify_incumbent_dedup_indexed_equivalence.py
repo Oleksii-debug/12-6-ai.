@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import math
 import time
 from pathlib import Path
 from typing import Any
@@ -24,8 +25,36 @@ from twelve_six.data.incumbent_dedup_indexed_execution import (
 )
 
 
+def _strict_float(value: str) -> float:
+    decoded = float(value)
+    if not math.isfinite(decoded):
+        raise ValueError("non-finite JSON number")
+    return decoded
+
+
+def _reject_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object member: {key!r}")
+        result[key] = value
+    return result
+
+
 def _json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_strict_object,
+            parse_constant=_reject_constant,
+            parse_float=_strict_float,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(f"{path}: invalid strict JSON: {exc}") from None
 
 
 def _max_rss_kib() -> int | None:
