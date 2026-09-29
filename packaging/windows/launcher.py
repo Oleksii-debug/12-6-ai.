@@ -119,7 +119,11 @@ def _runtime_report() -> tuple[dict[str, Any], list[str]]:
         runtime_record = locks["runtime"]
         runtime_path = lock_dir / "runtime.lock.txt"
         expected_hash = runtime_record.get("sha256")
-        if _sha256_file(runtime_path) != expected_hash:
+        try:
+            actual_hash = _sha256_file(runtime_path)
+        except OSError as exc:
+            raise RuntimeError("cannot read installed D08 runtime lock") from exc
+        if actual_hash != expected_hash:
             raise RuntimeError("installed D08 runtime lock SHA-256 mismatch")
         versions = _runtime_versions(runtime_path)
     except RuntimeError as exc:

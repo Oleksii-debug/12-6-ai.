@@ -10,6 +10,7 @@ on:
       - "requirements/locks/**"
       - "packaging/windows/**"
       - "tests/test_dependency_lock.py"
+      - "tests/test_windows_artifact_manifest.py"
       - ".github/workflows/d08-windows-product-packaging.yml"
   workflow_dispatch:
 
@@ -246,6 +247,11 @@ jobs:
           $stderrText = Get-Content -Raw -Encoding UTF8 -LiteralPath $stdinErr
           if ($stderrText -notmatch '^error:') { throw 'generation failure lacks clear error prefix' }
           if ($stderrText -match 'Український stdin без GUI') { throw 'prompt leaked into stderr' }
+          $stdoutText = Get-Content -Raw -Encoding UTF8 -LiteralPath $stdinOut
+          if ($stdoutText -match 'Український stdin без GUI') { throw 'prompt leaked into stdout' }
+          if ((Get-Item -LiteralPath $stdinOut).Length -ne 0) {
+            throw 'failed generation unexpectedly wrote stdout'
+          }
 
           & $py (Join-Path $app 'artifact_manifest.py') evidence `
             --output (Join-Path $env:RUNNER_TEMP 'windows-product-packaging-evidence.json') `

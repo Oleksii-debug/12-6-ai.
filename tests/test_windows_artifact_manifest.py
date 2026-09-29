@@ -10,16 +10,23 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _load_artifact_manifest():
-    path = ROOT / "packaging" / "windows" / "artifact_manifest.py"
-    spec = importlib.util.spec_from_file_location("windows_artifact_manifest_test", path)
+def _load_module(name: str, relative_path: str):
+    path = ROOT / relative_path
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-ARTIFACT_MANIFEST = _load_artifact_manifest()
+ARTIFACT_MANIFEST = _load_module(
+    "windows_artifact_manifest_test",
+    "packaging/windows/artifact_manifest.py",
+)
+WINDOWS_LAUNCHER = _load_module(
+    "windows_launcher_test",
+    "packaging/windows/launcher.py",
+)
 
 
 def _write_wheel(root: Path, members: list[str]) -> Path:
@@ -156,3 +163,85 @@ def test_windows_workflow_checks_actual_stderr_variable() -> None:
     ).read_text(encoding="utf-8")
     assert "$stdertText" not in workflow
     assert "if ($stderrText -match 'Український stdin без GUI')" in workflow
+
+
+def test_application_manifest_rejects_checkpoint_sidecar_outside_wheel(
+    tmp_path: Path,
+) -> None:
+    _write_wheel(tmp_path, ["twelve_six/__init__.py"])
+    sidecar = tmp_path / "assets" / "weights.safetensors"
+    sidecar.parent.mkdir()
+    sidecar.write_bytes(b"serialized-model-fixture")
+
+    with pytest.raises(
+        RuntimeError,
+        match="application artifact contains model/checkpoint sidecar bytes",
+    ):
+        ARTIFACT_MANIFEST._application(tmp_path, "c" * 40)
+
+    assert not (tmp_path / "app-manifest.json").exists()
+
+
+def test_runtime_manifest_rejects_nested_application_wheel(tmp_path: Path) -> None:
+    lock = tmp_path / "12-6-lock"
+    lock.mkdir()
+    (lock / "profile.json").write_text(
+        json.dumps(
+            {
+                "profile_id": "windows-x86_64",
+                "python": {"version": "3.11.9"},
+                "manifest_sha256": "d" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+    nested = tmp_path / "nested" / "wheel-cache"
+    nested.mkdir(parents=True)
+    (nested / "twelve_six_ai-0.0.0-py3-none-any.whl").write_bytes(b"fixture")
+
+    with pytest.raises(
+        RuntimeError,
+        match="runtime artifact must not contain the application wheel",
+    ):
+        ARTIFACT_MANIFEST._runtime(tmp_path)
+
+    assert not (tmp_path / "runtime-manifest.json").exists()
+
+
+def test_runtime_report_normalizes_missing_runtime_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock = tmp_path / "12-6-lock"
+    lock.mkdir()
+    profile = {
+        "profile_id": "windows-x86_64",
+        "python": {"version": "3.11.9"},
+        "locks": {"runtime": {"sha256": "e" * 64}},
+    }
+    profile["manifest_sha256"] = WINDOWS_LAUNCHER.hashlib.sha256(
+        WINDOWS_LAUNCHER._canonical_json_bytes(profile)
+    ).hexdigest()
+    (lock / "profile.json").write_text(
+        json.dumps(profile),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(WINDOWS_LAUNCHER, "_lock_dir", lambda: lock)
+
+    _, errors = WINDOWS_LAUNCHER._runtime_report()
+
+    assert "cannot read installed D08 runtime lock" in errors
+
+
+def test_windows_workflow_triggers_manifest_regression_suite() -> None:
+    workflow = (
+        ROOT / ".github" / "workflows" / "d08-windows-product-packaging.yml"
+    ).read_text(encoding="utf-8")
+    assert '- "tests/test_windows_artifact_manifest.py"' in workflow
+
+
+def test_windows_workflow_rejects_failed_generation_stdout() -> None:
+    workflow = (
+        ROOT / ".github" / "workflows" / "d08-windows-product-packaging.yml"
+    ).read_text(encoding="utf-8")
+    assert "prompt leaked into stdout" in workflow
+    assert "failed generation unexpectedly wrote stdout" in workflow

@@ -109,6 +109,18 @@ def _application(root: Path, source_sha: str) -> None:
     forbidden = sorted(name for name in names if _is_model_checkpoint_payload(name))
     if forbidden:
         raise RuntimeError(f"application wheel contains model/checkpoint bytes: {forbidden}")
+    bundle_forbidden = sorted(
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file()
+        and path != wheels[0]
+        and _is_model_checkpoint_payload(path.relative_to(root).as_posix())
+    )
+    if bundle_forbidden:
+        raise RuntimeError(
+            "application artifact contains model/checkpoint sidecar bytes: "
+            f"{bundle_forbidden}"
+        )
     payload = {
         "schema_version": "12-6.windows-application-artifact.v1",
         "source_sha": source_sha,
@@ -121,9 +133,12 @@ def _application(root: Path, source_sha: str) -> None:
 
 def _runtime(root: Path) -> None:
     profile = _read_json(root / "12-6-lock" / "profile.json")
-    application_wheels = list((root / "wheelhouse").glob("twelve_six_ai-*.whl"))
+    application_wheels = sorted(root.rglob("twelve_six_ai-*.whl"))
     if application_wheels:
-        raise RuntimeError("runtime wheelhouse must not contain the application wheel")
+        relative = [path.relative_to(root).as_posix() for path in application_wheels]
+        raise RuntimeError(
+            f"runtime artifact must not contain the application wheel: {relative}"
+        )
     checkpoint_bytes = sorted(
         path.relative_to(root).as_posix()
         for path in root.rglob("*")
