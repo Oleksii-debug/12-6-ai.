@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections
 import importlib.util
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -52,27 +53,39 @@ def _load_source_module(tmp_path: Path, name: str, source: str) -> ModuleType:
 
 
 def test_frozen_direct_import_inventory_covers_pinned_stdlib_behavior() -> None:
-    actual = {
-        (label, module_name, imported_name, bound_name)
-        for label, module_name, imported_name, bound_name, _state
-        in indexed._FROZEN_DIRECT_IMPORTED_BEHAVIOR
-    }
-    assert actual == {
-        ("DATA232", "collections", "defaultdict", "defaultdict"),
-        ("DATA232", "typing", "Mapping", "Mapping"),
-        ("DATA232", "typing", "Sequence", "Sequence"),
-        ("V1", "collections", "defaultdict", "defaultdict"),
-        ("V1", "collections.abc", "Mapping", "Mapping"),
-        ("V1", "collections.abc", "Sequence", "Sequence"),
-        ("V1", "pathlib", "Path", "Path"),
-        ("V1", "urllib.request", "Request", "Request"),
-        ("V1", "urllib.request", "urlopen", "urlopen"),
-        ("V3", "collections", "Counter", "Counter"),
-        ("V3", "collections", "defaultdict", "defaultdict"),
-        ("V3", "collections.abc", "Mapping", "Mapping"),
-        ("V3", "collections.abc", "Sequence", "Sequence"),
-        ("V3", "pathlib", "Path", "Path"),
-    }
+    script = r"""
+from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+
+actual = {
+    (label, module_name, imported_name, bound_name)
+    for label, module_name, imported_name, bound_name, _state
+    in indexed._FROZEN_DIRECT_IMPORTED_BEHAVIOR
+}
+expected = {
+    ("DATA232", "collections", "defaultdict", "defaultdict"),
+    ("DATA232", "typing", "Mapping", "Mapping"),
+    ("DATA232", "typing", "Sequence", "Sequence"),
+    ("V1", "collections", "defaultdict", "defaultdict"),
+    ("V1", "collections.abc", "Mapping", "Mapping"),
+    ("V1", "collections.abc", "Sequence", "Sequence"),
+    ("V1", "pathlib", "Path", "Path"),
+    ("V1", "urllib.request", "Request", "Request"),
+    ("V1", "urllib.request", "urlopen", "urlopen"),
+    ("V3", "collections", "Counter", "Counter"),
+    ("V3", "collections", "defaultdict", "defaultdict"),
+    ("V3", "collections.abc", "Mapping", "Mapping"),
+    ("V3", "collections.abc", "Sequence", "Sequence"),
+    ("V3", "pathlib", "Path", "Path"),
+}
+assert actual == expected
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_attestation_rejects_counter_class_member_replacement(tmp_path: Path) -> None:
