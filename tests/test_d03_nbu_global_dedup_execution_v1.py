@@ -10,6 +10,29 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "tools" / "run_d03_nbu_global_dedup_execution_v1.py"
+WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+NBU_EXECUTION_BRANCH = "swarm/2398-nbu-indexed-dedup-execution-v1"
+NBU_PHYSICAL_JOBS = (
+    "nbu-global-dedup-pass",
+    "nbu-global-dedup-two-clean",
+    "nbu-pinned-pdf-access-probe",
+)
+
+
+def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    expected_gate = (
+        "    if: github.event_name == 'pull_request' "
+        "&& github.event.pull_request.number == 2454 "
+        f"&& github.head_ref == '{NBU_EXECUTION_BRANCH}' "
+        "&& github.event.pull_request.head.repo.full_name == github.repository"
+    )
+
+    for job in NBU_PHYSICAL_JOBS:
+        job_line = f"  {job}:"
+        index = lines.index(job_line)
+        assert lines[index + 1] == expected_gate
+
 
 
 def _load():
