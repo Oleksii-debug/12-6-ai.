@@ -225,7 +225,7 @@ def trusted_parent_recovery_binding_from_resolution(
     """
     if not isinstance(resolution, RecoveryResolution):
         raise TrustedParentRecoveryBindingError("recovery_resolution_type_invalid")
-    reference = _exact_recovery_reference(resolution.reference)
+    _exact_recovery_reference(resolution.reference)
     resume_state = resolution.resume_state
     if not isinstance(resume_state, Mapping):
         raise TrustedParentRecoveryBindingError("validated_d04_resume_state_missing")
