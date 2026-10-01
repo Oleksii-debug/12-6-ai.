@@ -558,7 +558,7 @@ def _max_rss_kib() -> int | None:
     return None
 
 
-PUBLICATION_SCHEMA = "12-6.d03-franko1901-output-publication.v1"
+PUBLICATION_SCHEMA = "12-6.d03-franko1901-output-publication.v2"
 
 
 def _path_entry_exists(path: Path) -> bool:
@@ -567,10 +567,10 @@ def _path_entry_exists(path: Path) -> bool:
 
 def _fsync_directory(path: Path) -> None:
     if os.name == "nt":
-        # os.fsync() below flushes every staged payload and marker.  Windows does
-        # not expose portable directory-handle fsync through Python; NTFS link/
-        # unlink metadata remains covered by the incomplete-marker recovery
-        # protocol for process interruption.
+        # Every marker, manifest and staged payload is flushed with os.fsync().
+        # Python has no portable Windows directory-handle fsync; process-crash
+        # atomicity is therefore supplied by the marker/manifest/hard-link
+        # protocol rather than by assuming a provider or filesystem.
         return
     flags = os.O_RDONLY
     if hasattr(os, "O_DIRECTORY"):
@@ -592,126 +592,223 @@ def _fsync_directory(path: Path) -> None:
 
 
 def _write_create_only_durable(path: Path, payload: bytes) -> None:
+    created = False
     try:
         with path.open("xb") as handle:
+            created = True
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
     except FileExistsError as exc:
         raise Franko1901GlobalDedupError(f"refusing to overwrite: {path}") from exc
     except OSError as exc:
+        cleanup_error: Exception | None = None
+        if created:
+            try:
+                path.unlink(missing_ok=True)
+                _fsync_directory(path.parent)
+            except (OSError, Franko1901GlobalDedupError) as cleanup_exc:
+                cleanup_error = cleanup_exc
+        if cleanup_error is not None:
+            raise Franko1901GlobalDedupError(
+                f"cannot write output and cleanup failed: {path}: {cleanup_error}"
+            ) from exc
         raise Franko1901GlobalDedupError(f"cannot write output: {path}") from exc
+
+
+def _publication_control_paths(
+    prepared: tuple[tuple[Path, bytes], ...],
+) -> tuple[Path, Path, tuple[Path, ...], str]:
+    _require(bool(prepared), "publication output set must not be empty")
+    resolved_paths = [str(path.resolve(strict=False)) for path, _ in prepared]
+    pathset_id = _sha256(_canonical({"paths": resolved_paths}))
+    marker = prepared[-1][0].with_name(prepared[-1][0].name + ".incomplete")
+    manifest = marker.with_name(marker.name + ".manifest")
+    stages = tuple(
+        path.with_name(f".{path.name}.stage-{pathset_id[:20]}")
+        for path, _ in prepared
+    )
+    return marker, manifest, stages, pathset_id
 
 
 def _publication_marker_path(
     prepared: tuple[tuple[Path, bytes], ...],
 ) -> Path:
-    _require(bool(prepared), "publication output set must not be empty")
-    terminal_path = prepared[-1][0]
-    return terminal_path.with_name(terminal_path.name + ".incomplete")
+    return _publication_control_paths(prepared)[0]
 
 
 def _publication_manifest(
     prepared: tuple[tuple[Path, bytes], ...],
+    stages: tuple[Path, ...],
+    pathset_id: str,
 ) -> tuple[dict[str, Any], bytes]:
-    target_core = [
+    targets = [
         {
             "path": str(path.resolve(strict=False)),
+            "stage_path": str(stage.resolve(strict=False)),
             "sha256": _sha256(payload),
         }
-        for path, payload in prepared
+        for (path, payload), stage in zip(prepared, stages, strict=True)
     ]
-    marker_core = {
+    core = {
         "schema_version": PUBLICATION_SCHEMA,
         "state": "INCOMPLETE_NOT_TERMINAL",
-        "targets": target_core,
-    }
-    marker_id = _sha256(_canonical(marker_core))
-    targets = []
-    for (path, _), target in zip(prepared, target_core, strict=True):
-        stage = path.with_name(f".{path.name}.stage-{marker_id[:20]}")
-        targets.append({**target, "stage_path": str(stage.resolve(strict=False))})
-    full_core = {
-        "schema_version": PUBLICATION_SCHEMA,
-        "state": "INCOMPLETE_NOT_TERMINAL",
-        "publication_id_sha256": marker_id,
+        "publication_pathset_sha256": pathset_id,
         "targets": targets,
     }
     manifest = {
-        **full_core,
-        "marker_identity_sha256": _sha256(_canonical(full_core)),
+        **core,
+        "manifest_identity_sha256": _sha256(_canonical(core)),
     }
     return manifest, _canonical(manifest) + b"\n"
 
 
-def _load_publication_marker(marker_path: Path) -> dict[str, Any]:
+def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
     _require(
-        not marker_path.is_symlink() and marker_path.is_file(),
-        "incomplete publication marker is not a regular file",
+        not manifest_path.is_symlink() and manifest_path.is_file(),
+        "incomplete publication manifest is not a regular file",
     )
     try:
-        raw = marker_path.read_bytes()
+        raw = manifest_path.read_bytes()
         value = json.loads(raw.decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise Franko1901GlobalDedupError(
-            "incomplete publication marker is unreadable"
+            "incomplete publication manifest is unreadable"
         ) from exc
-    _require(type(value) is dict, "incomplete publication marker root invalid")
+    _require(type(value) is dict, "incomplete publication manifest root invalid")
     _require(
         raw == _canonical(value) + b"\n",
-        "incomplete publication marker is not canonical",
+        "incomplete publication manifest is not canonical",
     )
-    identity = value.get("marker_identity_sha256")
-    core = {key: val for key, val in value.items() if key != "marker_identity_sha256"}
+    identity = value.get("manifest_identity_sha256")
+    core = {
+        key: val for key, val in value.items() if key != "manifest_identity_sha256"
+    }
     _require(
         type(identity) is str
         and len(identity) == 64
         and identity == _sha256(_canonical(core)),
-        "incomplete publication marker identity mismatch",
+        "incomplete publication manifest identity mismatch",
     )
     _require(
         core.get("schema_version") == PUBLICATION_SCHEMA
         and core.get("state") == "INCOMPLETE_NOT_TERMINAL",
-        "incomplete publication marker semantics invalid",
+        "incomplete publication manifest semantics invalid",
     )
     targets = core.get("targets")
-    _require(type(targets) is list and bool(targets), "publication marker targets missing")
+    _require(type(targets) is list and bool(targets), "publication manifest targets missing")
     return value
+
+
+def _remove_control_without_payload(
+    marker_path: Path,
+    manifest_path: Path,
+) -> None:
+    if _path_entry_exists(manifest_path):
+        manifest_path.unlink()
+        _fsync_directory(manifest_path.parent)
+    marker_path.unlink()
+    _fsync_directory(marker_path.parent)
 
 
 def _recover_incomplete_publication(
     marker_path: Path,
+    manifest_path: Path,
     prepared: tuple[tuple[Path, bytes], ...],
+    stages: tuple[Path, ...],
+    pathset_id: str,
 ) -> None:
-    marker = _load_publication_marker(marker_path)
-    targets = marker["targets"]
-    expected_paths = [str(path.resolve(strict=False)) for path, _ in prepared]
-    marker_paths = [row.get("path") for row in targets if type(row) is dict]
     _require(
-        marker_paths == expected_paths,
-        "incomplete publication marker targets do not match requested outputs",
+        not marker_path.is_symlink() and marker_path.is_file(),
+        "incomplete publication marker is not a regular file",
+    )
+    expected_final_paths = [str(path.resolve(strict=False)) for path, _ in prepared]
+    expected_stage_paths = [str(stage.resolve(strict=False)) for stage in stages]
+
+    if not _path_entry_exists(manifest_path):
+        _require(
+            not any(_path_entry_exists(path) for path, _ in prepared)
+            and not any(_path_entry_exists(stage) for stage in stages),
+            "incomplete publication marker lacks manifest but payload paths exist",
+        )
+        _remove_control_without_payload(marker_path, manifest_path)
+        return
+
+    try:
+        manifest = _load_publication_manifest(manifest_path)
+    except Franko1901GlobalDedupError:
+        _require(
+            not any(_path_entry_exists(path) for path, _ in prepared)
+            and not any(_path_entry_exists(stage) for stage in stages),
+            "invalid incomplete manifest coexists with payload paths",
+        )
+        _remove_control_without_payload(marker_path, manifest_path)
+        return
+
+    targets = manifest["targets"]
+    _require(
+        manifest.get("publication_pathset_sha256") == pathset_id,
+        "incomplete publication path-set identity mismatch",
+    )
+    marker_final_paths: list[str] = []
+    marker_stage_paths: list[str] = []
+    for row in targets:
+        _require(type(row) is dict, "publication manifest target invalid")
+        final_value = row.get("path")
+        stage_value = row.get("stage_path")
+        expected_sha = row.get("sha256")
+        _require(
+            type(final_value) is str
+            and final_value
+            and type(stage_value) is str
+            and stage_value
+            and type(expected_sha) is str
+            and len(expected_sha) == 64,
+            "publication manifest target semantics invalid",
+        )
+        marker_final_paths.append(final_value)
+        marker_stage_paths.append(stage_value)
+    _require(
+        marker_final_paths == expected_final_paths
+        and marker_stage_paths == expected_stage_paths,
+        "incomplete publication manifest targets do not match requested outputs",
     )
 
     touched_dirs: set[Path] = set()
     for row in targets:
-        _require(type(row) is dict, "publication marker target invalid")
-        final_path = Path(row.get("path", ""))
-        stage_path = Path(row.get("stage_path", ""))
-        expected_sha = row.get("sha256")
-        _require(
-            type(expected_sha) is str and len(expected_sha) == 64,
-            "publication marker target digest invalid",
-        )
-        if _path_entry_exists(final_path):
+        final_path = Path(row["path"])
+        stage_path = Path(row["stage_path"])
+        expected_sha = row["sha256"]
+        final_exists = _path_entry_exists(final_path)
+        stage_exists = _path_entry_exists(stage_path)
+
+        if final_exists:
             _require(
-                not final_path.is_symlink() and final_path.is_file(),
-                f"incomplete publication final path is not regular: {final_path}",
+                stage_exists,
+                f"incomplete final output has no owning stage: {final_path}",
+            )
+            _require(
+                not final_path.is_symlink()
+                and final_path.is_file()
+                and not stage_path.is_symlink()
+                and stage_path.is_file(),
+                "incomplete publication payload path is not regular",
             )
             try:
-                observed = final_path.read_bytes()
+                same_file = os.path.samefile(final_path, stage_path)
             except OSError as exc:
                 raise Franko1901GlobalDedupError(
-                    f"cannot inspect incomplete publication output: {final_path}"
+                    f"cannot verify incomplete publication ownership: {final_path}"
+                ) from exc
+            _require(
+                same_file,
+                f"incomplete publication final is not linked to its stage: {final_path}",
+            )
+            try:
+                observed = stage_path.read_bytes()
+            except OSError as exc:
+                raise Franko1901GlobalDedupError(
+                    f"cannot inspect incomplete publication stage: {stage_path}"
                 ) from exc
             _require(
                 _sha256(observed) == expected_sha,
@@ -719,16 +816,19 @@ def _recover_incomplete_publication(
             )
             final_path.unlink()
             touched_dirs.add(final_path.parent)
-        if _path_entry_exists(stage_path):
+
+        if stage_exists:
             _require(
                 not stage_path.is_symlink() and stage_path.is_file(),
-                f"incomplete publication stage path is not regular: {stage_path}",
+                f"incomplete publication stage is not regular: {stage_path}",
             )
             stage_path.unlink()
             touched_dirs.add(stage_path.parent)
 
     for directory in sorted(touched_dirs, key=str):
         _fsync_directory(directory)
+    manifest_path.unlink()
+    _fsync_directory(manifest_path.parent)
     marker_path.unlink()
     _fsync_directory(marker_path.parent)
 
@@ -736,6 +836,9 @@ def _recover_incomplete_publication(
 def _rollback_current_publication(
     *,
     marker_path: Path,
+    manifest_path: Path,
+    marker_created: bool,
+    manifest_created: bool,
     linked_finals: list[Path],
     created_stages: list[Path],
 ) -> list[str]:
@@ -759,7 +862,13 @@ def _rollback_current_publication(
                 _fsync_directory(directory)
             except Franko1901GlobalDedupError as exc:
                 errors.append(str(exc))
-    if not errors:
+    if not errors and manifest_created:
+        try:
+            manifest_path.unlink(missing_ok=True)
+            _fsync_directory(manifest_path.parent)
+        except (OSError, Franko1901GlobalDedupError) as exc:
+            errors.append(f"{manifest_path}: {exc}")
+    if not errors and marker_created:
         try:
             marker_path.unlink(missing_ok=True)
             _fsync_directory(marker_path.parent)
@@ -781,6 +890,29 @@ def _link_staged_output(stage_path: Path, final_path: Path) -> None:
         ) from exc
 
 
+def _cleanup_committed_publication_residue(
+    manifest_path: Path,
+    stages: tuple[Path, ...],
+) -> None:
+    touched_dirs: set[Path] = set()
+    for stage_path in stages:
+        try:
+            stage_path.unlink(missing_ok=True)
+            touched_dirs.add(stage_path.parent)
+        except OSError:
+            return
+    try:
+        manifest_path.unlink(missing_ok=True)
+        touched_dirs.add(manifest_path.parent)
+    except OSError:
+        return
+    for directory in sorted(touched_dirs, key=str):
+        try:
+            _fsync_directory(directory)
+        except Franko1901GlobalDedupError:
+            return
+
+
 def _publish_json_outputs(
     outputs: tuple[tuple[Path, Mapping[str, Any]], ...],
 ) -> None:
@@ -795,56 +927,78 @@ def _publish_json_outputs(
 
     for path, _ in prepared:
         path.parent.mkdir(parents=True, exist_ok=True)
-    marker_path = _publication_marker_path(prepared)
 
-    if _path_entry_exists(marker_path):
-        _recover_incomplete_publication(marker_path, prepared)
-
-    for path, _ in prepared:
-        _require(
-            not _path_entry_exists(path),
-            f"refusing to overwrite: {path}",
-        )
-
-    manifest, marker_payload = _publication_manifest(prepared)
-    stage_paths = [Path(row["stage_path"]) for row in manifest["targets"]]
+    marker_path, manifest_path, stages, pathset_id = _publication_control_paths(prepared)
     _require(
         marker_path not in seen
-        and all(stage not in seen and stage != marker_path for stage in stage_paths),
+        and manifest_path not in seen
+        and all(stage not in seen for stage in stages),
         "publication control path collides with output path",
     )
-    for stage in stage_paths:
+
+    if _path_entry_exists(marker_path):
+        _recover_incomplete_publication(
+            marker_path,
+            manifest_path,
+            prepared,
+            stages,
+            pathset_id,
+        )
+
+    for path, _ in prepared:
+        _require(not _path_entry_exists(path), f"refusing to overwrite: {path}")
+    _require(
+        not _path_entry_exists(manifest_path),
+        f"stale publication manifest exists without marker: {manifest_path}",
+    )
+    for stage in stages:
         _require(
             not _path_entry_exists(stage),
             f"stale publication stage exists without marker: {stage}",
         )
 
+    manifest, manifest_payload = _publication_manifest(prepared, stages, pathset_id)
+    _require(
+        [row["stage_path"] for row in manifest["targets"]]
+        == [str(stage.resolve(strict=False)) for stage in stages],
+        "publication stage derivation drift",
+    )
+
+    marker_created = False
+    manifest_created = False
     linked_finals: list[Path] = []
     created_stages: list[Path] = []
     try:
-        _write_create_only_durable(marker_path, marker_payload)
+        _write_create_only_durable(marker_path, b"")
+        marker_created = True
         _fsync_directory(marker_path.parent)
 
-        for (path, payload), stage_path in zip(prepared, stage_paths, strict=True):
+        _write_create_only_durable(manifest_path, manifest_payload)
+        manifest_created = True
+        _fsync_directory(manifest_path.parent)
+
+        for (path, payload), stage_path in zip(prepared, stages, strict=True):
             _write_create_only_durable(stage_path, payload)
             created_stages.append(stage_path)
             _fsync_directory(stage_path.parent)
 
-        for (final_path, _), stage_path in zip(prepared, stage_paths, strict=True):
+        for (final_path, _), stage_path in zip(prepared, stages, strict=True):
             _link_staged_output(stage_path, final_path)
             linked_finals.append(final_path)
             _fsync_directory(final_path.parent)
 
-        for stage_path in reversed(created_stages):
-            stage_path.unlink()
-            _fsync_directory(stage_path.parent)
-        created_stages.clear()
-
+        # Marker removal is the sole terminal commit point.  Stages and manifest
+        # deliberately remain present until after this durable state transition
+        # so an interrupted pre-commit run can prove final-path ownership.
         marker_path.unlink()
         _fsync_directory(marker_path.parent)
+        marker_created = False
     except Exception as exc:
         rollback_errors = _rollback_current_publication(
             marker_path=marker_path,
+            manifest_path=manifest_path,
+            marker_created=marker_created,
+            manifest_created=manifest_created,
             linked_finals=linked_finals,
             created_stages=created_stages,
         )
@@ -854,6 +1008,8 @@ def _publish_json_outputs(
                 + "; ".join(rollback_errors)
             ) from exc
         raise
+
+    _cleanup_committed_publication_residue(manifest_path, stages)
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
