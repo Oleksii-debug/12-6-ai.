@@ -97,6 +97,22 @@ def _is_lower_hex(value: Any, length: int) -> bool:
     )
 
 
+def _validate_work_budgets(
+    max_candidate_pairs: int,
+    max_index_postings: int,
+    max_pair_expansions: int,
+) -> None:
+    for label, value in (
+        ("max_candidate_pairs", max_candidate_pairs),
+        ("max_index_postings", max_index_postings),
+        ("max_pair_expansions", max_pair_expansions),
+    ):
+        _require(
+            type(value) is int and value > 0,
+            f"{label} must be exact positive int",
+        )
+
+
 def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     try:
         proc = subprocess.run(
@@ -1062,6 +1078,11 @@ def run_two_clean(
 ) -> dict[str, Any]:
     orchestration_head = _bind_execution_head(expected_execution_head)
     parent_main_blobs, parent_product_blobs = verify_repository_authority()
+    _validate_work_budgets(
+        max_candidate_pairs,
+        max_index_postings,
+        max_pair_expansions,
+    )
     _require_distinct_materialization_copies(
         candidate_jsonl_a,
         materialization_evidence_json_a,
@@ -1207,6 +1228,11 @@ def execute(
 ) -> dict[str, Any]:
     execution_head = _bind_execution_head(expected_execution_head)
     main_blobs, product_blobs = verify_repository_authority()
+    _validate_work_budgets(
+        max_candidate_pairs,
+        max_index_postings,
+        max_pair_expansions,
+    )
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
     matcher, base_inventory, base_payloads = _reconstruct_v8_with_historical_namespace(
         v7_root=v7_root,
