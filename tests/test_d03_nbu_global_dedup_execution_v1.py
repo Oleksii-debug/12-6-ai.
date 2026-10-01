@@ -284,3 +284,130 @@ def test_indexed_execution_attests_and_verifies_report(monkeypatch) -> None:
     assert report["report_sha256"] == "2" * 64
     assert elapsed >= 0
     assert calls == ["attest", "indexed", "verify"]
+
+
+
+def _two_clean_evidence(mod, run_identity: str) -> dict[str, object]:
+    return {
+        "evidence_identity_sha256": run_identity,
+        "execution_head_sha": "a" * 40,
+        "pinned_main_sha": mod.EXPECTED_MAIN,
+        "nbu": {"candidate_sha256": mod.nbu.CANDIDATE_SHA256},
+        "matcher_execution": {
+            "engine": "MERGED_PR_1459",
+            "report_sha256": "1" * 64,
+        },
+        "truth_boundary": {
+            "canonical_capacity_credited": 0,
+            "authorized_optimized_target_exposure": 0,
+            "training_executed": False,
+        },
+    }
+
+
+def _two_clean_survivors(mod) -> dict[str, object]:
+    return {
+        "survivor_authority_sha256": "2" * 64,
+        "nbu_survivor_source_object_count": 1,
+        "nbu_survivor_declared_capacity_bytes": 10,
+    }
+
+
+def test_two_clean_authority_is_zero_credit_and_does_not_claim_source_replay() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    authority = mod._build_two_clean_authority(
+        report,
+        deepcopy(report),
+        survivors,
+        deepcopy(survivors),
+        _two_clean_evidence(mod, "3" * 64),
+        _two_clean_evidence(mod, "4" * 64),
+    )
+    assert authority["dedup"]["fresh_process_count"] == 2
+    assert authority["dedup"]["report_sha256"] == "1" * 64
+    assert authority["materialization_authority"]["distinct_input_copies_required"] is True
+    assert authority["materialization_authority"]["source_replay_executed_by_this_carrier"] is False
+    assert authority["truth_boundary"]["canonical_capacity_credited"] == 0
+    assert authority["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+    assert authority["truth_boundary"]["training_executed"] is False
+    assert len(authority["two_clean_authority_sha256"]) == 64
+
+
+def test_two_clean_authority_rejects_report_or_survivor_drift() -> None:
+    mod = _load()
+    report = _report(mod)
+    changed_report = deepcopy(report)
+    changed_report["source_count"] = mod.EXPECTED_COMBINED_OBJECTS - 1
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "3" * 64)
+    evidence_b = _two_clean_evidence(mod, "4" * 64)
+    with pytest.raises(mod.NbuGlobalDedupError, match="two-clean dedup reports differ"):
+        mod._build_two_clean_authority(
+            report,
+            changed_report,
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+    changed_survivors = deepcopy(survivors)
+    changed_survivors["nbu_survivor_declared_capacity_bytes"] = 11
+    with pytest.raises(mod.NbuGlobalDedupError, match="two-clean survivor authorities differ"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            changed_survivors,
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_requires_non_aliasing_materialization_copies(tmp_path) -> None:
+    mod = _load()
+    candidate = tmp_path / "candidate.jsonl"
+    evidence = tmp_path / "evidence.json"
+    candidate.write_text("{}\n", encoding="utf-8")
+    evidence.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(mod.NbuGlobalDedupError, match="candidate paths must be distinct"):
+        mod._require_distinct_materialization_copies(
+            candidate,
+            evidence,
+            candidate,
+            evidence,
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b'{"x":1,"x":2}', "duplicate generated JSON key"),
+        (b'{"x":NaN}', "non-finite generated JSON constant"),
+        (b'{"x":1e400}', "non-finite generated JSON number"),
+    ],
+)
+def test_two_clean_generated_json_is_strict(
+    tmp_path, payload: bytes, message: str
+) -> None:
+    mod = _load()
+    path = tmp_path / "generated.json"
+    path.write_bytes(payload)
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._strict_generated_json(path)
+
+
+def test_two_clean_incomplete_is_zero_authority(tmp_path) -> None:
+    mod = _load()
+    root = tmp_path / "run"
+    root.mkdir()
+    mod._write_two_clean_incomplete(root, ["clean-a"], "worker_timeout")
+    value = json.loads((root / "incomplete.json").read_text(encoding="utf-8"))
+    assert value["status"] == "INCOMPLETE_NO_TWO_CLEAN_AUTHORITY"
+    assert value["completed_run_ids"] == ["clean-a"]
+    assert value["canonical_capacity_credited"] == 0
+    assert value["authorized_optimized_target_exposure"] == 0
+    assert value["training_executed"] is False
+    assert not (root / "two-clean-authority.json").exists()
