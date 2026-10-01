@@ -391,6 +391,12 @@ def _good_survivor_projection(mod):
     return report, projection
 
 
+def _reseal_survivor_projection(mod, projection: dict[str, object]) -> None:
+    core = dict(projection)
+    core.pop("survivor_authority_sha256", None)
+    projection["survivor_authority_sha256"] = mod._sha256(mod._canonical(core))
+
+
 def test_survivor_projection_is_cross_bound_to_terminal_report() -> None:
     mod = _load()
     report, projection = _good_survivor_projection(mod)
@@ -445,6 +451,7 @@ def test_survivor_projection_rejects_terminal_drift(
     mod = _load()
     report, projection = _good_survivor_projection(mod)
     projection[field] = bad
+    _reseal_survivor_projection(mod, projection)
     with pytest.raises(mod.Franko1901GlobalDedupError, match=message):
         mod._validate_survivor_projection(report, projection)
 
@@ -453,6 +460,7 @@ def test_survivor_projection_rejects_id_cardinality_drift() -> None:
     mod = _load()
     report, projection = _good_survivor_projection(mod)
     projection["survivor_source_ids"] = ["base:a", "base:a"]
+    _reseal_survivor_projection(mod, projection)
     with pytest.raises(mod.Franko1901GlobalDedupError, match="ids invalid"):
         mod._validate_survivor_projection(report, projection)
 
