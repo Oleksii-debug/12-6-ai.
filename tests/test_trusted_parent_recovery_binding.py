@@ -184,6 +184,11 @@ def _patch_incumbent(
             resume_blockers=(),
         ),
     )
+    monkeypatch.setattr(
+        trusted_module,
+        "validate_portable_run_contract",
+        lambda candidate: [],
+    )
 
 
 def _bind(
@@ -215,6 +220,86 @@ def _bind(
         expected_trusted_parent_binding_sha256=expected,
         verified_trusted_recovery_authorities=(token,) if verified else (),
     )
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["readiness_ready", "overlay_contract_valid", "packet_contract_valid"],
+)
+def test_trusted_binder_requires_all_incumbent_ready_gates(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    resolution = _resolution()
+    authority, expected, token = _binding_material(resolution)
+    _patch_incumbent(monkeypatch, resolution)
+    base = PortableRunBinding(
+        binding_ready=False,
+        mode="RESUME",
+        readiness_ready=True,
+        overlay_contract_valid=True,
+        packet_contract_valid=True,
+        blockers=("packet:trusted_parent_recovery_binding_missing",),
+        readiness_sha256="8" * 64,
+        overlay_sha256="9" * 64,
+        packet_sha256=None,
+        packet=None,
+    )
+    monkeypatch.setattr(
+        trusted_module,
+        "bind_portable_run_packet",
+        lambda *args, **kwargs: replace(base, **{field: False}),
+    )
+
+    result = bind_trusted_same_provider_resume(
+        {},
+        {},
+        _overlay(authority),
+        recovery_root="/verified",
+        expected_recovery_reference=resolution.reference,
+        provider_class=PROVIDER_CLASS,
+        provider_id=PROVIDER_ID,
+        provider_session_id=CURRENT_SESSION,
+        previous_provider_session_id=PREVIOUS_SESSION,
+        terminal_recovery_authority=authority,
+        expected_trusted_parent_binding_sha256=expected,
+        verified_trusted_recovery_authorities=(token,),
+    )
+
+    assert result.binding_ready is False
+    assert "trusted:incumbent_ready_gates_required" in result.blockers
+
+
+def test_trusted_binder_revalidates_final_extended_packet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolution = _resolution()
+    authority, expected, token = _binding_material(resolution)
+    _patch_incumbent(monkeypatch, resolution)
+    monkeypatch.setattr(
+        trusted_module,
+        "validate_portable_run_contract",
+        lambda candidate: ["synthetic_final_contract_error"],
+    )
+
+    result = bind_trusted_same_provider_resume(
+        {},
+        {},
+        _overlay(authority),
+        recovery_root="/verified",
+        expected_recovery_reference=resolution.reference,
+        provider_class=PROVIDER_CLASS,
+        provider_id=PROVIDER_ID,
+        provider_session_id=CURRENT_SESSION,
+        previous_provider_session_id=PREVIOUS_SESSION,
+        terminal_recovery_authority=authority,
+        expected_trusted_parent_binding_sha256=expected,
+        verified_trusted_recovery_authorities=(token,),
+    )
+
+    assert result.binding_ready is False
+    assert result.packet is None
+    assert "trusted:final_packet_contract_invalid" in result.blockers
 
 
 def test_trusted_same_provider_resume_clears_only_incumbent_missing_root(
