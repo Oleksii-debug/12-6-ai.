@@ -275,6 +275,7 @@ def validate_and_project_nbu(
     *,
     retain_payloads: bool = True,
 ) -> NbuProjection:
+    _require(type(retain_payloads) is bool, "retain_payloads must be exact bool")
     try:
         raw = candidate_jsonl.read_bytes()
     except OSError as exc:
