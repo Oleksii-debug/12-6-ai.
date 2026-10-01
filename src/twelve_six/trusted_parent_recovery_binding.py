@@ -593,6 +593,7 @@ def restore_trusted_same_provider_resume(
         expected_manifest_sha256=trusted["checkpoint_manifest_sha256"],
         expected_git_sha=trusted["source_git_sha"],
         expected_run_manifest_hash=trusted["run_manifest_sha256"],
+        expected_previous_run_id=trusted["previous_run_id"],
         expected_step=trusted["optimizer_step"],
         expected_tokens_seen=trusted["tokens_seen"],
         expected_ledger_identity_sha256=trusted["ledger_identity_sha256"],
