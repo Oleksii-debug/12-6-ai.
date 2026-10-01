@@ -226,7 +226,7 @@ def _validate_row(
         "text_sha256": digest,
     }
     _require(
-        record_id == _sha256(_canonical(provenance) + b"\\n"),
+        record_id == _sha256(_canonical(provenance) + b"\n"),
         "record provenance identity drift",
     )
     _require(type(byte_count) is int and byte_count > 0, "text byte count invalid")
