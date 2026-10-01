@@ -426,6 +426,61 @@ def test_projection_requires_fresh_process_session_identity() -> None:
         )
 
 
+def test_operational_restore_passes_authenticated_previous_run_to_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolution = _resolution()
+    authority, expected, token = _binding_material(resolution)
+    trusted = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class=PROVIDER_CLASS,
+        provider_id=PROVIDER_ID,
+        provider_session_id=CURRENT_SESSION,
+        previous_provider_session_id=PREVIOUS_SESSION,
+        terminal_recovery_authority=authority,
+    )
+    packet = {
+        "binding": {
+            "trusted_parent_recovery": trusted,
+            "trusted_parent_recovery_authority_token": token,
+        }
+    }
+    binding = PortableRunBinding(
+        binding_ready=True,
+        mode="RESUME",
+        readiness_ready=True,
+        overlay_contract_valid=True,
+        packet_contract_valid=True,
+        blockers=(),
+        readiness_sha256="8" * 64,
+        overlay_sha256="9" * 64,
+        packet_sha256=trusted_module.canonical_sha256(packet),
+        packet=packet,
+    )
+    captured: dict[str, object] = {}
+    sentinel = object()
+
+    def fake_load(*args: object, **kwargs: object) -> object:
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(trusted_module, "load_trainer_checkpoint", fake_load)
+    result = restore_trusted_same_provider_resume(
+        binding,
+        resolution,
+        model=object(),
+        trainer=object(),
+        terminal_recovery_authority=authority,
+        expected_trusted_parent_binding_sha256=expected,
+        verified_trusted_recovery_authorities=(token,),
+    )
+
+    assert result is sentinel
+    assert captured["expected_previous_run_id"] == PREVIOUS_RUN
+    assert captured["strict_model"] is True
+    assert captured["restore_rng"] is True
+
+
 def test_operational_restore_rejects_unrelated_verified_terminal_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
