@@ -555,7 +555,7 @@ def restore_trusted_same_provider_resume(
 
     if not isinstance(resolution, RecoveryResolution):
         raise TrustedParentRecoveryBindingError("recovery_resolution_type_invalid")
-    reference = _exact_recovery_reference(resolution.reference)
+    _exact_recovery_reference(resolution.reference)
     if resolution.content_path is None:
         raise TrustedParentRecoveryBindingError(
             "recovery_resolution_content_path_missing"
