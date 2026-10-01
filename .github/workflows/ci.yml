@@ -52,6 +52,7 @@ jobs:
           path: artifacts/eval647/current_corpus_overlap_v1.json
   nbu-global-dedup-pass:
     if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1'
+    needs: bootstrap
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     strategy:
