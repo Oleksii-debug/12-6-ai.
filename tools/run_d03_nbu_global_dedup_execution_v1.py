@@ -596,6 +596,18 @@ def _require_distinct_materialization_copies(
         ) from exc
 
 
+def _incumbent_report_identity(report: Mapping[str, Any]) -> str:
+    core = dict(report)
+    core.pop("report_sha256", None)
+    rendered = json.dumps(
+        core,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return _sha256((rendered + "\n").encode("utf-8"))
+
+
 def _build_two_clean_authority(
     first_report: Mapping[str, Any],
     second_report: Mapping[str, Any],
@@ -621,10 +633,8 @@ def _build_two_clean_authority(
         "two-clean report identity drift",
     )
     for report in (first_report, second_report):
-        report_core = dict(report)
-        report_identity = report_core.pop("report_sha256", None)
         _require(
-            report_identity == _sha256(_canonical(report_core)),
+            report.get("report_sha256") == _incumbent_report_identity(report),
             "two-clean report self-hash mismatch",
         )
     _require(
