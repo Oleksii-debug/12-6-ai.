@@ -804,6 +804,7 @@ def run_two_clean(
     max_index_postings: int,
     max_pair_expansions: int,
 ) -> dict[str, Any]:
+    orchestration_head = _bind_execution_head(expected_execution_head)
     _require_distinct_materialization_copies(
         candidate_jsonl_a,
         materialization_evidence_json_a,
@@ -908,6 +909,10 @@ def run_two_clean(
             second_survivors,
             first_evidence,
             second_evidence,
+        )
+        _require(
+            authority.get("execution_head_sha") == orchestration_head,
+            "two-clean aggregate execution head drift",
         )
         _publish_json_outputs(((output_root / "two-clean-authority.json", authority),))
     except (NbuGlobalDedupError, OSError) as exc:
