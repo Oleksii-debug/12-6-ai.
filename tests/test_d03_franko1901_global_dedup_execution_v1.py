@@ -143,12 +143,12 @@ def test_survivor_authority_rejects_nonexact_capacity(bad: object) -> None:
 
 def test_production_arithmetic_binds_exact_franko_candidate() -> None:
     mod = _load()
-    assert mod.EXPECTED_BASE_OBJECTS == 264
-    assert mod.EXPECTED_BASE_BYTES == 6_095_624
+    assert mod.EXPECTED_BASE_OBJECTS == 263
+    assert mod.EXPECTED_BASE_BYTES == 6_093_965
     assert mod.EXPECTED_FRANKO1901_OBJECTS == 30_660
     assert mod.EXPECTED_FRANKO1901_BYTES == 1_762_005
-    assert mod.EXPECTED_COMBINED_OBJECTS == 30_924
-    assert mod.EXPECTED_COMBINED_BYTES == 7_857_629
+    assert mod.EXPECTED_COMBINED_OBJECTS == 30_923
+    assert mod.EXPECTED_COMBINED_BYTES == 7_855_970
     assert mod.franko1901.UPSTREAM_PRODUCT_PR == 1025
     assert mod.FRANKO1901_FINAL_HEAD == "5816f0ff4ca2f53053123063cd2471442a07d974"
     assert mod.EXPECTED_MAIN == "ba9e49cedba4a110e1c4f7d83702e8fcf8a42461"
@@ -167,6 +167,110 @@ def test_composed_inventory_names_exact_franko_product_authority() -> None:
     assert "PR #1347" not in rule
 
 
+@pytest.mark.parametrize(
+    ("source_id", "family"),
+    [
+        ("ua.verba.nomis1864.bounded24", "renamed.family"),
+        ("renamed.id", "ua.verba.public-domain.nomis1864"),
+    ],
+)
+def test_clean_base_rejects_quarantined_identifiers(source_id: str, family: str) -> None:
+    import json
+
+    mod = _load()
+    authority = json.loads(
+        (ROOT / mod.clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
+    )
+    with pytest.raises(mod.quarantine.ExternalLLMProvenanceQuarantineError):
+        mod._verify_clean_payload_graph(
+            {"sources": [_row(source_id, family=family)]},
+            {source_id: b"unrelated payload"},
+            authority,
+        )
+
+
+def test_clean_source_reconstruction_deauthorizes_before_bulk_and_preserves_graph(
+    monkeypatch, tmp_path: Path
+) -> None:
+    mod = _load()
+    events = []
+    matcher = object()
+    historical = {"sources": [_row("quarantined"), _row("keep")], "lineage_edges": []}
+    historical_payloads = {"quarantined": b"bad", "keep": b"alpha"}
+    clean = {"sources": [_row("keep")], "lineage_edges": []}
+    clean_payloads = {"keep": b"alpha"}
+    proof = {"removed_before_new_global_dedup": True}
+
+    def deauthorize(inventory, payloads, authority, quarantine_module):
+        assert inventory is historical
+        assert payloads is historical_payloads
+        assert quarantine_module is mod.quarantine
+        assert authority["schema_version"]
+        events.append("deauthorize")
+        return clean, clean_payloads, proof
+
+    def materialize(*args):
+        assert events == ["capture", "deauthorize"]
+        events.append("bulk")
+        return {}, [_row("bulk", size=4)], {"bulk": b"beta"}
+
+    def capture(*args):
+        events.append("capture")
+        return SimpleNamespace(v6=SimpleNamespace(v3=matcher)), {}, historical, historical_payloads
+
+    monkeypatch.setattr(mod.v9_runner, "validate_v7_checkout", lambda root: root)
+    monkeypatch.setattr(mod.clean_successor, "validate_runtime_bindings", lambda root: None)
+    monkeypatch.setattr(mod.clean_successor, "deauthorize_exact_nomis", deauthorize)
+    monkeypatch.setattr(mod.v8, "_capture_terminal_v7", capture)
+    monkeypatch.setattr(mod.v8, "_materialize_bulk", materialize)
+    monkeypatch.setattr(mod, "EXPECTED_BASE_OBJECTS", 2)
+    monkeypatch.setattr(mod, "EXPECTED_BASE_BYTES", 9)
+
+    observed_matcher, inventory, payloads, removal = mod._reconstruct_clean_source_inputs(
+        v7_root=tmp_path, bulk_workspace=tmp_path, config={}
+    )
+    assert events == ["capture", "deauthorize", "bulk"]
+    assert observed_matcher is matcher and removal is proof
+    assert inventory["sources"] == [_row("keep"), _row("bulk", size=4)]
+    assert payloads == {"keep": b"alpha", "bulk": b"beta"}
+    assert clean == {"sources": [_row("keep")], "lineage_edges": []}
+    assert clean_payloads == {"keep": b"alpha"}
+    assert historical["sources"] == [_row("quarantined"), _row("keep")]
+
+
+def test_quarantine_failure_stops_before_bulk_or_new_matching(monkeypatch, tmp_path: Path) -> None:
+    mod = _load()
+    monkeypatch.setattr(mod.v9_runner, "validate_v7_checkout", lambda root: root)
+    monkeypatch.setattr(mod.clean_successor, "validate_runtime_bindings", lambda root: None)
+    monkeypatch.setattr(
+        mod.v8, "_capture_terminal_v7",
+        lambda *args: (object(), {}, {"sources": []}, {}),
+    )
+
+    def reject(*args):
+        raise mod.clean_successor.CleanSuccessorError("exact quarantine identity drift")
+
+    def forbidden(*args):
+        pytest.fail("bulk materialization ran after quarantine failure")
+
+    monkeypatch.setattr(mod.clean_successor, "deauthorize_exact_nomis", reject)
+    monkeypatch.setattr(mod.v8, "_materialize_bulk", forbidden)
+    with pytest.raises(mod.clean_successor.CleanSuccessorError, match="quarantine identity drift"):
+        mod._reconstruct_clean_source_inputs(
+            v7_root=tmp_path, bulk_workspace=tmp_path, config={}
+        )
+
+
+def test_final_composition_cannot_reintroduce_quarantined_family() -> None:
+    mod = _load()
+    with pytest.raises(mod.quarantine.ExternalLLMProvenanceQuarantineError):
+        mod._compose_graph(
+            {"sources": [_row("base:a")]}, {"base:a": b"alpha"},
+            [_row("alias", family="ua.verba.public-domain.nomis1864", size=4)],
+            {"alias": b"beta"},
+        )
+
+
 def test_authority_surface_binds_franko_and_incumbent_execution() -> None:
     mod = _load()
     expected = {
@@ -176,6 +280,9 @@ def test_authority_surface_binds_franko_and_incumbent_execution() -> None:
         "src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py",
         "tools/run_d03_expanded_global_dedup_v9.py",
         "tools/run_next100_065f_global_dedup_v8.py",
+        "tools/run_d03_nomis_free_clean_successor_v1.py",
+        "src/twelve_six/data/external_llm_provenance_quarantine_v1.py",
+        "configs/data/d03_external_llm_provenance_quarantine_v1.json",
     }
     assert expected <= set(mod.AUTHORITY_PATHS)
 
@@ -371,7 +478,7 @@ def test_historical_reconstruction_disables_bytecode_cache_writes() -> None:
     mod = _load()
     source = inspect.getsource(mod._reconstruct_v8_with_historical_namespace)
     enable = source.index("sys.dont_write_bytecode = True")
-    reconstruct = source.index("v9_runner.reconstruct_v8_source_inputs(")
+    reconstruct = source.index("_reconstruct_clean_source_inputs(")
     restore = source.index("sys.dont_write_bytecode = previous_dont_write_bytecode")
     assert enable < reconstruct < restore
 

@@ -34,7 +34,9 @@ for location in (str(TOOLS), str(SRC)):
         sys.path.insert(0, location)
 
 import run_d03_expanded_global_dedup_v9 as v9_runner
+import run_d03_nomis_free_clean_successor_v1 as clean_successor
 import run_next100_065f_global_dedup_v8 as v8
+from twelve_six.data import external_llm_provenance_quarantine_v1 as quarantine
 from twelve_six.data import expanded_global_dedup_v9 as v9_semantics
 from twelve_six.data import franko1901_dedup_intake as franko1901
 from twelve_six.data import incumbent_dedup_indexed_execution as indexed
@@ -46,8 +48,8 @@ EXECUTION_CLAIM = 2394
 EXECUTION_PR = 2448
 CARRIER_PATH = "tools/run_d03_franko1901_global_dedup_execution_v1.py"
 FRANKO1901_FINAL_HEAD = franko1901.UPSTREAM_PRODUCT_HEAD
-EXPECTED_BASE_OBJECTS = 264
-EXPECTED_BASE_BYTES = 6_095_624
+EXPECTED_BASE_OBJECTS = 263
+EXPECTED_BASE_BYTES = 6_093_965
 EXPECTED_FRANKO1901_OBJECTS = franko1901.CANDIDATE_RECORDS
 EXPECTED_FRANKO1901_BYTES = franko1901.CANDIDATE_TEXT_UTF8_BYTES
 EXPECTED_COMBINED_OBJECTS = EXPECTED_BASE_OBJECTS + EXPECTED_FRANKO1901_OBJECTS
@@ -61,6 +63,9 @@ AUTHORITY_PATHS = (
     "src/twelve_six/data/expanded_global_dedup_v9.py",
     "src/twelve_six/data/_expanded_global_dedup_v9_impl.py",
     "tools/run_d03_expanded_global_dedup_v9.py",
+    "tools/run_d03_nomis_free_clean_successor_v1.py",
+    "src/twelve_six/data/external_llm_provenance_quarantine_v1.py",
+    "configs/data/d03_external_llm_provenance_quarantine_v1.json",
     "tools/run_next100_065f_global_dedup_v8.py",
     "tools/materialize_data_bulk_code1_permissive_python_bundle.py",
     "configs/data/next100_065f_global_dedup_v8.json",
@@ -228,12 +233,79 @@ _HISTORICAL_MATCHER_MODULES = (
 )
 
 
+def _verify_clean_payload_graph(
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+    quarantine_authority: Mapping[str, Any],
+) -> None:
+    rows = inventory.get("sources")
+    _require(type(rows) is list and bool(rows), "clean base source rows missing")
+    ids = [row.get("source_id") for row in rows if type(row) is dict]
+    _require(
+        len(ids) == len(rows)
+        and all(type(source_id) is str and bool(source_id) for source_id in ids)
+        and len(set(ids)) == len(ids)
+        and set(ids) == set(payloads)
+        and all(type(raw) is bytes for raw in payloads.values()),
+        "clean base inventory/payload coverage mismatch",
+    )
+    quarantine.reject_quarantined_inventory_rows(
+        [
+            {
+                "source_id": row["source_id"],
+                "family": row.get("source_family"),
+                "payload_sha256": _sha256(payloads[row["source_id"]]),
+                "payload_bytes": len(payloads[row["source_id"]]),
+            }
+            for row in rows
+        ],
+        quarantine_authority,
+    )
+
+
+def _reconstruct_clean_source_inputs(
+    *,
+    v7_root: Path,
+    bulk_workspace: Path,
+    config: Mapping[str, Any],
+) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    """Reuse incumbent deauthorization before composing the new matcher input."""
+    v9_runner.validate_v7_checkout(v7_root)
+    clean_successor.validate_runtime_bindings(ROOT)
+    quarantine_authority = json.loads(
+        (ROOT / clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
+    )
+    v7, _, historical_inventory, historical_payloads = v8._capture_terminal_v7(
+        v7_root, config
+    )
+    clean_inventory, clean_payloads, removal = clean_successor.deauthorize_exact_nomis(
+        historical_inventory,
+        historical_payloads,
+        quarantine_authority,
+        quarantine,
+    )
+    _, bulk_rows, bulk_payloads = v8._materialize_bulk(ROOT, bulk_workspace, config)
+    existing_ids = {row["source_id"] for row in clean_inventory["sources"]}
+    _require(not (existing_ids & set(bulk_payloads)), "clean base/bulk source-id collision")
+    inventory = copy.deepcopy(clean_inventory)
+    inventory["sources"] = [*inventory["sources"], *bulk_rows]
+    payloads = dict(clean_payloads)
+    payloads.update(bulk_payloads)
+    _verify_clean_payload_graph(inventory, payloads, quarantine_authority)
+    _require(len(payloads) == EXPECTED_BASE_OBJECTS, "clean base object-count drift")
+    _require(
+        sum(len(raw) for raw in payloads.values()) == EXPECTED_BASE_BYTES,
+        "clean base payload byte-count drift",
+    )
+    return v7.v6.v3, inventory, payloads, removal
+
+
 def _reconstruct_v8_with_historical_namespace(
     *,
     v7_root: Path,
     bulk_workspace: Path,
     config: Mapping[str, Any],
-) -> tuple[Any, dict[str, Any], dict[str, bytes]]:
+) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
     """Load exact V7 matcher modules ahead of the cached current-main package paths."""
     for module_name in _HISTORICAL_MATCHER_MODULES:
         _require(module_name not in sys.modules, f"historical matcher preloaded: {module_name}")
@@ -258,10 +330,10 @@ def _reconstruct_v8_with_historical_namespace(
     sys.dont_write_bytecode = True
     importlib.invalidate_caches()
     try:
-        matcher, inventory, payloads = v9_runner.reconstruct_v8_source_inputs(
+        matcher, inventory, payloads, removal = _reconstruct_clean_source_inputs(
             v7_root=v7_root,
             bulk_workspace=bulk_workspace,
-            v8_config=dict(config),
+            config=config,
         )
     finally:
         twelve_six_pkg.__path__ = current_package_path
@@ -278,7 +350,7 @@ def _reconstruct_v8_with_historical_namespace(
             module_path.is_relative_to(historical_root),
             f"historical matcher escaped exact V7 worktree: {module_name}",
         )
-    return matcher, inventory, payloads
+    return matcher, inventory, payloads, removal
 
 
 def _compose_graph(
@@ -315,12 +387,16 @@ def _compose_graph(
     inventory["sources"] = [*copy.deepcopy(rows), *copy.deepcopy(extension_sources)]
     inventory["final_refresh_required"] = False
     inventory["terminal_refresh_rule"] = (
-        "Exact reconstructed V8 authority plus exact PR #1025 source-admitted Franko1901 "
+        "Exact reconstructed Nomis-free V8 source graph plus exact PR #1025 source-admitted Franko1901 "
         "rows; pair decisions delegate to terminal PR #824 V3 semantics through the "
         "independently qualified performance-equivalent indexed executor."
     )
     payloads = dict(base_payloads)
     payloads.update(extension_payloads)
+    quarantine_authority = json.loads(
+        (ROOT / clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
+    )
+    _verify_clean_payload_graph(inventory, payloads, quarantine_authority)
     return inventory, payloads
 
 
@@ -1120,7 +1196,7 @@ def execute(
     bulk_workspace = _prepare_empty_bulk_workspace(bulk_workspace)
     verified_v7_head = _verify_v7_worktree(v7_root)
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
-    matcher, base_inventory, base_payloads = _reconstruct_v8_with_historical_namespace(
+    matcher, base_inventory, base_payloads, removal = _reconstruct_v8_with_historical_namespace(
         v7_root=v7_root,
         bulk_workspace=bulk_workspace,
         config=config,
@@ -1212,6 +1288,7 @@ def execute(
             "v7_head_sha": verified_v7_head,
             "source_object_count": EXPECTED_BASE_OBJECTS,
             "payload_bytes": EXPECTED_BASE_BYTES,
+            "nomis1864_deauthorization": removal,
         },
         "franko1901": {
             "source_admission_product_pr": franko1901.UPSTREAM_PRODUCT_PR,
