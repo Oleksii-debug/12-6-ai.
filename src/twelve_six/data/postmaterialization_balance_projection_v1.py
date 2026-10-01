@@ -174,6 +174,13 @@ def _self_hash(document: Mapping[str, Any], identity_field: str) -> str:
     return _sha256(clean)
 
 
+def _current_clean_receipt_self_hash(document: Mapping[str, Any]) -> str:
+    """Match the current-clean producer's canonical JSON plus terminal LF."""
+    clean = dict(document)
+    clean.pop("receipt_identity_sha256", None)
+    return _sha256_bytes(_canonical_bytes(clean) + b"\n")
+
+
 def _require_hex(value: Any, field: str, length: int) -> str:
     if (
         not isinstance(value, str)
@@ -610,7 +617,7 @@ def _verify_current_clean_receipt(
         expected_receipt_identity_sha256, "expected current-clean receipt identity"
     ):
         raise ProjectionError("current-clean receipt is not independently expected")
-    if claimed != _self_hash(receipt, "receipt_identity_sha256"):
+    if claimed != _current_clean_receipt_self_hash(receipt):
         raise ProjectionError("current-clean receipt self-hash mismatch")
     if receipt.get("durable_evidence_hash_only") is not True:
         raise ProjectionError("current-clean durable evidence boundary weakened")

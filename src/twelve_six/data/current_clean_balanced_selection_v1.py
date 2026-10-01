@@ -17,10 +17,12 @@ from twelve_six.data.balanced_split_application_v1 import (
     BalancedSplitApplicationError,
     verify_balanced_selection,
 )
+
 from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
 from twelve_six.data.postmaterialization_balance_projection_v1 import (
     CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA,
     _canonical_bytes,
+    _current_clean_receipt_self_hash,
     _rebuild_current_clean_survivor_inventory,
     _require_nonnegative_int,
     _require_sha256,
@@ -342,7 +344,7 @@ def build_current_clean_balanced_selection(
         "current_clean_receipt_identity_sha256"
     ):
         raise ProjectionError("composition receipt identity differs from family-vector authority")
-    if _self_hash(receipt, "receipt_identity_sha256") != receipt.get(
+    if _current_clean_receipt_self_hash(receipt) != receipt.get(
         "receipt_identity_sha256"
     ):
         raise ProjectionError("composition receipt self-hash mismatch")

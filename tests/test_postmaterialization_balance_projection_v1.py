@@ -19,6 +19,7 @@ from twelve_six.data.postmaterialization_balance_projection_v1 import (
     CURRENT_CLEAN_BALANCE_BINDING_SCHEMA,
     CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA,
     FAMILY_VECTOR_SCHEMA,
+    _verify_current_clean_receipt,
     adapt_postmaterialization_family_vector_to_next100_106,
     build_balance_result_binding,
     build_current_clean_family_vector,
@@ -609,7 +610,7 @@ def _current_clean_bytes(
         "foreign_pretrained_weights": False,
     }
     receipt["receipt_identity_sha256"] = hashlib.sha256(
-        _canonical(receipt)
+        _canonical(receipt) + b"\n"
     ).hexdigest()
     receipt_raw = _canonical(receipt) + b"\n"
     inventory_raw = _canonical(inventory) + b"\n"
@@ -699,7 +700,10 @@ def _build_current_clean(rows: list[dict]) -> tuple[dict, dict[str, bytes], dict
 def _reseal(document: dict, identity_field: str) -> bytes:
     document = copy.deepcopy(document)
     document.pop(identity_field, None)
-    document[identity_field] = hashlib.sha256(_canonical(document)).hexdigest()
+    identity_bytes = _canonical(document)
+    if identity_field == "receipt_identity_sha256":
+        identity_bytes += b"\n"
+    document[identity_field] = hashlib.sha256(identity_bytes).hexdigest()
     return _canonical(document) + b"\n"
 
 
@@ -1378,3 +1382,85 @@ def test_selected_raw_projection_rejects_self_resealed_metadata_substitution() -
             raw["survivor_records"],
             expected_authority=selection,
         )
+
+
+# Hash-only receipt from independently verified PR2211 artifact 11181030848.
+# This fixed producer output catches canonical-byte mismatches hidden by mocks.
+_PRODUCTION_CURRENT_CLEAN_RECEIPT = {'authorized_optimized_target_exposure': 0,
+ 'clean_training_handoff_sha256': '80bcf2dd28f0d13795ceea01b358c7149b636f55f17b29575d14313b5cee99ee',
+ 'clean_training_records_sha256': '3458afe0380ea45d328ad3f004b21845a188ca69f2f7a83c24999e9e53268e53',
+ 'current_corpus_launch_authority_promoted': False,
+ 'data232_report_sha256': '7176e069fb23a834353e578bce4e0381a037ccb4e5c77c24d89943e749517863',
+ 'decontamination_execution_identity_sha256': '9147fc688ce328503b4ab0bed3e1cf1f1d4250eb97daebd4cfc90cdf136cce59',
+ 'dependency_git_blobs': {'current_reserved_decontamination_v1.py': 'e5c555e3cd27844e98d4ae91af0b746e427f36c9',
+                          'eval647_reserved_decontamination_v1.py': 'ce33771c9fb4a6cc421e2f8e1f6f232c119bec71',
+                          'post_g05_g06_materialization_v1.py': '830087f91d1fa24385c5cbc8d2f687e4cc46b419',
+                          'privacy_execution_authority.py': '9215287e81c0a82f05ec8405dc4f34c60313c193',
+                          'privacy_filter_v3.py': 'bcc5938395724f6728ab212f98b39f2334b0f37d',
+                          'quality_execution_authority.py': '4659a9d4aba49908f372250904a54361c8d8cf46'},
+ 'durable_evidence_hash_only': True,
+ 'eval647_execution_receipt_identity_sha256': 'c54c3f2d74ba5c9dcbb6913042d24cce091c4e183ff72ae00b4bc9131df600c4',
+ 'final_test_outcomes_read': False,
+ 'foreign_pretrained_weights': False,
+ 'independent_qualification_required': True,
+ 'input_training_records': 257,
+ 'learned_weights_created': False,
+ 'optimizer_updates_executed_on_real_targets': 0,
+ 'paid_compute_used': False,
+ 'post_decontamination_input_rows_sha256': 'e4cc685d7bc24442d151322a511d4067f6f387825a6b65ffa9d5e55acfe829e6',
+ 'post_decontamination_records': 254,
+ 'post_quality_input_rows_sha256': 'e4cc685d7bc24442d151322a511d4067f6f387825a6b65ffa9d5e55acfe829e6',
+ 'post_quality_records': 254,
+ 'privacy_detector_counts': {},
+ 'privacy_execution_identity_sha256': 'b3488f8186fb761d0e383547e8b082b827de93a3b0b3f5c902c5ed9ef5db6966',
+ 'quality_execution_identity_sha256': 'a109bf4ce98b962eede358e6ac8fb29e1999236fed49b283a4921f94cd3ae6bf',
+ 'receipt_identity_sha256': '2fe7c4c7ed85f158e8a2bf3ef927af03bf5dc32ecbc33ee97598e613faddb04c',
+ 'rejection_counts': {'data232_excluded_records': 3,
+                      'g05_partial_documents': 0,
+                      'g05_reject_documents': 0,
+                      'g05_rejected_units': 0,
+                      'g05_rejected_utf8_bytes': 0,
+                      'g06_dropped_utf8_bytes': 0,
+                      'g06_exclude_records': 0,
+                      'g06_quarantine_records': 0,
+                      'g06_redacted_records': 0},
+ 'schema_version': '12-6.current-clean-decontam-quality-privacy-survivor.v2',
+ 'status': 'CLEAN_SURVIVOR_MATERIALIZED_PENDING_INDEPENDENT_QUALIFICATION',
+ 'survivor_jsonl_sha256': '3aa6235e07da4fa50c9642639cc0d93d7da22a6b602d822c7c7ca6e1f4a7486a',
+ 'survivor_payload_bytes': 5428358,
+ 'survivor_payload_inventory_digest_sha256': '2d2f0f5695ee07dfbba2e49b2d14983ede91051644770804fb734235125353af',
+ 'survivor_record_inventory_digest_sha256': '0807f46418fb5a16a1c553c86a6f6967e5c2854d0016e3f6fe24c1d9c05c628b',
+ 'survivor_records': 254,
+ 'survivor_source_objects': 241,
+ 'terminal_post_g05_g06_authority': False,
+ 'tokenizer_fit_authorized': False,
+ 'training_executed': False}
+
+
+def _verify_production_receipt(receipt: dict, expected_identity: str) -> None:
+    _verify_current_clean_receipt(
+        receipt,
+        expected_receipt_identity_sha256=expected_identity,
+        expected_survivor_jsonl_sha256="3aa6235e07da4fa50c9642639cc0d93d7da22a6b602d822c7c7ca6e1f4a7486a",
+        expected_record_inventory_digest_sha256="0807f46418fb5a16a1c553c86a6f6967e5c2854d0016e3f6fe24c1d9c05c628b",
+        expected_payload_inventory_digest_sha256="2d2f0f5695ee07dfbba2e49b2d14983ede91051644770804fb734235125353af",
+        expected_record_count=254,
+        expected_total_payload_bytes=5_428_358,
+        expected_source_object_count=241,
+    )
+
+
+def test_current_clean_accepts_fixed_physical_producer_receipt() -> None:
+    _verify_production_receipt(
+        _PRODUCTION_CURRENT_CLEAN_RECEIPT,
+        "2fe7c4c7ed85f158e8a2bf3ef927af03bf5dc32ecbc33ee97598e613faddb04c",
+    )
+
+
+def test_current_clean_rejects_resealed_receipt_without_producer_lf() -> None:
+    receipt = copy.deepcopy(_PRODUCTION_CURRENT_CLEAN_RECEIPT)
+    receipt.pop("receipt_identity_sha256")
+    wrong_identity = hashlib.sha256(_canonical(receipt)).hexdigest()
+    receipt["receipt_identity_sha256"] = wrong_identity
+    with pytest.raises(ProjectionError, match="receipt self-hash mismatch"):
+        _verify_production_receipt(receipt, wrong_identity)
