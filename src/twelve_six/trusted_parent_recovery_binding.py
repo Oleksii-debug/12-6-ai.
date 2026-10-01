@@ -509,6 +509,10 @@ def restore_trusted_same_provider_resume(
     the canonical loader mutates model, trainer or RNG state.
     """
 
+    if strict_model is not True:
+        raise TrustedParentRecoveryBindingError("trusted_resume_strict_model_required")
+    if restore_rng is not True:
+        raise TrustedParentRecoveryBindingError("trusted_resume_rng_restore_required")
     if not isinstance(binding, PortableRunBinding):
         raise TrustedParentRecoveryBindingError("portable_binding_type_invalid")
     if (
