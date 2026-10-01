@@ -134,13 +134,6 @@ def _git_in(
     return proc
 
 
-def _v7_untracked_entry_is_runtime_cache(status_line: str) -> bool:
-    if not status_line.startswith("?? "):
-        return False
-    path = status_line[3:].strip('"')
-    return "__pycache__/" in path and path.endswith((".pyc", ".pyo"))
-
-
 def _verify_v7_worktree(v7_root: Path) -> str:
     try:
         root = v7_root.resolve(strict=True)
@@ -153,11 +146,7 @@ def _verify_v7_worktree(v7_root: Path) -> str:
         f"V7 worktree HEAD drift: expected {v8.EXPECTED_V7_HEAD}, got {head}",
     )
     status = _git_in(root, "status", "--porcelain=v1", "--untracked-files=all").stdout
-    unexpected = [
-        line
-        for line in status.splitlines()
-        if line and not _v7_untracked_entry_is_runtime_cache(line)
-    ]
+    unexpected = [line for line in status.splitlines() if line]
     _require(
         not unexpected,
         "V7 worktree is not clean: " + "; ".join(unexpected[:5]),
@@ -250,6 +239,8 @@ def _reconstruct_v8_with_historical_namespace(
 
     twelve_six_pkg.__path__ = [historical_package, *current_package_path]
     data_pkg.__path__ = [historical_data, *current_data_path]
+    previous_dont_write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
     importlib.invalidate_caches()
     try:
         matcher, inventory, payloads = v9_runner.reconstruct_v8_source_inputs(
@@ -260,6 +251,7 @@ def _reconstruct_v8_with_historical_namespace(
     finally:
         twelve_six_pkg.__path__ = current_package_path
         data_pkg.__path__ = current_data_path
+        sys.dont_write_bytecode = previous_dont_write_bytecode
         importlib.invalidate_caches()
 
     historical_root = Path(historical_data)

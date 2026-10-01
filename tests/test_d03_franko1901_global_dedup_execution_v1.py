@@ -318,7 +318,7 @@ def test_v7_worktree_rejects_tracked_or_noncache_untracked_drift(
             mod._verify_v7_worktree(tmp_path)
 
 
-def test_v7_worktree_allows_only_python_runtime_cache(monkeypatch, tmp_path: Path) -> None:
+def test_v7_worktree_rejects_untracked_python_bytecode(monkeypatch, tmp_path: Path) -> None:
     mod = _load()
 
     def fake_git(root: Path, *args: str, check: bool = True):
@@ -338,7 +338,17 @@ def test_v7_worktree_allows_only_python_runtime_cache(monkeypatch, tmp_path: Pat
         raise AssertionError(args)
 
     monkeypatch.setattr(mod, "_git_in", fake_git)
-    assert mod._verify_v7_worktree(tmp_path) == mod.v8.EXPECTED_V7_HEAD
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="V7 worktree is not clean"):
+        mod._verify_v7_worktree(tmp_path)
+
+
+def test_historical_reconstruction_disables_bytecode_cache_writes() -> None:
+    mod = _load()
+    source = inspect.getsource(mod._reconstruct_v8_with_historical_namespace)
+    enable = source.index("sys.dont_write_bytecode = True")
+    reconstruct = source.index("v9_runner.reconstruct_v8_source_inputs(")
+    restore = source.index("sys.dont_write_bytecode = previous_dont_write_bytecode")
+    assert enable < reconstruct < restore
 
 
 def test_execute_binds_v7_worktree_before_reconstruction() -> None:
