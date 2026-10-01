@@ -440,16 +440,49 @@ def _max_rss_kib() -> int | None:
     return None
 
 
-def _write_json(path: Path, value: Mapping[str, Any]) -> None:
-    payload = _canonical(dict(value)) + b"\n"
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _publish_json_outputs(
+    outputs: tuple[tuple[Path, Mapping[str, Any]], ...],
+) -> None:
+    prepared: list[tuple[Path, bytes]] = []
+    seen: set[Path] = set()
+    for path, value in outputs:
+        _require(path not in seen, f"duplicate output path: {path}")
+        seen.add(path)
+        prepared.append((path, _canonical(dict(value)) + b"\n"))
+
+    created: list[Path] = []
     try:
-        with path.open("xb") as handle:
-            handle.write(payload)
-    except FileExistsError as exc:
-        raise Franko1901GlobalDedupError(f"refusing to overwrite: {path}") from exc
-    except OSError as exc:
-        raise Franko1901GlobalDedupError(f"cannot write output: {path}") from exc
+        for path, payload in prepared:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with path.open("xb") as handle:
+                    created.append(path)
+                    handle.write(payload)
+            except FileExistsError as exc:
+                raise Franko1901GlobalDedupError(
+                    f"refusing to overwrite: {path}"
+                ) from exc
+            except OSError as exc:
+                raise Franko1901GlobalDedupError(
+                    f"cannot write output: {path}"
+                ) from exc
+    except Exception as exc:
+        rollback_errors: list[str] = []
+        for created_path in reversed(created):
+            try:
+                created_path.unlink(missing_ok=True)
+            except OSError as rollback_exc:
+                rollback_errors.append(f"{created_path}: {rollback_exc}")
+        if rollback_errors:
+            raise Franko1901GlobalDedupError(
+                "output publication failed and rollback was incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
+        raise
+
+
+def _write_json(path: Path, value: Mapping[str, Any]) -> None:
+    _publish_json_outputs(((path, value),))
 
 
 def execute(
@@ -613,9 +646,13 @@ def execute(
         **evidence_core,
         "evidence_identity_sha256": _sha256(_canonical(evidence_core)),
     }
-    _write_json(output_report, indexed_report)
-    _write_json(output_survivors, survivors)
-    _write_json(output_evidence, evidence)
+    _publish_json_outputs(
+        (
+            (output_report, indexed_report),
+            (output_survivors, survivors),
+            (output_evidence, evidence),
+        )
+    )
     return evidence
 
 

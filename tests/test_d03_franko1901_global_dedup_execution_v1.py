@@ -390,6 +390,44 @@ def test_write_json_nonfinite_fails_before_publication(tmp_path: Path) -> None:
     assert not output.exists()
 
 
+def test_output_set_rolls_back_when_later_path_exists(tmp_path: Path) -> None:
+    mod = _load()
+    report = tmp_path / "report.json"
+    survivors = tmp_path / "survivors.json"
+    evidence = tmp_path / "evidence.json"
+    evidence.write_bytes(b"existing-evidence\n")
+
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="refusing to overwrite"):
+        mod._publish_json_outputs(
+            (
+                (report, {"kind": "report"}),
+                (survivors, {"kind": "survivors"}),
+                (evidence, {"kind": "evidence"}),
+            )
+        )
+
+    assert not report.exists()
+    assert not survivors.exists()
+    assert evidence.read_bytes() == b"existing-evidence\n"
+
+
+def test_output_set_serializes_all_values_before_publication(tmp_path: Path) -> None:
+    mod = _load()
+    report = tmp_path / "report.json"
+    evidence = tmp_path / "evidence.json"
+
+    with pytest.raises(ValueError):
+        mod._publish_json_outputs(
+            (
+                (report, {"kind": "report"}),
+                (evidence, {"rss": float("nan")}),
+            )
+        )
+
+    assert not report.exists()
+    assert not evidence.exists()
+
+
 def test_no_training_or_capacity_promotion_in_execution_evidence() -> None:
     raw = MODULE.read_text(encoding="utf-8")
     assert '"canonical_capacity_credited": 0' in raw
