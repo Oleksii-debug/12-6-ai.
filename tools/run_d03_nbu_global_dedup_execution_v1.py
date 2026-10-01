@@ -972,8 +972,9 @@ def run_two_clean(
         materialization_evidence_json_b,
         retain_payloads=False,
     )
+    expected_intake_receipt_sha = first_projection.receipt["receipt_identity_sha256"]
     _require(
-        first_projection.receipt["receipt_identity_sha256"]
+        expected_intake_receipt_sha
         == second_projection.receipt["receipt_identity_sha256"],
         "two-clean intake projection identity drift",
     )
@@ -1066,6 +1067,13 @@ def run_two_clean(
         _require(
             authority.get("execution_head_sha") == orchestration_head,
             "two-clean aggregate execution head drift",
+        )
+        materialization_authority = authority.get("materialization_authority")
+        _require(
+            type(materialization_authority) is dict
+            and materialization_authority.get("intake_receipt_identity_sha256")
+            == expected_intake_receipt_sha,
+            "two-clean parent/child intake receipt drift",
         )
         _publish_json_outputs(((output_root / "two-clean-authority.json", authority),))
     except (NbuGlobalDedupError, OSError) as exc:
