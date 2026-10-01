@@ -88,7 +88,7 @@ jobs:
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install "pytest>=8"
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential ca-certificates cmake curl libfontconfig1-dev libfreetype6-dev \
@@ -367,9 +367,10 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install "pytest>=8" "ruff>=0.12"
           ruff check src/twelve_six/data/nbu_dedup_intake.py tests/test_nbu_dedup_intake.py tests/test_d03_nbu_global_dedup_execution_v1.py
-          pytest -q tests/test_nbu_dedup_intake.py tests/test_d03_nbu_global_dedup_execution_v1.py
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" \
+            pytest -q tests/test_nbu_dedup_intake.py tests/test_d03_nbu_global_dedup_execution_v1.py
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential ca-certificates cmake curl libfontconfig1-dev libfreetype6-dev \
