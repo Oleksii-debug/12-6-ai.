@@ -180,6 +180,35 @@ def test_authority_surface_binds_franko_and_incumbent_execution() -> None:
     assert expected <= set(mod.AUTHORITY_PATHS)
 
 
+def test_execution_carrier_binds_worktree_bytes_to_head() -> None:
+    mod = _load()
+    observed = mod.verify_execution_carrier()
+    assert len(observed) == 40
+
+
+def test_repository_authority_rejects_dirty_authority_worktree(monkeypatch) -> None:
+    mod = _load()
+    original_git = mod._git
+
+    def fake_git(*args, **kwargs):
+        if args[:3] == ("diff", "--quiet", "HEAD"):
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        return original_git(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "_git", fake_git)
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="worktree drift"):
+        mod.verify_repository_authority()
+
+
+def test_execute_records_exact_carrier_blob_before_evidence() -> None:
+    mod = _load()
+    source = inspect.getsource(mod.execute)
+    carrier = source.index("execution_carrier_blob = verify_execution_carrier()")
+    evidence = source.index("evidence_core = {")
+    assert carrier < evidence
+    assert '"execution_carrier_git_blob_sha1": execution_carrier_blob' in source
+
+
 def test_repository_authority_is_current_main_ancestry_bound() -> None:
     mod = _load()
     blobs = mod.verify_repository_authority()
