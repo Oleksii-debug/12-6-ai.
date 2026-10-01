@@ -394,6 +394,9 @@ def test_runtime_environment_local_is_provider_neutral(monkeypatch) -> None:
     observed = mod._runtime_environment()
     assert observed["github_actions"] is False
     assert observed["runner_environment"] == "local"
+    assert observed["python_platform"] == mod.sys.platform
+    assert observed["python_version"] == mod.platform.python_version()
+    assert observed["python_implementation"] == mod.platform.python_implementation()
 
 
 def test_runtime_environment_rejects_ambiguous_actions_runner(monkeypatch) -> None:
