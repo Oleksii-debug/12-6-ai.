@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -107,6 +108,13 @@ def _reject_nonfinite(value: str) -> None:
     raise SubsetAccountingError(f"non-finite JSON number: {value}")
 
 
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise SubsetAccountingError(f"non-finite JSON number: {value}")
+    return parsed
+
+
 def _loads_strict(raw: bytes, *, label: str) -> Any:
     try:
         text = raw.decode("utf-8", errors="strict")
@@ -114,6 +122,7 @@ def _loads_strict(raw: bytes, *, label: str) -> Any:
             text,
             object_pairs_hook=_pairs_no_duplicates,
             parse_constant=_reject_nonfinite,
+            parse_float=_parse_finite_float,
         )
     except UnicodeDecodeError as exc:
         raise SubsetAccountingError(f"{label} is not UTF-8") from exc
@@ -283,6 +292,92 @@ def _validate_historical_report(report: dict[str, Any]) -> None:
     _require(report.get("final_test_payload_accessed") is False, "report final-test drift")
     _require(report.get("paid_compute_used") is False, "report paid-compute drift")
 
+
+
+def _require_exact(value: Any, expected: Any, *, path: str) -> None:
+    _require(type(value) is type(expected), f"{path} type drift")
+    if type(expected) is dict:
+        _require(set(value) == set(expected), f"{path} schema drift")
+        for key, expected_value in expected.items():
+            _require_exact(value[key], expected_value, path=f"{path}.{key}")
+        return
+    if type(expected) is list:
+        _require(len(value) == len(expected), f"{path} length drift")
+        for index, expected_value in enumerate(expected):
+            _require_exact(value[index], expected_value, path=f"{path}[{index}]")
+        return
+    _require(value == expected, f"{path} value drift")
+
+
+def validate_terminal_evidence(raw: bytes) -> dict[str, Any]:
+    evidence = _loads_strict(raw, label="terminal evidence")
+    _require(type(evidence) is dict, "terminal evidence root must be object")
+    expected = {
+        "schema_version": "12-6.d03-pdr-attributable-subset-terminal-evidence.v1",
+        "status": "PHYSICAL_TWO_SLOT_SUBSET_ACCOUNTING_PROVEN_REVIEW_REQUIRED_ZERO_CREDIT",
+        "swarm_control_issue": 723,
+        "claim_issue": 2324,
+        "pull_request": 2327,
+        "execution": {
+            "profile": "LOCAL_FREE",
+            "run_id": 36521055931,
+            "run_attempt": 1,
+            "execution_head_sha": "76ab3d6c3fd1ade35bf371209bd89b5929201001",
+            "independent_slots": ["a", "b"],
+            "deterministic_compare_succeeded": True,
+        },
+        "source": {
+            "dataset": SOURCE_DATASET,
+            "revision": SOURCE_REVISION,
+            "file_sha256": [
+                "0a5cbe305d7f468aad95a8cfc4d5fae14132bc359ccf92fc3705072db33a46fd",
+                "825aed6a66ab14f89e1fe3110f67265d511994c52e5aed48b866a9e8a1bdeb4d",
+            ],
+        },
+        "historical_binding": {
+            "candidate_jsonl_sha256": EXPECTED_CANDIDATE_SHA256,
+            "candidate_record_count": EXPECTED_CANDIDATE_RECORDS,
+            "candidate_normalized_utf8_bytes": EXPECTED_CANDIDATE_NORMALIZED_BYTES,
+            "candidate_projection_identity_sha256": EXPECTED_CANDIDATE_PROJECTION,
+            "attribution_sidecar_sha256": EXPECTED_SIDECAR_SHA256,
+            "exclusion_identity_sha256": EXPECTED_EXCLUSION_IDENTITY,
+        },
+        "attributable_subset": {
+            "attributable_record_count": EXPECTED_ATTRIBUTABLE_RECORDS,
+            "excluded_record_count": EXPECTED_EXCLUDED_RECORDS,
+            "attributable_normalized_utf8_bytes": EXPECTED_ATTRIBUTABLE_NORMALIZED_BYTES,
+            "attributable_projection_identity_sha256": EXPECTED_ATTRIBUTABLE_PROJECTION,
+            "authority_identity_sha256": EXPECTED_AUTHORITY_IDENTITY,
+        },
+        "artifacts": {
+            "evidence_a_artifact_id": 11013445540,
+            "evidence_a_zip_sha256": "48c62a44caabd4fa40b15bff0802d78430796cf056a1ac9dd8c5833baf86c89b",
+            "evidence_b_artifact_id": 11012876538,
+            "evidence_b_zip_sha256": "525c9c1146bdcfe20b0af15b397e9bdb204d259d2b3f621cebd39033be347d5b",
+            "compare_artifact_id": 11013261259,
+            "compare_artifact_zip_sha256": "0f2aa73ec42cf252b8b6a338277773af2fc4320b02346f18b347d67b639531b5",
+            "execution_a_evidence_sha256": "0a5389ee842daf7929180e107aea02cd90ad202270ba9bc665187482229ad70c",
+            "execution_b_evidence_sha256": "2a8f45e9e553a452e0a1a75810515ef570d766739d284e544aaaadb4b502bd3d",
+        },
+        "truth_boundary": {
+            "source_rights_review_status": "REVIEW_REQUIRED",
+            "pdr_source_admitted_records": 0,
+            "pdr_source_admitted_bytes": 0,
+            "canonical_capacity_credited": 0,
+            "training_authorized_bytes": 0,
+            "authorized_optimized_target_exposure": 0,
+            "tokenizer_fit_authorized": False,
+            "optimizer_updates_executed_on_real_targets": 0,
+            "training_executed": False,
+            "learned_weights_created": False,
+            "final_test_outcomes_read": False,
+            "paid_compute_used": False,
+            "foreign_pretrained_weights_used": False,
+        },
+        "next_authority": "FRESH_DIFFERENT_WORKER_AUDIT_REQUIRED_AFTER_FINAL_EXACT_HEAD_CI",
+    }
+    _require_exact(evidence, expected, path="terminal evidence")
+    return evidence
 
 def main() -> int:
     parser = argparse.ArgumentParser()
