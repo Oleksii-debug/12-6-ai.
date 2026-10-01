@@ -123,7 +123,7 @@ def _report(mod):
             "duplicate_cluster_count": 1,
         },
     }
-    return {**core, "report_sha256": mod._sha256(mod._canonical(core))}
+    return {**core, "report_sha256": mod._incumbent_report_identity(core)}
 
 
 def _projection(mod):
