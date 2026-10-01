@@ -311,11 +311,23 @@ jobs:
       - name: Require two independent source/materialization/dedup convergences
         run: |
           set -euxo pipefail
-          cmp artifacts/pass-1/nbu-discovery-evidence.json artifacts/pass-2/nbu-discovery-evidence.json
-          cmp artifacts/pass-1/nbu-pdf-pin-evidence.json artifacts/pass-2/nbu-pdf-pin-evidence.json
-          cmp artifacts/pass-1/nbu-text-evidence-a.json artifacts/pass-2/nbu-text-evidence-a.json
-          cmp artifacts/pass-1/global-dedup-report.json artifacts/pass-2/global-dedup-report.json
-          cmp artifacts/pass-1/survivor-authority.json artifacts/pass-2/survivor-authority.json
+
+          resolve_pass_dir() {
+            local root="$1"
+            mapfile -t matches < <(find "$root" -type f -name global-dedup-report.json -print)
+            test "${#matches[@]}" -eq 1
+            dirname "${matches[0]}"
+          }
+
+          P1_DIR="$(resolve_pass_dir artifacts/pass-1)"
+          P2_DIR="$(resolve_pass_dir artifacts/pass-2)"
+          export P1_DIR P2_DIR
+
+          cmp "$P1_DIR/nbu-discovery-evidence.json" "$P2_DIR/nbu-discovery-evidence.json"
+          cmp "$P1_DIR/nbu-pdf-pin-evidence.json" "$P2_DIR/nbu-pdf-pin-evidence.json"
+          cmp "$P1_DIR/nbu-text-evidence-a.json" "$P2_DIR/nbu-text-evidence-a.json"
+          cmp "$P1_DIR/global-dedup-report.json" "$P2_DIR/global-dedup-report.json"
+          cmp "$P1_DIR/survivor-authority.json" "$P2_DIR/survivor-authority.json"
 
           python - <<'PY'
           from __future__ import annotations
@@ -381,20 +393,20 @@ jobs:
               ), field
 
           reports = [
-              load("artifacts/pass-1/global-dedup-report.json"),
-              load("artifacts/pass-2/global-dedup-report.json"),
+              load(str(Path(os.environ["P1_DIR"]) / "global-dedup-report.json")),
+              load(str(Path(os.environ["P2_DIR"]) / "global-dedup-report.json")),
           ]
           survivors = [
-              load("artifacts/pass-1/survivor-authority.json"),
-              load("artifacts/pass-2/survivor-authority.json"),
+              load(str(Path(os.environ["P1_DIR"]) / "survivor-authority.json")),
+              load(str(Path(os.environ["P2_DIR"]) / "survivor-authority.json")),
           ]
           executions = [
-              load("artifacts/pass-1/execution-evidence.json"),
-              load("artifacts/pass-2/execution-evidence.json"),
+              load(str(Path(os.environ["P1_DIR"]) / "execution-evidence.json")),
+              load(str(Path(os.environ["P2_DIR"]) / "execution-evidence.json")),
           ]
           texts = [
-              load("artifacts/pass-1/nbu-text-evidence-a.json"),
-              load("artifacts/pass-2/nbu-text-evidence-a.json"),
+              load(str(Path(os.environ["P1_DIR"]) / "nbu-text-evidence-a.json")),
+              load(str(Path(os.environ["P2_DIR"]) / "nbu-text-evidence-a.json")),
           ]
 
           for report in reports:
