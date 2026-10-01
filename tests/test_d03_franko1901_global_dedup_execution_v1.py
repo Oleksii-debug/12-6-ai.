@@ -278,6 +278,31 @@ def test_repository_authority_is_current_main_ancestry_bound() -> None:
     assert all(len(value) == 40 for value in blobs.values())
 
 
+def test_bulk_workspace_gate_creates_and_requires_empty_directory(tmp_path: Path) -> None:
+    mod = _load()
+    workspace = tmp_path / "bulk"
+    resolved = mod._prepare_empty_bulk_workspace(workspace)
+    assert resolved == workspace.resolve(strict=True)
+    assert list(workspace.iterdir()) == []
+
+    (workspace / "stale.txt").write_text("stale", encoding="utf-8")
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="bulk workspace must be empty"):
+        mod._prepare_empty_bulk_workspace(workspace)
+
+
+def test_bulk_workspace_gate_rejects_symlink(tmp_path: Path) -> None:
+    mod = _load()
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "bulk-link"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink not available on this platform")
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="must not be a symlink"):
+        mod._prepare_empty_bulk_workspace(link)
+
+
 def test_v7_worktree_requires_exact_expected_head(monkeypatch, tmp_path: Path) -> None:
     mod = _load()
 
@@ -354,10 +379,15 @@ def test_historical_reconstruction_disables_bytecode_cache_writes() -> None:
 def test_execute_binds_v7_worktree_before_reconstruction() -> None:
     mod = _load()
     source = inspect.getsource(mod.execute)
+    workspace = source.index("bulk_workspace = _prepare_empty_bulk_workspace(bulk_workspace)")
     bind = source.index("verified_v7_head = _verify_v7_worktree(v7_root)")
     reconstruct = source.index("_reconstruct_v8_with_historical_namespace(")
+    reverify = source.index(
+        "_verify_v7_worktree(v7_root) == verified_v7_head",
+        reconstruct,
+    )
     evidence = source.index('"v7_head_sha": verified_v7_head')
-    assert bind < reconstruct < evidence
+    assert workspace < bind < reconstruct < reverify < evidence
 
 
 def test_historical_matcher_namespace_includes_pipeline() -> None:

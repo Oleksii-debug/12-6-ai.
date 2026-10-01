@@ -134,6 +134,21 @@ def _git_in(
     return proc
 
 
+def _prepare_empty_bulk_workspace(workspace: Path) -> Path:
+    _require(not workspace.is_symlink(), "bulk workspace must not be a symlink")
+    try:
+        workspace.mkdir(parents=True, exist_ok=True)
+        resolved = workspace.resolve(strict=True)
+        entries = list(workspace.iterdir())
+    except OSError as exc:
+        raise Franko1901GlobalDedupError(
+            f"cannot prepare bulk workspace {workspace}: {exc}"
+        ) from exc
+    _require(workspace.is_dir(), "bulk workspace is not a directory")
+    _require(not entries, "bulk workspace must be empty")
+    return resolved
+
+
 def _verify_v7_worktree(v7_root: Path) -> str:
     try:
         root = v7_root.resolve(strict=True)
@@ -1102,12 +1117,17 @@ def execute(
     execution_head = _bind_execution_head(expected_execution_head)
     execution_carrier_blob = verify_execution_carrier()
     authority_blobs = verify_repository_authority()
+    bulk_workspace = _prepare_empty_bulk_workspace(bulk_workspace)
     verified_v7_head = _verify_v7_worktree(v7_root)
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
     matcher, base_inventory, base_payloads = _reconstruct_v8_with_historical_namespace(
         v7_root=v7_root,
         bulk_workspace=bulk_workspace,
         config=config,
+    )
+    _require(
+        _verify_v7_worktree(v7_root) == verified_v7_head,
+        "V7 worktree drifted during historical reconstruction",
     )
     _require(len(base_payloads) == EXPECTED_BASE_OBJECTS, "V8 base object count drift")
     _require(
