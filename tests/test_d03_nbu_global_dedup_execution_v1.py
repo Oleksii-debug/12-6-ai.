@@ -748,6 +748,48 @@ def test_two_clean_truth_zero_fields_reject_bool_alias() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("section", "field", "bad", "message"),
+    [
+        ("truth_boundary", "paid_compute_used", True, "truth boundary drift: paid_compute_used"),
+        (
+            "truth_boundary",
+            "foreign_pretrained_weights_used",
+            True,
+            "truth boundary drift: foreign_pretrained_weights_used",
+        ),
+        ("content_boundary", "raw_text_emitted", True, "child content boundary drift"),
+        (
+            "matcher_execution",
+            "all_pairs_reference_executed",
+            True,
+            "matcher authority drift",
+        ),
+    ],
+)
+def test_two_clean_authority_rejects_rehashed_child_authority_laundering(
+    section: str, field: str, bad: object, message: str
+) -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    evidence_b[section][field] = bad
+    core = dict(evidence_b)
+    core.pop("evidence_identity_sha256")
+    evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
 def test_two_clean_authority_rejects_tampered_execution_evidence() -> None:
     mod = _load()
     report = _report(mod)
