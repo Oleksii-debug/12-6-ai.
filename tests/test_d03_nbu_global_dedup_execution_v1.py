@@ -39,6 +39,27 @@ def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
 
 
 
+
+def test_nbu_physical_jobs_do_not_install_training_stack() -> None:
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    job_indexes = [
+        index
+        for index, line in enumerate(lines)
+        if (
+            line.startswith("  nbu-global-dedup-")
+            or line == "  nbu-pinned-pdf-access-probe:"
+        )
+        and line.endswith(":")
+    ]
+    assert job_indexes
+    for position, start in enumerate(job_indexes):
+        end = job_indexes[position + 1] if position + 1 < len(job_indexes) else len(lines)
+        block = "\n".join(lines[start:end])
+        assert 'pip install -e ".[dev]"' not in block
+        assert "pip install torch" not in block
+
+
+
 def test_two_clean_workflow_binds_distinct_physical_pass_summaries() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert 'P1_DIR"]) / "physical-pass-summary.json"' in workflow
