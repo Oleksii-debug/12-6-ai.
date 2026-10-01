@@ -486,6 +486,73 @@ def test_operational_restore_rejects_unrelated_verified_terminal_authority(
 
 
 @pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"strict_model": False}, "trusted_resume_strict_model_required"),
+        ({"strict_model": 1}, "trusted_resume_strict_model_required"),
+        ({"restore_rng": False}, "trusted_resume_rng_restore_required"),
+        ({"restore_rng": 1}, "trusted_resume_rng_restore_required"),
+    ],
+)
+def test_operational_restore_forbids_weakened_restore_modes(
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, object],
+    message: str,
+) -> None:
+    resolution = _resolution()
+    authority, expected, token = _binding_material(resolution)
+    trusted = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class=PROVIDER_CLASS,
+        provider_id=PROVIDER_ID,
+        provider_session_id=CURRENT_SESSION,
+        previous_provider_session_id=PREVIOUS_SESSION,
+        terminal_recovery_authority=authority,
+    )
+    packet = {
+        "binding": {
+            "trusted_parent_recovery": trusted,
+            "trusted_parent_recovery_authority_token": token,
+        }
+    }
+    binding = PortableRunBinding(
+        binding_ready=True,
+        mode="RESUME",
+        readiness_ready=True,
+        overlay_contract_valid=True,
+        packet_contract_valid=True,
+        blockers=(),
+        readiness_sha256="8" * 64,
+        overlay_sha256="9" * 64,
+        packet_sha256=trusted_module.canonical_sha256(packet),
+        packet=packet,
+    )
+
+    restore_called = False
+
+    def fail_if_restored(*args: object, **inner_kwargs: object) -> None:
+        nonlocal restore_called
+        restore_called = True
+        raise AssertionError("checkpoint restore must not run")
+
+    monkeypatch.setattr(trusted_module, "load_trainer_checkpoint", fail_if_restored)
+
+    with pytest.raises(ValueError, match=message):
+        restore_trusted_same_provider_resume(
+            binding,
+            resolution,
+            model=object(),
+            trainer=object(),
+            terminal_recovery_authority=authority,
+            expected_trusted_parent_binding_sha256=expected,
+            verified_trusted_recovery_authorities=(token,),
+            **kwargs,
+        )
+
+    assert not restore_called
+
+
+@pytest.mark.parametrize(
     "field",
     ["readiness_ready", "overlay_contract_valid", "packet_contract_valid"],
 )
