@@ -43,6 +43,7 @@ SURVIVOR_SCHEMA = "12-6.d03-franko1901-global-dedup-survivors.v1"
 EXPECTED_MAIN = "ba9e49cedba4a110e1c4f7d83702e8fcf8a42461"
 EXECUTION_CLAIM = 2394
 EXECUTION_PR = 2448
+CARRIER_PATH = "tools/run_d03_franko1901_global_dedup_execution_v1.py"
 FRANKO1901_FINAL_HEAD = franko1901.UPSTREAM_PRODUCT_HEAD
 EXPECTED_BASE_OBJECTS = 264
 EXPECTED_BASE_BYTES = 6_095_624
@@ -109,12 +110,14 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def verify_repository_authority() -> dict[str, str]:
-    """Bind authority-bearing runtime files to the exact main that merged #1459."""
+    """Bind authority-bearing runtime files to exact committed and worktree bytes."""
     ancestor = _git("merge-base", "--is-ancestor", EXPECTED_MAIN, "HEAD", check=False)
     _require(
         ancestor.returncode == 0,
         f"pinned main {EXPECTED_MAIN} is not an ancestor of execution HEAD",
     )
+    worktree = _git("diff", "--quiet", "HEAD", "--", *AUTHORITY_PATHS, check=False)
+    _require(worktree.returncode == 0, "authority path worktree drift")
     blobs: dict[str, str] = {}
     for path in AUTHORITY_PATHS:
         expected = _git("rev-parse", f"{EXPECTED_MAIN}:{path}").stdout.strip()
@@ -122,6 +125,17 @@ def verify_repository_authority() -> dict[str, str]:
         _require(bool(expected) and observed == expected, f"authority path drift: {path}")
         blobs[path] = observed
     return blobs
+
+
+def verify_execution_carrier() -> str:
+    """Bind the executing carrier bytes to the exact recorded HEAD."""
+    expected = _git("rev-parse", f"HEAD:{CARRIER_PATH}").stdout.strip()
+    observed = _git("hash-object", str(ROOT / CARRIER_PATH)).stdout.strip()
+    _require(
+        len(expected) == 40 and observed == expected,
+        "execution carrier worktree drift",
+    )
+    return observed
 
 
 _HISTORICAL_MATCHER_MODULES = (
@@ -557,6 +571,7 @@ def execute(
     max_index_postings: int,
     max_pair_expansions: int,
 ) -> dict[str, Any]:
+    execution_carrier_blob = verify_execution_carrier()
     authority_blobs = verify_repository_authority()
     execution_head = _git("rev-parse", "HEAD").stdout.strip()
     _require(len(execution_head) == 40, "execution HEAD identity missing")
@@ -641,6 +656,7 @@ def execute(
         "execution_claim_issue": EXECUTION_CLAIM,
         "execution_pr": EXECUTION_PR,
         "execution_head_sha": execution_head,
+        "execution_carrier_git_blob_sha1": execution_carrier_blob,
         "pinned_main_sha": EXPECTED_MAIN,
         "authority_path_blobs": authority_blobs,
         "baseline_v8": {
