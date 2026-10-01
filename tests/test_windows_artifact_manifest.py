@@ -236,6 +236,22 @@ def test_windows_workflow_triggers_manifest_regression_suite() -> None:
     assert '- "tests/test_windows_artifact_manifest.py"' in workflow
 
 
+def test_windows_workflow_prefixes_artifact_digests_for_evidence() -> None:
+    workflow = (
+        ROOT / ".github" / "workflows" / "d08-windows-product-packaging.yml"
+    ).read_text(encoding="utf-8")
+    assert (
+        "--app-artifact-digest "
+        "'sha256:${{ needs.source-and-app.outputs.app_artifact_digest }}'"
+        in workflow
+    )
+    assert (
+        "--runtime-artifact-digest "
+        "'sha256:${{ needs.windows-runtime-bundle.outputs.runtime_artifact_digest }}'"
+        in workflow
+    )
+
+
 def test_windows_workflow_rejects_failed_generation_stdout() -> None:
     workflow = (
         ROOT / ".github" / "workflows" / "d08-windows-product-packaging.yml"

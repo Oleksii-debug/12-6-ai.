@@ -264,9 +264,9 @@ jobs:
             --app-manifest (Join-Path $app 'app-manifest.json') `
             --runtime-manifest (Join-Path $runtimeArtifact 'runtime-manifest.json') `
             --app-artifact-id '${{ needs.source-and-app.outputs.app_artifact_id }}' `
-            --app-artifact-digest '${{ needs.source-and-app.outputs.app_artifact_digest }}' `
+            --app-artifact-digest 'sha256:${{ needs.source-and-app.outputs.app_artifact_digest }}' `
             --runtime-artifact-id '${{ needs.windows-runtime-bundle.outputs.runtime_artifact_id }}' `
-            --runtime-artifact-digest '${{ needs.windows-runtime-bundle.outputs.runtime_artifact_digest }}'
+            --runtime-artifact-digest 'sha256:${{ needs.windows-runtime-bundle.outputs.runtime_artifact_digest }}'
       - name: Upload product packaging evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
