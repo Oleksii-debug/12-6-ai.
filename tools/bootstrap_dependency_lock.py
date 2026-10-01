@@ -20,12 +20,12 @@ if _spec is None or _spec.loader is None:
 _lock = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_lock)
 
-EXACT_PYTHON_VERSION = _lock.EXACT_PYTHON_VERSION
 PROJECT_DISTRIBUTION = _lock.PROJECT_DISTRIBUTION
 assert_exact_python = _lock.assert_exact_python
 build_profile_manifest = _lock.build_profile_manifest
 canonical_distribution_name = _lock.canonical_distribution_name
 current_profile_id = _lock.current_profile_id
+exact_python_version = _lock.exact_python_version
 write_manifest = _lock.write_manifest
 LOCK_ROOT = Path("requirements/locks")
 
@@ -95,9 +95,15 @@ def _packages(report: dict[str, Any]) -> dict[str, tuple[str, tuple[str, ...]]]:
     return result
 
 
-def _write_lock(path: Path, packages: dict[str, tuple[str, tuple[str, ...]]], *, group: str) -> None:
+def _write_lock(
+    path: Path,
+    packages: dict[str, tuple[str, tuple[str, ...]]],
+    *,
+    group: str,
+    python_version: str,
+) -> None:
     lines = [
-        f"# 12-6 AI {group} lock; generated with CPython {EXACT_PYTHON_VERSION}.",
+        f"# 12-6 AI {group} lock; generated with CPython {python_version}.",
         "# Install with: python -m pip install --require-hashes --no-deps -r <this-file>",
     ]
     for name, (version, hashes) in sorted(packages.items()):
@@ -125,8 +131,9 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=ROOT)
     args = parser.parse_args()
 
-    assert_exact_python()
     profile = current_profile_id()
+    assert_exact_python(profile)
+    python_version = exact_python_version(profile)
     output_root = args.output_root.resolve()
     profile_dir = LOCK_ROOT / profile
 
@@ -146,7 +153,12 @@ def main() -> int:
     }
     groups = {"toolchain": toolchain, "runtime": runtime, "dev": dev_only}
     for group, relative in lock_files.items():
-        _write_lock(output_root / relative, groups[group], group=group)
+        _write_lock(
+            output_root / relative,
+            groups[group],
+            group=group,
+            python_version=python_version,
+        )
 
     manifest = build_profile_manifest(
         root=output_root,

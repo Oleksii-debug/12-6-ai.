@@ -1,4 +1,4 @@
-"""Verify committed dependency locks and clean wheel/editable installs."""
+"""Verify committed dependency locks and clean wheel installs from source."""
 
 from __future__ import annotations
 
@@ -21,6 +21,9 @@ _LOCK_LINE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9._-]*==[^\s;@/\\]+(?: --hash=sha256:[0-9a-f]{64})+$"
 )
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+# ZIP timestamps cannot represent dates before 1980-01-01. Keep reproducible
+# wheel/script ZIP metadata deterministic without asking distlib for year 1970.
+_ZIP_SAFE_SOURCE_DATE_EPOCH = "315532800"
 
 
 def _load_contract() -> Any:
@@ -76,14 +79,14 @@ def _validate_lock_text(path: Path, expected_count: int) -> None:
 
 
 def validate_committed_profile(profile_id: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-    LOCK.assert_exact_python()
-    index = LOCK.validate_lock_index(root=ROOT, index_path=INDEX_PATH)
     current = LOCK.current_profile_id()
     expected = profile_id or current
     if expected != current:
         raise LOCK.DependencyLockError(
             f"requested profile {expected!r} does not match current platform {current!r}"
         )
+    LOCK.assert_exact_python(expected)
+    index = LOCK.validate_lock_index(root=ROOT, index_path=INDEX_PATH)
     record = index["profiles"][expected]
     profile_path = _safe_relative_path(record["path"])
     profile = LOCK.validate_profile_manifest(
@@ -105,24 +108,43 @@ def validate_committed_profile(profile_id: str | None = None) -> tuple[dict[str,
 
 
 def _venv_python(directory: Path) -> Path:
-    path = directory / "bin" / "python"
+    if os.name == "nt":
+        path = directory / "Scripts" / "python.exe"
+    else:
+        path = directory / "bin" / "python"
     if not path.exists():
         raise RuntimeError(f"virtualenv Python missing: {path}")
     return path
 
 
+def _venv_script(directory: Path, name: str) -> Path:
+    if os.name == "nt":
+        return directory / "Scripts" / f"{name}.exe"
+    return directory / "bin" / name
+
+
+def _subprocess_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ)
+    if overrides is not None:
+        env.update(overrides)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
 def _run(command: list[str | Path], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
     rendered = [str(item) for item in command]
-    subprocess.run(rendered, cwd=cwd, env=env, check=True)
+    subprocess.run(rendered, cwd=cwd, env=_subprocess_env(env), check=True)
 
 
 def _output(command: list[str | Path], *, cwd: Path = ROOT) -> str:
     completed = subprocess.run(
         [str(item) for item in command],
         cwd=cwd,
+        env=_subprocess_env(),
         check=True,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     )
     return completed.stdout.strip()
 
@@ -149,13 +171,12 @@ def _install_locked(python: Path, profile: dict[str, Any], groups: tuple[str, ..
 
 
 def _offline_env() -> dict[str, str]:
-    env = dict(os.environ)
+    env = _subprocess_env()
     env.update(
         {
             "PIP_NO_INDEX": "1",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
-            "PYTHONUTF8": "1",
-            "SOURCE_DATE_EPOCH": "0",
+            "SOURCE_DATE_EPOCH": _ZIP_SAFE_SOURCE_DATE_EPOCH,
         }
     )
     return env
@@ -174,15 +195,16 @@ def _smoke(python: Path, environment: Path) -> None:
             ),
         ]
     )
-    command = environment / "bin" / "twelve-six-generate"
+    command = _venv_script(environment, "twelve-six-generate")
     if not command.exists():
         raise RuntimeError("console script twelve-six-generate was not installed")
     completed = subprocess.run(
         [str(command), "--help"],
         cwd=ROOT,
+        env=_subprocess_env(),
         check=True,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     )
     if "usage: twelve-six-generate" not in completed.stdout:
         raise RuntimeError("console-script help smoke did not expose expected CLI")
@@ -208,6 +230,37 @@ def _run_repo_checks(python: Path) -> None:
     _run([python, "tools/validate_stage_candidate.py", "configs/releases/s0_candidate.template.json"])
 
 
+def _build_project_wheel(python: Path, wheel_dir: Path, *, env: dict[str, str]) -> Path:
+    wheel_dir.mkdir()
+    _run(
+        [
+            python,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--no-build-isolation",
+            "--wheel-dir",
+            wheel_dir,
+            ROOT,
+        ],
+        env=env,
+    )
+    wheels = sorted(wheel_dir.glob("twelve_six_ai-*.whl"))
+    if len(wheels) != 1:
+        raise RuntimeError(f"expected exactly one project wheel, found {len(wheels)}")
+    return wheels[0]
+
+
+def _evidence_contract(profile_id: str) -> tuple[str, str]:
+    if profile_id == "windows-x86_64":
+        return (
+            "12-6.locked-environment-evidence.v2",
+            "source_wheel_build_install_import_cli",
+        )
+    return ("12-6.locked-environment-evidence.v1", "editable_install_import_cli")
+
+
 def verify_install(
     *,
     profile_id: str | None,
@@ -221,48 +274,46 @@ def verify_install(
 
     with tempfile.TemporaryDirectory(prefix="twelve-six-lock-") as temp_name:
         temp = Path(temp_name)
-        editable_env = temp / "editable"
+        dev_env = temp / "dev"
         wheel_env = temp / "wheel"
         wheel_dir = temp / "dist"
-        venv.EnvBuilder(with_pip=True, clear=True).create(editable_env)
-        editable_python = _venv_python(editable_env)
-        _install_locked(editable_python, profile, ("toolchain", "runtime", "dev"))
+        venv.EnvBuilder(with_pip=True, clear=True).create(dev_env)
+        dev_python = _venv_python(dev_env)
+        _install_locked(dev_python, profile, ("toolchain", "runtime", "dev"))
         offline = _offline_env()
-        _run(
-            [
-                editable_python,
-                "-m",
-                "pip",
-                "install",
-                "--no-deps",
-                "--no-build-isolation",
-                "-e",
-                ROOT,
-            ],
-            env=offline,
-        )
-        _smoke(editable_python, editable_env)
-        wheel_dir.mkdir()
-        _run(
-            [
-                editable_python,
-                "-m",
-                "pip",
-                "wheel",
-                "--no-deps",
-                "--no-build-isolation",
-                "--wheel-dir",
-                wheel_dir,
-                ROOT,
-            ],
-            env=offline,
-        )
-        wheels = sorted(wheel_dir.glob("twelve_six_ai-*.whl"))
-        if len(wheels) != 1:
-            raise RuntimeError(f"expected exactly one project wheel, found {len(wheels)}")
-        wheel = wheels[0]
+        evidence_schema, development_verification_key = _evidence_contract(profile["profile_id"])
+        if profile["profile_id"] == "windows-x86_64":
+            wheel = _build_project_wheel(dev_python, wheel_dir, env=offline)
+            _run(
+                [
+                    dev_python,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-deps",
+                    "--no-build-isolation",
+                    wheel,
+                ],
+                env=offline,
+            )
+        else:
+            _run(
+                [
+                    dev_python,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-deps",
+                    "--no-build-isolation",
+                    "-e",
+                    ROOT,
+                ],
+                env=offline,
+            )
+            wheel = _build_project_wheel(dev_python, wheel_dir, env=offline)
+        _smoke(dev_python, dev_env)
         if run_repo_checks:
-            _run_repo_checks(editable_python)
+            _run_repo_checks(dev_python)
 
         venv.EnvBuilder(with_pip=True, clear=True).create(wheel_env)
         wheel_python = _venv_python(wheel_env)
@@ -283,7 +334,7 @@ def verify_install(
         installed = _installed_distributions(wheel_python)
 
         evidence: dict[str, Any] = {
-            "schema_version": "12-6.locked-environment-evidence.v1",
+            "schema_version": evidence_schema,
             "source_sha": source_sha or "UNBOUND_LOCAL",
             "profile_id": profile["profile_id"],
             "python": profile["python"],
@@ -304,7 +355,7 @@ def verify_install(
             "installed_distributions_sha256": hashlib.sha256(_canonical_bytes(installed)).hexdigest(),
             "verification": {
                 "committed_lock_validation": "PASS",
-                "editable_install_import_cli": "PASS",
+                development_verification_key: "PASS",
                 "wheel_install_import_cli": "PASS",
                 "repo_checks": "PASS" if run_repo_checks else "NOT_RUN",
             },
