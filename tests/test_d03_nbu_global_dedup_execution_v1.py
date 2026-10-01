@@ -730,6 +730,37 @@ def test_two_clean_authority_rejects_tampered_execution_evidence() -> None:
         )
 
 
+def test_parent_aggregate_binding_cross_binds_head_and_intake_receipt() -> None:
+    mod = _load()
+    authority = {
+        "execution_head_sha": "a" * 40,
+        "materialization_authority": {
+            "intake_receipt_identity_sha256": "b" * 64,
+        },
+    }
+    mod._validate_parent_aggregate_binding(
+        authority,
+        orchestration_head="a" * 40,
+        expected_intake_receipt_sha="b" * 64,
+    )
+
+    with pytest.raises(mod.NbuGlobalDedupError, match="execution head drift"):
+        mod._validate_parent_aggregate_binding(
+            {**authority, "execution_head_sha": "c" * 40},
+            orchestration_head="a" * 40,
+            expected_intake_receipt_sha="b" * 64,
+        )
+
+    forged = deepcopy(authority)
+    forged["materialization_authority"]["intake_receipt_identity_sha256"] = "d" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="parent/child intake receipt drift"):
+        mod._validate_parent_aggregate_binding(
+            forged,
+            orchestration_head="a" * 40,
+            expected_intake_receipt_sha="b" * 64,
+        )
+
+
 def test_two_clean_binds_parent_head_before_input_preflight(tmp_path, monkeypatch) -> None:
     mod = _load()
 
