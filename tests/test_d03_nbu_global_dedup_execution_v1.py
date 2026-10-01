@@ -202,6 +202,49 @@ def test_survivor_projection_rejects_empty_or_oversized_survivor_set() -> None:
             mod._validate_survivor_projection(report, projection)
 
 
+def test_two_clean_survivor_readback_rederives_canonical_selection(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.setattr(mod, "EXPECTED_COMBINED_OBJECTS", 2)
+    monkeypatch.setattr(mod, "EXPECTED_COMBINED_BYTES", 20)
+    core = {
+        "source_count": 2,
+        "sources": [
+            {
+                "source_id": "base:a",
+                "source_family": "base",
+                "declared_capacity_bytes": 10,
+            },
+            {
+                "source_id": "nbu:a",
+                "source_family": mod.nbu.SOURCE_FAMILY,
+                "declared_capacity_bytes": 10,
+            },
+        ],
+        "terminal_candidates": {
+            "declared_capacity_bytes_before": 20,
+            "conservative_unique_capacity_bytes_after": 10,
+            "duplicate_discount_bytes": 10,
+            "duplicate_cluster_count": 1,
+            "duplicate_clusters": [["base:a", "nbu:a"]],
+        },
+    }
+    report = {**core, "report_sha256": mod._incumbent_report_identity(core)}
+    selection = mod.v9_semantics._derive_survivors(report)
+    mod._validate_survivor_projection(report, selection)
+    survivor = mod._outer_survivor_authority(report, selection)
+    mod._validate_two_clean_survivor_readback(report, survivor)
+
+    forged = deepcopy(survivor)
+    forged["nbu_survivor_source_ids"] = ["nbu:a"]
+    forged["nbu_survivor_source_object_count"] = 1
+    forged["nbu_survivor_declared_capacity_bytes"] = 10
+    forged_core = dict(forged)
+    forged_core.pop("survivor_authority_sha256")
+    forged["survivor_authority_sha256"] = mod._sha256(mod._canonical(forged_core))
+    with pytest.raises(mod.NbuGlobalDedupError, match="survivor semantic readback drift"):
+        mod._validate_two_clean_survivor_readback(report, forged)
+
+
 def test_runtime_environment_local_is_provider_neutral(monkeypatch) -> None:
     mod = _load()
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
