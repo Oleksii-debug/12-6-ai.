@@ -270,7 +270,10 @@ def _validate_survivor_projection(
     projection: Mapping[str, Any],
 ) -> None:
     terminal = _validated_terminal_summary(report)
-    _require(projection.get("schema_version") == v9_semantics.SURVIVOR_SCHEMA, "survivor schema drift")
+    _require(
+        projection.get("schema_version") == v9_semantics.SURVIVOR_SCHEMA,
+        "survivor schema drift",
+    )
     _require(
         projection.get("matcher_report_sha256") == report.get("report_sha256"),
         "survivor matcher identity drift",
@@ -524,7 +527,10 @@ def execute(
         materialization_evidence_json,
         retain_payloads=True,
     )
-    _require(projection.sources is not None and projection.payloads is not None, "NBU payload projection missing")
+    _require(
+        projection.sources is not None and projection.payloads is not None,
+        "NBU payload projection missing",
+    )
     extension_sources = [dict(row) for row in projection.sources]
     extension_payloads = dict(projection.payloads)
     _require(len(extension_sources) == EXPECTED_NBU_OBJECTS, "NBU projection count drift")
