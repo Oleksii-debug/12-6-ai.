@@ -266,6 +266,83 @@ def test_terminal_summary_rejects_bool_aliases() -> None:
         mod._validated_terminal_summary(report)
 
 
+def _good_survivor_projection(mod):
+    after = mod.EXPECTED_COMBINED_BYTES - 17
+    report = {
+        "report_sha256": "1" * 64,
+        "source_count": mod.EXPECTED_COMBINED_OBJECTS,
+        "terminal_candidates": {
+            "declared_capacity_bytes_before": mod.EXPECTED_COMBINED_BYTES,
+            "conservative_unique_capacity_bytes_after": after,
+            "duplicate_discount_bytes": 17,
+            "duplicate_cluster_count": 1,
+        },
+    }
+    projection = {
+        "schema_version": mod.v9_semantics.SURVIVOR_SCHEMA,
+        "matcher_report_sha256": report["report_sha256"],
+        "pre_dedup_source_object_count": mod.EXPECTED_COMBINED_OBJECTS,
+        "post_dedup_survivor_source_object_count": 2,
+        "pre_dedup_declared_capacity_bytes": mod.EXPECTED_COMBINED_BYTES,
+        "post_dedup_declared_capacity_bytes": after,
+        "duplicate_discount_bytes": 17,
+        "duplicate_cluster_count": 1,
+        "duplicate_clusters": [
+            {
+                "member_source_ids": ["base:a", "franko:a"],
+                "selected_source_id": "base:a",
+                "selected_declared_capacity_bytes": after,
+            }
+        ],
+        "survivor_source_ids": ["base:a", "franko:b"],
+    }
+    return report, projection
+
+
+def test_survivor_projection_is_cross_bound_to_terminal_report() -> None:
+    mod = _load()
+    report, projection = _good_survivor_projection(mod)
+    mod._validate_survivor_projection(report, projection)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "message"),
+    [
+        ("matcher_report_sha256", "2" * 64, "matcher identity"),
+        ("pre_dedup_source_object_count", 1, "pre-dedup count"),
+        ("pre_dedup_declared_capacity_bytes", 1, "pre-dedup bytes"),
+        ("post_dedup_declared_capacity_bytes", 1, "post-dedup bytes"),
+        ("duplicate_discount_bytes", 16, "duplicate discount"),
+        ("duplicate_cluster_count", 0, "cluster count"),
+    ],
+)
+def test_survivor_projection_rejects_terminal_drift(
+    field: str, bad: object, message: str
+) -> None:
+    mod = _load()
+    report, projection = _good_survivor_projection(mod)
+    projection[field] = bad
+    with pytest.raises(mod.Franko1901GlobalDedupError, match=message):
+        mod._validate_survivor_projection(report, projection)
+
+
+def test_survivor_projection_rejects_id_cardinality_drift() -> None:
+    mod = _load()
+    report, projection = _good_survivor_projection(mod)
+    projection["survivor_source_ids"] = ["base:a", "base:a"]
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="ids invalid"):
+        mod._validate_survivor_projection(report, projection)
+
+
+def test_execute_validates_survivor_projection_before_outer_publication() -> None:
+    mod = _load()
+    source = inspect.getsource(mod.execute)
+    derived = source.index("selection_projection = v9_semantics._derive_survivors(indexed_report)")
+    validated = source.index("_validate_survivor_projection(indexed_report, selection_projection)")
+    wrapped = source.index("survivors = _outer_survivor_authority(indexed_report, selection_projection)")
+    assert derived < validated < wrapped
+
+
 def test_source_provenance_negative_is_explicitly_source_local() -> None:
     mod = _load()
     scope = mod._source_admission_provenance_scope(
