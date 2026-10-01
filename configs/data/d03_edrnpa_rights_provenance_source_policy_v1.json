@@ -1,0 +1,107 @@
+{
+  "schema_version": "12-6.d03-edrnpa-rights-provenance-source-policy.v1",
+  "execution_profile": "LOCAL_FREE",
+  "project_authority": {
+    "swarm_control_issue": 723,
+    "scientific_control_issue": 548,
+    "ownership_issue": 2357,
+    "parent_product_pr": 910,
+    "parent_product_head_sha": "53d7375a87fdd73c8035c2277f9d260b9a8095c6",
+    "parent_product_path": "tools/probe_d03_edrnpa_open_data_v1.py",
+    "parent_product_git_blob_sha1": "d08ac8d6b0c6b2497c6e511ee2fc27046532d8fd",
+    "physical_execution_head_sha": "37de5af9d983961a324b3c49b2903156a69e1145",
+    "physical_execution_workflow_run": 34792525578,
+    "physical_execution_workflow_job": 103819309604
+  },
+  "candidate_binding": {
+    "dataset_id": "c98e830c-e39e-4da6-a13c-f9ba32a79bec",
+    "resource_id": "5616dd04-949a-489c-8efc-54004293b238",
+    "resource_updated": "2026-09-08T15:02:00+03:00",
+    "resource_md5": "0ea96e1582e5584ced79be1027f0ae55",
+    "source_sha256": "a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431",
+    "source_bytes": 611865397,
+    "family_id": "ua.minjust.edrnpa.open-data",
+    "selected_objects": 176,
+    "selected_bytes": 4000000,
+    "inventory_identity_sha256": "380939a9ef8f67dcfb55912c010941f08d35b868267116d927603e988e710cca",
+    "selected_payload_identity_sha256": "9b1c7b65a71f36ebd3c99273abf3e9f4c3c1885c96432d65761275e37e0b4435",
+    "report_identity_sha256": "f5668ad4ddb3ce7ed0cd0130377f803ddbcebfb5b547c6757176efa8043122a6",
+    "dataset_page": "https://data.gov.ua/dataset/c98e830c-e39e-4da6-a13c-f9ba32a79bec",
+    "resource_page": "https://data.gov.ua/dataset/c98e830c-e39e-4da6-a13c-f9ba32a79bec/resource/5616dd04-949a-489c-8efc-54004293b238",
+    "nais_metadata_page": "https://nais.gov.ua/m/ediniy-derjavniy-reestr-normativno-pravovih-aktiv-196"
+  },
+  "primary_public_evidence": [
+    {
+      "authority": "Єдиний державний веб-портал відкритих даних України",
+      "title": "Єдиний державний реєстр нормативно-правових актів",
+      "url": "https://data.gov.ua/dataset/c98e830c-e39e-4da6-a13c-f9ba32a79bec",
+      "accessed_utc": "2026-09-29",
+      "supported_fact": "The Ministry of Justice dataset contains a normative-act card and normative-act text; the portal states that open data may be freely copied, published, distributed and used including commercially with mandatory source attribution, and labels the dataset Creative Commons Attribution."
+    },
+    {
+      "authority": "Єдиний державний веб-портал відкритих даних України",
+      "title": "25-edrnpa resource history",
+      "url": "https://data.gov.ua/dataset/c98e830c-e39e-4da6-a13c-f9ba32a79bec/resource/5616dd04-949a-489c-8efc-54004293b238",
+      "accessed_utc": "2026-09-29",
+      "supported_fact": "The resource history still lists the exact 2026-09-08 15:02 EEST version with MD5 0ea96e1582e5584ced79be1027f0ae55; newer resource versions exist and are not silently substituted for the pinned physical execution."
+    },
+    {
+      "authority": "ДП НАІС",
+      "title": "Єдиний державний реєстр нормативно-правових актів",
+      "url": "https://nais.gov.ua/m/ediniy-derjavniy-reestr-normativno-pravovih-aktiv-196",
+      "accessed_utc": "2026-09-29",
+      "supported_fact": "NAIS identifies this as register dataset number 25, describes it as containing a normative-act card and normative-act text, states the language is Ukrainian, the data format is XML, and compression is ZIP."
+    }
+  ],
+  "admission_policy": {
+    "decision_class": "CONDITIONAL_UA_EDRNPA_NORMATIVE_TEXT_SOURCE_POLICY",
+    "dataset_open_data_reuse_supported": true,
+    "dataset_license_alone_sufficient_for_payload_admission": false,
+    "requires_exact_pinned_resource": true,
+    "requires_selected_payload_identity": true,
+    "requires_record_level_act_card_binding": true,
+    "requires_official_normative_act_classification": true,
+    "blanket_official_document_status_for_selected_objects": false,
+    "embedded_third_party_content_source_admitted": false,
+    "attachment_or_media_payload_source_admitted": false,
+    "ambiguous_provenance_source_admitted": false,
+    "unknown_act_class_source_admitted": false,
+    "record_level_provenance_classification_required": true,
+    "legal_conclusion_claimed": false,
+    "payload_source_admission_executed": false,
+    "admitted_payload_records": 0,
+    "admitted_payload_bytes": 0
+  },
+  "truth_boundary": {
+    "source_policy_review_complete": true,
+    "parent_materialization_reference_bound": true,
+    "record_level_payload_provenance_executed": false,
+    "canonical_corpus_admitted": false,
+    "canonical_capacity_credit_bytes": 0,
+    "family_count_credit_added": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false
+  },
+  "downstream_required": [
+    "record_level_object_rights_and_provenance_classification",
+    "global_cross_source_dedup",
+    "fresh_reserved_evaluation_decontamination",
+    "post_composition_quality_and_privacy",
+    "balance_and_family_caps",
+    "cluster_safe_split",
+    "deterministic_packing_and_two_clean_builds",
+    "positive_exact_unique_loss_accounting",
+    "tokenizer_fit_authority",
+    "training_authority"
+  ]
+}
