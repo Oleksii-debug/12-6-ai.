@@ -808,6 +808,32 @@ def test_two_clean_authority_rejects_tampered_execution_evidence() -> None:
         )
 
 
+def test_parent_child_repository_binding_rejects_rehashed_blob_drift() -> None:
+    mod = _load()
+    main_blobs = {"main.py": "a" * 40}
+    product_blobs = {"product.py": "b" * 40}
+    first = {
+        "main_authority_path_blobs": deepcopy(main_blobs),
+        "product_path_blobs": deepcopy(product_blobs),
+    }
+    second = deepcopy(first)
+    mod._validate_parent_child_repository_binding(
+        first,
+        second,
+        expected_main_blobs=main_blobs,
+        expected_product_blobs=product_blobs,
+    )
+
+    second["product_path_blobs"]["product.py"] = "c" * 40
+    with pytest.raises(mod.NbuGlobalDedupError, match="child Product blob drift"):
+        mod._validate_parent_child_repository_binding(
+            first,
+            second,
+            expected_main_blobs=main_blobs,
+            expected_product_blobs=product_blobs,
+        )
+
+
 def test_parent_aggregate_binding_cross_binds_head_and_intake_receipt() -> None:
     mod = _load()
     authority = {
