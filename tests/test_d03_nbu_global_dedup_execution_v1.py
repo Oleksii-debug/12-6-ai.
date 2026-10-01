@@ -128,10 +128,9 @@ def _report(mod):
 
 def _projection(mod):
     after = mod.EXPECTED_COMBINED_BYTES - 10
-    return {
+    core = {
         "schema_version": mod.v9_semantics.SURVIVOR_SCHEMA,
         "matcher_report_sha256": _report(mod)["report_sha256"],
-        "survivor_authority_sha256": "2" * 64,
         "pre_dedup_source_object_count": mod.EXPECTED_COMBINED_OBJECTS,
         "post_dedup_survivor_source_object_count": 2,
         "pre_dedup_declared_capacity_bytes": mod.EXPECTED_COMBINED_BYTES,
@@ -140,6 +139,10 @@ def _projection(mod):
         "duplicate_cluster_count": 1,
         "duplicate_clusters": [{"selected_source_id": "base:a"}],
         "survivor_source_ids": ["base:a", "nbu:a"],
+    }
+    return {
+        **core,
+        "survivor_authority_sha256": mod._sha256(mod._canonical(core)),
     }
 
 
@@ -154,6 +157,14 @@ def test_survivor_projection_cross_binds_terminal_report() -> None:
     assert outer["nbu_survivor_declared_capacity_bytes"] == 10
     assert outer["canonical_capacity_credited"] == 0
     assert len(outer["survivor_authority_sha256"]) == 64
+
+
+def test_survivor_projection_rejects_forged_self_hash() -> None:
+    mod = _load()
+    projection = _projection(mod)
+    projection["survivor_authority_sha256"] = "f" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="projection self-hash mismatch"):
+        mod._validate_survivor_projection(_report(mod), projection)
 
 
 @pytest.mark.parametrize(
