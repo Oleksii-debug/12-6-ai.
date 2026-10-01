@@ -5,8 +5,8 @@ import hashlib
 import json
 
 import pytest
-import tools.next100_106_balance_gate as next100_gate
 
+import tools.next100_106_balance_gate as next100_gate
 from twelve_six.data.current_clean_balanced_selection_v1 import (
     SELECTION_REALIZATION_POLICY,
     _exact_record_subset,
