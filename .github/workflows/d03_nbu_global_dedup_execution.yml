@@ -2,7 +2,6 @@ name: D03 NBU global dedup physical execution
 
 on:
   pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -88,37 +87,6 @@ jobs:
               tests/test_d03_ua_nbu_pdftotext_authority_hardening.py
           )
 
-      - name: Build exact pinned Poppler pdftotext
-        run: |
-          set -euxo pipefail
-          curl --fail --location --retry 3 --retry-delay 2 \
-            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
-            --output /tmp/poppler.tar.xz
-          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | sha256sum --check --strict
-          tar -C /tmp -xf /tmp/poppler.tar.xz
-          cmake -S "/tmp/poppler-${POPPLER_VERSION}" -B /tmp/poppler-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr/local \
-            -DENABLE_UTILS=ON \
-            -DENABLE_CPP=OFF \
-            -DENABLE_GLIB=OFF \
-            -DENABLE_QT5=OFF \
-            -DENABLE_QT6=OFF \
-            -DENABLE_BOOST=OFF \
-            -DENABLE_LIBCURL=OFF \
-            -DENABLE_NSS3=OFF \
-            -DENABLE_GPGME=OFF \
-            -DBUILD_GTK_TESTS=OFF \
-            -DBUILD_QT5_TESTS=OFF \
-            -DBUILD_QT6_TESTS=OFF \
-            -DBUILD_CPP_TESTS=OFF \
-            -DBUILD_MANUAL_TESTS=OFF
-          cmake --build /tmp/poppler-build --parallel 2
-          sudo cmake --install /tmp/poppler-build
-          sudo ldconfig
-          pdftotext -v 2>&1 | tee "$RUNNER_TEMP/pdftotext-version-$PASS_ID.txt"
-          grep -F "pdftotext version ${POPPLER_VERSION}" "$RUNNER_TEMP/pdftotext-version-$PASS_ID.txt"
-
       - name: Execute exact historical bounded live discovery
         run: |
           set -euxo pipefail
@@ -152,6 +120,37 @@ jobs:
           )
           mv /tmp/nbu-discovery-evidence.json "$RUN_DIR/nbu-discovery-evidence.json"
           mv /tmp/nbu-catalog-pages.json "$RUN_DIR/nbu-catalog-pages.json"
+
+      - name: Build exact pinned Poppler pdftotext
+        run: |
+          set -euxo pipefail
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
+            --output /tmp/poppler.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" -B /tmp/poppler-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DENABLE_UTILS=ON \
+            -DENABLE_CPP=OFF \
+            -DENABLE_GLIB=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF \
+            -DENABLE_BOOST=OFF \
+            -DENABLE_LIBCURL=OFF \
+            -DENABLE_NSS3=OFF \
+            -DENABLE_GPGME=OFF \
+            -DBUILD_GTK_TESTS=OFF \
+            -DBUILD_QT5_TESTS=OFF \
+            -DBUILD_QT6_TESTS=OFF \
+            -DBUILD_CPP_TESTS=OFF \
+            -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-build --parallel 2
+          sudo cmake --install /tmp/poppler-build
+          sudo ldconfig
+          pdftotext -v 2>&1 | tee "$RUNNER_TEMP/pdftotext-version-$PASS_ID.txt"
+          grep -F "pdftotext version ${POPPLER_VERSION}" "$RUNNER_TEMP/pdftotext-version-$PASS_ID.txt"
 
       - name: Pin PDFs and materialize exact NBU text twice
         run: |
