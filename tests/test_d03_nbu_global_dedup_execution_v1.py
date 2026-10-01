@@ -312,7 +312,7 @@ def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
 
 def _two_clean_survivors(mod) -> dict[str, object]:
     core: dict[str, object] = {
-        "matcher_report_sha256": "1" * 64,
+        "matcher_report_sha256": _report(mod)["report_sha256"],
         "nbu_survivor_source_object_count": 1,
         "nbu_survivor_declared_capacity_bytes": 10,
     }
@@ -389,6 +389,53 @@ def test_two_clean_authority_rejects_report_or_survivor_drift() -> None:
             deepcopy(report),
             survivors,
             changed_survivors,
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_authority_rejects_tampered_survivor_self_hash() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    tampered = deepcopy(survivors)
+    tampered["survivor_authority_sha256"] = "f" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="survivor authorities differ"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            tampered,
+            _two_clean_evidence(mod, "run-a"),
+            _two_clean_evidence(mod, "run-b"),
+        )
+
+    both_tampered = deepcopy(survivors)
+    both_tampered["survivor_authority_sha256"] = "f" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="survivor self-hash mismatch"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            both_tampered,
+            deepcopy(both_tampered),
+            _two_clean_evidence(mod, "run-a"),
+            _two_clean_evidence(mod, "run-b"),
+        )
+
+
+def test_two_clean_authority_rejects_tampered_execution_evidence() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    evidence_b["truth_boundary"]["training_executed"] = True
+    with pytest.raises(mod.NbuGlobalDedupError, match="run evidence self-hash mismatch"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
             evidence_a,
             evidence_b,
         )
