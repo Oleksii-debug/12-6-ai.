@@ -1084,7 +1084,7 @@ def run_two_clean(
                 "--v7-root",
                 str(v7_root),
                 "--bulk-workspace",
-                str(bulk_workspace),
+                str(run_dir / "bulk-workspace"),
                 "--candidate-jsonl",
                 str(candidate),
                 "--materialization-evidence-json",
