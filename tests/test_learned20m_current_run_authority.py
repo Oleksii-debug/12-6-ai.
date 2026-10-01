@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 from copy import deepcopy
@@ -389,7 +390,9 @@ def test_fixed_pointer_activation_retirement_and_generation(
     assert first.post_write_reread_verified is True
     assert first.generation == 1
 
-    current = inspect_current_run_authority(writer_b, str(remote), now=NOW)
+    current = inspect_current_run_authority(
+        writer_b, str(remote), manifest=manifest_a, now=NOW
+    )
     assert current.present is True
     assert current.valid is True
     assert current.active is True
@@ -495,7 +498,9 @@ def test_retired_pointer_can_advance_only_from_exact_latest_tip(
     )
     assert second.committed is True
     assert second.generation == 2
-    current = inspect_current_run_authority(writer_a, str(remote), now=NOW)
+    current = inspect_current_run_authority(
+        writer_a, str(remote), manifest=manifest_b, now=NOW
+    )
     assert current.active is True
     assert current.generation == 2
     assert current.run_id == "run-b"
@@ -680,6 +685,7 @@ def test_active_pointer_invalidates_on_global_lease_tip_change_or_expiry(
     expired = inspect_current_run_authority(
         writer_b,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(hours=2),
     )
     assert expired.valid is False
@@ -698,6 +704,7 @@ def test_active_pointer_invalidates_on_global_lease_tip_change_or_expiry(
     drifted = inspect_current_run_authority(
         writer_b,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=10),
     )
     assert drifted.valid is False
@@ -752,6 +759,7 @@ def test_same_run_refresh_after_global_lease_renewal(
     before_refresh = inspect_current_run_authority(
         writer_b,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=10),
     )
     assert before_refresh.valid is False
@@ -775,6 +783,7 @@ def test_same_run_refresh_after_global_lease_renewal(
     current = inspect_current_run_authority(
         writer_a,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=10),
     )
     assert current.valid is True
@@ -1009,6 +1018,7 @@ def test_refresh_second_renewal_race_commits_no_active_authority(
     inspection = inspect_current_run_authority(
         writer_a,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=20),
     )
     assert inspection.valid is False
@@ -1157,6 +1167,7 @@ def test_inspection_rechecks_global_lease_tip_after_blob_read(
     inspection = inspect_current_run_authority(
         writer_b,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=10),
     )
 
@@ -1164,6 +1175,125 @@ def test_inspection_rechecks_global_lease_tip_after_blob_read(
     assert inspection.valid is False
     assert inspection.active is False
     assert inspection.blockers == ("current_run_global_lease_tip_changed_during_read",)
+
+
+def test_active_inspection_requires_trusted_launch_manifest(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    activated = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert activated.committed is True
+
+    inspection = inspect_current_run_authority(writer_b, str(remote), now=NOW)
+
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.active is False
+    assert inspection.blockers == ("current_run_trusted_launch_manifest_required",)
+
+
+def test_global_lease_binding_uses_full_canonical_contract(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    state = build_global_lease_state(manifest, lease.as_dict())
+    state["global_lease_contract_id"] = "ATTACKER-CONTRACT"
+    raw = canonical_json_bytes(state)
+
+    blob_result = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        cwd=writer_a,
+        input=raw,
+        capture_output=True,
+        check=True,
+    )
+    blob_sha = blob_result.stdout.decode("ascii").strip()
+    tree_input = (
+        f"100644 blob {blob_sha}\tglobal-training-run-lease-v1.json\n"
+    ).encode("ascii")
+    tree_result = subprocess.run(
+        ["git", "mktree"],
+        cwd=writer_a,
+        input=tree_input,
+        capture_output=True,
+        check=True,
+    )
+    tree_sha = tree_result.stdout.decode("ascii").strip()
+    commit_result = subprocess.run(
+        ["git", "commit-tree", tree_sha],
+        cwd=writer_a,
+        input=b"forged global lease\n",
+        capture_output=True,
+        check=True,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@example.invalid",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@example.invalid",
+        },
+    )
+    forged_tip = commit_result.stdout.decode("ascii").strip()
+    ref = global_training_run_lease_ref(manifest)
+    _git("push", str(remote), f"{forged_tip}:{ref}", cwd=writer_a)
+
+    forged_inspection = _global_inspection(
+        manifest,
+        remote_tip=forged_tip,
+    )
+    pointer = build_current_run_pointer_state(
+        manifest,
+        forged_inspection,
+        identity,
+        generation=1,
+        global_lease_state_sha256=hashlib.sha256(raw).hexdigest(),
+        global_lease_expires_at_utc=lease.expires_at_utc,
+    )
+
+    blockers = current_run._global_lease_binding_blockers(
+        writer_b,
+        str(remote),
+        pointer,
+        manifest,
+    )
+
+    assert len(blockers) == 1
+    assert blockers[0].startswith("current_run_global_lease_contract_invalid:")
+    assert "global_lease_contract_id_mismatch" in blockers[0]
 
 
 def test_pointer_read_rechecks_fixed_ref_after_blob_read(
@@ -1360,3 +1490,343 @@ def test_mutations_fail_closed_on_pointer_type_error(
     )
     assert retired.committed is False
     assert retired.blockers == ("current_run_pointer_not_object",)
+
+
+def test_activate_uses_absent_ref_force_with_lease(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+
+    original_run_git = current_run._run_git
+    pointer_push_args: list[str] | None = None
+
+    def capture_pointer_push(
+        repo_root: str | Path,
+        args: list[str],
+        *,
+        input_bytes: bytes | None = None,
+    ):
+        nonlocal pointer_push_args
+        if args and args[0] == "push" and args[-1].endswith(
+            f":{CURRENT_RUN_POINTER_REF}"
+        ):
+            pointer_push_args = list(args)
+        return original_run_git(repo_root, args, input_bytes=input_bytes)
+
+    monkeypatch.setattr(current_run, "_run_git", capture_pointer_push)
+    activated = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+
+    assert activated.committed is True
+    assert activated.post_write_reread_verified is True
+    assert pointer_push_args is not None
+    assert (
+        f"--force-with-lease={CURRENT_RUN_POINTER_REF}:"
+        in pointer_push_args
+    )
+
+
+def test_refresh_pointer_deletion_race_fails_closed_without_recreation(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    pointer = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert pointer.committed is True
+    assert pointer.written_remote_tip is not None
+    renewed = renew_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        expected_remote_tip=acquired.written_remote_tip,
+        ttl_seconds=3600,
+        now=NOW + timedelta(minutes=10),
+    )
+    assert renewed.committed is True
+
+    original_run_git = current_run._run_git
+    deleted = False
+    observed_push_args: list[str] | None = None
+
+    def delete_pointer_before_push(
+        repo_root: str | Path,
+        args: list[str],
+        *,
+        input_bytes: bytes | None = None,
+    ):
+        nonlocal deleted, observed_push_args
+        if (
+            not deleted
+            and args
+            and args[0] == "push"
+            and args[-1].endswith(f":{CURRENT_RUN_POINTER_REF}")
+        ):
+            deleted = True
+            observed_push_args = list(args)
+            _git(
+                "--git-dir",
+                str(remote),
+                "update-ref",
+                "-d",
+                CURRENT_RUN_POINTER_REF,
+            )
+        return original_run_git(repo_root, args, input_bytes=input_bytes)
+
+    monkeypatch.setattr(current_run, "_run_git", delete_pointer_before_push)
+    refreshed = refresh_current_run_authority(
+        writer_b,
+        str(remote),
+        manifest,
+        expected_pointer_tip=pointer.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW + timedelta(minutes=10),
+    )
+
+    assert deleted is True
+    assert observed_push_args is not None
+    assert (
+        f"--force-with-lease={CURRENT_RUN_POINTER_REF}:"
+        f"{pointer.written_remote_tip}"
+        in observed_push_args
+    )
+    assert refreshed.committed is False
+    assert refreshed.blockers == ("current_run_pointer_cas_conflict",)
+    assert refreshed.observed_remote_tip is None
+    assert (
+        _git("ls-remote", "--refs", str(remote), CURRENT_RUN_POINTER_REF)
+        == ""
+    )
+
+
+def test_retire_pointer_deletion_race_fails_closed_without_recreation(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    pointer = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert pointer.committed is True
+    assert pointer.written_remote_tip is not None
+
+    original_run_git = current_run._run_git
+    deleted = False
+    observed_push_args: list[str] | None = None
+
+    def delete_pointer_before_push(
+        repo_root: str | Path,
+        args: list[str],
+        *,
+        input_bytes: bytes | None = None,
+    ):
+        nonlocal deleted, observed_push_args
+        if (
+            not deleted
+            and args
+            and args[0] == "push"
+            and args[-1].endswith(f":{CURRENT_RUN_POINTER_REF}")
+        ):
+            deleted = True
+            observed_push_args = list(args)
+            _git(
+                "--git-dir",
+                str(remote),
+                "update-ref",
+                "-d",
+                CURRENT_RUN_POINTER_REF,
+            )
+        return original_run_git(repo_root, args, input_bytes=input_bytes)
+
+    monkeypatch.setattr(current_run, "_run_git", delete_pointer_before_push)
+    retired = retire_current_run_authority(
+        writer_a,
+        str(remote),
+        expected_pointer_tip=pointer.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+    )
+
+    assert deleted is True
+    assert observed_push_args is not None
+    assert (
+        f"--force-with-lease={CURRENT_RUN_POINTER_REF}:"
+        f"{pointer.written_remote_tip}"
+        in observed_push_args
+    )
+    assert retired.committed is False
+    assert retired.blockers == ("current_run_pointer_cas_conflict",)
+    assert retired.observed_remote_tip is None
+    assert (
+        _git("ls-remote", "--refs", str(remote), CURRENT_RUN_POINTER_REF)
+        == ""
+    )
+
+
+def test_replacement_activate_pointer_deletion_race_fails_closed(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest = _manifest()
+    identity = _identity(manifest=manifest)
+    lease = build_training_run_lease(
+        manifest,
+        run_id="run-a",
+        holder_id="runner-a",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        now=NOW,
+    )
+    assert acquired.committed is True
+    first = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert first.committed is True
+    assert first.written_remote_tip is not None
+    retired = retire_current_run_authority(
+        writer_a,
+        str(remote),
+        expected_pointer_tip=first.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+    )
+    assert retired.committed is True
+    assert retired.written_remote_tip is not None
+
+    original_run_git = current_run._run_git
+    deleted = False
+    observed_push_args: list[str] | None = None
+
+    def delete_pointer_before_push(
+        repo_root: str | Path,
+        args: list[str],
+        *,
+        input_bytes: bytes | None = None,
+    ):
+        nonlocal deleted, observed_push_args
+        if (
+            not deleted
+            and args
+            and args[0] == "push"
+            and args[-1].endswith(f":{CURRENT_RUN_POINTER_REF}")
+        ):
+            deleted = True
+            observed_push_args = list(args)
+            _git(
+                "--git-dir",
+                str(remote),
+                "update-ref",
+                "-d",
+                CURRENT_RUN_POINTER_REF,
+            )
+        return original_run_git(repo_root, args, input_bytes=input_bytes)
+
+    monkeypatch.setattr(current_run, "_run_git", delete_pointer_before_push)
+    replacement = activate_current_run_authority(
+        writer_a,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=retired.written_remote_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+
+    assert deleted is True
+    assert observed_push_args is not None
+    assert (
+        f"--force-with-lease={CURRENT_RUN_POINTER_REF}:"
+        f"{retired.written_remote_tip}"
+        in observed_push_args
+    )
+    assert replacement.committed is False
+    assert replacement.blockers == ("current_run_pointer_cas_conflict",)
+    assert replacement.observed_remote_tip is None
+    assert (
+        _git("ls-remote", "--refs", str(remote), CURRENT_RUN_POINTER_REF)
+        == ""
+    )
+
