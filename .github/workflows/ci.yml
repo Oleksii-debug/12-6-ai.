@@ -715,6 +715,10 @@ jobs:
               load(str(Path(os.environ["P1_DIR"]) / "execution-evidence.json")),
               load(str(Path(os.environ["P2_DIR"]) / "execution-evidence.json")),
           ]
+          pass_summaries = [
+              load(str(Path(os.environ["P1_DIR"]) / "physical-pass-summary.json")),
+              load(str(Path(os.environ["P2_DIR"]) / "physical-pass-summary.json")),
+          ]
           texts = [
               load(str(Path(os.environ["P1_DIR"]) / "nbu-text-evidence-a.json")),
               load(str(Path(os.environ["P2_DIR"]) / "nbu-text-evidence-a.json")),
@@ -732,6 +736,8 @@ jobs:
               verify_self_hash(survivor, "survivor_authority_sha256")
           for execution in executions:
               verify_self_hash(execution, "evidence_identity_sha256")
+          for pass_summary in pass_summaries:
+              verify_self_hash(pass_summary, "summary_identity_sha256")
 
           assert reports[0]["report_sha256"] == reports[1]["report_sha256"]
           assert survivors[0]["survivor_authority_sha256"] == survivors[1]["survivor_authority_sha256"]
@@ -835,6 +841,40 @@ jobs:
               assert type(runtime_a.get(key)) is str and runtime_a.get(key), key
               assert runtime_a.get(key) == runtime_b.get(key), key
 
+          for expected_pass_id, summary, execution, report, survivor in zip(
+              (1, 2),
+              pass_summaries,
+              executions,
+              reports,
+              survivors,
+              strict=True,
+          ):
+              assert summary["schema_version"] == "12-6.d03-nbu-global-dedup-physical-pass.v1"
+              assert summary["execution_head_sha"] == os.environ["HEAD_SHA"]
+              assert type(summary["pass_id"]) is int
+              assert summary["pass_id"] == expected_pass_id
+              source = summary["source_materialization"]
+              assert type(source) is dict
+              assert source["candidate_sha256"] == os.environ["EXPECTED_CANDIDATE_SHA256"]
+              assert source["evidence_identity_sha256"] == os.environ["EXPECTED_TEXT_EVIDENCE_SHA256"]
+              assert source["record_count"] == 40
+              assert source["text_bytes"] == 794091
+              dedup = summary["global_dedup"]
+              assert type(dedup) is dict
+              assert dedup["report_sha256"] == report["report_sha256"]
+              assert dedup["survivor_authority_sha256"] == survivor["survivor_authority_sha256"]
+              assert (
+                  dedup["execution_evidence_identity_sha256"]
+                  == execution["evidence_identity_sha256"]
+              )
+              assert summary["truth_boundary"] == execution["truth_boundary"]
+              assert summary["raw_text_persisted_in_durable_evidence"] is False
+
+          assert (
+              pass_summaries[0]["summary_identity_sha256"]
+              != pass_summaries[1]["summary_identity_sha256"]
+          )
+
           core = {
               "schema_version": "12-6.d03-nbu-global-dedup-two-clean-physical.v1",
               "execution_head_sha": os.environ["HEAD_SHA"],
@@ -855,6 +895,10 @@ jobs:
               "pass_execution_evidence_identity_sha256": [
                   executions[0]["evidence_identity_sha256"],
                   executions[1]["evidence_identity_sha256"],
+              ],
+              "physical_pass_summary_identity_sha256": [
+                  pass_summaries[0]["summary_identity_sha256"],
+                  pass_summaries[1]["summary_identity_sha256"],
               ],
               "truth_boundary": executions[0]["truth_boundary"],
               "raw_text_persisted_in_durable_evidence": False,
