@@ -20,15 +20,24 @@ def _canonical_line(value: object) -> bytes:
 def _row(index: int, text: str) -> dict[str, object]:
     payload = text.encode()
     digest = hashlib.sha256(payload).hexdigest()
-    record_id = hashlib.sha256(f"record-{index}".encode()).hexdigest()
+    pdf_sha = hashlib.sha256(f"pdf-{index}".encode()).hexdigest()
+    document_url = f"https://bank.gov.ua/ua/legislation/Resolution_202609{index:02d}_x"
+    pdf_url = f"https://bank.gov.ua/admin_uploads/law/{index}.pdf"
+    provenance = {
+        "document_url": document_url,
+        "pdf_url": pdf_url,
+        "pdf_sha256": pdf_sha,
+        "text_sha256": digest,
+    }
+    record_id = hashlib.sha256(_canonical_line(provenance)).hexdigest()
     return {
         "schema": "12-6.d03-ua-nbu-pdftotext-record.v1",
         "record_id": record_id,
         "source_id": mod.SOURCE_ID,
         "family_id": mod.SOURCE_FAMILY,
-        "document_url": f"https://bank.gov.ua/ua/legislation/Resolution_202609{index:02d}_x",
-        "pdf_url": f"https://bank.gov.ua/admin_uploads/law/{index}.pdf",
-        "pdf_sha256": hashlib.sha256(f"pdf-{index}".encode()).hexdigest(),
+        "document_url": document_url,
+        "pdf_url": pdf_url,
+        "pdf_sha256": pdf_sha,
         "text_sha256": digest,
         "text_bytes": len(payload),
         "extractor_backend": mod.EXTRACTOR_BACKEND,
@@ -155,6 +164,19 @@ def test_manifest_candidate_drift_is_rejected(tmp_path, monkeypatch) -> None:
     evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
 
     with pytest.raises(mod.NbuDedupIntakeError, match="manifest/candidate drift"):
+        mod.validate_and_project_nbu(candidate, evidence_path)
+
+
+def test_record_provenance_identity_drift_is_rejected(tmp_path, monkeypatch) -> None:
+    rows, candidate, evidence_path = _write_fixture(tmp_path, monkeypatch)
+    rows[0]["record_id"] = "f" * 64
+    raw = b"".join(_canonical_line(row) for row in rows)
+    evidence = _evidence(rows, raw)
+    _patch_authority(monkeypatch, rows, raw, evidence)
+    candidate.write_bytes(raw)
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises(mod.NbuDedupIntakeError, match="record provenance identity drift"):
         mod.validate_and_project_nbu(candidate, evidence_path)
 
 
