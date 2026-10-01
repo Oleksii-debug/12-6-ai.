@@ -342,9 +342,22 @@ def _validate_nbu_report_binding(
             observed.get("verified_raw_bytes") == len(payload),
             f"NBU verified raw byte drift: {source_id}",
         )
+        payload_sha = _sha256(payload)
         _require(
-            observed.get("verified_raw_sha256") == _sha256(payload),
+            observed.get("verified_raw_sha256") == payload_sha,
             f"NBU verified raw hash drift: {source_id}",
+        )
+        _require(
+            observed.get("comparison_policy") == "DATA232_GENERIC_FROM_RAW",
+            f"NBU comparison policy drift: {source_id}",
+        )
+        _require(
+            observed.get("comparison_payload_bytes") == len(payload),
+            f"NBU comparison byte drift: {source_id}",
+        )
+        _require(
+            observed.get("comparison_payload_sha256") == payload_sha,
+            f"NBU comparison hash drift: {source_id}",
         )
 
 
