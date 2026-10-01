@@ -591,6 +591,10 @@ def _fsync_directory(path: Path) -> None:
         os.close(fd)
 
 
+class PublicationWriteCleanupError(Franko1901GlobalDedupError):
+    """A durable-create failure left residue that must remain recovery-visible."""
+
+
 def _write_create_only_durable(path: Path, payload: bytes) -> None:
     created = False
     try:
@@ -610,7 +614,7 @@ def _write_create_only_durable(path: Path, payload: bytes) -> None:
             except (OSError, Franko1901GlobalDedupError) as cleanup_exc:
                 cleanup_error = cleanup_exc
         if cleanup_error is not None:
-            raise Franko1901GlobalDedupError(
+            raise PublicationWriteCleanupError(
                 f"cannot write output and cleanup failed: {path}: {cleanup_error}"
             ) from exc
         raise Franko1901GlobalDedupError(f"cannot write output: {path}") from exc
@@ -994,6 +998,11 @@ def _publish_json_outputs(
         _fsync_directory(marker_path.parent)
         marker_created = False
     except Exception as exc:
+        if isinstance(exc, PublicationWriteCleanupError):
+            # Preserve the durable marker/control state.  Recovery must decide
+            # ownership on the next invocation; do not erase evidence of an
+            # incomplete create whose local cleanup already failed.
+            raise
         rollback_errors = _rollback_current_publication(
             marker_path=marker_path,
             manifest_path=manifest_path,

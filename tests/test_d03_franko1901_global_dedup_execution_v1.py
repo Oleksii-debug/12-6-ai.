@@ -694,6 +694,53 @@ def test_output_set_recovers_process_interruption_after_final_link(
     assert not list(tmp_path.glob(".*.stage-*"))
 
 
+def test_invalid_manifest_without_payload_is_recovered(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(manifest, b"{broken\n")
+
+    assert not any(path.exists() for path, _ in outputs)
+    assert not any(stage.exists() for stage in stages)
+
+    mod._publish_json_outputs(outputs)
+
+    assert not marker.exists()
+    assert not manifest.exists()
+    assert [path.read_bytes() for path, _ in outputs] == [
+        b'{"kind":"report"}\n',
+        b'{"kind":"survivors"}\n',
+        b'{"kind":"evidence"}\n',
+    ]
+
+
+def test_invalid_manifest_with_stage_residue_fails_closed(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(manifest, b"{broken\n")
+    mod._write_create_only_durable(stages[0], b"partial")
+
+    with pytest.raises(
+        mod.Franko1901GlobalDedupError,
+        match="invalid incomplete manifest coexists with payload paths",
+    ):
+        mod._publish_json_outputs(outputs)
+
+    assert marker.exists()
+    assert manifest.exists()
+    assert stages[0].read_bytes() == b"partial"
+    assert not any(path.exists() for path, _ in outputs)
+
+
 def test_incomplete_marker_never_deletes_digest_mismatched_final(
     tmp_path: Path, monkeypatch
 ) -> None:
