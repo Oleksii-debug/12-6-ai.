@@ -268,6 +268,8 @@ jobs:
               assert type(value) is dict
               return value
 
+          discovery_evidence = load("nbu-discovery-evidence.json")
+          pdf_pin_evidence = load("nbu-pdf-pin-evidence.json")
           text_evidence = load("nbu-text-evidence-a.json")
           execution = load("execution-evidence.json")
           report = load("global-dedup-report.json")
@@ -279,6 +281,8 @@ jobs:
               "historical_nbu_head_sha": os.environ["NBU_HEAD"],
               "v7_head_sha": os.environ["V7_HEAD"],
               "source_materialization": {
+                  "discovery_evidence_identity_sha256": discovery_evidence["evidence_identity_sha256"],
+                  "pdf_pin_evidence_identity_sha256": pdf_pin_evidence["evidence_identity_sha256"],
                   "candidate_sha256": text_evidence["text_artifact_sha256"],
                   "evidence_identity_sha256": text_evidence["evidence_identity_sha256"],
                   "record_count": text_evidence["materialized_records"],
@@ -742,7 +746,19 @@ jobs:
           assert reports[0]["report_sha256"] == reports[1]["report_sha256"]
           assert survivors[0]["survivor_authority_sha256"] == survivors[1]["survivor_authority_sha256"]
 
-          for text in texts:
+          for discovery, pin, text in zip(discoveries, pins, texts, strict=True):
+              assert (
+                  pin["parent_discovery_evidence_identity_sha256"]
+                  == discovery["evidence_identity_sha256"]
+              )
+              assert (
+                  text["discovery_evidence_identity_sha256"]
+                  == discovery["evidence_identity_sha256"]
+              )
+              assert (
+                  text["pdf_pin_evidence_identity_sha256"]
+                  == pin["evidence_identity_sha256"]
+              )
               assert text["text_artifact_sha256"] == os.environ["EXPECTED_CANDIDATE_SHA256"]
               assert text["evidence_identity_sha256"] == os.environ["EXPECTED_TEXT_EVIDENCE_SHA256"]
               assert text["materialized_records"] == 40
@@ -841,9 +857,11 @@ jobs:
               assert type(runtime_a.get(key)) is str and runtime_a.get(key), key
               assert runtime_a.get(key) == runtime_b.get(key), key
 
-          for expected_pass_id, summary, execution, report, survivor in zip(
+          for expected_pass_id, summary, discovery, pin, execution, report, survivor in zip(
               (1, 2),
               pass_summaries,
+              discoveries,
+              pins,
               executions,
               reports,
               survivors,
@@ -855,6 +873,14 @@ jobs:
               assert summary["pass_id"] == expected_pass_id
               source = summary["source_materialization"]
               assert type(source) is dict
+              assert (
+                  source["discovery_evidence_identity_sha256"]
+                  == discovery["evidence_identity_sha256"]
+              )
+              assert (
+                  source["pdf_pin_evidence_identity_sha256"]
+                  == pin["evidence_identity_sha256"]
+              )
               assert source["candidate_sha256"] == os.environ["EXPECTED_CANDIDATE_SHA256"]
               assert source["evidence_identity_sha256"] == os.environ["EXPECTED_TEXT_EVIDENCE_SHA256"]
               assert source["record_count"] == 40
@@ -888,6 +914,8 @@ jobs:
               "text_evidence_byte_identical": True,
               "global_dedup_reports_byte_identical": True,
               "survivor_authorities_byte_identical": True,
+              "discovery_evidence_identity_sha256": discoveries[0]["evidence_identity_sha256"],
+              "pdf_pin_evidence_identity_sha256": pins[0]["evidence_identity_sha256"],
               "candidate_sha256": os.environ["EXPECTED_CANDIDATE_SHA256"],
               "text_evidence_identity_sha256": os.environ["EXPECTED_TEXT_EVIDENCE_SHA256"],
               "matcher_report_sha256": reports[0]["report_sha256"],
