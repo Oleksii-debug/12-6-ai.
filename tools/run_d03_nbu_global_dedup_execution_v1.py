@@ -10,6 +10,7 @@ import importlib
 import json
 import math
 import os
+import platform
 try:
     import resource
 except ImportError:  # pragma: no cover - Windows fallback
@@ -548,6 +549,8 @@ def _runtime_environment() -> dict[str, Any]:
     github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
     result: dict[str, Any] = {
         "python_platform": sys.platform,
+        "python_version": platform.python_version(),
+        "python_implementation": platform.python_implementation(),
         "github_actions": github_actions,
     }
     if github_actions:
