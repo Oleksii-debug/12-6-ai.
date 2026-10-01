@@ -219,6 +219,16 @@ def _validate_row(
     text = row["text"]
     _require(type(record_id) is str and _HEX64.fullmatch(record_id), "record id malformed")
     _require(type(digest) is str and _HEX64.fullmatch(digest), "text SHA malformed")
+    provenance = {
+        "document_url": row["document_url"],
+        "pdf_url": row["pdf_url"],
+        "pdf_sha256": row["pdf_sha256"],
+        "text_sha256": digest,
+    }
+    _require(
+        record_id == _sha256(_canonical(provenance) + b"\\n"),
+        "record provenance identity drift",
+    )
     _require(type(byte_count) is int and byte_count > 0, "text byte count invalid")
     _require(type(text) is str and bool(text.strip()), "record text invalid")
     payload = text.encode("utf-8")
