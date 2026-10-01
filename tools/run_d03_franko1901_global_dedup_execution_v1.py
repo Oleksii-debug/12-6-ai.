@@ -138,6 +138,22 @@ def verify_execution_carrier() -> str:
     return observed
 
 
+def _bind_execution_head(expected_execution_head: str) -> str:
+    """Require physical execution on the explicitly selected exact Product head."""
+    _require(
+        type(expected_execution_head) is str
+        and len(expected_execution_head) == 40
+        and all(char in "0123456789abcdef" for char in expected_execution_head),
+        "expected execution head must be exact lowercase 40-hex SHA",
+    )
+    observed = _git("rev-parse", "HEAD").stdout.strip()
+    _require(
+        observed == expected_execution_head,
+        "execution HEAD drift: refusing synthetic/stale/unselected checkout",
+    )
+    return observed
+
+
 _HISTORICAL_MATCHER_MODULES = (
     # V5 imports pipeline during exact V7 graph reconstruction. Current main no
     # longer carries this path, so require the module to originate from V7 too.
@@ -567,14 +583,14 @@ def execute(
     output_report: Path,
     output_survivors: Path,
     output_evidence: Path,
+    expected_execution_head: str,
     max_candidate_pairs: int,
     max_index_postings: int,
     max_pair_expansions: int,
 ) -> dict[str, Any]:
+    execution_head = _bind_execution_head(expected_execution_head)
     execution_carrier_blob = verify_execution_carrier()
     authority_blobs = verify_repository_authority()
-    execution_head = _git("rev-parse", "HEAD").stdout.strip()
-    _require(len(execution_head) == 40, "execution HEAD identity missing")
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
     matcher, base_inventory, base_payloads = _reconstruct_v8_with_historical_namespace(
         v7_root=v7_root,
@@ -741,6 +757,11 @@ def main() -> int:
     parser.add_argument("--output-report", type=Path, required=True)
     parser.add_argument("--output-survivors", type=Path, required=True)
     parser.add_argument("--output-evidence", type=Path, required=True)
+    parser.add_argument(
+        "--expected-execution-head",
+        required=True,
+        help="Exact 40-hex Product head; synthetic PR merge commits are rejected.",
+    )
     parser.add_argument("--max-candidate-pairs", type=int, default=5_000_000)
     parser.add_argument(
         "--max-index-postings",
@@ -762,6 +783,7 @@ def main() -> int:
         output_report=args.output_report,
         output_survivors=args.output_survivors,
         output_evidence=args.output_evidence,
+        expected_execution_head=args.expected_execution_head,
         max_candidate_pairs=args.max_candidate_pairs,
         max_index_postings=args.max_index_postings,
         max_pair_expansions=args.max_pair_expansions,
