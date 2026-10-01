@@ -572,11 +572,12 @@ def _require_distinct_materialization_copies(
     paths = (candidate_a, evidence_a, candidate_b, evidence_b)
     resolved: list[Path] = []
     for path in paths:
+        _require(not path.is_symlink(), f"materialization input must not be symlink: {path}")
         try:
             exact = path.resolve(strict=True)
         except OSError as exc:
             raise NbuGlobalDedupError(f"cannot resolve materialization input: {path}") from exc
-        _require(exact.is_file() and not exact.is_symlink(), f"materialization input is not regular file: {path}")
+        _require(exact.is_file(), f"materialization input is not regular file: {path}")
         resolved.append(exact)
     _require(resolved[0] != resolved[2], "two-clean candidate paths must be distinct")
     _require(resolved[1] != resolved[3], "two-clean evidence paths must be distinct")
@@ -617,6 +618,17 @@ def _build_two_clean_authority(
         and second_survivors.get("survivor_authority_sha256") == survivor_sha,
         "two-clean survivor identity drift",
     )
+    for survivor in (first_survivors, second_survivors):
+        _require(
+            survivor.get("matcher_report_sha256") == report_sha,
+            "two-clean survivor/report identity drift",
+        )
+        survivor_core = dict(survivor)
+        survivor_identity = survivor_core.pop("survivor_authority_sha256", None)
+        _require(
+            survivor_identity == _sha256(_canonical(survivor_core)),
+            "two-clean survivor self-hash mismatch",
+        )
     execution_head = first_evidence.get("execution_head_sha")
     _require(
         type(execution_head) is str
@@ -625,6 +637,14 @@ def _build_two_clean_authority(
         "two-clean execution head drift",
     )
     for evidence in (first_evidence, second_evidence):
+        evidence_core = dict(evidence)
+        evidence_identity = evidence_core.pop("evidence_identity_sha256", None)
+        _require(
+            type(evidence_identity) is str
+            and len(evidence_identity) == 64
+            and evidence_identity == _sha256(_canonical(evidence_core)),
+            "two-clean run evidence self-hash mismatch",
+        )
         _require(evidence.get("pinned_main_sha") == EXPECTED_MAIN, "two-clean pinned-main drift")
         nbu_evidence = evidence.get("nbu")
         _require(type(nbu_evidence) is dict, "two-clean NBU evidence missing")
