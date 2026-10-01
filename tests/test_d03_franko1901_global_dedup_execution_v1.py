@@ -468,6 +468,57 @@ def test_truth_boundary_never_promotes_source_local_external_llm_negative() -> N
     assert "external_llm_or_api_used_for_data_or_intelligence" not in truth
 
 
+def test_runtime_environment_is_provider_neutral_for_local_execution(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.delenv("RUNNER_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("RUNNER_OS", raising=False)
+    monkeypatch.delenv("RUNNER_ARCH", raising=False)
+    observed = mod._runtime_environment()
+    assert observed == {
+        "python_platform": mod.sys.platform,
+        "github_actions": False,
+        "runner_environment": "local",
+    }
+
+
+def test_runtime_environment_records_github_runner_without_claiming_provider_policy(
+    monkeypatch,
+) -> None:
+    mod = _load()
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("RUNNER_ENVIRONMENT", "github-hosted")
+    monkeypatch.setenv("RUNNER_OS", "Linux")
+    monkeypatch.setenv("RUNNER_ARCH", "X64")
+    assert mod._runtime_environment() == {
+        "python_platform": mod.sys.platform,
+        "github_actions": True,
+        "runner_environment": "github-hosted",
+        "runner_os": "Linux",
+        "runner_arch": "X64",
+    }
+
+
+def test_runtime_environment_rejects_ambiguous_github_runner(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.delenv("RUNNER_ENVIRONMENT", raising=False)
+    monkeypatch.setenv("RUNNER_OS", "Linux")
+    monkeypatch.setenv("RUNNER_ARCH", "X64")
+    with pytest.raises(
+        mod.Franko1901GlobalDedupError,
+        match="runner environment identity missing",
+    ):
+        mod._runtime_environment()
+
+
+def test_evidence_profile_is_local_free_not_hardcoded_github_hosted() -> None:
+    raw = MODULE.read_text(encoding="utf-8")
+    assert '"execution_profile": "LOCAL_FREE"' in raw
+    assert '"runtime_environment": _runtime_environment()' in raw
+    assert "GITHUB_HOSTED_FREE_LOCAL_FREE" not in raw
+
+
 def test_linux_max_rss_preserves_kib_even_above_ten_million(monkeypatch) -> None:
     mod = _load()
     monkeypatch.setattr(mod.sys, "platform", "linux")
