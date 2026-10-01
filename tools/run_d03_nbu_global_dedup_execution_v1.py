@@ -582,10 +582,18 @@ def _require_distinct_materialization_copies(
     _require(resolved[0] != resolved[2], "two-clean candidate paths must be distinct")
     _require(resolved[1] != resolved[3], "two-clean evidence paths must be distinct")
     try:
-        _require(not os.path.samefile(resolved[0], resolved[2]), "two-clean candidate copies alias one file")
-        _require(not os.path.samefile(resolved[1], resolved[3]), "two-clean evidence copies alias one file")
+        _require(
+            not os.path.samefile(resolved[0], resolved[2]),
+            "two-clean candidate copies alias one file",
+        )
+        _require(
+            not os.path.samefile(resolved[1], resolved[3]),
+            "two-clean evidence copies alias one file",
+        )
     except OSError as exc:
-        raise NbuGlobalDedupError("cannot attest distinct two-clean materialization inputs") from exc
+        raise NbuGlobalDedupError(
+            "cannot attest distinct two-clean materialization inputs"
+        ) from exc
 
 
 def _build_two_clean_authority(
@@ -667,8 +675,14 @@ def _build_two_clean_authority(
 
     nbu_survivor_count = first_survivors.get("nbu_survivor_source_object_count")
     nbu_survivor_bytes = first_survivors.get("nbu_survivor_declared_capacity_bytes")
-    _require(type(nbu_survivor_count) is int and nbu_survivor_count >= 0, "NBU survivor count invalid")
-    _require(type(nbu_survivor_bytes) is int and nbu_survivor_bytes >= 0, "NBU survivor bytes invalid")
+    _require(
+        type(nbu_survivor_count) is int and nbu_survivor_count >= 0,
+        "NBU survivor count invalid",
+    )
+    _require(
+        type(nbu_survivor_bytes) is int and nbu_survivor_bytes >= 0,
+        "NBU survivor bytes invalid",
+    )
 
     evidence_ids = [
         first_evidence.get("evidence_identity_sha256"),
@@ -794,7 +808,9 @@ def run_two_clean(
     try:
         output_root.mkdir(parents=True, exist_ok=False)
     except FileExistsError as exc:
-        raise NbuGlobalDedupError(f"refusing non-fresh two-clean output root: {output_root}") from exc
+        raise NbuGlobalDedupError(
+            f"refusing non-fresh two-clean output root: {output_root}"
+        ) from exc
 
     script = Path(__file__).resolve()
     runs = (
@@ -1043,7 +1059,10 @@ def execute(
 
 def _main_two_clean(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        description="Run two fresh NBU dedup workers over two distinct exact-audited materialization copies."
+        description=(
+            "Run two fresh NBU dedup workers over two distinct exact-audited "
+            "materialization copies."
+        )
     )
     parser.add_argument("--v7-root", type=Path, required=True)
     parser.add_argument("--bulk-workspace", type=Path, required=True)
