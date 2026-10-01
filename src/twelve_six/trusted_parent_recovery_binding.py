@@ -23,7 +23,10 @@ from twelve_six.portable_run_binding import (
     bind_portable_run_packet,
     canonical_sha256,
 )
-from twelve_six.portable_run_packet import assess_portable_run_packet
+from twelve_six.portable_run_packet import (
+    assess_portable_run_packet,
+    validate_portable_run_contract,
+)
 from twelve_six.scale141_recovery import (
     RecoveryLifecycleError,
     RecoveryResolution,
@@ -363,6 +366,12 @@ def bind_trusted_same_provider_resume(
     )
     if base.mode != "RESUME":
         return _blocked(base, "trusted:same_provider_resume_mode_required")
+    if (
+        base.readiness_ready is not True
+        or base.overlay_contract_valid is not True
+        or base.packet_contract_valid is not True
+    ):
+        return _blocked(base, "trusted:incumbent_ready_gates_required")
     expected_only_blocker = ("packet:trusted_parent_recovery_binding_missing",)
     if base.blockers != expected_only_blocker:
         return base
@@ -457,6 +466,8 @@ def bind_trusted_same_provider_resume(
         return _blocked(base, "trusted:candidate_binding_section_missing")
     binding_section["trusted_parent_recovery"] = trusted
     binding_section["trusted_parent_recovery_authority_token"] = authority_token
+    if validate_portable_run_contract(candidate):
+        return _blocked(base, "trusted:final_packet_contract_invalid")
 
     return PortableRunBinding(
         binding_ready=True,
