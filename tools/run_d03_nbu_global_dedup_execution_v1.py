@@ -305,17 +305,32 @@ def _validate_nbu_report_binding(
         len(extension_sources) == len(extension_payloads),
         "NBU projected source/payload cardinality drift",
     )
+    expected_ids: list[str] = []
     for expected in extension_sources:
         _require(type(expected) is dict, "NBU projected source row invalid")
         source_id = expected.get("source_id")
         _require(
-            type(source_id) is str and source_id in extension_payloads,
+            type(source_id) is str and bool(source_id),
             "NBU projected source identity missing",
         )
+        expected_ids.append(source_id)
+    _require(
+        len(expected_ids) == len(set(expected_ids)),
+        "NBU projected source ids duplicate",
+    )
+    _require(
+        set(expected_ids) == set(extension_payloads),
+        "NBU projected source/payload coverage drift",
+    )
+    _require(
+        all(type(key) is str and type(value) is bytes for key, value in extension_payloads.items()),
+        "NBU projected payload map must be exact str->bytes",
+    )
+    for expected in extension_sources:
+        source_id = expected["source_id"]
         observed = by_id.get(source_id)
         _require(type(observed) is dict, f"NBU source missing from report: {source_id}")
         payload = extension_payloads[source_id]
-        _require(type(payload) is bytes, f"NBU payload type drift: {source_id}")
         exact_fields = {
             "source_family": expected.get("source_family"),
             "modality": expected.get("modality"),
@@ -328,14 +343,24 @@ def _validate_nbu_report_binding(
                 and observed.get(field) == expected_value,
                 f"NBU report field drift for {source_id}: {field}",
             )
+        stable_origin_id = expected.get("stable_origin_id")
+        stable_object_id = expected.get("stable_object_id")
+        _require(
+            type(stable_origin_id) is str and bool(stable_origin_id),
+            f"NBU stable origin invalid: {source_id}",
+        )
+        _require(
+            type(stable_object_id) is str and bool(stable_object_id),
+            f"NBU stable object invalid: {source_id}",
+        )
         _require(
             observed.get("stable_origin_id_sha256")
-            == _sha256(str(expected.get("stable_origin_id")).encode("utf-8")),
+            == _sha256(stable_origin_id.encode("utf-8")),
             f"NBU stable origin drift: {source_id}",
         )
         _require(
             observed.get("stable_object_id_sha256")
-            == _sha256(str(expected.get("stable_object_id")).encode("utf-8")),
+            == _sha256(stable_object_id.encode("utf-8")),
             f"NBU stable object drift: {source_id}",
         )
         _require(
