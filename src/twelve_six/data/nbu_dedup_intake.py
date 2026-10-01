@@ -312,8 +312,7 @@ def validate_and_project_nbu(
         payload_bytes += len(payload)
 
     _require(payload_bytes == CANDIDATE_TEXT_BYTES, "candidate text byte total drift")
-    projection_identity = _sha256(_canonical(inventory))
-    receipt_core: dict[str, Any] = {
+    # Bind the receipt to the exact text-free matcher projection, not merely the\n    # reduced record/hash/byte inventory. This mirrors the incumbent Franko intake\n    # contract and makes source-family/origin/object/authority drift receipt-visible.\n    projection_identity = _sha256(_canonical(sources))\n    receipt_core: dict[str, Any] = {
         "schema_version": RECEIPT_SCHEMA,
         "execution_profile": "LOCAL_FREE",
         "source_family": SOURCE_FAMILY,
