@@ -12,11 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "tools" / "run_d03_nbu_global_dedup_execution_v1.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 NBU_EXECUTION_BRANCH = "swarm/2398-nbu-indexed-dedup-execution-v1"
-NBU_PHYSICAL_JOBS = (
-    "nbu-global-dedup-pass",
-    "nbu-global-dedup-two-clean",
-    "nbu-pinned-pdf-access-probe",
-)
+NBU_OTHER_PHYSICAL_JOBS = ("nbu-pinned-pdf-access-probe",)
 
 
 def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
@@ -27,12 +23,19 @@ def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
         f"&& github.head_ref == '{NBU_EXECUTION_BRANCH}' "
         "&& github.event.pull_request.head.repo.full_name == github.repository"
     )
-
-    for job in NBU_PHYSICAL_JOBS:
+    job_indexes = {
+        line[2:-1]: index
+        for index, line in enumerate(lines)
+        if line.startswith("  nbu-global-dedup-") and line.endswith(":")
+    }
+    assert job_indexes, "expected at least one NBU global-dedup physical job"
+    for job in NBU_OTHER_PHYSICAL_JOBS:
         job_line = f"  {job}:"
-        index = lines.index(job_line)
-        assert lines[index + 1] == expected_gate
+        assert job_line in lines
+        job_indexes[job] = lines.index(job_line)
 
+    for job, index in job_indexes.items():
+        assert lines[index + 1] == expected_gate, job
 
 
 def _load():
