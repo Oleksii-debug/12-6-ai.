@@ -437,6 +437,14 @@ jobs:
                   canonical(core, ascii_only=ascii_only, newline=newline)
               ), field
 
+          discoveries = [
+              load(str(Path(os.environ["P1_DIR"]) / "nbu-discovery-evidence.json")),
+              load(str(Path(os.environ["P2_DIR"]) / "nbu-discovery-evidence.json")),
+          ]
+          pins = [
+              load(str(Path(os.environ["P1_DIR"]) / "nbu-pdf-pin-evidence.json")),
+              load(str(Path(os.environ["P2_DIR"]) / "nbu-pdf-pin-evidence.json")),
+          ]
           reports = [
               load(str(Path(os.environ["P1_DIR"]) / "global-dedup-report.json")),
               load(str(Path(os.environ["P2_DIR"]) / "global-dedup-report.json")),
@@ -454,6 +462,12 @@ jobs:
               load(str(Path(os.environ["P2_DIR"]) / "nbu-text-evidence-a.json")),
           ]
 
+          for discovery in discoveries:
+              verify_self_hash(discovery, "evidence_identity_sha256", newline=True)
+          for pin in pins:
+              verify_self_hash(pin, "evidence_identity_sha256", newline=True)
+          for text in texts:
+              verify_self_hash(text, "evidence_identity_sha256", newline=True)
           for report in reports:
               verify_self_hash(report, "report_sha256", ascii_only=True, newline=True)
           for survivor in survivors:
