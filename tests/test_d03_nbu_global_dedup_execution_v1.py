@@ -363,6 +363,43 @@ def test_two_clean_authority_rejects_self_consistent_pair_with_bad_report_hash()
         )
 
 
+def test_two_clean_authority_rejects_nonhex_report_identity() -> None:
+    mod = _load()
+    report = _report(mod)
+    report["report_sha256"] = "g" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="report identity drift"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            _two_clean_survivors(mod),
+            _two_clean_survivors(mod),
+            _two_clean_evidence(mod, "run-a"),
+            _two_clean_evidence(mod, "run-b"),
+        )
+
+
+def test_two_clean_authority_rejects_nonhex_execution_head_even_when_rehashed() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    for evidence in (evidence_a, evidence_b):
+        evidence["execution_head_sha"] = "z" * 40
+        core = dict(evidence)
+        core.pop("evidence_identity_sha256")
+        evidence["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(mod.NbuGlobalDedupError, match="execution head drift"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
 def test_two_clean_authority_rejects_report_or_survivor_drift() -> None:
     mod = _load()
     report = _report(mod)
