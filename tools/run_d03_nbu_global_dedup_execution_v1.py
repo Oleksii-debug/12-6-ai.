@@ -968,6 +968,28 @@ def _build_two_clean_authority(
     return {**core, "two_clean_authority_sha256": _sha256(_canonical(core))}
 
 
+def _validate_parent_child_repository_binding(
+    first_evidence: Mapping[str, Any],
+    second_evidence: Mapping[str, Any],
+    *,
+    expected_main_blobs: Mapping[str, str],
+    expected_product_blobs: Mapping[str, str],
+) -> None:
+    for evidence in (first_evidence, second_evidence):
+        main_blobs = evidence.get("main_authority_path_blobs")
+        product_blobs = evidence.get("product_path_blobs")
+        _require(
+            type(main_blobs) is dict
+            and _canonical(main_blobs) == _canonical(dict(expected_main_blobs)),
+            "two-clean child main-authority blob drift",
+        )
+        _require(
+            type(product_blobs) is dict
+            and _canonical(product_blobs) == _canonical(dict(expected_product_blobs)),
+            "two-clean child Product blob drift",
+        )
+
+
 def _validate_parent_aggregate_binding(
     authority: Mapping[str, Any],
     *,
@@ -1039,6 +1061,7 @@ def run_two_clean(
     max_pair_expansions: int,
 ) -> dict[str, Any]:
     orchestration_head = _bind_execution_head(expected_execution_head)
+    parent_main_blobs, parent_product_blobs = verify_repository_authority()
     _require_distinct_materialization_copies(
         candidate_jsonl_a,
         materialization_evidence_json_a,
@@ -1134,6 +1157,12 @@ def run_two_clean(
         )
         second_evidence, _ = _strict_generated_json(
             output_root / "clean-b" / "execution-evidence.json"
+        )
+        _validate_parent_child_repository_binding(
+            first_evidence,
+            second_evidence,
+            expected_main_blobs=parent_main_blobs,
+            expected_product_blobs=parent_product_blobs,
         )
         _validate_two_clean_survivor_readback(first_report, first_survivors)
         _validate_two_clean_survivor_readback(second_report, second_survivors)
