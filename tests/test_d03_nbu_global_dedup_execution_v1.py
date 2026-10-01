@@ -100,7 +100,7 @@ def test_compose_graph_rejects_source_id_collision() -> None:
         )
 
 
-def _nbu_binding_fixture(mod):
+def _nbu_comparison_binding_fixture(mod):
     payload = b"nbu payload"
     expected = {
         "source_id": "nbu:test",
@@ -130,7 +130,7 @@ def _nbu_binding_fixture(mod):
 
 def test_nbu_report_binding_accepts_exact_generic_raw_projection() -> None:
     mod = _load()
-    expected, payload, observed = _nbu_binding_fixture(mod)
+    expected, payload, observed = _nbu_comparison_binding_fixture(mod)
     mod._validate_nbu_report_binding(
         {"sources": [observed]},
         [expected],
@@ -150,7 +150,7 @@ def test_nbu_report_binding_rejects_comparison_drift(
     field: str, bad: object, message: str
 ) -> None:
     mod = _load()
-    expected, payload, observed = _nbu_binding_fixture(mod)
+    expected, payload, observed = _nbu_comparison_binding_fixture(mod)
     observed[field] = bad
     with pytest.raises(mod.NbuGlobalDedupError, match=message):
         mod._validate_nbu_report_binding(
