@@ -288,6 +288,66 @@ def _execute_indexed_matcher(
     return report, indexed_elapsed
 
 
+def _validate_nbu_report_binding(
+    report: Mapping[str, Any],
+    extension_sources: list[dict[str, Any]],
+    extension_payloads: Mapping[str, bytes],
+) -> None:
+    report_sources = report.get("sources")
+    _require(type(report_sources) is list, "dedup report source vector missing")
+    by_id = {
+        row.get("source_id"): row
+        for row in report_sources
+        if type(row) is dict and type(row.get("source_id")) is str
+    }
+    _require(len(by_id) == len(report_sources), "dedup report source identity drift")
+    _require(
+        len(extension_sources) == len(extension_payloads),
+        "NBU projected source/payload cardinality drift",
+    )
+    for expected in extension_sources:
+        _require(type(expected) is dict, "NBU projected source row invalid")
+        source_id = expected.get("source_id")
+        _require(
+            type(source_id) is str and source_id in extension_payloads,
+            "NBU projected source identity missing",
+        )
+        observed = by_id.get(source_id)
+        _require(type(observed) is dict, f"NBU source missing from report: {source_id}")
+        payload = extension_payloads[source_id]
+        _require(type(payload) is bytes, f"NBU payload type drift: {source_id}")
+        exact_fields = {
+            "source_family": expected.get("source_family"),
+            "modality": expected.get("modality"),
+            "evidence_status": expected.get("evidence_status"),
+            "declared_capacity_bytes": expected.get("declared_capacity_bytes"),
+        }
+        for field, expected_value in exact_fields.items():
+            _require(
+                type(observed.get(field)) is type(expected_value)
+                and observed.get(field) == expected_value,
+                f"NBU report field drift for {source_id}: {field}",
+            )
+        _require(
+            observed.get("stable_origin_id_sha256")
+            == _sha256(str(expected.get("stable_origin_id")).encode("utf-8")),
+            f"NBU stable origin drift: {source_id}",
+        )
+        _require(
+            observed.get("stable_object_id_sha256")
+            == _sha256(str(expected.get("stable_object_id")).encode("utf-8")),
+            f"NBU stable object drift: {source_id}",
+        )
+        _require(
+            observed.get("verified_raw_bytes") == len(payload),
+            f"NBU verified raw byte drift: {source_id}",
+        )
+        _require(
+            observed.get("verified_raw_sha256") == _sha256(payload),
+            f"NBU verified raw hash drift: {source_id}",
+        )
+
+
 def _validated_terminal_summary(report: Mapping[str, Any]) -> Mapping[str, Any]:
     _require(report.get("source_count") == EXPECTED_COMBINED_OBJECTS, "report count drift")
     terminal = report.get("terminal_candidates")
@@ -1043,6 +1103,7 @@ def execute(
         max_index_postings=max_index_postings,
         max_pair_expansions=max_pair_expansions,
     )
+    _validate_nbu_report_binding(report, extension_sources, extension_payloads)
     terminal = _validated_terminal_summary(report)
     selection = v9_semantics._derive_survivors(report)
     _validate_survivor_projection(report, selection)
