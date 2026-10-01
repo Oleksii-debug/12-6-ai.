@@ -250,7 +250,7 @@ def _compose_graph(
     return inventory, payloads
 
 
-def _execute_equivalent_matchers(
+def _execute_indexed_matcher(
     matcher: Any,
     inventory: Mapping[str, Any],
     payloads: Mapping[str, bytes],
@@ -258,18 +258,12 @@ def _execute_equivalent_matchers(
     max_candidate_pairs: int,
     max_index_postings: int,
     max_pair_expansions: int,
-) -> tuple[dict[str, Any], float, float]:
-    """Require incumbent all-pairs and indexed mechanics to produce one exact report."""
+) -> tuple[dict[str, Any], float]:
+    """Execute only the independently-qualified incumbent indexed matcher path."""
 
     indexed.attest_incumbent_runtime(matcher)
-
-    reference_started = time.perf_counter()
-    reference_report = matcher.audit_payloads(inventory, payloads)
-    reference_elapsed = time.perf_counter() - reference_started
-    matcher.verify_report(reference_report)
-
     indexed_started = time.perf_counter()
-    indexed_report = indexed.audit_payloads_indexed(
+    report = indexed.audit_payloads_indexed(
         matcher,
         inventory,
         payloads,
@@ -278,13 +272,8 @@ def _execute_equivalent_matchers(
         max_pair_expansions=max_pair_expansions,
     )
     indexed_elapsed = time.perf_counter() - indexed_started
-    matcher.verify_report(indexed_report)
-
-    _require(
-        _canonical(reference_report) == _canonical(indexed_report),
-        "indexed/reference report mismatch",
-    )
-    return indexed_report, reference_elapsed, indexed_elapsed
+    matcher.verify_report(report)
+    return report, indexed_elapsed
 
 
 def _validated_terminal_summary(report: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -587,7 +576,7 @@ def execute(
         "combined payload byte total drift",
     )
 
-    report, reference_elapsed, indexed_elapsed = _execute_equivalent_matchers(
+    report, indexed_elapsed = _execute_indexed_matcher(
         matcher,
         inventory,
         payloads,
@@ -641,16 +630,17 @@ def execute(
             "duplicate_discount_bytes": terminal["duplicate_discount_bytes"],
             "duplicate_cluster_count": terminal["duplicate_cluster_count"],
         },
-        "matcher_equivalence_execution": {
-            "reference_engine": "INCUMBENT_V3_ALL_PAIRS",
-            "indexed_engine": "MERGED_PR_1459",
+        "matcher_execution": {
+            "engine": "MERGED_PR_1459",
+            "performance_equivalence_authority": "MERGED_PR_1459",
+            "incumbent_runtime_attested": True,
             "report_sha256": report["report_sha256"],
             "max_candidate_pairs": max_candidate_pairs,
             "max_index_postings": max_index_postings,
             "max_pair_expansions": max_pair_expansions,
-            "reference_wall_clock_seconds": round(reference_elapsed, 6),
             "indexed_wall_clock_seconds": round(indexed_elapsed, 6),
             "process_max_rss_kib": max_rss_kib,
+            "all_pairs_reference_executed": False,
         },
         "survivor_authority_sha256": survivors["survivor_authority_sha256"],
         "content_boundary": {
