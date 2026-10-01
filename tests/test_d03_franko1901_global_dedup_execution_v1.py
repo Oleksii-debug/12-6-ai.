@@ -278,6 +278,78 @@ def test_repository_authority_is_current_main_ancestry_bound() -> None:
     assert all(len(value) == 40 for value in blobs.values())
 
 
+def test_v7_worktree_requires_exact_expected_head(monkeypatch, tmp_path: Path) -> None:
+    mod = _load()
+
+    def fake_git(root: Path, *args: str, check: bool = True):
+        del root, check
+        if args == ("rev-parse", "HEAD"):
+            return SimpleNamespace(returncode=0, stdout="0" * 40 + "\n", stderr="")
+        raise AssertionError(args)
+
+    monkeypatch.setattr(mod, "_git_in", fake_git)
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="V7 worktree HEAD drift"):
+        mod._verify_v7_worktree(tmp_path)
+
+
+def test_v7_worktree_rejects_tracked_or_noncache_untracked_drift(
+    monkeypatch, tmp_path: Path
+) -> None:
+    mod = _load()
+    statuses = [
+        " M src/twelve_six/data/cross_source_capacity_audit_v7.py\n",
+        "?? injected.py\n",
+    ]
+    for status in statuses:
+        def fake_git(root: Path, *args: str, check: bool = True, status=status):
+            del root, check
+            if args == ("rev-parse", "HEAD"):
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=mod.v8.EXPECTED_V7_HEAD + "\n",
+                    stderr="",
+                )
+            if args == ("status", "--porcelain=v1", "--untracked-files=all"):
+                return SimpleNamespace(returncode=0, stdout=status, stderr="")
+            raise AssertionError(args)
+
+        monkeypatch.setattr(mod, "_git_in", fake_git)
+        with pytest.raises(mod.Franko1901GlobalDedupError, match="V7 worktree is not clean"):
+            mod._verify_v7_worktree(tmp_path)
+
+
+def test_v7_worktree_allows_only_python_runtime_cache(monkeypatch, tmp_path: Path) -> None:
+    mod = _load()
+
+    def fake_git(root: Path, *args: str, check: bool = True):
+        del root, check
+        if args == ("rev-parse", "HEAD"):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=mod.v8.EXPECTED_V7_HEAD + "\n",
+                stderr="",
+            )
+        if args == ("status", "--porcelain=v1", "--untracked-files=all"):
+            return SimpleNamespace(
+                returncode=0,
+                stdout="?? src/twelve_six/data/__pycache__/matcher.cpython-312.pyc\n",
+                stderr="",
+            )
+        raise AssertionError(args)
+
+    monkeypatch.setattr(mod, "_git_in", fake_git)
+    assert mod._verify_v7_worktree(tmp_path) == mod.v8.EXPECTED_V7_HEAD
+
+
+def test_execute_binds_v7_worktree_before_reconstruction() -> None:
+    mod = _load()
+    source = inspect.getsource(mod.execute)
+    bind = source.index("verified_v7_head = _verify_v7_worktree(v7_root)")
+    reconstruct = source.index("_reconstruct_v8_with_historical_namespace(")
+    evidence = source.index('"v7_head_sha": verified_v7_head')
+    assert bind < reconstruct < evidence
+
+
 def test_historical_matcher_namespace_includes_pipeline() -> None:
     mod = _load()
     assert "twelve_six.data.pipeline" in mod._HISTORICAL_MATCHER_MODULES

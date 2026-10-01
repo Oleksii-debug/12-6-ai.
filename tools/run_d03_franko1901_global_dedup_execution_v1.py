@@ -110,6 +110,61 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return proc
 
 
+def _git_in(
+    root: Path, *args: str, check: bool = True
+) -> subprocess.CompletedProcess[str]:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Franko1901GlobalDedupError(
+            f"cannot execute git in {root}: {exc}"
+        ) from exc
+    if check and proc.returncode != 0:
+        detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
+        raise Franko1901GlobalDedupError(
+            f"git -C {root} {' '.join(args)} failed: {detail}"
+        )
+    return proc
+
+
+def _v7_untracked_entry_is_runtime_cache(status_line: str) -> bool:
+    if not status_line.startswith("?? "):
+        return False
+    path = status_line[3:].strip('"')
+    return "__pycache__/" in path and path.endswith((".pyc", ".pyo"))
+
+
+def _verify_v7_worktree(v7_root: Path) -> str:
+    try:
+        root = v7_root.resolve(strict=True)
+    except OSError as exc:
+        raise Franko1901GlobalDedupError(f"V7 worktree missing: {v7_root}") from exc
+    _require(root.is_dir(), "V7 worktree root is not a directory")
+    head = _git_in(root, "rev-parse", "HEAD").stdout.strip()
+    _require(
+        head == v8.EXPECTED_V7_HEAD,
+        f"V7 worktree HEAD drift: expected {v8.EXPECTED_V7_HEAD}, got {head}",
+    )
+    status = _git_in(root, "status", "--porcelain=v1", "--untracked-files=all").stdout
+    unexpected = [
+        line
+        for line in status.splitlines()
+        if line and not _v7_untracked_entry_is_runtime_cache(line)
+    ]
+    _require(
+        not unexpected,
+        "V7 worktree is not clean: " + "; ".join(unexpected[:5]),
+    )
+    return head
+
+
 def verify_repository_authority() -> dict[str, str]:
     """Bind authority-bearing runtime files to exact committed and worktree bytes."""
     ancestor = _git("merge-base", "--is-ancestor", EXPECTED_MAIN, "HEAD", check=False)
@@ -1055,6 +1110,7 @@ def execute(
     execution_head = _bind_execution_head(expected_execution_head)
     execution_carrier_blob = verify_execution_carrier()
     authority_blobs = verify_repository_authority()
+    verified_v7_head = _verify_v7_worktree(v7_root)
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
     matcher, base_inventory, base_payloads = _reconstruct_v8_with_historical_namespace(
         v7_root=v7_root,
@@ -1141,7 +1197,7 @@ def execute(
         "pinned_main_sha": EXPECTED_MAIN,
         "authority_path_blobs": authority_blobs,
         "baseline_v8": {
-            "v7_head_sha": v8.EXPECTED_V7_HEAD,
+            "v7_head_sha": verified_v7_head,
             "source_object_count": EXPECTED_BASE_OBJECTS,
             "payload_bytes": EXPECTED_BASE_BYTES,
         },
