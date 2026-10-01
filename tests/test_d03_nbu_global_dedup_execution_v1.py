@@ -862,6 +862,15 @@ def test_two_clean_binds_parent_head_before_input_preflight(tmp_path, monkeypatc
         )
 
 
+def test_two_clean_workers_use_isolated_bulk_workspaces() -> None:
+    source = MODULE.read_text(encoding="utf-8")
+    start = source.index("def run_two_clean(")
+    end = source.index("\ndef execute(", start)
+    run_two_clean_source = source[start:end]
+    assert 'str(run_dir / "bulk-workspace")' in run_two_clean_source
+    assert "str(bulk_workspace)" not in run_two_clean_source
+
+
 def test_two_clean_requires_non_aliasing_materialization_copies(tmp_path) -> None:
     mod = _load()
     candidate = tmp_path / "candidate.jsonl"
