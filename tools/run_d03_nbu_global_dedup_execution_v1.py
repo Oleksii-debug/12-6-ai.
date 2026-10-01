@@ -8,6 +8,7 @@ import ctypes
 import hashlib
 import importlib
 import json
+import math
 import os
 try:
     import resource
@@ -35,6 +36,9 @@ from twelve_six.data import nbu_dedup_intake as nbu
 
 SCHEMA = "12-6.d03-nbu-global-dedup-execution.v1"
 SURVIVOR_SCHEMA = "12-6.d03-nbu-global-dedup-survivors.v1"
+TWO_CLEAN_SCHEMA = "12-6.d03-nbu-global-dedup-two-clean.v1"
+TWO_CLEAN_INCOMPLETE_SCHEMA = "12-6.d03-nbu-global-dedup-two-clean-incomplete.v1"
+TWO_CLEAN_WORKER_TIMEOUT_SECONDS = 3_600
 EXPECTED_MAIN = "ba9e49cedba4a110e1c4f7d83702e8fcf8a42461"
 EXECUTION_CLAIM = 2398
 EXECUTION_PR = 2454
@@ -522,6 +526,342 @@ def _publish_json_outputs(outputs: tuple[tuple[Path, Mapping[str, Any]], ...]) -
         raise
 
 
+
+def _strict_generated_json(path: Path) -> tuple[dict[str, Any], bytes]:
+    try:
+        raw = path.read_bytes()
+        text = raw.decode("utf-8", errors="strict")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise NbuGlobalDedupError(f"cannot read generated JSON: {path}") from exc
+
+    def reject_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            _require(key not in result, f"duplicate generated JSON key: {key}")
+            result[key] = value
+        return result
+
+    def finite_float(token: str) -> float:
+        value = float(token)
+        _require(math.isfinite(value), f"non-finite generated JSON number: {token}")
+        return value
+
+    try:
+        value = json.loads(
+            text,
+            object_pairs_hook=reject_pairs,
+            parse_float=finite_float,
+            parse_constant=lambda token: (_ for _ in ()).throw(
+                NbuGlobalDedupError(f"non-finite generated JSON constant: {token}")
+            ),
+        )
+    except NbuGlobalDedupError:
+        raise
+    except (json.JSONDecodeError, ValueError, OverflowError) as exc:
+        raise NbuGlobalDedupError(f"invalid generated JSON: {path}") from exc
+    _require(type(value) is dict, f"generated JSON root must be exact object: {path}")
+    return value, raw
+
+
+def _require_distinct_materialization_copies(
+    candidate_a: Path,
+    evidence_a: Path,
+    candidate_b: Path,
+    evidence_b: Path,
+) -> None:
+    paths = (candidate_a, evidence_a, candidate_b, evidence_b)
+    resolved: list[Path] = []
+    for path in paths:
+        try:
+            exact = path.resolve(strict=True)
+        except OSError as exc:
+            raise NbuGlobalDedupError(f"cannot resolve materialization input: {path}") from exc
+        _require(exact.is_file() and not exact.is_symlink(), f"materialization input is not regular file: {path}")
+        resolved.append(exact)
+    _require(resolved[0] != resolved[2], "two-clean candidate paths must be distinct")
+    _require(resolved[1] != resolved[3], "two-clean evidence paths must be distinct")
+    try:
+        _require(not os.path.samefile(resolved[0], resolved[2]), "two-clean candidate copies alias one file")
+        _require(not os.path.samefile(resolved[1], resolved[3]), "two-clean evidence copies alias one file")
+    except OSError as exc:
+        raise NbuGlobalDedupError("cannot attest distinct two-clean materialization inputs") from exc
+
+
+def _build_two_clean_authority(
+    first_report: Mapping[str, Any],
+    second_report: Mapping[str, Any],
+    first_survivors: Mapping[str, Any],
+    second_survivors: Mapping[str, Any],
+    first_evidence: Mapping[str, Any],
+    second_evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    _require(
+        _canonical(first_report) == _canonical(second_report),
+        "two-clean dedup reports differ",
+    )
+    _require(
+        _canonical(first_survivors) == _canonical(second_survivors),
+        "two-clean survivor authorities differ",
+    )
+    report_sha = first_report.get("report_sha256")
+    survivor_sha = first_survivors.get("survivor_authority_sha256")
+    _require(
+        type(report_sha) is str
+        and len(report_sha) == 64
+        and second_report.get("report_sha256") == report_sha,
+        "two-clean report identity drift",
+    )
+    _require(
+        type(survivor_sha) is str
+        and len(survivor_sha) == 64
+        and second_survivors.get("survivor_authority_sha256") == survivor_sha,
+        "two-clean survivor identity drift",
+    )
+    execution_head = first_evidence.get("execution_head_sha")
+    _require(
+        type(execution_head) is str
+        and len(execution_head) == 40
+        and second_evidence.get("execution_head_sha") == execution_head,
+        "two-clean execution head drift",
+    )
+    for evidence in (first_evidence, second_evidence):
+        _require(evidence.get("pinned_main_sha") == EXPECTED_MAIN, "two-clean pinned-main drift")
+        nbu_evidence = evidence.get("nbu")
+        _require(type(nbu_evidence) is dict, "two-clean NBU evidence missing")
+        _require(
+            nbu_evidence.get("candidate_sha256") == nbu.CANDIDATE_SHA256,
+            "two-clean candidate identity drift",
+        )
+        matcher = evidence.get("matcher_execution")
+        _require(type(matcher) is dict, "two-clean matcher evidence missing")
+        _require(matcher.get("engine") == "MERGED_PR_1459", "two-clean matcher engine drift")
+        _require(matcher.get("report_sha256") == report_sha, "two-clean matcher report drift")
+        truth = evidence.get("truth_boundary")
+        _require(type(truth) is dict, "two-clean truth boundary missing")
+        _require(truth.get("canonical_capacity_credited") == 0, "two-clean capacity promotion")
+        _require(
+            truth.get("authorized_optimized_target_exposure") == 0,
+            "two-clean exposure promotion",
+        )
+        _require(truth.get("training_executed") is False, "two-clean training promotion")
+
+    nbu_survivor_count = first_survivors.get("nbu_survivor_source_object_count")
+    nbu_survivor_bytes = first_survivors.get("nbu_survivor_declared_capacity_bytes")
+    _require(type(nbu_survivor_count) is int and nbu_survivor_count >= 0, "NBU survivor count invalid")
+    _require(type(nbu_survivor_bytes) is int and nbu_survivor_bytes >= 0, "NBU survivor bytes invalid")
+
+    evidence_ids = [
+        first_evidence.get("evidence_identity_sha256"),
+        second_evidence.get("evidence_identity_sha256"),
+    ]
+    _require(
+        all(type(value) is str and len(value) == 64 for value in evidence_ids),
+        "two-clean run evidence identity invalid",
+    )
+    core: dict[str, Any] = {
+        "schema_version": TWO_CLEAN_SCHEMA,
+        "status": "PASS_TWO_CLEAN_DEDUP_OVER_EXACT_AUDITED_NBU_COPIES_ZERO_CREDIT",
+        "execution_profile": "LOCAL_FREE",
+        "execution_head_sha": execution_head,
+        "pinned_main_sha": EXPECTED_MAIN,
+        "materialization_authority": {
+            "head_sha": nbu.MATERIALIZATION_HEAD,
+            "audit_issue": nbu.MATERIALIZATION_AUDIT,
+            "candidate_sha256": nbu.CANDIDATE_SHA256,
+            "evidence_identity_sha256": nbu.EVIDENCE_IDENTITY_SHA256,
+            "distinct_input_copies_required": True,
+            "source_replay_executed_by_this_carrier": False,
+        },
+        "dedup": {
+            "fresh_process_count": 2,
+            "engine": "MERGED_PR_1459",
+            "report_sha256": report_sha,
+            "survivor_authority_sha256": survivor_sha,
+            "run_evidence_identity_sha256": evidence_ids,
+            "nbu_survivor_source_object_count": nbu_survivor_count,
+            "nbu_survivor_declared_capacity_bytes": nbu_survivor_bytes,
+        },
+        "truth_boundary": {
+            "canonical_capacity_credited": 0,
+            "training_authorized_bytes": 0,
+            "authorized_unique_loss_positions": 0,
+            "authorized_optimized_target_exposure": 0,
+            "tokenizer_fit_authorized": False,
+            "optimizer_updates_executed_on_real_targets": 0,
+            "training_executed": False,
+            "learned_weights_created": False,
+            "final_test_outcomes_read": False,
+            "paid_compute_used": False,
+            "foreign_pretrained_weights_used": False,
+        },
+    }
+    return {**core, "two_clean_authority_sha256": _sha256(_canonical(core))}
+
+
+def _write_two_clean_incomplete(output_root: Path, completed_runs: list[str], reason: str) -> None:
+    _publish_json_outputs(
+        (
+            (
+                output_root / "incomplete.json",
+                {
+                    "schema_version": TWO_CLEAN_INCOMPLETE_SCHEMA,
+                    "status": "INCOMPLETE_NO_TWO_CLEAN_AUTHORITY",
+                    "reason": reason,
+                    "completed_run_ids": list(completed_runs),
+                    "canonical_capacity_credited": 0,
+                    "authorized_optimized_target_exposure": 0,
+                    "training_executed": False,
+                    "paid_compute_used": False,
+                },
+            ),
+        )
+    )
+
+
+def _run_two_clean_worker(command: list[str]) -> None:
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            timeout=TWO_CLEAN_WORKER_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise
+    except OSError as exc:
+        raise NbuGlobalDedupError("cannot start two-clean worker") from exc
+    if completed.returncode != 0:
+        raise NbuGlobalDedupError(
+            f"two-clean worker failed with exit {completed.returncode}"
+        )
+
+
+def run_two_clean(
+    *,
+    v7_root: Path,
+    bulk_workspace: Path,
+    candidate_jsonl_a: Path,
+    materialization_evidence_json_a: Path,
+    candidate_jsonl_b: Path,
+    materialization_evidence_json_b: Path,
+    output_root: Path,
+    expected_execution_head: str,
+    max_candidate_pairs: int,
+    max_index_postings: int,
+    max_pair_expansions: int,
+) -> dict[str, Any]:
+    _require_distinct_materialization_copies(
+        candidate_jsonl_a,
+        materialization_evidence_json_a,
+        candidate_jsonl_b,
+        materialization_evidence_json_b,
+    )
+    first_projection = nbu.validate_and_project_nbu(
+        candidate_jsonl_a,
+        materialization_evidence_json_a,
+        retain_payloads=False,
+    )
+    second_projection = nbu.validate_and_project_nbu(
+        candidate_jsonl_b,
+        materialization_evidence_json_b,
+        retain_payloads=False,
+    )
+    _require(
+        first_projection.receipt["receipt_identity_sha256"]
+        == second_projection.receipt["receipt_identity_sha256"],
+        "two-clean intake projection identity drift",
+    )
+
+    try:
+        output_root.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as exc:
+        raise NbuGlobalDedupError(f"refusing non-fresh two-clean output root: {output_root}") from exc
+
+    script = Path(__file__).resolve()
+    runs = (
+        ("clean-a", candidate_jsonl_a, materialization_evidence_json_a),
+        ("clean-b", candidate_jsonl_b, materialization_evidence_json_b),
+    )
+    completed_runs: list[str] = []
+    try:
+        for run_id, candidate, materialization_evidence in runs:
+            run_dir = output_root / run_id
+            command = [
+                sys.executable,
+                str(script),
+                "--v7-root",
+                str(v7_root),
+                "--bulk-workspace",
+                str(bulk_workspace),
+                "--candidate-jsonl",
+                str(candidate),
+                "--materialization-evidence-json",
+                str(materialization_evidence),
+                "--output-report",
+                str(run_dir / "dedup-report.json"),
+                "--output-survivors",
+                str(run_dir / "survivor-authority.json"),
+                "--output-evidence",
+                str(run_dir / "execution-evidence.json"),
+                "--expected-execution-head",
+                expected_execution_head,
+                "--max-candidate-pairs",
+                str(max_candidate_pairs),
+                "--max-index-postings",
+                str(max_index_postings),
+                "--max-pair-expansions",
+                str(max_pair_expansions),
+            ]
+            _run_two_clean_worker(command)
+            completed_runs.append(run_id)
+    except subprocess.TimeoutExpired as exc:
+        _write_two_clean_incomplete(output_root, completed_runs, "worker_timeout")
+        raise NbuGlobalDedupError("two-clean worker exceeded fixed timeout") from exc
+    except NbuGlobalDedupError:
+        _write_two_clean_incomplete(output_root, completed_runs, "worker_execution_failed")
+        raise
+    except KeyboardInterrupt:
+        _write_two_clean_incomplete(output_root, completed_runs, "operator_interrupt")
+        raise
+
+    try:
+        first_report, first_report_raw = _strict_generated_json(
+            output_root / "clean-a" / "dedup-report.json"
+        )
+        second_report, second_report_raw = _strict_generated_json(
+            output_root / "clean-b" / "dedup-report.json"
+        )
+        first_survivors, first_survivors_raw = _strict_generated_json(
+            output_root / "clean-a" / "survivor-authority.json"
+        )
+        second_survivors, second_survivors_raw = _strict_generated_json(
+            output_root / "clean-b" / "survivor-authority.json"
+        )
+        first_evidence, _ = _strict_generated_json(
+            output_root / "clean-a" / "execution-evidence.json"
+        )
+        second_evidence, _ = _strict_generated_json(
+            output_root / "clean-b" / "execution-evidence.json"
+        )
+        _require(first_report_raw == second_report_raw, "two-clean report bytes differ")
+        _require(first_survivors_raw == second_survivors_raw, "two-clean survivor bytes differ")
+        authority = _build_two_clean_authority(
+            first_report,
+            second_report,
+            first_survivors,
+            second_survivors,
+            first_evidence,
+            second_evidence,
+        )
+        _publish_json_outputs(((output_root / "two-clean-authority.json", authority),))
+    except (NbuGlobalDedupError, OSError) as exc:
+        if not (output_root / "incomplete.json").exists():
+            _write_two_clean_incomplete(output_root, completed_runs, "post_run_convergence_failed")
+        if isinstance(exc, NbuGlobalDedupError):
+            raise
+        raise NbuGlobalDedupError("cannot finalize two-clean authority") from exc
+    return authority
+
+
 def execute(
     *,
     v7_root: Path,
@@ -680,6 +1020,56 @@ def execute(
     return evidence
 
 
+
+def _main_two_clean(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Run two fresh NBU dedup workers over two distinct exact-audited materialization copies."
+    )
+    parser.add_argument("--v7-root", type=Path, required=True)
+    parser.add_argument("--bulk-workspace", type=Path, required=True)
+    parser.add_argument("--candidate-jsonl-a", type=Path, required=True)
+    parser.add_argument("--materialization-evidence-json-a", type=Path, required=True)
+    parser.add_argument("--candidate-jsonl-b", type=Path, required=True)
+    parser.add_argument("--materialization-evidence-json-b", type=Path, required=True)
+    parser.add_argument("--output-root", type=Path, required=True)
+    parser.add_argument("--expected-execution-head", required=True)
+    parser.add_argument("--max-candidate-pairs", type=int, default=5_000_000)
+    parser.add_argument(
+        "--max-index-postings",
+        type=int,
+        default=indexed.DEFAULT_MAX_INDEX_POSTINGS,
+    )
+    parser.add_argument(
+        "--max-pair-expansions",
+        type=int,
+        default=indexed.DEFAULT_MAX_PAIR_EXPANSIONS,
+    )
+    args = parser.parse_args(argv)
+    try:
+        authority = run_two_clean(
+            v7_root=args.v7_root,
+            bulk_workspace=args.bulk_workspace,
+            candidate_jsonl_a=args.candidate_jsonl_a,
+            materialization_evidence_json_a=args.materialization_evidence_json_a,
+            candidate_jsonl_b=args.candidate_jsonl_b,
+            materialization_evidence_json_b=args.materialization_evidence_json_b,
+            output_root=args.output_root,
+            expected_execution_head=args.expected_execution_head,
+            max_candidate_pairs=args.max_candidate_pairs,
+            max_index_postings=args.max_index_postings,
+            max_pair_expansions=args.max_pair_expansions,
+        )
+    except (NbuGlobalDedupError, nbu.NbuDedupIntakeError, OSError, ValueError) as exc:
+        print(f"BLOCKED: {exc}")
+        return 2
+    print("D03_NBU_TWO_CLEAN_DEDUP=PASS_ZERO_CREDIT")
+    print("TWO_CLEAN_AUTHORITY_SHA256=" + authority["two_clean_authority_sha256"])
+    print("SURVIVOR_AUTHORITY_SHA256=" + authority["dedup"]["survivor_authority_sha256"])
+    print("AUTHORIZED_OPTIMIZED_TARGET_EXPOSURE=0")
+    print("TRAINING_EXECUTED=false")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--v7-root", type=Path, required=True)
@@ -729,4 +1119,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "two-clean":
+        raise SystemExit(_main_two_clean(sys.argv[2:]))
     raise SystemExit(main())
