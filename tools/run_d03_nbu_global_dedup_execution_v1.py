@@ -421,6 +421,16 @@ def _windows_peak_working_set_kib() -> int | None:
     counters = ProcessMemoryCounters()
     counters.cb = ctypes.sizeof(counters)
     try:
+        get_current_process.restype = ctypes.c_void_p
+        query.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ProcessMemoryCounters),
+            ctypes.c_ulong,
+        ]
+        query.restype = ctypes.c_int
+    except (AttributeError, TypeError):
+        pass
+    try:
         handle = get_current_process()
         ok = query(handle, ctypes.byref(counters), counters.cb)
     except (AttributeError, OSError, TypeError, ValueError):
@@ -466,9 +476,18 @@ def _publish_json_outputs(outputs: tuple[tuple[Path, Mapping[str, Any]], ...]) -
                     handle.write(payload)
             except FileExistsError as exc:
                 raise NbuGlobalDedupError(f"refusing to overwrite: {path}") from exc
-    except Exception:
-        for path in reversed(created):
-            path.unlink(missing_ok=True)
+    except Exception as exc:
+        rollback_errors: list[str] = []
+        for created_path in reversed(created):
+            try:
+                created_path.unlink(missing_ok=True)
+            except OSError as rollback_exc:
+                rollback_errors.append(f"{created_path}: {rollback_exc}")
+        if rollback_errors:
+            raise NbuGlobalDedupError(
+                "output publication failed and rollback was incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
         raise
 
 
