@@ -14,6 +14,7 @@ import copy
 import hashlib
 import importlib
 import json
+import os
 try:
     import resource
 except ImportError:  # pragma: no cover - Windows/local fallback
@@ -456,6 +457,35 @@ def _source_admission_provenance_scope(receipt: Mapping[str, Any]) -> dict[str, 
     }
 
 
+def _runtime_environment() -> dict[str, Any]:
+    """Record observed execution host facts separately from LOCAL_FREE policy."""
+    github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
+    result: dict[str, Any] = {
+        "python_platform": sys.platform,
+        "github_actions": github_actions,
+    }
+    if github_actions:
+        runner_environment = os.environ.get("RUNNER_ENVIRONMENT")
+        runner_os = os.environ.get("RUNNER_OS")
+        runner_arch = os.environ.get("RUNNER_ARCH")
+        _require(
+            runner_environment in {"github-hosted", "self-hosted"},
+            "GitHub Actions runner environment identity missing",
+        )
+        _require(type(runner_os) is str and bool(runner_os), "GitHub runner OS missing")
+        _require(type(runner_arch) is str and bool(runner_arch), "GitHub runner arch missing")
+        result.update(
+            {
+                "runner_environment": runner_environment,
+                "runner_os": runner_os,
+                "runner_arch": runner_arch,
+            }
+        )
+    else:
+        result["runner_environment"] = "local"
+    return result
+
+
 def _windows_peak_working_set_kib() -> int | None:
     """Return current-process peak working set in KiB via the Windows API."""
 
@@ -668,7 +698,8 @@ def execute(
 
     evidence_core = {
         "schema_version": SCHEMA,
-        "execution_profile": "GITHUB_HOSTED_FREE_LOCAL_FREE",
+        "execution_profile": "LOCAL_FREE",
+        "runtime_environment": _runtime_environment(),
         "execution_claim_issue": EXECUTION_CLAIM,
         "execution_pr": EXECUTION_PR,
         "execution_head_sha": execution_head,
