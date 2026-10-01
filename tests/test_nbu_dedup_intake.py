@@ -9,6 +9,8 @@ import pytest
 
 from twelve_six.data import nbu_dedup_intake as mod
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def _canonical_line(value: object) -> bytes:
     return (
@@ -169,7 +171,7 @@ def test_candidate_byte_drift_fails_before_projection(tmp_path, monkeypatch) -> 
 
 
 def test_manifest_candidate_drift_is_rejected(tmp_path, monkeypatch) -> None:
-    rows, candidate, evidence_path = _write_fixture(tmp_path, monkeypatch)
+    _rows, candidate, evidence_path = _write_fixture(tmp_path, monkeypatch)
     evidence = json.loads(evidence_path.read_text())
     evidence["records"][0]["pdf_sha256"] = "f" * 64
     evidence["evidence_identity_sha256"] = mod._evidence_identity(evidence)
