@@ -678,18 +678,45 @@ def _build_two_clean_authority(
         nbu_evidence = evidence.get("nbu")
         _require(type(nbu_evidence) is dict, "two-clean NBU evidence missing")
         _require(
+            nbu_evidence.get("materialization_head") == nbu.MATERIALIZATION_HEAD
+            and nbu_evidence.get("workflow_run_id") == nbu.MATERIALIZATION_RUN
+            and nbu_evidence.get("workflow_job_id") == nbu.MATERIALIZATION_JOB
+            and nbu_evidence.get("artifact_id") == nbu.MATERIALIZATION_ARTIFACT
+            and nbu_evidence.get("independent_audit_issue") == nbu.MATERIALIZATION_AUDIT,
+            "two-clean NBU materialization authority drift",
+        )
+        _require(
             nbu_evidence.get("candidate_sha256") == nbu.CANDIDATE_SHA256,
             "two-clean candidate identity drift",
+        )
+        _require(
+            _is_lower_hex(nbu_evidence.get("intake_receipt_identity_sha256"), 64),
+            "two-clean intake receipt identity invalid",
+        )
+        combined = evidence.get("combined")
+        _require(type(combined) is dict, "two-clean combined evidence missing")
+        _require(
+            combined.get("indexed_report_sha256") == report_sha,
+            "two-clean combined report identity drift",
         )
         matcher = evidence.get("matcher_execution")
         _require(type(matcher) is dict, "two-clean matcher evidence missing")
         _require(matcher.get("engine") == "MERGED_PR_1459", "two-clean matcher engine drift")
         _require(matcher.get("report_sha256") == report_sha, "two-clean matcher report drift")
+        _require(
+            evidence.get("survivor_authority_sha256") == survivor_sha,
+            "two-clean evidence/survivor identity drift",
+        )
         truth = evidence.get("truth_boundary")
         _require(type(truth) is dict, "two-clean truth boundary missing")
-        _require(truth.get("canonical_capacity_credited") == 0, "two-clean capacity promotion")
         _require(
-            truth.get("authorized_optimized_target_exposure") == 0,
+            type(truth.get("canonical_capacity_credited")) is int
+            and truth.get("canonical_capacity_credited") == 0,
+            "two-clean capacity promotion",
+        )
+        _require(
+            type(truth.get("authorized_optimized_target_exposure")) is int
+            and truth.get("authorized_optimized_target_exposure") == 0,
             "two-clean exposure promotion",
         )
         _require(truth.get("training_executed") is False, "two-clean training promotion")
@@ -705,6 +732,11 @@ def _build_two_clean_authority(
         "NBU survivor bytes invalid",
     )
 
+    intake_receipt_sha = first_evidence["nbu"]["intake_receipt_identity_sha256"]
+    _require(
+        second_evidence["nbu"]["intake_receipt_identity_sha256"] == intake_receipt_sha,
+        "two-clean intake receipt identities differ",
+    )
     evidence_ids = [
         first_evidence.get("evidence_identity_sha256"),
         second_evidence.get("evidence_identity_sha256"),
@@ -724,6 +756,7 @@ def _build_two_clean_authority(
             "audit_issue": nbu.MATERIALIZATION_AUDIT,
             "candidate_sha256": nbu.CANDIDATE_SHA256,
             "evidence_identity_sha256": nbu.EVIDENCE_IDENTITY_SHA256,
+            "intake_receipt_identity_sha256": intake_receipt_sha,
             "distinct_input_copies_required": True,
             "source_replay_executed_by_this_carrier": False,
         },
