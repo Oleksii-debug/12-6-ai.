@@ -40,6 +40,35 @@ def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
 
 
 
+
+def test_nbu_physical_jobs_pin_action_revisions() -> None:
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    top_level_jobs = [
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("  ") and not line.startswith("    ") and line.endswith(":")
+    ]
+    nbu_job_indexes = [
+        index
+        for index in top_level_jobs
+        if (
+            lines[index].startswith("  nbu-global-dedup-")
+            or lines[index] == "  nbu-pinned-pdf-access-probe:"
+        )
+    ]
+    assert nbu_job_indexes
+    for start in nbu_job_indexes:
+        end = next((index for index in top_level_jobs if index > start), len(lines))
+        for line in lines[start:end]:
+            stripped = line.strip()
+            if not stripped.startswith("uses: actions/"):
+                continue
+            revision = stripped.rsplit("@", 1)[-1]
+            assert len(revision) == 40
+            assert all(char in "0123456789abcdef" for char in revision)
+
+
+
 def test_nbu_physical_jobs_do_not_install_training_stack() -> None:
     lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
     top_level_jobs = [
