@@ -55,6 +55,18 @@ def test_selected_execution_head_rejects_malformed_sha(bad: str) -> None:
         mod._bind_execution_head(bad)
 
 
+@pytest.mark.parametrize("bad", [0, -1, False, 1.5, "10"])
+def test_work_budgets_require_exact_positive_ints(bad: object) -> None:
+    mod = _load()
+    with pytest.raises(mod.NbuGlobalDedupError, match="must be exact positive int"):
+        mod._validate_work_budgets(bad, 1, 1)
+
+
+def test_work_budgets_accept_positive_exact_ints() -> None:
+    mod = _load()
+    mod._validate_work_budgets(1, 2, 3)
+
+
 def test_selected_execution_head_rejects_stale_or_synthetic_checkout(monkeypatch) -> None:
     mod = _load()
     monkeypatch.setattr(
