@@ -308,6 +308,13 @@ def _validate_survivor_projection(
     projection: Mapping[str, Any],
 ) -> None:
     terminal = _validated_terminal_summary(report)
+    projection_core = dict(projection)
+    projection_identity = projection_core.pop("survivor_authority_sha256", None)
+    _require(
+        _is_lower_hex(projection_identity, 64)
+        and projection_identity == _sha256(_canonical(projection_core)),
+        "survivor projection self-hash mismatch",
+    )
     _require(
         projection.get("schema_version") == v9_semantics.SURVIVOR_SCHEMA,
         "survivor schema drift",
