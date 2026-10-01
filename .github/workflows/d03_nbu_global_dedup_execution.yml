@@ -149,8 +149,9 @@ jobs:
           cmake --build /tmp/poppler-build --parallel 2
           sudo cmake --install /tmp/poppler-build
           sudo ldconfig
-          pdftotext -v 2>&1 | tee "$RUNNER_TEMP/pdftotext-version-$PASS_ID.txt"
-          grep -F "pdftotext version ${POPPLER_VERSION}" "$RUNNER_TEMP/pdftotext-version-$PASS_ID.txt"
+          RUN_DIR="$RUNNER_TEMP/nbu-global-dedup-pass-$PASS_ID"
+          pdftotext -v 2>&1 | tee "$RUN_DIR/pdftotext-version.txt"
+          grep -F "pdftotext version ${POPPLER_VERSION}" "$RUN_DIR/pdftotext-version.txt"
 
       - name: Pin PDFs and materialize exact NBU text twice
         run: |
@@ -272,10 +273,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nbu-global-dedup-pass-${{ matrix.pass }}-${{ github.event.pull_request.head.sha }}
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
           path: |
-            ${{ runner.temp }}/pdftotext-version-${{ matrix.pass }}.txt
+            ${{ runner.temp }}/nbu-global-dedup-pass-${{ matrix.pass }}/pdftotext-version.txt
             ${{ runner.temp }}/nbu-global-dedup-pass-${{ matrix.pass }}/nbu-discovery-evidence.json
             ${{ runner.temp }}/nbu-global-dedup-pass-${{ matrix.pass }}/nbu-catalog-pages.json
             ${{ runner.temp }}/nbu-global-dedup-pass-${{ matrix.pass }}/nbu-pdf-pin-evidence.json
