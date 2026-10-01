@@ -387,6 +387,7 @@ def _good_survivor_projection(mod):
         ],
         "survivor_source_ids": ["base:a", "franko:b"],
     }
+    projection["survivor_authority_sha256"] = mod._sha256(mod._canonical(projection))
     return report, projection
 
 
@@ -394,6 +395,37 @@ def test_survivor_projection_is_cross_bound_to_terminal_report() -> None:
     mod = _load()
     report, projection = _good_survivor_projection(mod)
     mod._validate_survivor_projection(report, projection)
+
+
+def test_survivor_projection_rejects_forged_self_identity() -> None:
+    mod = _load()
+    report, projection = _good_survivor_projection(mod)
+    projection["survivor_authority_sha256"] = "0" * 64
+    with pytest.raises(
+        mod.Franko1901GlobalDedupError,
+        match="survivor projection identity drift",
+    ):
+        mod._validate_survivor_projection(report, projection)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "A" * 64,
+        "g" * 64,
+        "0" * 63,
+        True,
+    ],
+)
+def test_survivor_projection_rejects_noncanonical_identity_format(bad: object) -> None:
+    mod = _load()
+    report, projection = _good_survivor_projection(mod)
+    projection["survivor_authority_sha256"] = bad
+    with pytest.raises(
+        mod.Franko1901GlobalDedupError,
+        match="survivor projection identity format invalid",
+    ):
+        mod._validate_survivor_projection(report, projection)
 
 
 @pytest.mark.parametrize(

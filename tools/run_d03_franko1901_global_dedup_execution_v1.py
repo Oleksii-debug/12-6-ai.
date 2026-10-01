@@ -396,6 +396,19 @@ def _validate_survivor_projection(
         projection.get("schema_version") == v9_semantics.SURVIVOR_SCHEMA,
         "survivor projection schema drift",
     )
+    projection_identity = projection.get("survivor_authority_sha256")
+    _require(
+        type(projection_identity) is str
+        and len(projection_identity) == 64
+        and all(ch in "0123456789abcdef" for ch in projection_identity),
+        "survivor projection identity format invalid",
+    )
+    projection_core = dict(projection)
+    projection_core.pop("survivor_authority_sha256")
+    _require(
+        projection_identity == _sha256(_canonical(projection_core)),
+        "survivor projection identity drift",
+    )
     _require(
         projection.get("matcher_report_sha256") == report.get("report_sha256"),
         "survivor projection matcher identity drift",
