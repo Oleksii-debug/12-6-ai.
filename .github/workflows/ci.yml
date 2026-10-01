@@ -219,7 +219,7 @@ jobs:
           cmp "$RUN_DIR/nbu-text-a.jsonl" "$RUN_DIR/nbu-text-b.jsonl"
           cmp "$RUN_DIR/nbu-text-evidence-a.json" "$RUN_DIR/nbu-text-evidence-b.json"
           test "$(sha256sum "$RUN_DIR/nbu-text-a.jsonl" | cut -d' ' -f1)" = "$EXPECTED_CANDIDATE_SHA256"
-          python - "$RUN_DIR/nbu-text-evidence-a.json" <<'PY'
+          python -I - "$RUN_DIR/nbu-text-evidence-a.json" <<'PY'
           import json
           import os
           import sys
@@ -253,7 +253,7 @@ jobs:
         run: |
           set -euxo pipefail
           RUN_DIR="$RUNNER_TEMP/nbu-global-dedup-pass-$PASS_ID"
-          python - "$RUN_DIR" <<'PY'
+          python -I - "$RUN_DIR" <<'PY'
           from __future__ import annotations
 
           import hashlib
@@ -370,7 +370,7 @@ jobs:
           cmp "$P1_DIR/global-dedup-report.json" "$P2_DIR/global-dedup-report.json"
           cmp "$P1_DIR/survivor-authority.json" "$P2_DIR/survivor-authority.json"
 
-          python - <<'PY'
+          python -I - <<'PY'
           from __future__ import annotations
 
           import hashlib
