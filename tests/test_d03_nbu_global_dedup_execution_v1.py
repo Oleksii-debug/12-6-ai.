@@ -435,6 +435,46 @@ def test_runtime_environment_rejects_ambiguous_actions_runner(monkeypatch) -> No
         mod._runtime_environment()
 
 
+def test_max_rss_linux_preserves_kib(monkeypatch) -> None:
+    mod = _load()
+    fake_resource = SimpleNamespace(
+        RUSAGE_SELF=0,
+        getrusage=lambda _who: SimpleNamespace(ru_maxrss=2_049),
+    )
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    monkeypatch.setattr(mod, "resource", fake_resource)
+    assert mod._max_rss_kib() == 2_049
+
+
+def test_max_rss_darwin_converts_bytes_to_kib(monkeypatch) -> None:
+    mod = _load()
+    fake_resource = SimpleNamespace(
+        RUSAGE_SELF=0,
+        getrusage=lambda _who: SimpleNamespace(ru_maxrss=2_049),
+    )
+    monkeypatch.setattr(mod.sys, "platform", "darwin")
+    monkeypatch.setattr(mod, "resource", fake_resource)
+    assert mod._max_rss_kib() == 3
+
+
+def test_max_rss_windows_uses_peak_working_set_helper(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "_windows_peak_working_set_kib", lambda: 4_096)
+    assert mod._max_rss_kib() == 4_096
+
+
+def test_max_rss_unknown_posix_fails_closed(monkeypatch) -> None:
+    mod = _load()
+    fake_resource = SimpleNamespace(
+        RUSAGE_SELF=0,
+        getrusage=lambda _who: SimpleNamespace(ru_maxrss=2_049),
+    )
+    monkeypatch.setattr(mod.sys, "platform", "freebsd14")
+    monkeypatch.setattr(mod, "resource", fake_resource)
+    assert mod._max_rss_kib() is None
+
+
 def test_publish_is_create_only(tmp_path) -> None:
     mod = _load()
     output = tmp_path / "evidence.json"
