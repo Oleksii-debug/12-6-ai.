@@ -571,6 +571,12 @@ jobs:
           assert executions[0]["product_path_blobs"] == executions[1]["product_path_blobs"]
           assert executions[0]["nbu"]["intake_receipt_identity_sha256"] == executions[1]["nbu"]["intake_receipt_identity_sha256"]
 
+          runtime_a = executions[0]["runtime_environment"]
+          runtime_b = executions[1]["runtime_environment"]
+          for key in ("python_version", "python_implementation", "python_platform"):
+              assert type(runtime_a.get(key)) is str and runtime_a.get(key), key
+              assert runtime_a.get(key) == runtime_b.get(key), key
+
           core = {
               "schema_version": "12-6.d03-nbu-global-dedup-two-clean-physical.v1",
               "execution_head_sha": os.environ["HEAD_SHA"],
