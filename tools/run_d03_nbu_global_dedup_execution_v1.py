@@ -792,7 +792,27 @@ def _build_two_clean_authority(
             and evidence_identity == _sha256(_canonical(evidence_core)),
             "two-clean run evidence self-hash mismatch",
         )
+        _require(evidence.get("schema_version") == SCHEMA, "two-clean child schema drift")
+        _require(
+            evidence.get("execution_profile") == "LOCAL_FREE",
+            "two-clean child execution profile drift",
+        )
         _require(evidence.get("pinned_main_sha") == EXPECTED_MAIN, "two-clean pinned-main drift")
+        _require(
+            evidence.get("execution_claim_issue") == EXECUTION_CLAIM
+            and evidence.get("execution_pr") == EXECUTION_PR,
+            "two-clean child execution lineage drift",
+        )
+        baseline = evidence.get("baseline_v8")
+        _require(type(baseline) is dict, "two-clean baseline evidence missing")
+        _require(
+            baseline.get("v7_head_sha") == v8.EXPECTED_V7_HEAD
+            and type(baseline.get("source_object_count")) is int
+            and baseline.get("source_object_count") == EXPECTED_BASE_OBJECTS
+            and type(baseline.get("payload_bytes")) is int
+            and baseline.get("payload_bytes") == EXPECTED_BASE_BYTES,
+            "two-clean baseline authority drift",
+        )
         nbu_evidence = evidence.get("nbu")
         _require(type(nbu_evidence) is dict, "two-clean NBU evidence missing")
         _require(
@@ -808,6 +828,13 @@ def _build_two_clean_authority(
             "two-clean candidate identity drift",
         )
         _require(
+            type(nbu_evidence.get("source_object_count")) is int
+            and nbu_evidence.get("source_object_count") == EXPECTED_NBU_OBJECTS
+            and type(nbu_evidence.get("payload_bytes")) is int
+            and nbu_evidence.get("payload_bytes") == EXPECTED_NBU_BYTES,
+            "two-clean NBU cardinality drift",
+        )
+        _require(
             _is_lower_hex(nbu_evidence.get("intake_receipt_identity_sha256"), 64),
             "two-clean intake receipt identity invalid",
         )
@@ -817,27 +844,64 @@ def _build_two_clean_authority(
             combined.get("indexed_report_sha256") == report_sha,
             "two-clean combined report identity drift",
         )
+        _require(
+            type(combined.get("source_object_count")) is int
+            and combined.get("source_object_count") == EXPECTED_COMBINED_OBJECTS
+            and type(combined.get("payload_bytes")) is int
+            and combined.get("payload_bytes") == EXPECTED_COMBINED_BYTES,
+            "two-clean combined cardinality drift",
+        )
         matcher = evidence.get("matcher_execution")
         _require(type(matcher) is dict, "two-clean matcher evidence missing")
         _require(matcher.get("engine") == "MERGED_PR_1459", "two-clean matcher engine drift")
         _require(matcher.get("report_sha256") == report_sha, "two-clean matcher report drift")
         _require(
+            matcher.get("performance_equivalence_authority") == "MERGED_PR_1459"
+            and matcher.get("incumbent_runtime_attested") is True
+            and matcher.get("all_pairs_reference_executed") is False,
+            "two-clean matcher authority drift",
+        )
+        _require(
             evidence.get("survivor_authority_sha256") == survivor_sha,
             "two-clean evidence/survivor identity drift",
         )
+        content_boundary = evidence.get("content_boundary")
+        expected_content_boundary = {
+            "raw_text_emitted": False,
+            "raw_candidate_written_to_durable_evidence": False,
+            "dedup_report_text_free": True,
+            "survivor_authority_text_free": True,
+        }
+        _require(
+            type(content_boundary) is dict
+            and all(
+                type(content_boundary.get(key)) is bool
+                and content_boundary.get(key) is expected
+                for key, expected in expected_content_boundary.items()
+            ),
+            "two-clean child content boundary drift",
+        )
         truth = evidence.get("truth_boundary")
         _require(type(truth) is dict, "two-clean truth boundary missing")
-        _require(
-            type(truth.get("canonical_capacity_credited")) is int
-            and truth.get("canonical_capacity_credited") == 0,
-            "two-clean capacity promotion",
-        )
-        _require(
-            type(truth.get("authorized_optimized_target_exposure")) is int
-            and truth.get("authorized_optimized_target_exposure") == 0,
-            "two-clean exposure promotion",
-        )
-        _require(truth.get("training_executed") is False, "two-clean training promotion")
+        expected_truth = {
+            "canonical_capacity_credited": 0,
+            "training_authorized_bytes": 0,
+            "authorized_unique_loss_positions": 0,
+            "authorized_optimized_target_exposure": 0,
+            "tokenizer_fit_authorized": False,
+            "optimizer_updates_executed_on_real_targets": 0,
+            "training_executed": False,
+            "learned_weights_created": False,
+            "final_test_outcomes_read": False,
+            "paid_compute_used": False,
+            "foreign_pretrained_weights_used": False,
+            "whole_corpus_external_llm_cleanliness_claimed": False,
+        }
+        for key, expected in expected_truth.items():
+            _require(
+                type(truth.get(key)) is type(expected) and truth.get(key) == expected,
+                f"two-clean truth boundary drift: {key}",
+            )
 
     nbu_survivor_count = first_survivors.get("nbu_survivor_source_object_count")
     nbu_survivor_bytes = first_survivors.get("nbu_survivor_declared_capacity_bytes")
