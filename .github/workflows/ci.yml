@@ -564,3 +564,90 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           path: artifacts/two-clean-summary.json
+
+
+  nbu-pinned-pdf-access-probe:
+    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      NBU_HEAD: "13be2b000804b410aed7ba759a663408429f60f6"
+      NBU_BRANCH: "d03/nbu-pdftotext-materialization-20260907"
+      ORIGINAL_ARTIFACT_ID: "11017211425"
+      ORIGINAL_ARTIFACT_SHA256: "0993874b3b89ebd9f108c50bc0cb6c66f778c23999f230cc88a3eed893061e60"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout exact execution carrier head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download exact original body-free NBU evidence by artifact ID
+        run: |
+          set -euxo pipefail
+          PROBE_DIR="$RUNNER_TEMP/nbu-pinned-pdf-access-probe"
+          mkdir -p "$PROBE_DIR/evidence"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/Oleksii-debug/12-6-ai./actions/artifacts/$ORIGINAL_ARTIFACT_ID/zip" \
+            > "$PROBE_DIR/evidence.zip"
+          echo "$ORIGINAL_ARTIFACT_SHA256  $PROBE_DIR/evidence.zip" \
+            | sha256sum --check --strict
+          unzip -q "$PROBE_DIR/evidence.zip" -d "$PROBE_DIR/evidence"
+          test -f "$PROBE_DIR/evidence/nbu-pdf-pin-evidence.json"
+          test ! -f "$PROBE_DIR/evidence/nbu-text-a.jsonl"
+
+      - name: Prepare exact historical NBU materializer authority
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git fetch --no-tags origin "$NBU_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$NBU_HEAD"
+          NBU_ROOT="$RUNNER_TEMP/nbu-historical-pdf-probe"
+          git worktree add --detach "$NBU_ROOT" "$NBU_HEAD"
+          test "$(git -C "$NBU_ROOT" rev-parse HEAD)" = "$NBU_HEAD"
+
+      - name: Fresh-refetch first exact pinned official PDF
+        run: |
+          set -euxo pipefail
+          PROBE_DIR="$RUNNER_TEMP/nbu-pinned-pdf-access-probe"
+          NBU_ROOT="$RUNNER_TEMP/nbu-historical-pdf-probe"
+          PYTHONPATH="$NBU_ROOT/src" python - "$NBU_ROOT" "$PROBE_DIR/evidence/nbu-pdf-pin-evidence.json" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import importlib.util
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          evidence_path = Path(sys.argv[2])
+          tool = root / "tools/_materialize_d03_ua_nbu_pdftotext_v1_impl.py"
+          spec = importlib.util.spec_from_file_location("nbu_pdftotext_probe", tool)
+          if spec is None or spec.loader is None:
+              raise RuntimeError("cannot load exact historical NBU materializer")
+          module = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = module
+          spec.loader.exec_module(module)
+          config = module.load_config()
+          evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+          pins = module.validate_pin_evidence(evidence, config)
+          url = sorted(pins)[0]
+          pin = pins[url]
+          raw = module.network_fetch_pdf(url, int(pin["pdf_bytes"]), config)
+          if hashlib.sha256(raw).hexdigest() != pin["pdf_sha256"]:
+              raise RuntimeError("pinned PDF preflight SHA drift")
+          print(
+              "PINNED_PDF_ACCESS_PASS "
+              f"url={url} bytes={len(raw)} sha256={pin['pdf_sha256']}"
+          )
+          PY
