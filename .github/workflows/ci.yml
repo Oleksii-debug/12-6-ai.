@@ -328,7 +328,7 @@ jobs:
             ${{ runner.temp }}/nbu-global-dedup-pass-${{ matrix.pass }}/physical-pass-summary.json
 
   nbu-global-dedup-audited-pin-replay:
-    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 2454 && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
