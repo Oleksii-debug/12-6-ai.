@@ -151,7 +151,7 @@ def test_production_arithmetic_binds_exact_franko_candidate() -> None:
     assert mod.EXPECTED_COMBINED_BYTES == 7_857_629
     assert mod.franko1901.UPSTREAM_PRODUCT_PR == 1025
     assert mod.FRANKO1901_FINAL_HEAD == "5816f0ff4ca2f53053123063cd2471442a07d974"
-    assert mod.EXPECTED_MAIN == "c4e948e1207a1ece0753ad586cb8cb0b7ca8b540"
+    assert mod.EXPECTED_MAIN == "ba9e49cedba4a110e1c4f7d83702e8fcf8a42461"
 
 
 def test_composed_inventory_names_exact_franko_product_authority() -> None:

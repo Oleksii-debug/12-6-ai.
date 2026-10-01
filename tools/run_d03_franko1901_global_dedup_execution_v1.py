@@ -40,7 +40,7 @@ from twelve_six.data import incumbent_dedup_indexed_execution as indexed
 
 SCHEMA = "12-6.d03-franko1901-global-dedup-execution.v1"
 SURVIVOR_SCHEMA = "12-6.d03-franko1901-global-dedup-survivors.v1"
-EXPECTED_MAIN = "c4e948e1207a1ece0753ad586cb8cb0b7ca8b540"
+EXPECTED_MAIN = "ba9e49cedba4a110e1c4f7d83702e8fcf8a42461"
 EXECUTION_CLAIM = 2394
 EXECUTION_PR = 2448
 FRANKO1901_FINAL_HEAD = franko1901.UPSTREAM_PRODUCT_HEAD
