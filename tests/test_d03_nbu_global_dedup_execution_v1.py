@@ -415,6 +415,29 @@ def test_publish_is_create_only(tmp_path) -> None:
         mod._publish_json_outputs(((output, {"ok": False}),))
 
 
+def test_publish_rolls_back_on_keyboard_interrupt(tmp_path, monkeypatch) -> None:
+    mod = _load()
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    original_open = Path.open
+
+    def interrupted_open(path, *args, **kwargs):
+        if path == second:
+            raise KeyboardInterrupt
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", interrupted_open)
+    with pytest.raises(KeyboardInterrupt):
+        mod._publish_json_outputs(
+            (
+                (first, {"one": 1}),
+                (second, {"two": 2}),
+            )
+        )
+    assert not first.exists()
+    assert not second.exists()
+
+
 def test_publish_rolls_back_files_from_failed_publication(tmp_path) -> None:
     mod = _load()
     first = tmp_path / "first.json"
