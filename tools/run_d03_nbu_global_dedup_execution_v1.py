@@ -313,7 +313,9 @@ def _validate_survivor_projection(
     )
     post_count = projection.get("post_dedup_survivor_source_object_count")
     _require(
-        type(post_count) is int and post_count == len(survivor_ids),
+        type(post_count) is int
+        and 0 < post_count <= EXPECTED_COMBINED_OBJECTS
+        and post_count == len(survivor_ids),
         "survivor count drift",
     )
     _require(
