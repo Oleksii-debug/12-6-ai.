@@ -329,7 +329,6 @@ jobs:
 
   nbu-global-dedup-audited-pin-replay:
     if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
-    needs: bootstrap
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -365,6 +364,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+          ruff check src/twelve_six/data/nbu_dedup_intake.py tests/test_nbu_dedup_intake.py tests/test_d03_nbu_global_dedup_execution_v1.py
+          pytest -q tests/test_nbu_dedup_intake.py tests/test_d03_nbu_global_dedup_execution_v1.py
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential ca-certificates cmake curl libfontconfig1-dev libfreetype6-dev \
