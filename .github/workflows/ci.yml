@@ -51,7 +51,7 @@ jobs:
           retention-days: 90
           path: artifacts/eval647/current_corpus_overlap_v1.json
   nbu-global-dedup-pass:
-    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1'
+    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
     needs: bootstrap
     runs-on: ubuntu-24.04
     timeout-minutes: 240
@@ -328,7 +328,7 @@ jobs:
             ${{ runner.temp }}/nbu-global-dedup-pass-${{ matrix.pass }}/physical-pass-summary.json
 
   nbu-global-dedup-two-clean:
-    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1'
+    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
     needs: nbu-global-dedup-pass
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -622,7 +622,7 @@ jobs:
 
 
   nbu-pinned-pdf-access-probe:
-    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1'
+    if: github.event_name == 'pull_request' && github.head_ref == 'swarm/2398-nbu-indexed-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
