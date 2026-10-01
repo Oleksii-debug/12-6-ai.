@@ -179,6 +179,17 @@ def test_survivor_projection_rejects_terminal_drift(
         mod._validate_survivor_projection(report, projection)
 
 
+def test_survivor_projection_rejects_empty_or_oversized_survivor_set() -> None:
+    mod = _load()
+    report = _report(mod)
+    for ids in ([], [f"source:{index}" for index in range(mod.EXPECTED_COMBINED_OBJECTS + 1)]):
+        projection = _projection(mod)
+        projection["survivor_source_ids"] = ids
+        projection["post_dedup_survivor_source_object_count"] = len(ids)
+        with pytest.raises(mod.NbuGlobalDedupError, match="survivor count drift"):
+            mod._validate_survivor_projection(report, projection)
+
+
 def test_runtime_environment_local_is_provider_neutral(monkeypatch) -> None:
     mod = _load()
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
