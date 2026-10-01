@@ -46,6 +46,11 @@ def test_two_clean_workflow_binds_distinct_physical_pass_summaries() -> None:
     assert 'verify_self_hash(pass_summary, "summary_identity_sha256")' in workflow
     assert 'assert summary["pass_id"] == expected_pass_id' in workflow
     assert '"physical_pass_summary_identity_sha256": [' in workflow
+    assert '"discovery_evidence_identity_sha256": discovery_evidence["evidence_identity_sha256"]' in workflow
+    assert '"pdf_pin_evidence_identity_sha256": pdf_pin_evidence["evidence_identity_sha256"]' in workflow
+    assert 'pin["parent_discovery_evidence_identity_sha256"]' in workflow
+    assert 'text["discovery_evidence_identity_sha256"]' in workflow
+    assert 'text["pdf_pin_evidence_identity_sha256"]' in workflow
 
 
 
