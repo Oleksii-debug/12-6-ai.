@@ -289,15 +289,27 @@ def test_indexed_execution_attests_and_verifies_report(monkeypatch) -> None:
 
 
 def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
+    report_sha = _report(mod)["report_sha256"]
+    survivor_sha = _two_clean_survivors(mod)["survivor_authority_sha256"]
     core: dict[str, object] = {
         "execution_head_sha": "a" * 40,
         "pinned_main_sha": mod.EXPECTED_MAIN,
-        "nbu": {"candidate_sha256": mod.nbu.CANDIDATE_SHA256},
+        "nbu": {
+            "materialization_head": mod.nbu.MATERIALIZATION_HEAD,
+            "workflow_run_id": mod.nbu.MATERIALIZATION_RUN,
+            "workflow_job_id": mod.nbu.MATERIALIZATION_JOB,
+            "artifact_id": mod.nbu.MATERIALIZATION_ARTIFACT,
+            "independent_audit_issue": mod.nbu.MATERIALIZATION_AUDIT,
+            "candidate_sha256": mod.nbu.CANDIDATE_SHA256,
+            "intake_receipt_identity_sha256": "5" * 64,
+        },
+        "combined": {"indexed_report_sha256": report_sha},
         "matcher_execution": {
             "engine": "MERGED_PR_1459",
-            "report_sha256": _report(mod)["report_sha256"],
+            "report_sha256": report_sha,
             "test_marker": marker,
         },
+        "survivor_authority_sha256": survivor_sha,
         "truth_boundary": {
             "canonical_capacity_credited": 0,
             "authorized_optimized_target_exposure": 0,
@@ -457,6 +469,61 @@ def test_two_clean_authority_rejects_tampered_survivor_self_hash() -> None:
             deepcopy(both_tampered),
             _two_clean_evidence(mod, "run-a"),
             _two_clean_evidence(mod, "run-b"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ("combined", "combined report identity drift"),
+        ("survivor", "evidence/survivor identity drift"),
+        ("receipt", "intake receipt identities differ"),
+    ],
+)
+def test_two_clean_authority_cross_binds_child_outputs(field: str, message: str) -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    if field == "combined":
+        evidence_b["combined"]["indexed_report_sha256"] = "f" * 64
+    elif field == "survivor":
+        evidence_b["survivor_authority_sha256"] = "f" * 64
+    else:
+        evidence_b["nbu"]["intake_receipt_identity_sha256"] = "6" * 64
+    core = dict(evidence_b)
+    core.pop("evidence_identity_sha256")
+    evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_truth_zero_fields_reject_bool_alias() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    evidence_b["truth_boundary"]["canonical_capacity_credited"] = False
+    core = dict(evidence_b)
+    core.pop("evidence_identity_sha256")
+    evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(mod.NbuGlobalDedupError, match="capacity promotion"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
         )
 
 
