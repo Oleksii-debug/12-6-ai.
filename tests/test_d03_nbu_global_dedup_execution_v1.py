@@ -102,8 +102,7 @@ def test_compose_graph_rejects_source_id_collision() -> None:
 
 def _report(mod):
     after = mod.EXPECTED_COMBINED_BYTES - 10
-    return {
-        "report_sha256": "1" * 64,
+    core = {
         "source_count": mod.EXPECTED_COMBINED_OBJECTS,
         "sources": [
             {
@@ -124,13 +123,14 @@ def _report(mod):
             "duplicate_cluster_count": 1,
         },
     }
+    return {**core, "report_sha256": mod._sha256(mod._canonical(core))}
 
 
 def _projection(mod):
     after = mod.EXPECTED_COMBINED_BYTES - 10
     return {
         "schema_version": mod.v9_semantics.SURVIVOR_SCHEMA,
-        "matcher_report_sha256": "1" * 64,
+        "matcher_report_sha256": _report(mod)["report_sha256"],
         "survivor_authority_sha256": "2" * 64,
         "pre_dedup_source_object_count": mod.EXPECTED_COMBINED_OBJECTS,
         "post_dedup_survivor_source_object_count": 2,
@@ -295,7 +295,7 @@ def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
         "nbu": {"candidate_sha256": mod.nbu.CANDIDATE_SHA256},
         "matcher_execution": {
             "engine": "MERGED_PR_1459",
-            "report_sha256": "1" * 64,
+            "report_sha256": _report(mod)["report_sha256"],
             "test_marker": marker,
         },
         "truth_boundary": {
@@ -335,7 +335,7 @@ def test_two_clean_authority_is_zero_credit_and_does_not_claim_source_replay() -
         _two_clean_evidence(mod, "run-b"),
     )
     assert authority["dedup"]["fresh_process_count"] == 2
-    assert authority["dedup"]["report_sha256"] == "1" * 64
+    assert authority["dedup"]["report_sha256"] == report["report_sha256"]
     assert len(authority["dedup"]["survivor_authority_sha256"]) == 64
     assert authority["materialization_authority"]["distinct_input_copies_required"] is True
     assert authority["materialization_authority"]["source_replay_executed_by_this_carrier"] is False
@@ -343,6 +343,24 @@ def test_two_clean_authority_is_zero_credit_and_does_not_claim_source_replay() -
     assert authority["truth_boundary"]["authorized_optimized_target_exposure"] == 0
     assert authority["truth_boundary"]["training_executed"] is False
     assert len(authority["two_clean_authority_sha256"]) == 64
+
+
+def test_two_clean_authority_rejects_self_consistent_pair_with_bad_report_hash() -> None:
+    mod = _load()
+    report = _report(mod)
+    report["report_sha256"] = "f" * 64
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    with pytest.raises(mod.NbuGlobalDedupError, match="report self-hash mismatch"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
 
 
 def test_two_clean_authority_rejects_report_or_survivor_drift() -> None:
