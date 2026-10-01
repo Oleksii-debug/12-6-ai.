@@ -231,9 +231,39 @@ def test_execute_binds_head_and_authority_before_reconstruction() -> None:
     assert head < authority < reconstruction
 
 
-def test_production_uses_indexed_executor_without_all_pairs_reference() -> None:
+def test_production_requires_reference_and_indexed_equivalence() -> None:
     source = MODULE.read_text(encoding="utf-8")
+    assert "matcher.audit_payloads(inventory, payloads)" in source
     assert "indexed.audit_payloads_indexed(" in source
     assert "indexed.attest_incumbent_runtime(matcher)" in source
-    assert "matcher.verify_report(report)" in source
-    assert "matcher.audit_payloads(" not in source
+    assert "indexed/reference report mismatch" in source
+
+
+def test_reference_indexed_mismatch_is_rejected(monkeypatch) -> None:
+    mod = _load()
+
+    class Matcher:
+        def audit_payloads(self, inventory, payloads):
+            return {"report_sha256": "1" * 64, "sources": []}
+
+        def verify_report(self, report):
+            assert isinstance(report, dict)
+
+    monkeypatch.setattr(mod.indexed, "attest_incumbent_runtime", lambda matcher: None)
+    monkeypatch.setattr(
+        mod.indexed,
+        "audit_payloads_indexed",
+        lambda matcher, inventory, payloads, **kwargs: {
+            "report_sha256": "2" * 64,
+            "sources": [],
+        },
+    )
+    with pytest.raises(mod.NbuGlobalDedupError, match="indexed/reference report mismatch"):
+        mod._execute_equivalent_matchers(
+            Matcher(),
+            {"sources": []},
+            {},
+            max_candidate_pairs=10,
+            max_index_postings=10,
+            max_pair_expansions=10,
+        )
