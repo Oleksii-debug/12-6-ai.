@@ -38,6 +38,17 @@ def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
         assert lines[index + 1] == expected_gate, job
 
 
+
+def test_two_clean_workflow_binds_distinct_physical_pass_summaries() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert 'P1_DIR"]) / "physical-pass-summary.json"' in workflow
+    assert 'P2_DIR"]) / "physical-pass-summary.json"' in workflow
+    assert 'verify_self_hash(pass_summary, "summary_identity_sha256")' in workflow
+    assert 'assert summary["pass_id"] == expected_pass_id' in workflow
+    assert '"physical_pass_summary_identity_sha256": [' in workflow
+
+
+
 def _load():
     spec = importlib.util.spec_from_file_location("run_d03_nbu_execution_test", MODULE)
     assert spec is not None and spec.loader is not None
