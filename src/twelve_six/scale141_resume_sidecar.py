@@ -25,6 +25,10 @@ from twelve_six.checkpoint.pinned_directory import (
     PinnedDirectoryError,
     pinned_real_directory,
 )
+from twelve_six.scale141_strict_json import (
+    Scale141StrictJsonError,
+    strict_json_loads,
+)
 
 SIDECAR_SCHEMA = "12-6.scale141-d04-resume-sidecar.v1"
 SIDECAR_ROOT = "resume-states"
@@ -332,13 +336,19 @@ def _write_payload_directory(
     try:
         state_path = staging / SIDECAR_FILE
         with state_path.open("w", encoding="utf-8", newline="\n") as handle:
-            json.dump(
-                payload,
-                handle,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
+            try:
+                json.dump(
+                    payload,
+                    handle,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+            except (TypeError, ValueError) as exc:
+                raise ResumeSidecarError(
+                    "recovery resume sidecar is not standards-strict JSON"
+                ) from exc
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
@@ -530,8 +540,8 @@ def _read_payload(
     if hashlib.sha256(data).hexdigest() != expected_hash:
         raise ResumeSidecarError("recovery resume sidecar file hash mismatch")
     try:
-        value = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = strict_json_loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, Scale141StrictJsonError) as exc:
         raise ResumeSidecarError("recovery resume sidecar is unreadable") from exc
     if not isinstance(value, dict):
         raise ResumeSidecarError(
