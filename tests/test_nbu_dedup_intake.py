@@ -201,7 +201,7 @@ def test_record_provenance_identity_drift_is_rejected(tmp_path, monkeypatch) -> 
 
 def test_duplicate_candidate_record_id_is_rejected(tmp_path, monkeypatch) -> None:
     rows = [_row(1, "Один."), _row(2, "Два.")]
-    rows[1]["record_id"] = rows[0]["record_id"]
+    rows[1] = dict(rows[0])
     raw = b"".join(_canonical_line(row) for row in rows)
     evidence = _evidence(rows, raw)
     _patch_authority(monkeypatch, rows, raw, evidence)

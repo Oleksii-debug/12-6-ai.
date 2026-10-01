@@ -122,8 +122,8 @@ def test_carrier_constants_bind_current_nbu_projection() -> None:
     assert mod.EXECUTION_PR == 2454
     assert mod.EXPECTED_NBU_OBJECTS == 40
     assert mod.EXPECTED_NBU_BYTES == 794_091
-    assert mod.EXPECTED_COMBINED_OBJECTS == 304
-    assert mod.EXPECTED_COMBINED_BYTES == 6_889_715
+    assert mod.EXPECTED_COMBINED_OBJECTS == 303
+    assert mod.EXPECTED_COMBINED_BYTES == 6_888_056
     assert mod.INTAKE_PATH in mod.PRODUCT_PATHS
     assert mod.CARRIER_PATH in mod.PRODUCT_PATHS
     assert mod.INTAKE_PATH not in mod.MAIN_AUTHORITY_PATHS
@@ -426,6 +426,9 @@ def test_survivor_projection_rejects_terminal_drift(
     report = _report(mod)
     projection = _projection(mod)
     projection[field] = bad
+    core = dict(projection)
+    core.pop("survivor_authority_sha256")
+    projection["survivor_authority_sha256"] = mod._sha256(mod._canonical(core))
     with pytest.raises(mod.NbuGlobalDedupError, match=message):
         mod._validate_survivor_projection(report, projection)
 
@@ -437,6 +440,9 @@ def test_survivor_projection_rejects_empty_or_oversized_survivor_set() -> None:
         projection = _projection(mod)
         projection["survivor_source_ids"] = ids
         projection["post_dedup_survivor_source_object_count"] = len(ids)
+        core = dict(projection)
+        core.pop("survivor_authority_sha256")
+        projection["survivor_authority_sha256"] = mod._sha256(mod._canonical(core))
         with pytest.raises(mod.NbuGlobalDedupError, match="survivor count drift"):
             mod._validate_survivor_projection(report, projection)
 
@@ -597,7 +603,7 @@ def test_execute_binds_head_and_authority_before_reconstruction() -> None:
     source = MODULE.read_text(encoding="utf-8")
     head = source.index("execution_head = _bind_execution_head(expected_execution_head)")
     authority = source.index("main_blobs, product_blobs = verify_repository_authority()")
-    reconstruction = source.index("matcher, base_inventory, base_payloads =")
+    reconstruction = source.index("matcher, base_inventory, base_payloads, removal =")
     assert head < authority < reconstruction
 
 
@@ -660,6 +666,7 @@ def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
             "v7_head_sha": mod.v8.EXPECTED_V7_HEAD,
             "source_object_count": mod.EXPECTED_BASE_OBJECTS,
             "payload_bytes": mod.EXPECTED_BASE_BYTES,
+            "nomis1864_deauthorization": deepcopy(mod.NOMIS_REMOVAL_PROOF),
         },
         "nbu": {
             "materialization_head": mod.nbu.MATERIALIZATION_HEAD,
@@ -1162,3 +1169,129 @@ def test_two_clean_incomplete_is_zero_authority(tmp_path) -> None:
     assert value["authorized_optimized_target_exposure"] == 0
     assert value["training_executed"] is False
     assert not (root / "two-clean-authority.json").exists()
+
+
+def _row(source_id: str, *, family: str = "base", size: int = 5) -> dict[str, object]:
+    return {
+        "source_id": source_id,
+        "source_family": family,
+        "declared_capacity_bytes": size,
+    }
+
+
+@pytest.mark.parametrize(
+    ("source_id", "family"),
+    [
+        ("ua.verba.nomis1864.bounded24", "renamed.family"),
+        ("renamed.id", "ua.verba.public-domain.nomis1864"),
+    ],
+)
+def test_clean_base_rejects_quarantined_identifiers(source_id: str, family: str) -> None:
+    import json
+
+    mod = _load()
+    authority = json.loads(
+        (ROOT / mod.clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
+    )
+    with pytest.raises(mod.quarantine.ExternalLLMProvenanceQuarantineError):
+        mod._verify_clean_payload_graph(
+            {"sources": [_row(source_id, family=family)]},
+            {source_id: b"unrelated payload"},
+            authority,
+        )
+
+
+def test_clean_source_reconstruction_deauthorizes_before_bulk_and_preserves_graph(
+    monkeypatch, tmp_path: Path
+) -> None:
+    mod = _load()
+    events = []
+    matcher = object()
+    historical = {"sources": [_row("quarantined"), _row("keep")], "lineage_edges": []}
+    historical_payloads = {"quarantined": b"bad", "keep": b"alpha"}
+    clean = {"sources": [_row("keep")], "lineage_edges": []}
+    clean_payloads = {"keep": b"alpha"}
+    proof = deepcopy(mod.NOMIS_REMOVAL_PROOF)
+
+    def deauthorize(inventory, payloads, authority, quarantine_module):
+        assert inventory is historical
+        assert payloads is historical_payloads
+        assert quarantine_module is mod.quarantine
+        assert authority["schema_version"]
+        events.append("deauthorize")
+        return clean, clean_payloads, proof
+
+    def materialize(*args):
+        assert events == ["capture", "deauthorize"]
+        events.append("bulk")
+        return {}, [_row("bulk", size=4)], {"bulk": b"beta"}
+
+    def capture(*args):
+        events.append("capture")
+        return SimpleNamespace(v6=SimpleNamespace(v3=matcher)), {}, historical, historical_payloads
+
+    monkeypatch.setattr(mod.v9_runner, "validate_v7_checkout", lambda root: root)
+    monkeypatch.setattr(mod.clean_successor, "validate_runtime_bindings", lambda root: None)
+    monkeypatch.setattr(mod.clean_successor, "deauthorize_exact_nomis", deauthorize)
+    monkeypatch.setattr(mod.v8, "_capture_terminal_v7", capture)
+    monkeypatch.setattr(mod.v8, "_materialize_bulk", materialize)
+    monkeypatch.setattr(mod, "EXPECTED_BASE_OBJECTS", 2)
+    monkeypatch.setattr(mod, "EXPECTED_BASE_BYTES", 9)
+
+    observed_matcher, inventory, payloads, removal = mod._reconstruct_clean_source_inputs(
+        v7_root=tmp_path, bulk_workspace=tmp_path, config={}
+    )
+    assert events == ["capture", "deauthorize", "bulk"]
+    assert observed_matcher is matcher and removal is proof
+    assert inventory["sources"] == [_row("keep"), _row("bulk", size=4)]
+    assert payloads == {"keep": b"alpha", "bulk": b"beta"}
+    assert clean == {"sources": [_row("keep")], "lineage_edges": []}
+    assert clean_payloads == {"keep": b"alpha"}
+    assert historical["sources"] == [_row("quarantined"), _row("keep")]
+
+
+def test_quarantine_failure_stops_before_bulk_or_new_matching(monkeypatch, tmp_path: Path) -> None:
+    mod = _load()
+    monkeypatch.setattr(mod.v9_runner, "validate_v7_checkout", lambda root: root)
+    monkeypatch.setattr(mod.clean_successor, "validate_runtime_bindings", lambda root: None)
+    monkeypatch.setattr(
+        mod.v8, "_capture_terminal_v7",
+        lambda *args: (object(), {}, {"sources": []}, {}),
+    )
+
+    def reject(*args):
+        raise mod.clean_successor.CleanSuccessorError("exact quarantine identity drift")
+
+    def forbidden(*args):
+        pytest.fail("bulk materialization ran after quarantine failure")
+
+    monkeypatch.setattr(mod.clean_successor, "deauthorize_exact_nomis", reject)
+    monkeypatch.setattr(mod.v8, "_materialize_bulk", forbidden)
+    with pytest.raises(mod.clean_successor.CleanSuccessorError, match="quarantine identity drift"):
+        mod._reconstruct_clean_source_inputs(
+            v7_root=tmp_path, bulk_workspace=tmp_path, config={}
+        )
+
+
+def test_final_composition_cannot_reintroduce_quarantined_family() -> None:
+    mod = _load()
+    with pytest.raises(mod.quarantine.ExternalLLMProvenanceQuarantineError):
+        mod._compose_graph(
+            {"sources": [_row("base:a")]}, {"base:a": b"alpha"},
+            [_row("alias", family="ua.verba.public-domain.nomis1864", size=4)],
+            {"alias": b"beta"},
+        )
+
+
+@pytest.mark.parametrize(("field", "bad"), [
+    ("removed_before_new_global_dedup", False),
+    ("post_source_object_count", 34.0),
+    ("blocked_payload_sha256", "f" * 64),
+])
+def test_removal_proof_rejects_semantic_and_type_drift(field: str, bad: object) -> None:
+    mod = _load()
+    proof = deepcopy(mod.NOMIS_REMOVAL_PROOF)
+    mod._verify_removal_proof(proof)
+    proof[field] = bad
+    with pytest.raises(mod.NbuGlobalDedupError, match="deauthorization proof drift"):
+        mod._verify_removal_proof(proof)
