@@ -477,8 +477,17 @@ def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
     report_sha = _report(mod)["report_sha256"]
     survivor_sha = _two_clean_survivors(mod)["survivor_authority_sha256"]
     core: dict[str, object] = {
+        "schema_version": mod.SCHEMA,
+        "execution_profile": "LOCAL_FREE",
+        "execution_claim_issue": mod.EXECUTION_CLAIM,
+        "execution_pr": mod.EXECUTION_PR,
         "execution_head_sha": "a" * 40,
         "pinned_main_sha": mod.EXPECTED_MAIN,
+        "baseline_v8": {
+            "v7_head_sha": mod.v8.EXPECTED_V7_HEAD,
+            "source_object_count": mod.EXPECTED_BASE_OBJECTS,
+            "payload_bytes": mod.EXPECTED_BASE_BYTES,
+        },
         "nbu": {
             "materialization_head": mod.nbu.MATERIALIZATION_HEAD,
             "workflow_run_id": mod.nbu.MATERIALIZATION_RUN,
@@ -486,19 +495,43 @@ def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
             "artifact_id": mod.nbu.MATERIALIZATION_ARTIFACT,
             "independent_audit_issue": mod.nbu.MATERIALIZATION_AUDIT,
             "candidate_sha256": mod.nbu.CANDIDATE_SHA256,
+            "source_object_count": mod.EXPECTED_NBU_OBJECTS,
+            "payload_bytes": mod.EXPECTED_NBU_BYTES,
             "intake_receipt_identity_sha256": "5" * 64,
         },
-        "combined": {"indexed_report_sha256": report_sha},
+        "combined": {
+            "source_object_count": mod.EXPECTED_COMBINED_OBJECTS,
+            "payload_bytes": mod.EXPECTED_COMBINED_BYTES,
+            "indexed_report_sha256": report_sha,
+        },
         "matcher_execution": {
             "engine": "MERGED_PR_1459",
+            "performance_equivalence_authority": "MERGED_PR_1459",
+            "incumbent_runtime_attested": True,
             "report_sha256": report_sha,
+            "all_pairs_reference_executed": False,
             "test_marker": marker,
         },
         "survivor_authority_sha256": survivor_sha,
+        "content_boundary": {
+            "raw_text_emitted": False,
+            "raw_candidate_written_to_durable_evidence": False,
+            "dedup_report_text_free": True,
+            "survivor_authority_text_free": True,
+        },
         "truth_boundary": {
             "canonical_capacity_credited": 0,
+            "training_authorized_bytes": 0,
+            "authorized_unique_loss_positions": 0,
             "authorized_optimized_target_exposure": 0,
+            "tokenizer_fit_authorized": False,
+            "optimizer_updates_executed_on_real_targets": 0,
             "training_executed": False,
+            "learned_weights_created": False,
+            "final_test_outcomes_read": False,
+            "paid_compute_used": False,
+            "foreign_pretrained_weights_used": False,
+            "whole_corpus_external_llm_cleanliness_claimed": False,
         },
     }
     return {
@@ -701,7 +734,10 @@ def test_two_clean_truth_zero_fields_reject_bool_alias() -> None:
     core = dict(evidence_b)
     core.pop("evidence_identity_sha256")
     evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
-    with pytest.raises(mod.NbuGlobalDedupError, match="capacity promotion"):
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="truth boundary drift: canonical_capacity_credited",
+    ):
         mod._build_two_clean_authority(
             report,
             deepcopy(report),
