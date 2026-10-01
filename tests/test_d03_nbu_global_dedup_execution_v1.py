@@ -100,6 +100,66 @@ def test_compose_graph_rejects_source_id_collision() -> None:
         )
 
 
+def _nbu_binding_fixture(mod):
+    payload = b"nbu payload"
+    expected = {
+        "source_id": "nbu:test",
+        "source_family": mod.nbu.SOURCE_FAMILY,
+        "modality": "natural_language",
+        "evidence_status": "DEDICATED_TERMINAL",
+        "declared_capacity_bytes": len(payload),
+        "stable_origin_id": "https://bank.gov.ua/ua/legislation/Resolution_20260101_test",
+        "stable_object_id": "sha256:" + mod._sha256(payload),
+    }
+    observed = {
+        "source_id": expected["source_id"],
+        "source_family": expected["source_family"],
+        "modality": expected["modality"],
+        "evidence_status": expected["evidence_status"],
+        "declared_capacity_bytes": expected["declared_capacity_bytes"],
+        "stable_origin_id_sha256": mod._sha256(expected["stable_origin_id"].encode("utf-8")),
+        "stable_object_id_sha256": mod._sha256(expected["stable_object_id"].encode("utf-8")),
+        "verified_raw_bytes": len(payload),
+        "verified_raw_sha256": mod._sha256(payload),
+        "comparison_policy": "DATA232_GENERIC_FROM_RAW",
+        "comparison_payload_bytes": len(payload),
+        "comparison_payload_sha256": mod._sha256(payload),
+    }
+    return expected, payload, observed
+
+
+def test_nbu_report_binding_accepts_exact_generic_raw_projection() -> None:
+    mod = _load()
+    expected, payload, observed = _nbu_binding_fixture(mod)
+    mod._validate_nbu_report_binding(
+        {"sources": [observed]},
+        [expected],
+        {expected["source_id"]: payload},
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "message"),
+    [
+        ("comparison_policy", "OTHER", "comparison policy drift"),
+        ("comparison_payload_bytes", 1, "comparison byte drift"),
+        ("comparison_payload_sha256", "f" * 64, "comparison hash drift"),
+    ],
+)
+def test_nbu_report_binding_rejects_comparison_drift(
+    field: str, bad: object, message: str
+) -> None:
+    mod = _load()
+    expected, payload, observed = _nbu_binding_fixture(mod)
+    observed[field] = bad
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._validate_nbu_report_binding(
+            {"sources": [observed]},
+            [expected],
+            {expected["source_id"]: payload},
+        )
+
+
 def _report(mod):
     after = mod.EXPECTED_COMBINED_BYTES - 10
     core = {
