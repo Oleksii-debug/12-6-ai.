@@ -425,7 +425,11 @@ jobs:
               newline: bool = False,
           ) -> None:
               identity = value.get(field)
-              assert type(identity) is str and len(identity) == 64, field
+              assert (
+                  type(identity) is str
+                  and len(identity) == 64
+                  and all(char in "0123456789abcdef" for char in identity)
+              ), field
               core = dict(value)
               core.pop(field)
               assert identity == sha256(
@@ -465,6 +469,27 @@ jobs:
               assert text["materialized_records"] == 40
               assert text["observed_text_bytes"] == 794091
 
+          expected_truth = {
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+              "whole_corpus_external_llm_cleanliness_claimed": False,
+          }
+          expected_content_boundary = {
+              "raw_text_emitted": False,
+              "raw_candidate_written_to_durable_evidence": False,
+              "dedup_report_text_free": True,
+              "survivor_authority_text_free": True,
+          }
+
           for execution in executions:
               assert execution["execution_head_sha"] == os.environ["HEAD_SHA"]
               assert execution["pinned_main_sha"] == os.environ["EXPECTED_MAIN"]
@@ -472,13 +497,15 @@ jobs:
               assert execution["combined"]["indexed_report_sha256"] == reports[0]["report_sha256"]
               assert execution["survivor_authority_sha256"] == survivors[0]["survivor_authority_sha256"]
               truth = execution["truth_boundary"]
-              assert type(truth["canonical_capacity_credited"]) is int
-              assert truth["canonical_capacity_credited"] == 0
-              assert type(truth["authorized_optimized_target_exposure"]) is int
-              assert truth["authorized_optimized_target_exposure"] == 0
-              assert truth["training_executed"] is False
-              assert truth["paid_compute_used"] is False
-              assert truth["foreign_pretrained_weights_used"] is False
+              assert type(truth) is dict
+              for key, expected in expected_truth.items():
+                  assert type(truth.get(key)) is type(expected), key
+                  assert truth.get(key) == expected, key
+              content_boundary = execution["content_boundary"]
+              assert type(content_boundary) is dict
+              for key, expected in expected_content_boundary.items():
+                  assert type(content_boundary.get(key)) is bool, key
+                  assert content_boundary.get(key) is expected, key
 
           core = {
               "schema_version": "12-6.d03-nbu-global-dedup-two-clean-physical.v1",
