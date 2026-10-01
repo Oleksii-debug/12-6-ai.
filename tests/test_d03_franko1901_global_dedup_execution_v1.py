@@ -180,6 +180,68 @@ def test_authority_surface_binds_franko_and_incumbent_execution() -> None:
     assert expected <= set(mod.AUTHORITY_PATHS)
 
 
+def test_execution_head_requires_explicit_exact_selected_head(monkeypatch) -> None:
+    mod = _load()
+    selected = "a" * 40
+    monkeypatch.setattr(
+        mod,
+        "_git",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout=selected + "\n", stderr=""
+        ),
+    )
+    assert mod._bind_execution_head(selected) == selected
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "",
+        "a" * 39,
+        "A" * 40,
+        "g" * 40,
+    ],
+)
+def test_execution_head_rejects_malformed_selection(bad: str) -> None:
+    mod = _load()
+    with pytest.raises(
+        mod.Franko1901GlobalDedupError,
+        match="exact lowercase 40-hex",
+    ):
+        mod._bind_execution_head(bad)
+
+
+def test_execution_head_rejects_synthetic_or_stale_checkout(monkeypatch) -> None:
+    mod = _load()
+    selected = "a" * 40
+    observed = "b" * 40
+    monkeypatch.setattr(
+        mod,
+        "_git",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout=observed + "\n", stderr=""
+        ),
+    )
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="execution HEAD drift"):
+        mod._bind_execution_head(selected)
+
+
+def test_execute_binds_selected_head_before_authority_and_evidence() -> None:
+    mod = _load()
+    source = inspect.getsource(mod.execute)
+    bind = source.index("execution_head = _bind_execution_head(expected_execution_head)")
+    carrier = source.index("execution_carrier_blob = verify_execution_carrier()")
+    authority = source.index("authority_blobs = verify_repository_authority()")
+    evidence = source.index("evidence_core = {")
+    assert bind < carrier < authority < evidence
+
+
+def test_cli_requires_expected_execution_head() -> None:
+    raw = MODULE.read_text(encoding="utf-8")
+    assert '"--expected-execution-head"' in raw
+    assert "synthetic PR merge commits are rejected" in raw
+
+
 def test_execution_carrier_binds_worktree_bytes_to_head() -> None:
     mod = _load()
     observed = mod.verify_execution_carrier()
