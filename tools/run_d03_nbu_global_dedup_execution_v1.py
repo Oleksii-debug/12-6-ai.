@@ -904,6 +904,25 @@ def _build_two_clean_authority(
     return {**core, "two_clean_authority_sha256": _sha256(_canonical(core))}
 
 
+def _validate_parent_aggregate_binding(
+    authority: Mapping[str, Any],
+    *,
+    orchestration_head: str,
+    expected_intake_receipt_sha: str,
+) -> None:
+    _require(
+        authority.get("execution_head_sha") == orchestration_head,
+        "two-clean aggregate execution head drift",
+    )
+    materialization_authority = authority.get("materialization_authority")
+    _require(
+        type(materialization_authority) is dict
+        and materialization_authority.get("intake_receipt_identity_sha256")
+        == expected_intake_receipt_sha,
+        "two-clean parent/child intake receipt drift",
+    )
+
+
 def _write_two_clean_incomplete(output_root: Path, completed_runs: list[str], reason: str) -> None:
     _publish_json_outputs(
         (
@@ -1064,16 +1083,10 @@ def run_two_clean(
             first_evidence,
             second_evidence,
         )
-        _require(
-            authority.get("execution_head_sha") == orchestration_head,
-            "two-clean aggregate execution head drift",
-        )
-        materialization_authority = authority.get("materialization_authority")
-        _require(
-            type(materialization_authority) is dict
-            and materialization_authority.get("intake_receipt_identity_sha256")
-            == expected_intake_receipt_sha,
-            "two-clean parent/child intake receipt drift",
+        _validate_parent_aggregate_binding(
+            authority,
+            orchestration_head=orchestration_head,
+            expected_intake_receipt_sha=expected_intake_receipt_sha,
         )
         _publish_json_outputs(((output_root / "two-clean-authority.json", authority),))
     except (NbuGlobalDedupError, OSError) as exc:
