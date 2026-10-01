@@ -250,6 +250,43 @@ def _compose_graph(
     return inventory, payloads
 
 
+def _execute_equivalent_matchers(
+    matcher: Any,
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+    *,
+    max_candidate_pairs: int,
+    max_index_postings: int,
+    max_pair_expansions: int,
+) -> tuple[dict[str, Any], float, float]:
+    """Require incumbent all-pairs and indexed mechanics to produce one exact report."""
+
+    indexed.attest_incumbent_runtime(matcher)
+
+    reference_started = time.perf_counter()
+    reference_report = matcher.audit_payloads(inventory, payloads)
+    reference_elapsed = time.perf_counter() - reference_started
+    matcher.verify_report(reference_report)
+
+    indexed_started = time.perf_counter()
+    indexed_report = indexed.audit_payloads_indexed(
+        matcher,
+        inventory,
+        payloads,
+        max_candidate_pairs=max_candidate_pairs,
+        max_index_postings=max_index_postings,
+        max_pair_expansions=max_pair_expansions,
+    )
+    indexed_elapsed = time.perf_counter() - indexed_started
+    matcher.verify_report(indexed_report)
+
+    _require(
+        _canonical(reference_report) == _canonical(indexed_report),
+        "indexed/reference report mismatch",
+    )
+    return indexed_report, reference_elapsed, indexed_elapsed
+
+
 def _validated_terminal_summary(report: Mapping[str, Any]) -> Mapping[str, Any]:
     _require(report.get("source_count") == EXPECTED_COMBINED_OBJECTS, "report count drift")
     terminal = report.get("terminal_candidates")
@@ -550,9 +587,7 @@ def execute(
         "combined payload byte total drift",
     )
 
-    indexed.attest_incumbent_runtime(matcher)
-    started = time.perf_counter()
-    report = indexed.audit_payloads_indexed(
+    report, reference_elapsed, indexed_elapsed = _execute_equivalent_matchers(
         matcher,
         inventory,
         payloads,
@@ -560,8 +595,6 @@ def execute(
         max_index_postings=max_index_postings,
         max_pair_expansions=max_pair_expansions,
     )
-    elapsed = time.perf_counter() - started
-    matcher.verify_report(report)
     terminal = _validated_terminal_summary(report)
     selection = v9_semantics._derive_survivors(report)
     _validate_survivor_projection(report, selection)
@@ -608,11 +641,15 @@ def execute(
             "duplicate_discount_bytes": terminal["duplicate_discount_bytes"],
             "duplicate_cluster_count": terminal["duplicate_cluster_count"],
         },
-        "indexed_execution": {
+        "matcher_equivalence_execution": {
+            "reference_engine": "INCUMBENT_V3_ALL_PAIRS",
+            "indexed_engine": "MERGED_PR_1459",
+            "report_sha256": report["report_sha256"],
             "max_candidate_pairs": max_candidate_pairs,
             "max_index_postings": max_index_postings,
             "max_pair_expansions": max_pair_expansions,
-            "wall_clock_seconds": round(elapsed, 6),
+            "reference_wall_clock_seconds": round(reference_elapsed, 6),
+            "indexed_wall_clock_seconds": round(indexed_elapsed, 6),
             "process_max_rss_kib": max_rss_kib,
         },
         "survivor_authority_sha256": survivors["survivor_authority_sha256"],
