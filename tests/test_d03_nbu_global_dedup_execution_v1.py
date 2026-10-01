@@ -160,6 +160,77 @@ def test_nbu_report_binding_rejects_comparison_drift(
         )
 
 
+def _nbu_binding_fixture(mod):
+    payload = b"abc"
+    stable_origin_id = "https://bank.gov.ua/example#pdf-sha256:" + "1" * 64
+    stable_object_id = "sha256:" + "2" * 64
+    source = {
+        "source_id": "nbu-admitted:test",
+        "source_family": mod.nbu.SOURCE_FAMILY,
+        "stable_origin_id": stable_origin_id,
+        "stable_object_id": stable_object_id,
+        "modality": mod.nbu.MATCHER_MODALITY,
+        "evidence_status": "DEDICATED_TERMINAL",
+        "declared_capacity_bytes": len(payload),
+    }
+    report_row = {
+        "source_id": source["source_id"],
+        "source_family": source["source_family"],
+        "stable_origin_id_sha256": mod._sha256(stable_origin_id.encode("utf-8")),
+        "stable_object_id_sha256": mod._sha256(stable_object_id.encode("utf-8")),
+        "modality": source["modality"],
+        "evidence_status": source["evidence_status"],
+        "declared_capacity_bytes": len(payload),
+        "verified_raw_bytes": len(payload),
+        "verified_raw_sha256": mod._sha256(payload),
+        "comparison_policy": "DATA232_GENERIC_FROM_RAW",
+        "comparison_payload_bytes": len(payload),
+        "comparison_payload_sha256": mod._sha256(payload),
+    }
+    return {"sources": [report_row]}, [source], {source["source_id"]: payload}
+
+
+def test_nbu_report_binding_cross_binds_exact_projected_source() -> None:
+    mod = _load()
+    report, sources, payloads = _nbu_binding_fixture(mod)
+    mod._validate_nbu_report_binding(report, sources, payloads)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "message"),
+    [
+        ("stable_origin_id_sha256", "f" * 64, "stable origin drift"),
+        ("verified_raw_sha256", "f" * 64, "verified raw hash drift"),
+        ("comparison_payload_sha256", "f" * 64, "comparison hash drift"),
+    ],
+)
+def test_nbu_report_binding_rejects_report_drift(
+    field: str, bad: object, message: str
+) -> None:
+    mod = _load()
+    report, sources, payloads = _nbu_binding_fixture(mod)
+    report["sources"][0][field] = bad
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._validate_nbu_report_binding(report, sources, payloads)
+
+
+def test_nbu_report_binding_rejects_duplicate_projected_ids_and_orphan_payload() -> None:
+    mod = _load()
+    report, sources, payloads = _nbu_binding_fixture(mod)
+    duplicate_sources = [sources[0], deepcopy(sources[0])]
+    orphan_payloads = {**payloads, "orphan": b"x"}
+    with pytest.raises(mod.NbuGlobalDedupError, match="source ids duplicate"):
+        mod._validate_nbu_report_binding(report, duplicate_sources, orphan_payloads)
+
+
+def test_nbu_report_binding_rejects_nonstring_stable_identity() -> None:
+    mod = _load()
+    report, sources, payloads = _nbu_binding_fixture(mod)
+    sources[0]["stable_origin_id"] = None
+    with pytest.raises(mod.NbuGlobalDedupError, match="stable origin invalid"):
+        mod._validate_nbu_report_binding(report, sources, payloads)
+
+
 def _report(mod):
     after = mod.EXPECTED_COMBINED_BYTES - 10
     core = {
