@@ -653,7 +653,7 @@ def _publish_json_outputs(outputs: tuple[tuple[Path, Mapping[str, Any]], ...]) -
                     handle.write(payload)
             except FileExistsError as exc:
                 raise NbuGlobalDedupError(f"refusing to overwrite: {path}") from exc
-    except Exception as exc:
+    except BaseException as exc:
         rollback_errors: list[str] = []
         for created_path in reversed(created):
             try:
