@@ -125,6 +125,9 @@ def test_projects_audited_nbu_records_one_for_one(tmp_path, monkeypatch) -> None
     assert result.payloads[first["source_id"]] == str(rows[0]["text"]).encode()
     assert result.receipt["execution_gate"]["canonical_global_dedup_executed"] is False
     assert result.receipt["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+    assert result.receipt["projection"]["matcher_source_inventory_identity_sha256"] == mod._sha256(
+        mod._canonical(list(result.sources))
+    )
 
 
 def test_receipt_is_text_free_and_payloads_can_be_dropped(tmp_path, monkeypatch) -> None:
