@@ -89,6 +89,14 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _is_lower_hex(value: Any, length: int) -> bool:
+    return (
+        type(value) is str
+        and len(value) == length
+        and all(char in "0123456789abcdef" for char in value)
+    )
+
+
 def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     try:
         proc = subprocess.run(
@@ -627,8 +635,7 @@ def _build_two_clean_authority(
     report_sha = first_report.get("report_sha256")
     survivor_sha = first_survivors.get("survivor_authority_sha256")
     _require(
-        type(report_sha) is str
-        and len(report_sha) == 64
+        _is_lower_hex(report_sha, 64)
         and second_report.get("report_sha256") == report_sha,
         "two-clean report identity drift",
     )
@@ -638,8 +645,7 @@ def _build_two_clean_authority(
             "two-clean report self-hash mismatch",
         )
     _require(
-        type(survivor_sha) is str
-        and len(survivor_sha) == 64
+        _is_lower_hex(survivor_sha, 64)
         and second_survivors.get("survivor_authority_sha256") == survivor_sha,
         "two-clean survivor identity drift",
     )
@@ -656,8 +662,7 @@ def _build_two_clean_authority(
         )
     execution_head = first_evidence.get("execution_head_sha")
     _require(
-        type(execution_head) is str
-        and len(execution_head) == 40
+        _is_lower_hex(execution_head, 40)
         and second_evidence.get("execution_head_sha") == execution_head,
         "two-clean execution head drift",
     )
@@ -665,8 +670,7 @@ def _build_two_clean_authority(
         evidence_core = dict(evidence)
         evidence_identity = evidence_core.pop("evidence_identity_sha256", None)
         _require(
-            type(evidence_identity) is str
-            and len(evidence_identity) == 64
+            _is_lower_hex(evidence_identity, 64)
             and evidence_identity == _sha256(_canonical(evidence_core)),
             "two-clean run evidence self-hash mismatch",
         )
@@ -706,7 +710,7 @@ def _build_two_clean_authority(
         second_evidence.get("evidence_identity_sha256"),
     ]
     _require(
-        all(type(value) is str and len(value) == 64 for value in evidence_ids),
+        all(_is_lower_hex(value, 64) for value in evidence_ids),
         "two-clean run evidence identity invalid",
     )
     core: dict[str, Any] = {
