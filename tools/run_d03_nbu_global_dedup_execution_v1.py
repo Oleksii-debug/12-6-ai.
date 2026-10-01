@@ -984,6 +984,30 @@ def _build_two_clean_authority(
     return {**core, "two_clean_authority_sha256": _sha256(_canonical(core))}
 
 
+def _validate_parent_child_budget_binding(
+    first_evidence: Mapping[str, Any],
+    second_evidence: Mapping[str, Any],
+    *,
+    max_candidate_pairs: int,
+    max_index_postings: int,
+    max_pair_expansions: int,
+) -> None:
+    expected = {
+        "max_candidate_pairs": max_candidate_pairs,
+        "max_index_postings": max_index_postings,
+        "max_pair_expansions": max_pair_expansions,
+    }
+    for evidence in (first_evidence, second_evidence):
+        matcher = evidence.get("matcher_execution")
+        _require(type(matcher) is dict, "two-clean child matcher evidence missing")
+        for key, expected_value in expected.items():
+            _require(
+                type(matcher.get(key)) is int
+                and matcher.get(key) == expected_value,
+                f"two-clean child work budget drift: {key}",
+            )
+
+
 def _validate_parent_child_repository_binding(
     first_evidence: Mapping[str, Any],
     second_evidence: Mapping[str, Any],
@@ -1184,6 +1208,13 @@ def run_two_clean(
             second_evidence,
             expected_main_blobs=parent_main_blobs,
             expected_product_blobs=parent_product_blobs,
+        )
+        _validate_parent_child_budget_binding(
+            first_evidence,
+            second_evidence,
+            max_candidate_pairs=max_candidate_pairs,
+            max_index_postings=max_index_postings,
+            max_pair_expansions=max_pair_expansions,
         )
         _validate_two_clean_survivor_readback(first_report, first_survivors)
         _validate_two_clean_survivor_readback(second_report, second_survivors)
