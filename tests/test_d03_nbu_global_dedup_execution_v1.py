@@ -441,6 +441,29 @@ def test_two_clean_authority_rejects_tampered_execution_evidence() -> None:
         )
 
 
+def test_two_clean_binds_parent_head_before_input_preflight(tmp_path, monkeypatch) -> None:
+    mod = _load()
+
+    def reject_head(expected: str) -> str:
+        raise mod.NbuGlobalDedupError(f"parent-head-sentinel:{expected}")
+
+    monkeypatch.setattr(mod, "_bind_execution_head", reject_head)
+    with pytest.raises(mod.NbuGlobalDedupError, match="parent-head-sentinel"):
+        mod.run_two_clean(
+            v7_root=tmp_path / "missing-v7",
+            bulk_workspace=tmp_path / "missing-bulk",
+            candidate_jsonl_a=tmp_path / "missing-a.jsonl",
+            materialization_evidence_json_a=tmp_path / "missing-a.json",
+            candidate_jsonl_b=tmp_path / "missing-b.jsonl",
+            materialization_evidence_json_b=tmp_path / "missing-b.json",
+            output_root=tmp_path / "out",
+            expected_execution_head="a" * 40,
+            max_candidate_pairs=1,
+            max_index_postings=1,
+            max_pair_expansions=1,
+        )
+
+
 def test_two_clean_requires_non_aliasing_materialization_copies(tmp_path) -> None:
     mod = _load()
     candidate = tmp_path / "candidate.jsonl"
