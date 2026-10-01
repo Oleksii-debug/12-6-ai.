@@ -109,6 +109,13 @@ def _write_fixture(tmp_path: Path, monkeypatch):
     return rows, candidate, evidence_path
 
 
+def test_projection_source_contains_no_escaped_mechanical_newlines() -> None:
+    source = (ROOT / "src" / "twelve_six" / "data" / "nbu_dedup_intake.py").read_text(
+        encoding="utf-8"
+    )
+    assert "receipt-visible.\\n    projection_identity" not in source
+
+
 def test_projects_audited_nbu_records_one_for_one(tmp_path, monkeypatch) -> None:
     rows, candidate, evidence = _write_fixture(tmp_path, monkeypatch)
     result = mod.validate_and_project_nbu(candidate, evidence)
