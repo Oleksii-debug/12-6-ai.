@@ -287,15 +287,15 @@ def test_indexed_execution_attests_and_verifies_report(monkeypatch) -> None:
 
 
 
-def _two_clean_evidence(mod, run_identity: str) -> dict[str, object]:
-    return {
-        "evidence_identity_sha256": run_identity,
+def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
+    core: dict[str, object] = {
         "execution_head_sha": "a" * 40,
         "pinned_main_sha": mod.EXPECTED_MAIN,
         "nbu": {"candidate_sha256": mod.nbu.CANDIDATE_SHA256},
         "matcher_execution": {
             "engine": "MERGED_PR_1459",
             "report_sha256": "1" * 64,
+            "test_marker": marker,
         },
         "truth_boundary": {
             "canonical_capacity_credited": 0,
@@ -303,13 +303,21 @@ def _two_clean_evidence(mod, run_identity: str) -> dict[str, object]:
             "training_executed": False,
         },
     }
+    return {
+        **core,
+        "evidence_identity_sha256": mod._sha256(mod._canonical(core)),
+    }
 
 
 def _two_clean_survivors(mod) -> dict[str, object]:
-    return {
-        "survivor_authority_sha256": "2" * 64,
+    core: dict[str, object] = {
+        "matcher_report_sha256": "1" * 64,
         "nbu_survivor_source_object_count": 1,
         "nbu_survivor_declared_capacity_bytes": 10,
+    }
+    return {
+        **core,
+        "survivor_authority_sha256": mod._sha256(mod._canonical(core)),
     }
 
 
@@ -322,11 +330,12 @@ def test_two_clean_authority_is_zero_credit_and_does_not_claim_source_replay() -
         deepcopy(report),
         survivors,
         deepcopy(survivors),
-        _two_clean_evidence(mod, "3" * 64),
-        _two_clean_evidence(mod, "4" * 64),
+        _two_clean_evidence(mod, "run-a"),
+        _two_clean_evidence(mod, "run-b"),
     )
     assert authority["dedup"]["fresh_process_count"] == 2
     assert authority["dedup"]["report_sha256"] == "1" * 64
+    assert len(authority["dedup"]["survivor_authority_sha256"]) == 64
     assert authority["materialization_authority"]["distinct_input_copies_required"] is True
     assert authority["materialization_authority"]["source_replay_executed_by_this_carrier"] is False
     assert authority["truth_boundary"]["canonical_capacity_credited"] == 0
@@ -378,6 +387,25 @@ def test_two_clean_requires_non_aliasing_materialization_copies(tmp_path) -> Non
             evidence,
             candidate,
             evidence,
+        )
+
+
+def test_two_clean_rejects_symlink_materialization_input(tmp_path) -> None:
+    mod = _load()
+    candidate_a = tmp_path / "candidate-a.jsonl"
+    candidate_b = tmp_path / "candidate-b.jsonl"
+    evidence_a = tmp_path / "evidence-a.json"
+    evidence_b = tmp_path / "evidence-b.json"
+    for path in (candidate_a, candidate_b, evidence_a, evidence_b):
+        path.write_text("{}\n", encoding="utf-8")
+    candidate_link = tmp_path / "candidate-link.jsonl"
+    candidate_link.symlink_to(candidate_a)
+    with pytest.raises(mod.NbuGlobalDedupError, match="must not be symlink"):
+        mod._require_distinct_materialization_copies(
+            candidate_link,
+            evidence_a,
+            candidate_b,
+            evidence_b,
         )
 
 
