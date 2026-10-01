@@ -820,6 +820,34 @@ def test_two_clean_authority_rejects_tampered_execution_evidence() -> None:
         )
 
 
+def test_parent_child_budget_binding_rejects_child_budget_drift() -> None:
+    mod = _load()
+    matcher = {
+        "max_candidate_pairs": 11,
+        "max_index_postings": 12,
+        "max_pair_expansions": 13,
+    }
+    first = {"matcher_execution": deepcopy(matcher)}
+    second = {"matcher_execution": deepcopy(matcher)}
+    mod._validate_parent_child_budget_binding(
+        first,
+        second,
+        max_candidate_pairs=11,
+        max_index_postings=12,
+        max_pair_expansions=13,
+    )
+
+    second["matcher_execution"]["max_pair_expansions"] = 14
+    with pytest.raises(mod.NbuGlobalDedupError, match="max_pair_expansions"):
+        mod._validate_parent_child_budget_binding(
+            first,
+            second,
+            max_candidate_pairs=11,
+            max_index_postings=12,
+            max_pair_expansions=13,
+        )
+
+
 def test_parent_child_repository_binding_rejects_rehashed_blob_drift() -> None:
     mod = _load()
     main_blobs = {"main.py": "a" * 40}
