@@ -354,6 +354,64 @@ def _validated_terminal_summary(
     return terminal
 
 
+def _validate_survivor_projection(
+    report: Mapping[str, Any],
+    projection: Mapping[str, Any],
+) -> None:
+    """Bind the derived survivor projection back to the verified terminal report."""
+    terminal = _validated_terminal_summary(report)
+    _require(type(projection) is dict, "survivor projection must be exact object")
+    _require(
+        projection.get("schema_version") == v9_semantics.SURVIVOR_SCHEMA,
+        "survivor projection schema drift",
+    )
+    _require(
+        projection.get("matcher_report_sha256") == report.get("report_sha256"),
+        "survivor projection matcher identity drift",
+    )
+    survivor_ids = projection.get("survivor_source_ids")
+    _require(
+        type(survivor_ids) is list
+        and all(type(source_id) is str and source_id for source_id in survivor_ids)
+        and len(survivor_ids) == len(set(survivor_ids)),
+        "survivor projection ids invalid",
+    )
+    post_count = projection.get("post_dedup_survivor_source_object_count")
+    _require(
+        type(post_count) is int
+        and 0 < post_count <= EXPECTED_COMBINED_OBJECTS
+        and post_count == len(survivor_ids),
+        "survivor projection post-dedup count drift",
+    )
+    _require(
+        projection.get("pre_dedup_source_object_count") == EXPECTED_COMBINED_OBJECTS,
+        "survivor projection pre-dedup count drift",
+    )
+    _require(
+        projection.get("pre_dedup_declared_capacity_bytes") == EXPECTED_COMBINED_BYTES,
+        "survivor projection pre-dedup bytes drift",
+    )
+    _require(
+        projection.get("post_dedup_declared_capacity_bytes")
+        == terminal.get("conservative_unique_capacity_bytes_after"),
+        "survivor projection post-dedup bytes drift",
+    )
+    _require(
+        projection.get("duplicate_discount_bytes")
+        == terminal.get("duplicate_discount_bytes"),
+        "survivor projection duplicate discount drift",
+    )
+    duplicate_clusters = projection.get("duplicate_clusters")
+    duplicate_cluster_count = projection.get("duplicate_cluster_count")
+    _require(type(duplicate_clusters) is list, "survivor projection clusters missing")
+    _require(
+        type(duplicate_cluster_count) is int
+        and duplicate_cluster_count == len(duplicate_clusters)
+        and duplicate_cluster_count == terminal.get("duplicate_cluster_count"),
+        "survivor projection cluster count drift",
+    )
+
+
 def _source_admission_provenance_scope(receipt: Mapping[str, Any]) -> dict[str, bool]:
     truth = receipt.get("truth_boundary")
     _require(type(truth) is dict, "source-admission truth boundary missing")
@@ -569,6 +627,7 @@ def execute(
 
     terminal = _validated_terminal_summary(indexed_report)
     selection_projection = v9_semantics._derive_survivors(indexed_report)
+    _validate_survivor_projection(indexed_report, selection_projection)
     survivors = _outer_survivor_authority(indexed_report, selection_projection)
     process_max_rss_kib = _max_rss_kib()
     _require(
