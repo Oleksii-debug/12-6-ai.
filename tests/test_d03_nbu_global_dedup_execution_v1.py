@@ -540,7 +540,6 @@ def test_publish_rolls_back_files_from_failed_publication(tmp_path) -> None:
 
 
 def test_execute_binds_head_and_authority_before_reconstruction() -> None:
-    mod = _load()
     source = MODULE.read_text(encoding="utf-8")
     head = source.index("execution_head = _bind_execution_head(expected_execution_head)")
     authority = source.index("main_blobs, product_blobs = verify_repository_authority()")
