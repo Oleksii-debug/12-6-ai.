@@ -130,6 +130,13 @@ def test_projects_audited_nbu_records_one_for_one(tmp_path, monkeypatch) -> None
     )
 
 
+@pytest.mark.parametrize("bad", [0, 1, None, "false"])
+def test_retain_payloads_requires_exact_bool(tmp_path, monkeypatch, bad) -> None:
+    _, candidate, evidence = _write_fixture(tmp_path, monkeypatch)
+    with pytest.raises(mod.NbuDedupIntakeError, match="retain_payloads must be exact bool"):
+        mod.validate_and_project_nbu(candidate, evidence, retain_payloads=bad)
+
+
 def test_receipt_is_text_free_and_payloads_can_be_dropped(tmp_path, monkeypatch) -> None:
     secret = "НЕ ВИВОДИТИ ТЕКСТ У RECEIPT"
     rows = [_row(1, secret)]
