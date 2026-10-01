@@ -620,6 +620,13 @@ def _build_two_clean_authority(
         and second_report.get("report_sha256") == report_sha,
         "two-clean report identity drift",
     )
+    for report in (first_report, second_report):
+        report_core = dict(report)
+        report_identity = report_core.pop("report_sha256", None)
+        _require(
+            report_identity == _sha256(_canonical(report_core)),
+            "two-clean report self-hash mismatch",
+        )
     _require(
         type(survivor_sha) is str
         and len(survivor_sha) == 64
