@@ -417,6 +417,19 @@ def _outer_survivor_authority(
     return {**core, "survivor_authority_sha256": _sha256(_canonical(core))}
 
 
+def _validate_two_clean_survivor_readback(
+    report: Mapping[str, Any],
+    survivor: Mapping[str, Any],
+) -> None:
+    selection = v9_semantics._derive_survivors(report)
+    _validate_survivor_projection(report, selection)
+    expected = _outer_survivor_authority(report, selection)
+    _require(
+        _canonical(survivor) == _canonical(expected),
+        "two-clean survivor semantic readback drift",
+    )
+
+
 def _runtime_environment() -> dict[str, Any]:
     github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
     result: dict[str, Any] = {
@@ -940,6 +953,8 @@ def run_two_clean(
         second_evidence, _ = _strict_generated_json(
             output_root / "clean-b" / "execution-evidence.json"
         )
+        _validate_two_clean_survivor_readback(first_report, first_survivors)
+        _validate_two_clean_survivor_readback(second_report, second_survivors)
         _require(first_report_raw == second_report_raw, "two-clean report bytes differ")
         _require(first_survivors_raw == second_survivors_raw, "two-clean survivor bytes differ")
         authority = _build_two_clean_authority(
