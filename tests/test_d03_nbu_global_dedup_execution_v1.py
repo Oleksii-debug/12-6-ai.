@@ -242,39 +242,45 @@ def test_execute_binds_head_and_authority_before_reconstruction() -> None:
     assert head < authority < reconstruction
 
 
-def test_production_requires_reference_and_indexed_equivalence() -> None:
+def test_production_executes_only_independently_qualified_indexed_path() -> None:
     source = MODULE.read_text(encoding="utf-8")
-    assert "matcher.audit_payloads(inventory, payloads)" in source
-    assert "indexed.audit_payloads_indexed(" in source
     assert "indexed.attest_incumbent_runtime(matcher)" in source
-    assert "indexed/reference report mismatch" in source
+    assert "indexed.audit_payloads_indexed(" in source
+    assert "matcher.audit_payloads(inventory, payloads)" not in source
+    assert "all_pairs_reference_executed\": False" in source
 
 
-def test_reference_indexed_mismatch_is_rejected(monkeypatch) -> None:
+def test_indexed_execution_attests_and_verifies_report(monkeypatch) -> None:
     mod = _load()
+    calls: list[str] = []
 
     class Matcher:
-        def audit_payloads(self, inventory, payloads):
-            return {"report_sha256": "1" * 64, "sources": []}
-
         def verify_report(self, report):
-            assert isinstance(report, dict)
+            calls.append("verify")
+            assert report["report_sha256"] == "2" * 64
 
-    monkeypatch.setattr(mod.indexed, "attest_incumbent_runtime", lambda matcher: None)
+    matcher = Matcher()
+    monkeypatch.setattr(
+        mod.indexed,
+        "attest_incumbent_runtime",
+        lambda observed: calls.append("attest") if observed is matcher else None,
+    )
     monkeypatch.setattr(
         mod.indexed,
         "audit_payloads_indexed",
-        lambda matcher, inventory, payloads, **kwargs: {
-            "report_sha256": "2" * 64,
-            "sources": [],
-        },
+        lambda observed, inventory, payloads, **kwargs: (
+            calls.append("indexed"),
+            {"report_sha256": "2" * 64, "sources": []},
+        )[1],
     )
-    with pytest.raises(mod.NbuGlobalDedupError, match="indexed/reference report mismatch"):
-        mod._execute_equivalent_matchers(
-            Matcher(),
-            {"sources": []},
-            {},
-            max_candidate_pairs=10,
-            max_index_postings=10,
-            max_pair_expansions=10,
-        )
+    report, elapsed = mod._execute_indexed_matcher(
+        matcher,
+        {"sources": []},
+        {},
+        max_candidate_pairs=10,
+        max_index_postings=10,
+        max_pair_expansions=10,
+    )
+    assert report["report_sha256"] == "2" * 64
+    assert elapsed >= 0
+    assert calls == ["attest", "indexed", "verify"]
