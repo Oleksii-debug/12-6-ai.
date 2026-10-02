@@ -32,8 +32,10 @@ for location in (str(TOOLS), str(SRC)):
         sys.path.insert(0, location)
 
 import run_d03_expanded_global_dedup_v9 as v9_runner
+import run_d03_nomis_free_clean_successor_v1 as clean_successor
 import run_next100_065f_global_dedup_v8 as v8
 from twelve_six.data import caselaw_source_admitted_dedup_intake as caselaw
+from twelve_six.data import external_llm_provenance_quarantine_v1 as quarantine
 from twelve_six.data import expanded_global_dedup_v9 as v9_semantics
 from twelve_six.data import incumbent_dedup_indexed_execution as indexed
 
@@ -43,12 +45,13 @@ EXPECTED_MAIN = "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
 EXECUTION_CLAIM = 2257
 EXECUTION_PR = 2259
 CASELAW_FINAL_HEAD = "deaf0730fe04a12e9abb8f3cecb14d6ad2cc7a4d"
-EXPECTED_BASE_OBJECTS = 264
-EXPECTED_BASE_BYTES = 6_095_624
+EXPECTED_BASE_OBJECTS = 263
+EXPECTED_BASE_BYTES = 6_093_965
 EXPECTED_CASELAW_OBJECTS = 5_658
 EXPECTED_CASELAW_BYTES = 5_962_147
 EXPECTED_COMBINED_OBJECTS = EXPECTED_BASE_OBJECTS + EXPECTED_CASELAW_OBJECTS
 EXPECTED_COMBINED_BYTES = EXPECTED_BASE_BYTES + EXPECTED_CASELAW_BYTES
+PAYLOAD_BYTES_SEMANTICS = "DECLARED_CAPACITY_BYTES"
 
 AUTHORITY_PATHS = (
     "src/twelve_six/data/caselaw_source_admitted_dedup_intake.py",
@@ -57,12 +60,29 @@ AUTHORITY_PATHS = (
     "src/twelve_six/data/expanded_global_dedup_v9.py",
     "src/twelve_six/data/_expanded_global_dedup_v9_impl.py",
     "tools/run_d03_expanded_global_dedup_v9.py",
+    "tools/run_d03_nomis_free_clean_successor_v1.py",
+    "src/twelve_six/data/external_llm_provenance_quarantine_v1.py",
+    "configs/data/d03_external_llm_provenance_quarantine_v1.json",
     "tools/run_next100_065f_global_dedup_v8.py",
     "tools/materialize_data_bulk_code1_permissive_python_bundle.py",
     "configs/data/next100_065f_global_dedup_v8.json",
     "configs/data/data_bulk_code1_permissive_python_bundle_v1.json",
     "evidence/data_bulk_code1/permissive_python_bundle_v1_terminal.json",
 )
+
+NOMIS_REMOVAL_PROOF = {
+    "blocked_family": clean_successor.BLOCKED_FAMILY,
+    "blocked_payload_bytes": clean_successor.BLOCKED_BYTES,
+    "blocked_payload_sha256": clean_successor.BLOCKED_SHA256,
+    "blocked_source_id": clean_successor.BLOCKED_SOURCE_ID,
+    "non_blocked_source_ids_byte_for_byte_preserved": True,
+    "post_source_capacity_bytes": 2_213_956,
+    "post_source_object_count": 34,
+    "pre_source_capacity_bytes": 2_215_615,
+    "pre_source_object_count": 35,
+    "quarantine_identity_sha256": clean_successor.EXPECTED_QUARANTINE_IDENTITY,
+    "removed_before_new_global_dedup": True,
+}
 
 
 class CaselawGlobalDedupError(RuntimeError):
@@ -85,6 +105,13 @@ def _canonical(value: Any) -> bytes:
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _verify_removal_proof(proof: Any) -> None:
+    _require(
+        type(proof) is dict and _canonical(proof) == _canonical(NOMIS_REMOVAL_PROOF),
+        "Nomis deauthorization proof drift",
+    )
 
 
 def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -135,13 +162,108 @@ _HISTORICAL_MATCHER_MODULES = (
 )
 
 
+def _verify_clean_payload_graph(
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+    quarantine_authority: Mapping[str, Any],
+) -> None:
+    rows = inventory.get("sources")
+    _require(type(rows) is list and bool(rows), "clean base source rows missing")
+    ids = [row.get("source_id") for row in rows if type(row) is dict]
+    _require(
+        len(ids) == len(rows)
+        and all(type(source_id) is str and bool(source_id) for source_id in ids)
+        and len(set(ids)) == len(ids)
+        and set(ids) == set(payloads)
+        and all(type(raw) is bytes for raw in payloads.values()),
+        "clean base inventory/payload coverage mismatch",
+    )
+    quarantine.reject_quarantined_inventory_rows(
+        [
+            {
+                "source_id": row["source_id"],
+                "family": row.get("source_family"),
+                "payload_sha256": _sha256(payloads[row["source_id"]]),
+                "payload_bytes": len(payloads[row["source_id"]]),
+            }
+            for row in rows
+        ],
+        quarantine_authority,
+    )
+
+
+def _declared_capacity_bytes(
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+    *,
+    label: str,
+) -> int:
+    rows = inventory.get("sources")
+    _require(type(rows) is list and bool(rows), f"{label} source rows missing")
+    seen: set[str] = set()
+    total = 0
+    for row in rows:
+        _require(type(row) is dict, f"{label} source row invalid")
+        source_id = row.get("source_id")
+        _require(
+            type(source_id) is str and bool(source_id) and source_id not in seen,
+            f"{label} source identity invalid or duplicate",
+        )
+        declared = row.get("declared_capacity_bytes")
+        _require(
+            type(declared) is int and declared >= 0,
+            f"{label} declared capacity must be exact nonnegative int",
+        )
+        seen.add(source_id)
+        total += declared
+    _require(seen == set(payloads), f"{label} inventory/payload coverage mismatch")
+    return total
+
+
+def _reconstruct_clean_source_inputs(
+    *,
+    v7_root: Path,
+    bulk_workspace: Path,
+    config: Mapping[str, Any],
+) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    v9_runner.validate_v7_checkout(v7_root)
+    clean_successor.validate_runtime_bindings(ROOT)
+    quarantine_authority = json.loads(
+        (ROOT / clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
+    )
+    v7, _, historical_inventory, historical_payloads = v8._capture_terminal_v7(
+        v7_root, config
+    )
+    clean_inventory, clean_payloads, removal = clean_successor.deauthorize_exact_nomis(
+        historical_inventory,
+        historical_payloads,
+        quarantine_authority,
+        quarantine,
+    )
+    _verify_removal_proof(removal)
+    _, bulk_rows, bulk_payloads = v8._materialize_bulk(ROOT, bulk_workspace, config)
+    existing_ids = {row["source_id"] for row in clean_inventory["sources"]}
+    _require(not (existing_ids & set(bulk_payloads)), "clean base/bulk source-id collision")
+    inventory = copy.deepcopy(clean_inventory)
+    inventory["sources"] = [*inventory["sources"], *bulk_rows]
+    payloads = dict(clean_payloads)
+    payloads.update(bulk_payloads)
+    _verify_clean_payload_graph(inventory, payloads, quarantine_authority)
+    _require(len(payloads) == EXPECTED_BASE_OBJECTS, "clean base object-count drift")
+    _require(
+        _declared_capacity_bytes(inventory, payloads, label="clean base")
+        == EXPECTED_BASE_BYTES,
+        "clean base declared-capacity drift",
+    )
+    return v7.v6.v3, inventory, payloads, removal
+
+
 def _reconstruct_v8_with_historical_namespace(
     *,
     v7_root: Path,
     bulk_workspace: Path,
     config: Mapping[str, Any],
-) -> tuple[Any, dict[str, Any], dict[str, bytes]]:
-    """Load exact V7 matcher modules ahead of the cached current-main package paths."""
+) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
     for module_name in _HISTORICAL_MATCHER_MODULES:
         _require(module_name not in sys.modules, f"historical matcher preloaded: {module_name}")
 
@@ -161,16 +283,19 @@ def _reconstruct_v8_with_historical_namespace(
 
     twelve_six_pkg.__path__ = [historical_package, *current_package_path]
     data_pkg.__path__ = [historical_data, *current_data_path]
+    previous_dont_write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
     importlib.invalidate_caches()
     try:
-        matcher, inventory, payloads = v9_runner.reconstruct_v8_source_inputs(
+        matcher, inventory, payloads, removal = _reconstruct_clean_source_inputs(
             v7_root=v7_root,
             bulk_workspace=bulk_workspace,
-            v8_config=dict(config),
+            config=config,
         )
     finally:
         twelve_six_pkg.__path__ = current_package_path
         data_pkg.__path__ = current_data_path
+        sys.dont_write_bytecode = previous_dont_write_bytecode
         importlib.invalidate_caches()
 
     historical_root = Path(historical_data)
@@ -182,8 +307,7 @@ def _reconstruct_v8_with_historical_namespace(
             module_path.is_relative_to(historical_root),
             f"historical matcher escaped exact V7 worktree: {module_name}",
         )
-    return matcher, inventory, payloads
-
+    return matcher, inventory, payloads, removal
 
 def _compose_graph(
     base_inventory: Mapping[str, Any],
@@ -219,12 +343,17 @@ def _compose_graph(
     inventory["sources"] = [*copy.deepcopy(rows), *copy.deepcopy(extension_sources)]
     inventory["final_refresh_required"] = False
     inventory["terminal_refresh_rule"] = (
-        "Exact reconstructed V8 authority plus exact PR #1347 source-admitted Caselaw "
-        "rows; pair decisions delegate to terminal PR #824 V3 semantics and indexed "
-        "execution must be byte-equivalent to the all-pairs reference."
+        "Exact reconstructed Nomis-free V8 source graph plus exact PR #1347 "
+        "source-admitted Caselaw rows; pair decisions delegate to terminal PR #824 "
+        "V3 semantics and indexed execution must be byte-equivalent to the all-pairs "
+        "reference."
     )
     payloads = dict(base_payloads)
     payloads.update(extension_payloads)
+    quarantine_authority = json.loads(
+        (ROOT / clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
+    )
+    _verify_clean_payload_graph(inventory, payloads, quarantine_authority)
     return inventory, payloads
 
 
@@ -366,16 +495,19 @@ def execute(
     execution_head = _git("rev-parse", "HEAD").stdout.strip()
     _require(len(execution_head) == 40, "execution HEAD identity missing")
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
-    matcher, base_inventory, base_payloads = _reconstruct_v8_with_historical_namespace(
+    matcher, base_inventory, base_payloads, removal = _reconstruct_v8_with_historical_namespace(
         v7_root=v7_root,
         bulk_workspace=bulk_workspace,
         config=config,
     )
     _require(len(base_payloads) == EXPECTED_BASE_OBJECTS, "V8 base object count drift")
     _require(
-        sum(len(raw) for raw in base_payloads.values()) == EXPECTED_BASE_BYTES,
-        "V8 base payload byte total drift",
+        _declared_capacity_bytes(base_inventory, base_payloads, label="V8 base")
+        == EXPECTED_BASE_BYTES,
+        "V8 base declared-capacity drift",
     )
+    base_comparison_payload_bytes = sum(len(raw) for raw in base_payloads.values())
+    _require(base_comparison_payload_bytes > 0, "V8 base comparison payload is empty")
 
     projection = caselaw.validate_and_project_caselaw(
         candidate_jsonl,
@@ -390,9 +522,19 @@ def execute(
     extension_sources = [dict(row) for row in projection.sources]
     extension_payloads = dict(projection.payloads)
     _require(len(extension_sources) == EXPECTED_CASELAW_OBJECTS, "Caselaw projection count drift")
+    caselaw_comparison_payload_bytes = sum(len(raw) for raw in extension_payloads.values())
     _require(
-        sum(len(raw) for raw in extension_payloads.values()) == EXPECTED_CASELAW_BYTES,
-        "Caselaw projection bytes drift",
+        caselaw_comparison_payload_bytes == EXPECTED_CASELAW_BYTES,
+        "Caselaw projection comparison-payload bytes drift",
+    )
+    _require(
+        _declared_capacity_bytes(
+            {"sources": extension_sources},
+            extension_payloads,
+            label="Caselaw projection",
+        )
+        == EXPECTED_CASELAW_BYTES,
+        "Caselaw projection declared-capacity drift",
     )
     inventory, payloads = _compose_graph(
         base_inventory,
@@ -402,8 +544,15 @@ def execute(
     )
     _require(len(payloads) == EXPECTED_COMBINED_OBJECTS, "combined source count drift")
     _require(
-        sum(len(raw) for raw in payloads.values()) == EXPECTED_COMBINED_BYTES,
-        "combined payload byte total drift",
+        _declared_capacity_bytes(inventory, payloads, label="combined graph")
+        == EXPECTED_COMBINED_BYTES,
+        "combined declared-capacity drift",
+    )
+    combined_comparison_payload_bytes = sum(len(raw) for raw in payloads.values())
+    _require(
+        combined_comparison_payload_bytes
+        == base_comparison_payload_bytes + caselaw_comparison_payload_bytes,
+        "combined comparison-payload byte arithmetic drift",
     )
 
     # The merged indexed executor's runtime attestation must protect the original
@@ -474,6 +623,10 @@ def execute(
             "v7_head_sha": v8.EXPECTED_V7_HEAD,
             "source_object_count": EXPECTED_BASE_OBJECTS,
             "payload_bytes": EXPECTED_BASE_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_BASE_BYTES,
+            "comparison_payload_bytes": base_comparison_payload_bytes,
+            "nomis1864_deauthorization": removal,
         },
         "caselaw": {
             "source_admission_product_pr": caselaw.UPSTREAM_PRODUCT_PR,
@@ -481,6 +634,9 @@ def execute(
             "candidate_sha256": caselaw.CANDIDATE_SHA256,
             "source_object_count": EXPECTED_CASELAW_OBJECTS,
             "payload_bytes": EXPECTED_CASELAW_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_CASELAW_BYTES,
+            "comparison_payload_bytes": caselaw_comparison_payload_bytes,
             "intake_receipt_identity_sha256": projection.receipt[
                 "receipt_identity_sha256"
             ],
@@ -489,6 +645,9 @@ def execute(
         "combined": {
             "source_object_count": EXPECTED_COMBINED_OBJECTS,
             "payload_bytes": EXPECTED_COMBINED_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_COMBINED_BYTES,
+            "comparison_payload_bytes": combined_comparison_payload_bytes,
             "reference_report_sha256": reference["report_sha256"],
             "indexed_report_sha256": indexed_report["report_sha256"],
             "reports_byte_identical": True,
