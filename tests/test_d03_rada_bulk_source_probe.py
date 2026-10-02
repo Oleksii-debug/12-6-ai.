@@ -13,6 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import tools.probe_d03_rada_bulk_source as probe_mod
 from tools.probe_d03_rada_bulk_source import (
     DEFAULT_CONFIG,
     ProbeError,
@@ -242,3 +243,67 @@ def test_production_config_loads_under_exact_v1_authority() -> None:
 
     assert config["source"]["dataset_id"] == "laws-texts"
     assert config["training_authorized_bytes"] == 0
+
+def test_live_probe_can_retain_exact_safe_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = _archive({"d1.htm": b"a"})
+    config = _config(min_entries=1)
+    retained = tmp_path / "retained.zip"
+    report_path = tmp_path / "report.json"
+
+    monkeypatch.setattr(probe_mod, "_load_config", lambda _: config)
+    monkeypatch.setattr(
+        probe_mod,
+        "_download",
+        lambda _url, *, max_bytes: (archive, {"etag": "fixture"}),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "probe_d03_rada_bulk_source.py",
+            "--config",
+            str(tmp_path / "ignored.json"),
+            "--accept-current-upstream",
+            "--archive-output",
+            str(retained),
+            "--output",
+            str(report_path),
+        ],
+    )
+
+    probe_mod.main()
+
+    assert retained.read_bytes() == archive
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["archive"]["sha256"] == hashlib.sha256(archive).hexdigest()
+    assert report["gates"]["safe_zip_inventory"] == "PASS"
+    assert report["training_authorized_bytes"] == 0
+    assert report["corpus_admitted"] is False
+
+
+def test_archive_output_rejects_preexisting_local_archive_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_path = tmp_path / "input.zip"
+    archive_path.write_bytes(_archive({"d1.htm": b"a"}))
+    monkeypatch.setattr(probe_mod, "_load_config", lambda _: _config(min_entries=1))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "probe_d03_rada_bulk_source.py",
+            "--archive",
+            str(archive_path),
+            "--archive-output",
+            str(tmp_path / "retained.zip"),
+            "--accept-current-upstream",
+        ],
+    )
+
+    with pytest.raises(ProbeError, match="only valid for a live source acquisition"):
+        probe_mod.main()
+
