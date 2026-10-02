@@ -41,6 +41,18 @@ def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
 
 
 
+def test_nbu_expensive_physical_jobs_wait_for_bootstrap() -> None:
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    for job in (
+        "nbu-global-dedup-pass",
+        "nbu-global-dedup-audited-pin-replay",
+        "nbu-pinned-pdf-access-probe",
+    ):
+        index = lines.index(f"  {job}:")
+        block = lines[index : index + 6]
+        assert "    needs: bootstrap" in block, job
+
+
 def test_nbu_audited_pin_replay_runs_two_clean_without_weakening_live_gate() -> None:
     raw = WORKFLOW.read_text(encoding="utf-8")
     audited_start = raw.index("  nbu-global-dedup-audited-pin-replay:")
