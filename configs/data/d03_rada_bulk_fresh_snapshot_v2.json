@@ -4,7 +4,7 @@
     "family_id": "ua.rada.open-data.laws-texts",
     "dataset_id": "laws-texts",
     "archive_url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip",
-    "upstream_mutability": "FREQUENTLY_UPDATED_REQUIRES_EXACT_ARCHIVE_REPIN"
+    "upstream_mutability": "FREQUENTLY_UPDATED_REQUIRES_TWO_CLEAN_LIVE_READS_AND_EXACT_RETENTION"
   },
   "predecessor_authority": {
     "historical_qp_pr": 1787,
@@ -12,11 +12,20 @@
     "archive_bytes": 46709153,
     "archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"
   },
-  "expected_current_observation": {
+  "prior_mutable_observation": {
     "archive_bytes": 46767861,
     "archive_sha256": "08d38fd32f64550597985bdcdf63a42bbda5d9bec260445de20cdb435c600fcc",
     "observed_in_issue": 2019,
-    "observation_comment_id": 5938332653
+    "observation_comment_id": 5938332653,
+    "status": "SUPERSEDED_MUTABLE_OBSERVATION_DO_NOT_PIN_AS_CURRENT"
+  },
+  "capture_policy": {
+    "establish_exact_identity_from_two_clean_live_reads": true,
+    "require_byte_identical_archives": true,
+    "require_semantically_identical_probes": true,
+    "retained_artifact_requires_attribution": true,
+    "rights_policy_path": "configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json",
+    "historical_qp_authority_is_immutable": true
   },
   "probe_authority": {
     "schema_version": "12-6.d03-rada-bulk-source-probe-report.v1",
