@@ -1,0 +1,41 @@
+{
+  "schema_version": "12-6.d03-rada-bulk-fresh-snapshot-capture.v2",
+  "source": {
+    "family_id": "ua.rada.open-data.laws-texts",
+    "dataset_id": "laws-texts",
+    "archive_url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip",
+    "upstream_mutability": "FREQUENTLY_UPDATED_REQUIRES_EXACT_ARCHIVE_REPIN"
+  },
+  "predecessor_authority": {
+    "historical_qp_pr": 1787,
+    "historical_execution_carrier_pr": 2230,
+    "archive_bytes": 46709153,
+    "archive_sha256": "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"
+  },
+  "expected_current_observation": {
+    "archive_bytes": 46767861,
+    "archive_sha256": "08d38fd32f64550597985bdcdf63a42bbda5d9bec260445de20cdb435c600fcc",
+    "observed_in_issue": 2019,
+    "observation_comment_id": 5938332653
+  },
+  "probe_authority": {
+    "schema_version": "12-6.d03-rada-bulk-source-probe-report.v1",
+    "worker_id": "D03-RADA-BULK-SOURCE-PROBE-20260826",
+    "config_identity_sha256": "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b",
+    "parent_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "parent_registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+  },
+  "truth_boundary": {
+    "local_free_only": true,
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false
+  }
+}
