@@ -52,8 +52,7 @@
     "loss_ledger": null,
     "checkpoint_integrity": null,
     "evaluation_firewall": null,
-    "backend": null,
-    "parent_checkpoint": null
+    "backend": null
   },
   "recipe": {
     "training_config_sha256": null,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
@@ -15,9 +16,35 @@ from twelve_six.portable_run_packet import (
     assess_portable_run_packet,
     validate_portable_run_contract,
 )
+from twelve_six.preoptimizer_authority import bind_preoptimizer_to_packet
+from twelve_six.preoptimizer_authority import (
+    canonical_sha256 as preoptimizer_sha256,
+)
 
 OVERLAY_ID = "R01-LEARNED20M-PORTABLE-SESSION-OVERLAY-V1"
 OVERLAY_SCHEMA_VERSION = 1
+
+_MODEL341_MODELSPEC_SHA256 = "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441"
+_MODEL341_INITSPEC_SHA256 = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
+_MODEL341_PARAMETER_COUNT = 20_613_440
+_LEARN345_POLICY_IDENTITY_SHA256 = "84152a673c4ed8fd34f4b81b03a96b4a3f5b40a22d961f436cbed11af23000e7"
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_TERMINAL_AUTHORITY_KEYS = frozenset(
+    {
+        "repository",
+        "git_sha",
+        "evidence_sha256",
+        "workflow_run_id",
+        "workflow_conclusion",
+        "terminal",
+    }
+)
+_OVERLAY_AUTHORITY_KEYS = {
+    "code": _TERMINAL_AUTHORITY_KEYS,
+    "model": _TERMINAL_AUTHORITY_KEYS | {"modelspec_sha256"},
+    "backend": _TERMINAL_AUTHORITY_KEYS
+    | {"backend_id", "environment_lock_sha256"},
+}
 
 _ROOT_KEYS = {
     "schema_version",
@@ -72,6 +99,76 @@ _SECTION_KEYS = {
     },
     "output": {"artifact_store_uri", "content_addressed"},
 }
+_EXPECTED_EXECUTION_ROOT_KEYS = {"model", "training", "session"}
+_EXPECTED_MODEL_KEYS = {
+    "modelspec_sha256",
+    "initspec_sha256",
+    "parameter_count",
+    "canonical_base",
+}
+_EXPECTED_TRAINING_KEYS = {
+    "training_config_sha256",
+    "stopping_policy_sha256",
+    "policy_identity_sha256",
+    "optimizer",
+    "learning_rate",
+    "betas",
+    "eps",
+    "weight_decay",
+    "gradient_clip_norm",
+    "scheduler",
+    "warmup_steps",
+    "sequence_length",
+    "micro_batch_size",
+    "gradient_accumulation_steps",
+    "precision",
+    "seed_vector",
+}
+_EXPECTED_SEED_KEYS = {"model_init", "data_order", "dataloader"}
+_EXPECTED_SESSION_KEYS = {
+    "scientific_bindings",
+    "checkpoint",
+    "evaluation",
+    "runtime",
+    "resource",
+    "output",
+}
+_LEARN345_FIXED_TRAINING = {
+    "policy_identity_sha256": _LEARN345_POLICY_IDENTITY_SHA256,
+    "optimizer": "AdamW",
+    "learning_rate": 0.00022,
+    "betas": [0.9, 0.95],
+    "eps": 1e-08,
+    "weight_decay": 0.1,
+    "gradient_clip_norm": 1.0,
+    "scheduler": "constant",
+    "warmup_steps": 0,
+    "sequence_length": 128,
+    "micro_batch_size": 1,
+    "gradient_accumulation_steps": 1,
+    "precision": "fp32",
+    "seed_vector": {
+        "model_init": 20260826,
+        "data_order": 20260826,
+        "dataloader": 20260826,
+    },
+}
+
+
+def _exact_literal_match(value: Any, expected: Any) -> bool:
+    """Match frozen execution literals without Python bool/int coercion."""
+    if type(value) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return set(value) == set(expected) and all(
+            _exact_literal_match(value[key], expected[key]) for key in expected
+        )
+    if isinstance(expected, list):
+        return len(value) == len(expected) and all(
+            _exact_literal_match(item, expected_item)
+            for item, expected_item in zip(value, expected, strict=True)
+        )
+    return value == expected
 
 
 @dataclass(frozen=True)
@@ -86,8 +183,14 @@ class PortableRunBinding:
     blockers: tuple[str, ...]
     readiness_sha256: str | None
     overlay_sha256: str | None
+    portable_execution_sha256: str | None
     packet_sha256: str | None
     packet: dict[str, Any] | None
+    trusted_readiness_bundle_sha256: str | None = None
+    preoptimizer_authorities_sha256: str | None = None
+    launch_input_authority_identity_sha256: str | None = None
+    loss_bearing_manifest_identity_sha256: str | None = None
+    exposure_plan_identity_sha256: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -99,12 +202,22 @@ class PortableRunBinding:
             "blockers": list(self.blockers),
             "readiness_sha256": self.readiness_sha256,
             "overlay_sha256": self.overlay_sha256,
+            "portable_execution_sha256": self.portable_execution_sha256,
             "packet_sha256": self.packet_sha256,
+            "trusted_readiness_bundle_sha256": self.trusted_readiness_bundle_sha256,
+            "preoptimizer_authorities_sha256": self.preoptimizer_authorities_sha256,
+            "launch_input_authority_identity_sha256": (
+                self.launch_input_authority_identity_sha256
+            ),
+            "loss_bearing_manifest_identity_sha256": (
+                self.loss_bearing_manifest_identity_sha256
+            ),
+            "exposure_plan_identity_sha256": self.exposure_plan_identity_sha256,
         }
 
 
 def canonical_sha256(value: Any) -> str:
-    """Hash canonical JSON so the binding records both exact input identities."""
+    """Hash canonical JSON so the binding records exact input identities."""
     payload = json.dumps(
         value,
         ensure_ascii=False,
@@ -182,6 +295,26 @@ def _validate_ready_candidate_scalars(
         errors.append("overlay_output_content_addressed_must_be_true")
 
 
+def _exact_keys(
+    errors: list[str],
+    value: Any,
+    expected_keys: set[str],
+    prefix: str,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        errors.append(f"{prefix}_must_be_object")
+        return {}
+    missing = expected_keys - set(value)
+    unexpected = set(value) - expected_keys
+    errors.extend(f"{prefix}_{name}_missing" for name in sorted(missing))
+    errors.extend(f"{prefix}_{name}_unexpected" for name in sorted(unexpected))
+    return value
+
+
+def _is_sha256(value: Any) -> bool:
+    return isinstance(value, str) and _SHA256_RE.fullmatch(value) is not None
+
+
 def validate_session_overlay_contract(value: Any) -> list[str]:
     """Reject drift and scalar coercions before they can influence a run packet."""
     if not isinstance(value, dict):
@@ -217,12 +350,24 @@ def validate_session_overlay_contract(value: Any) -> list[str]:
         "optimizer_scheduler_precision",
         _SECTION_KEYS["optimizer_scheduler_precision"],
     )
-    _exact_mapping(
+    authorities = _exact_mapping(
         errors,
         scientific,
         "authorities",
         _SECTION_KEYS["authorities"],
     )
+    ready_candidate = value.get("status") == "READY_CANDIDATE"
+    for role, expected_keys in _OVERLAY_AUTHORITY_KEYS.items():
+        authority = authorities.get(role)
+        if authority is None and not ready_candidate:
+            continue
+        _exact_keys(
+            errors,
+            authority,
+            set(expected_keys),
+            f"overlay_authority_{role}",
+        )
+
     checkpoint = _exact_mapping(
         errors,
         value,
@@ -230,12 +375,24 @@ def validate_session_overlay_contract(value: Any) -> list[str]:
         _SECTION_KEYS["checkpoint"],
     )
     lineage = _exact_mapping(errors, checkpoint, "lineage", _SECTION_KEYS["lineage"])
+    parent_checkpoint_authority = checkpoint.get("parent_checkpoint_authority")
+    if checkpoint.get("mode") == "RESUME":
+        if parent_checkpoint_authority is not None or ready_candidate:
+            _exact_keys(
+                errors,
+                parent_checkpoint_authority,
+                set(_TERMINAL_AUTHORITY_KEYS),
+                "overlay_parent_checkpoint_authority",
+            )
+    elif parent_checkpoint_authority is not None:
+        errors.append("overlay_parent_checkpoint_authority_forbidden_for_fresh_start")
+
     resource = _exact_mapping(errors, value, "resource", _SECTION_KEYS["resource"])
     output = _exact_mapping(errors, value, "output", _SECTION_KEYS["output"])
     for section in ("evaluation", "runtime"):
         _exact_mapping(errors, value, section, _SECTION_KEYS[section])
 
-    if value.get("status") == "READY_CANDIDATE":
+    if ready_candidate:
         _validate_ready_candidate_scalars(
             errors,
             scientific,
@@ -247,17 +404,134 @@ def validate_session_overlay_contract(value: Any) -> list[str]:
     return sorted(set(errors))
 
 
+def _session_projection(overlay: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: copy.deepcopy(overlay.get(key))
+        for key in (
+            "scientific_bindings",
+            "checkpoint",
+            "evaluation",
+            "runtime",
+            "resource",
+            "output",
+        )
+    }
+
+
+def validate_authenticated_portable_execution(value: Any) -> list[str]:
+    """Validate the root-authenticated MODEL-341/LEARN-345 run projection."""
+    if value is None:
+        return ["authenticated_portable_execution_missing"]
+    errors: list[str] = []
+    root = _exact_keys(
+        errors,
+        value,
+        _EXPECTED_EXECUTION_ROOT_KEYS,
+        "authenticated_portable_execution",
+    )
+    model = _exact_keys(
+        errors,
+        root.get("model"),
+        _EXPECTED_MODEL_KEYS,
+        "authenticated_portable_execution_model",
+    )
+    training = _exact_keys(
+        errors,
+        root.get("training"),
+        _EXPECTED_TRAINING_KEYS,
+        "authenticated_portable_execution_training",
+    )
+    session = _exact_keys(
+        errors,
+        root.get("session"),
+        _EXPECTED_SESSION_KEYS,
+        "authenticated_portable_execution_session",
+    )
+
+    expected_model = {
+        "modelspec_sha256": _MODEL341_MODELSPEC_SHA256,
+        "initspec_sha256": _MODEL341_INITSPEC_SHA256,
+        "parameter_count": _MODEL341_PARAMETER_COUNT,
+        "canonical_base": "random_init",
+    }
+    for key, expected in expected_model.items():
+        if not _exact_literal_match(model.get(key), expected):
+            errors.append(f"authenticated_portable_execution_model_{key}_mismatch")
+
+    if not _is_sha256(training.get("training_config_sha256")):
+        errors.append("authenticated_portable_execution_training_config_sha256_invalid")
+    if not _is_sha256(training.get("stopping_policy_sha256")):
+        errors.append("authenticated_portable_execution_stopping_policy_sha256_invalid")
+    for key, expected in _LEARN345_FIXED_TRAINING.items():
+        if not _exact_literal_match(training.get(key), expected):
+            errors.append(f"authenticated_portable_execution_training_{key}_mismatch")
+
+    seed_vector = _exact_keys(
+        errors,
+        training.get("seed_vector"),
+        _EXPECTED_SEED_KEYS,
+        "authenticated_portable_execution_seed_vector",
+    )
+    if seed_vector and any(seed_vector.get(key) != 20260826 for key in _EXPECTED_SEED_KEYS):
+        errors.append("authenticated_portable_execution_seed_vector_mismatch")
+
+    synthetic_overlay = {
+        "schema_version": OVERLAY_SCHEMA_VERSION,
+        "overlay_id": OVERLAY_ID,
+        "status": "READY_CANDIDATE",
+        **copy.deepcopy(session),
+    }
+    session_errors = validate_session_overlay_contract(synthetic_overlay)
+    errors.extend(
+        f"authenticated_portable_execution_session:{item}" for item in session_errors
+    )
+
+    bindings = _mapping(session.get("scientific_bindings"))
+    summary = _mapping(bindings.get("optimizer_scheduler_precision"))
+    if bindings.get("initspec_sha256") != _MODEL341_INITSPEC_SHA256:
+        errors.append("authenticated_portable_execution_session_initspec_mismatch")
+    if bindings.get("seed") != 20260826:
+        errors.append("authenticated_portable_execution_session_seed_mismatch")
+    expected_summary = {
+        "optimizer": "AdamW",
+        "scheduler": "constant",
+        "precision": "fp32",
+    }
+    if summary != expected_summary:
+        errors.append("authenticated_portable_execution_session_recipe_summary_mismatch")
+
+    return sorted(set(errors))
+
+
 def _coherence_blockers(
     readiness: dict[str, Any],
     overlay: dict[str, Any],
+    expected_execution: dict[str, Any],
 ) -> list[str]:
     blockers: list[str] = []
     evidence = _mapping(readiness.get("evidence"))
     code = _mapping(evidence.get("code"))
     model = _mapping(readiness.get("model_authority"))
+    recipe_evidence = _mapping(evidence.get("training_recipe"))
     bindings = _mapping(overlay.get("scientific_bindings"))
     authorities = _mapping(bindings.get("authorities"))
     runtime = _mapping(overlay.get("runtime"))
+    expected_model = _mapping(expected_execution.get("model"))
+    expected_training = _mapping(expected_execution.get("training"))
+    expected_session = _mapping(expected_execution.get("session"))
+
+    if _session_projection(overlay) != expected_session:
+        blockers.append("authenticated_session_projection_mismatch")
+
+    for key in ("modelspec_sha256", "parameter_count", "canonical_base"):
+        if expected_model.get(key) != model.get(key):
+            blockers.append(f"authenticated_model_{key}_mismatch")
+    if expected_training.get("training_config_sha256") != recipe_evidence.get("config_sha256"):
+        blockers.append("authenticated_training_config_sha256_mismatch")
+    if expected_training.get("stopping_policy_sha256") != recipe_evidence.get(
+        "stopping_policy_sha256"
+    ):
+        blockers.append("authenticated_stopping_policy_sha256_mismatch")
 
     code_authority = _mapping(authorities.get("code"))
     if code_authority and code_authority.get("git_sha") != code.get("git_sha"):
@@ -286,9 +560,11 @@ def _build_candidate(
     readiness: dict[str, Any],
     template: dict[str, Any],
     overlay: dict[str, Any],
+    expected_execution: dict[str, Any],
     *,
     readiness_sha256: str,
     overlay_sha256: str,
+    portable_execution_sha256: str,
 ) -> dict[str, Any]:
     packet = copy.deepcopy(template)
     evidence = _mapping(readiness.get("evidence"))
@@ -301,9 +577,11 @@ def _build_candidate(
     evaluation_evidence = _mapping(evidence.get("evaluation"))
     recipe_evidence = _mapping(evidence.get("training_recipe"))
 
-    bindings = _mapping(overlay.get("scientific_bindings"))
+    expected_training = _mapping(expected_execution.get("training"))
+    expected_session = _mapping(expected_execution.get("session"))
+    bindings = _mapping(expected_session.get("scientific_bindings"))
     binding_authorities = _mapping(bindings.get("authorities"))
-    checkpoint_overlay = _mapping(overlay.get("checkpoint"))
+    checkpoint_overlay = _mapping(expected_session.get("checkpoint"))
 
     packet["status"] = "READY_CANDIDATE"
     packet["identities"].update(
@@ -332,11 +610,14 @@ def _build_candidate(
                 evaluation_evidence.get("firewall_authority")
             ),
             "backend": copy.deepcopy(binding_authorities.get("backend")),
-            "parent_checkpoint": copy.deepcopy(
-                checkpoint_overlay.get("parent_checkpoint_authority")
-            ),
         }
     )
+    if checkpoint_overlay.get("mode") == "RESUME":
+        packet["authorities"]["parent_checkpoint"] = copy.deepcopy(
+            checkpoint_overlay.get("parent_checkpoint_authority")
+        )
+    else:
+        packet["authorities"].pop("parent_checkpoint", None)
     packet["recipe"].update(
         {
             "training_config_sha256": recipe_evidence.get("config_sha256"),
@@ -356,6 +637,7 @@ def _build_candidate(
             "max_exposures_per_unique_position": recipe_evidence.get(
                 "max_exposures_per_unique_position"
             ),
+            "execution_projection": copy.deepcopy(expected_training),
         }
     )
     packet["checkpoint"].update(
@@ -376,15 +658,21 @@ def _build_candidate(
             ),
         }
     )
-    packet["evaluation"].update(copy.deepcopy(_mapping(overlay.get("evaluation"))))
-    packet["runtime"].update(copy.deepcopy(_mapping(overlay.get("runtime"))))
-    packet["resource"].update(copy.deepcopy(_mapping(overlay.get("resource"))))
-    packet["output"].update(copy.deepcopy(_mapping(overlay.get("output"))))
+    packet["evaluation"].update(
+        copy.deepcopy(_mapping(expected_session.get("evaluation")))
+    )
+    packet["runtime"].update(copy.deepcopy(_mapping(expected_session.get("runtime"))))
+    packet["resource"].update(copy.deepcopy(_mapping(expected_session.get("resource"))))
+    packet["output"].update(copy.deepcopy(_mapping(expected_session.get("output"))))
     packet["binding"] = {
         "readiness_campaign_id": readiness.get("campaign_id"),
         "readiness_sha256": readiness_sha256,
         "session_overlay_id": overlay.get("overlay_id"),
         "session_overlay_sha256": overlay_sha256,
+        "portable_execution_sha256": portable_execution_sha256,
+        "tokenizer_decision_identity_sha256": tokenizer.get(
+            "decision_identity_sha256"
+        ),
     }
     return packet
 
@@ -394,17 +682,28 @@ def bind_portable_run_packet(
     template: Any,
     overlay: Any,
     *,
+    expected_portable_execution: Any = None,
     verified_scientific_authorities: Collection[str] = (),
     verified_authorization_refs: Collection[str] = (),
 ) -> PortableRunBinding:
-    """Return a runnable packet only when upstream readiness and session binding pass."""
+    """Return a runnable packet only when upstream and external execution roots pass."""
     blockers: list[str] = []
     readiness_data = _mapping(readiness)
     template_data = _mapping(template)
     overlay_data = _mapping(overlay)
+    expected_execution_data = _mapping(expected_portable_execution)
 
     readiness_hash = canonical_sha256(readiness) if isinstance(readiness, dict) else None
     overlay_hash = canonical_sha256(overlay) if isinstance(overlay, dict) else None
+    execution_errors = validate_authenticated_portable_execution(
+        expected_portable_execution
+    )
+    execution_hash = (
+        canonical_sha256(expected_portable_execution)
+        if isinstance(expected_portable_execution, dict) and not execution_errors
+        else None
+    )
+    blockers.extend(f"binding:{item}" for item in execution_errors)
 
     readiness_result = assess_learned20m_readiness(
         readiness_data,
@@ -432,15 +731,28 @@ def bind_portable_run_packet(
     packet_assessment: PortableRunAssessment | None = None
     candidate: dict[str, Any] | None = None
     coherence: list[str] = []
-    if not template_errors and not overlay_errors and readiness_hash and overlay_hash:
-        coherence = _coherence_blockers(readiness_data, overlay_data)
+    if (
+        not template_errors
+        and not overlay_errors
+        and not execution_errors
+        and readiness_hash
+        and overlay_hash
+        and execution_hash
+    ):
+        coherence = _coherence_blockers(
+            readiness_data,
+            overlay_data,
+            expected_execution_data,
+        )
         blockers.extend(f"binding:{item}" for item in coherence)
         candidate = _build_candidate(
             readiness_data,
             template_data,
             overlay_data,
+            expected_execution_data,
             readiness_sha256=readiness_hash,
             overlay_sha256=overlay_hash,
+            portable_execution_sha256=execution_hash,
         )
         packet_assessment = assess_portable_run_packet(candidate)
         relevant = (
@@ -463,6 +775,7 @@ def bind_portable_run_packet(
     ready = bool(
         readiness_result.ready_for_local_free_pilot
         and not overlay_errors
+        and not execution_errors
         and overlay_data.get("status") == "READY_CANDIDATE"
         and not coherence
         and desired_packet_ready
@@ -477,6 +790,120 @@ def bind_portable_run_packet(
         blockers=tuple(sorted(set(blockers))),
         readiness_sha256=readiness_hash,
         overlay_sha256=overlay_hash,
+        portable_execution_sha256=execution_hash,
         packet_sha256=canonical_sha256(candidate) if ready and candidate else None,
         packet=exposed_packet,
+    )
+
+
+def bind_preoptimizer_to_run_binding(
+    binding: PortableRunBinding,
+    preoptimizer_authorities: Any,
+    *,
+    trusted_readiness_bundle_sha256: Any,
+) -> PortableRunBinding:
+    """Finalize a preliminary runnable binding with independently rooted D10/D04 data.
+
+    The preliminary binding is never mutated.  The returned object hashes and exposes
+    the exact post-preoptimizer packet consumed by the bounded runtime, including the
+    D10 launch-input root.  This prevents a caller from appending launch-critical
+    authority fields after the canonical PortableRunBinding packet root was frozen.
+    """
+    if not isinstance(binding, PortableRunBinding):
+        raise TypeError("preoptimizer finalization requires PortableRunBinding")
+    if (
+        not binding.binding_ready
+        or binding.packet is None
+        or binding.packet_sha256 is None
+        or binding.mode not in {"FRESH_START", "RESUME"}
+    ):
+        raise ValueError(
+            "preoptimizer finalization requires a runnable preliminary binding"
+        )
+    if not _is_sha256(trusted_readiness_bundle_sha256):
+        raise ValueError("trusted readiness bundle identity must be 64 lowercase hex")
+
+    final_packet = bind_preoptimizer_to_packet(
+        binding.packet,
+        preoptimizer_authorities,
+        trusted_readiness_bundle_sha256=trusted_readiness_bundle_sha256,
+    )
+    final_assessment = assess_portable_run_packet(final_packet)
+    relevant = (
+        final_assessment.resume_blockers
+        if binding.mode == "RESUME"
+        else final_assessment.launch_blockers
+    )
+    blockers = tuple(sorted({f"packet:{item}" for item in relevant}))
+    desired_ready = bool(
+        final_assessment.contract_valid
+        and (
+            (
+                binding.mode == "FRESH_START"
+                and final_assessment.ready_for_initial_local_free_launch
+            )
+            or (
+                binding.mode == "RESUME"
+                and final_assessment.ready_for_cross_provider_resume
+            )
+        )
+    )
+    packet_binding = _mapping(final_packet.get("binding"))
+    launch_root = packet_binding.get("launch_input_authority_identity_sha256")
+    manifest_root = packet_binding.get("loss_bearing_manifest_identity_sha256")
+    exposure_plan_root = packet_binding.get("exposure_plan_identity_sha256")
+    preoptimizer_root = preoptimizer_sha256(preoptimizer_authorities)
+    if not _is_sha256(launch_root):
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:launch_input_authority_root_missing"})
+        )
+        desired_ready = False
+    if not _is_sha256(manifest_root):
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:loss_bearing_manifest_root_missing"})
+        )
+        desired_ready = False
+    if not _is_sha256(exposure_plan_root):
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:exposure_plan_root_missing"})
+        )
+        desired_ready = False
+    if (
+        packet_binding.get("trusted_readiness_bundle_sha256")
+        != trusted_readiness_bundle_sha256
+    ):
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:trusted_readiness_bundle_root_mismatch"})
+        )
+        desired_ready = False
+    if packet_binding.get("preoptimizer_authorities_sha256") != preoptimizer_root:
+        blockers = tuple(
+            sorted(set(blockers) | {"binding:preoptimizer_authorities_root_mismatch"})
+        )
+        desired_ready = False
+
+    exposed_packet = final_packet if desired_ready else None
+    return PortableRunBinding(
+        binding_ready=desired_ready,
+        mode=binding.mode,
+        readiness_ready=binding.readiness_ready,
+        overlay_contract_valid=binding.overlay_contract_valid,
+        packet_contract_valid=final_assessment.contract_valid,
+        blockers=blockers,
+        readiness_sha256=binding.readiness_sha256,
+        overlay_sha256=binding.overlay_sha256,
+        portable_execution_sha256=binding.portable_execution_sha256,
+        packet_sha256=canonical_sha256(final_packet) if desired_ready else None,
+        packet=exposed_packet,
+        trusted_readiness_bundle_sha256=trusted_readiness_bundle_sha256,
+        preoptimizer_authorities_sha256=preoptimizer_root,
+        launch_input_authority_identity_sha256=(
+            launch_root if _is_sha256(launch_root) else None
+        ),
+        loss_bearing_manifest_identity_sha256=(
+            manifest_root if _is_sha256(manifest_root) else None
+        ),
+        exposure_plan_identity_sha256=(
+            exposure_plan_root if _is_sha256(exposure_plan_root) else None
+        ),
     )

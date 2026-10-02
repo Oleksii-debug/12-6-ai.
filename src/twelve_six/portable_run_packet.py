@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -51,6 +52,28 @@ REQUIRED_AUTHORITIES = {
     "evaluation_firewall",
     "backend",
 }
+_TERMINAL_AUTHORITY_KEYS = frozenset(
+    {
+        "repository",
+        "git_sha",
+        "evidence_sha256",
+        "workflow_run_id",
+        "workflow_conclusion",
+        "terminal",
+    }
+)
+_AUTHORITY_KEYS_BY_ROLE = {
+    "code": _TERMINAL_AUTHORITY_KEYS,
+    "model": _TERMINAL_AUTHORITY_KEYS | {"modelspec_sha256"},
+    "tokenizer": _TERMINAL_AUTHORITY_KEYS,
+    "data": _TERMINAL_AUTHORITY_KEYS,
+    "loss_ledger": _TERMINAL_AUTHORITY_KEYS,
+    "checkpoint_integrity": _TERMINAL_AUTHORITY_KEYS,
+    "evaluation_firewall": _TERMINAL_AUTHORITY_KEYS,
+    "backend": _TERMINAL_AUTHORITY_KEYS
+    | {"backend_id", "environment_lock_sha256"},
+    "parent_checkpoint": _TERMINAL_AUTHORITY_KEYS,
+}
 
 ALLOWED_BACKENDS = {
     "PROJECT_NATIVE_PYTORCH",
@@ -58,6 +81,130 @@ ALLOWED_BACKENDS = {
     "HF_ACCELERATE_OR_TRAINER",
     "PYTORCH_FSDP",
     "DEEPSPEED",
+}
+
+
+_ROOT_KEYS = {
+    "schema_version",
+    "packet_id",
+    "status",
+    "contract_fields",
+    "truth_boundary",
+    "identities",
+    "authorities",
+    "recipe",
+    "checkpoint",
+    "evaluation",
+    "runtime",
+    "resource",
+    "output",
+}
+_TRUTH_BOUNDARY_KEYS = {
+    "canonical_base",
+    "foreign_pretrained_or_aligned_weights_used",
+    "hidden_teacher_logits_used",
+    "selection_validation_used_for_training",
+    "final_test_payload_accessed",
+    "replay_or_padding_counted_as_unique_exposure",
+    "materially_paid_compute_authorized",
+    "materially_paid_compute_requested",
+}
+_IDENTITY_KEYS = {
+    "source_git_sha",
+    "modelspec_sha256",
+    "initspec_sha256",
+    "tokenizer_sha256",
+    "corpus_manifest_sha256",
+    "split_sha256",
+    "packing_sha256",
+    "unique_loss_ledger_sha256",
+    "canonical_base",
+    "parameter_count",
+}
+_RECIPE_KEYS = {
+    "training_config_sha256",
+    "optimizer_scheduler_precision",
+    "seed",
+    "target_unique_loss_positions",
+    "maximum_total_exposures",
+    "available_unique_loss_positions",
+    "max_exposures_per_unique_position",
+}
+_EXECUTION_PROJECTION_KEYS = {
+    "training_config_sha256",
+    "stopping_policy_sha256",
+    "policy_identity_sha256",
+    "optimizer",
+    "learning_rate",
+    "betas",
+    "eps",
+    "weight_decay",
+    "gradient_clip_norm",
+    "scheduler",
+    "warmup_steps",
+    "sequence_length",
+    "micro_batch_size",
+    "gradient_accumulation_steps",
+    "precision",
+    "seed_vector",
+}
+_EXECUTION_SEED_KEYS = {"model_init", "data_order", "dataloader"}
+_CHECKPOINT_KEYS = {
+    "mode",
+    "lineage",
+    "stop_resume_policy_sha256",
+    "session_time_limit_minutes",
+    "first_checkpoint_deadline_minutes",
+    "checkpoint_every_steps",
+    "atomic_publish_required",
+    "fresh_process_resume_required",
+    "cross_provider_resume_required",
+    "checkpoint_early_in_ephemeral_session",
+}
+_LINEAGE_KEYS = {
+    "parent_checkpoint_sha256",
+    "parent_manifest_sha256",
+    "previous_run_id",
+    "source_provider",
+    "cross_provider_transfer",
+    "resume_validated",
+}
+_EVALUATION_KEYS = {
+    "evaluation_schedule_sha256",
+    "selection_validation_only",
+    "final_test_payload_access",
+}
+_RUNTIME_KEYS = {
+    "backend_id",
+    "python_version",
+    "framework_version",
+    "environment_lock_sha256",
+    "device_type",
+}
+_RESOURCE_KEYS = {
+    "resource_class",
+    "provider",
+    "maximum_cost_usd",
+    "materially_paid",
+    "paid_authorization_ref",
+}
+_OUTPUT_KEYS = {"artifact_store_uri", "content_addressed"}
+_PRELIMINARY_BINDING_KEYS = {
+    "readiness_campaign_id",
+    "readiness_sha256",
+    "session_overlay_id",
+    "session_overlay_sha256",
+    "portable_execution_sha256",
+    "tokenizer_decision_identity_sha256",
+}
+_FINAL_BINDING_KEYS = _PRELIMINARY_BINDING_KEYS | {
+    "trusted_readiness_bundle_sha256",
+    "preoptimizer_authorities_sha256",
+    "preoptimizer_authorities",
+    "launch_input_authority_identity_sha256",
+    "loss_bearing_manifest_identity_sha256",
+    "exposure_plan_identity_sha256",
+    "exposure_plan_preflight_identity_sha256",
 }
 
 
@@ -122,8 +269,11 @@ def _expect(errors: list[str], condition: bool, message: str) -> None:
         errors.append(message)
 
 
-def _valid_terminal_authority(value: Any) -> bool:
+def _valid_terminal_authority(value: Any, *, role: str) -> bool:
     if not isinstance(value, dict):
+        return False
+    expected_keys = _AUTHORITY_KEYS_BY_ROLE.get(role)
+    if expected_keys is None or set(value) != expected_keys:
         return False
     run_id = value.get("workflow_run_id")
     return (
@@ -158,9 +308,140 @@ def _get_mapping(data: dict[str, Any], key: str, errors: list[str]) -> dict[str,
     return value
 
 
+def _expect_exact_keys(
+    errors: list[str],
+    value: dict[str, Any],
+    expected: set[str],
+    name: str,
+) -> None:
+    if set(value) != expected:
+        errors.append(f"{name}_fields_mismatch")
+
+
+def _validate_execution_projection(
+    errors: list[str],
+    projection: Any,
+    recipe: dict[str, Any],
+    checkpoint: dict[str, Any],
+    *,
+    required: bool,
+) -> None:
+    if projection is None:
+        if required:
+            errors.append("execution_projection_missing")
+        return
+    if not isinstance(projection, dict):
+        errors.append("execution_projection_must_be_object")
+        return
+    _expect_exact_keys(
+        errors,
+        projection,
+        _EXECUTION_PROJECTION_KEYS,
+        "execution_projection",
+    )
+
+    for name in (
+        "training_config_sha256",
+        "stopping_policy_sha256",
+        "policy_identity_sha256",
+    ):
+        if not _is_sha256(projection.get(name)):
+            errors.append(f"execution_projection_{name}_invalid")
+
+    for name in ("optimizer", "scheduler", "precision"):
+        if not _is_nonempty_string(projection.get(name)):
+            errors.append(f"execution_projection_{name}_invalid")
+
+    float_values: dict[str, float] = {}
+    for name in (
+        "learning_rate",
+        "eps",
+        "weight_decay",
+        "gradient_clip_norm",
+    ):
+        value = projection.get(name)
+        if type(value) is not float or not math.isfinite(value):
+            errors.append(f"execution_projection_{name}_invalid")
+        else:
+            float_values[name] = value
+    for name in ("learning_rate", "eps", "gradient_clip_norm"):
+        if name in float_values and float_values[name] <= 0:
+            errors.append(f"execution_projection_{name}_must_be_positive")
+    if (
+        "weight_decay" in float_values
+        and float_values["weight_decay"] < 0
+    ):
+        errors.append("execution_projection_weight_decay_must_be_nonnegative")
+
+    betas = projection.get("betas")
+    if (
+        not isinstance(betas, list)
+        or len(betas) != 2
+        or any(
+            type(value) is not float
+            or not math.isfinite(value)
+            or not 0 < value < 1
+            for value in betas
+        )
+    ):
+        errors.append("execution_projection_betas_invalid")
+
+    if not _is_nonnegative_int(projection.get("warmup_steps")):
+        errors.append("execution_projection_warmup_steps_invalid")
+    for name in (
+        "sequence_length",
+        "micro_batch_size",
+        "gradient_accumulation_steps",
+    ):
+        if not _is_positive_int(projection.get(name)):
+            errors.append(f"execution_projection_{name}_invalid")
+
+    seed_vector = projection.get("seed_vector")
+    if not isinstance(seed_vector, dict):
+        errors.append("execution_projection_seed_vector_must_be_object")
+    else:
+        _expect_exact_keys(
+            errors,
+            seed_vector,
+            _EXECUTION_SEED_KEYS,
+            "execution_projection_seed_vector",
+        )
+        for name in sorted(_EXECUTION_SEED_KEYS):
+            if not _is_nonnegative_int(seed_vector.get(name)):
+                errors.append(f"execution_projection_seed_vector_{name}_invalid")
+
+    if projection.get("training_config_sha256") != recipe.get(
+        "training_config_sha256"
+    ):
+        errors.append("execution_projection_training_config_sha256_mismatch")
+    if projection.get("stopping_policy_sha256") != checkpoint.get(
+        "stop_resume_policy_sha256"
+    ):
+        errors.append("execution_projection_stopping_policy_sha256_mismatch")
+
+    optimizer = recipe.get("optimizer_scheduler_precision")
+    if isinstance(optimizer, dict):
+        for name in ("optimizer", "scheduler", "precision"):
+            if projection.get(name) != optimizer.get(name):
+                errors.append(f"execution_projection_{name}_mismatch")
+
+    recipe_seed = recipe.get("seed")
+    if _is_nonnegative_int(recipe_seed) and isinstance(seed_vector, dict):
+        for name in sorted(_EXECUTION_SEED_KEYS):
+            seed = seed_vector.get(name)
+            if _is_nonnegative_int(seed) and seed != recipe_seed:
+                errors.append(f"execution_projection_seed_vector_{name}_mismatch")
+
+
 def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     """Validate immutable safety/shape rules without claiming launch readiness."""
     errors: list[str] = []
+    root_keys = set(data)
+    _expect(
+        errors,
+        root_keys in (_ROOT_KEYS, _ROOT_KEYS | {"binding"}),
+        "packet_top_level_fields_mismatch",
+    )
     _expect(
         errors,
         _is_exact_int(data.get("schema_version"), PACKET_SCHEMA_VERSION),
@@ -184,6 +465,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
         _expect(errors, len(declared) == len(set(declared)), "contract_fields_not_unique")
 
     boundaries = _get_mapping(data, "truth_boundary", errors)
+    _expect_exact_keys(errors, boundaries, _TRUTH_BOUNDARY_KEYS, "truth_boundary")
     _expect(
         errors,
         boundaries.get("canonical_base") == "RANDOM_INIT_PRETRAINING_ONLY",
@@ -201,6 +483,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
         _expect(errors, boundaries.get(key) is False, f"truth_boundary_{key}_must_be_false")
 
     resource = _get_mapping(data, "resource", errors)
+    _expect_exact_keys(errors, resource, _RESOURCE_KEYS, "resource")
     _expect(
         errors,
         resource.get("resource_class") in {"LOCAL_FREE", "FREE_GPU"},
@@ -229,6 +512,9 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     )
 
     checkpoint = _get_mapping(data, "checkpoint", errors)
+    _expect_exact_keys(errors, checkpoint, _CHECKPOINT_KEYS, "checkpoint")
+    lineage = _get_mapping(checkpoint, "lineage", errors)
+    _expect_exact_keys(errors, lineage, _LINEAGE_KEYS, "checkpoint_lineage")
     _expect(
         errors,
         checkpoint.get("mode") in {"FRESH_START", "RESUME"},
@@ -243,6 +529,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
         _expect(errors, checkpoint.get(key) is True, f"checkpoint_{key}_must_be_true")
 
     evaluation = _get_mapping(data, "evaluation", errors)
+    _expect_exact_keys(errors, evaluation, _EVALUATION_KEYS, "evaluation")
     _expect(
         errors,
         evaluation.get("selection_validation_only") is True,
@@ -255,6 +542,7 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     )
 
     identities = _get_mapping(data, "identities", errors)
+    _expect_exact_keys(errors, identities, _IDENTITY_KEYS, "identities")
     _expect(
         errors,
         identities.get("canonical_base") == "random_init",
@@ -267,14 +555,59 @@ def validate_portable_run_contract(data: dict[str, Any]) -> list[str]:
     )
 
     authorities = _get_mapping(data, "authorities", errors)
+    mode = checkpoint.get("mode")
+    expected_authorities = (
+        REQUIRED_AUTHORITIES | {"parent_checkpoint"}
+        if mode == "RESUME"
+        else REQUIRED_AUTHORITIES
+    )
     _expect(
         errors,
-        REQUIRED_AUTHORITIES.issubset(authorities),
-        "required_authority_slots_missing",
+        set(authorities) == expected_authorities,
+        "authority_slots_mismatch",
+    )
+    for role in sorted(expected_authorities):
+        authority = authorities.get(role)
+        if authority is None:
+            continue
+        expected_keys = _AUTHORITY_KEYS_BY_ROLE[role]
+        if not isinstance(authority, dict) or set(authority) != expected_keys:
+            errors.append(f"{role}_authority_fields_mismatch")
+
+    recipe = _get_mapping(data, "recipe", errors)
+    recipe_keys = set(recipe)
+    _expect(
+        errors,
+        recipe_keys in (_RECIPE_KEYS, _RECIPE_KEYS | {"execution_projection"}),
+        "recipe_fields_mismatch",
+    )
+    optimizer = recipe.get("optimizer_scheduler_precision")
+    if isinstance(optimizer, dict):
+        _expect_exact_keys(
+            errors,
+            optimizer,
+            {"optimizer", "scheduler", "precision"},
+            "optimizer_scheduler_precision",
+        )
+    _validate_execution_projection(
+        errors,
+        recipe.get("execution_projection"),
+        recipe,
+        checkpoint,
+        required=data.get("status") == "READY_CANDIDATE",
     )
 
-    for key in ("recipe", "runtime", "output"):
-        _get_mapping(data, key, errors)
+    runtime = _get_mapping(data, "runtime", errors)
+    _expect_exact_keys(errors, runtime, _RUNTIME_KEYS, "runtime")
+    output = _get_mapping(data, "output", errors)
+    _expect_exact_keys(errors, output, _OUTPUT_KEYS, "output")
+
+    binding = data.get("binding")
+    if binding is not None:
+        if not isinstance(binding, dict):
+            errors.append("binding_missing")
+        elif set(binding) not in (_PRELIMINARY_BINDING_KEYS, _FINAL_BINDING_KEYS):
+            errors.append("binding_fields_mismatch")
 
     errors.extend(_find_embedded_secrets(data))
     return sorted(set(errors))
@@ -286,7 +619,7 @@ def _require_sha256(blockers: list[str], value: Any, name: str) -> None:
 
 
 def _require_authority(blockers: list[str], value: Any, name: str) -> None:
-    if not _valid_terminal_authority(value):
+    if not _valid_terminal_authority(value, role=name):
         blockers.append(f"{name}_authority_invalid")
 
 
