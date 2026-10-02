@@ -141,6 +141,9 @@ def test_d03_rada_fresh_snapshot_job_is_same_repo_and_claim_pinned():
     assert "github.head_ref == 'swarm/2477-rada-laws-fresh-snapshot-v2'" in job
     assert "pull_request_target" not in job
     assert job.count("--accept-current-upstream") == 2
+    assert job.count("--archive-output") == 2
+    assert "rada-source-a.zip" in job
+    assert "cmp \"$RUNNER_TEMP/rada-source-a.zip\" \"$RUNNER_TEMP/rada-source-b.zip\"" in job
     assert "qualify_d03_rada_bulk_fresh_snapshot_v2.py" in job
     assert "d03_rada_bulk_fresh_snapshot_v2.json" in job
     assert "if: always()" in job
