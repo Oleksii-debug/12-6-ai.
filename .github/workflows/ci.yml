@@ -526,6 +526,7 @@ jobs:
           python tools/probe_d03_rada_bulk_source.py \
             --config configs/data/d03_rada_bulk_source_probe_v1.json \
             --accept-current-upstream \
+            --archive-output "$RUNNER_TEMP/rada-source-a.zip" \
             --output "$RUNNER_TEMP/rada-probe-a.json"
 
       - name: Probe current Rada archive — clean run B
@@ -535,6 +536,7 @@ jobs:
           python tools/probe_d03_rada_bulk_source.py \
             --config configs/data/d03_rada_bulk_source_probe_v1.json \
             --accept-current-upstream \
+            --archive-output "$RUNNER_TEMP/rada-source-b.zip" \
             --output "$RUNNER_TEMP/rada-probe-b.json"
 
       - name: Qualify two-clean exact fresh snapshot with zero credit
@@ -546,13 +548,18 @@ jobs:
             --probe-a "$RUNNER_TEMP/rada-probe-a.json" \
             --probe-b "$RUNNER_TEMP/rada-probe-b.json" \
             --output "$RUNNER_TEMP/rada-fresh-snapshot-qualification-v2.json"
+          expected_sha="$(python -c 'import json; print(json.load(open("configs/data/d03_rada_bulk_fresh_snapshot_v2.json"))["expected_current_observation"]["archive_sha256"])')"
+          test "$(sha256sum "$RUNNER_TEMP/rada-source-a.zip" | cut -d' ' -f1)" = "$expected_sha"
+          test "$(sha256sum "$RUNNER_TEMP/rada-source-b.zip" | cut -d' ' -f1)" = "$expected_sha"
+          cmp "$RUNNER_TEMP/rada-source-a.zip" "$RUNNER_TEMP/rada-source-b.zip"
 
-      - name: Upload text-free Rada fresh-snapshot evidence
+      - name: Upload exact public-source Rada snapshot and text-free evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: d03-rada-fresh-snapshot-v2-${{ github.event.pull_request.head.sha }}
           path: |
+            ${{ runner.temp }}/rada-source-a.zip
             ${{ runner.temp }}/rada-probe-a.json
             ${{ runner.temp }}/rada-probe-b.json
             ${{ runner.temp }}/rada-fresh-snapshot-qualification-v2.json
