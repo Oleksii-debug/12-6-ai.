@@ -584,27 +584,102 @@ def test_publish_is_create_only(tmp_path) -> None:
         mod._publish_json_outputs(((output, {"ok": False}),))
 
 
-def test_publish_rolls_back_on_keyboard_interrupt(tmp_path, monkeypatch) -> None:
+def _publication_outputs(tmp_path: Path):
+    return (
+        (tmp_path / "report.json", {"kind": "report"}),
+        (tmp_path / "survivors.json", {"kind": "survivors"}),
+        (tmp_path / "evidence.json", {"kind": "evidence"}),
+    )
+
+
+@pytest.mark.parametrize("interrupt_after", [1, 2])
+def test_publish_recovers_process_interruption_after_final_link(
+    tmp_path: Path, monkeypatch, interrupt_after: int
+) -> None:
     mod = _load()
-    first = tmp_path / "first.json"
-    second = tmp_path / "second.json"
-    original_open = Path.open
+    outputs = _publication_outputs(tmp_path)
+    original_link = mod._link_staged_output
+    calls = 0
 
-    def interrupted_open(path, *args, **kwargs):
-        if path == second:
-            raise KeyboardInterrupt
-        return original_open(path, *args, **kwargs)
+    def interrupting_link(stage_path: Path, final_path: Path) -> None:
+        nonlocal calls
+        original_link(stage_path, final_path)
+        calls += 1
+        if calls == interrupt_after:
+            raise KeyboardInterrupt("simulated process interruption")
 
-    monkeypatch.setattr(Path, "open", interrupted_open)
+    monkeypatch.setattr(mod, "_link_staged_output", interrupting_link)
+    with pytest.raises(KeyboardInterrupt, match="simulated process interruption"):
+        mod._publish_json_outputs(outputs)
+
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    marker = mod._publication_marker_path(prepared)
+    assert marker.exists()
+    assert sum(path.exists() for path, _ in outputs) == interrupt_after
+
+    monkeypatch.setattr(mod, "_link_staged_output", original_link)
+    mod._publish_json_outputs(outputs)
+
+    assert not marker.exists()
+    assert [path.read_bytes() for path, _ in outputs] == [
+        b'{"kind":"report"}\n',
+        b'{"kind":"survivors"}\n',
+        b'{"kind":"evidence"}\n',
+    ]
+    assert not list(tmp_path.glob(".*.stage-*"))
+
+
+def test_publish_invalid_manifest_with_stage_residue_fails_closed(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(manifest, b"{broken\n")
+    mod._write_create_only_durable(stages[0], b"partial")
+
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="invalid incomplete manifest coexists with payload paths",
+    ):
+        mod._publish_json_outputs(outputs)
+
+    assert marker.exists()
+    assert manifest.exists()
+    assert stages[0].read_bytes() == b"partial"
+    assert not any(path.exists() for path, _ in outputs)
+
+
+def test_publish_incomplete_marker_never_deletes_digest_mismatched_final(
+    tmp_path: Path, monkeypatch
+) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    original_link = mod._link_staged_output
+
+    def interrupt_first(stage_path: Path, final_path: Path) -> None:
+        original_link(stage_path, final_path)
+        raise KeyboardInterrupt("simulated process interruption")
+
+    monkeypatch.setattr(mod, "_link_staged_output", interrupt_first)
     with pytest.raises(KeyboardInterrupt):
-        mod._publish_json_outputs(
-            (
-                (first, {"one": 1}),
-                (second, {"two": 2}),
-            )
-        )
-    assert not first.exists()
-    assert not second.exists()
+        mod._publish_json_outputs(outputs)
+
+    report = outputs[0][0]
+    report.write_bytes(b"tampered\n")
+    monkeypatch.setattr(mod, "_link_staged_output", original_link)
+
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="incomplete publication output digest mismatch",
+    ):
+        mod._publish_json_outputs(outputs)
+
+    assert report.read_bytes() == b"tampered\n"
 
 
 def test_publish_rolls_back_files_from_failed_publication(tmp_path) -> None:
