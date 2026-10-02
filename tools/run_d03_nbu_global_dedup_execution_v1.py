@@ -53,6 +53,7 @@ EXPECTED_NBU_OBJECTS = nbu.CANDIDATE_RECORDS
 EXPECTED_NBU_BYTES = nbu.CANDIDATE_TEXT_BYTES
 EXPECTED_COMBINED_OBJECTS = EXPECTED_BASE_OBJECTS + EXPECTED_NBU_OBJECTS
 EXPECTED_COMBINED_BYTES = EXPECTED_BASE_BYTES + EXPECTED_NBU_BYTES
+PAYLOAD_BYTES_SEMANTICS = "DECLARED_CAPACITY_BYTES"
 
 MAIN_AUTHORITY_PATHS = (
     "src/twelve_six/data/incumbent_dedup_indexed_execution.py",
@@ -244,6 +245,34 @@ def _verify_clean_payload_graph(
     )
 
 
+def _declared_capacity_bytes(
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+    *,
+    label: str,
+) -> int:
+    rows = inventory.get("sources")
+    _require(type(rows) is list and bool(rows), f"{label} source rows missing")
+    seen: set[str] = set()
+    total = 0
+    for row in rows:
+        _require(type(row) is dict, f"{label} source row invalid")
+        source_id = row.get("source_id")
+        _require(
+            type(source_id) is str and bool(source_id) and source_id not in seen,
+            f"{label} source identity invalid or duplicate",
+        )
+        declared = row.get("declared_capacity_bytes")
+        _require(
+            type(declared) is int and declared >= 0,
+            f"{label} declared capacity must be exact nonnegative int",
+        )
+        seen.add(source_id)
+        total += declared
+    _require(seen == set(payloads), f"{label} inventory/payload coverage mismatch")
+    return total
+
+
 def _reconstruct_clean_source_inputs(
     *,
     v7_root: Path,
@@ -276,8 +305,9 @@ def _reconstruct_clean_source_inputs(
     _verify_clean_payload_graph(inventory, payloads, quarantine_authority)
     _require(len(payloads) == EXPECTED_BASE_OBJECTS, "clean base object-count drift")
     _require(
-        sum(len(raw) for raw in payloads.values()) == EXPECTED_BASE_BYTES,
-        "clean base payload byte-count drift",
+        _declared_capacity_bytes(inventory, payloads, label="clean base")
+        == EXPECTED_BASE_BYTES,
+        "clean base declared-capacity drift",
     )
     return v7.v6.v3, inventory, payloads, removal
 
@@ -930,7 +960,11 @@ def _build_two_clean_authority(
             and type(baseline.get("source_object_count")) is int
             and baseline.get("source_object_count") == EXPECTED_BASE_OBJECTS
             and type(baseline.get("payload_bytes")) is int
-            and baseline.get("payload_bytes") == EXPECTED_BASE_BYTES,
+            and baseline.get("payload_bytes") == EXPECTED_BASE_BYTES
+            and baseline.get("payload_bytes_semantics") == PAYLOAD_BYTES_SEMANTICS
+            and baseline.get("declared_capacity_bytes") == EXPECTED_BASE_BYTES
+            and type(baseline.get("comparison_payload_bytes")) is int
+            and baseline.get("comparison_payload_bytes") > 0,
             "two-clean baseline authority drift",
         )
         nbu_evidence = evidence.get("nbu")
@@ -951,7 +985,10 @@ def _build_two_clean_authority(
             type(nbu_evidence.get("source_object_count")) is int
             and nbu_evidence.get("source_object_count") == EXPECTED_NBU_OBJECTS
             and type(nbu_evidence.get("payload_bytes")) is int
-            and nbu_evidence.get("payload_bytes") == EXPECTED_NBU_BYTES,
+            and nbu_evidence.get("payload_bytes") == EXPECTED_NBU_BYTES
+            and nbu_evidence.get("payload_bytes_semantics") == PAYLOAD_BYTES_SEMANTICS
+            and nbu_evidence.get("declared_capacity_bytes") == EXPECTED_NBU_BYTES
+            and nbu_evidence.get("comparison_payload_bytes") == EXPECTED_NBU_BYTES,
             "two-clean NBU cardinality drift",
         )
         _require(
@@ -968,7 +1005,12 @@ def _build_two_clean_authority(
             type(combined.get("source_object_count")) is int
             and combined.get("source_object_count") == EXPECTED_COMBINED_OBJECTS
             and type(combined.get("payload_bytes")) is int
-            and combined.get("payload_bytes") == EXPECTED_COMBINED_BYTES,
+            and combined.get("payload_bytes") == EXPECTED_COMBINED_BYTES
+            and combined.get("payload_bytes_semantics") == PAYLOAD_BYTES_SEMANTICS
+            and combined.get("declared_capacity_bytes") == EXPECTED_COMBINED_BYTES
+            and type(combined.get("comparison_payload_bytes")) is int
+            and combined.get("comparison_payload_bytes")
+            == baseline["comparison_payload_bytes"] + nbu_evidence["comparison_payload_bytes"],
             "two-clean combined cardinality drift",
         )
         matcher = evidence.get("matcher_execution")
@@ -1022,6 +1064,17 @@ def _build_two_clean_authority(
                 type(truth.get(key)) is type(expected) and truth.get(key) == expected,
                 f"two-clean truth boundary drift: {key}",
             )
+
+    _require(
+        first_evidence["baseline_v8"]["comparison_payload_bytes"]
+        == second_evidence["baseline_v8"]["comparison_payload_bytes"],
+        "two-clean baseline comparison payload bytes differ",
+    )
+    _require(
+        first_evidence["combined"]["comparison_payload_bytes"]
+        == second_evidence["combined"]["comparison_payload_bytes"],
+        "two-clean combined comparison payload bytes differ",
+    )
 
     nbu_survivor_count = first_survivors.get("nbu_survivor_source_object_count")
     nbu_survivor_bytes = first_survivors.get("nbu_survivor_declared_capacity_bytes")
@@ -1376,9 +1429,12 @@ def execute(
     )
     _require(len(base_payloads) == EXPECTED_BASE_OBJECTS, "V8 base object count drift")
     _require(
-        sum(len(raw) for raw in base_payloads.values()) == EXPECTED_BASE_BYTES,
-        "V8 base payload byte total drift",
+        _declared_capacity_bytes(base_inventory, base_payloads, label="V8 base")
+        == EXPECTED_BASE_BYTES,
+        "V8 base declared-capacity drift",
     )
+    base_comparison_payload_bytes = sum(len(raw) for raw in base_payloads.values())
+    _require(base_comparison_payload_bytes > 0, "V8 base comparison payload is empty")
 
     projection = nbu.validate_and_project_nbu(
         candidate_jsonl,
@@ -1392,9 +1448,19 @@ def execute(
     extension_sources = [dict(row) for row in projection.sources]
     extension_payloads = dict(projection.payloads)
     _require(len(extension_sources) == EXPECTED_NBU_OBJECTS, "NBU projection count drift")
+    nbu_comparison_payload_bytes = sum(len(raw) for raw in extension_payloads.values())
     _require(
-        sum(len(raw) for raw in extension_payloads.values()) == EXPECTED_NBU_BYTES,
-        "NBU projection byte total drift",
+        nbu_comparison_payload_bytes == EXPECTED_NBU_BYTES,
+        "NBU projection comparison-payload byte total drift",
+    )
+    _require(
+        _declared_capacity_bytes(
+            {"sources": extension_sources},
+            extension_payloads,
+            label="NBU projection",
+        )
+        == EXPECTED_NBU_BYTES,
+        "NBU projection declared-capacity drift",
     )
     inventory, payloads = _compose_graph(
         base_inventory,
@@ -1404,8 +1470,15 @@ def execute(
     )
     _require(len(payloads) == EXPECTED_COMBINED_OBJECTS, "combined source count drift")
     _require(
-        sum(len(raw) for raw in payloads.values()) == EXPECTED_COMBINED_BYTES,
-        "combined payload byte total drift",
+        _declared_capacity_bytes(inventory, payloads, label="combined graph")
+        == EXPECTED_COMBINED_BYTES,
+        "combined declared-capacity drift",
+    )
+    combined_comparison_payload_bytes = sum(len(raw) for raw in payloads.values())
+    _require(
+        combined_comparison_payload_bytes
+        == base_comparison_payload_bytes + nbu_comparison_payload_bytes,
+        "combined comparison-payload byte arithmetic drift",
     )
 
     report, indexed_elapsed = _execute_indexed_matcher(
@@ -1438,6 +1511,9 @@ def execute(
             "v7_head_sha": v8.EXPECTED_V7_HEAD,
             "source_object_count": EXPECTED_BASE_OBJECTS,
             "payload_bytes": EXPECTED_BASE_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_BASE_BYTES,
+            "comparison_payload_bytes": base_comparison_payload_bytes,
             "nomis1864_deauthorization": removal,
         },
         "nbu": {
@@ -1449,6 +1525,9 @@ def execute(
             "candidate_sha256": nbu.CANDIDATE_SHA256,
             "source_object_count": EXPECTED_NBU_OBJECTS,
             "payload_bytes": EXPECTED_NBU_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_NBU_BYTES,
+            "comparison_payload_bytes": nbu_comparison_payload_bytes,
             "intake_receipt_identity_sha256": projection.receipt[
                 "receipt_identity_sha256"
             ],
@@ -1456,6 +1535,9 @@ def execute(
         "combined": {
             "source_object_count": EXPECTED_COMBINED_OBJECTS,
             "payload_bytes": EXPECTED_COMBINED_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_COMBINED_BYTES,
+            "comparison_payload_bytes": combined_comparison_payload_bytes,
             "indexed_report_sha256": report["report_sha256"],
             "indexed_executor_performance_equivalence_authority": "MERGED_PR_1459",
             "post_dedup_conservative_unique_bytes": terminal[
