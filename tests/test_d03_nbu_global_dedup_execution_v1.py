@@ -41,6 +41,30 @@ def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
 
 
 
+def test_nbu_audited_pin_replay_runs_two_clean_without_weakening_live_gate() -> None:
+    raw = WORKFLOW.read_text(encoding="utf-8")
+    audited_start = raw.index("  nbu-global-dedup-audited-pin-replay:")
+    audited_end = raw.index("\n  nbu-global-dedup-two-clean:", audited_start)
+    audited = raw[audited_start:audited_end]
+
+    assert "run_d03_nbu_global_dedup_execution_v1.py two-clean" in audited
+    assert '--candidate-jsonl-a "$RUN_DIR/nbu-text-a.jsonl"' in audited
+    assert '--candidate-jsonl-b "$RUN_DIR/nbu-text-b.jsonl"' in audited
+    assert '--materialization-evidence-json-a "$RUN_DIR/nbu-text-evidence-a.json"' in audited
+    assert '--materialization-evidence-json-b "$RUN_DIR/nbu-text-evidence-b.json"' in audited
+    assert 'test -f "$RUN_DIR/two-clean/two-clean-authority.json"' in audited
+    assert 'test ! -e "$RUN_DIR/two-clean/incomplete.json"' in audited
+    assert '"fresh_catalog_discovery_executed": False' in audited
+    assert '"fresh_pinned_pdf_text_materialization_count": 2' in audited
+    assert '"fresh_global_dedup_process_count": authority["dedup"]["fresh_process_count"]' in audited
+
+    live_start = raw.index("  nbu-global-dedup-pass:")
+    live_end = raw.index("\n  nbu-global-dedup-audited-pin-replay:", live_start)
+    live = raw[live_start:live_end]
+    assert "continue-on-error:" not in live
+    assert 'test "$(sha256sum "$RUN_DIR/nbu-text-a.jsonl" | cut -d\' \' -f1)" = "$EXPECTED_CANDIDATE_SHA256"' in live
+
+
 def test_nbu_physical_jobs_pin_action_revisions() -> None:
     lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
     top_level_jobs = [
