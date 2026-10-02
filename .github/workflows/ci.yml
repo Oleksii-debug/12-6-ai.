@@ -53,7 +53,7 @@ jobs:
 
 
   caselaw-global-dedup:
-    if: github.event_name == 'pull_request' && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1'
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 2259 && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
     needs: bootstrap
     runs-on: ubuntu-24.04
     timeout-minutes: 240
@@ -191,7 +191,7 @@ jobs:
             ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/execution-evidence.json
 
   caselaw-two-clean-compare:
-    if: github.event_name == 'pull_request' && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1'
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 2259 && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
     needs: caselaw-global-dedup
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -347,10 +347,53 @@ jobs:
               assert provenance_scope["upstream_source_evidence_external_llm_or_api_used"] is False
               assert provenance_scope["current_corpus_external_llm_free_claimed_by_this_adapter"] is False
               assert provenance_scope["historical_source_admission_report_promoted_as_corpus_global_truth"] is False
+              baseline = evidence["baseline_v8"]
+              require_exact_int(baseline["source_object_count"], 263, "baseline_v8.source_object_count")
+              require_exact_int(baseline["payload_bytes"], 6_093_965, "baseline_v8.payload_bytes")
+              assert baseline["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              require_exact_int(
+                  baseline["declared_capacity_bytes"],
+                  6_093_965,
+                  "baseline_v8.declared_capacity_bytes",
+              )
+              assert type(baseline["comparison_payload_bytes"]) is int
+              assert baseline["comparison_payload_bytes"] > 0
+              removal = baseline["nomis1864_deauthorization"]
+              assert removal["blocked_family"] == "en.nomis1864"
+              require_exact_int(removal["blocked_payload_bytes"], 1_659, "nomis.blocked_payload_bytes")
+              require_exact_int(removal["pre_source_object_count"], 35, "nomis.pre_source_object_count")
+              require_exact_int(removal["post_source_object_count"], 34, "nomis.post_source_object_count")
+              assert removal["removed_before_new_global_dedup"] is True
+
               require_exact_int(evidence["caselaw"]["source_object_count"], 5_658, "caselaw.source_object_count")
               require_exact_int(evidence["caselaw"]["payload_bytes"], 5_962_147, "caselaw.payload_bytes")
-              require_exact_int(evidence["combined"]["source_object_count"], 5_922, "combined.source_object_count")
-              require_exact_int(evidence["combined"]["payload_bytes"], 12_057_771, "combined.payload_bytes")
+              assert evidence["caselaw"]["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              require_exact_int(
+                  evidence["caselaw"]["declared_capacity_bytes"],
+                  5_962_147,
+                  "caselaw.declared_capacity_bytes",
+              )
+              require_exact_int(
+                  evidence["caselaw"]["comparison_payload_bytes"],
+                  5_962_147,
+                  "caselaw.comparison_payload_bytes",
+              )
+
+              combined = evidence["combined"]
+              require_exact_int(combined["source_object_count"], 5_921, "combined.source_object_count")
+              require_exact_int(combined["payload_bytes"], 12_056_112, "combined.payload_bytes")
+              assert combined["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              require_exact_int(
+                  combined["declared_capacity_bytes"],
+                  12_056_112,
+                  "combined.declared_capacity_bytes",
+              )
+              assert type(combined["comparison_payload_bytes"]) is int
+              assert (
+                  combined["comparison_payload_bytes"]
+                  == baseline["comparison_payload_bytes"]
+                  + evidence["caselaw"]["comparison_payload_bytes"]
+              )
               assert evidence["combined"]["reports_byte_identical"] is True
               execution = evidence["indexed_execution"]
               assert type(execution["process_max_rss_kib"]) is int
@@ -375,6 +418,14 @@ jobs:
           )
           for key in stable_fields:
               assert a[key] == b[key], key
+          assert (
+              a["baseline_v8"]["comparison_payload_bytes"]
+              == b["baseline_v8"]["comparison_payload_bytes"]
+          )
+          assert (
+              a["combined"]["comparison_payload_bytes"]
+              == b["combined"]["comparison_payload_bytes"]
+          )
 
           summary_core = {
               "schema_version": "12-6.d03-caselaw-global-dedup-two-clean.v1",
