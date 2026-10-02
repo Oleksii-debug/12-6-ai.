@@ -1252,17 +1252,31 @@ jobs:
                   assert runtime.get(key) == expected, key
 
               baseline = execution["baseline_v8"]
-              assert baseline["source_object_count"] == 264
-              assert baseline["payload_bytes"] == 6_095_624
+              assert baseline["source_object_count"] == 263
+              assert baseline["payload_bytes"] == 6_093_965
+              assert baseline["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              assert baseline["declared_capacity_bytes"] == 6_093_965
+              assert type(baseline["comparison_payload_bytes"]) is int
+              assert baseline["comparison_payload_bytes"] > 0
 
               nbu_execution = execution["nbu"]
               assert nbu_execution["candidate_sha256"] == os.environ["EXPECTED_CANDIDATE_SHA256"]
               assert nbu_execution["source_object_count"] == 40
               assert nbu_execution["payload_bytes"] == 794_091
+              assert nbu_execution["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              assert nbu_execution["declared_capacity_bytes"] == 794_091
+              assert nbu_execution["comparison_payload_bytes"] == 794_091
 
               combined = execution["combined"]
-              assert combined["source_object_count"] == 304
-              assert combined["payload_bytes"] == 6_889_715
+              assert combined["source_object_count"] == 303
+              assert combined["payload_bytes"] == 6_888_056
+              assert combined["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              assert combined["declared_capacity_bytes"] == 6_888_056
+              assert (
+                  combined["comparison_payload_bytes"]
+                  == baseline["comparison_payload_bytes"]
+                  + nbu_execution["comparison_payload_bytes"]
+              )
               assert combined["indexed_report_sha256"] == reports[0]["report_sha256"]
 
               matcher = execution["matcher_execution"]
@@ -1286,6 +1300,14 @@ jobs:
           assert executions[0]["main_authority_path_blobs"] == executions[1]["main_authority_path_blobs"]
           assert executions[0]["product_path_blobs"] == executions[1]["product_path_blobs"]
           assert executions[0]["nbu"]["intake_receipt_identity_sha256"] == executions[1]["nbu"]["intake_receipt_identity_sha256"]
+          assert (
+              executions[0]["baseline_v8"]["comparison_payload_bytes"]
+              == executions[1]["baseline_v8"]["comparison_payload_bytes"]
+          )
+          assert (
+              executions[0]["combined"]["comparison_payload_bytes"]
+              == executions[1]["combined"]["comparison_payload_bytes"]
+          )
 
           runtime_a = executions[0]["runtime_environment"]
           runtime_b = executions[1]["runtime_environment"]
