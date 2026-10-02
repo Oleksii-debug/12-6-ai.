@@ -196,9 +196,9 @@ def test_clean_source_reconstruction_deauthorizes_before_bulk_and_preserves_grap
     events = []
     matcher = object()
     historical = {"sources": [_row("quarantined"), _row("keep")], "lineage_edges": []}
-    historical_payloads = {"quarantined": b"bad", "keep": b"alpha"}
+    historical_payloads = {"quarantined": b"bad", "keep": b"alpha\n\n"}
     clean = {"sources": [_row("keep")], "lineage_edges": []}
-    clean_payloads = {"keep": b"alpha"}
+    clean_payloads = {"keep": b"alpha\n\n"}
     proof = {"removed_before_new_global_dedup": True}
 
     def deauthorize(inventory, payloads, authority, quarantine_module):
@@ -232,10 +232,39 @@ def test_clean_source_reconstruction_deauthorizes_before_bulk_and_preserves_grap
     assert events == ["capture", "deauthorize", "bulk"]
     assert observed_matcher is matcher and removal is proof
     assert inventory["sources"] == [_row("keep"), _row("bulk", size=4)]
-    assert payloads == {"keep": b"alpha", "bulk": b"beta"}
+    assert payloads == {"keep": b"alpha\n\n", "bulk": b"beta"}
+    assert sum(len(raw) for raw in payloads.values()) == 11
+    assert mod._declared_capacity_bytes(inventory, payloads, label="test") == 9
     assert clean == {"sources": [_row("keep")], "lineage_edges": []}
-    assert clean_payloads == {"keep": b"alpha"}
+    assert clean_payloads == {"keep": b"alpha\n\n"}
     assert historical["sources"] == [_row("quarantined"), _row("keep")]
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, "5", -1])
+def test_declared_capacity_bytes_rejects_nonexact_or_negative_values(bad: object) -> None:
+    mod = _load()
+    with pytest.raises(
+        mod.Franko1901GlobalDedupError,
+        match="declared capacity must be exact nonnegative int",
+    ):
+        mod._declared_capacity_bytes(
+            {"sources": [_row("base:a", size=bad)]},
+            {"base:a": b"payload"},
+            label="fixture",
+        )
+
+
+def test_declared_capacity_bytes_rejects_inventory_payload_coverage_drift() -> None:
+    mod = _load()
+    with pytest.raises(
+        mod.Franko1901GlobalDedupError,
+        match="inventory/payload coverage mismatch",
+    ):
+        mod._declared_capacity_bytes(
+            {"sources": [_row("base:a")]},
+            {"other": b"payload"},
+            label="fixture",
+        )
 
 
 def test_quarantine_failure_stops_before_bulk_or_new_matching(monkeypatch, tmp_path: Path) -> None:
@@ -769,6 +798,15 @@ def test_runtime_environment_rejects_ambiguous_github_runner(monkeypatch) -> Non
         match="runner environment identity missing",
     ):
         mod._runtime_environment()
+
+
+def test_evidence_separates_declared_capacity_from_comparison_payload_bytes() -> None:
+    raw = MODULE.read_text(encoding="utf-8")
+    assert raw.count('"payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS') == 3
+    assert '"declared_capacity_bytes": EXPECTED_BASE_BYTES' in raw
+    assert '"comparison_payload_bytes": base_comparison_payload_bytes' in raw
+    assert '"comparison_payload_bytes": franko_comparison_payload_bytes' in raw
+    assert '"comparison_payload_bytes": combined_comparison_payload_bytes' in raw
 
 
 def test_evidence_profile_is_local_free_not_hardcoded_github_hosted() -> None:
