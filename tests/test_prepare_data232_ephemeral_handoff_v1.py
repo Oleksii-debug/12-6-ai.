@@ -91,13 +91,14 @@ def _synthetic_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         }
     )
     monkeypatch.setattr(runner, "_RELEASE_AUTHORITY", authority)
+    monkeypatch.setattr(runner, "_MATERIALIZER_EXECUTION_HEAD_GIT_SHA", "3" * 40)
 
     evidence = {
         "schema_version": runner.MATERIALIZATION_SCHEMA,
         "status": "MATERIALIZED_ZERO_CREDIT",
         "execution_profile": "LOCAL_FREE",
-        "execution_head_sha": authority["physical_head_git_sha"],
-        "materializer_implementation_git_blob_sha1": "3" * 40,
+        "execution_head_sha": runner._MATERIALIZER_EXECUTION_HEAD_GIT_SHA,
+        "materializer_implementation_git_blob_sha1": "4" * 40,
         "input": {
             "composition_preflight_identity_sha256": authority[
                 "composition_preflight_identity_sha256"
@@ -201,9 +202,55 @@ def test_release_authority_uses_clean_2174_roots_and_separates_counts() -> None:
         "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade"
     )
     assert authority["physical_pr_number"] == 2153
+    assert authority["physical_head_git_sha"] == (
+        "6af889c7c3d15d38f463791c9e2ba56c8e936e16"
+    )
+    assert runner._MATERIALIZER_EXECUTION_HEAD_GIT_SHA == (
+        "4588b660fd7650d6ddb072e9a9b666f5cc97238c"
+    )
+    assert authority["physical_head_git_sha"] != runner._MATERIALIZER_EXECUTION_HEAD_GIT_SHA
     assert authority["physical_job_id"] == 107724922341
     assert authority["independent_audit_issue_number"] == 2174
     assert authority["independent_audit_terminal_comment_id"] == 5818780583
+
+
+def test_evidence_binds_materializer_head_not_physical_carrier_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records_path, inventory_path, evidence_path, _, evidence = _synthetic_inputs(
+        tmp_path, monkeypatch
+    )
+    carrier_head = runner._RELEASE_AUTHORITY["physical_head_git_sha"]
+    materializer_head = runner._MATERIALIZER_EXECUTION_HEAD_GIT_SHA
+    assert carrier_head != materializer_head
+    assert evidence["execution_head_sha"] == materializer_head
+
+    # The correctly separated roots pass.
+    runner.prepare_and_publish(
+        records_path=records_path,
+        inventory_path=inventory_path,
+        evidence_path=evidence_path,
+        output_dir=tmp_path / "ok",
+        carrier_git_sha="a" * 40,
+    )
+
+    # Re-sealing evidence with the workflow carrier head must still fail because
+    # the independently expected materialization identity commits the Product head.
+    bad = deepcopy(evidence)
+    bad["execution_head_sha"] = carrier_head
+    bad.pop("materialization_identity_sha256")
+    bad["materialization_identity_sha256"] = _sha(_canonical(bad, newline=True))
+    evidence_path.write_bytes(_canonical(bad, newline=True))
+    runner._RELEASE_AUTHORITY["evidence_json_sha256"] = _sha(evidence_path.read_bytes())
+    with pytest.raises(ValueError, match="materialization execution head"):
+        runner.prepare_and_publish(
+            records_path=records_path,
+            inventory_path=inventory_path,
+            evidence_path=evidence_path,
+            output_dir=tmp_path / "bad",
+            carrier_git_sha="a" * 40,
+        )
+    assert not (tmp_path / "bad").exists()
 
 
 def test_end_to_end_preserves_existing_data232_handoff_contract(
