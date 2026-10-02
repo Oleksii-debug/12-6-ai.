@@ -129,3 +129,20 @@ def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     assert "EVAL290_ARTIFACT_ID:" not in job
     assert "EVAL291_ARTIFACT_ID:" not in job
 
+def test_d03_rada_fresh_snapshot_job_is_same_repo_and_claim_pinned():
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    job_start = workflow.index("  d03-rada-fresh-snapshot-v2:\n")
+    job = workflow[job_start:]
+
+    assert "github.event_name == 'pull_request'" in job
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in job
+    assert "github.head_ref == 'swarm/2477-rada-laws-fresh-snapshot-v2'" in job
+    assert "pull_request_target" not in job
+    assert job.count("--accept-current-upstream") == 2
+    assert "qualify_d03_rada_bulk_fresh_snapshot_v2.py" in job
+    assert "d03_rada_bulk_fresh_snapshot_v2.json" in job
+    assert "if: always()" in job
+    assert "retention-days: 90" in job
+
