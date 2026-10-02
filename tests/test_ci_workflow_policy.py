@@ -129,6 +129,7 @@ def test_d03_selection_reconstruction_is_exact_and_retention_independent():
     assert "EVAL290_ARTIFACT_ID:" not in job
     assert "EVAL291_ARTIFACT_ID:" not in job
 
+
 def test_d03_rada_fresh_snapshot_job_is_same_repo_and_claim_pinned():
     workflow = (
         Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
