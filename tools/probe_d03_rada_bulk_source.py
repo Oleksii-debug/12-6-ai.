@@ -426,10 +426,27 @@ def observe_archive_inventory(archive: bytes, config: dict[str, Any]) -> dict[st
     )
 
 
+def _write_new(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as stream:
+            stream.write(data)
+    except FileExistsError as exc:
+        raise ProbeError(f"refusing to overwrite retained archive: {path}") from exc
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--archive", type=Path)
+    parser.add_argument(
+        "--archive-output",
+        type=Path,
+        help=(
+            "Retain the exact successfully probed live-source archive. "
+            "Only valid when this tool performs the network acquisition."
+        ),
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--accept-current-upstream",
@@ -446,6 +463,11 @@ def main() -> None:
     args = _parse_args()
     config = _load_config(args.config)
     policy = config["probe_policy"]
+
+    if args.archive_output is not None and args.archive is not None:
+        raise ProbeError(
+            "--archive-output is only valid for a live source acquisition"
+        )
 
     response_headers: dict[str, str] = {}
     if args.archive is not None:
@@ -472,6 +494,9 @@ def main() -> None:
         report = observe_archive_inventory(archive, config)
     report["http_response"] = response_headers
     report["discovery_observation_revalidated"] = strict_revalidation
+
+    if args.archive_output is not None:
+        _write_new(args.archive_output, archive)
 
     encoded = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     if args.output is None:
