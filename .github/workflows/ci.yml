@@ -932,25 +932,27 @@ jobs:
           cmp "$RUN_DIR/nbu-text-evidence-a.json" "$RUN_DIR/nbu-text-evidence-b.json"
           test "$(sha256sum "$RUN_DIR/nbu-text-a.jsonl" | cut -d' ' -f1)" = "$EXPECTED_CANDIDATE_SHA256"
 
-      - name: Execute incumbent indexed global dedup over audited-pin replay
+      - name: Execute two-clean incumbent indexed global dedup over audited-pin copies
         run: |
           set -euo pipefail
           RUN_DIR="$RUNNER_TEMP/nbu-audited-pin-replay"
           V7_ROOT="$RUNNER_TEMP/v7-audited-pin"
-          python tools/run_d03_nbu_global_dedup_execution_v1.py \
+          python tools/run_d03_nbu_global_dedup_execution_v1.py two-clean \
             --v7-root "$V7_ROOT" \
-            --bulk-workspace "$RUN_DIR/bulk-workspace" \
-            --candidate-jsonl "$RUN_DIR/nbu-text-a.jsonl" \
-            --materialization-evidence-json "$RUN_DIR/nbu-text-evidence-a.json" \
-            --output-report "$RUN_DIR/global-dedup-report.json" \
-            --output-survivors "$RUN_DIR/survivor-authority.json" \
-            --output-evidence "$RUN_DIR/execution-evidence.json" \
+            --bulk-workspace "$RUN_DIR/two-clean-parent-bulk" \
+            --candidate-jsonl-a "$RUN_DIR/nbu-text-a.jsonl" \
+            --materialization-evidence-json-a "$RUN_DIR/nbu-text-evidence-a.json" \
+            --candidate-jsonl-b "$RUN_DIR/nbu-text-b.jsonl" \
+            --materialization-evidence-json-b "$RUN_DIR/nbu-text-evidence-b.json" \
+            --output-root "$RUN_DIR/two-clean" \
             --expected-execution-head "$HEAD_SHA" \
             --max-candidate-pairs 5000000 \
             --max-index-postings 50000000 \
             --max-pair-expansions 50000000
+          test -f "$RUN_DIR/two-clean/two-clean-authority.json"
+          test ! -e "$RUN_DIR/two-clean/incomplete.json"
 
-      - name: Write zero-credit audited-pin replay summary
+      - name: Write zero-credit audited-pin two-clean replay summary
         run: |
           set -euo pipefail
           RUN_DIR="$RUNNER_TEMP/nbu-audited-pin-replay"
@@ -967,13 +969,28 @@ jobs:
               assert type(value) is dict
               return value
 
-          report = load("global-dedup-report.json")
-          survivors = load("survivor-authority.json")
-          execution = load("execution-evidence.json")
-          text = load("nbu-text-evidence-a.json")
+          authority = load("two-clean/two-clean-authority.json")
+          execution_a = load("two-clean/clean-a/execution-evidence.json")
+          execution_b = load("two-clean/clean-b/execution-evidence.json")
+          text_a = load("nbu-text-evidence-a.json")
+          text_b = load("nbu-text-evidence-b.json")
+          assert text_a == text_b
+          assert authority["execution_head_sha"] == os.environ["HEAD_SHA"]
+          assert authority["dedup"]["fresh_process_count"] == 2
+          assert (
+              authority["dedup"]["run_evidence_identity_sha256"]
+              == [
+                  execution_a["evidence_identity_sha256"],
+                  execution_b["evidence_identity_sha256"],
+              ]
+          )
+          assert execution_a["combined"]["indexed_report_sha256"] == authority["dedup"]["report_sha256"]
+          assert execution_b["combined"]["indexed_report_sha256"] == authority["dedup"]["report_sha256"]
+          assert execution_a["survivor_authority_sha256"] == authority["dedup"]["survivor_authority_sha256"]
+          assert execution_b["survivor_authority_sha256"] == authority["dedup"]["survivor_authority_sha256"]
           core = {
-              "schema_version": "12-6.d03-nbu-audited-pin-replay-dedup.v1",
-              "status": "AUDITED_PIN_REPLAY_GLOBAL_DEDUP_ZERO_CREDIT",
+              "schema_version": "12-6.d03-nbu-audited-pin-replay-two-clean.v1",
+              "status": "AUDITED_PIN_REPLAY_TWO_CLEAN_GLOBAL_DEDUP_ZERO_CREDIT",
               "execution_head_sha": os.environ["HEAD_SHA"],
               "historical_materialization_run_id": int(os.environ["HISTORICAL_RUN_ID"]),
               "historical_materialization_artifact_id": int(os.environ["HISTORICAL_ARTIFACT_ID"]),
@@ -981,17 +998,21 @@ jobs:
               "fresh_catalog_discovery_executed": False,
               "historical_discovery_evidence_identity_sha256": os.environ["EXPECTED_DISCOVERY_SHA256"],
               "historical_pdf_pin_evidence_identity_sha256": os.environ["EXPECTED_PDF_PIN_SHA256"],
-              "fresh_pinned_pdf_text_materialization_executed": True,
-              "candidate_sha256": text["text_artifact_sha256"],
-              "materialized_records": text["materialized_records"],
-              "observed_text_bytes": text["observed_text_bytes"],
-              "matcher_report_sha256": report["report_sha256"],
-              "survivor_authority_sha256": survivors["survivor_authority_sha256"],
-              "execution_evidence_identity_sha256": execution["evidence_identity_sha256"],
-              "truth_boundary": execution["truth_boundary"],
+              "fresh_pinned_pdf_text_materialization_count": 2,
+              "fresh_global_dedup_process_count": authority["dedup"]["fresh_process_count"],
+              "candidate_sha256": text_a["text_artifact_sha256"],
+              "materialized_records": text_a["materialized_records"],
+              "observed_text_bytes": text_a["observed_text_bytes"],
+              "two_clean_authority_sha256": authority["two_clean_authority_sha256"],
+              "matcher_report_sha256": authority["dedup"]["report_sha256"],
+              "survivor_authority_sha256": authority["dedup"]["survivor_authority_sha256"],
+              "run_evidence_identity_sha256": authority["dedup"]["run_evidence_identity_sha256"],
+              "truth_boundary": authority["truth_boundary"],
               "raw_text_persisted_in_durable_evidence": False,
           }
           assert core["candidate_sha256"] == os.environ["EXPECTED_CANDIDATE_SHA256"]
+          assert core["materialized_records"] == 40
+          assert core["observed_text_bytes"] == 794091
           value = {
               **core,
               "summary_identity_sha256": hashlib.sha256(
@@ -1020,9 +1041,13 @@ jobs:
           path: |
             ${{ runner.temp }}/nbu-audited-pin-replay/nbu-text-evidence-a.json
             ${{ runner.temp }}/nbu-audited-pin-replay/nbu-text-evidence-b.json
-            ${{ runner.temp }}/nbu-audited-pin-replay/global-dedup-report.json
-            ${{ runner.temp }}/nbu-audited-pin-replay/survivor-authority.json
-            ${{ runner.temp }}/nbu-audited-pin-replay/execution-evidence.json
+            ${{ runner.temp }}/nbu-audited-pin-replay/two-clean/two-clean-authority.json
+            ${{ runner.temp }}/nbu-audited-pin-replay/two-clean/clean-a/dedup-report.json
+            ${{ runner.temp }}/nbu-audited-pin-replay/two-clean/clean-a/survivor-authority.json
+            ${{ runner.temp }}/nbu-audited-pin-replay/two-clean/clean-a/execution-evidence.json
+            ${{ runner.temp }}/nbu-audited-pin-replay/two-clean/clean-b/dedup-report.json
+            ${{ runner.temp }}/nbu-audited-pin-replay/two-clean/clean-b/survivor-authority.json
+            ${{ runner.temp }}/nbu-audited-pin-replay/two-clean/clean-b/execution-evidence.json
             ${{ runner.temp }}/nbu-audited-pin-replay/audited-pin-replay-summary.json
 
   nbu-global-dedup-two-clean:
