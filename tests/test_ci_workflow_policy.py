@@ -134,7 +134,7 @@ def test_d03_rada_fresh_snapshot_job_is_same_repo_and_claim_pinned():
     workflow = (
         Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
     ).read_text(encoding="utf-8")
-    job_start = workflow.index("  d03-rada-fresh-snapshot-v2:\n")
+    job_start = workflow.index("  d03-rada-fresh-snapshot-v2:\\n")
     job = workflow[job_start:]
 
     assert "github.event_name == 'pull_request'" in job
@@ -143,10 +143,27 @@ def test_d03_rada_fresh_snapshot_job_is_same_repo_and_claim_pinned():
     assert "pull_request_target" not in job
     assert job.count("--accept-current-upstream") == 2
     assert job.count("--archive-output") == 2
-    assert "rada-source-a.zip" in job
-    assert "cmp \"$RUNNER_TEMP/rada-source-a.zip\" \"$RUNNER_TEMP/rada-source-b.zip\"" in job
-    assert "qualify_d03_rada_bulk_fresh_snapshot_v2.py" in job
-    assert "d03_rada_bulk_fresh_snapshot_v2.json" in job
-    assert "if: always()" in job
-    assert "retention-days: 90" in job
-
+    assert "--rights-policy configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json" in job
+    assert '--attribution-output "$RUNNER_TEMP/ATTRIBUTION.txt"' in job
+    assert "expected_current_observation" not in job
+    assert 'cmp "$RUNNER_TEMP/rada-source-a.zip" "$RUNNER_TEMP/rada-source-b.zip"' in job
+    assert 'test -s "$RUNNER_TEMP/ATTRIBUTION.txt"' in job
+    assert "Upload attributed exact Rada snapshot and qualification evidence" in job
+    assert "Upload Rada probe metadata on qualification failure" in job
+    assert "if: failure()" in job
+    assert "if: always()" not in job
+    success_upload = job.index(
+        "Upload attributed exact Rada snapshot and qualification evidence"
+    )
+    failure_upload = job.index("Upload Rada probe metadata on qualification failure")
+    success_section = job[success_upload:failure_upload]
+    failure_section = job[failure_upload:]
+    assert "rada-source-a.zip" in success_section
+    assert "ATTRIBUTION.txt" in success_section
+    assert "rada-source-b.zip" not in success_section
+    assert "rada-source-a.zip" not in failure_section
+    assert "rada-source-b.zip" not in failure_section
+    assert "if-no-files-found: error" in success_section
+    assert "retention-days: 90" in success_section
+    assert "if-no-files-found: warn" in failure_section
+    assert "retention-days: 30" in failure_section
