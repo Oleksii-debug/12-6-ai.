@@ -54,6 +54,7 @@ EXPECTED_FRANKO1901_OBJECTS = franko1901.CANDIDATE_RECORDS
 EXPECTED_FRANKO1901_BYTES = franko1901.CANDIDATE_TEXT_UTF8_BYTES
 EXPECTED_COMBINED_OBJECTS = EXPECTED_BASE_OBJECTS + EXPECTED_FRANKO1901_OBJECTS
 EXPECTED_COMBINED_BYTES = EXPECTED_BASE_BYTES + EXPECTED_FRANKO1901_BYTES
+PAYLOAD_BYTES_SEMANTICS = "DECLARED_CAPACITY_BYTES"
 
 AUTHORITY_PATHS = (
     "src/twelve_six/data/franko1901_dedup_intake.py",
@@ -263,6 +264,34 @@ def _verify_clean_payload_graph(
     )
 
 
+def _declared_capacity_bytes(
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+    *,
+    label: str,
+) -> int:
+    rows = inventory.get("sources")
+    _require(type(rows) is list and bool(rows), f"{label} source rows missing")
+    seen: set[str] = set()
+    total = 0
+    for row in rows:
+        _require(type(row) is dict, f"{label} source row invalid")
+        source_id = row.get("source_id")
+        _require(
+            type(source_id) is str and bool(source_id) and source_id not in seen,
+            f"{label} source identity invalid or duplicate",
+        )
+        declared = row.get("declared_capacity_bytes")
+        _require(
+            type(declared) is int and declared >= 0,
+            f"{label} declared capacity must be exact nonnegative int",
+        )
+        seen.add(source_id)
+        total += declared
+    _require(seen == set(payloads), f"{label} inventory/payload coverage mismatch")
+    return total
+
+
 def _reconstruct_clean_source_inputs(
     *,
     v7_root: Path,
@@ -294,8 +323,9 @@ def _reconstruct_clean_source_inputs(
     _verify_clean_payload_graph(inventory, payloads, quarantine_authority)
     _require(len(payloads) == EXPECTED_BASE_OBJECTS, "clean base object-count drift")
     _require(
-        sum(len(raw) for raw in payloads.values()) == EXPECTED_BASE_BYTES,
-        "clean base payload byte-count drift",
+        _declared_capacity_bytes(inventory, payloads, label="clean base")
+        == EXPECTED_BASE_BYTES,
+        "clean base declared-capacity drift",
     )
     return v7.v6.v3, inventory, payloads, removal
 
@@ -1207,9 +1237,12 @@ def execute(
     )
     _require(len(base_payloads) == EXPECTED_BASE_OBJECTS, "V8 base object count drift")
     _require(
-        sum(len(raw) for raw in base_payloads.values()) == EXPECTED_BASE_BYTES,
-        "V8 base payload byte total drift",
+        _declared_capacity_bytes(base_inventory, base_payloads, label="V8 base")
+        == EXPECTED_BASE_BYTES,
+        "V8 base declared-capacity drift",
     )
+    base_comparison_payload_bytes = sum(len(raw) for raw in base_payloads.values())
+    _require(base_comparison_payload_bytes > 0, "V8 base comparison payload is empty")
 
     projection = franko1901.validate_and_project_franko(
         candidate_jsonl,
@@ -1230,9 +1263,19 @@ def execute(
         len(extension_sources) == EXPECTED_FRANKO1901_OBJECTS,
         "Franko1901 projection count drift",
     )
+    franko_comparison_payload_bytes = sum(len(raw) for raw in extension_payloads.values())
     _require(
-        sum(len(raw) for raw in extension_payloads.values()) == EXPECTED_FRANKO1901_BYTES,
-        "Franko1901 projection bytes drift",
+        franko_comparison_payload_bytes == EXPECTED_FRANKO1901_BYTES,
+        "Franko1901 projection comparison-payload bytes drift",
+    )
+    _require(
+        _declared_capacity_bytes(
+            {"sources": extension_sources},
+            extension_payloads,
+            label="Franko1901 projection",
+        )
+        == EXPECTED_FRANKO1901_BYTES,
+        "Franko1901 projection declared-capacity drift",
     )
     inventory, payloads = _compose_graph(
         base_inventory,
@@ -1242,8 +1285,15 @@ def execute(
     )
     _require(len(payloads) == EXPECTED_COMBINED_OBJECTS, "combined source count drift")
     _require(
-        sum(len(raw) for raw in payloads.values()) == EXPECTED_COMBINED_BYTES,
-        "combined payload byte total drift",
+        _declared_capacity_bytes(inventory, payloads, label="combined graph")
+        == EXPECTED_COMBINED_BYTES,
+        "combined declared-capacity drift",
+    )
+    combined_comparison_payload_bytes = sum(len(raw) for raw in payloads.values())
+    _require(
+        combined_comparison_payload_bytes
+        == base_comparison_payload_bytes + franko_comparison_payload_bytes,
+        "combined comparison-payload byte arithmetic drift",
     )
 
     # PR #1459 independently qualified this indexed executor as performance-equivalent
@@ -1288,6 +1338,9 @@ def execute(
             "v7_head_sha": verified_v7_head,
             "source_object_count": EXPECTED_BASE_OBJECTS,
             "payload_bytes": EXPECTED_BASE_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_BASE_BYTES,
+            "comparison_payload_bytes": base_comparison_payload_bytes,
             "nomis1864_deauthorization": removal,
         },
         "franko1901": {
@@ -1296,6 +1349,9 @@ def execute(
             "candidate_sha256": franko1901.CANDIDATE_SHA256,
             "source_object_count": EXPECTED_FRANKO1901_OBJECTS,
             "payload_bytes": EXPECTED_FRANKO1901_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_FRANKO1901_BYTES,
+            "comparison_payload_bytes": franko_comparison_payload_bytes,
             "intake_receipt_identity_sha256": projection.receipt[
                 "receipt_identity_sha256"
             ],
@@ -1304,6 +1360,9 @@ def execute(
         "combined": {
             "source_object_count": EXPECTED_COMBINED_OBJECTS,
             "payload_bytes": EXPECTED_COMBINED_BYTES,
+            "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": EXPECTED_COMBINED_BYTES,
+            "comparison_payload_bytes": combined_comparison_payload_bytes,
             "indexed_report_sha256": indexed_report["report_sha256"],
             "indexed_executor_performance_equivalence_authority": "MERGED_PR_1459",
             "post_dedup_conservative_unique_bytes": terminal.get(
