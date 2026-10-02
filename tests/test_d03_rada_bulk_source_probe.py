@@ -244,6 +244,7 @@ def test_production_config_loads_under_exact_v1_authority() -> None:
     assert config["source"]["dataset_id"] == "laws-texts"
     assert config["training_authorized_bytes"] == 0
 
+
 def test_live_probe_can_retain_exact_safe_archive(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
