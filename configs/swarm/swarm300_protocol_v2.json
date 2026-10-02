@@ -208,5 +208,86 @@
     "cpu_evidence_may_be_called_cuda_evidence": false,
     "fabricated_ci_data_training_gpu_success": false,
     "postbase_agent_work_may_mutate_canonical_base_lineage": false
+  },
+  "claim_snapshot": {
+    "schema": "12-6.swarm-claim-snapshot.v1",
+    "builder": "tools/build_swarm_claim_snapshot.py",
+    "max_age_seconds": 300,
+    "normalized_input_required": true,
+    "direct_collection_terminal_empty_sentinels_required": true,
+    "duplicate_active_ownership_keys": "fail_closed",
+    "candidate_discovery_only": true,
+    "mutation_authority": false,
+    "training_authority": false,
+    "merge_authority": false,
+    "live_exact_semantic_check_required_before_mutation": true,
+    "scheduler_reservations": "identity_mirror_only_not_lock_authority",
+    "ownership_active_explicit": true,
+    "status_is_evidence_not_occupancy": true,
+    "direct_collection_page_size": 100,
+    "coverage_geometry_must_match_counts": true,
+    "live_exact_semantic_check_required_before_claim": true,
+    "live_exact_semantic_check_required_before_run_once_action": true
+  },
+  "risk_tier_routing": {
+    "schema": "12-6.swarm-risk-tier-policy.v1",
+    "policy_identity_sha256": "38ffdad2a8eeeaa34934eab7493e450f03c1d1c7758ac7cd77276bf867ecbc84",
+    "existing_stricter_rules_remain_binding": true,
+    "automatic_integration_enabled": false,
+    "activation_requires_independent_qualification": true,
+    "d_nonauthority_auto_integration_requires_protected_main": true,
+    "tiers": {
+      "A_AUTHORITY": {
+        "shared_exact_head_ci_required": true,
+        "automated_contract_tests_required": true,
+        "different_worker_audit": "REQUIRED_FRESH_EXACT_HEAD",
+        "examples": [
+          "corpus_admission",
+          "decontamination_or_final_test_authority",
+          "tokenizer_promotion",
+          "positive_optimized_exposure",
+          "optimizer_start",
+          "scientific_checkpoint_promotion"
+        ]
+      },
+      "B_RUNTIME": {
+        "shared_exact_head_ci_required": true,
+        "automated_contract_tests_required": true,
+        "different_worker_audit": "REQUIRED_TARGETED_ADVERSARIAL",
+        "examples": [
+          "trainer",
+          "checkpoint_or_recovery",
+          "dedup_or_matcher_semantics"
+        ]
+      },
+      "C_EXECUTION": {
+        "shared_exact_head_ci_required": true,
+        "automated_contract_tests_required": true,
+        "different_worker_audit": "REQUIRED_IF_SENSITIVE_AUTHORITY_FIELDS_CHANGE",
+        "examples": [
+          "carrier",
+          "cli",
+          "transport",
+          "provider_glue_without_authority_semantics"
+        ]
+      },
+      "D_NONAUTHORITY": {
+        "shared_exact_head_ci_required": true,
+        "automated_contract_tests_required": false,
+        "different_worker_audit": "NOT_REQUIRED_BY_TIER_ONLY",
+        "automatic_integration_preconditions": [
+          "protected_main_policy_active",
+          "explicit_protocol_activation",
+          "all_other_repository_merge_rules_satisfied"
+        ],
+        "examples": [
+          "docs",
+          "accessibility",
+          "formatting",
+          "non_authority_telemetry"
+        ]
+      }
+    },
+    "snapshot_never_grants_mutation_authority": true
   }
 }
