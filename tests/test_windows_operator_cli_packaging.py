@@ -447,3 +447,29 @@ def test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them(
     assert result["training_authorized"] is False
     assert result["truth_boundary"]["authorized_optimized_target_exposure"] == 0
     assert result["truth_boundary"]["training_executed"] is False
+
+    installed_paths = metadata_probe.stdout.splitlines()
+    assert len(installed_paths) == 2
+    installed_profile = Path(installed_paths[0])
+    assert installed_profile.is_file()
+    installed_profile.unlink()
+
+    missing_asset = subprocess.run(
+        [str(console), "--json", "verify", "--target", "20m"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert missing_asset.returncode == 3
+    assert missing_asset.stderr == ""
+    assert "Traceback" not in missing_asset.stdout
+    assert len(missing_asset.stdout.splitlines()) == 1
+    missing_result = json.loads(missing_asset.stdout)
+    assert missing_result["status"] == "ERROR"
+    assert missing_result["error"].startswith("installed_operator_bootstrap_failed:")
+    assert "packaged asset missing:" in missing_result["error"]
+    assert missing_result["launch_authorized"] is False
+    assert missing_result["training_authorized"] is False
+    assert missing_result["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+    assert missing_result["truth_boundary"]["training_executed"] is False
