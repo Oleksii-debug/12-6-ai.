@@ -666,6 +666,9 @@ def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
             "v7_head_sha": mod.v8.EXPECTED_V7_HEAD,
             "source_object_count": mod.EXPECTED_BASE_OBJECTS,
             "payload_bytes": mod.EXPECTED_BASE_BYTES,
+            "payload_bytes_semantics": mod.PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": mod.EXPECTED_BASE_BYTES,
+            "comparison_payload_bytes": mod.EXPECTED_BASE_BYTES + 26,
             "nomis1864_deauthorization": deepcopy(mod.NOMIS_REMOVAL_PROOF),
         },
         "nbu": {
@@ -677,11 +680,19 @@ def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
             "candidate_sha256": mod.nbu.CANDIDATE_SHA256,
             "source_object_count": mod.EXPECTED_NBU_OBJECTS,
             "payload_bytes": mod.EXPECTED_NBU_BYTES,
+            "payload_bytes_semantics": mod.PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": mod.EXPECTED_NBU_BYTES,
+            "comparison_payload_bytes": mod.EXPECTED_NBU_BYTES,
             "intake_receipt_identity_sha256": "5" * 64,
         },
         "combined": {
             "source_object_count": mod.EXPECTED_COMBINED_OBJECTS,
             "payload_bytes": mod.EXPECTED_COMBINED_BYTES,
+            "payload_bytes_semantics": mod.PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": mod.EXPECTED_COMBINED_BYTES,
+            "comparison_payload_bytes": (
+                mod.EXPECTED_BASE_BYTES + 26 + mod.EXPECTED_NBU_BYTES
+            ),
             "indexed_report_sha256": report_sha,
         },
         "matcher_execution": {
@@ -800,6 +811,32 @@ def test_two_clean_authority_rejects_nonhex_execution_head_even_when_rehashed() 
         core.pop("evidence_identity_sha256")
         evidence["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
     with pytest.raises(mod.NbuGlobalDedupError, match="execution head drift"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_authority_rejects_comparison_payload_drift() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    evidence_b["baseline_v8"]["comparison_payload_bytes"] += 1
+    evidence_b["combined"]["comparison_payload_bytes"] += 1
+    core = dict(evidence_b)
+    core.pop("evidence_identity_sha256")
+    evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="baseline comparison payload bytes differ",
+    ):
         mod._build_two_clean_authority(
             report,
             deepcopy(report),
@@ -1208,9 +1245,9 @@ def test_clean_source_reconstruction_deauthorizes_before_bulk_and_preserves_grap
     events = []
     matcher = object()
     historical = {"sources": [_row("quarantined"), _row("keep")], "lineage_edges": []}
-    historical_payloads = {"quarantined": b"bad", "keep": b"alpha"}
+    historical_payloads = {"quarantined": b"bad", "keep": b"alpha\n\n"}
     clean = {"sources": [_row("keep")], "lineage_edges": []}
-    clean_payloads = {"keep": b"alpha"}
+    clean_payloads = {"keep": b"alpha\n\n"}
     proof = deepcopy(mod.NOMIS_REMOVAL_PROOF)
 
     def deauthorize(inventory, payloads, authority, quarantine_module):
@@ -1244,10 +1281,36 @@ def test_clean_source_reconstruction_deauthorizes_before_bulk_and_preserves_grap
     assert events == ["capture", "deauthorize", "bulk"]
     assert observed_matcher is matcher and removal is proof
     assert inventory["sources"] == [_row("keep"), _row("bulk", size=4)]
-    assert payloads == {"keep": b"alpha", "bulk": b"beta"}
+    assert payloads == {"keep": b"alpha\n\n", "bulk": b"beta"}
+    assert sum(len(raw) for raw in payloads.values()) == 11
+    assert mod._declared_capacity_bytes(inventory, payloads, label="test") == 9
     assert clean == {"sources": [_row("keep")], "lineage_edges": []}
-    assert clean_payloads == {"keep": b"alpha"}
+    assert clean_payloads == {"keep": b"alpha\n\n"}
     assert historical["sources"] == [_row("quarantined"), _row("keep")]
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, "5", -1])
+def test_declared_capacity_bytes_rejects_nonexact_or_negative_values(bad: object) -> None:
+    mod = _load()
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="declared capacity must be exact nonnegative int",
+    ):
+        mod._declared_capacity_bytes(
+            {"sources": [_row("base:a", size=bad)]},
+            {"base:a": b"payload"},
+            label="fixture",
+        )
+
+
+def test_declared_capacity_bytes_rejects_inventory_payload_coverage_drift() -> None:
+    mod = _load()
+    with pytest.raises(mod.NbuGlobalDedupError, match="inventory/payload coverage mismatch"):
+        mod._declared_capacity_bytes(
+            {"sources": [_row("base:a")]},
+            {"other": b"payload"},
+            label="fixture",
+        )
 
 
 def test_quarantine_failure_stops_before_bulk_or_new_matching(monkeypatch, tmp_path: Path) -> None:
