@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-import twelve_six.windows_operator_cli as windows_operator_cli
+from twelve_six import windows_operator_cli
 from twelve_six.windows_operator_cli import build_delegate_argv, resolve_default_paths
 
 ROOT = Path(__file__).resolve().parents[1]
