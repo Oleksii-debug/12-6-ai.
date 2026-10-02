@@ -180,8 +180,11 @@ else:
 def test_production_arithmetic_is_exact() -> None:
     _run_isolated(
         """
-assert mod.EXPECTED_COMBINED_OBJECTS == 5_922
-assert mod.EXPECTED_COMBINED_BYTES == 12_057_771
+assert mod.EXPECTED_BASE_OBJECTS == 263
+assert mod.EXPECTED_BASE_BYTES == 6_093_965
+assert mod.EXPECTED_COMBINED_OBJECTS == 5_921
+assert mod.EXPECTED_COMBINED_BYTES == 12_056_112
+assert mod.PAYLOAD_BYTES_SEMANTICS == "DECLARED_CAPACITY_BYTES"
 assert mod.EXPECTED_MAIN == "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
 assert mod.CASELAW_FINAL_HEAD == "deaf0730fe04a12e9abb8f3cecb14d6ad2cc7a4d"
 """
@@ -196,12 +199,95 @@ expected = {
     "src/twelve_six/data/incumbent_dedup_indexed_execution.py",
     "src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py",
     "tools/run_d03_expanded_global_dedup_v9.py",
+    "tools/run_d03_nomis_free_clean_successor_v1.py",
+    "src/twelve_six/data/external_llm_provenance_quarantine_v1.py",
+    "configs/data/d03_external_llm_provenance_quarantine_v1.json",
     "tools/run_next100_065f_global_dedup_v8.py",
     "tools/materialize_data_bulk_code1_permissive_python_bundle.py",
 }
 assert expected <= set(mod.AUTHORITY_PATHS)
 """
     )
+
+
+def test_declared_capacity_is_separate_from_comparison_payload_bytes() -> None:
+    _run_isolated(
+        """
+inventory = {
+    "sources": [
+        row("base:a", size=5),
+        row("base:b", size=4),
+    ]
+}
+payloads = {
+    "base:a": b"alpha\\n\\n",
+    "base:b": b"beta",
+}
+assert sum(len(raw) for raw in payloads.values()) == 11
+assert mod._declared_capacity_bytes(inventory, payloads, label="fixture") == 9
+"""
+    )
+
+
+def test_declared_capacity_rejects_aliases_negative_and_coverage_drift() -> None:
+    _run_isolated(
+        """
+for bad in (True, 5.0, "5", -1):
+    try:
+        mod._declared_capacity_bytes(
+            {"sources": [row("base:a", size=bad)]},
+            {"base:a": b"payload"},
+            label="fixture",
+        )
+    except mod.CaselawGlobalDedupError as exc:
+        assert "declared capacity must be exact nonnegative int" in str(exc)
+    else:
+        raise AssertionError(f"invalid capacity accepted: {bad!r}")
+
+try:
+    mod._declared_capacity_bytes(
+        {"sources": [row("base:a", size=5)]},
+        {"other": b"payload"},
+        label="fixture",
+    )
+except mod.CaselawGlobalDedupError as exc:
+    assert "inventory/payload coverage mismatch" in str(exc)
+else:
+    raise AssertionError("coverage drift accepted")
+"""
+    )
+
+
+def test_nomis_removal_proof_is_exact_and_capacity_delta_matches() -> None:
+    _run_isolated(
+        """
+proof = deepcopy(mod.NOMIS_REMOVAL_PROOF)
+mod._verify_removal_proof(proof)
+assert proof["blocked_payload_bytes"] == 1_659
+assert proof["pre_source_object_count"] == 35
+assert proof["post_source_object_count"] == 34
+assert proof["pre_source_capacity_bytes"] - proof["post_source_capacity_bytes"] == 1_659
+assert proof["removed_before_new_global_dedup"] is True
+
+proof["post_source_capacity_bytes"] += 1
+try:
+    mod._verify_removal_proof(proof)
+except mod.CaselawGlobalDedupError as exc:
+    assert "Nomis deauthorization proof drift" in str(exc)
+else:
+    raise AssertionError("mutated removal proof accepted")
+"""
+    )
+
+
+def test_evidence_declares_capacity_semantics_explicitly() -> None:
+    raw = MODULE.read_text(encoding="utf-8")
+    assert raw.count('"payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS') == 3
+    assert '"declared_capacity_bytes": EXPECTED_BASE_BYTES' in raw
+    assert '"comparison_payload_bytes": base_comparison_payload_bytes' in raw
+    assert '"comparison_payload_bytes": caselaw_comparison_payload_bytes' in raw
+    assert '"comparison_payload_bytes": combined_comparison_payload_bytes' in raw
+    assert '"nomis1864_deauthorization": removal' in raw
 
 
 def test_historical_reconstruction_closure_includes_v5_pipeline() -> None:
