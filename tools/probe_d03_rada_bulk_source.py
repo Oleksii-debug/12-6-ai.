@@ -172,11 +172,14 @@ def _zipinfo_is_symlink(info: zipfile.ZipInfo) -> bool:
 
 def _safe_archive_name(name: str) -> bool:
     normalized = name.replace("\\", "/")
-    # A drive-qualified name or NTFS stream is not a safe portable ZIP path.
+    # Accept portable relative names and one optional directory trailing slash.
+    # Empty or dot components can alias a different ZIP entry on Windows/POSIX.
     if normalized.startswith("/") or ":" in normalized:
         return False
-    parts = [part for part in normalized.split("/") if part not in ("", ".")]
-    return ".." not in parts
+    parts = normalized.split("/")
+    if normalized.endswith("/"):
+        parts.pop()
+    return bool(parts) and all(part not in ("", ".", "..") for part in parts)
 
 
 def _require_exact_mapping(

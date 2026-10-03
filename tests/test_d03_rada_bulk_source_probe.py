@@ -182,6 +182,30 @@ def test_rejects_path_traversal() -> None:
 @pytest.mark.parametrize(
     "unsafe_path",
     [
+        "docs//README.txt",
+        "docs/./README.txt",
+        "./docs/README.txt",
+        "docs///README.txt",
+    ],
+)
+def test_rejects_noncanonical_ignored_zip_path_aliases(unsafe_path: str) -> None:
+    archive = _archive(
+        {"d1.htm": b"a", "d2.htm": b"b", unsafe_path: b"ignored"}
+    )
+    with pytest.raises(ProbeError, match="unsafe archive path"):
+        observe_archive_inventory(archive, _config(min_entries=2))
+
+
+def test_safe_archive_name_allows_one_directory_trailing_slash() -> None:
+    assert probe_mod._safe_archive_name("docs/")
+    assert probe_mod._safe_archive_name(r"docs\README.txt")
+    assert not probe_mod._safe_archive_name("docs//")
+    assert not probe_mod._safe_archive_name("docs/./")
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
         "C:/zak/perv/text/d3.htm",
         r"C:\zak\perv\text\d3.htm",
         "C:d3.htm",

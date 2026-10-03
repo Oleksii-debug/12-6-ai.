@@ -135,7 +135,9 @@ def _verify_archive_against_probe(
     seen_paths: set[str] = set()
     with zipfile.ZipFile(io.BytesIO(archive)) as zf:
         for info in zf.infolist():
-            normalized_path = info.filename.replace("\\", "/")
+            # The checked probe rejects empty/dot segments. A directory
+            # and a file with the same normalized target are also aliases.
+            normalized_path = info.filename.replace("\\", "/").removesuffix("/")
             _require(
                 normalized_path not in seen_paths,
                 f"duplicate retained ZIP path: {normalized_path}",

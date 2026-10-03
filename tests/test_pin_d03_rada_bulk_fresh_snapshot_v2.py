@@ -315,6 +315,37 @@ def test_resealed_reports_cannot_pin_windows_drive_or_ads_zip_paths(
         _pin(*inputs)
 
 
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "docs//README.txt",
+        "docs/./README.txt",
+        "./docs/README.txt",
+    ],
+)
+def test_resealed_reports_cannot_pin_ignored_normalized_path_alias(
+    unsafe_path: str,
+) -> None:
+    inputs = _with_extra_zip_members(
+        [(unsafe_path, b"ignored")], account_ignored=True
+    )
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="original probe safety policy"
+    ):
+        _pin(*inputs)
+
+
+def test_resealed_reports_cannot_pin_file_directory_alias() -> None:
+    inputs = _with_extra_zip_members([
+        ("docs/", b""),
+        ("docs", b"plain file"),
+    ])
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="duplicate retained ZIP path"
+    ):
+        _pin(*inputs)
+
+
 def test_resealed_reports_cannot_pin_symlink_zip_entry() -> None:
     link = zipfile.ZipInfo("docs/symlink.txt")
     link.create_system = 3
