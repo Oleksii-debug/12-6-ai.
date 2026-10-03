@@ -501,3 +501,178 @@ def test_two_clean_report_hash_uses_real_lf_byte() -> None:
     incorrect = f'return raw + (b"{slash}{slash}n" if newline else b"")'
     assert correct in workflow
     assert incorrect not in workflow
+
+def test_publication_success_is_create_only_and_cleans_controls() -> None:
+    _run_isolated(
+        """
+import json
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report", "value": 1}),
+        (root / "survivors.json", {"kind": "survivors", "value": 2}),
+        (root / "evidence.json", {"kind": "evidence", "value": 3}),
+    )
+    mod._publish_json_outputs(values)
+
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    assert not marker.exists()
+    assert not manifest.exists()
+    assert not any(stage.exists() for stage in stages)
+    for path, value in values:
+        assert json.loads(path.read_text(encoding="utf-8")) == value
+
+    try:
+        mod._publish_json_outputs(values)
+    except mod.CaselawGlobalDedupError as exc:
+        assert "refusing to overwrite" in str(exc)
+    else:
+        raise AssertionError("terminal outputs were overwritten")
+"""
+    )
+
+
+def test_publication_recovers_partial_hardlink_transaction() -> None:
+    _run_isolated(
+        """
+import json
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+        (root / "evidence.json", {"kind": "evidence"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    for (_, payload), stage in zip(prepared, stages, strict=True):
+        mod._write_create_only_durable(stage, payload)
+    mod._link_staged_output(stages[0], prepared[0][0])
+
+    # A fresh invocation must prove ownership, roll the incomplete transaction
+    # back, and then publish one coherent terminal set.
+    mod._publish_json_outputs(values)
+
+    assert not marker.exists()
+    assert not manifest.exists()
+    assert not any(stage.exists() for stage in stages)
+    for path, value in values:
+        assert json.loads(path.read_text(encoding="utf-8")) == value
+"""
+    )
+
+
+def test_publication_tampered_linked_stage_fails_closed() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+        (root / "evidence.json", {"kind": "evidence"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    for (_, payload), stage in zip(prepared, stages, strict=True):
+        mod._write_create_only_durable(stage, payload)
+    mod._link_staged_output(stages[0], prepared[0][0])
+    stages[0].write_bytes(b"tampered")
+
+    try:
+        mod._publish_json_outputs(values)
+    except mod.CaselawGlobalDedupError as exc:
+        assert "digest mismatch" in str(exc)
+    else:
+        raise AssertionError("tampered incomplete publication was accepted")
+
+    # Fail closed: recovery evidence remains for diagnosis; no second terminal
+    # set may be produced around the tampered hard link.
+    assert marker.exists()
+    assert manifest.exists()
+    assert prepared[0][0].exists()
+    assert not prepared[1][0].exists()
+    assert not prepared[2][0].exists()
+"""
+    )
+
+
+def test_publication_link_failure_rolls_back_every_created_path() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+        (root / "evidence.json", {"kind": "evidence"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    real_link = mod.os.link
+
+    def fail_link(_source, _target):
+        raise OSError("injected hard-link failure")
+
+    mod.os.link = fail_link
+    try:
+        try:
+            mod._publish_json_outputs(values)
+        except mod.CaselawGlobalDedupError as exc:
+            assert "cannot atomically publish output" in str(exc)
+        else:
+            raise AssertionError("injected publication failure was ignored")
+    finally:
+        mod.os.link = real_link
+
+    assert not marker.exists()
+    assert not manifest.exists()
+    assert not any(stage.exists() for stage in stages)
+    assert not any(path.exists() for path, _ in values)
+"""
+    )
+
+
+def test_publication_rejects_duplicate_output_path_before_writing() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    path = root / "same.json"
+    try:
+        mod._publish_json_outputs(((path, {"a": 1}), (path, {"b": 2})))
+    except mod.CaselawGlobalDedupError as exc:
+        assert "duplicate output path" in str(exc)
+    else:
+        raise AssertionError("duplicate output path was accepted")
+    assert not path.exists()
+"""
+    )
+
