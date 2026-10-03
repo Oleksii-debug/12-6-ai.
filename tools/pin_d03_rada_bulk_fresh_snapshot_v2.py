@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from probe_d03_rada_bulk_source import EXPECTED_POLICY, ProbeError, _scan_archive
 from qualify_d03_rada_bulk_fresh_snapshot_v2 import (
     FreshSnapshotQualificationError,
     _canonical,
@@ -110,44 +111,45 @@ def _verify_qualification(
         _require(matches, f"qualification field drift: {field}")
 
 
-def _verify_archive_against_probe(archive: bytes, probe: Mapping[str, Any]) -> None:
-    meta = probe.get("archive")
-    inventory = probe.get("inventory")
-    _require(type(meta) is dict and type(inventory) is dict, "probe archive/inventory missing")
-    _require(type(meta.get("bytes")) is int and meta["bytes"] == len(archive), "archive bytes drift")
-    _require(meta.get("sha256") == _sha256(archive), "archive SHA-256 drift")
+def _verify_archive_against_probe(
+    archive: bytes, probe: Mapping[str, Any], config: Mapping[str, Any]
+) -> None:
+    """Re-scan *all* ZIP entries under the original immutable probe safety policy.
+
+    A self-consistent pair of reports is not sufficient evidence that ignored ZIP
+    members are safe or that reported decompression limits were actually observed.
+    """
+    scan_config: dict[str, Any] = {
+        "probe_policy": EXPECTED_POLICY,
+        "source": {"archive_url": config["source"]["archive_url"]},
+    }
     try:
-        zf = zipfile.ZipFile(io.BytesIO(archive))
-    except zipfile.BadZipFile as exc:
-        raise FreshSnapshotPinError("retained archive is not ZIP") from exc
+        observed = _scan_archive(archive, scan_config)
+    except (ProbeError, zipfile.BadZipFile, RuntimeError, OSError) as exc:
+        raise FreshSnapshotPinError(
+            "retained archive failed original probe safety policy"
+        ) from exc
 
-    entries = inventory.get("entries")
-    _require(type(entries) is list and bool(entries), "probe entries missing")
-    expected: dict[str, Mapping[str, Any]] = {}
-    for entry in entries:
-        _require(type(entry) is dict, "probe entry malformed")
-        name = entry.get("basename")
-        _require(type(name) is str and name not in expected, "duplicate probe basename")
-        expected[name] = entry
-
-    observed: set[str] = set()
-    with zf:
+    # The incumbent probe permits harmless ignored files; no ZIP member may
+    # nevertheless have an ambiguous duplicate normalized path.
+    seen_paths: set[str] = set()
+    with zipfile.ZipFile(io.BytesIO(archive)) as zf:
         for info in zf.infolist():
             normalized_path = info.filename.replace("\\", "/")
-            basename = Path(normalized_path).name
-            entry = expected.get(basename)
-            if entry is None:
-                continue
-            _require(basename not in observed, f"duplicate retained basename: {basename}")
-            observed.add(basename)
-            _require(entry.get("path") == normalized_path, f"retained path drift: {basename}")
-            raw = zf.read(info)
-            _require(entry.get("raw_bytes") == len(raw), f"retained byte drift: {basename}")
             _require(
-                entry.get("raw_sha256") == _sha256(raw),
-                f"retained SHA drift: {basename}",
+                normalized_path not in seen_paths,
+                f"duplicate retained ZIP path: {normalized_path}",
             )
-    _require(observed == set(expected), "retained archive/probe inventory mismatch")
+            seen_paths.add(normalized_path)
+
+    _require(
+        probe.get("archive") == observed["archive"],
+        "retained archive metadata drift",
+    )
+    _require(
+        probe.get("inventory") == observed["inventory"],
+        "retained archive/probe inventory mismatch",
+    )
 
 
 def pin_capture(
@@ -190,7 +192,7 @@ def pin_capture(
         qualification == expected_qualification,
         "qualification does not match two original raw probe reports",
     )
-    _verify_archive_against_probe(archive, probe)
+    _verify_archive_against_probe(archive, probe, config)
 
     wanted_attribution = attribution_text(rights, probe["archive"]).encode("utf-8")
     _require(attribution == wanted_attribution, "attribution bytes drift")

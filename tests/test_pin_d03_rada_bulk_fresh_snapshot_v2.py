@@ -5,7 +5,9 @@ import hashlib
 import importlib.util
 import io
 import json
+import stat
 import sys
+import warnings
 import zipfile
 import zlib
 from pathlib import Path
@@ -227,3 +229,97 @@ def test_cli_two_probe_success_publishes_only_a_fresh_pin(
     assert json.loads(output.read_text(encoding="utf-8"))["training_authorized_bytes"] == 0
     with pytest.raises(pin.FreshSnapshotPinError, match="refusing to overwrite"):
         pin.main()
+
+
+def _with_extra_zip_members(
+    extras: list[tuple[str | zipfile.ZipInfo, bytes]],
+    *,
+    account_ignored: bool = False,
+) -> tuple[bytes, dict, dict, dict, dict, dict, bytes]:
+    archive, first, second, _, config, rights, _ = _fixture()
+    output = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(archive)) as original:
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as result:
+            for info in original.infolist():
+                result.writestr(info.filename, original.read(info))
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="Duplicate name.*")
+                for member, contents in extras:
+                    result.writestr(member, contents)
+    modified = output.getvalue()
+    for report in (first, second):
+        report["archive"]["bytes"] = len(modified)
+        report["archive"]["md5"] = hashlib.md5(
+            modified, usedforsecurity=False
+        ).hexdigest()
+        report["archive"]["sha256"] = hashlib.sha256(modified).hexdigest()
+        if account_ignored:
+            report["inventory"]["ignored_file_count"] += len(extras)
+            report["inventory"]["total_zip_uncompressed_bytes"] += sum(
+                len(contents) for _, contents in extras
+            )
+    qualification = pin.qualify_two_clean_probes(
+        config, rights, first, second,
+        probe_a_bytes=_raw(first), probe_b_bytes=_raw(second),
+    )
+    attribution = pin.attribution_text(rights, first["archive"]).encode("utf-8")
+    return modified, first, second, qualification, config, rights, attribution
+
+
+def test_pin_accepts_safely_counted_ignored_zip_member() -> None:
+    inputs = _with_extra_zip_members(
+        [("docs/README.txt", b"not canonical law text")], account_ignored=True
+    )
+    result = _pin(*inputs)
+    assert result["status"] == pin.STATUS
+    assert result["training_authorized_bytes"] == 0
+
+
+def test_resealed_reports_cannot_omit_harmless_extra_member() -> None:
+    inputs = _with_extra_zip_members([("docs/README.txt", b"ignored but real")])
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="retained archive/probe inventory mismatch"
+    ):
+        _pin(*inputs)
+
+
+@pytest.mark.parametrize("unsafe_path", ["../unsafe.txt", "/absolute.txt"])
+def test_resealed_reports_cannot_pin_traversal_or_absolute_zip_entry(
+    unsafe_path: str,
+) -> None:
+    inputs = _with_extra_zip_members([(unsafe_path, b"unsafe")])
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="original probe safety policy"
+    ):
+        _pin(*inputs)
+
+
+def test_resealed_reports_cannot_pin_symlink_zip_entry() -> None:
+    link = zipfile.ZipInfo("docs/symlink.txt")
+    link.create_system = 3
+    link.external_attr = (stat.S_IFLNK | 0o777) << 16
+    inputs = _with_extra_zip_members([(link, b"../../outside")])
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="original probe safety policy"
+    ):
+        _pin(*inputs)
+
+
+def test_resealed_reports_cannot_bypass_original_entry_size_limit() -> None:
+    oversized = b"x" * (pin.EXPECTED_POLICY["max_entry_bytes"] + 1)
+    inputs = _with_extra_zip_members([("docs/oversized.bin", oversized)])
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="original probe safety policy"
+    ):
+        _pin(*inputs)
+
+
+def test_duplicate_ignored_zip_path_fails_even_when_counted() -> None:
+    inputs = _with_extra_zip_members(
+        [("docs/README.txt", b"first"), ("docs/README.txt", b"second")],
+        account_ignored=True,
+    )
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="duplicate retained ZIP path"
+    ):
+        _pin(*inputs)
