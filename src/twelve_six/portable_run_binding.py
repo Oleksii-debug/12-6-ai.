@@ -151,6 +151,10 @@ def _is_zero_number(value: Any) -> bool:
     )
 
 
+def _is_allowed_string(value: Any, allowed: set[str]) -> bool:
+    return isinstance(value, str) and value in allowed
+
+
 def _validate_ready_candidate_scalars(
     errors: list[str],
     scientific: dict[str, Any],
@@ -202,7 +206,7 @@ def validate_session_overlay_contract(value: Any) -> list[str]:
         errors.append("overlay_schema_version_mismatch")
     if value.get("overlay_id") != OVERLAY_ID:
         errors.append("overlay_id_mismatch")
-    if value.get("status") not in {"BLOCKED_TEMPLATE", "READY_CANDIDATE"}:
+    if not _is_allowed_string(value.get("status"), {"BLOCKED_TEMPLATE", "READY_CANDIDATE"}):
         errors.append("overlay_status_invalid")
 
     scientific = _exact_mapping(
@@ -428,7 +432,10 @@ def bind_portable_run_packet(
     if isinstance(overlay, dict) and overlay.get("status") != "READY_CANDIDATE":
         blockers.append("overlay:status_not_ready_candidate")
 
-    mode = _mapping(overlay_data.get("checkpoint")).get("mode")
+    checkpoint_overlay = _mapping(overlay_data.get("checkpoint"))
+    mode = checkpoint_overlay.get("mode")
+    lineage = _mapping(checkpoint_overlay.get("lineage"))
+    cross_provider_transfer = lineage.get("cross_provider_transfer")
     packet_assessment: PortableRunAssessment | None = None
     candidate: dict[str, Any] | None = None
     coherence: list[str] = []
@@ -443,11 +450,12 @@ def bind_portable_run_packet(
             overlay_sha256=overlay_hash,
         )
         packet_assessment = assess_portable_run_packet(candidate)
-        relevant = (
-            packet_assessment.resume_blockers
-            if mode == "RESUME"
-            else packet_assessment.launch_blockers
-        )
+        if mode == "RESUME" and cross_provider_transfer is True:
+            relevant = packet_assessment.resume_blockers
+        elif mode == "RESUME" and cross_provider_transfer is False:
+            relevant = packet_assessment.same_provider_resume_blockers
+        else:
+            relevant = packet_assessment.launch_blockers
         blockers.extend(f"packet:{item}" for item in relevant)
 
     packet_contract_valid = bool(
@@ -457,7 +465,16 @@ def bind_portable_run_packet(
         packet_assessment is not None
         and (
             (mode == "FRESH_START" and packet_assessment.ready_for_initial_local_free_launch)
-            or (mode == "RESUME" and packet_assessment.ready_for_cross_provider_resume)
+            or (
+                mode == "RESUME"
+                and cross_provider_transfer is False
+                and packet_assessment.ready_for_same_provider_fresh_process_resume
+            )
+            or (
+                mode == "RESUME"
+                and cross_provider_transfer is True
+                and packet_assessment.ready_for_cross_provider_resume
+            )
         )
     )
     ready = bool(
