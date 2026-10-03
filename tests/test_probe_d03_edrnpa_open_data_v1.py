@@ -325,3 +325,108 @@ def test_download_wrong_sha256_with_matching_md5_unlinks_file(
     with pytest.raises(mod.ProbeError, match="pinned resource digest mismatch"):
         mod.download_archive_to(destination)
     assert not destination.exists()
+
+
+def test_download_never_truncates_existing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "source.zip"
+    existing = b"UNRELATED USER FILE MUST SURVIVE"
+    destination.write_bytes(existing)
+
+    def forbidden_network(*_args, **_kwargs):
+        raise AssertionError("network must not be requested for an existing target")
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", forbidden_network)
+    with pytest.raises(mod.ProbeError, match="refusing to overwrite"):
+        mod.download_archive_to(destination)
+    assert destination.read_bytes() == existing
+    assert not list(tmp_path.glob(".source.zip.partial-*"))
+
+
+def test_download_publishes_only_verified_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"synthetic pinned source bytes"
+
+    class Response(io.BytesIO):
+        def __init__(self) -> None:
+            super().__init__(payload)
+            self.headers: dict[str, str] = {}
+
+    monkeypatch.setattr(mod, "RESOURCE_MD5", mod.md5(payload))
+    monkeypatch.setattr(mod, "RESOURCE_SHA256", mod.sha256(payload))
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_a, **_kw: Response())
+    destination = tmp_path / "source.zip"
+    result = mod.download_archive_to(destination)
+    assert destination.read_bytes() == payload
+    assert result == {
+        "bytes": len(payload),
+        "md5": mod.md5(payload),
+        "sha256": mod.sha256(payload),
+    }
+    assert not list(tmp_path.glob(".source.zip.partial-*"))
+
+
+def test_interrupted_download_removes_only_its_private_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Interrupted(io.BytesIO):
+        def __init__(self) -> None:
+            super().__init__(b"part of a source")
+            self.headers: dict[str, str] = {}
+
+        def read(self, size: int = -1) -> bytes:
+            if self.tell() >= 4:
+                raise OSError("interrupted source stream")
+            return super().read(4)
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_a, **_kw: Interrupted())
+    destination = tmp_path / "source.zip"
+    with pytest.raises(OSError, match="interrupted source stream"):
+        mod.download_archive_to(destination)
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".source.zip.partial-*"))
+
+
+def test_oversized_download_header_never_creates_final_or_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Oversized(io.BytesIO):
+        def __init__(self) -> None:
+            super().__init__(b"")
+            self.headers = {"Content-Length": str(mod.MAX_ARCHIVE_BYTES + 1)}
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_a, **_kw: Oversized())
+    destination = tmp_path / "source.zip"
+    with pytest.raises(mod.ProbeError, match="exceeds compressed-byte"):
+        mod.download_archive_to(destination)
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".source.zip.partial-*"))
+
+
+def test_competing_target_created_at_publish_survives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"verified fixture payload"
+    unrelated = b"UNRELATED CONCURRENT USER FILE"
+    destination = tmp_path / "source.zip"
+
+    class Competitor(io.BytesIO):
+        def __init__(self) -> None:
+            super().__init__(payload)
+            self.headers: dict[str, str] = {}
+
+        def read(self, size: int = -1) -> bytes:
+            chunk = super().read(size)
+            if not chunk:
+                destination.write_bytes(unrelated)
+            return chunk
+
+    monkeypatch.setattr(mod, "RESOURCE_MD5", mod.md5(payload))
+    monkeypatch.setattr(mod, "RESOURCE_SHA256", mod.sha256(payload))
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_a, **_kw: Competitor())
+    with pytest.raises(mod.ProbeError, match="refusing to overwrite"):
+        mod.download_archive_to(destination)
+    assert destination.read_bytes() == unrelated
+    assert not list(tmp_path.glob(".source.zip.partial-*"))
