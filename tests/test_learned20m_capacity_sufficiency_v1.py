@@ -540,3 +540,75 @@ def test_rejects_huge_direct_integer_without_serialization() -> None:
     document["decision"]["untrusted_metadata"] = 10**5_000
     with pytest.raises(CapacityReportError, match="integer exceeds limit"):
         validate_report(document)
+
+
+@pytest.mark.parametrize(
+    "path,bad",
+    [
+        (("terminal_physical_clean_supply",), None),
+        (("terminal_physical_clean_supply",), []),
+        (("balance_policy",), None),
+        (("indexed_executor",), None),
+        (("optimistic_source_mixture_bound",), None),
+        (("decision",), None),
+        (("pending_existing_high_yield_work", 0, "id"), []),
+        (("existing_independent_family_backlog", 0, "id"), {}),
+        (("downstream_authority_backlog", 0, "id"), []),
+        (("pending_existing_high_yield_work", 0), None),
+        (("existing_independent_family_backlog", 0), []),
+        (("downstream_authority_backlog", 0), None),
+    ],
+)
+@pytest.mark.parametrize("via_file", (False, True))
+def test_malformed_capacity_nested_values_have_controlled_errors(
+    tmp_path: Path, path: tuple[str | int, ...], bad: object, via_file: bool
+) -> None:
+    document = _report()
+    parent = document
+    for part in path[:-1]:
+        parent = parent[part]
+    parent[path[-1]] = bad
+    with pytest.raises(
+        CapacityReportError,
+        match="must be a JSON object|must be a string|JSON array of objects",
+    ):
+        if via_file:
+            source = tmp_path / "malformed-capacity.json"
+            source.write_text(json.dumps(document), encoding="utf-8")
+            load_and_validate(source)
+        else:
+            validate_report(document)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("terminal_physical_clean_supply", "classification"),
+        ("terminal_physical_clean_supply", "materialization_identity_sha256"),
+        ("balance_policy", "target_total_source_bytes"),
+        ("indexed_executor", "integrated"),
+        ("optimistic_source_mixture_bound", "classification"),
+        ("decision", "authorized_postpack_unique_loss_positions"),
+        ("pending_existing_high_yield_work", 0, "id"),
+        ("pending_existing_high_yield_work", 0, "capacity_credit_bytes"),
+        ("pending_existing_high_yield_work", 1, "candidate_utf8_bytes"),
+        ("existing_independent_family_backlog", 0, "observed_head"),
+        ("downstream_authority_backlog", 0, "terminal_authority"),
+    ],
+)
+@pytest.mark.parametrize("via_file", (False, True))
+def test_missing_capacity_nested_fields_have_controlled_errors(
+    tmp_path: Path, path: tuple[str | int, ...], via_file: bool
+) -> None:
+    document = _report()
+    parent = document
+    for part in path[:-1]:
+        parent = parent[part]
+    del parent[path[-1]]
+    with pytest.raises(CapacityReportError, match="missing required fields"):
+        if via_file:
+            source = tmp_path / "missing-capacity-field.json"
+            source.write_text(json.dumps(document), encoding="utf-8")
+            load_and_validate(source)
+        else:
+            validate_report(document)
