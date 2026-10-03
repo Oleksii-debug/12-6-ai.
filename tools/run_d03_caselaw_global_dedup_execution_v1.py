@@ -389,6 +389,40 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
     indexed.attest_incumbent_runtime(matcher)
 
 
+def _preflight_attested_reference_sample(
+    matcher: Any,
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+) -> None:
+    """Fail early on reference-induced V3 drift using 16 authenticated inputs.
+
+    The sample takes both the incumbent and Caselaw ends of the exact graph.
+    It is never published or counted as capacity, and cannot replace the
+    terminal full-graph reference/indexed byte-equality proof.
+    """
+    rows = inventory.get("sources")
+    _require(type(rows) is list and len(rows) >= 16,
+             "reference preflight requires at least 16 authenticated sources")
+    selected = [*rows[:8], *rows[-8:]]
+    selected_ids = {row["source_id"] for row in selected}
+    _require(len(selected_ids) == 16, "reference preflight source IDs are not unique")
+    original_edges = inventory.get("lineage_edges", [])
+    _require(type(original_edges) is list, "reference preflight lineage edges invalid")
+    sample_inventory = {
+        **inventory,
+        "sources": selected,
+        "lineage_edges": [
+            edge for edge in original_edges
+            if edge["left_source_id"] in selected_ids
+            and edge["right_source_id"] in selected_ids
+        ],
+    }
+    sample_payloads = {source_id: payloads[source_id] for source_id in selected_ids}
+    sample_report = matcher.audit_payloads(sample_inventory, sample_payloads)
+    matcher.verify_report(sample_report)
+    indexed.attest_incumbent_runtime(matcher)
+
+
 def _outer_survivor_authority(
     dedup_report: Mapping[str, Any],
     selection_projection: Mapping[str, Any],
@@ -1121,6 +1155,7 @@ def execute(
     # all-pairs reference too. Differential equality is not authority if both paths
     # can observe the same mutated stdlib/runtime state before attestation.
     _preflight_attested_lineage_warmup(matcher)
+    _preflight_attested_reference_sample(matcher, inventory, payloads)
 
     reference_started = time.perf_counter()
     reference = matcher.audit_payloads(inventory, payloads)
