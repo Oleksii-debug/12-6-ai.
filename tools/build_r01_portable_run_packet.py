@@ -36,6 +36,11 @@ def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError("JSON number is not finite")
+    # Preserve the lexical distinction between zero and nonzero budgets:
+    # decoding 1e-9999 as 0.0 could incorrectly satisfy LOCAL_FREE checks.
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero JSON number underflowed to zero")
     return parsed
 
 
