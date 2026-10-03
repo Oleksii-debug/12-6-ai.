@@ -408,3 +408,82 @@ def test_private_cleanup_never_deletes_unexpected_file(
     assert not output.exists()
     assert len(injected) == 1
     assert injected[0].read_text(encoding="utf-8") == "preserve me"
+
+def _deep_authority_json(nesting: str) -> str:
+    if nesting == "arrays":
+        return '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    return '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_strict_decoder_rejects_excessive_json_nesting(nesting: str) -> None:
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError,
+        match="JSON nesting limit exceeded",
+    ):
+        VALIDATOR._decode_json_object(
+            _deep_authority_json(nesting),
+            label="fixture",
+        )
+
+
+@pytest.mark.parametrize("action", ("verify", "materialize"))
+@pytest.mark.parametrize(
+    "relative",
+    (VALIDATOR.MANIFEST, VALIDATOR.PROOF, VALIDATOR.MEMBERSHIP),
+)
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_cli_rejects_deep_authority_json_without_publication(
+    tmp_path: Path,
+    action: str,
+    relative: Path,
+    nesting: str,
+) -> None:
+    paths = []
+    for source in (VALIDATOR.MANIFEST, VALIDATOR.PROOF, VALIDATOR.MEMBERSHIP):
+        target = tmp_path / source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / source).read_bytes())
+        paths.append(target)
+    target = tmp_path / relative
+    raw = _deep_authority_json(nesting)
+    if relative == VALIDATOR.MEMBERSHIP:
+        raw += "\n"
+    target.write_text(raw, encoding="utf-8")
+    originals = {path: path.read_bytes() for path in paths}
+    output = tmp_path / "must-not-publish"
+
+    args = [sys.executable, str(SCRIPT), action, "--repo-root", str(tmp_path)]
+    if action == "materialize":
+        args.extend(("--output-dir", str(output)))
+    result = subprocess.run(
+        args,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    report = json.loads(lines[0])
+    assert report["status"] == "FAIL"
+    assert "JSON nesting limit exceeded" in report["error"]
+    assert {path: path.read_bytes() for path in paths} == originals
+    assert not output.exists()
+
+
+def test_cli_does_not_mask_unexpected_product_recursion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected(_root: Path) -> dict:
+        raise RecursionError("unexpected Product recursion")
+
+    monkeypatch.setattr(VALIDATOR, "verify", unexpected)
+    monkeypatch.setattr(
+        sys, "argv", [str(SCRIPT), "verify", "--repo-root", str(ROOT)]
+    )
+    with pytest.raises(RecursionError, match="unexpected Product recursion"):
+        VALIDATOR.main()
