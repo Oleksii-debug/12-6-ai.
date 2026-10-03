@@ -1,7 +1,9 @@
 import json
 import os
+import stat
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -509,3 +511,85 @@ def test_verifier_rejects_duplicate_config_key_before_hash_checks(tmp_path: Path
 
     with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
         verify_hf_directory(output)
+
+
+@pytest.mark.parametrize("root_name", ["reference", "candidate"])
+@pytest.mark.parametrize("replace_root", [False, True])
+def test_hook_cannot_make_exporter_delete_substituted_private_root(
+    tmp_path: Path,
+    root_name: str,
+    replace_root: bool,
+):
+    """A hook-controlled pathname is not proof of private-directory ownership."""
+
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(12.0), identity=identity("8"))
+    retained: dict[str, Path] = {}
+
+    def swapping_hook(reference: Path, candidate: Path):
+        selected = {"reference": reference, "candidate": candidate}[root_name]
+        original = tmp_path / f"retained-original-{root_name}"
+        selected.rename(original)
+        retained["original"] = original
+        if replace_root:
+            selected.mkdir()
+            (selected / "unrelated-evidence.txt").write_text(
+                "preserve unrelated user evidence", encoding="utf-8"
+            )
+            retained["substituted"] = selected
+        return {"status": "PASS", "evidence_ref": "root-identity-regression"}
+
+    with pytest.raises(CheckpointIntegrityError, match="temporary cleanup failed"):
+        export_hf_directory(
+            checkpoint,
+            output,
+            hf_config={"model_type": "twelve_six_export_transactional"},
+            parity_hook=swapping_hook,
+        )
+
+    assert retained["original"].is_dir()
+    if replace_root:
+        assert (
+            retained["substituted"] / "unrelated-evidence.txt"
+        ).read_text(encoding="utf-8") == "preserve unrelated user evidence"
+    assert not output.exists()
+    assert not list(tmp_path.glob(".hf.staging-*"))
+
+
+
+def test_private_root_identity_requires_an_available_inode():
+    class UnknownInodeRoot:
+        def lstat(self):
+            return SimpleNamespace(
+                st_mode=stat.S_IFDIR | 0o700, st_dev=1, st_ino=0
+            )
+
+        def __str__(self):
+            return "unknown-inode-test-root"
+
+    with pytest.raises(CheckpointIntegrityError, match="inode identity unavailable"):
+        hf_export._temporary_directory_identity(UnknownInodeRoot())
+
+
+def test_missing_private_root_identity_preserves_unknown_root_and_cleans_known_root(
+    tmp_path: Path,
+):
+    unknown = tmp_path / "unknown"
+    known = tmp_path / "known"
+    unknown.mkdir()
+    known.mkdir()
+    (unknown / "user-evidence.txt").write_text("preserve", encoding="utf-8")
+    (known / "private-artifact.txt").write_text("cleanup", encoding="utf-8")
+    known_identity = hf_export._temporary_directory_identity(known)
+
+    with pytest.raises(CheckpointIntegrityError, match="temporary cleanup failed"):
+        hf_export._cleanup_temp_paths_strict(
+            (
+                (unknown, "unowned root", None),
+                (known, "owned root", known_identity),
+            )
+        )
+
+    assert (unknown / "user-evidence.txt").read_text(encoding="utf-8") == "preserve"
+    assert not known.exists()

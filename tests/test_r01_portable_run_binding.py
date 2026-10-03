@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 from twelve_six.learned20m_readiness import scientific_authority_token
 from twelve_six.portable_run_binding import (
     bind_portable_run_packet,
@@ -572,3 +574,90 @@ def test_cli_rejects_malformed_json_in_each_builder_input_without_output(
         assert expected in report["error"]
         assert not output_path.exists()
 
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_builder_loader_rejects_excessive_json_nesting(
+    tmp_path: Path,
+    nesting: str,
+) -> None:
+    builder = _load_builder_module()
+    if nesting == "arrays":
+        raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    path = tmp_path / f"deep-{nesting}.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON nesting limit exceeded"):
+        builder._load_object(path)
+
+
+@pytest.mark.parametrize("flag", ("--readiness", "--template", "--overlay"))
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_builder_cli_rejects_deep_external_json_without_output(
+    tmp_path: Path,
+    flag: str,
+    nesting: str,
+) -> None:
+    paths = {
+        "--readiness": tmp_path / "readiness.json",
+        "--template": tmp_path / "template.json",
+        "--overlay": tmp_path / "overlay.json",
+    }
+    for path in paths.values():
+        path.write_text("{}", encoding="utf-8")
+    if nesting == "arrays":
+        raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    paths[flag].write_text(raw, encoding="utf-8")
+    originals = {path: path.read_bytes() for path in paths.values()}
+    output = tmp_path / "never-publish.json"
+
+    result = _run_builder(
+        [
+            "--readiness", str(paths["--readiness"]),
+            "--template", str(paths["--template"]),
+            "--overlay", str(paths["--overlay"]),
+            "--output", str(output),
+        ]
+    )
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["binding_ready"] is False
+    assert "JSON nesting limit exceeded" in payload["error"]
+    assert not output.exists()
+    assert {path: path.read_bytes() for path in paths.values()} == originals
+
+
+def test_builder_unexpected_product_recursion_is_not_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    paths = {
+        "--readiness": tmp_path / "readiness.json",
+        "--template": tmp_path / "template.json",
+        "--overlay": tmp_path / "overlay.json",
+    }
+    for path in paths.values():
+        path.write_text("{}", encoding="utf-8")
+    output = tmp_path / "never-publish.json"
+
+    def unexpected(*_args: object, **_kwargs: object) -> object:
+        raise RecursionError("unexpected Product recursion")
+
+    monkeypatch.setattr(builder, "bind_portable_run_packet", unexpected)
+    args = [
+        "--readiness", str(paths["--readiness"]),
+        "--template", str(paths["--template"]),
+        "--overlay", str(paths["--overlay"]),
+        "--output", str(output),
+    ]
+    with pytest.raises(RecursionError, match="unexpected Product recursion"):
+        builder.main(args)
+    assert not output.exists()

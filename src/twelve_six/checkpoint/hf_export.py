@@ -331,32 +331,63 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     return attestation
 
 
-def _remove_temp_path_strict(path: Path, *, label: str) -> None:
-    """Remove one private temporary path without following attacker-created symlinks."""
+def _temporary_directory_identity(path: Path) -> tuple[int, int]:
+    """Pin the created private root before exposing its pathname to a parity hook."""
+
+    observed = path.lstat()
+    if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
+        raise CheckpointIntegrityError(f"private temporary root changed type: {path}")
+    if not observed.st_ino:
+        raise CheckpointIntegrityError(
+            f"private temporary root inode identity unavailable: {path}"
+        )
+    return observed.st_dev, observed.st_ino
+
+
+def _remove_temp_path_strict(
+    path: Path, *, label: str, expected_identity: tuple[int, int]
+) -> None:
+    """Never recursively remove a substituted private-root pathname.
+
+    This closes synchronous parity-hook root replacement. As with publication,
+    the last identity check does not defend against arbitrary concurrent
+    same-user filesystem mutation after the check.
+    """
 
     try:
         current = path.lstat()
-    except FileNotFoundError:
-        return
+    except FileNotFoundError as exc:
+        raise CheckpointIntegrityError(
+            f"{label} root disappeared before cleanup: {path}"
+        ) from exc
+    if (current.st_dev, current.st_ino) != expected_identity:
+        raise CheckpointIntegrityError(
+            f"{label} root identity changed before cleanup: {path}"
+        )
+    if not stat.S_ISDIR(current.st_mode) or stat.S_ISLNK(current.st_mode):
+        raise CheckpointIntegrityError(f"{label} root changed type: {path}")
 
-    if stat.S_ISDIR(current.st_mode) and not stat.S_ISLNK(current.st_mode):
-        shutil.rmtree(path)
-    else:
-        path.unlink()
-
+    shutil.rmtree(path)
     if os.path.lexists(path):
         raise CheckpointIntegrityError(f"{label} remained after cleanup: {path}")
 
 
 def _cleanup_temp_paths_strict(
-    paths: tuple[tuple[Path | None, str], ...],
+    paths: tuple[tuple[Path | None, str, tuple[int, int] | None], ...],
 ) -> None:
     failures: list[tuple[str, Exception]] = []
-    for path, label in paths:
+    for path, label, expected_identity in paths:
         if path is None:
             continue
+        if expected_identity is None:
+            failures.append(
+                (label, CheckpointIntegrityError(f"{label} is missing its creation identity"))
+            )
+            continue
         try:
-            _remove_temp_path_strict(path, label=label)
+            _remove_temp_path_strict(
+                path, label=label, expected_identity=expected_identity
+            )
         except (OSError, CheckpointIntegrityError) as exc:
             failures.append((label, exc))
     if failures:
@@ -368,6 +399,7 @@ def _cleanup_temp_paths_strict(
 
 def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> Path:
     reference = Path(tempfile.mkdtemp(prefix=f".{name}.reference-", dir=parent))
+    reference_identity = _temporary_directory_identity(reference)
     try:
         manifest_bytes = verified._manifest_bytes
         (reference / MANIFEST_NAME).write_bytes(manifest_bytes)
@@ -380,7 +412,9 @@ def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> P
         prepare_checkpoint_load(reference)
         return reference
     except Exception:
-        _cleanup_temp_paths_strict(((reference, "verified checkpoint reference"),))
+        _cleanup_temp_paths_strict(
+            ((reference, "verified checkpoint reference", reference_identity),)
+        )
         raise
 
 
@@ -393,13 +427,16 @@ def _materialize_hook_candidate(
     source_manifest: bytes,
 ) -> Path:
     candidate = Path(tempfile.mkdtemp(prefix=f".{name}.hook-candidate-", dir=parent))
+    candidate_identity = _temporary_directory_identity(candidate)
     try:
         (candidate / EXPORTED_WEIGHTS_NAME).write_bytes(weights)
         (candidate / EXPORTED_CONFIG_NAME).write_bytes(config)
         (candidate / EXPORTED_SOURCE_MANIFEST_NAME).write_bytes(source_manifest)
         return candidate
     except Exception:
-        _cleanup_temp_paths_strict(((candidate, "HF parity hook candidate"),))
+        _cleanup_temp_paths_strict(
+            ((candidate, "HF parity hook candidate", candidate_identity),)
+        )
         raise
 
 
@@ -513,12 +550,15 @@ def export_hf_directory(
     if parity_hook is not None:
         reference: Path | None = None
         candidate: Path | None = None
+        reference_identity: tuple[int, int] | None = None
+        candidate_identity: tuple[int, int] | None = None
         try:
             reference = _materialize_verified_reference(
                 verified,
                 destination.parent,
                 destination.name,
             )
+            reference_identity = _temporary_directory_identity(reference)
             candidate = _materialize_hook_candidate(
                 parent=destination.parent,
                 name=destination.name,
@@ -526,6 +566,7 @@ def export_hf_directory(
                 config=config_bytes,
                 source_manifest=source_manifest_bytes,
             )
+            candidate_identity = _temporary_directory_identity(candidate)
             result = parity_hook(reference, candidate)
             if not isinstance(result, Mapping):
                 raise TypeError("parity_hook must return a mapping")
@@ -538,8 +579,8 @@ def export_hf_directory(
         finally:
             _cleanup_temp_paths_strict(
                 (
-                    (candidate, "HF parity hook candidate"),
-                    (reference, "verified checkpoint reference"),
+                    (candidate, "HF parity hook candidate", candidate_identity),
+                    (reference, "verified checkpoint reference", reference_identity),
                 )
             )
     else:
@@ -568,6 +609,7 @@ def export_hf_directory(
             dir=destination.parent,
         )
     )
+    staging_identity = _temporary_directory_identity(staging)
     try:
         (staging / EXPORTED_WEIGHTS_NAME).write_bytes(source_weights_bytes)
         (staging / EXPORTED_CONFIG_NAME).write_bytes(config_bytes)
@@ -585,4 +627,6 @@ def export_hf_directory(
         return destination
     finally:
         if staging is not None:
-            _cleanup_temp_paths_strict(((staging, "HF export staging"),))
+            _cleanup_temp_paths_strict(
+                ((staging, "HF export staging", staging_identity),)
+            )
