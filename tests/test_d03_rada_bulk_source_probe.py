@@ -402,7 +402,12 @@ def test_probe_config_rejects_duplicate_json_members(
     config = _production_config()
     raw = json.dumps(config, ensure_ascii=False, sort_keys=True)
     if variant == "top":
-        raw = '{"schema_version": ' + json.dumps(config["schema_version"]) + "," + raw[1:]
+        raw = (
+            '{"schema_version": '
+            + json.dumps(config["schema_version"])
+            + ","
+            + raw[1:]
+        )
     elif variant == "nested":
         raw = raw.replace(
             '"source": {',
@@ -431,7 +436,10 @@ def test_probe_config_rejects_nonfinite_json(
     )
     with pytest.raises(
         ProbeError,
-        match="non-standard probe config JSON constant|non-finite probe config JSON number",
+        match=(
+            "non-standard probe config JSON constant|"
+            "non-finite probe config JSON number"
+        ),
     ):
         _load_config(path)
 
