@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
+MAX_AUTHORITY_JSON_BYTES = 1_048_576
+MAX_AUTHORITY_JSON_DEPTH = 64
+MAX_AUTHORITY_JSON_NODES = 10_000
+MAX_AUTHORITY_INT_DIGITS = 64
 _FORBIDDEN_PARTS = {"test", "tests", "vendor", "vendored", "third_party", "extern", "external"}
 _EXPECTED_PINNED_FILES = {
     "scipy/optimize/_constraints.py": ("75f81735dfd0feaff3865025467c859fd3b98ff6", 25257),
@@ -151,8 +156,67 @@ def validate_source_authority(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise SourceAuthorityError(f"duplicate authority JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite(value: str) -> Any:
+    raise SourceAuthorityError(f"non-finite authority JSON constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise SourceAuthorityError("authority JSON number is not finite")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise SourceAuthorityError("nonzero authority JSON number underflowed to zero")
+    return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.lstrip("-")) > MAX_AUTHORITY_INT_DIGITS:
+        raise SourceAuthorityError("authority JSON integer exceeds digit limit")
+    return int(value)
+
+
 def load_and_validate_source_authority(path: str | Path) -> dict[str, Any]:
-    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    with Path(path).open("rb") as source:
+        raw = source.read(MAX_AUTHORITY_JSON_BYTES + 1)
+    if len(raw) > MAX_AUTHORITY_JSON_BYTES:
+        raise SourceAuthorityError("authority JSON exceeds byte limit")
+    try:
+        document = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite,
+            parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
+        )
+        pending = [(document, 0)]
+        nodes = 0
+        while pending:
+            current, depth = pending.pop()
+            nodes += 1
+            if nodes > MAX_AUTHORITY_JSON_NODES or depth > MAX_AUTHORITY_JSON_DEPTH:
+                raise SourceAuthorityError("authority JSON structure limit exceeded")
+            if isinstance(current, dict):
+                for key, child in current.items():
+                    key.encode("utf-8")
+                    pending.append((child, depth + 1))
+            elif isinstance(current, list):
+                pending.extend((child, depth + 1) for child in current)
+            elif isinstance(current, str):
+                current.encode("utf-8")
+    except RecursionError as exc:
+        raise SourceAuthorityError("authority JSON nesting limit exceeded") from exc
+    except (UnicodeError, ValueError) as exc:
+        raise SourceAuthorityError(f"invalid authority JSON: {exc}") from exc
     if not isinstance(document, dict):
         raise SourceAuthorityError("authority root must be an object")
     return validate_source_authority(document)
