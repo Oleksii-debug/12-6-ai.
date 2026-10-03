@@ -468,7 +468,7 @@ def test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them(
     missing_result = json.loads(missing_asset.stdout)
     assert missing_result["status"] == "ERROR"
     assert missing_result["error"].startswith("installed_operator_bootstrap_failed:")
-    assert "packaged asset missing:" in missing_result["error"]
+    assert "installed canonical asset is missing or not a regular file:" in missing_result["error"]
     assert missing_result["launch_authorized"] is False
     assert missing_result["training_authorized"] is False
     assert missing_result["truth_boundary"]["authorized_optimized_target_exposure"] == 0
