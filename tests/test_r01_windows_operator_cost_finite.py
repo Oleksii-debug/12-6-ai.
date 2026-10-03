@@ -246,3 +246,48 @@ def test_duplicate_surrogate_key_never_breaks_operator_error_output(
         assert "OPERATOR_STATUS: ERROR" in proc.stdout
         assert "LAUNCH_AUTHORIZED: false" in proc.stdout
         assert "TRAINING_AUTHORIZED: false" in proc.stdout
+
+
+@pytest.mark.parametrize("json_mode", [True, False], ids=["json", "text"])
+def test_non_utf8_stdout_preserves_operator_diagnostic_and_no_authority(
+    tmp_path: Path, json_mode: bool,
+) -> None:
+    malformed = tmp_path / "некоректний профіль.json"
+    malformed.write_text("{not json", encoding="utf-8")
+    args = [
+        sys.executable,
+        "-m", "twelve_six.windows_operator_preflight",
+        "--profile", str(malformed),
+        "--packet", str(PACKET),
+    ]
+    if json_mode:
+        args.append("--json")
+    args.extend(["verify", "--target", "20m"])
+    proc = subprocess.run(
+        args,
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(ROOT / "src"),
+            "PYTHONIOENCODING": "ascii",
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == operator.EXIT_ERROR
+    assert proc.stderr == ""
+    assert proc.stdout.isascii()
+    assert proc.stdout.count("\n") == 1
+    if json_mode:
+        result = json.loads(proc.stdout)
+        assert result["status"] == "ERROR"
+        assert str(malformed) in result["error"]
+        assert result["launch_authorized"] is False
+        assert result["training_authorized"] is False
+        assert r"\u" in proc.stdout
+    else:
+        assert "OPERATOR_STATUS: ERROR" in proc.stdout
+        assert r"\u" in proc.stdout
+        assert "LAUNCH_AUTHORIZED: false" in proc.stdout
+        assert "TRAINING_AUTHORIZED: false" in proc.stdout

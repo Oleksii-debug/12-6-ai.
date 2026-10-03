@@ -769,9 +769,18 @@ def _print_result(result: Mapping[str, Any], *, as_json: bool) -> None:
         rendered = json.dumps(result, sort_keys=True, ensure_ascii=False)
         # A rejected duplicate JSON member can contain an unpaired surrogate.
         # Escape only unencodable characters; retain valid Ukrainian text.
-        rendered = rendered.encode("utf-8", errors="backslashreplace").decode("utf-8")
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        rendered = rendered.encode(encoding, errors="backslashreplace").decode(
+            encoding
+        )
     else:
         rendered = _render_text(result)
+        # Redirected Windows consoles may not support Ukrainian in their
+        # active code page. Keep a deterministic one-line ASCII fallback.
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        rendered = rendered.encode(encoding, errors="backslashreplace").decode(
+            encoding
+        )
     print(rendered)
 
 
