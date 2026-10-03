@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import zipfile
 from pathlib import Path
 
