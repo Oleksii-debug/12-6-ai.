@@ -439,3 +439,53 @@ def test_rejects_en_condition_credit_promotion() -> None:
     document["en_family_cap_necessary_condition"]["authoritative_capacity_credit_bytes"] = 1
     with pytest.raises(CapacityReportError, match="cannot grant capacity credit"):
         validate_report(document)
+
+
+@pytest.mark.parametrize("depth", [80, 1_300])
+def test_rejects_excessively_nested_json_without_traceback(
+    tmp_path: Path, depth: int
+) -> None:
+    raw = REPORT.read_text(encoding="utf-8")
+    marker = '"claim_issue": 2570'
+    assert raw.count(marker) == 1
+    value = "[" * depth + "2570" + "]" * depth
+    path = tmp_path / "nested.json"
+    path.write_text(raw.replace(marker, f'"claim_issue": {value}', 1), encoding="utf-8")
+    with pytest.raises(CapacityReportError, match="depth or node limit|invalid capacity report JSON"):
+        load_and_validate(path)
+
+
+def test_rejects_deep_direct_report_before_canonical_serialization() -> None:
+    document = _report()
+    value: object = "leaf"
+    for _ in range(80):
+        value = [value]
+    document["decision"]["untrusted_metadata"] = value
+    with pytest.raises(CapacityReportError, match="depth or node limit"):
+        validate_report(document)
+
+
+def test_rejects_oversized_report_before_json_parse(tmp_path: Path) -> None:
+    path = tmp_path / "oversized.json"
+    path.write_bytes(b" " * (1_048_576 + 1))
+    with pytest.raises(CapacityReportError, match="byte limit"):
+        load_and_validate(path)
+
+
+def test_rejects_invalid_utf8_without_traceback(tmp_path: Path) -> None:
+    path = tmp_path / "invalid-utf8.json"
+    path.write_bytes(b"\\xff")
+    with pytest.raises(CapacityReportError, match="invalid capacity report JSON"):
+        load_and_validate(path)
+
+
+def test_rejects_missing_report_with_controlled_error(tmp_path: Path) -> None:
+    with pytest.raises(CapacityReportError, match="cannot read capacity report"):
+        load_and_validate(tmp_path / "missing.json")
+
+
+def test_rejects_non_json_direct_value() -> None:
+    document = _report()
+    document["decision"]["untrusted_metadata"] = object()
+    with pytest.raises(CapacityReportError, match="non-JSON value"):
+        validate_report(document)
