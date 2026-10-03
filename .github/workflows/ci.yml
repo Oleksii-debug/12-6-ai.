@@ -44,7 +44,7 @@ jobs:
           SELECTION_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$SELECTION_PATH")"
           VERIFIER_BLOB_SHA="$(git rev-parse "$BOUND_MAIN_SHA:$VERIFIER_PATH")"
           TEST_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$TEST_PATH")"
-          test "$VERIFIER_BLOB_SHA" = "adba0bd518c537b668a010daf095cde00db80a60"
+          test "$VERIFIER_BLOB_SHA" = "2ea3baaa68ab93c03d8c87da530f6f3f1335b287"
           git show "$CARRIER_HEAD:$BRIDGE_PATH" > "$BRIDGE_PATH"
           git show "$CARRIER_HEAD:$SELECTION_PATH" > "$SELECTION_PATH"
           git show "$BOUND_MAIN_SHA:$VERIFIER_PATH" > "$VERIFIER_PATH"
