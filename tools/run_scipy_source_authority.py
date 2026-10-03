@@ -17,7 +17,16 @@ def main() -> int:
     )
     parser.add_argument("--authority", type=Path, default=DEFAULT_AUTHORITY)
     args = parser.parse_args()
-    summary = load_and_validate_source_authority(args.authority)
+    try:
+        summary = load_and_validate_source_authority(args.authority)
+    except (OSError, ValueError, UnicodeError, RecursionError) as exc:
+        print(json.dumps({
+            "status": "BLOCKED_INVALID_AUTHORITY",
+            "canonical_credit_bytes": 0,
+            "ready_for_corpus_credit": False,
+            "error": str(exc),
+        }, sort_keys=True))
+        return 2
     print(json.dumps(summary, sort_keys=True, separators=(",", ":")))
     return 0
 
