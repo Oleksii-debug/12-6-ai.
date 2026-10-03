@@ -38,7 +38,6 @@ def _configure(
     )
 
 
-@pytest.mark.parametrize("destination", ["family-vector", "dedup-authority", "existing"])
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -125,6 +124,7 @@ def test_real_cli_rejects_duplicate_source_keys_before_publication(
     assert authority_path.read_bytes() == before_authority
 
 
+@pytest.mark.parametrize("destination", ["family-vector", "dedup-authority", "existing"])
 def test_main_never_truncates_inputs_or_existing_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, destination: str,
 ) -> None:
