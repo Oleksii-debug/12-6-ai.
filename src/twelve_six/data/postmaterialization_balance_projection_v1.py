@@ -142,6 +142,9 @@ def _strict_json_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ProjectionError(f"nonfinite JSON number is forbidden: {value}")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ProjectionError("nonzero JSON number underflowed to zero")
     return parsed
 
 
@@ -1366,9 +1369,137 @@ def verify_balance_result(
         "paid_compute_authorized": False,
         "source_bytes_are_loss_positions": False,
     }
-    if boundary != expected_boundary:
+    if not isinstance(boundary, Mapping) or set(boundary) != set(expected_boundary):
         raise ProjectionError("NEXT100-106 result claim boundary drift")
+    for field, expected in expected_boundary.items():
+        if type(boundary[field]) is not type(expected) or boundary[field] != expected:
+            raise ProjectionError("NEXT100-106 result claim boundary drift")
     return claimed
+
+
+_TARGET_20M_STRATUM_BYTES = {"ua": 9_000_000, "en": 7_000_000, "code": 4_000_000}
+_TARGET_20M_FAMILY_CAP_BYTES = {"ua": 5_000_000, "en": 4_200_000, "code": 2_400_000}
+
+
+def _verify_target_balance_evidence(
+    result: Mapping[str, Any],
+    next100_input: Mapping[str, Any],
+    family_vector: Mapping[str, Any],
+) -> None:
+    """Independently reject a self-resealed but unphysical 20M selection claim.
+
+    This is a read-only check of the fixed, independently identified NEXT100-106
+    policy, not an alternative source allocator or a source-capacity promotion.
+    """
+    if result.get("status") != TARGET_STATUS:
+        return
+    for field in ("target_total_source_bytes", "maximum_feasible_total_source_bytes"):
+        if type(result.get(field)) is not int or result[field] != 20_000_000:
+            raise ProjectionError(f"target balance {field} is not the fixed 20M budget")
+    for field in ("target_stratum_bytes", "maximum_feasible_stratum_bytes"):
+        observed = result.get(field)
+        if not isinstance(observed, Mapping) or set(observed) != set(_TARGET_20M_STRATUM_BYTES):
+            raise ProjectionError(f"target balance {field} schema drift")
+        for stratum, expected in _TARGET_20M_STRATUM_BYTES.items():
+            if type(observed[stratum]) is not int or observed[stratum] != expected:
+                raise ProjectionError(f"target balance {field} violates 45/35/20")
+
+    expected_families = sorted(
+        (
+            {
+                "family_id": row["family"],
+                "stratum": STRATUM_MAP[row["stratum"]],
+                "unique_bytes": row["capacity_bytes"],
+            }
+            for row in family_vector["families"]
+        ),
+        key=lambda row: row["family_id"],
+    )
+    if next100_input.get("families") != expected_families:
+        raise ProjectionError("target balance input families differ from physical authority")
+    grouped: dict[str, list[dict[str, Any]]] = {key: [] for key in _TARGET_20M_STRATUM_BYTES}
+    seen: set[str] = set()
+    for family in expected_families:
+        name = family["family_id"]
+        stratum = family["stratum"]
+        capacity = family["unique_bytes"]
+        if (
+            type(name) is not str or not name or name in seen
+            or stratum not in grouped
+            or type(capacity) is not int or capacity < 0
+        ):
+            raise ProjectionError("target balance family identity/capacity invalid")
+        seen.add(name)
+        grouped[stratum].append(family)
+    counts = {key: len(rows) for key, rows in grouped.items()}
+    physical_capacity = {
+        key: sum(row["unique_bytes"] for row in rows)
+        for key, rows in grouped.items()
+    }
+    if any(count < 2 for count in counts.values()):
+        raise ProjectionError("target balance lacks two independent families per stratum")
+    expected_totals = {
+        "total_unique_bytes": sum(physical_capacity.values()),
+        "by_stratum": physical_capacity,
+        "family_count": counts,
+    }
+    if next100_input.get("totals") != expected_totals:
+        raise ProjectionError("target balance input totals differ from physical capacities")
+    observed_minimum = result.get("family_minimum")
+    if (
+        not isinstance(observed_minimum, Mapping)
+        or set(observed_minimum) != {"required_per_stratum", "observed", "pass"}
+        or type(observed_minimum["required_per_stratum"]) is not int
+        or observed_minimum["required_per_stratum"] != 2
+        or observed_minimum["observed"] != counts
+        or observed_minimum["pass"] is not True
+    ):
+        raise ProjectionError("target balance independent-family minimum drift")
+    for field, expected in (
+        ("raw_capacity_by_stratum", physical_capacity),
+        (
+            "raw_gap_to_target_by_stratum",
+            {
+                key: max(0, _TARGET_20M_STRATUM_BYTES[key] - physical_capacity[key])
+                for key in _TARGET_20M_STRATUM_BYTES
+            },
+        ),
+    ):
+        observed = result.get(field)
+        if not isinstance(observed, Mapping) or set(observed) != set(expected):
+            raise ProjectionError(f"target balance {field} schema drift")
+        for stratum, amount in expected.items():
+            if type(observed[stratum]) is not int or observed[stratum] != amount:
+                raise ProjectionError(f"target balance {field} physical-capacity drift")
+
+    expected_allocations: list[dict[str, Any]] = []
+    for stratum, required in _TARGET_20M_STRATUM_BYTES.items():
+        cap = _TARGET_20M_FAMILY_CAP_BYTES[stratum]
+        remaining = required
+        ordered = sorted(
+            grouped[stratum],
+            key=lambda row: (-min(row["unique_bytes"], cap), row["family_id"]),
+        )
+        for family in ordered:
+            take = min(family["unique_bytes"], cap, remaining)
+            if take:
+                expected_allocations.append(
+                    {
+                        "family_id": family["family_id"],
+                        "stratum": stratum,
+                        "allocated_bytes": take,
+                        "available_unique_bytes": family["unique_bytes"],
+                        "effective_family_cap_bytes": cap,
+                    }
+                )
+                remaining -= take
+            if remaining == 0:
+                break
+        if remaining:
+            raise ProjectionError("target balance physical capacity cannot meet policy")
+    expected_allocations.sort(key=lambda row: row["family_id"])
+    if result.get("deterministic_maximum_allocation") != expected_allocations:
+        raise ProjectionError("target balance allocation is not canonical or policy compliant")
 
 
 def build_balance_result_binding(
@@ -1399,6 +1530,7 @@ def build_balance_result_binding(
         raise ProjectionError("NEXT100-106 result dedup authority differs from input")
     if balance_result.get("input_totals") != next100_input.get("totals"):
         raise ProjectionError("NEXT100-106 result totals differ from physical input")
+    _verify_target_balance_evidence(balance_result, next100_input, family_vector)
 
     physical = next100_input.get("physical_authority")
     if not isinstance(physical, Mapping):
@@ -1498,9 +1630,20 @@ def require_balanced_selection_ready(
         raise ProjectionError(
             "balanced selection blocked until TARGET_20M_SOURCE_MIX_FEASIBLE"
         )
-    if binding.get("target_total_source_bytes") != 20_000_000:
+    if type(binding.get("target_total_source_bytes")) is not int or binding.get(
+        "target_total_source_bytes"
+    ) != 20_000_000:
         raise ProjectionError("balance target total drift")
-    if binding.get("maximum_feasible_total_source_bytes") != 20_000_000:
+    if type(binding.get("maximum_feasible_total_source_bytes")) is not int or binding.get(
+        "maximum_feasible_total_source_bytes"
+    ) != 20_000_000:
         raise ProjectionError("balance maximum does not reach the 20M target")
+    for field in ("target_stratum_bytes", "maximum_feasible_stratum_bytes"):
+        observed = binding.get(field)
+        if not isinstance(observed, Mapping) or set(observed) != set(_TARGET_20M_STRATUM_BYTES):
+            raise ProjectionError(f"balance {field} schema drift")
+        for stratum, required in _TARGET_20M_STRATUM_BYTES.items():
+            if type(observed[stratum]) is not int or observed[stratum] != required:
+                raise ProjectionError(f"balance {field} violates 45/35/20")
     if binding.get("balanced_selection_authorized") is not True:
         raise ProjectionError("balanced selection authorization flag is false")

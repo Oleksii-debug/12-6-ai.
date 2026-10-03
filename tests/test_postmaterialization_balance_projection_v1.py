@@ -737,6 +737,24 @@ def test_strict_current_clean_json_rejects_nonfinite_numbers(literal: str) -> No
         )
 
 
+@pytest.mark.parametrize("literal", ["1e-9999", "-1e-9999", "5.4e-9999"])
+def test_strict_current_clean_json_rejects_nonzero_underflow(literal: str) -> None:
+    with pytest.raises(ProjectionError, match="underflowed"):
+        load_strict_json_object(
+            ('{"value":' + literal + "}").encode(),
+            label="adversarial",
+        )
+
+
+@pytest.mark.parametrize("literal", ["0e-9999", "-0.000e-9999", "0.0", "1.25"])
+def test_strict_current_clean_json_keeps_valid_finite_float(literal: str) -> None:
+    decoded = load_strict_json_object(
+        ('{"value":' + literal + "}").encode(),
+        label="valid",
+    )
+    assert decoded["value"] == float(literal)
+
+
 def test_strict_current_clean_json_rejects_nested_duplicate_keys() -> None:
     with pytest.raises(ProjectionError):
         load_strict_json_object(
@@ -1118,6 +1136,83 @@ def _build_current_clean_target_selection() -> tuple[dict, list[dict], dict]:
         raw["survivor_records"],
     )
     return selection, projected, balance
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("model_training_authorized", 0),
+        ("tokenizer_fit_authorized", 0),
+        ("authorized_training_exposure_loss_positions", False),
+        ("source_bytes_are_loss_positions", 0),
+    ],
+)
+def test_balance_binding_rejects_resealed_zero_credit_type_alias(
+    field: str, replacement: object,
+) -> None:
+    vector, _raw, _expected, adapted, balance, _binding = (
+        _current_clean_target_selection_fixture()
+    )
+    altered = copy.deepcopy(balance)
+    altered["claim_boundary"][field] = replacement
+    altered["result_identity_sha256"] = next100_gate.canonical_sha(
+        altered, "result_identity_sha256"
+    )
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    with pytest.raises(ProjectionError, match="claim boundary drift"):
+        build_balance_result_binding(
+            family_vector=vector,
+            expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+            next100_input=adapted,
+            balance_result=altered,
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=altered["result_identity_sha256"],
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "stratum_mix", "inflated_family_cap", "noncanonical_family_order",
+        "source_family_substitution", "minimum_family_count", "physical_capacity",
+    ],
+)
+def test_target_binding_rejects_resealed_physical_or_policy_substitution(
+    mutation: str,
+) -> None:
+    vector, _raw, _expected, adapted, balance, _binding = (
+        _current_clean_target_selection_fixture()
+    )
+    altered = copy.deepcopy(balance)
+    input_value = copy.deepcopy(adapted)
+    if mutation == "stratum_mix":
+        altered["maximum_feasible_stratum_bytes"]["ua"] -= 100
+        altered["maximum_feasible_stratum_bytes"]["en"] += 100
+    elif mutation == "inflated_family_cap":
+        altered["deterministic_maximum_allocation"][0]["effective_family_cap_bytes"] += 100
+    elif mutation == "noncanonical_family_order":
+        altered["deterministic_maximum_allocation"].reverse()
+    elif mutation == "source_family_substitution":
+        input_value["families"][0]["family_id"] = "forged-family"
+    elif mutation == "minimum_family_count":
+        altered["family_minimum"]["observed"]["ua"] += 1
+    elif mutation == "physical_capacity":
+        altered["raw_capacity_by_stratum"]["ua"] += 100
+    else:  # pragma: no cover - closed parametrization.
+        raise AssertionError(mutation)
+    altered["result_identity_sha256"] = next100_gate.canonical_sha(
+        altered, "result_identity_sha256"
+    )
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    with pytest.raises(ProjectionError, match="target balance"):
+        build_balance_result_binding(
+            family_vector=vector,
+            expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+            next100_input=input_value,
+            balance_result=altered,
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=altered["result_identity_sha256"],
+        )
 
 
 def test_current_clean_balanced_selection_materializes_exact_target() -> None:
