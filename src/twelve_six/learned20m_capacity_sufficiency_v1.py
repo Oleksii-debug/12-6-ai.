@@ -170,6 +170,7 @@ def _check_report_structure(report: dict[str, Any]) -> None:
             {
                 "id", "post_global_dedup_survivor_bytes", "capacity_credit_bytes",
                 "launch_authoritative", "optimistic_balance_upper_bound_bytes",
+                "candidate_utf8_bytes",
             },
         ),
         ("existing_independent_family_backlog",
