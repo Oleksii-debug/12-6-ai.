@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 import pytest
 
@@ -11,11 +12,13 @@ from twelve_six.split_robustness import (
     assert_checkpoint_split_binding,
     assert_run_split_binding,
     audit_cluster_leakage,
+    bind_split_evidence,
     build_split_family,
     dedup_relations_identity,
     eligible_corpus_identity,
     legacy_record_hash_assignments,
     pairwise_ranking_stability,
+    split_sensitivity,
     verify_split_family_manifest,
 )
 
@@ -178,3 +181,144 @@ def test_pairwise_ranking_stability_detects_rank_reversal() -> None:
     )
     assert unstable["all_pairs_stable"] is False
     assert unstable["pairs"][0]["rank_reversal_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "invalid_metric",
+    [True, float("nan"), float("inf"), float("-inf")],
+)
+def test_split_metric_evidence_rejects_nonfinite_and_bool_values(
+    invalid_metric: float,
+) -> None:
+    with pytest.raises(SplitRobustnessError, match="finite real number"):
+        split_sensitivity([1.0, invalid_metric])
+
+    with pytest.raises(SplitRobustnessError, match="finite real number"):
+        pairwise_ranking_stability(
+            {
+                "small": [5.0, invalid_metric],
+                "large": [4.5, 4.7],
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [1e308, -1e308],
+        [-1e308, 1e308],
+    ],
+)
+def test_split_sensitivity_rejects_nonfinite_derived_outputs(
+    values: list[float],
+) -> None:
+    with pytest.raises(
+        SplitRobustnessError,
+        match="split sensitivity derived metric must be a finite real number",
+    ):
+        split_sensitivity(values)
+
+
+def test_split_metric_evidence_rejects_huge_integer_without_overflow_leak() -> None:
+    huge = 10**400
+    with pytest.raises(SplitRobustnessError, match="finite real number"):
+        split_sensitivity([1, huge])
+    with pytest.raises(SplitRobustnessError, match="finite real number"):
+        pairwise_ranking_stability(
+            {
+                "small": [5, huge],
+                "large": [4, 6],
+            }
+        )
+
+
+def test_split_metric_evidence_keeps_finite_integer_and_float_semantics() -> None:
+    sensitivity = split_sensitivity([1, 2.5, 4])
+    assert sensitivity["mean"] == 2.5
+
+    stable = pairwise_ranking_stability(
+        {"small": [5, 5.1], "large": [4.5, 4]}
+    )
+    assert stable["all_pairs_stable"] is True
+
+
+@pytest.mark.parametrize("values", [[1e308, 1e308], [1e308, 1e308, 1e308]])
+def test_split_sensitivity_normalizes_statistics_overflow(
+    values: list[float],
+) -> None:
+    # Every input is finite, but statistics.fmean overflows internally.
+    with pytest.raises(SplitRobustnessError, match="statistics overflowed"):
+        split_sensitivity(values)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
+def test_split_evidence_rejects_nested_nonfinite_numbers(invalid: float) -> None:
+    family = {
+        "split_family_identity_sha256": "1" * 64,
+        "eligible_corpus_sha256": "2" * 64,
+    }
+    with pytest.raises(SplitRobustnessError, match="finite and serializable"):
+        bind_split_evidence({"nested": {"score": invalid}}, family)
+
+
+def test_split_evidence_rejects_unserializable_and_overdeep_values() -> None:
+    family = {
+        "split_family_identity_sha256": "1" * 64,
+        "eligible_corpus_sha256": "2" * 64,
+    }
+    with pytest.raises(SplitRobustnessError, match="finite and serializable"):
+        bind_split_evidence({"nested": object()}, family)
+    nested: list[object] = []
+    for _ in range(1500):
+        nested = [nested]
+    with pytest.raises(SplitRobustnessError, match="finite and serializable"):
+        bind_split_evidence({"nested": nested}, family)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"nested": {"text": "\ud800"}},
+        {"nested": {"\ud800": "value"}},
+    ],
+)
+def test_split_evidence_rejects_unpaired_unicode_surrogates(
+    payload: dict[str, object],
+) -> None:
+    family = {
+        "split_family_identity_sha256": "1" * 64,
+        "eligible_corpus_sha256": "2" * 64,
+    }
+    with pytest.raises(SplitRobustnessError, match="finite and serializable"):
+        bind_split_evidence(payload, family)
+
+
+def test_split_evidence_retains_deterministic_finite_identity() -> None:
+    family = {
+        "split_family_identity_sha256": "1" * 64,
+        "eligible_corpus_sha256": "2" * 64,
+    }
+    payload = {"nested": {"score": 1.25, "count": 2}}
+    first = bind_split_evidence(payload, family)
+    second = bind_split_evidence(payload, family)
+    assert first == second
+    assert len(first["evidence_sha256"]) == 64
+    assert first["nested"] == payload["nested"]
+    assert payload == {"nested": {"score": 1.25, "count": 2}}
+
+
+def test_split_family_manifest_rejects_resigned_huge_fraction_without_overflow() -> None:
+    records, valid = _family()
+    manifest = dict(valid)
+    manifest["validation_fraction_requested"] = 10**400
+    core = {key: value for key, value in manifest.items() if key != "split_family_identity_sha256"}
+    canonical = (
+        json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+    manifest["split_family_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
+    with pytest.raises(
+        SplitRobustnessError,
+        match="validation_fraction_requested must be a finite number",
+    ):
+        verify_split_family_manifest(records, manifest)

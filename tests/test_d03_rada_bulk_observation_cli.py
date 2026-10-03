@@ -31,6 +31,7 @@ def test_accept_current_upstream_retains_below_minimum_observation(
         lambda: SimpleNamespace(
             config=probe.DEFAULT_CONFIG,
             archive=None,
+            archive_output=None,
             output=output,
             accept_current_upstream=True,
         ),

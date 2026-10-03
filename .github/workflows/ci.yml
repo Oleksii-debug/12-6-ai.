@@ -485,6 +485,122 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  d03-rada-fresh-snapshot-v2:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'swarm/2477-rada-laws-fresh-snapshot-v2'
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RADA_CAPTURE_SHA: ${{ github.event.pull_request.head.sha }}
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact Rada fresh-snapshot checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RADA_CAPTURE_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile \
+            tools/probe_d03_rada_bulk_source.py \
+            tools/qualify_d03_rada_bulk_fresh_snapshot_v2.py \
+            tools/pin_d03_rada_bulk_fresh_snapshot_v2.py
+
+      - name: Probe current Rada archive — clean run A
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/probe_d03_rada_bulk_source.py \
+            --config configs/data/d03_rada_bulk_source_probe_v1.json \
+            --accept-current-upstream \
+            --archive-output "$RUNNER_TEMP/rada-source-a.zip" \
+            --output "$RUNNER_TEMP/rada-probe-a.json"
+
+      - name: Probe current Rada archive — clean run B
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/probe_d03_rada_bulk_source.py \
+            --config configs/data/d03_rada_bulk_source_probe_v1.json \
+            --accept-current-upstream \
+            --archive-output "$RUNNER_TEMP/rada-source-b.zip" \
+            --output "$RUNNER_TEMP/rada-probe-b.json"
+
+      - name: Qualify two-clean exact snapshot and attributed retention
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/qualify_d03_rada_bulk_fresh_snapshot_v2.py \
+            --config configs/data/d03_rada_bulk_fresh_snapshot_v2.json \
+            --rights-policy configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json \
+            --probe-a "$RUNNER_TEMP/rada-probe-a.json" \
+            --probe-b "$RUNNER_TEMP/rada-probe-b.json" \
+            --output "$RUNNER_TEMP/rada-fresh-snapshot-qualification-v2.json" \
+            --attribution-output "$RUNNER_TEMP/ATTRIBUTION.txt"
+          captured_sha="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["archive_sha256"])' "$RUNNER_TEMP/rada-fresh-snapshot-qualification-v2.json")"
+          captured_bytes="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["archive_bytes"])' "$RUNNER_TEMP/rada-fresh-snapshot-qualification-v2.json")"
+          test "$(sha256sum "$RUNNER_TEMP/rada-source-a.zip" | cut -d' ' -f1)" = "$captured_sha"
+          test "$(sha256sum "$RUNNER_TEMP/rada-source-b.zip" | cut -d' ' -f1)" = "$captured_sha"
+          test "$(stat -c %s "$RUNNER_TEMP/rada-source-a.zip")" = "$captured_bytes"
+          test "$(stat -c %s "$RUNNER_TEMP/rada-source-b.zip")" = "$captured_bytes"
+          cmp "$RUNNER_TEMP/rada-source-a.zip" "$RUNNER_TEMP/rada-source-b.zip"
+          test -s "$RUNNER_TEMP/ATTRIBUTION.txt"
+
+      - name: Verify and pin retained Rada snapshot to exact run
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/pin_d03_rada_bulk_fresh_snapshot_v2.py \
+            --archive "$RUNNER_TEMP/rada-source-a.zip" \
+            --probe-report "$RUNNER_TEMP/rada-probe-a.json" \
+            --probe-b "$RUNNER_TEMP/rada-probe-b.json" \
+            --qualification "$RUNNER_TEMP/rada-fresh-snapshot-qualification-v2.json" \
+            --attribution "$RUNNER_TEMP/ATTRIBUTION.txt" \
+            --config configs/data/d03_rada_bulk_fresh_snapshot_v2.json \
+            --rights-policy configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json \
+            --execution-head-sha "$RADA_CAPTURE_SHA" \
+            --output "$RUNNER_TEMP/rada-successor-pin-v2.json"
+          test -s "$RUNNER_TEMP/rada-successor-pin-v2.json"
+
+      - name: Upload attributed exact Rada snapshot and qualification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-fresh-snapshot-v2-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/rada-source-a.zip
+            ${{ runner.temp }}/ATTRIBUTION.txt
+            ${{ runner.temp }}/rada-probe-a.json
+            ${{ runner.temp }}/rada-probe-b.json
+            ${{ runner.temp }}/rada-fresh-snapshot-qualification-v2.json
+            ${{ runner.temp }}/rada-successor-pin-v2.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload Rada probe metadata on qualification failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-fresh-snapshot-failure-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/rada-probe-a.json
+            ${{ runner.temp }}/rada-probe-b.json
+          if-no-files-found: warn
+          retention-days: 30
+
   caselaw-global-dedup:
     if: github.event_name == 'pull_request' && github.event.pull_request.number == 2259 && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
     needs: bootstrap
