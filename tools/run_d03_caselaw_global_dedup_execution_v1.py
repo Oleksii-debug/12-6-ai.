@@ -417,7 +417,7 @@ def _preflight_attested_reference_sample(
             and edge["right_source_id"] in selected_ids
         ],
     }
-    sample_payloads = {source_id: payloads[source_id] for source_id in selected_ids}
+    sample_payloads = {row["source_id"]: payloads[row["source_id"]] for row in selected}
     sample_report = matcher.audit_payloads(sample_inventory, sample_payloads)
     matcher.verify_report(sample_report)
     indexed.attest_incumbent_runtime(matcher)
