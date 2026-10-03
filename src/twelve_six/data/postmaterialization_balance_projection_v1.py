@@ -1599,7 +1599,11 @@ def build_balance_result_binding(
         raise ProjectionError("target balance policy identity is not the reviewed policy")
     if balance_result.get("dedup_authority") != next100_input.get("dedup_authority"):
         raise ProjectionError("NEXT100-106 result dedup authority differs from input")
-    if balance_result.get("input_totals") != next100_input.get("totals"):
+    # A partial result must preserve typed input totals too: comparing Python
+    # dicts alone accepts self-resealed float aliases for physical integers.
+    if _canonical_bytes(balance_result.get("input_totals")) != _canonical_bytes(
+        next100_input.get("totals")
+    ):
         raise ProjectionError("NEXT100-106 result totals differ from physical input")
     _verify_target_balance_evidence(balance_result, next100_input, family_vector)
 
