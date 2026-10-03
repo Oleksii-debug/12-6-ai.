@@ -172,7 +172,8 @@ def _zipinfo_is_symlink(info: zipfile.ZipInfo) -> bool:
 
 def _safe_archive_name(name: str) -> bool:
     normalized = name.replace("\\", "/")
-    if normalized.startswith("/"):
+    # A drive-qualified name or NTFS stream is not a safe portable ZIP path.
+    if normalized.startswith("/") or ":" in normalized:
         return False
     parts = [part for part in normalized.split("/") if part not in ("", ".")]
     return ".." not in parts

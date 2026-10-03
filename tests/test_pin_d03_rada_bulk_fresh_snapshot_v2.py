@@ -294,6 +294,27 @@ def test_resealed_reports_cannot_pin_traversal_or_absolute_zip_entry(
         _pin(*inputs)
 
 
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "C:/docs/README.txt",
+        r"C:\docs\README.txt",
+        "C:README.txt",
+        "docs:stream/README.txt",
+    ],
+)
+def test_resealed_reports_cannot_pin_windows_drive_or_ads_zip_paths(
+    unsafe_path: str,
+) -> None:
+    inputs = _with_extra_zip_members(
+        [(unsafe_path, b"unsafe")], account_ignored=True
+    )
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="original probe safety policy"
+    ):
+        _pin(*inputs)
+
+
 def test_resealed_reports_cannot_pin_symlink_zip_entry() -> None:
     link = zipfile.ZipInfo("docs/symlink.txt")
     link.create_system = 3

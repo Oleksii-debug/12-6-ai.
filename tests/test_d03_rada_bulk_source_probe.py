@@ -179,6 +179,23 @@ def test_rejects_path_traversal() -> None:
         inventory_archive(archive, _config())
 
 
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "C:/zak/perv/text/d3.htm",
+        r"C:\zak\perv\text\d3.htm",
+        "C:d3.htm",
+        "docs:stream/d3.htm",
+    ],
+)
+def test_rejects_windows_drive_and_ads_zip_paths(unsafe_path: str) -> None:
+    archive = _archive(
+        {"d1.htm": b"a", "d2.htm": b"b", unsafe_path: b"unsafe"}
+    )
+    with pytest.raises(ProbeError, match="unsafe archive path"):
+        observe_archive_inventory(archive, _config(min_entries=2))
+
+
 def test_rejects_too_few_canonical_entries() -> None:
     archive = _archive({"d1.htm": b"a", "readme.txt": b"x"})
     with pytest.raises(ProbeError, match="below minimum"):
