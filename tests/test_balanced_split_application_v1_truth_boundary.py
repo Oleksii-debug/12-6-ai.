@@ -27,7 +27,7 @@ IDS = {
 }
 SEEDS = ("split-a", "split-b", "split-c")
 STALE_SPLIT_BLOB_SHA1 = "76f18ad4dea7439e20312289d1d259b773e36d26"
-CURRENT_SPLIT_BLOB_SHA1 = "da703286100bf8ea074c758f1722adbcd21f323f"
+CURRENT_SPLIT_BLOB_SHA1 = "e49518f2e431dc8576005be4938c1f15881897c4"
 
 
 def _canonical_bytes(value: Any) -> bytes:
