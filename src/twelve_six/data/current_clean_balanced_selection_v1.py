@@ -570,6 +570,15 @@ def project_selected_current_clean_raw_records(
             "canonical balanced selection verification failed"
         ) from exc
 
+    # A selection authenticates the entire retained inventory, not only the
+    # subset emitted below. Reject added/changed unselected survivor records
+    # instead of silently accepting a different raw JSONL under its identity.
+    physical_inventory = _rebuild_current_clean_survivor_inventory(survivor_records_raw)
+    if (
+        physical_inventory["record_inventory_digest_sha256"]
+        != expected_retained_inventory_identity_sha256
+    ):
+        raise ProjectionError("balanced selection raw survivor inventory differs from retained authority")
     physical = {row["record_id"]: row for row in _parse_survivor_records(survivor_records_raw)}
     if not set(selected) <= set(physical):
         raise ProjectionError("balanced selection references record absent from survivor JSONL")
