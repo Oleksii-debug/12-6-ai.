@@ -468,7 +468,7 @@ def main() -> int:
         result = evaluate(policy, vector)
         payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
         if args.output:
-            args.output.write_text(payload, encoding="utf-8")
+            args.output.write_bytes(payload.encode("utf-8"))
         else:
             print(payload, end="")
         return 0
