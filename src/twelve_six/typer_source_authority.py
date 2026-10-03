@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 CONFIG_PATH = Path("configs/data/next100_052_typer_source_authority_v2.json")
+RECEIPT_PATH = Path("evidence/data/next100_052_typer_terminal_source_receipt_v1.json")
+MAX_AUTHORITY_FILE_BYTES = 1_048_576
+MAX_AUTHORITY_DEPTH = 64
+MAX_AUTHORITY_NODES = 10_000
 SCHEMA_VERSION = "12-6.next100-052-typer-source-authority.v2"
 SOURCE_HEAD_SHA = "1ad3387fa21ce208c6553c2a460573ae5648eb7b"
 RECEIPT_FILE_SHA256 = "742068b814a3617e38273bd2001939a91a855309f9811b042d77eea297c6ef42"
@@ -54,6 +59,72 @@ FALSE_BOOL_FIELDS = {
     "paid_compute_used",
     "foreign_pretrained_weights",
 }
+
+
+def _strict_match(actual: Any, expected: Any) -> bool:
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return set(actual) == set(expected) and all(
+            _strict_match(actual[key], value) for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _strict_match(left, right) for left, right in zip(actual, expected)
+        )
+    return actual == expected
+
+
+def _reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON member: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite(value: str) -> Any:
+    raise ValueError(f"nonfinite JSON constant: {value}")
+
+
+def _finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("JSON numeric overflow")
+    mantissa = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(ch in "123456789" for ch in mantissa):
+        raise ValueError("nonzero JSON number underflow")
+    return parsed
+
+
+def _strict_json_object(raw: bytes) -> dict[str, Any]:
+    if len(raw) > MAX_AUTHORITY_FILE_BYTES:
+        raise ValueError("authority JSON byte limit")
+    value = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicates,
+        parse_constant=_reject_nonfinite,
+        parse_float=_finite_float,
+    )
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        current, depth = pending.pop()
+        nodes += 1
+        if nodes > MAX_AUTHORITY_NODES or depth > MAX_AUTHORITY_DEPTH:
+            raise ValueError("authority JSON structure limit")
+        if isinstance(current, dict):
+            for key, child in current.items():
+                key.encode("utf-8")
+                pending.append((child, depth + 1))
+        elif isinstance(current, list):
+            pending.extend((child, depth + 1) for child in current)
+        elif isinstance(current, str):
+            current.encode("utf-8")
+    if type(value) is not dict:
+        raise ValueError("authority JSON root must be object")
+    return value
 
 
 def _canonical_json_line(value: Any) -> bytes:
@@ -110,11 +181,11 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
         errors.append("schema_version_mismatch")
     if config.get("execution_profile") != "LOCAL_FREE":
         errors.append("execution_profile_must_be_local_free")
-    if config.get("bounded_source") != SOURCE:
+    if not _strict_match(config.get("bounded_source"), SOURCE):
         errors.append("bounded_source_identity_mismatch")
-    if config.get("license") != LICENSE:
+    if not _strict_match(config.get("license"), LICENSE):
         errors.append("license_identity_or_use_boundary_mismatch")
-    if config.get("lineage_exclusions") != LINEAGE_EXCLUSIONS:
+    if not _strict_match(config.get("lineage_exclusions"), LINEAGE_EXCLUSIONS):
         errors.append("lineage_exclusions_mismatch")
 
     expected_project = {
@@ -124,7 +195,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
         "historical_source_audit": "NOT_PERFORMED",
         "fresh_current_head_audit_required": True,
     }
-    if config.get("project_authority") != expected_project:
+    if not _strict_match(config.get("project_authority"), expected_project):
         errors.append("project_authority_mismatch")
 
     historical = config.get("historical_execution")
@@ -138,7 +209,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
             "job_id": 98276978124,
             "artifact_id": 9618793476,
             "artifact_zip_sha256": "58b444adedf11c1b79731ee98f1e4c0f7d9469c3a6a773a76ad45390eb134f41",
-            "receipt_path": "evidence/data/next100_052_typer_terminal_source_receipt_v1.json",
+            "receipt_path": RECEIPT_PATH.as_posix(),
             "receipt_file_sha256": RECEIPT_FILE_SHA256,
             "receipt_report_sha256": RECEIPT_REPORT_SHA256,
             "dedicated_verifier_conclusion": "SUCCESS",
@@ -148,11 +219,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
             errors.append("historical_execution_keys_mismatch")
         for key, expected in expected_historical.items():
             actual = historical.get(key)
-            valid = (
-                _exact_int(actual, expected)
-                if isinstance(expected, int)
-                else actual == expected
-            )
+            valid = _strict_match(actual, expected)
             if not valid:
                 errors.append(f"historical_{key}_mismatch")
 
@@ -161,8 +228,8 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
         receipt: Any = None
     else:
         try:
-            receipt = json.loads(receipt_bytes)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            receipt = _strict_json_object(receipt_bytes)
+        except (UnicodeError, ValueError, RecursionError, OverflowError):
             receipt = None
             errors.append("historical_receipt_json_invalid")
 
@@ -192,10 +259,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
         }
         for key, expected in expected_receipt_scalars.items():
             actual = receipt.get(key)
-            if isinstance(expected, int) and not isinstance(expected, bool):
-                valid = _exact_int(actual, expected)
-            else:
-                valid = actual == expected
+            valid = _strict_match(actual, expected)
             if not valid:
                 errors.append(f"historical_receipt_{key}_mismatch")
 
@@ -205,7 +269,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
             "release": SOURCE["release"],
             "commit": SOURCE["commit"],
         }
-        if receipt.get("upstream") != expected_upstream:
+        if not _strict_match(receipt.get("upstream"), expected_upstream):
             errors.append("historical_receipt_upstream_identity_mismatch")
 
         expected_object = {
@@ -219,9 +283,9 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
             "secret_hits": [],
             "privacy_hits": [],
         }
-        if receipt.get("object") != expected_object:
+        if not _strict_match(receipt.get("object"), expected_object):
             errors.append("historical_receipt_object_identity_or_gate_mismatch")
-        if receipt.get("license") != LICENSE:
+        if not _strict_match(receipt.get("license"), LICENSE):
             errors.append("historical_receipt_license_identity_or_use_boundary_mismatch")
 
         expected_evaluation = {
@@ -231,7 +295,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
             "selected_object_overlap": False,
             "current_authority": False,
         }
-        if receipt.get("historical_evaluation") != expected_evaluation:
+        if not _strict_match(receipt.get("historical_evaluation"), expected_evaluation):
             errors.append("historical_receipt_evaluation_boundary_mismatch")
 
         expected_inputs = {
@@ -239,7 +303,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
             "validator_git_blob_sha1": "1ec89d56b2fe85f53d82ef23c686541efd1264b5",
             "workflow_git_blob_sha1": "1b9c7cae537e0aab6983bcc2b8a22b911f97a1da",
         }
-        if receipt.get("historical_inputs") != expected_inputs:
+        if not _strict_match(receipt.get("historical_inputs"), expected_inputs):
             errors.append("historical_receipt_input_identity_mismatch")
 
         dedup_receipt = receipt.get("historical_dedup")
@@ -261,7 +325,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
                 "max_skeleton_containment": 0.3,
             },
         }
-        if dedup_receipt != expected_dedup_receipt:
+        if not _strict_match(dedup_receipt, expected_dedup_receipt):
             errors.append("historical_receipt_dedup_or_lineage_mismatch")
         errors.extend(
             _validate_truth_boundary(
@@ -288,7 +352,7 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
             "python_skeleton_5gram_containment": 0.90,
         },
     }
-    if config.get("historical_dedup") != expected_historical_dedup:
+    if not _strict_match(config.get("historical_dedup"), expected_historical_dedup):
         errors.append("historical_dedup_boundary_mismatch")
 
     composition = config.get("current_composition")
@@ -323,8 +387,23 @@ def validate_typer_source_authority(config: Any, receipt_bytes: bytes) -> list[s
 
 
 def validate_typer_source_authority_files(repo_root: str | Path = ".") -> list[str]:
-    """Load the repository-bound config and receipt and return blockers."""
+    """Read only code-owned paths, never a path selected by external JSON."""
     root = Path(repo_root)
-    config = json.loads((root / CONFIG_PATH).read_text(encoding="utf-8"))
-    receipt_path = Path(config["historical_execution"]["receipt_path"])
-    return validate_typer_source_authority(config, (root / receipt_path).read_bytes())
+    try:
+        with (root / CONFIG_PATH).open("rb") as source:
+            config_raw = source.read(MAX_AUTHORITY_FILE_BYTES + 1)
+    except OSError:
+        return ["config_file_unreadable"]
+    try:
+        config = _strict_json_object(config_raw)
+    except (ValueError, UnicodeError, RecursionError, OverflowError):
+        return ["config_json_invalid"]
+
+    try:
+        with (root / RECEIPT_PATH).open("rb") as source:
+            receipt_raw = source.read(MAX_AUTHORITY_FILE_BYTES + 1)
+    except OSError:
+        return ["historical_receipt_unreadable"]
+    if len(receipt_raw) > MAX_AUTHORITY_FILE_BYTES:
+        return ["historical_receipt_oversized"]
+    return validate_typer_source_authority(config, receipt_raw)
