@@ -1332,6 +1332,44 @@ def test_standalone_balance_readiness_rejects_resealed_alias_and_policy(
         )
 
 
+def test_selection_rejects_resealed_false_current_clean_source_count() -> None:
+    vector, raw, _expected, _adapted, _balance, _binding = (
+        _current_clean_target_selection_fixture()
+    )
+    assert vector["source_object_count"] == 6
+    vector["source_object_count"] = 5  # Remains positive and below record count.
+    vector["family_vector_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {key: value for key, value in vector.items()
+             if key != "family_vector_identity_sha256"}
+        )
+    ).hexdigest()
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    binding = build_balance_result_binding(
+        family_vector=vector,
+        expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+        next100_input=adapted,
+        balance_result=balance,
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    with pytest.raises(ProjectionError, match="source-object count differs"):
+        build_current_clean_balanced_selection(
+            family_vector=vector,
+            next100_input=adapted,
+            balance_result=balance,
+            balance_binding=binding,
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_records_raw=raw["survivor_records"],
+            expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+            expected_balance_binding_identity_sha256=binding["binding_identity_sha256"],
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=balance["result_identity_sha256"],
+        )
+
+
 def test_current_clean_balanced_selection_materializes_exact_target() -> None:
     selection, projected, balance = _build_current_clean_target_selection()
     assert selection["schema"] == "12-6.d03-balanced-selection-authority.v1"

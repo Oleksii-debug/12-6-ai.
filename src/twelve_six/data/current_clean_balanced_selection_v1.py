@@ -23,6 +23,7 @@ from twelve_six.data.postmaterialization_balance_projection_v1 import (
     _canonical_bytes,
     _current_clean_receipt_self_hash,
     _rebuild_current_clean_survivor_inventory,
+    _verify_current_clean_receipt,
     _require_nonnegative_int,
     _require_sha256,
     _self_hash,
@@ -369,6 +370,32 @@ def build_current_clean_balanced_selection(
             field
         ) != expected:
             raise ProjectionError(f"survivor inventory/family-vector mismatch: {field}")
+
+    # Bind producer-declared source cardinality to the same authenticated
+    # JSONL whose inventory digests and payload bytes were just reconstructed.
+    physical_sources = len(
+        {row["source_id"] for row in rebuilt_inventory["records"]}
+    )
+    if family_vector.get("source_object_count") != physical_sources:
+        raise ProjectionError("current-clean source-object count differs from survivor JSONL")
+    _verify_current_clean_receipt(
+        receipt,
+        expected_receipt_identity_sha256=family_vector[
+            "current_clean_receipt_identity_sha256"
+        ],
+        expected_survivor_jsonl_sha256=family_vector[
+            "survivor_records_jsonl_sha256"
+        ],
+        expected_record_inventory_digest_sha256=family_vector[
+            "record_inventory_digest_sha256"
+        ],
+        expected_payload_inventory_digest_sha256=family_vector[
+            "payload_inventory_digest_sha256"
+        ],
+        expected_record_count=rebuilt_inventory["record_count"],
+        expected_total_payload_bytes=rebuilt_inventory["total_payload_bytes"],
+        expected_source_object_count=physical_sources,
+    )
 
     allocations = _validated_allocations(balance_result, family_vector)
     by_family: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
