@@ -17,7 +17,6 @@ from twelve_six.data.balanced_split_application_v1 import (
     BalancedSplitApplicationError,
     verify_balanced_selection,
 )
-
 from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
 from twelve_six.data.postmaterialization_balance_projection_v1 import (
     CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA,
