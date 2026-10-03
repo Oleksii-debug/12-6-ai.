@@ -947,3 +947,92 @@ def test_outer_output_cannot_replace_or_preempt_publication_intent(
     assert not args.output_survivors.exists()
     assert not args.output_receipt.exists()
     assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_fresh_runner_inspects_complete_receipt_without_republishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    # Import a fresh consumer module: this is a read-only recovery decision.
+    recovered = _load_replay_runner().inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovered["missing"] == []
+    assert recovered["canonical_capacity_credited"] == 0
+    assert recovered["training_authorized"] is False
+    assert len(recovered["published"]) == 3
+
+
+@pytest.mark.parametrize("stop_after", [0, 1, 2])
+def test_fresh_runner_classifies_interrupted_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stop_after: int,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+    seen: list[str] = []
+
+    def fail_after_prefix(staged: Path, path: Path, *, label: str) -> None:
+        if label != "publication intent":
+            if len(seen) == stop_after:
+                raise REPLAY_RUNNER.RematerializationError("injected crash")
+            seen.append(label)
+        original_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", fail_after_prefix)
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="manual reconciliation"):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    recovered = _load_replay_runner().inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovered["status"] == (
+        "PREPARED_UNCOMMITTED" if stop_after == 0 else "PARTIAL_UNCOMMITTED"
+    )
+    assert len(recovered["published"]) == stop_after
+    assert len(recovered["missing"]) == 3 - stop_after
+    assert not args.output_receipt.exists()
+    assert recovered["training_authorized"] is False
+
+
+@pytest.mark.parametrize("tamper", ["journal", "report", "survivors", "receipt"])
+def test_recovery_never_accepts_mutated_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    targets = {
+        "journal": pass_root / "outer-publication-intent.json",
+        "report": args.output_report,
+        "survivors": args.output_survivors,
+        "receipt": args.output_receipt,
+    }
+    target = targets[tamper]
+    target.write_bytes(target.read_bytes() + b"tampered")
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="recovery"):
+        REPLAY_RUNNER.inspect_outer_publication_recovery(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+
+
+def test_recovery_refuses_receipt_without_both_verified_outputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    args.output_survivors.unlink()
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="receipt exists without both authenticated source authorities",
+    ):
+        REPLAY_RUNNER.inspect_outer_publication_recovery(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
