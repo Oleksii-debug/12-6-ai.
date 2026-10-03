@@ -187,6 +187,44 @@ def _validate_config(config: Mapping[str, Any]) -> None:
     _hex(probe.get("config_identity_sha256"), SHA256_RE, label="probe config identity")
     _hex(probe.get("parent_head_sha"), re.compile(r"^[0-9a-f]{40}$"), label="probe parent")
     _hex(probe.get("parent_registry_identity_sha256"), SHA256_RE, label="probe registry")
+    # The historical source/probe identities are immutable, unlike today's ZIP.
+    _require(
+        old == {
+            "historical_qp_pr": 1787,
+            "historical_execution_carrier_pr": 2230,
+            "archive_bytes": 46_709_153,
+            "archive_sha256": (
+                "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"
+            ),
+        },
+        "historical Q/P predecessor authority drift",
+    )
+    _require(
+        prior == {
+            "archive_bytes": 46_767_861,
+            "archive_sha256": (
+                "08d38fd32f64550597985bdcdf63a42bbda5d9bec260445de20cdb435c600fcc"
+            ),
+            "observed_in_issue": 2019,
+            "observation_comment_id": 5938332653,
+            "status": "SUPERSEDED_MUTABLE_OBSERVATION_DO_NOT_PIN_AS_CURRENT",
+        },
+        "prior mutable observation identity drift",
+    )
+    _require(
+        probe == {
+            "schema_version": PROBE_SCHEMA,
+            "worker_id": "D03-RADA-BULK-SOURCE-PROBE-20260826",
+            "config_identity_sha256": (
+                "c2f198120cae00ba247c4eaad36d2a357770a47c7fa9a7608cc5ec182971b82b"
+            ),
+            "parent_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+            "parent_registry_identity_sha256": (
+                "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c"
+            ),
+        },
+        "pinned probe authority drift",
+    )
     expected_truth = {"local_free_only": True, **TRUTH}
     _require(truth == expected_truth, "capture truth boundary drift")
 

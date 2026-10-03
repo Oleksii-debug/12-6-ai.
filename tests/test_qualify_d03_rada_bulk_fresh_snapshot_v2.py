@@ -255,3 +255,64 @@ def test_report_schema_is_closed_world() -> None:
     report["unexpected"] = True
     with pytest.raises(mod.FreshSnapshotQualificationError, match="schema drift"):
         mod._validate_report(report, _config(), label="fixture")
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "mutated"),
+    [
+        ("predecessor_authority", "archive_bytes", 46_709_154),
+        ("predecessor_authority", "archive_sha256", "f" * 64),
+        ("prior_mutable_observation", "archive_bytes", 46_767_862),
+        ("prior_mutable_observation", "archive_sha256", "e" * 64),
+        ("probe_authority", "config_identity_sha256", "f" * 64),
+        ("probe_authority", "parent_head_sha", "f" * 40),
+        ("probe_authority", "parent_registry_identity_sha256", "f" * 64),
+    ],
+)
+def test_capture_rejects_rebound_historical_or_probe_identity(
+    section: str, field: str, mutated: object
+) -> None:
+    config = _config()
+    config[section][field] = mutated
+    first = _report()
+    second = copy.deepcopy(first)
+    with pytest.raises(mod.FreshSnapshotQualificationError):
+        mod.qualify_two_clean_probes(
+            config,
+            _rights(),
+            first,
+            second,
+            probe_a_bytes=_raw(first),
+            probe_b_bytes=_raw(second),
+        )
+
+
+@pytest.mark.parametrize(
+    "section",
+    ["predecessor_authority", "prior_mutable_observation", "probe_authority"],
+)
+def test_capture_config_rejects_extra_authority_members(section: str) -> None:
+    config = _config()
+    config[section]["unapproved_authority"] = "injected"
+    with pytest.raises(mod.FreshSnapshotQualificationError):
+        mod._validate_config(config)
+
+
+def test_capture_config_rejects_historical_integer_bool_alias() -> None:
+    config = _config()
+    config["predecessor_authority"]["archive_bytes"] = True
+    with pytest.raises(mod.FreshSnapshotQualificationError):
+        mod._validate_config(config)
+
+
+def test_valid_fixed_predecessor_does_not_pin_mutable_current_source() -> None:
+    result = _qualify(
+        _report(archive_bytes=46_900_001, archive_sha256="9" * 64),
+        _report(archive_bytes=46_900_001, archive_sha256="9" * 64),
+    )
+    assert result["historical_qp_authority_preserved"] is True
+    assert result["historical_archive_sha256"] == (
+        "0b9e8ed8fe8aa663a68d2bc4eba858a754c626391dd7b5c461d50c3b6260df63"
+    )
+    assert result["archive_sha256"] == "9" * 64
+    assert result["authorized_optimized_target_exposure"] == 0
