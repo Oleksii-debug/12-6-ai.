@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -37,29 +39,54 @@ def _parse_finite_float(value: str) -> float:
 
 
 def _load(path: Path) -> dict[str, Any]:
-    value = json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=_pairs_without_duplicates,
-        parse_constant=_reject_constant,
-        parse_float=_parse_finite_float,
-    )
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_pairs_without_duplicates,
+            parse_constant=_reject_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        raise ValueError("tokenizer input JSON nesting limit exceeded") from exc
     if not isinstance(value, dict):
         raise ValueError(f"{path} must contain one JSON object")
     return value
 
 
 def _write(path: Path, value: dict[str, Any]) -> None:
+    """Publish only a new complete report; never replace existing authority."""
+    if path.exists() or path.is_symlink():
+        raise FileExistsError(f"refusing to overwrite existing output: {path}")
+    try:
+        payload = (
+            json.dumps(
+                value,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise ValueError("tokenizer report is not strict finite JSON") from exc
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            value,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        )
-        + "\n",
-        encoding="utf-8",
+    descriptor, name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
     )
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        # Same-directory hard link atomically fails if the target already exists.
+        os.link(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _emit_input_error(exc: Exception) -> None:
@@ -133,7 +160,11 @@ def main() -> int:
         return 2
 
     if args.output is not None:
-        _write(args.output, report)
+        try:
+            _write(args.output, report)
+        except (OSError, ValueError) as exc:
+            _emit_input_error(exc)
+            return 2
     else:
         print(
             json.dumps(

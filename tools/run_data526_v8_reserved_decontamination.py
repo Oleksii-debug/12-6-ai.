@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -20,8 +21,40 @@ from twelve_six.data.data526_v8_reserved_decontamination_terminal_v1 import (
 )
 
 
+def _strict_float(value: str) -> float:
+    decoded = float(value)
+    if not math.isfinite(decoded):
+        raise ValueError("non-finite JSON number")
+    return decoded
+
+
+def _reject_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object member: {key!r}")
+        result[key] = value
+    return result
+
+
+def _decode_strict_json(raw: str, *, label: str) -> Any:
+    try:
+        return json.loads(
+            raw,
+            object_pairs_hook=_strict_object,
+            parse_constant=_reject_constant,
+            parse_float=_strict_float,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"invalid strict JSON at {label}: {exc}") from None
+
+
 def _load_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = _decode_strict_json(path.read_text(encoding="utf-8"), label=str(path))
     if not isinstance(value, dict):
         raise TypeError(f"JSON root must be an object: {path}")
     return value
@@ -32,7 +65,7 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not raw.strip():
             continue
-        value = json.loads(raw)
+        value = _decode_strict_json(raw, label=f"{path}:{line_number}")
         if not isinstance(value, dict):
             raise TypeError(f"JSONL line {line_number} must be an object: {path}")
         rows.append(value)

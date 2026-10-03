@@ -268,3 +268,163 @@ def test_main_unexpected_programming_failure_is_not_misreported(
     with pytest.raises(RuntimeError, match="unexpected programming failure"):
         cli.main()
     assert not output.exists()
+
+
+@pytest.mark.parametrize("kind", ["arrays", "objects"])
+def test_load_excessive_json_depth_is_controlled(
+    tmp_path: Path, kind: str,
+) -> None:
+    raw = (
+        '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+        if kind == "arrays"
+        else '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    )
+    path = tmp_path / "deep.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON nesting limit exceeded"):
+        _module()._load(path)
+
+
+@pytest.mark.parametrize("kind", ["arrays", "objects"])
+@pytest.mark.parametrize("target", ["selection", "application", "report"])
+def test_deep_external_authority_does_not_publish(
+    tmp_path: Path, kind: str, target: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    paths = {k: tmp_path / f"{k}.json" for k in (
+        "selection", "application", "report"
+    )}
+    for path in paths.values():
+        path.write_text("{}", encoding="utf-8")
+    raw = (
+        '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+        if kind == "arrays"
+        else '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    )
+    paths[target].write_text(raw, encoding="utf-8")
+    before = {p: p.read_bytes() for p in paths.values()}
+    output = tmp_path / "out.json"
+    argv = [
+        str(TOOL), "--balanced-selection", str(paths["selection"]),
+        "--split-application", str(paths["application"]),
+        *HASH_ARGS, "--output", str(output),
+    ]
+    if target == "report":
+        argv.extend(["--verify-report", str(paths["report"])])
+    monkeypatch.setattr(sys, "argv", argv)
+    assert cli.main() == 2
+    out = capsys.readouterr()
+    assert out.err == ""
+    lines = out.out.splitlines()
+    assert len(lines) == 1
+    error = json.loads(lines[0])
+    assert error["contract_valid"] is False
+    assert "JSON nesting limit exceeded" in error["error"]
+    assert {p: p.read_bytes() for p in paths.values()} == before
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("target", ["selection", "application", "report", "other"])
+def test_successful_dispatch_never_overwrites_any_existing_file(
+    tmp_path: Path, target: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    paths = {k: tmp_path / f"{k}.json" for k in (
+        "selection", "application", "report", "other"
+    )}
+    for path in paths.values():
+        path.write_text('{"original":true}\n', encoding="utf-8")
+    before = {p: p.read_bytes() for p in paths.values()}
+    monkeypatch.setattr(
+        cli, "verify_byte_baseline_decision", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(sys, "argv", [
+        str(TOOL), "--balanced-selection", str(paths["selection"]),
+        "--split-application", str(paths["application"]),
+        *HASH_ARGS, "--verify-report", str(paths["report"]),
+        "--output", str(paths[target]),
+    ])
+    assert cli.main() == 2
+    out = capsys.readouterr()
+    assert out.err == ""
+    lines = out.out.splitlines()
+    assert len(lines) == 1
+    assert "refusing to overwrite existing output" in (
+        json.loads(lines[0])["error"]
+    )
+    assert {p: p.read_bytes() for p in paths.values()} == before
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+@pytest.mark.parametrize("alias", ["hardlink", "symlink"])
+def test_output_alias_of_input_is_rejected(tmp_path: Path, alias: str) -> None:
+    cli = _module()
+    authority = tmp_path / "source.json"
+    authority.write_text('{"original":true}\n', encoding="utf-8")
+    output = tmp_path / "alias.json"
+    try:
+        if alias == "hardlink":
+            cli.os.link(authority, output)
+        else:
+            output.symlink_to(authority)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"filesystem cannot create {alias}: {exc}")
+    before = authority.read_bytes()
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        cli._write(output, {"schema": "test-only"})
+    assert authority.read_bytes() == before
+    assert output.read_bytes() == before
+
+
+def test_failed_atomic_link_removes_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "out.json"
+
+    def broken_link(*_a: object, **_k: object) -> None:
+        raise OSError("link failure")
+
+    monkeypatch.setattr(cli.os, "link", broken_link)
+    with pytest.raises(OSError, match="link failure"):
+        cli._write(output, {"schema": "test-only"})
+    assert not output.exists()
+    assert not list(tmp_path.glob(".out.json.*.tmp"))
+
+
+def test_nonfinite_and_recursive_reports_are_not_published(
+    tmp_path: Path,
+) -> None:
+    cli = _module()
+    output = tmp_path / "out.json"
+    recursive: dict[str, object] = {}
+    recursive["self"] = recursive
+    for report in ({"loss": float("nan")}, recursive):
+        with pytest.raises(ValueError, match="not strict finite JSON"):
+            cli._write(output, report)
+        assert not output.exists()
+
+
+def test_unexpected_product_recursion_remains_visible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    for path in (selection, application):
+        path.write_text("{}", encoding="utf-8")
+
+    def unexpected(*_a: object, **_k: object) -> None:
+        raise RecursionError("unexpected Product recursion")
+
+    monkeypatch.setattr(cli, "bind_byte_baseline_decision", unexpected)
+    monkeypatch.setattr(sys, "argv", [
+        str(TOOL), "--balanced-selection", str(selection),
+        "--split-application", str(application), *HASH_ARGS,
+    ])
+    with pytest.raises(RecursionError, match="unexpected Product recursion"):
+        cli.main()
