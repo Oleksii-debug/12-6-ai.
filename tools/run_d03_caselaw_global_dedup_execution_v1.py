@@ -474,6 +474,42 @@ def _max_rss_kib() -> int | None:
 
 
 PUBLICATION_SCHEMA = "12-6.d03-caselaw-output-publication.v1"
+PUBLICATION_MANIFEST_MAX_BYTES = 64 * 1024
+_PUBLICATION_MANIFEST_KEYS = {
+    "schema_version",
+    "state",
+    "publication_pathset_sha256",
+    "targets",
+    "manifest_identity_sha256",
+}
+_PUBLICATION_TARGET_KEYS = {"path", "stage_path", "sha256"}
+_HEX_DIGITS = frozenset("0123456789abcdef")
+
+
+def _reject_manifest_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate publication manifest key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_manifest_constant(value: str) -> Any:
+    raise ValueError(f"non-finite publication manifest constant: {value}")
+
+
+def _reject_manifest_float(value: str) -> Any:
+    raise ValueError(f"publication manifest float is forbidden: {value}")
+
+
+def _is_sha256_hex(value: Any) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 64
+        and all(char in _HEX_DIGITS for char in value)
+    )
+
 
 
 def _path_entry_exists(path: Path) -> bool:
@@ -589,12 +625,30 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
     )
     try:
         raw = manifest_path.read_bytes()
-        value = json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        if len(raw) > PUBLICATION_MANIFEST_MAX_BYTES:
+            raise ValueError("publication manifest exceeds bounded size")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_manifest_pairs,
+            parse_constant=_reject_manifest_constant,
+            parse_float=_reject_manifest_float,
+        )
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        TypeError,
+        ValueError,
+    ) as exc:
         raise CaselawGlobalDedupError(
             "incomplete publication manifest is unreadable"
         ) from exc
     _require(type(value) is dict, "incomplete publication manifest root invalid")
+    _require(
+        set(value) == _PUBLICATION_MANIFEST_KEYS,
+        "incomplete publication manifest keys invalid",
+    )
     _require(
         raw == _canonical(value) + b"\n",
         "incomplete publication manifest is not canonical",
@@ -604,8 +658,7 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
         key: val for key, val in value.items() if key != "manifest_identity_sha256"
     }
     _require(
-        type(identity) is str
-        and len(identity) == 64
+        _is_sha256_hex(identity)
         and identity == _sha256(_canonical(core)),
         "incomplete publication manifest identity mismatch",
     )
@@ -614,10 +667,14 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
         and core.get("state") == "INCOMPLETE_NOT_TERMINAL",
         "incomplete publication manifest semantics invalid",
     )
+    pathset = core.get("publication_pathset_sha256")
+    _require(
+        _is_sha256_hex(pathset),
+        "incomplete publication path-set identity invalid",
+    )
     targets = core.get("targets")
     _require(type(targets) is list and bool(targets), "publication manifest targets missing")
     return value
-
 
 def _remove_control_without_payload(
     marker_path: Path,
@@ -673,6 +730,10 @@ def _recover_incomplete_publication(
     marker_stage_paths: list[str] = []
     for row in targets:
         _require(type(row) is dict, "publication manifest target invalid")
+        _require(
+            set(row) == _PUBLICATION_TARGET_KEYS,
+            "publication manifest target keys invalid",
+        )
         final_value = row.get("path")
         stage_value = row.get("stage_path")
         expected_sha = row.get("sha256")
@@ -681,8 +742,7 @@ def _recover_incomplete_publication(
             and final_value
             and type(stage_value) is str
             and stage_value
-            and type(expected_sha) is str
-            and len(expected_sha) == 64,
+            and _is_sha256_hex(expected_sha),
             "publication manifest target semantics invalid",
         )
         marker_final_paths.append(final_value)

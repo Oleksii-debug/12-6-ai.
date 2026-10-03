@@ -676,3 +676,86 @@ with TemporaryDirectory() as raw:
 """
     )
 
+def test_publication_manifest_json_is_bounded_and_strict() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    path = root / "manifest.json"
+    bad_inputs = (
+        b'{"a":1,"a":1}\\n',
+        b'{"a":NaN}\\n',
+        b'{"a":1.25}\\n',
+        b'{"a":' + b'[' * 3000 + b'0' + b']' * 3000 + b'}\\n',
+        b"x" * (mod.PUBLICATION_MANIFEST_MAX_BYTES + 1),
+    )
+    for payload in bad_inputs:
+        path.write_bytes(payload)
+        try:
+            mod._load_publication_manifest(path)
+        except mod.CaselawGlobalDedupError as exc:
+            assert "unreadable" in str(exc)
+        else:
+            raise AssertionError(f"unsafe manifest JSON accepted: {payload[:20]!r}")
+"""
+    )
+
+
+def test_publication_manifest_rejects_extra_root_and_target_keys() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = ((root / "out.json", {"kind": "out"}),)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest_path, stages, pathset_id = mod._publication_control_paths(prepared)
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+
+    root_extra = deepcopy(manifest)
+    root_extra["extra"] = "forbidden"
+    core = {
+        key: value
+        for key, value in root_extra.items()
+        if key != "manifest_identity_sha256"
+    }
+    root_extra["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    manifest_path.write_bytes(mod._canonical(root_extra) + b"\\n")
+    try:
+        mod._load_publication_manifest(manifest_path)
+    except mod.CaselawGlobalDedupError as exc:
+        assert "keys invalid" in str(exc)
+    else:
+        raise AssertionError("extra root key was accepted")
+    manifest_path.unlink()
+
+    target_extra = deepcopy(manifest)
+    target_extra["targets"][0]["extra"] = "forbidden"
+    core = {
+        key: value
+        for key, value in target_extra.items()
+        if key != "manifest_identity_sha256"
+    }
+    target_extra["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(
+        manifest_path, mod._canonical(target_extra) + b"\\n"
+    )
+    try:
+        mod._recover_incomplete_publication(
+            marker, manifest_path, prepared, stages, pathset_id
+        )
+    except mod.CaselawGlobalDedupError as exc:
+        assert "target keys invalid" in str(exc)
+    else:
+        raise AssertionError("extra target key was accepted")
+    assert marker.exists()
+    assert manifest_path.exists()
+"""
+    )
+
