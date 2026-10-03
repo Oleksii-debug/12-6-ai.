@@ -545,3 +545,151 @@ def test_cli_does_not_mask_unexpected_product_recursion(
     )
     with pytest.raises(RecursionError, match="unexpected Product recursion"):
         VALIDATOR.main()
+
+
+def test_successful_materialize_publishes_only_authenticated_tree(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "exact authenticated output"
+    VALIDATOR.materialize(ROOT, output)
+    expected_files = {
+        VALIDATOR.MANIFEST, VALIDATOR.MEMBERSHIP, VALIDATOR.PROOF
+    }
+    expected_dirs = {
+        parent
+        for relative in expected_files
+        for parent in relative.parents
+        if parent != Path(".")
+    }
+    actual = {entry.relative_to(output) for entry in output.rglob("*")}
+    assert actual == expected_files | expected_dirs
+    for relative in expected_files:
+        assert (output / relative).read_bytes() == (ROOT / relative).read_bytes()
+
+
+@pytest.mark.parametrize("entry_kind", ("file", "directory"))
+def test_verified_stage_does_not_publish_unexpected_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry_kind: str
+) -> None:
+    output = tmp_path / "unpublished extra"
+    original_verify = VALIDATOR.verify
+
+    def add_extra_after_verified_files(root: Path) -> dict:
+        report = original_verify(root)
+        if root != ROOT:
+            extra = root / "unverified extra"
+            if entry_kind == "file":
+                extra.write_text("outside verified evidence", encoding="utf-8")
+            else:
+                extra.mkdir()
+        return report
+
+    monkeypatch.setattr(VALIDATOR, "verify", add_extra_after_verified_files)
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError,
+        match="private staging tree has unexpected or missing entries",
+    ):
+        VALIDATOR.materialize(ROOT, output)
+    assert not output.exists()
+    candidates = list(tmp_path.glob(".unpublished extra.staging-*"))
+    assert len(candidates) == 1
+    assert (candidates[0] / "unverified extra").exists()
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError,
+        match="previous private stage exists",
+    ):
+        VALIDATOR.materialize(ROOT, output)
+    assert len(list(tmp_path.glob(".unpublished extra.staging-*"))) == 1
+
+
+def test_verified_stage_rejects_symlinked_expected_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    probe = tmp_path / "symlink probe"
+    try:
+        probe.symlink_to(ROOT / VALIDATOR.MANIFEST)
+    except (OSError, NotImplementedError):
+        pytest.skip("file symlinks unavailable on this host")
+    probe.unlink()
+    output = tmp_path / "unpublished symlink"
+    original_verify = VALIDATOR.verify
+
+    def swap_expected_file_after_verify(root: Path) -> dict:
+        report = original_verify(root)
+        if root != ROOT:
+            candidate = root / VALIDATOR.MANIFEST
+            candidate.unlink()
+            candidate.symlink_to(ROOT / VALIDATOR.MANIFEST)
+        return report
+
+    monkeypatch.setattr(VALIDATOR, "verify", swap_expected_file_after_verify)
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError,
+        match="private materialization staging path changed",
+    ):
+        VALIDATOR.materialize(ROOT, output)
+    assert not output.exists()
+    assert (ROOT / VALIDATOR.MANIFEST).is_file()
+    candidates = list(tmp_path.glob(".unpublished symlink.staging-*"))
+    assert len(candidates) == 1
+    assert (candidates[0] / VALIDATOR.MANIFEST).is_symlink()
+
+
+def test_verified_stage_rejects_root_swap_before_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "unpublished swap"
+    original_verify = VALIDATOR.verify
+    original_stage = tmp_path / "original stage retained"
+
+    def replace_stage_after_verify(root: Path) -> dict:
+        report = original_verify(root)
+        if root != ROOT:
+            impostor = tmp_path / "impostor"
+            for relative in (
+                VALIDATOR.MANIFEST, VALIDATOR.MEMBERSHIP, VALIDATOR.PROOF
+            ):
+                copied = impostor / relative
+                copied.parent.mkdir(parents=True, exist_ok=True)
+                copied.write_bytes((ROOT / relative).read_bytes())
+            root.rename(original_stage)
+            impostor.rename(root)
+        return report
+
+    monkeypatch.setattr(VALIDATOR, "verify", replace_stage_after_verify)
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError,
+        match="private materialization staging path changed",
+    ):
+        VALIDATOR.materialize(ROOT, output)
+    assert not output.exists()
+    assert (original_stage / VALIDATOR.MANIFEST).is_file()
+    assert len(list(tmp_path.glob(".unpublished swap.staging-*"))) == 1
+
+
+def test_verified_stage_rejects_same_bytes_replaced_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "unpublished replaced file"
+    original_verify = VALIDATOR.verify
+    displaced = tmp_path / "displaced genuine file"
+
+    def swap_file_after_verify(root: Path) -> dict:
+        report = original_verify(root)
+        if root != ROOT:
+            candidate = root / VALIDATOR.MANIFEST
+            candidate.rename(displaced)
+            candidate.write_bytes((ROOT / VALIDATOR.MANIFEST).read_bytes())
+        return report
+
+    monkeypatch.setattr(VALIDATOR, "verify", swap_file_after_verify)
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError,
+        match="private materialization staging path changed",
+    ):
+        VALIDATOR.materialize(ROOT, output)
+    assert not output.exists()
+    assert displaced.read_bytes() == (ROOT / VALIDATOR.MANIFEST).read_bytes()
+    candidates = list(tmp_path.glob(".unpublished replaced file.staging-*"))
+    assert len(candidates) == 1
+    assert (candidates[0] / VALIDATOR.MANIFEST).read_bytes() == displaced.read_bytes()

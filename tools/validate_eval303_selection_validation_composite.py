@@ -314,6 +314,30 @@ def _assert_private_entry(
         )
 
 
+def _assert_exact_private_stage_tree(
+    staging: Path,
+    original: os.stat_result,
+    created_dirs: dict[Path, os.stat_result],
+    created_files: dict[Path, os.stat_result],
+) -> None:
+    """Accept only the three authenticated files and their created directories.
+
+    This is a final best-effort pre-publication check, not a guarantee against
+    another same-user process changing paths after the check.
+    """
+    _assert_private_entry(staging, original, directory=True)
+    expected_files = {staging / rel for rel in (MANIFEST, MEMBERSHIP, PROOF)}
+    _require(set(created_files) == expected_files, 'private staging files missing')
+    _require(
+        set(staging.rglob('*')) == set(created_dirs) | expected_files,
+        'private staging tree has unexpected or missing entries',
+    )
+    for folder, identity in created_dirs.items():
+        _assert_private_entry(folder, identity, directory=True)
+    for path, identity in created_files.items():
+        _assert_private_entry(path, identity, directory=False)
+
+
 def materialize(repo_root: Path, output_dir: Path) -> None:
     """Copy authenticated files to a NEW directory without deleting user data."""
     verify(repo_root)
@@ -334,6 +358,7 @@ def materialize(repo_root: Path, output_dir: Path) -> None:
     ))
     created = staging.lstat()
     created_dirs: dict[Path, os.stat_result] = {}
+    created_files: dict[Path, os.stat_result] = {}
     try:
         for rel in (MANIFEST, MEMBERSHIP, PROOF):
             _assert_private_entry(staging, created, directory=True)
@@ -354,8 +379,12 @@ def materialize(repo_root: Path, output_dir: Path) -> None:
                     )
             with dst.open('xb') as handle:
                 handle.write(src.read_bytes())
-        # Authenticate copied bytes before atomic no-replace publication.
+            created_files[dst] = dst.lstat()
+        # Authenticate copied bytes and exact tree before no-replace publication.
         verify(staging)
+        _assert_exact_private_stage_tree(
+            staging, created, created_dirs, created_files
+        )
         _publish_directory_noreplace(staging, output_dir)
     except BaseException as exc:
         # Precheck-then-unlink/rmdir is unsafe if another same-user process
