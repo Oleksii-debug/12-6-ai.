@@ -408,6 +408,43 @@ def test_adapter_preserves_physical_authority_for_external_binding() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    ("total_unique_bytes_float", "stratum_bytes_float", "family_count_float"),
+)
+def test_partial_result_rejects_resealed_input_total_numeric_alias(
+    mutation: str,
+) -> None:
+    vector, _, _ = _build(_partial_rows())
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    assert balance["status"] == "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA"
+    altered = copy.deepcopy(balance)
+    totals = altered["input_totals"]
+    if mutation == "total_unique_bytes_float":
+        totals["total_unique_bytes"] = float(totals["total_unique_bytes"])
+    elif mutation == "stratum_bytes_float":
+        totals["by_stratum"]["ua"] = float(totals["by_stratum"]["ua"])
+    else:
+        totals["family_count"]["en"] = float(totals["family_count"]["en"])
+    assert altered["input_totals"] == balance["input_totals"]
+    altered["result_identity_sha256"] = next100_gate.canonical_sha(
+        altered, "result_identity_sha256"
+    )
+    with pytest.raises(ProjectionError, match="result totals differ"):
+        build_balance_result_binding(
+            family_vector=vector,
+            expected_family_vector_identity_sha256=vector[
+                "family_vector_identity_sha256"
+            ],
+            next100_input=adapted,
+            balance_result=altered,
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=altered["result_identity_sha256"],
+        )
+
+
 def test_partial_balance_is_bound_but_cannot_authorize_selection() -> None:
     vector, _, _ = _build(_partial_rows())
     adapted = _adapt(vector)
