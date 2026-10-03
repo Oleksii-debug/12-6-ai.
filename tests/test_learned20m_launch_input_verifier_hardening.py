@@ -31,7 +31,7 @@ def _authority() -> dict:
         "packing": "5" * 64,
     }
     value = {
-        "schema_version": "12-6.learned20m-launch-input-authority.v2",
+        "schema_version": "12-6.learned20m-launch-input-authority.v4",
         "binding_status": "READY_FOR_READINESS_BINDING",
         "data_spine": {
             "terminal_corpus_authority_identity_sha256": "6" * 64,
@@ -46,6 +46,8 @@ def _authority() -> dict:
             "two_clean_proof_identity_sha256": "7" * 64,
             "two_clean_input_packet_identity_sha256": "8" * 64,
             "two_clean_runtime_identity_sha256": "9" * 64,
+            "two_clean_implementation_manifest_identity_sha256": "0" * 64,
+            "two_clean_runtime_dependency_manifest_identity_sha256": "1" * 64,
             "materialization_identity_sha256": "a" * 64,
             "unique_loss_ledger_identity_sha256": "b" * 64,
             "tokenizer_identity_sha256": "c" * 64,

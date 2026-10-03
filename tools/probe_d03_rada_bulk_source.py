@@ -12,8 +12,10 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import re
 import stat
+import sys
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -170,12 +172,34 @@ def _zipinfo_is_symlink(info: zipfile.ZipInfo) -> bool:
     return stat.S_ISLNK(mode)
 
 
+_WINDOWS_DEVICE_NAMES = (
+    {"con", "prn", "aux", "nul"}
+    | {
+        f"{prefix}{digit}"
+        for prefix in ("com", "lpt")
+        for digit in "123456789¹²³"
+    }
+)
+
+
 def _safe_archive_name(name: str) -> bool:
     normalized = name.replace("\\", "/")
-    if normalized.startswith("/"):
+    # Check every ZIP member, including ignored extras, before reading/pinning.
+    if normalized.startswith("/") or ":" in normalized:
         return False
-    parts = [part for part in normalized.split("/") if part not in ("", ".")]
-    return ".." not in parts
+    parts = normalized.split("/")
+    if normalized.endswith("/"):
+        parts.pop()
+    if not parts:
+        return False
+    for part in parts:
+        if part in ("", ".", "..") or part.endswith((" ", ".")):
+            return False
+        if any(ord(ch) < 32 or ch in '<>"|?*' for ch in part):
+            return False
+        if part.split(".", 1)[0].casefold() in _WINDOWS_DEVICE_NAMES:
+            return False
+    return True
 
 
 def _require_exact_mapping(
@@ -215,12 +239,43 @@ def _validate_config(raw: dict[str, Any]) -> None:
     _require_exact_mapping(raw, "claim_boundary", EXPECTED_CLAIM)
 
 
+def _reject_duplicate_config_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    members: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in members:
+            raise ProbeError(f"duplicate probe config JSON key: {key}")
+        members[key] = value
+    return members
+
+
+def _reject_config_constant(raw: str) -> None:
+    raise ProbeError(f"non-standard probe config JSON constant: {raw}")
+
+
+def _finite_config_float(raw: str) -> float:
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ProbeError("non-finite probe config JSON number")
+    return value
+
+
 def _load_config(path: Path) -> dict[str, Any]:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        raw = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_config_members,
+            parse_constant=_reject_config_constant,
+            parse_float=_finite_config_float,
+        )
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ) as exc:
         raise ProbeError(f"cannot load config: {path}") from exc
-    if not isinstance(raw, dict):
+    if type(raw) is not dict:
         raise ProbeError("probe config root must be an object")
     _validate_config(raw)
     return raw
@@ -239,6 +294,7 @@ def _scan_archive(archive: bytes, config: dict[str, Any]) -> dict[str, Any]:
     max_total_uncompressed = int(policy["max_total_uncompressed_bytes"])
     rows: list[dict[str, Any]] = []
     seen_basenames: set[str] = set()
+    seen_portable_paths: dict[str, str] = {}
     total_uncompressed = 0
     ignored_files = 0
 
@@ -251,6 +307,14 @@ def _scan_archive(archive: bytes, config: dict[str, Any]) -> dict[str, Any]:
         for info in zf.infolist():
             if not _safe_archive_name(info.filename):
                 raise ProbeError(f"unsafe archive path: {info.filename!r}")
+            portable_path = info.filename.replace("\\", "/").removesuffix("/")
+            path_key = portable_path.casefold()
+            previous = seen_portable_paths.get(path_key)
+            if previous is not None and previous != portable_path:
+                raise ProbeError(
+                    f"case-folded ZIP path collision: {info.filename!r}"
+                )
+            seen_portable_paths.setdefault(path_key, portable_path)
             if _zipinfo_is_symlink(info):
                 raise ProbeError(f"symlink entry rejected: {info.filename!r}")
             if info.flag_bits & 0x1:
@@ -426,10 +490,27 @@ def observe_archive_inventory(archive: bytes, config: dict[str, Any]) -> dict[st
     )
 
 
+def _write_new(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as stream:
+            stream.write(data)
+    except FileExistsError as exc:
+        raise ProbeError(f"refusing to overwrite retained archive: {path}") from exc
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--archive", type=Path)
+    parser.add_argument(
+        "--archive-output",
+        type=Path,
+        help=(
+            "Retain the exact successfully probed live-source archive. "
+            "Only valid when this tool performs the network acquisition."
+        ),
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--accept-current-upstream",
@@ -446,6 +527,11 @@ def main() -> None:
     args = _parse_args()
     config = _load_config(args.config)
     policy = config["probe_policy"]
+
+    if args.archive_output is not None and args.archive is not None:
+        raise ProbeError(
+            "--archive-output is only valid for a live source acquisition"
+        )
 
     response_headers: dict[str, str] = {}
     if args.archive is not None:
@@ -473,6 +559,9 @@ def main() -> None:
     report["http_response"] = response_headers
     report["discovery_observation_revalidated"] = strict_revalidation
 
+    if args.archive_output is not None:
+        _write_new(args.archive_output, archive)
+
     encoded = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     if args.output is None:
         print(encoded, end="")
@@ -482,4 +571,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ProbeError as exc:
+        print(f"Rada source probe rejected input: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None

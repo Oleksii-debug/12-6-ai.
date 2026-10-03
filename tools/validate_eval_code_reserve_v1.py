@@ -82,26 +82,34 @@ def _parse_finite_float(value: str) -> float:
     return parsed
 
 
-def _require_finite_json_value(value: object, *, label: str) -> None:
+def _require_finite_json_value(
+    value: object, *, label: str, depth: int = 0
+) -> None:
+    # Authority documents are small.  Bound programmatic recursion (including
+    # cyclic objects) independently of the JSON decoder's own nesting limit.
+    _require(depth <= 64, f"{label} JSON nesting limit exceeded")
     if isinstance(value, float):
         _require(math.isfinite(value), f"{label} contains non-finite float")
         return
     if type(value) is dict:
         for key, item in value.items():
-            _require_finite_json_value(item, label=f"{label}.{key}")
+            _require_finite_json_value(item, label=f"{label}.{key}", depth=depth + 1)
         return
     if type(value) is list:
         for index, item in enumerate(value):
-            _require_finite_json_value(item, label=f"{label}[{index}]")
+            _require_finite_json_value(item, label=f"{label}[{index}]", depth=depth + 1)
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
-    value = json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=_reject_duplicate_pairs,
-        parse_constant=_reject_constant,
-        parse_float=_parse_finite_float,
-    )
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        raise ValueError("JSON nesting exceeds decoder limit") from exc
     _require(type(value) is dict, f"{path} must contain a JSON object")
     _require_finite_json_value(value, label=str(path))
     return value

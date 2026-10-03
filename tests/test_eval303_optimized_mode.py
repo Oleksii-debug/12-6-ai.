@@ -55,5 +55,10 @@ def test_optimized_python_keeps_eval303_fail_closed(tmp_path: Path) -> None:
     )
 
     result = _run_optimized(tmp_path)
-    assert result.returncode != 0
-    assert "Eval303ValidationError" in result.stderr
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    report = json.loads(lines[0])
+    assert report["status"] == "FAIL"
+    assert report["error"] == "selection self-identity mismatch"

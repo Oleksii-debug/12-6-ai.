@@ -206,3 +206,40 @@ def test_programmatic_evidence_rejects_nested_non_finite_float() -> None:
     mutated["truth_boundary"]["diagnostic"] = float("nan")
     with pytest.raises(ValueError, match="contains non-finite float"):
         validator.validate_materialization_evidence(_manifest(), mutated)
+
+
+@pytest.mark.parametrize("kind", ("array", "object"))
+def test_deep_external_authority_json_fails_closed(
+    tmp_path: Path, kind: str,
+) -> None:
+    depth = 10_000
+    nested = ("[" * depth + "0" + "]" * depth) if kind == "array" else (
+        '{"item":' * depth + "0" + "}" * depth
+    )
+    path = tmp_path / f"deep-{kind}.json"
+    path.write_text('{"authority":' + nested + "}", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON nesting exceeds decoder limit"):
+        validator._load_mapping(path)
+
+
+@pytest.mark.parametrize("kind", ("array", "object", "cycle"))
+def test_programmatic_authority_nesting_fails_closed_without_python_recursion(
+    kind: str,
+) -> None:
+    value: object = 0
+    if kind == "cycle":
+        loop: list[object] = []
+        loop.append(loop)
+        value = loop
+    else:
+        for _ in range(200):
+            value = [value] if kind == "array" else {"item": value}
+    doc = _manifest()
+    doc["untrusted_extra"] = value
+    with pytest.raises(ValueError, match="JSON nesting limit exceeded"):
+        validator.validate_document(doc)
+
+
+def test_programmatic_shallow_finite_authority_still_validates() -> None:
+    assert validator.validate_document(_manifest())["reserved_objects"] == 2
+    validator.validate_materialization_evidence(_manifest(), _evidence())
