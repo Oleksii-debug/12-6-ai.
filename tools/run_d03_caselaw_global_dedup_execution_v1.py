@@ -358,6 +358,37 @@ def _compose_graph(
     return inventory, payloads
 
 
+def _preflight_attested_lineage_warmup(matcher: Any) -> None:
+    """Expose execution-induced V3 closure drift before expensive all-pairs work.
+
+    Synthetic rows have no raw source payload and cannot contribute capacity.  Both
+    attestations use the unchanged incumbent verifier; this is a tripwire, not a
+    bypass or a replacement of the terminal reference/indexed comparison.
+    """
+    indexed.attest_incumbent_runtime(matcher)
+    lineage = getattr(matcher, "_lineage_matches", None)
+    _require(callable(lineage), "terminal V3 lineage function missing")
+    fingerprints = [
+        {
+            "row": {
+                "source_id": f"local-preflight-{index}",
+                "source_family": "local-preflight-only",
+                "stable_object_id": f"local-preflight-{index // 2}",
+            }
+        }
+        for index in range(16)
+    ]
+    for _ in range(10):
+        matches = lineage(fingerprints, ())
+        _require(type(matches) is list and len(matches) == 8,
+                 "terminal V3 lineage warmup semantics drift")
+        _require(all(match.get("match_type") == "lineage_same_origin_alias"
+                     and match.get("capacity_collapsing") is True
+                     for match in matches),
+                 "terminal V3 lineage warmup authority drift")
+    indexed.attest_incumbent_runtime(matcher)
+
+
 def _outer_survivor_authority(
     dedup_report: Mapping[str, Any],
     selection_projection: Mapping[str, Any],
@@ -1089,7 +1120,7 @@ def execute(
     # The merged indexed executor's runtime attestation must protect the original
     # all-pairs reference too. Differential equality is not authority if both paths
     # can observe the same mutated stdlib/runtime state before attestation.
-    indexed.attest_incumbent_runtime(matcher)
+    _preflight_attested_lineage_warmup(matcher)
 
     reference_started = time.perf_counter()
     reference = matcher.audit_payloads(inventory, payloads)
