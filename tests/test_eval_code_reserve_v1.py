@@ -304,3 +304,121 @@ def test_reserved_object_requires_object_shape() -> None:
     doc["objects"][0] = 0
     with pytest.raises(ValueError, match="reserved object must be an object"):
         validator.validate_document(doc)
+
+
+@pytest.mark.parametrize(
+    ("section", "bad"),
+    [
+        ("root", []),
+        ("predecessor", []),
+        ("reservation", "not-an-object"),
+        ("materialization_evidence", None),
+        ("truth_boundary", 0),
+    ],
+)
+def test_reservation_malformed_nested_shape_is_controlled(
+    section: str, bad: object,
+) -> None:
+    document = _manifest()
+    if section == "root":
+        document = bad
+    else:
+        document[section] = bad
+    with pytest.raises(ValueError, match="must be a JSON object|must be an object"):
+        validator.validate_document(document)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "empty", "reversed", "extra", "wrong_type"],
+)
+def test_pending_successor_gates_cannot_be_erased_or_reordered(
+    mutation: str,
+) -> None:
+    document = _manifest()
+    gates = document["remaining_successor_gates"]
+    if mutation == "missing":
+        document.pop("remaining_successor_gates")
+    elif mutation == "empty":
+        document["remaining_successor_gates"] = []
+    elif mutation == "reversed":
+        document["remaining_successor_gates"] = list(reversed(gates))
+    elif mutation == "extra":
+        document["remaining_successor_gates"].append("FIT_OR_TRAINING_ALLOWED")
+    else:
+        document["remaining_successor_gates"] = "all-cleared"
+    with pytest.raises(ValueError, match="remaining successor gates drift"):
+        validator.validate_document(document)
+
+
+def _resign_evidence(evidence: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    body = copy.deepcopy(evidence)
+    body.pop("evidence_identity_sha256")
+    identity = validator.hashlib.sha256(validator._canonical_bytes(body)).hexdigest()
+    evidence["evidence_identity_sha256"] = identity
+    monkeypatch.setattr(validator, "EXPECTED_EVIDENCE_IDENTITY", identity)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "empty", "reversed", "extra", "wrong_type"],
+)
+def test_resealed_evidence_cannot_change_pending_gates(
+    mutation: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    gates = evidence["remaining_gates"]
+    if mutation == "missing":
+        evidence.pop("remaining_gates")
+    elif mutation == "empty":
+        evidence["remaining_gates"] = []
+    elif mutation == "reversed":
+        evidence["remaining_gates"] = list(reversed(gates))
+    elif mutation == "extra":
+        evidence["remaining_gates"].append("ALL_GATES_COMPLETE")
+    else:
+        evidence["remaining_gates"] = "done"
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match="evidence remaining gates drift"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "message"),
+    [
+        ("objects", [[], _evidence()["objects"][1]], "reserved object must be an object"),
+        ("truth_boundary", [], "evidence truth boundary must be an object"),
+    ],
+)
+def test_resealed_evidence_rejects_malformed_nested_shapes(
+    field: str, bad: object, message: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence[field] = bad
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match=message):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+def test_direct_evidence_validator_rejects_malformed_reservation_shape() -> None:
+    document = _manifest()
+    document["reservation"] = []
+    with pytest.raises(ValueError, match="evidence reservation timestamp drift"):
+        validator.validate_materialization_evidence(document, _evidence())
+
+
+@pytest.mark.parametrize(
+    "invalid", [object(), (1, 2), 1 + 2j, {"nested": {1: "bad"}}],
+)
+def test_programmatic_authority_rejects_non_json_types(invalid: object) -> None:
+    document = _manifest()
+    document["unexpected"] = invalid
+    with pytest.raises(ValueError, match="not a JSON scalar|non-string JSON key"):
+        validator.validate_document(document)
+
+
+def test_programmatic_authority_rejects_invalid_utf8() -> None:
+    document = _manifest()
+    document["unexpected"] = chr(0xD800)
+    with pytest.raises(ValueError, match="contains invalid UTF-8"):
+        validator.validate_document(document)
