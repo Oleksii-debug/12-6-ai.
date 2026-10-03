@@ -32,7 +32,14 @@ from twelve_six.scale141_recovery import (
     RecoveryResolution,
     resolve_recovery_generation,
 )
-from twelve_six.scale141_resume_sidecar import SIDECAR_SCHEMA
+from twelve_six.scale141_resume_sidecar import (
+    D04_EXPOSURE_STATE_SCHEMA,
+    ResumeSidecarContext,
+    ResumeSidecarError,
+    _checkpoint_d04_data,
+    _validate_exposure_state,
+    validate_resume_reference,
+)
 
 TRUSTED_PARENT_RECOVERY_BINDING_SCHEMA = (
     "12-6.trusted-parent-recovery-session-binding.v1"
@@ -212,6 +219,66 @@ def _manifest_previous_run_id(manifest: Any) -> str:
     return _require_nonempty_string(training_config.get("run_id"), "previous_run_id")
 
 
+def _verified_d04_resolution_fields(
+    resolution: RecoveryResolution,
+    reference: Mapping[str, Any],
+    *,
+    checkpoint_id: str,
+    manifest_sha256: str,
+    source_sha: str,
+    run_manifest_sha256: str,
+    optimizer_step: int,
+    tokens_seen: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
+    """Revalidate the canonical INNER V2 exposure state against the pinned V1 reference.
+
+    resolve_recovery_generation validates the persisted sidecar V1 envelope and
+    returns only its verified exposure_state V2, not the outer payload. Reuse
+    the canonical D04 validator and checkpoint-bound data identities, rather
+    than accepting an invented second sidecar shape or self-sealed authority.
+    """
+    state = resolution.resume_state
+    if not isinstance(state, Mapping):
+        raise TrustedParentRecoveryBindingError("validated_d04_resume_state_missing")
+    if state.get("schema_version") != D04_EXPOSURE_STATE_SCHEMA:
+        raise TrustedParentRecoveryBindingError("validated_d04_resume_state_schema_invalid")
+    try:
+        sidecar_reference = validate_resume_reference(
+            reference["resume_state"], generation=reference["generation"]
+        )
+        d04_data = _checkpoint_d04_data(resolution.manifest)
+        context = ResumeSidecarContext(
+            generation=f"generation-{reference['generation']:08d}",
+            checkpoint_manifest_sha256=manifest_sha256,
+            checkpoint_id=checkpoint_id,
+            source_sha=source_sha,
+            run_manifest_hash=run_manifest_sha256,
+            optimizer_step=optimizer_step,
+            tokens_seen=tokens_seen,
+        )
+        verified_state = _validate_exposure_state(
+            state, context=context, d04_data=d04_data
+        )
+    except ResumeSidecarError as exc:
+        raise TrustedParentRecoveryBindingError(
+            f"validated_d04_state_invalid:{exc}"
+        ) from exc
+    if sidecar_reference["checkpoint_manifest_sha256"] != manifest_sha256:
+        raise TrustedParentRecoveryBindingError(
+            "d04_reference_checkpoint_manifest_sha256_mismatch"
+        )
+    if sidecar_reference["state_identity_sha256"] != verified_state["state_identity_sha256"]:
+        raise TrustedParentRecoveryBindingError("d04_reference_state_identity_sha256_mismatch")
+    if (
+        sidecar_reference["ordered_next_exposure_identity_sha256"]
+        != d04_data["ordered_next_exposure_identity_sha256"]
+    ):
+        raise TrustedParentRecoveryBindingError(
+            "d04_reference_ordered_next_exposure_identity_sha256_mismatch"
+        )
+    return verified_state, sidecar_reference, d04_data
+
+
 def trusted_parent_recovery_binding_from_resolution(
     resolution: RecoveryResolution,
     *,
@@ -229,13 +296,6 @@ def trusted_parent_recovery_binding_from_resolution(
     if not isinstance(resolution, RecoveryResolution):
         raise TrustedParentRecoveryBindingError("recovery_resolution_type_invalid")
     reference = _exact_recovery_reference(resolution.reference)
-    resume_state = resolution.resume_state
-    if not isinstance(resume_state, Mapping):
-        raise TrustedParentRecoveryBindingError("validated_d04_resume_state_missing")
-    sidecar = dict(resume_state)
-    if sidecar.get("schema") != SIDECAR_SCHEMA:
-        raise TrustedParentRecoveryBindingError("validated_d04_resume_state_schema_invalid")
-
     checkpoint_id = _require_sha64(reference["checkpoint_id"], "checkpoint_id")
     manifest_sha = _require_sha64(
         reference["manifest_sha256"], "checkpoint_manifest_sha256"
@@ -249,17 +309,16 @@ def trusted_parent_recovery_binding_from_resolution(
     )
     tokens_seen = _require_nonnegative_int(reference["tokens_seen"], "tokens_seen")
 
-    exact_sidecar_checks = {
-        "checkpoint_id": checkpoint_id,
-        "checkpoint_manifest_sha256": manifest_sha,
-        "source_sha": source_sha,
-        "run_manifest_hash": run_manifest_sha,
-        "optimizer_step": optimizer_step,
-        "tokens_seen": tokens_seen,
-    }
-    for name, expected in exact_sidecar_checks.items():
-        if sidecar.get(name) != expected:
-            raise TrustedParentRecoveryBindingError(f"d04_{name}_mismatch")
+    sidecar, sidecar_reference, d04_data = _verified_d04_resolution_fields(
+        resolution,
+        reference,
+        checkpoint_id=checkpoint_id,
+        manifest_sha256=manifest_sha,
+        source_sha=source_sha,
+        run_manifest_sha256=run_manifest_sha,
+        optimizer_step=optimizer_step,
+        tokens_seen=tokens_seen,
+    )
 
     if provider_class not in _COARSE_PROVIDERS:
         raise TrustedParentRecoveryBindingError("provider_class_invalid")
@@ -292,10 +351,9 @@ def trusted_parent_recovery_binding_from_resolution(
         "d04_state_identity_sha256": _require_sha64(
             sidecar.get("state_identity_sha256"), "d04_state_identity_sha256"
         ),
-        "ordered_next_exposure_identity_sha256": _require_sha64(
-            sidecar.get("ordered_next_exposure_identity_sha256"),
-            "ordered_next_exposure_identity_sha256",
-        ),
+        "ordered_next_exposure_identity_sha256": sidecar_reference[
+            "ordered_next_exposure_identity_sha256"
+        ],
         "ledger_identity_sha256": _require_sha64(
             sidecar.get("ledger_identity_sha256"), "ledger_identity_sha256"
         ),
@@ -306,10 +364,7 @@ def trusted_parent_recovery_binding_from_resolution(
         "packing_identity_sha256": _require_sha64(
             sidecar.get("packing_identity_sha256"), "packing_identity_sha256"
         ),
-        "exposure_plan_identity_sha256": _require_sha64(
-            sidecar.get("exposure_plan_identity_sha256"),
-            "exposure_plan_identity_sha256",
-        ),
+        "exposure_plan_identity_sha256": d04_data["exposure_plan_identity_sha256"],
         "provider_class": provider_class,
         "provider_id": concrete_provider,
         "provider_session_id": current_session,
@@ -578,7 +633,7 @@ def restore_trusted_same_provider_resume(
     sidecar = resolution.resume_state
     if not isinstance(sidecar, Mapping):
         raise TrustedParentRecoveryBindingError("validated_d04_resume_state_missing")
-    if sidecar.get("schema") != SIDECAR_SCHEMA:
+    if sidecar.get("schema_version") != D04_EXPOSURE_STATE_SCHEMA:
         raise TrustedParentRecoveryBindingError("validated_d04_resume_state_schema_invalid")
 
     reprojection = trusted_parent_recovery_binding_from_resolution(

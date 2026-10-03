@@ -6,10 +6,15 @@ from pathlib import Path
 import pytest
 
 import twelve_six.trusted_parent_recovery_binding as trusted_module
+from twelve_six.checkpoint import D04_RESUME_BINDING_SCHEMA
 from twelve_six.portable_run_binding import PortableRunBinding
 from twelve_six.portable_run_packet import PortableRunAssessment
 from twelve_six.scale141_recovery import RecoveryResolution
-from twelve_six.scale141_resume_sidecar import SIDECAR_SCHEMA
+from twelve_six.scale141_resume_sidecar import (
+    D04_EXPOSURE_STATE_SCHEMA,
+    SIDECAR_SCHEMA,
+    _d04_state_hash,
+)
 from twelve_six.trusted_parent_recovery_binding import (
     bind_trusted_same_provider_resume,
     restore_trusted_same_provider_resume,
@@ -22,7 +27,6 @@ CHECKPOINT = "b" * 64
 MANIFEST = "c" * 64
 POINTER = "d" * 64
 RUN_MANIFEST = "e" * 64
-STATE = "1" * 64
 ORDERED = "2" * 64
 LEDGER = "3" * 64
 MATERIALIZATION = "4" * 64
@@ -47,6 +51,24 @@ def _authority(evidence_sha256: str) -> dict:
 
 
 def _resolution() -> RecoveryResolution:
+    state = {
+        "schema_version": D04_EXPOSURE_STATE_SCHEMA,
+        "ledger_identity_sha256": LEDGER,
+        "materialization_identity_sha256": MATERIALIZATION,
+        "packing_identity_sha256": PACKING,
+        "authorized_budget": 8192,
+        "one_pass_maximum": 8192,
+        "consumed_loss_positions": 4096,
+        "claim_sequence": 17,
+        "claims": {"f" * 64: [[0, 4096]]},
+        "trainer_state_binding": {
+            "checkpoint_generation": "generation-00000002",
+            "checkpoint_manifest_sha256": MANIFEST,
+            "optimizer_step": 17,
+            "trainer_nonignored_target_count": 4096,
+        },
+    }
+    state["state_identity_sha256"] = _d04_state_hash(state)
     reference = {
         "generation": 2,
         "object_key": f"checkpoints/{CHECKPOINT}",
@@ -57,35 +79,86 @@ def _resolution() -> RecoveryResolution:
         "run_manifest_hash": RUN_MANIFEST,
         "optimizer_step": 17,
         "tokens_seen": 4096,
-        "resume_state": {"file_sha256": "7" * 64},
+        "resume_state": {
+            "schema": SIDECAR_SCHEMA,
+            "directory": "resume-states/generation-00000002",
+            "file": "state.json",
+            "file_bytes": 64,
+            "file_sha256": "7" * 64,
+            "payload_sha256": "8" * 64,
+            "checkpoint_manifest_sha256": MANIFEST,
+            "state_identity_sha256": state["state_identity_sha256"],
+            "ordered_next_exposure_identity_sha256": ORDERED,
+        },
     }
     manifest = {
         "identity": {
-            "training_config": {"run_id": PREVIOUS_RUN},
+            "training_config": {
+                "run_id": PREVIOUS_RUN,
+                "data": {
+                    "resume_binding_schema": D04_RESUME_BINDING_SCHEMA,
+                    "ledger_identity_sha256": LEDGER,
+                    "materialization_identity_sha256": MATERIALIZATION,
+                    "packing_identity_sha256": PACKING,
+                    "exposure_plan_identity_sha256": PLAN,
+                    "ordered_next_exposure_identity_sha256": ORDERED,
+                },
+            },
         }
-    }
-    resume_state = {
-        "schema": SIDECAR_SCHEMA,
-        "checkpoint_id": CHECKPOINT,
-        "checkpoint_manifest_sha256": MANIFEST,
-        "source_sha": SHA40,
-        "run_manifest_hash": RUN_MANIFEST,
-        "optimizer_step": 17,
-        "tokens_seen": 4096,
-        "ledger_identity_sha256": LEDGER,
-        "materialization_identity_sha256": MATERIALIZATION,
-        "packing_identity_sha256": PACKING,
-        "exposure_plan_identity_sha256": PLAN,
-        "ordered_next_exposure_identity_sha256": ORDERED,
-        "state_identity_sha256": STATE,
     }
     return RecoveryResolution(
         path=Path("/verified/generation-00000002"),
         content_path=Path(f"/verified/checkpoints/{CHECKPOINT}"),
         reference=reference,
         manifest=manifest,
-        resume_state=resume_state,
+        resume_state=state,
     )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "error"),
+    [
+        ("schema", "validated_d04_resume_state_schema_invalid"),
+        ("reference_state", "d04_reference_state_identity_sha256_mismatch"),
+        ("reference_ordered", "d04_reference_ordered_next_exposure_identity_sha256_mismatch"),
+        ("trainer_step", "validated_d04_state_invalid"),
+        ("ledger", "validated_d04_state_invalid"),
+    ],
+)
+def test_canonical_inner_d04_state_and_outer_reference_fail_closed(
+    mutate: str, error: str,
+) -> None:
+    resolution = _resolution()
+    state = resolution.resume_state
+    assert state is not None
+    ref = resolution.reference["resume_state"]
+    if mutate == "schema":
+        state["schema_version"] = SIDECAR_SCHEMA
+    elif mutate == "reference_state":
+        ref["state_identity_sha256"] = "0" * 64
+    elif mutate == "reference_ordered":
+        ref["ordered_next_exposure_identity_sha256"] = "0" * 64
+    elif mutate == "trainer_step":
+        state["trainer_state_binding"]["optimizer_step"] += 1
+        state["state_identity_sha256"] = _d04_state_hash(
+            {key: value for key, value in state.items() if key != "state_identity_sha256"}
+        )
+        ref["state_identity_sha256"] = state["state_identity_sha256"]
+    elif mutate == "ledger":
+        state["ledger_identity_sha256"] = "0" * 64
+        state["state_identity_sha256"] = _d04_state_hash(
+            {key: value for key, value in state.items() if key != "state_identity_sha256"}
+        )
+        ref["state_identity_sha256"] = state["state_identity_sha256"]
+    with pytest.raises(ValueError, match=error):
+        trusted_parent_recovery_binding_from_resolution(
+            resolution,
+            provider_class=PROVIDER_CLASS,
+            provider_id=PROVIDER_ID,
+            provider_session_id=CURRENT_SESSION,
+            previous_provider_session_id=PREVIOUS_SESSION,
+            terminal_recovery_authority=_authority("0" * 64),
+        )
 
 
 def _binding_material(resolution: RecoveryResolution) -> tuple[dict, str, str]:

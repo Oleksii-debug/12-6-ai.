@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import json
-import shutil
+import math
+import os
+import stat
+import sys
+import tempfile
 from collections import Counter
 from copy import deepcopy
 from pathlib import Path
@@ -65,10 +71,52 @@ def self_identity(obj: dict, field: str) -> str:
     return sha256_bytes((canonical(clone) + '\n').encode('utf-8'))
 
 
-def load_json(path: Path) -> dict:
-    value = json.loads(path.read_text(encoding='utf-8'))
-    _require(isinstance(value, dict), f'{path} must contain a JSON object')
+def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise Eval303ValidationError(f'duplicate JSON key: {key}')
+        value[key] = item
     return value
+
+
+def _reject_constant(value: str) -> None:
+    raise Eval303ValidationError(f'non-finite JSON constant: {value}')
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise Eval303ValidationError('JSON number is not finite')
+    return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise Eval303ValidationError('JSON integer exceeds interpreter limit') from exc
+
+
+def _decode_json_object(raw: str, *, label: str) -> dict[str, object]:
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_constant,
+            parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
+        )
+    except json.JSONDecodeError as exc:
+        raise Eval303ValidationError(f'{label} contains invalid JSON') from exc
+    except RecursionError as exc:
+        raise Eval303ValidationError(f'{label} JSON nesting limit exceeded') from exc
+    _require(type(value) is dict, f'{label} must contain a JSON object')
+    return value
+
+
+def load_json(path: Path) -> dict:
+    return _decode_json_object(path.read_text(encoding='utf-8'), label=str(path))
 
 
 def load_records(path: Path) -> list[dict]:
@@ -76,8 +124,7 @@ def load_records(path: Path) -> list[dict]:
     raw = path.read_bytes()
     _require(not raw or raw.endswith(b'\n'), f'{path} must end with LF')
     for index, line in enumerate(raw.decode('utf-8').splitlines(), start=1):
-        record = json.loads(line)
-        _require(isinstance(record, dict), f'{path}:{index} must be a JSON object')
+        record = _decode_json_object(line, label=f'{path}:{index}')
         _require(line == canonical(record), f'{path}:{index} is not canonical JSON')
         records.append(record)
     return records
@@ -212,15 +259,142 @@ def verify(repo_root: Path) -> dict:
     }
 
 
+def _publish_directory_noreplace(staging: Path, destination: Path) -> None:
+    """Atomically publish one verified private directory without clobbering output."""
+    if os.name == 'nt':
+        try:
+            os.rename(staging, destination)
+        except FileExistsError:
+            raise FileExistsError(
+                f'materialization destination appeared during publish: {destination}'
+            ) from None
+        return
+
+    if sys.platform.startswith('linux'):
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, 'renameat2', None)
+        if renameat2 is None:
+            raise Eval303ValidationError('atomic no-replace publication requires renameat2')
+        renameat2.argtypes = [
+            ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint
+        ]
+        renameat2.restype = ctypes.c_int
+        result = renameat2(
+            -100, os.fsencode(staging), -100, os.fsencode(destination), 1
+        )
+        if result == 0:
+            return
+        error_number = ctypes.get_errno()
+        if error_number == errno.EEXIST:
+            raise FileExistsError(
+                f'materialization destination appeared during publish: {destination}'
+            )
+        raise OSError(error_number, os.strerror(error_number), destination)
+
+    raise Eval303ValidationError(
+        'atomic no-replace materialization is unsupported on this platform'
+    )
+
+
+def _assert_private_entry(
+    path: Path, original: os.stat_result, *, directory: bool
+) -> None:
+    current = path.lstat()
+    correct_type = (
+        stat.S_ISDIR(current.st_mode)
+        if directory else stat.S_ISREG(current.st_mode)
+    )
+    if (
+        not correct_type
+        or (current.st_dev, current.st_ino)
+        != (original.st_dev, original.st_ino)
+    ):
+        raise Eval303ValidationError(
+            'private materialization staging path changed; refusing cleanup'
+        )
+
+
+def _assert_exact_private_stage_tree(
+    staging: Path,
+    original: os.stat_result,
+    created_dirs: dict[Path, os.stat_result],
+    created_files: dict[Path, os.stat_result],
+) -> None:
+    """Accept only the three authenticated files and their created directories.
+
+    This is a final best-effort pre-publication check, not a guarantee against
+    another same-user process changing paths after the check.
+    """
+    _assert_private_entry(staging, original, directory=True)
+    expected_files = {staging / rel for rel in (MANIFEST, MEMBERSHIP, PROOF)}
+    _require(set(created_files) == expected_files, 'private staging files missing')
+    _require(
+        set(staging.rglob('*')) == set(created_dirs) | expected_files,
+        'private staging tree has unexpected or missing entries',
+    )
+    for folder, identity in created_dirs.items():
+        _assert_private_entry(folder, identity, directory=True)
+    for path, identity in created_files.items():
+        _assert_private_entry(path, identity, directory=False)
+
+
 def materialize(repo_root: Path, output_dir: Path) -> None:
+    """Copy authenticated files to a NEW directory without deleting user data."""
     verify(repo_root)
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    for rel in (MANIFEST, MEMBERSHIP, PROOF):
-        src = repo_root / rel
-        dst = output_dir / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(src.read_bytes())
+    if output_dir.is_symlink() or output_dir.exists():
+        raise Eval303ValidationError(
+            f'materialization destination already exists; choose a new path: {output_dir}'
+        )
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    # One recoverable candidate per destination prevents unbounded retained stages.
+    stage_prefix = f'.{output_dir.name}.staging-'
+    for entry in output_dir.parent.iterdir():
+        if entry.name.startswith(stage_prefix):
+            raise Eval303ValidationError(
+                f'previous private stage exists; inspect it before retry: {entry}'
+            )
+    staging = Path(tempfile.mkdtemp(
+        prefix=stage_prefix, dir=output_dir.parent
+    ))
+    created = staging.lstat()
+    created_dirs: dict[Path, os.stat_result] = {}
+    created_files: dict[Path, os.stat_result] = {}
+    try:
+        for rel in (MANIFEST, MEMBERSHIP, PROOF):
+            _assert_private_entry(staging, created, directory=True)
+            src = repo_root / rel
+            dst = staging / rel
+            ancestors: list[Path] = []
+            parent = dst.parent
+            while parent != staging:
+                ancestors.append(parent)
+                parent = parent.parent
+            for folder in reversed(ancestors):
+                if folder not in created_dirs:
+                    folder.mkdir()
+                    created_dirs[folder] = folder.lstat()
+                else:
+                    _assert_private_entry(
+                        folder, created_dirs[folder], directory=True
+                    )
+            with dst.open('xb') as handle:
+                handle.write(src.read_bytes())
+            created_files[dst] = dst.lstat()
+        # Authenticate copied bytes and exact tree before no-replace publication.
+        verify(staging)
+        _assert_exact_private_stage_tree(
+            staging, created, created_dirs, created_files
+        )
+        _publish_directory_noreplace(staging, output_dir)
+    except BaseException as exc:
+        # Precheck-then-unlink/rmdir is unsafe if another same-user process
+        # swaps a pathname. Retain the candidate; never delete on failure.
+        exc.add_note(
+            f'private stage retained for manual inspection: {staging}'
+        )
+        raise
+
+
 
 
 def main() -> int:
@@ -230,13 +404,21 @@ def main() -> int:
     parser.add_argument('--output-dir', type=Path)
     args = parser.parse_args()
     root = args.repo_root.resolve()
-    if args.command == 'verify':
-        print(json.dumps(verify(root), sort_keys=True, indent=2))
-    else:
-        if args.output_dir is None:
-            parser.error('--output-dir is required for materialize')
-        materialize(root, args.output_dir.resolve())
-        print(json.dumps({'status': 'PASS', 'output_dir': str(args.output_dir)}, sort_keys=True))
+    if args.command == 'materialize' and args.output_dir is None:
+        parser.error('--output-dir is required for materialize')
+    try:
+        if args.command == 'verify':
+            report = verify(root)
+        else:
+            # Preserve final symlinks for the no-clobber check.
+            materialize(root, args.output_dir.absolute())
+            report = {'status': 'PASS', 'output_dir': str(args.output_dir)}
+    except (Eval303ValidationError, OSError, UnicodeError) as exc:
+        notes = getattr(exc, '__notes__', ())
+        error = '; '.join((str(exc), *notes))
+        print(json.dumps({'status': 'FAIL', 'error': error}, sort_keys=True))
+        return 2
+    print(json.dumps(report, sort_keys=True, indent=2))
     return 0
 
 

@@ -78,6 +78,7 @@ def _identity(model: TinyLM, trainer: Trainer, cfg: TrainerConfig) -> Checkpoint
         dataset_manifest_hash=DATA_HASH,
         run_manifest_hash=RUN_HASH,
         training_config={
+            "run_id": "R01-REAL-FRESH-PROCESS-D04",
             "trainer": asdict(cfg),
             "data": {
                 "resume_binding_schema": D04_RESUME_BINDING_SCHEMA,

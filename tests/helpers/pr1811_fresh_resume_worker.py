@@ -171,7 +171,7 @@ def main() -> int:
         "checkpoint_id": reference["checkpoint_id"],
         "manifest_sha256": reference["manifest_sha256"],
         "d04_state_identity_sha256": resume_state["state_identity_sha256"],
-        "ordered_next_exposure_identity_sha256": resume_state[
+        "ordered_next_exposure_identity_sha256": reference["resume_state"][
             "ordered_next_exposure_identity_sha256"
         ],
         "trusted_parent_binding_sha256": trusted["binding_sha256"],
