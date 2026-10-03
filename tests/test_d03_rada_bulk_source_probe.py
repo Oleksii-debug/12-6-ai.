@@ -4,6 +4,7 @@ import copy
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -392,3 +393,103 @@ def test_archive_output_rejects_preexisting_local_archive_mode(
     with pytest.raises(ProbeError, match="only valid for a live source acquisition"):
         probe_mod.main()
 
+
+
+@pytest.mark.parametrize("variant", ["top", "nested", "escaped_equivalent"])
+def test_probe_config_rejects_duplicate_json_members(
+    tmp_path: Path, variant: str
+) -> None:
+    config = _production_config()
+    raw = json.dumps(config, ensure_ascii=False, sort_keys=True)
+    if variant == "top":
+        raw = '{"schema_version": ' + json.dumps(config["schema_version"]) + "," + raw[1:]
+    elif variant == "nested":
+        raw = raw.replace(
+            '"source": {',
+            '"source": {"dataset_id": "laws-texts", ',
+            1,
+        )
+    else:
+        raw = raw[:-1] + f', "{chr(92)}u0073chema_version": ' + json.dumps(
+            config["schema_version"]
+        ) + "}"
+    path = tmp_path / "ambiguous.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ProbeError, match="duplicate probe config JSON key"):
+        _load_config(path)
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"])
+def test_probe_config_rejects_nonfinite_json(
+    tmp_path: Path, number: str
+) -> None:
+    raw = json.dumps(_production_config(), ensure_ascii=False)
+    path = tmp_path / "nonfinite.json"
+    path.write_text(
+        raw[:-1] + ', "untrusted_number": ' + number + "}",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ProbeError,
+        match="non-standard probe config JSON constant|non-finite probe config JSON number",
+    ):
+        _load_config(path)
+
+
+def test_probe_config_rejects_excessive_nesting_as_controlled_error(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "deep.json"
+    path.write_text(
+        '{"schema_version":' + "[" * 10000 + "0" + "]" * 10000 + "}",
+        encoding="utf-8",
+    )
+    with pytest.raises(ProbeError, match="cannot load config"):
+        _load_config(path)
+
+
+def test_probe_config_rejects_invalid_utf8_and_non_object_root(tmp_path: Path) -> None:
+    invalid = tmp_path / "invalid-utf8.json"
+    invalid.write_bytes(bytes([255]))
+    with pytest.raises(ProbeError, match="cannot load config"):
+        _load_config(invalid)
+    root = tmp_path / "array.json"
+    root.write_text("[]", encoding="utf-8")
+    with pytest.raises(ProbeError, match="root must be an object"):
+        _load_config(root)
+
+
+def test_probe_cli_rejects_ambiguous_config_before_archive_publication(
+    tmp_path: Path,
+) -> None:
+    config = _production_config()
+    raw = json.dumps(config, ensure_ascii=False, sort_keys=True)
+    path = tmp_path / "duplicate.json"
+    path.write_text(
+        '{"schema_version": ' + json.dumps(config["schema_version"]) + "," + raw[1:],
+        encoding="utf-8",
+    )
+    retained = tmp_path / "should-not-exist.zip"
+    report = tmp_path / "should-not-exist.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "probe_d03_rada_bulk_source.py"),
+            "--config",
+            str(path),
+            "--archive-output",
+            str(retained),
+            "--output",
+            str(report),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.count("\n") == 1
+    assert "duplicate probe config JSON key" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not retained.exists()
+    assert not report.exists()
