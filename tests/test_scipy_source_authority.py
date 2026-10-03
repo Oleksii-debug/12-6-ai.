@@ -231,3 +231,35 @@ def test_resigned_canonical_authority_rejects_extra_or_reordered_metadata(
     _resign(document)
     with pytest.raises(SourceAuthorityError, match="canonical SciPy authority identity drift"):
         validate_source_authority(document)
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "message"),
+    [
+        (("allowlist", 1, "git_blob_sha1"), "0" * 40, "unapproved SciPy"),
+        (
+            ("allowlist", 1, "raw_url"),
+            "https://raw.githubusercontent.com/scipy/scipy/main/scipy/optimize/_minimize.py",
+            "raw URL is not exact-commit pinned",
+        ),
+        (("allowlist", 0, "raw_bytes"), 25257.0, "invalid raw byte count"),
+        (("allowlist", 0, "path"), "scipy/optimize/../secret.py", "unsafe allowlist path"),
+        (("allowlist", 0, "path"), "/scipy/optimize/_constraints.py", "unsafe allowlist path"),
+        (
+            ("allowlist", 0, "path"),
+            "scipy\\optimize\\_constraints.py",
+            "outside bounded scipy/optimize scope",
+        ),
+    ],
+)
+def test_resigned_source_authority_rejects_secondary_blob_and_path_escapes(
+    path: tuple[str | int, ...], value: object, message: str,
+) -> None:
+    document = copy.deepcopy(_document())
+    target = document
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    _resign(document)
+    with pytest.raises(SourceAuthorityError, match=message):
+        validate_source_authority(document)
