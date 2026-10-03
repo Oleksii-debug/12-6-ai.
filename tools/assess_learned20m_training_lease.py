@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,8 +13,33 @@ from typing import Any
 from twelve_six.learned20m_training_lease import assess_training_run_lease
 
 
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate object member: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("JSON number is not finite")
+    return parsed
+
+
 def _read_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_object,
+        parse_constant=_reject_nonfinite_constant,
+        parse_float=_parse_finite_float,
+    )
     if not isinstance(payload, dict):
         raise ValueError(f"{path} root must be an object")
     return payload
@@ -49,7 +75,7 @@ def main(argv: list[str]) -> int:
         manifest = _read_object(manifest_path)
         lease = _read_object(lease_path) if lease_path is not None else None
         result = assess_training_run_lease(manifest, lease, now=now).as_dict()
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         print(json.dumps({"contract_valid": False, "error": str(exc)}, sort_keys=True))
         return 2
 
