@@ -235,7 +235,15 @@ def _verify_split_application(
         raise TokenizerDecisionError(
             "split application does not bind canonical split spec authority"
         )
-    if application.get("claim_boundary") != _ZERO_CREDIT_BOUNDARY:
+    boundary = application.get("claim_boundary")
+    if (
+        type(boundary) is not dict
+        or set(boundary) != set(_ZERO_CREDIT_BOUNDARY)
+        or any(
+            type(boundary[key]) is not type(expected) or boundary[key] != expected
+            for key, expected in _ZERO_CREDIT_BOUNDARY.items()
+        )
+    ):
         raise TokenizerDecisionError("split application truth boundary widened")
     accounting = {
         "selected_record_count": "record_count",
@@ -407,7 +415,8 @@ def verify_byte_baseline_decision(
         "encoding": tokenizer.encoding,
     }
     for key, expected in expected_tokenizer.items():
-        if report.get(key) != expected:
+        observed = report.get(key)
+        if type(observed) is not type(expected) or observed != expected:
             raise TokenizerDecisionError(f"report {key} drift")
     if report.get("tokenizer_fit_executed") is not False:
         raise TokenizerDecisionError("byte-baseline decision cannot claim tokenizer fitting")
@@ -416,7 +425,7 @@ def verify_byte_baseline_decision(
     if report.get("compute_authorized_by_this_report") is not False:
         raise TokenizerDecisionError("tokenizer decision cannot authorize compute")
     exposure = report.get("authorized_optimized_target_exposure")
-    if isinstance(exposure, bool) or exposure != 0:
+    if type(exposure) is not int or exposure != 0:
         raise TokenizerDecisionError("tokenizer decision cannot authorize exposure")
 
     supplied_identity = _require_sha256(
