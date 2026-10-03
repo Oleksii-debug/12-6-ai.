@@ -46,6 +46,7 @@ def _configure(
         (b'{"id":Infinity}', "nonstandard JSON constant"),
         (b'{"id":1e400}', "nonfinite JSON number"),
         (b'{"id":1e-9999}', "underflowed to zero"),
+        (b'{"id":' + b"9" * 65 + b"}", "digit limit"),
         (b'{"id":"\\ud800"}', "invalid Unicode"),
         (b'{"id":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}", "strict JSON"),
         (b"x" * (cli.MAX_AUTHORITY_JSON_BYTES + 1), "byte limit"),

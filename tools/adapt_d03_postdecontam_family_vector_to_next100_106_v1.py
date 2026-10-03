@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import tempfile
 from pathlib import Path
@@ -11,7 +12,6 @@ from typing import BinaryIO
 
 from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
 from twelve_six.data.postdecontam_next100_adapter_v1 import adapt_family_vector_to_next100_106
-from twelve_six.data.postmaterialization_balance_projection_v1 import load_strict_json_object
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -31,6 +31,60 @@ MAX_AUTHORITY_JSON_DEPTH = 64
 MAX_AUTHORITY_JSON_NODES = 10_000
 
 
+MAX_AUTHORITY_INT_DIGITS = 64
+
+
+def _strict_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ProjectionError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _strict_constant(value: str) -> object:
+    raise ProjectionError(f"nonstandard JSON constant is forbidden: {value}")
+
+
+def _strict_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ProjectionError(f"nonfinite JSON number is forbidden: {value}")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ProjectionError("nonzero JSON number underflowed to zero")
+    return parsed
+
+
+def _strict_int(value: str) -> int:
+    if len(value.lstrip("-")) > MAX_AUTHORITY_INT_DIGITS:
+        raise ProjectionError("adapter authority JSON integer exceeds digit limit")
+    return int(value)
+
+
+def _load_strict_object(raw: bytes, *, label: str) -> dict[str, object]:
+    try:
+        decoded = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ProjectionError(f"{label} is not strict UTF-8") from exc
+    try:
+        document = json.loads(
+            decoded,
+            object_pairs_hook=_strict_pairs,
+            parse_constant=_strict_constant,
+            parse_float=_strict_float,
+            parse_int=_strict_int,
+        )
+    except ProjectionError:
+        raise
+    except (ValueError, RecursionError, OverflowError) as exc:
+        raise ProjectionError(f"{label} is not strict JSON") from exc
+    if not isinstance(document, dict):
+        raise ProjectionError(f"{label} must contain a top-level JSON object")
+    return document
+
+
 def _load_authority_json(path: Path) -> dict[str, object]:
     """Read a bounded, unambiguous source before verifying its semantic identity."""
     try:
@@ -41,7 +95,7 @@ def _load_authority_json(path: Path) -> dict[str, object]:
     if len(raw) > MAX_AUTHORITY_JSON_BYTES:
         raise ProjectionError("adapter authority JSON exceeds byte limit")
 
-    value = load_strict_json_object(raw, label=f"adapter authority {path}")
+    value = _load_strict_object(raw, label=f"adapter authority {path}")
     pending: list[tuple[object, int]] = [(value, 0)]
     nodes = 0
     while pending:
