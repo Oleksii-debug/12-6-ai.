@@ -12,7 +12,9 @@ import tools.adapt_d03_postdecontam_family_vector_to_next100_106_v1 as cli
 from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
 
 
-def _configure(monkeypatch: pytest.MonkeyPatch, vector: Path, authority: Path, output: Path) -> None:
+def _configure(
+    monkeypatch: pytest.MonkeyPatch, vector: Path, authority: Path, output: Path,
+) -> None:
     args = SimpleNamespace(
         family_vector=vector,
         expected_family_vector_identity_sha256="a" * 64,
