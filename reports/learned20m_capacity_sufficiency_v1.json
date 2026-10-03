@@ -1,14 +1,14 @@
 {
   "schema_version": "12-6.learned20m-capacity-sufficiency.v3",
-  "report_id": "LEARNED20M-CAPACITY-SUFFICIENCY-20261003-SWARM2537-V3",
-  "source_main_sha": "a1bc7430022d174d27ff57213212a0ec5cc7ed1e",
-  "claim_issue": 2537,
+  "report_id": "LEARNED20M-CAPACITY-SUFFICIENCY-20261003-SWARM2560-MAIN903BBD64-V3",
+  "source_main_sha": "903bbd642068cf00eab0f864a739b7f7e1d280ea",
+  "claim_issue": 2560,
   "control_issues": [
     548,
     723,
     2011,
     2021,
-    2537
+    2560
   ],
   "scientific_truth": {
     "current_retained_corpus_launch_authoritative": false,

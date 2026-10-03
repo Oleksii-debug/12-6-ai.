@@ -777,3 +777,138 @@ def test_dependency_authority_rejects_missing_indexed_core_binding(tmp_path: Pat
     with pytest.raises(carrier.RadaTwoCleanExecutionError, match="schema drift"):
         carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
 
+
+def _deep_json(nesting: str) -> bytes:
+    if nesting == "arrays":
+        raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    return raw.encode("utf-8")
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_strict_rada_authority_rejects_excessive_json_nesting(
+    nesting: str,
+) -> None:
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError,
+        match="authority fixture JSON nesting limit exceeded",
+    ):
+        carrier._strict_json_bytes(_deep_json(nesting), "authority fixture")
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_generated_rada_json_rejects_excessive_nesting(
+    tmp_path: Path,
+    nesting: str,
+) -> None:
+    path = tmp_path / "generated.json"
+    raw = _deep_json(nesting)
+    path.write_bytes(raw)
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError,
+        match="generated JSON nesting limit exceeded",
+    ):
+        runner._read_json(path)
+    assert path.read_bytes() == raw
+
+
+def test_two_clean_deep_receipt_publishes_incomplete_without_survivor_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _runner_args(tmp_path)
+    malformed = _deep_json("arrays")
+    observed: list[str] = []
+
+    def damaged_worker(command: list[str], *, timeout_seconds: int) -> None:
+        assert timeout_seconds == 3600
+        out = Path(command[command.index("--output-dir") + 1])
+        out.mkdir()
+        (out / "run-receipt.json").write_bytes(malformed)
+        observed.append(out.name)
+
+    monkeypatch.setattr(runner, "_run_worker", damaged_worker)
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError,
+        match="generated JSON nesting limit exceeded",
+    ):
+        runner._run_two_clean(args)
+
+    incomplete, _ = runner._read_json(args.output_root / "incomplete.json")
+    assert observed == ["clean-a", "clean-b"]
+    assert incomplete["reason"] == "post_run_convergence_failed"
+    assert incomplete["completed_run_ids"] == observed
+    assert incomplete["authorized_optimized_target_exposure"] == 0
+    assert incomplete["training_executed"] is False
+    assert not (args.output_root / "two-clean-authority.json").exists()
+    assert (
+        args.output_root / "clean-a" / "run-receipt.json"
+    ).read_bytes() == malformed
+
+
+def test_two_clean_does_not_mask_unexpected_product_recursion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _runner_args(tmp_path)
+
+    def worker(command: list[str], *, timeout_seconds: int) -> None:
+        del command, timeout_seconds
+
+    def unexpected(*_args: object, **_kwargs: object) -> dict:
+        raise RecursionError("unexpected Product recursion")
+
+    monkeypatch.setattr(runner, "_run_worker", worker)
+    monkeypatch.setattr(runner, "_read_json", lambda _path: ({}, b"{}"))
+    monkeypatch.setattr(runner, "build_two_clean_authority", unexpected)
+    with pytest.raises(RecursionError, match="unexpected Product recursion"):
+        runner._run_two_clean(args)
+    assert not (args.output_root / "two-clean-authority.json").exists()
+
+@pytest.mark.parametrize("failure", ("wrong_digest", "deep_authority"))
+def test_invalid_rada_authority_does_not_orphan_output_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    args = _runner_args(tmp_path)
+    original_bytes = args.dependency_authority.read_bytes()
+    original_digest = args.expected_dependency_authority_sha256
+    if failure == "wrong_digest":
+        args.expected_dependency_authority_sha256 = "0" * 64
+        expected_error = "raw SHA-256 drift"
+    else:
+        malformed = _deep_json("objects")
+        args.dependency_authority.write_bytes(malformed)
+        args.expected_dependency_authority_sha256 = hashlib.sha256(
+            malformed
+        ).hexdigest()
+        expected_error = "JSON nesting limit exceeded"
+    rejected_bytes = args.dependency_authority.read_bytes()
+
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError, match=expected_error
+    ):
+        runner._run_two_clean(args)
+
+    assert not args.output_root.exists()
+    assert args.dependency_authority.read_bytes() == rejected_bytes
+
+    # A corrected authority can retry with precisely the same output path.
+    args.dependency_authority.write_bytes(original_bytes)
+    args.expected_dependency_authority_sha256 = original_digest
+
+    def timeout(_command: list[str], *, timeout_seconds: int) -> None:
+        raise subprocess.TimeoutExpired(cmd="worker", timeout=timeout_seconds)
+
+    monkeypatch.setattr(runner, "_run_worker", timeout)
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError, match="authority deadline"
+    ):
+        runner._run_two_clean(args)
+
+    incomplete, _ = runner._read_json(args.output_root / "incomplete.json")
+    assert incomplete["reason"] == "worker_timeout"
+    assert incomplete["authorized_optimized_target_exposure"] == 0
+    assert not (args.output_root / "two-clean-authority.json").exists()
