@@ -136,9 +136,9 @@ def _verify_historical_program(repo_root: Path, spec: HistoricalMaterializerSpec
 
 
 def _extract_commit(repo_root: Path, commit: str, destination: Path) -> None:
-    if destination.exists():
-        shutil.rmtree(destination)
-    destination.mkdir(parents=True)
+    if destination.exists() or destination.is_symlink():
+        raise RematerializationError(f"refusing to overwrite historical checkout: {destination}")
+    destination.mkdir(parents=True, exist_ok=False)
     archive_raw = _git(repo_root, "archive", "--format=tar", commit)
     root = destination.resolve()
     with tarfile.open(fileobj=io.BytesIO(archive_raw), mode="r:") as archive:
@@ -313,6 +313,16 @@ def _verify_outer_output_targets(args: argparse.Namespace) -> None:
         if target in resolved:
             raise RematerializationError("outer output targets must be distinct")
         resolved.add(target)
+
+
+def _verify_workspace_targets(workspace: Path) -> None:
+    """Fail before acquisition if a prior attempt or unrelated evidence is present."""
+    if workspace.is_symlink() or (workspace.exists() and not workspace.is_dir()):
+        raise RematerializationError("workspace must be a real directory or absent")
+    for name in ("historical", "pass-1", "pass-2"):
+        target = workspace / name
+        if target.exists() or target.is_symlink():
+            raise RematerializationError(f"refusing to reuse workspace evidence: {target}")
 
 
 def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
@@ -846,6 +856,7 @@ def main() -> int:
     args = _parser().parse_args()
     try:
         _verify_outer_output_targets(args)
+        _verify_workspace_targets(args.workspace)
         _require_pyarrow()
         wrapper_authority = _verify_wrapper_checkout(ROOT)
         clean_execution_authority = _verify_current_clean_dependencies()
@@ -859,9 +870,7 @@ def main() -> int:
         results: list[dict[str, Any]] = []
         for pass_no in (1, 2):
             pass_root = workspace / f"pass-{pass_no}"
-            if pass_root.exists():
-                shutil.rmtree(pass_root)
-            pass_root.mkdir(parents=True)
+            pass_root.mkdir(parents=True, exist_ok=False)
             try:
                 arxiv_candidate = _run_historical_materializer(
                     spec=ARXIV,
