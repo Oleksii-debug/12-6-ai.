@@ -136,10 +136,19 @@ def _require_finite_json_value(
     )
 
 
+MAX_INPUT_BYTES = 1_048_576
+MAX_JSON_NODES = 10_000
+
+
 def _load_mapping(path: Path) -> dict[str, Any]:
+    # These two reservation authorities are small. Refuse resource-heavy
+    # untrusted input before JSON decoding or any scientific validation.
+    with path.open("rb") as source:
+        raw = source.read(MAX_INPUT_BYTES + 1)
+    _require(len(raw) <= MAX_INPUT_BYTES, "EVAL647 authority exceeds byte limit")
     try:
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             object_pairs_hook=_reject_duplicate_pairs,
             parse_constant=_reject_constant,
             parse_float=_parse_finite_float,
@@ -147,6 +156,17 @@ def _load_mapping(path: Path) -> dict[str, Any]:
     except RecursionError as exc:
         raise ValueError("JSON nesting exceeds decoder limit") from exc
     _require(type(value) is dict, f"{path} must contain a JSON object")
+
+    pending: list[Any] = [value]
+    nodes = 0
+    while pending:
+        current = pending.pop()
+        nodes += 1
+        _require(nodes <= MAX_JSON_NODES, "EVAL647 authority exceeds node limit")
+        if type(current) is dict:
+            pending.extend(current.values())
+        elif type(current) is list:
+            pending.extend(current)
     _require_finite_json_value(value, label=str(path))
     return value
 
