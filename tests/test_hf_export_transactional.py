@@ -1,7 +1,9 @@
 import json
 import os
+import stat
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -553,3 +555,18 @@ def test_hook_cannot_make_exporter_delete_substituted_private_root(
         ).read_text(encoding="utf-8") == "preserve unrelated user evidence"
     assert not output.exists()
     assert not list(tmp_path.glob(".hf.staging-*"))
+
+
+
+def test_private_root_identity_requires_an_available_inode():
+    class UnknownInodeRoot:
+        def lstat(self):
+            return SimpleNamespace(
+                st_mode=stat.S_IFDIR | 0o700, st_dev=1, st_ino=0
+            )
+
+        def __str__(self):
+            return "unknown-inode-test-root"
+
+    with pytest.raises(CheckpointIntegrityError, match="inode identity unavailable"):
+        hf_export._temporary_directory_identity(UnknownInodeRoot())
