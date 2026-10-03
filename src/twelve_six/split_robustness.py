@@ -33,9 +33,19 @@ class SplitRobustnessError(ValueError):
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
-    return (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
-    ).encode("utf-8")
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        return (encoded + "\n").encode("utf-8")
+    except (TypeError, ValueError, OverflowError, RecursionError, UnicodeError) as exc:
+        raise SplitRobustnessError(
+            "split authority JSON must be finite and serializable"
+        ) from exc
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -392,11 +402,7 @@ def verify_split_family_manifest(
     _require_sha256(claimed_family, "split_family_identity_sha256")
 
     validation_fraction = manifest.get("validation_fraction_requested")
-    if (
-        isinstance(validation_fraction, bool)
-        or not isinstance(validation_fraction, (int, float))
-        or not math.isfinite(float(validation_fraction))
-    ):
+    if not _is_finite_real(validation_fraction):
         raise SplitRobustnessError("validation_fraction_requested must be a finite number")
     algorithm = _require_text(manifest.get("algorithm"), "algorithm")
     spec = SplitFamilySpec(
@@ -458,24 +464,53 @@ def assert_checkpoint_split_binding(
     return family
 
 
+def _is_finite_real(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def _require_finite_metric_sequence(
+    values: Sequence[float], *, field: str
+) -> None:
+    if len(values) < 2:
+        raise SplitRobustnessError(f"{field} must contain at least two metrics")
+    for index, value in enumerate(values):
+        if not _is_finite_real(value):
+            raise SplitRobustnessError(
+                f"{field}[{index}] must be a finite real number"
+            )
+
+
 def split_sensitivity(values: Sequence[float]) -> dict[str, float]:
     """Summarize split sensitivity without selecting a favorable partition."""
 
-    if len(values) < 2 or any(not math.isfinite(value) for value in values):
-        raise SplitRobustnessError("at least two finite split metrics are required")
-    mean = statistics.fmean(values)
-    stdev = statistics.pstdev(values)
+    _require_finite_metric_sequence(values, field="split metrics")
+    try:
+        mean = statistics.fmean(values)
+        stdev = statistics.pstdev(values)
+    except (OverflowError, ValueError) as exc:
+        raise SplitRobustnessError("split sensitivity statistics overflowed") from exc
     minimum = min(values)
     maximum = max(values)
-    return {
+    metric_range = maximum - minimum
+    summary = {
         "mean": mean,
         "population_stdev": stdev,
         "min": minimum,
         "max": maximum,
-        "range": maximum - minimum,
-        "relative_range": (maximum - minimum) / mean if mean else 0.0,
+        "range": metric_range,
+        "relative_range": metric_range / mean if mean else 0.0,
         "max_abs_deviation_from_mean": max(abs(value - mean) for value in values),
     }
+    if any(not _is_finite_real(value) for value in summary.values()):
+        raise SplitRobustnessError(
+            "split sensitivity derived metric must be a finite real number"
+        )
+    return summary
 
 
 def pairwise_ranking_stability(
@@ -489,6 +524,10 @@ def pairwise_ranking_stability(
     lengths = {len(candidate_metrics[name]) for name in names}
     if len(lengths) != 1 or next(iter(lengths)) < 2:
         raise SplitRobustnessError("candidate metric arrays must have equal length >= 2")
+    for name in names:
+        _require_finite_metric_sequence(
+            candidate_metrics[name], field=f"candidate_metrics[{name!r}]"
+        )
     variant_count = next(iter(lengths))
     pairs = []
     for left_index, left in enumerate(names):
