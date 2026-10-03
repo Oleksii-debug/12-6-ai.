@@ -1407,6 +1407,30 @@ def adapt_postmaterialization_family_vector_to_next100_106(
     return result
 
 
+_BALANCE_RESULT_KEYS = {
+    "schema_version",
+    "policy_identity_sha256",
+    "dedup_authority",
+    "input_totals",
+    "family_minimum",
+    "maximum_feasible_total_source_bytes",
+    "maximum_feasible_stratum_bytes",
+    "target_total_source_bytes",
+    "target_stratum_bytes",
+    "raw_capacity_by_stratum",
+    "raw_gap_to_target_by_stratum",
+    "deterministic_maximum_allocation",
+    "status",
+    "next_step",
+    "claim_boundary",
+    "result_identity_sha256",
+}
+_BALANCE_RESULT_NEXT_STEP = (
+    "IMMUTABLE_CORPUS_MATERIALIZATION_STILL_REQUIRES_QUALITY_PRIVACY_"
+    "DECONTAMINATION_SPLIT_PACK_AND_TWO_CLEAN_BUILD_GATES"
+)
+
+
 def verify_balance_result(
     result: Mapping[str, Any],
     *,
@@ -1414,6 +1438,10 @@ def verify_balance_result(
 ) -> str:
     if result.get("schema_version") != BALANCE_RESULT_SCHEMA:
         raise ProjectionError("unsupported NEXT100-106 balance result schema")
+    if set(result) != _BALANCE_RESULT_KEYS:
+        raise ProjectionError("NEXT100-106 result fields are not closed-world")
+    if result.get("next_step") != _BALANCE_RESULT_NEXT_STEP:
+        raise ProjectionError("NEXT100-106 result cannot promote downstream gates")
     claimed = _require_sha256(
         result.get("result_identity_sha256"), "result_identity_sha256"
     )
