@@ -472,3 +472,55 @@ def test_resealed_evidence_rejects_injected_contradictory_fields(
     _resign_evidence(evidence, monkeypatch)
     with pytest.raises(ValueError, match=message + " fields are not closed-world"):
         validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+@pytest.mark.parametrize(
+    ("section", "replacement", "message"),
+    [
+        ("completed_gate", "ALL_GATES_COMPLETE", "completed-gate mismatch"),
+        ("reservation_authority_issue", False, "reservation authority issue drift"),
+    ],
+)
+def test_resealed_evidence_rejects_false_completion_and_authority_issue(
+    section: str, replacement: object, message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence[section] = replacement
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match=message):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+def test_resealed_evidence_rejects_duplicate_source_family(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence["objects"][1] = copy.deepcopy(evidence["objects"][0])
+    payload = {
+        "reservation_effective_at_utc": _manifest()["reservation"]["effective_at_utc"],
+        "objects": evidence["objects"],
+    }
+    evidence["object_set_identity_sha256"] = validator.hashlib.sha256(
+        validator._canonical_bytes(payload)
+    ).hexdigest()
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match="duplicate evidence repository"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+def test_resealed_evidence_rejects_reserved_object_purpose_promotion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence["objects"][0]["evaluation_use"] = "final_test"
+    payload = {
+        "reservation_effective_at_utc": _manifest()["reservation"]["effective_at_utc"],
+        "objects": evidence["objects"],
+    }
+    evidence["object_set_identity_sha256"] = validator.hashlib.sha256(
+        validator._canonical_bytes(payload)
+    ).hexdigest()
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match="evidence purpose drift"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
