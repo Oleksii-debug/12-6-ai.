@@ -252,7 +252,22 @@ def _verify_split_application(
         "selected_stratum_source_bytes": "stratum_source_bytes",
     }
     for application_field, totals_field in accounting.items():
-        if application.get(application_field) != totals.get(totals_field):
+        observed = application.get(application_field)
+        expected = totals.get(totals_field)
+        if type(expected) is int:
+            valid = type(observed) is int and observed == expected
+        elif isinstance(expected, Mapping):
+            valid = (
+                type(observed) is dict
+                and set(observed) == set(expected)
+                and all(
+                    type(observed[key]) is int and observed[key] == expected[key]
+                    for key in expected
+                )
+            )
+        else:
+            valid = False
+        if not valid:
             raise TokenizerDecisionError(f"split application {application_field} drift")
     return claimed_application
 
