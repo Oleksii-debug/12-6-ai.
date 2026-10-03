@@ -581,3 +581,88 @@ def test_short_staged_report_write_never_publishes(
         cli._write(output, {"schema": "test-only", "status": "zero-credit"})
     assert not output.exists()
     assert not list(tmp_path.glob(".report.json.*.tmp"))
+
+
+@pytest.mark.parametrize("bad_target", ["selection", "application", "report"])
+@pytest.mark.parametrize("failure", ["oversize", "invalid_utf8", "surrogate"])
+def test_bounded_external_authorities_never_publish(
+    tmp_path: Path,
+    bad_target: str,
+    failure: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    paths = {key: tmp_path / f"{key} with кирилиця.json" for key in (
+        "selection", "application", "report"
+    )}
+    for path in paths.values():
+        path.write_text("{}", encoding="utf-8")
+    invalid_bytes = {
+        "oversize": b"{}" + b" " * cli.MAX_INPUT_BYTES,
+        "invalid_utf8": b'{"value":"\xff"}',
+        "surrogate": br'{"value":"\ud800"}',
+    }[failure]
+    paths[bad_target].write_bytes(invalid_bytes)
+    output = tmp_path / "never publish.json"
+    argv = [
+        str(TOOL), "--balanced-selection", str(paths["selection"]),
+        "--split-application", str(paths["application"]),
+        *HASH_ARGS, "--output", str(output),
+    ]
+    if bad_target == "report":
+        argv.extend(["--verify-report", str(paths["report"])])
+    monkeypatch.setattr(sys, "argv", argv)
+    assert cli.main() == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    lines = captured.out.splitlines()
+    assert len(lines) == 1
+    error = json.loads(lines[0])
+    assert error["contract_valid"] is False
+    assert not output.exists()
+    assert paths[bad_target].read_bytes() == invalid_bytes
+
+
+def test_load_accepts_exact_input_byte_limit(tmp_path: Path) -> None:
+    cli = _module()
+    path = tmp_path / "limit.json"
+    prefix = b'{"ignored":0}'
+    path.write_bytes(prefix + b" " * (cli.MAX_INPUT_BYTES - len(prefix)))
+    assert cli._load(path) == {"ignored": 0}
+
+
+@pytest.mark.parametrize("kind", ["depth", "nodes"])
+def test_load_rejects_bounded_structure(tmp_path: Path, kind: str) -> None:
+    cli = _module()
+    path = tmp_path / "structure.json"
+    raw = (
+        '{"root":' + "[" * (cli.MAX_JSON_DEPTH + 1) +
+        "0" + "]" * (cli.MAX_JSON_DEPTH + 1) + "}"
+        if kind == "depth"
+        else '{"root":[' + ",".join(["0"] * (cli.MAX_JSON_NODES + 1)) + "]}"
+    )
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match="exceeds JSON structure limit"):
+        cli._load(path)
+
+
+@pytest.mark.parametrize("location", ["key", "value"])
+def test_load_rejects_decoded_unpaired_surrogates(
+    tmp_path: Path, location: str,
+) -> None:
+    cli = _module()
+    path = tmp_path / "surrogate.json"
+    path.write_bytes(
+        br'{"\ud800":"safe"}' if location == "key" else br'{"safe":"\ud800"}'
+    )
+    with pytest.raises(UnicodeError):
+        cli._load(path)
+
+
+def test_load_rejects_input_one_byte_over_limit(tmp_path: Path) -> None:
+    cli = _module()
+    path = tmp_path / "oversize.json"
+    path.write_bytes(b"{}" + b" " * (cli.MAX_INPUT_BYTES - 1))
+    with pytest.raises(ValueError, match="exceeds byte limit"):
+        cli._load(path)
