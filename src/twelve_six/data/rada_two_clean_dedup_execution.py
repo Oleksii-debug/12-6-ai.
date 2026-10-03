@@ -170,6 +170,8 @@ def _strict_json_bytes(raw: bytes, label: str) -> dict[str, Any]:
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RadaTwoCleanExecutionError(f"{label} is not strict UTF-8 JSON") from exc
+    except RecursionError as exc:
+        raise RadaTwoCleanExecutionError(f"{label} JSON nesting limit exceeded") from exc
     _require(type(value) is dict, f"{label} root must be an exact object")
     return value
 
