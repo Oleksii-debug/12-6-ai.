@@ -82,3 +82,69 @@ def test_cli_reports_huge_cost_as_one_line_json_without_traceback(
     assert result["launch_authorized"] is False
     assert result["training_authorized"] is False
     assert result["truth_boundary"] == operator._TRUTH_BOUNDARY
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(
+            ('{"nested":' + "[" * 80 + "0" + "]" * 80 + "}").encode(),
+            id="excessive-structure-depth",
+        ),
+        pytest.param(
+            ('{"nested":' + "[" * 10000 + "0" + "]" * 10000 + "}").encode(),
+            id="parser-recursion",
+        ),
+        pytest.param(
+            (" " * (operator.MAX_OPERATOR_JSON_BYTES + 1)).encode(),
+            id="oversized-input",
+        ),
+        pytest.param(r'{"nested":"\ud800"}'.encode(), id="unpaired-surrogate"),
+        pytest.param(b'{"nested":"\xff"}', id="invalid-utf8"),
+    ],
+)
+def test_profile_packet_reader_rejects_untrusted_json_limits(
+    tmp_path: Path, raw: bytes,
+) -> None:
+    path = tmp_path / "неправильний файл.json"
+    path.write_bytes(raw)
+    with pytest.raises(operator.OperatorPreflightError, match="invalid_or_unreadable_json"):
+        operator._read_json_file(path)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(
+            ('{"nested":' + "[" * 80 + "0" + "]" * 80 + "}").encode(),
+            id="excessive-structure-depth",
+        ),
+        pytest.param(
+            ('{"nested":' + "[" * 10000 + "0" + "]" * 10000 + "}").encode(),
+            id="parser-recursion",
+        ),
+        pytest.param(
+            (" " * (operator.MAX_OPERATOR_JSON_BYTES + 1)).encode(),
+            id="oversized-marker",
+        ),
+        pytest.param(r'{"marker_sha256":"0","nested":"\ud800"}'.encode(), id="surrogate-marker"),
+        pytest.param(b'{"marker_sha256":"0","nested":"\xff"}', id="invalid-utf8"),
+    ],
+)
+def test_safe_stop_status_fails_closed_on_malformed_marker(
+    tmp_path: Path, raw: bytes,
+) -> None:
+    state = tmp_path / "стан із пробілами"
+    state.mkdir()
+    (state / "STOP_REQUEST.json").write_bytes(raw)
+
+    assert operator.read_stop_status(
+        state,
+        profile_sha256="a" * 64,
+        packet_sha256="b" * 64,
+        target="20m",
+    ) == {
+        "status": "INVALID",
+        "marker": None,
+        "errors": ["safe_stop_marker_invalid_json"],
+    }
