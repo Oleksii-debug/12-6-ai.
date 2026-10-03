@@ -201,3 +201,5 @@ def test_real_current_clean_vector_reproduces_committed_balance(
     assert run.returncode == 0
     assert run.stderr == ""
     assert json.loads(output.read_text(encoding="utf-8")) == result
+    assert output.read_bytes().endswith(b"\n")
+    assert b"\r\n" not in output.read_bytes()
