@@ -202,7 +202,9 @@ def test_materialize_destination_race_fails_without_clobber(
         VALIDATOR.materialize(ROOT, output)
 
     assert (output / "other-owner.txt").read_text(encoding="utf-8") == "preserve me"
-    assert not list(tmp_path.glob(".racing output.staging-*"))
+    retained = list(tmp_path.glob(".racing output.staging-*"))
+    assert len(retained) == 1
+    assert (retained[0] / VALIDATOR.MANIFEST).is_file()
 
 
 def test_materialize_failed_stage_verification_never_publishes(
@@ -222,7 +224,9 @@ def test_materialize_failed_stage_verification_never_publishes(
         VALIDATOR.materialize(ROOT, output)
 
     assert not output.exists()
-    assert not list(tmp_path.glob(".unpublished.staging-*"))
+    retained = list(tmp_path.glob(".unpublished.staging-*"))
+    assert len(retained) == 1
+    assert (retained[0] / VALIDATOR.MANIFEST).is_file()
 
 
 def test_materialize_existing_target_cli_failure_is_one_json_line(
@@ -346,48 +350,71 @@ def test_verify_cli_rejects_oversized_json_integer_as_one_error(
     assert "JSON integer exceeds interpreter limit" in failure["error"]
 
 
-def test_private_cleanup_rejects_staging_path_swap_and_preserves_other_data(
+def test_failed_materialize_never_deletes_swapped_stage_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     output = tmp_path / "unpublished"
     unrelated = tmp_path / "user data"
     unrelated.mkdir()
-    (unrelated / "keep.txt").write_text("preserve me", encoding="utf-8")
+    marker = unrelated / "keep.txt"
+    marker.write_text("preserve me", encoding="utf-8")
     original_verify = VALIDATOR.verify
-    original_check = VALIDATOR._assert_private_entry
-    race = {"armed": False, "swapped": False}
 
-    def force_staging_failure(root: Path) -> dict:
+    def swap_and_fail(root: Path) -> dict:
         if root != ROOT:
-            race["armed"] = True
-            raise VALIDATOR.Eval303ValidationError("staging verification failed")
+            root.rename(tmp_path / "original stage retained")
+            unrelated.rename(root)
+            raise VALIDATOR.Eval303ValidationError("stage verification failed")
         return original_verify(root)
 
-    def swap_after_first_check(path: Path, identity, *, directory: bool) -> None:
-        original_check(path, identity, directory=directory)
-        if race["armed"] and not race["swapped"] and path.name.startswith(
-            ".unpublished.staging-"
-        ):
-            path.rename(tmp_path / "original stage retained")
-            unrelated.rename(path)
-            race["swapped"] = True
-
-    monkeypatch.setattr(VALIDATOR, "verify", force_staging_failure)
-    monkeypatch.setattr(VALIDATOR, "_assert_private_entry", swap_after_first_check)
+    monkeypatch.setattr(VALIDATOR, "verify", swap_and_fail)
     with pytest.raises(
-        VALIDATOR.Eval303ValidationError,
-        match="private materialization staging path changed",
+        VALIDATOR.Eval303ValidationError, match="stage verification failed"
     ):
         VALIDATOR.materialize(ROOT, output)
-    assert race["swapped"]
     assert not output.exists()
-    candidates = list(tmp_path.glob(".unpublished.staging-*"))
-    assert len(candidates) == 1
-    assert (candidates[0] / "keep.txt").read_text(encoding="utf-8") == "preserve me"
-    assert (tmp_path / "original stage retained").is_dir()
+    swapped = list(tmp_path.glob(".unpublished.staging-*"))
+    assert len(swapped) == 1
+    assert (swapped[0] / "keep.txt").read_text(encoding="utf-8") == "preserve me"
+    assert (tmp_path / "original stage retained" / VALIDATOR.MANIFEST).is_file()
 
 
-def test_private_cleanup_never_deletes_unexpected_file(
+def test_failed_materialize_never_unlinks_substituted_user_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "unpublished"
+    user_file = tmp_path / "outside marker.txt"
+    user_file.write_text("preserve me", encoding="utf-8")
+    original_verify = VALIDATOR.verify
+
+    def replace_file_and_fail(root: Path) -> dict:
+        if root != ROOT:
+            private = root / VALIDATOR.MANIFEST
+            private.rename(root / "displaced private manifest")
+            user_file.rename(private)
+            raise VALIDATOR.Eval303ValidationError("stage verification failed")
+        return original_verify(root)
+
+    monkeypatch.setattr(VALIDATOR, "verify", replace_file_and_fail)
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError, match="stage verification failed"
+    ):
+        VALIDATOR.materialize(ROOT, output)
+    assert not output.exists()
+    retained = list(tmp_path.glob(".unpublished.staging-*"))
+    assert len(retained) == 1
+    assert (retained[0] / VALIDATOR.MANIFEST).read_text(
+        encoding="utf-8"
+    ) == "preserve me"
+    assert (retained[0] / "displaced private manifest").is_file()
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError, match="previous private stage exists"
+    ):
+        VALIDATOR.materialize(ROOT, output)
+    assert len(list(tmp_path.glob(".unpublished.staging-*"))) == 1
+
+
+def test_failed_materialize_preserves_unexpected_stage_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     output = tmp_path / "unexpected"
@@ -403,11 +430,14 @@ def test_private_cleanup_never_deletes_unexpected_file(
         return original_verify(root)
 
     monkeypatch.setattr(VALIDATOR, "verify", inject_unexpected_entry)
-    with pytest.raises(OSError):
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError, match="staging verification failed"
+    ):
         VALIDATOR.materialize(ROOT, output)
     assert not output.exists()
     assert len(injected) == 1
     assert injected[0].read_text(encoding="utf-8") == "preserve me"
+
 
 def _deep_authority_json(nesting: str) -> str:
     if nesting == "arrays":
