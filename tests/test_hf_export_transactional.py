@@ -511,7 +511,6 @@ def test_verifier_rejects_duplicate_config_key_before_hash_checks(tmp_path: Path
         verify_hf_directory(output)
 
 
-
 @pytest.mark.parametrize("root_name", ["reference", "candidate"])
 @pytest.mark.parametrize("replace_root", [False, True])
 def test_hook_cannot_make_exporter_delete_substituted_private_root(
