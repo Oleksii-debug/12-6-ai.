@@ -567,6 +567,10 @@ def test_v10_publication_create_only_two_outputs(tmp_path: Path) -> None:
         "report_sha256": "a" * 64,
     }
     assert json.loads(survivors.read_text(encoding="utf-8")) == {"ok": True}
+    assert report.read_bytes().endswith(b"\n")
+    assert survivors.read_bytes().endswith(b"\n")
+    assert b"\r\n" not in report.read_bytes()
+    assert b"\r\n" not in survivors.read_bytes()
     with pytest.raises(v10.ExpandedDedupV10Error, match="refusing to overwrite"):
         runner.publish_outputs(report, survivors, {"another": 1}, {"another": 2})
 

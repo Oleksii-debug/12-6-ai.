@@ -90,7 +90,8 @@ def _remove_if_owned(path: Path, identity: tuple[int, int]) -> None:
 def write_json(path: Path, payload: bytes) -> tuple[int, int]:
     """Create one durable file exclusively, without replacing existing output."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    fd = os.open(path, flags, 0o600)
     created = os.fstat(fd)
     identity = (created.st_dev, created.st_ino)
     try:
