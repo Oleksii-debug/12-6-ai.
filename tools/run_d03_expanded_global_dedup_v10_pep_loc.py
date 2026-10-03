@@ -33,6 +33,7 @@ EXPECTED_V7_HEAD = "d3333ec1b4a508df232a5aefccd6686adda745fb"
 V3_MODULE = "twelve_six.data.cross_source_capacity_audit_v3"
 V1_MODULE = "twelve_six.data.cross_source_capacity_audit"
 DATA232_MODULE = "twelve_six.data._data232_decontamination_matching"
+MAX_INPUT_BYTES = 64 * 1024 * 1024
 
 
 def _require(condition: bool, message: str) -> None:
@@ -43,7 +44,15 @@ def _require(condition: bool, message: str) -> None:
 def read_exact_bytes(path: Path, *, label: str) -> bytes:
     if not path.is_file() or path.is_symlink():
         raise ExpandedDedupV10Error(f"{label} must be a regular file: {path}")
-    raw = path.read_bytes()
+    with path.open("rb") as source:
+        metadata = os.fstat(source.fileno())
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ExpandedDedupV10Error(f"{label} must be a regular file: {path}")
+        if metadata.st_size > MAX_INPUT_BYTES:
+            raise ExpandedDedupV10Error(f"{label} exceeds bounded input limit")
+        raw = source.read(MAX_INPUT_BYTES + 1)
+    if len(raw) > MAX_INPUT_BYTES:
+        raise ExpandedDedupV10Error(f"{label} exceeds bounded input limit")
     if not raw:
         raise ExpandedDedupV10Error(f"{label} is empty: {path}")
     return raw

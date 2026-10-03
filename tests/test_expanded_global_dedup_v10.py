@@ -645,3 +645,43 @@ def test_v10_publication_never_unlinks_foreign_replacement_on_failure(
         runner.publish_outputs(report, survivors, {"a": 1}, {"b": 2})
     assert report.read_bytes() == b"foreign replacement remains"
     assert not survivors.exists()
+
+
+def test_v10_input_reader_rejects_oversized_file_before_loading(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    runner = _load_v10_runner()
+    monkeypatch.setattr(runner, "MAX_INPUT_BYTES", 8)
+    oversized = tmp_path / "oversized.jsonl"
+    oversized.write_bytes(b"x" * 9)
+    with pytest.raises(v10.ExpandedDedupV10Error, match="bounded input limit"):
+        runner.read_exact_bytes(oversized, label="oversized input")
+
+
+def test_v10_input_reader_accepts_exact_limit_and_rejects_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    runner = _load_v10_runner()
+    monkeypatch.setattr(runner, "MAX_INPUT_BYTES", 8)
+    exact = tmp_path / "exact.bin"
+    exact.write_bytes(b"12345678")
+    assert runner.read_exact_bytes(exact, label="exact input") == b"12345678"
+    empty = tmp_path / "empty.bin"
+    empty.write_bytes(b"")
+    with pytest.raises(v10.ExpandedDedupV10Error, match="empty"):
+        runner.read_exact_bytes(empty, label="empty input")
+
+
+def test_v10_input_reader_rejects_symlink_before_loading(
+    tmp_path: Path,
+) -> None:
+    runner = _load_v10_runner()
+    real = tmp_path / "real.bin"
+    real.write_bytes(b"valid bytes")
+    link = tmp_path / "input.bin"
+    try:
+        link.symlink_to(real)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    with pytest.raises(v10.ExpandedDedupV10Error, match="regular file"):
+        runner.read_exact_bytes(link, label="symlink input")
