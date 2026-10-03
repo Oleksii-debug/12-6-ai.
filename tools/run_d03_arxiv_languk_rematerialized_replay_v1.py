@@ -446,6 +446,8 @@ def _publish_verified_outputs(
     staged: list[tuple[str, Path, Path, bytes]] = []
     published: list[tuple[str, Path, str]] = []
     intent_path = pass_root / "outer-publication-intent.json"
+    if any(path.resolve() == intent_path.resolve() for _, path, _ in outputs):
+        raise RematerializationError("outer output cannot alias publication intent")
     try:
         for label, path, raw in outputs:
             staged.append((label, path, _stage_new_bytes(path, raw, label=label), raw))
