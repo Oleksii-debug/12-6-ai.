@@ -4,6 +4,7 @@ import copy
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -13,6 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import tools.probe_d03_rada_bulk_source as probe_mod
 from tools.probe_d03_rada_bulk_source import (
     DEFAULT_CONFIG,
     ProbeError,
@@ -178,6 +180,90 @@ def test_rejects_path_traversal() -> None:
         inventory_archive(archive, _config())
 
 
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "docs//README.txt",
+        "docs/./README.txt",
+        "./docs/README.txt",
+        "docs///README.txt",
+    ],
+)
+def test_rejects_noncanonical_ignored_zip_path_aliases(unsafe_path: str) -> None:
+    archive = _archive(
+        {"d1.htm": b"a", "d2.htm": b"b", unsafe_path: b"ignored"}
+    )
+    with pytest.raises(ProbeError, match="unsafe archive path"):
+        observe_archive_inventory(archive, _config(min_entries=2))
+
+
+def test_safe_archive_name_allows_one_directory_trailing_slash() -> None:
+    assert probe_mod._safe_archive_name("docs/")
+    assert probe_mod._safe_archive_name(r"docs\README.txt")
+    assert not probe_mod._safe_archive_name("docs//")
+    assert not probe_mod._safe_archive_name("docs/./")
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "C:/zak/perv/text/d3.htm",
+        r"C:\zak\perv\text\d3.htm",
+        "C:d3.htm",
+        "docs:stream/d3.htm",
+    ],
+)
+def test_rejects_windows_drive_and_ads_zip_paths(unsafe_path: str) -> None:
+    archive = _archive(
+        {"d1.htm": b"a", "d2.htm": b"b", unsafe_path: b"unsafe"}
+    )
+    with pytest.raises(ProbeError, match="unsafe archive path"):
+        observe_archive_inventory(archive, _config(min_entries=2))
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "docs/CON",
+        "docs/aux.txt",
+        "docs/LPT1.txt",
+        "docs/COM¹",
+        "docs/report.",
+        "docs/report ",
+        "docs/question?.txt",
+        "docs/control\x01.txt",
+    ],
+)
+def test_rejects_windows_reserved_and_invalid_ignored_paths(
+    unsafe_path: str,
+) -> None:
+    assert not probe_mod._safe_archive_name(unsafe_path)
+    archive = _archive(
+        {"d1.htm": b"a", "d2.htm": b"b", unsafe_path: b"unsafe"}
+    )
+    with pytest.raises(ProbeError, match="unsafe archive path"):
+        observe_archive_inventory(archive, _config(min_entries=2))
+
+
+def test_rejects_casefold_aliases_in_ignored_zip_entries() -> None:
+    archive = _archive(
+        {
+            "d1.htm": b"a",
+            "d2.htm": b"b",
+            "docs/README.txt": b"first",
+            "docs/readme.txt": b"second",
+        }
+    )
+    with pytest.raises(ProbeError, match="case-folded ZIP path collision"):
+        observe_archive_inventory(archive, _config(min_entries=2))
+
+
+def test_portable_zip_names_still_accepted() -> None:
+    assert probe_mod._safe_archive_name("docs/")
+    assert probe_mod._safe_archive_name("docs/README.txt")
+    assert probe_mod._safe_archive_name("zak/perv/text/d100.htm")
+
+
 def test_rejects_too_few_canonical_entries() -> None:
     archive = _archive({"d1.htm": b"a", "readme.txt": b"x"})
     with pytest.raises(ProbeError, match="below minimum"):
@@ -242,3 +328,176 @@ def test_production_config_loads_under_exact_v1_authority() -> None:
 
     assert config["source"]["dataset_id"] == "laws-texts"
     assert config["training_authorized_bytes"] == 0
+
+
+def test_live_probe_can_retain_exact_safe_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = _archive({"d1.htm": b"a"})
+    config = _config(min_entries=1)
+    retained = tmp_path / "retained.zip"
+    report_path = tmp_path / "report.json"
+
+    monkeypatch.setattr(probe_mod, "_load_config", lambda _: config)
+    monkeypatch.setattr(
+        probe_mod,
+        "_download",
+        lambda _url, *, max_bytes: (archive, {"etag": "fixture"}),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "probe_d03_rada_bulk_source.py",
+            "--config",
+            str(tmp_path / "ignored.json"),
+            "--accept-current-upstream",
+            "--archive-output",
+            str(retained),
+            "--output",
+            str(report_path),
+        ],
+    )
+
+    probe_mod.main()
+
+    assert retained.read_bytes() == archive
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["archive"]["sha256"] == hashlib.sha256(archive).hexdigest()
+    assert report["gates"]["safe_zip_inventory"] == "PASS"
+    assert report["training_authorized_bytes"] == 0
+    assert report["corpus_admitted"] is False
+
+
+def test_archive_output_rejects_preexisting_local_archive_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_path = tmp_path / "input.zip"
+    archive_path.write_bytes(_archive({"d1.htm": b"a"}))
+    monkeypatch.setattr(probe_mod, "_load_config", lambda _: _config(min_entries=1))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "probe_d03_rada_bulk_source.py",
+            "--archive",
+            str(archive_path),
+            "--archive-output",
+            str(tmp_path / "retained.zip"),
+            "--accept-current-upstream",
+        ],
+    )
+
+    with pytest.raises(ProbeError, match="only valid for a live source acquisition"):
+        probe_mod.main()
+
+
+
+@pytest.mark.parametrize("variant", ["top", "nested", "escaped_equivalent"])
+def test_probe_config_rejects_duplicate_json_members(
+    tmp_path: Path, variant: str
+) -> None:
+    config = _production_config()
+    raw = json.dumps(config, ensure_ascii=False, sort_keys=True)
+    if variant == "top":
+        raw = (
+            '{"schema_version": '
+            + json.dumps(config["schema_version"])
+            + ","
+            + raw[1:]
+        )
+    elif variant == "nested":
+        raw = raw.replace(
+            '"source": {',
+            '"source": {"dataset_id": "laws-texts", ',
+            1,
+        )
+    else:
+        raw = raw[:-1] + f', "{chr(92)}u0073chema_version": ' + json.dumps(
+            config["schema_version"]
+        ) + "}"
+    path = tmp_path / "ambiguous.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ProbeError, match="duplicate probe config JSON key"):
+        _load_config(path)
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"])
+def test_probe_config_rejects_nonfinite_json(
+    tmp_path: Path, number: str
+) -> None:
+    raw = json.dumps(_production_config(), ensure_ascii=False)
+    path = tmp_path / "nonfinite.json"
+    path.write_text(
+        raw[:-1] + ', "untrusted_number": ' + number + "}",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ProbeError,
+        match=(
+            "non-standard probe config JSON constant|"
+            "non-finite probe config JSON number"
+        ),
+    ):
+        _load_config(path)
+
+
+def test_probe_config_rejects_excessive_nesting_as_controlled_error(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "deep.json"
+    path.write_text(
+        '{"schema_version":' + "[" * 10000 + "0" + "]" * 10000 + "}",
+        encoding="utf-8",
+    )
+    with pytest.raises(ProbeError, match="cannot load config"):
+        _load_config(path)
+
+
+def test_probe_config_rejects_invalid_utf8_and_non_object_root(tmp_path: Path) -> None:
+    invalid = tmp_path / "invalid-utf8.json"
+    invalid.write_bytes(bytes([255]))
+    with pytest.raises(ProbeError, match="cannot load config"):
+        _load_config(invalid)
+    root = tmp_path / "array.json"
+    root.write_text("[]", encoding="utf-8")
+    with pytest.raises(ProbeError, match="root must be an object"):
+        _load_config(root)
+
+
+def test_probe_cli_rejects_ambiguous_config_before_archive_publication(
+    tmp_path: Path,
+) -> None:
+    config = _production_config()
+    raw = json.dumps(config, ensure_ascii=False, sort_keys=True)
+    path = tmp_path / "duplicate.json"
+    path.write_text(
+        '{"schema_version": ' + json.dumps(config["schema_version"]) + "," + raw[1:],
+        encoding="utf-8",
+    )
+    retained = tmp_path / "should-not-exist.zip"
+    report = tmp_path / "should-not-exist.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "probe_d03_rada_bulk_source.py"),
+            "--config",
+            str(path),
+            "--archive-output",
+            str(retained),
+            "--output",
+            str(report),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.count("\n") == 1
+    assert "duplicate probe config JSON key" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not retained.exists()
+    assert not report.exists()
