@@ -8,6 +8,10 @@ from typing import Any
 
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
 _FORBIDDEN_PARTS = {"test", "tests", "vendor", "vendored", "third_party", "extern", "external"}
+_EXPECTED_PINNED_FILES = {
+    "scipy/optimize/_constraints.py": ("75f81735dfd0feaff3865025467c859fd3b98ff6", 25257),
+    "scipy/optimize/_minimize.py": ("91d736990aaebe2dc119c26b59782466fa314fde", 53050),
+}
 _EXPECTED_UPSTREAM = {
     "repository": "scipy/scipy",
     "tag": "v1.18.0",
@@ -39,7 +43,7 @@ def authority_identity(document: dict[str, Any]) -> str:
 
 
 def validate_source_authority(document: dict[str, Any]) -> dict[str, Any]:
-    if document.get("schema_version") != 1:
+    if type(document.get("schema_version")) is not int or document["schema_version"] != 1:
         raise SourceAuthorityError("unsupported schema_version")
     if document.get("authority_id") != "scipy-v1.18.0-bounded-first-party-v1":
         raise SourceAuthorityError("unexpected authority_id")
@@ -60,22 +64,24 @@ def validate_source_authority(document: dict[str, Any]) -> dict[str, Any]:
         "root_path": "LICENSE.txt",
         "bundled_license_path": "LICENSES_bundled.txt",
         "whole_repository_credit_forbidden": True,
-    }:
+    } or type(license_info.get("whole_repository_credit_forbidden")) is not bool:
         raise SourceAuthorityError("license boundary drift")
 
     purpose = document.get("purpose")
-    if purpose != {"training_allowed": True, "evaluation_allowed": False}:
+    if purpose != {"training_allowed": True, "evaluation_allowed": False} or any(
+        type(purpose.get(field)) is not bool for field in ("training_allowed", "evaluation_allowed")
+    ):
         raise SourceAuthorityError("purpose boundary drift")
 
     gates = document.get("gates")
     if not isinstance(gates, dict) or set(gates) != _REQUIRED_GATES:
         raise SourceAuthorityError("gate set drift")
-    if not all(gates.values()):
+    if not all(value is True for value in gates.values()):
         raise SourceAuthorityError("all downstream gates must remain fail-closed")
 
     allowlist = document.get("allowlist")
-    if not isinstance(allowlist, list) or not allowlist:
-        raise SourceAuthorityError("allowlist must be non-empty")
+    if not isinstance(allowlist, list) or len(allowlist) != 2:
+        raise SourceAuthorityError("allowlist must contain the two pinned first-party files")
 
     commit_sha = _EXPECTED_UPSTREAM["commit_sha"]
     seen_paths: set[str] = set()
@@ -106,19 +112,29 @@ def validate_source_authority(document: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(blob_sha, str) or not _HEX40.fullmatch(blob_sha):
             raise SourceAuthorityError(f"invalid Git blob SHA-1 for {path}")
         raw_bytes = entry["raw_bytes"]
-        if not isinstance(raw_bytes, int) or isinstance(raw_bytes, bool) or raw_bytes <= 0:
+        if type(raw_bytes) is not int or raw_bytes <= 0:
             raise SourceAuthorityError(f"invalid raw byte count for {path}")
+        expected_blob_and_size = _EXPECTED_PINNED_FILES.get(path)
+        if expected_blob_and_size != (blob_sha, raw_bytes):
+            raise SourceAuthorityError(f"unapproved SciPy source blob/size: {path}")
         expected_url = f"https://raw.githubusercontent.com/scipy/scipy/{commit_sha}/{path}"
         if entry["raw_url"] != expected_url:
             raise SourceAuthorityError(f"raw URL is not exact-commit pinned for {path}")
         candidate_bytes += raw_bytes
 
+    if seen_paths != set(_EXPECTED_PINNED_FILES):
+        raise SourceAuthorityError("pinned SciPy source file set drift")
+
     capacity = document.get("capacity")
     if not isinstance(capacity, dict):
         raise SourceAuthorityError("capacity must be an object")
-    if capacity.get("candidate_raw_bytes") != candidate_bytes:
+    if type(capacity.get("candidate_raw_bytes")) is not int or (
+        capacity["candidate_raw_bytes"] != candidate_bytes
+    ):
         raise SourceAuthorityError("candidate byte arithmetic drift")
-    if capacity.get("canonical_credit_bytes") != 0:
+    if type(capacity.get("canonical_credit_bytes")) is not int or (
+        capacity["canonical_credit_bytes"] != 0
+    ):
         raise SourceAuthorityError("canonical credit must remain zero pre-materialization")
     if capacity.get("basis") != "raw_bytes_pre_normalization_pre_global_dedup":
         raise SourceAuthorityError("capacity basis drift")
