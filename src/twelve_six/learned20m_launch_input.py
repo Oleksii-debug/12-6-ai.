@@ -3,7 +3,7 @@
 This module does not tokenize, pack, count source bytes as loss positions, authorize
 training, or inspect final-test payloads. It binds independently expected identities
 from the canonical D03/D04/D10 authorities, the authenticated deterministic-double-
-pack proof, and the canonical V2 two-clean verifier.
+pack proof, and the canonical V4 two-clean verifier.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from twelve_six.data.unique_loss_ledger_v2 import (
 from twelve_six.packing.two_clean_build import TwoCleanBuildError, verify_proof
 
 REPOSITORY = "Oleksii-debug/12-6-ai."
-LAUNCH_INPUT_SCHEMA = "12-6.learned20m-launch-input-authority.v2"
+LAUNCH_INPUT_SCHEMA = "12-6.learned20m-launch-input-authority.v4"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -51,6 +51,8 @@ _DATA_SPINE_KEYS = frozenset(
         "two_clean_proof_identity_sha256",
         "two_clean_input_packet_identity_sha256",
         "two_clean_runtime_identity_sha256",
+        "two_clean_implementation_manifest_identity_sha256",
+        "two_clean_runtime_dependency_manifest_identity_sha256",
         "materialization_identity_sha256",
         "unique_loss_ledger_identity_sha256",
         "tokenizer_identity_sha256",
@@ -196,8 +198,12 @@ def _verify_two_clean_proof(
     expected_tokenizer_identity_sha256: str,
     expected_packing_identity_sha256: str,
     expected_runtime_identity_sha256: str,
+    expected_implementation_manifest: Mapping[str, str],
+    expected_implementation_manifest_identity_sha256: str,
+    expected_runtime_dependency_manifest: Mapping[str, Mapping[str, str]],
+    expected_runtime_dependency_manifest_identity_sha256: str,
 ) -> dict[str, Any]:
-    """Delegate the V2 closed-world freshness contract to its canonical verifier."""
+    """Delegate the V4 closed-world freshness contract to its canonical verifier."""
     try:
         return verify_proof(
             proof,
@@ -210,6 +216,14 @@ def _verify_two_clean_proof(
             expected_tokenizer_identity_sha256=expected_tokenizer_identity_sha256,
             expected_packing_identity_sha256=expected_packing_identity_sha256,
             expected_runtime_identity_sha256=expected_runtime_identity_sha256,
+            expected_implementation_manifest=expected_implementation_manifest,
+            expected_implementation_manifest_identity_sha256=(
+                expected_implementation_manifest_identity_sha256
+            ),
+            expected_runtime_dependency_manifest=expected_runtime_dependency_manifest,
+            expected_runtime_dependency_manifest_identity_sha256=(
+                expected_runtime_dependency_manifest_identity_sha256
+            ),
         )
     except TwoCleanBuildError as exc:
         raise LaunchInputAuthorityError(
@@ -646,6 +660,12 @@ def build_launch_input_authority(
     expected_tokenizer_identity_sha256: str,
     expected_packing_identity_sha256: str,
     expected_runtime_identity_sha256: str,
+    expected_two_clean_implementation_manifest: Mapping[str, str],
+    expected_two_clean_implementation_manifest_identity_sha256: str,
+    expected_two_clean_runtime_dependency_manifest: Mapping[
+        str, Mapping[str, str]
+    ],
+    expected_two_clean_runtime_dependency_manifest_identity_sha256: str,
     expected_carrier_git_sha: str,
     expected_modelspec_sha256: str,
     expected_initialization_identity_sha256: str,
@@ -669,6 +689,16 @@ def build_launch_input_authority(
         expected_tokenizer_identity_sha256=expected_tokenizer_identity_sha256,
         expected_packing_identity_sha256=expected_packing_identity_sha256,
         expected_runtime_identity_sha256=expected_runtime_identity_sha256,
+        expected_implementation_manifest=expected_two_clean_implementation_manifest,
+        expected_implementation_manifest_identity_sha256=(
+            expected_two_clean_implementation_manifest_identity_sha256
+        ),
+        expected_runtime_dependency_manifest=(
+            expected_two_clean_runtime_dependency_manifest
+        ),
+        expected_runtime_dependency_manifest_identity_sha256=(
+            expected_two_clean_runtime_dependency_manifest_identity_sha256
+        ),
     )
     ledger, one_pass_capacity = _verify_ledger(
         unique_loss_ledger,
@@ -754,6 +784,12 @@ def build_launch_input_authority(
             "two_clean_runtime_identity_sha256": freshness_proof[
                 "runtime_identity_sha256"
             ],
+            "two_clean_implementation_manifest_identity_sha256": freshness_proof[
+                "implementation_manifest_identity_sha256"
+            ],
+            "two_clean_runtime_dependency_manifest_identity_sha256": freshness_proof[
+                "runtime_dependency_manifest_identity_sha256"
+            ],
             "materialization_identity_sha256": freshness_proof[
                 "materialization_identity_sha256"
             ],
@@ -826,6 +862,8 @@ def verify_launch_input_authority(
         "two_clean_proof_identity_sha256",
         "two_clean_input_packet_identity_sha256",
         "two_clean_runtime_identity_sha256",
+        "two_clean_implementation_manifest_identity_sha256",
+        "two_clean_runtime_dependency_manifest_identity_sha256",
         "materialization_identity_sha256",
         "unique_loss_ledger_identity_sha256",
         "tokenizer_identity_sha256",
