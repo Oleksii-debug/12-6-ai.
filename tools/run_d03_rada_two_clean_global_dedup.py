@@ -98,6 +98,10 @@ def _read_json(path: Path) -> tuple[dict[str, Any], bytes]:
             ),
             parse_float=_finite_float,
         )
+    except RecursionError as exc:
+        raise RadaTwoCleanExecutionError(
+            f"generated JSON nesting limit exceeded: {path}"
+        ) from exc
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise RadaTwoCleanExecutionError(f"cannot read strict generated JSON: {path}") from exc
     if type(value) is not dict:
