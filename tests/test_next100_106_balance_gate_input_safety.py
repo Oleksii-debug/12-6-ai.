@@ -150,3 +150,54 @@ def test_cli_keeps_valid_policy_and_zero_training_credit() -> None:
     assert result["claim_boundary"]["model_training_authorized"] is False
     assert result["claim_boundary"]["tokenizer_fit_authorized"] is False
     assert result["claim_boundary"]["authorized_training_exposure_loss_positions"] == 0
+
+
+def test_accepts_exact_structure_limits(tmp_path: Path) -> None:
+    gate = _gate()
+    deep = tmp_path / "depth.json"
+    deep.write_bytes(b'{"a":' + b"[" * 64 + b"0" + b"]" * 64 + b"}")
+    # Root and the nested leaf count toward the structure budget.
+    with pytest.raises(ValueError, match="structure limit"):
+        gate.load_json(deep)
+
+    wide = tmp_path / "nodes.json"
+    wide.write_bytes(b'{"a":[' + b",".join([b"0"] * 9998) + b"]}")
+    assert len(gate.load_json(wide)["a"]) == 9998
+
+
+def test_real_current_clean_vector_reproduces_committed_balance(
+    tmp_path: Path,
+) -> None:
+    """Use committed physical-evidence metadata, not a synthetic 20M vector."""
+    gate = _gate()
+    report = gate.load_json(
+        ROOT / "reports/d03/current_clean_balance_local_candidate_execution_v1.json"
+    )
+    vector = report["outputs"]["next100-input.json"]["document"]
+    vector_path = tmp_path / "current clean vector.json"
+    vector_path.write_text(
+        json.dumps(vector, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    result = gate.evaluate(gate.load_json(POLICY), gate.load_json(vector_path))
+    assert result == report["outputs"]["balance-result.json"]["document"]
+    assert result["maximum_feasible_total_source_bytes"] == 7300
+    assert result["status"] == "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA"
+    assert result["claim_boundary"]["model_training_authorized"] is False
+    assert result["claim_boundary"]["tokenizer_fit_authorized"] is False
+    assert report["canonical_capacity_granted"] == 0
+
+    output = tmp_path / "real physical metadata result.json"
+    run = subprocess.run(
+        [
+            sys.executable, str(TOOL), "evaluate", str(vector_path),
+            "--output", str(output),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert run.returncode == 0
+    assert run.stderr == ""
+    assert json.loads(output.read_text(encoding="utf-8")) == result
