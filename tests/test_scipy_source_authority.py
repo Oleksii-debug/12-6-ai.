@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -149,3 +151,58 @@ def test_resigned_source_authority_rejects_missing_pinned_code_file() -> None:
     _resign(document)
     with pytest.raises(SourceAuthorityError, match="two pinned first-party files"):
         validate_source_authority(document)
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        (b'{"a":1,"a":2}', "duplicate authority JSON key"),
+        (b'{"a":{"b":1,"b":2}}', "duplicate authority JSON key"),
+        (b'{"a":NaN}', "non-finite"),
+        (b'{"a":Infinity}', "non-finite"),
+        (b'{"a":1e9999}', "not finite"),
+        (b'{"a":1e-9999}', "underflowed"),
+        (b'{"a":-1e-9999}', "underflowed"),
+        (b'{"a":' + b"9" * 65 + b"}", "digit limit"),
+        (b'{"a":' + b"[" * 65 + b"0" + b"]" * 65 + b"}", "structure limit"),
+        (
+            b'{"a":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}",
+            "nesting limit",
+        ),
+        (
+            b'{"a":[' + b",".join([b"0"] * 10010) + b"]}",
+            "structure limit",
+        ),
+        (br'{"\ud800":1}', "surrogates not allowed"),
+        (br'{"a":"\ud800"}', "surrogates not allowed"),
+        (b'{"a":"\xff"}', "decode"),
+        (b" " * 1_048_577, "byte limit"),
+        (b"[]", "authority root must be an object"),
+    ],
+)
+def test_authority_loader_rejects_unsafe_external_json(
+    tmp_path: Path, raw: bytes, message: str,
+) -> None:
+    source = tmp_path / "недовірений маніфест із пробілами.json"
+    source.write_bytes(raw)
+    with pytest.raises(SourceAuthorityError, match=message):
+        load_and_validate_source_authority(source)
+
+
+def test_invalid_real_cli_manifest_never_issues_source_credit(tmp_path: Path) -> None:
+    source = tmp_path / "дублікати ключів.json"
+    source.write_bytes(b'{"authority_id":"safe","authority_id":"forged"}')
+    cli = ROOT / "tools" / "run_scipy_source_authority.py"
+    run = subprocess.run(
+        [sys.executable, str(cli), "--authority", str(source)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert run.returncode == 2
+    assert run.stderr == ""
+    response = json.loads(run.stdout)
+    assert response["status"] == "BLOCKED_INVALID_AUTHORITY"
+    assert response["canonical_credit_bytes"] == 0
+    assert response["ready_for_corpus_credit"] is False
