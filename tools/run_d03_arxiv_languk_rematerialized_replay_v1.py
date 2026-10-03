@@ -369,6 +369,42 @@ def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
 
 
 
+def _capture_verified_publication_bytes(
+    pass_root: Path, pass_result: dict[str, str],
+) -> tuple[bytes, bytes]:
+    """Capture immutable bytes; reject changes since pass-level verification."""
+    report_raw = (pass_root / "current-clean-report.json").read_bytes()
+    survivors_raw = (pass_root / "current-clean-survivors.json").read_bytes()
+    for label, raw, key in (
+        ("replay report", report_raw, "report_file_sha256"),
+        ("survivor authority", survivors_raw, "survivor_file_sha256"),
+    ):
+        expected = pass_result.get(key)
+        if type(expected) is not str or sha256_bytes(raw) != expected:
+            raise RematerializationError(
+                f"{label} changed after pass verification; refusing publication"
+            )
+    return report_raw, survivors_raw
+
+
+def _publish_verified_outputs(
+    args: argparse.Namespace,
+    *,
+    pass_root: Path,
+    pass_result: dict[str, str],
+    receipt: dict[str, Any],
+) -> None:
+    """Verify and capture both source files before creating any outer output."""
+    _verify_outer_output_targets(args)
+    report_raw, survivors_raw = _capture_verified_publication_bytes(
+        pass_root, pass_result
+    )
+    receipt_raw = canonical_json_bytes(receipt)
+    _write_new_bytes(args.output_report, report_raw, label="outer report")
+    _write_new_bytes(args.output_survivors, survivors_raw, label="outer survivors")
+    _write_new_bytes(args.output_receipt, receipt_raw, label="outer receipt")
+
+
 def _load_module(name: str, path: Path) -> Any:
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
@@ -946,20 +982,11 @@ def main() -> int:
             wrapper_execution_authority=wrapper_authority,
             current_clean_execution_authority=clean_execution_authority,
         )
-        _write_new_bytes(
-            args.output_report,
-            (workspace / "pass-1/current-clean-report.json").read_bytes(),
-            label="outer report",
-        )
-        _write_new_bytes(
-            args.output_survivors,
-            (workspace / "pass-1/current-clean-survivors.json").read_bytes(),
-            label="outer survivors",
-        )
-        _write_new_bytes(
-            args.output_receipt,
-            canonical_json_bytes(receipt),
-            label="outer receipt",
+        _publish_verified_outputs(
+            args,
+            pass_root=workspace / "pass-1",
+            pass_result=results[0],
+            receipt=receipt,
         )
     except (RematerializationError, OSError, ValueError) as exc:
         print(f"BLOCKED: {exc}")

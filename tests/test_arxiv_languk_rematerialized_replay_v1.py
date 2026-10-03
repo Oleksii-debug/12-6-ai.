@@ -356,6 +356,78 @@ def test_exclusive_output_publication_never_clobbers(tmp_path: Path) -> None:
     assert output.read_bytes() == b"first"
 
 
+@pytest.mark.parametrize("changed", ["report", "survivors"])
+def test_postverification_mutation_blocks_all_outer_outputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: str,
+) -> None:
+    pass_root = tmp_path / "pass-1"
+    pass_root.mkdir()
+    arxiv, languk, report, survivors = _disk_pass_files(pass_root)
+    _fake_disk_verifier(monkeypatch)
+    result = REPLAY_RUNNER._pass_result(
+        arxiv_candidate=arxiv, languk_candidate=languk,
+        report=report, survivors=survivors,
+    )
+    verified_report = pass_root / "current-clean-report.json"
+    verified_survivors = pass_root / "current-clean-survivors.json"
+    verified_report.write_bytes(report.read_bytes())
+    verified_survivors.write_bytes(survivors.read_bytes())
+    modified = verified_report if changed == "report" else verified_survivors
+    modified.write_bytes(modified.read_bytes() + b"tampered")
+    args = _runner_args(tmp_path)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="changed after pass verification",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result,
+            receipt={"status": "not-published"},
+        )
+    for path in (args.output_report, args.output_survivors, args.output_receipt):
+        assert not path.exists()
+
+
+def test_publishing_uses_captured_bytes_if_workspace_changes_during_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root = tmp_path / "pass-1"
+    pass_root.mkdir()
+    arxiv, languk, report, survivors = _disk_pass_files(pass_root)
+    _fake_disk_verifier(monkeypatch)
+    result = REPLAY_RUNNER._pass_result(
+        arxiv_candidate=arxiv, languk_candidate=languk,
+        report=report, survivors=survivors,
+    )
+    saved_report, saved_survivors = report.read_bytes(), survivors.read_bytes()
+    verified_report = pass_root / "current-clean-report.json"
+    verified_survivors = pass_root / "current-clean-survivors.json"
+    verified_report.write_bytes(saved_report)
+    verified_survivors.write_bytes(saved_survivors)
+    args = _runner_args(tmp_path)
+    receipt = {"status": "verified"}
+    actual_write = REPLAY_RUNNER._write_new_bytes
+
+    def mutate_after_first_write(path: Path, raw: bytes, *, label: str) -> None:
+        actual_write(path, raw, label=label)
+        if label == "outer report":
+            verified_report.write_bytes(b"tampered-report")
+            verified_survivors.write_bytes(b"tampered-survivors")
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_write_new_bytes", mutate_after_first_write)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert args.output_report.read_bytes() == saved_report
+    assert args.output_survivors.read_bytes() == saved_survivors
+    assert args.output_receipt.read_bytes() == canonical_json_bytes(receipt)
+    assert REPLAY_RUNNER.sha256_bytes(args.output_report.read_bytes()) == result[
+        "report_file_sha256"
+    ]
+    assert REPLAY_RUNNER.sha256_bytes(args.output_survivors.read_bytes()) == result[
+        "survivor_file_sha256"
+    ]
+
+
 def test_repaired_receipt_binds_current_clean_execution_and_scopes_provenance() -> None:
     one = _pass_result()
     receipt = build_receipt(pass_results=[one, dict(one)])
