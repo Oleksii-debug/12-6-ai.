@@ -517,7 +517,8 @@ jobs:
           git diff --cached --quiet HEAD --
           python -m py_compile \
             tools/probe_d03_rada_bulk_source.py \
-            tools/qualify_d03_rada_bulk_fresh_snapshot_v2.py
+            tools/qualify_d03_rada_bulk_fresh_snapshot_v2.py \
+            tools/pin_d03_rada_bulk_fresh_snapshot_v2.py
 
       - name: Probe current Rada archive — clean run A
         shell: bash
@@ -559,6 +560,22 @@ jobs:
           cmp "$RUNNER_TEMP/rada-source-a.zip" "$RUNNER_TEMP/rada-source-b.zip"
           test -s "$RUNNER_TEMP/ATTRIBUTION.txt"
 
+      - name: Verify and pin retained Rada snapshot to exact run
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/pin_d03_rada_bulk_fresh_snapshot_v2.py \
+            --archive "$RUNNER_TEMP/rada-source-a.zip" \
+            --probe-report "$RUNNER_TEMP/rada-probe-a.json" \
+            --probe-b "$RUNNER_TEMP/rada-probe-b.json" \
+            --qualification "$RUNNER_TEMP/rada-fresh-snapshot-qualification-v2.json" \
+            --attribution "$RUNNER_TEMP/ATTRIBUTION.txt" \
+            --config configs/data/d03_rada_bulk_fresh_snapshot_v2.json \
+            --rights-policy configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json \
+            --execution-head-sha "$RADA_CAPTURE_SHA" \
+            --output "$RUNNER_TEMP/rada-successor-pin-v2.json"
+          test -s "$RUNNER_TEMP/rada-successor-pin-v2.json"
+
       - name: Upload attributed exact Rada snapshot and qualification evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -569,6 +586,7 @@ jobs:
             ${{ runner.temp }}/rada-probe-a.json
             ${{ runner.temp }}/rada-probe-b.json
             ${{ runner.temp }}/rada-fresh-snapshot-qualification-v2.json
+            ${{ runner.temp }}/rada-successor-pin-v2.json
           if-no-files-found: error
           retention-days: 90
 

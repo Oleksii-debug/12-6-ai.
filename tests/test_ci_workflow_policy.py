@@ -167,3 +167,41 @@ def test_d03_rada_fresh_snapshot_job_is_same_repo_and_claim_pinned():
     assert "retention-days: 90" in success_section
     assert "if-no-files-found: warn" in failure_section
     assert "retention-days: 30" in failure_section
+
+
+def test_d03_rada_physical_success_requires_exact_run_successor_pin():
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+    job = workflow[workflow.index("  d03-rada-fresh-snapshot-v2:\n"):]
+    compile_step = job.index("Bind exact Rada fresh-snapshot checkout")
+    qualification = job.index("Qualify two-clean exact snapshot and attributed retention")
+    pin = job.index("Verify and pin retained Rada snapshot to exact run")
+    upload = job.index("Upload attributed exact Rada snapshot and qualification evidence")
+    failure = job.index("Upload Rada probe metadata on qualification failure")
+
+    assert compile_step < qualification < pin < upload < failure
+    assert "tools/pin_d03_rada_bulk_fresh_snapshot_v2.py" in job[
+        compile_step:qualification
+    ]
+    pin_step = job[pin:upload]
+    for expected in (
+        "python tools/pin_d03_rada_bulk_fresh_snapshot_v2.py",
+        '--archive "$RUNNER_TEMP/rada-source-a.zip"',
+        '--probe-report "$RUNNER_TEMP/rada-probe-a.json"',
+        '--probe-b "$RUNNER_TEMP/rada-probe-b.json"',
+        '--qualification "$RUNNER_TEMP/rada-fresh-snapshot-qualification-v2.json"',
+        '--attribution "$RUNNER_TEMP/ATTRIBUTION.txt"',
+        "--config configs/data/d03_rada_bulk_fresh_snapshot_v2.json",
+        "--rights-policy configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json",
+        '--execution-head-sha "$RADA_CAPTURE_SHA"',
+        '--output "$RUNNER_TEMP/rada-successor-pin-v2.json"',
+        'test -s "$RUNNER_TEMP/rada-successor-pin-v2.json"',
+    ):
+        assert expected in pin_step
+    success_section = job[upload:failure]
+    failure_section = job[failure:]
+    assert "${{ runner.temp }}/rada-successor-pin-v2.json" in success_section
+    assert "rada-successor-pin-v2.json" not in failure_section
+    assert "rada-source-a.zip" not in failure_section
+    assert "if: failure()" in failure_section
