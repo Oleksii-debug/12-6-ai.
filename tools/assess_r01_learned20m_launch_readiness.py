@@ -50,7 +50,13 @@ def main(argv: list[str]) -> int:
     path = Path(argv[1]) if len(argv) > 1 else DEFAULT_PATH
     try:
         payload = _load_packet(path)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ) as exc:
         print(json.dumps({"error": f"invalid launch packet: {exc}"}, sort_keys=True))
         return 2
 

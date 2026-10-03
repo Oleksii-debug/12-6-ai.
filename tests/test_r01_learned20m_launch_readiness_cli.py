@@ -92,6 +92,19 @@ def test_main_reports_decode_failure_without_traceback(
     assert captured.err == ""
 
 
+def test_main_reports_excessive_nesting_without_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _load_tool()
+    nested = '{"nested":' * 10000 + "0" + "}" * 10000
+    path = _write(tmp_path, nested)
+    assert tool.main(["assess", str(path)]) == 2
+    captured = capsys.readouterr()
+    response = json.loads(captured.out)
+    assert response["error"].startswith("invalid launch packet:")
+    assert captured.err == ""
+
+
 def test_main_reports_missing_file_without_traceback(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
