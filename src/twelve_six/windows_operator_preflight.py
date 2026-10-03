@@ -682,8 +682,27 @@ def _load_bound_inputs(
     return profile, profile_sha, packet, packet_sha
 
 
+def _single_line_text(value: Any) -> str:
+    """Escape control characters while preserving printable Unicode for NVDA."""
+    rendered: list[str] = []
+    for char in str(value):
+        if char.isprintable():
+            rendered.append(char)
+            continue
+        codepoint = ord(char)
+        if codepoint <= 0xFF:
+            rendered.append(f"\\x{codepoint:02x}")
+        elif codepoint <= 0xFFFF:
+            rendered.append(f"\\u{codepoint:04x}")
+        else:
+            rendered.append(f"\\U{codepoint:08x}")
+    return "".join(rendered)
+
+
 def _render_text(result: Mapping[str, Any]) -> str:
     lines = [f"OPERATOR_STATUS: {result.get('status')}"]
+    if "error" in result:
+        lines.append(f"ERROR: {result['error']}")
     for key, label in (
         ("target", "TARGET"),
         ("launch_authorized", "LAUNCH_AUTHORIZED"),
@@ -693,6 +712,13 @@ def _render_text(result: Mapping[str, Any]) -> str:
             value = result.get(key)
             value = str(value).lower() if isinstance(value, bool) else value
             lines.append(f"{label}: {value}")
+    safe_stop = result.get("safe_stop")
+    if isinstance(safe_stop, Mapping):
+        if "status" in safe_stop:
+            lines.append(f"SAFE_STOP_STATUS: {safe_stop.get('status')}")
+        safe_stop_errors = safe_stop.get("errors", [])
+        if isinstance(safe_stop_errors, list):
+            lines.extend(f"SAFE_STOP_ERROR: {item}" for item in safe_stop_errors)
     for item in result.get("checks", []):
         if isinstance(item, Mapping):
             verdict = "PASS" if item.get("passed") is True else "FAIL"
@@ -704,7 +730,7 @@ def _render_text(result: Mapping[str, Any]) -> str:
     lines.extend(f"ERROR: {item}" for item in result.get("contract_errors", []))
     if "marker_path" in result:
         lines.append(f"STOP_MARKER: {result['marker_path']}")
-    return "\n".join(lines)
+    return "\n".join(_single_line_text(line) for line in lines)
 
 
 def _print_result(result: Mapping[str, Any], *, as_json: bool) -> None:
