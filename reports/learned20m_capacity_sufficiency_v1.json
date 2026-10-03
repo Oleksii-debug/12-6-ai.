@@ -1,7 +1,7 @@
 {
   "schema_version": "12-6.learned20m-capacity-sufficiency.v3",
-  "report_id": "LEARNED20M-CAPACITY-SUFFICIENCY-20261003-SWARM2570-MAIN31B9E030-V3",
-  "source_main_sha": "31b9e030cb179e895fcbf3404b1d1fd045515867",
+  "report_id": "LEARNED20M-CAPACITY-SUFFICIENCY-20261003-SWARM2570-MAINBCC8F750-V3",
+  "source_main_sha": "bcc8f75090dd31a5e42a9045d96044d9721bebae",
   "claim_issue": 2570,
   "control_issues": [
     548,
