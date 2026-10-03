@@ -295,7 +295,7 @@ def test_checksum_consistent_deep_manifest_is_checkpoint_integrity_error(
     _save(checkpoint)
     raw = (checkpoint / "manifest.json").read_text(encoding="utf-8").strip()
     assert raw.endswith("}")
-    malformed = raw[:-1] + ',"excessive":' + _deep_json(nesting) + "}\\n"
+    malformed = raw[:-1] + ',"excessive":' + _deep_json(nesting) + "}\n"
     _write_manifest_bytes(checkpoint, malformed.encode("utf-8"))
 
     with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
@@ -313,7 +313,7 @@ def test_checksum_consistent_deep_state_fails_before_model_mutation(
     raw = path.read_text(encoding="utf-8").strip()
     assert raw.endswith("}")
     path.write_text(
-        raw[:-1] + ',"excessive":' + _deep_json(nesting) + "}\\n",
+        raw[:-1] + ',"excessive":' + _deep_json(nesting) + "}\n",
         encoding="utf-8",
     )
     _rebind_manifest_for_payload(checkpoint, "state.json")
@@ -331,8 +331,6 @@ def test_checksum_consistent_deep_state_fails_before_model_mutation(
 def test_immutable_verified_manifest_rejects_excessive_json_depth(
     nesting: str,
 ) -> None:
-    import twelve_six.checkpoint.core as checkpoint_core
-
     verified = VerifiedCheckpoint(
         _manifest_bytes=('{"root":' + _deep_json(nesting) + "}").encode("utf-8"),
         _artifacts={},
