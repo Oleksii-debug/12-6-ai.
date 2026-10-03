@@ -114,7 +114,7 @@ def test_split_application_rejects_resealed_numeric_type_aliases(
     [
         ("authorized_optimized_target_exposure", 0.0),
         ("authorized_optimized_target_exposure", False),
-        ("vocab_size", 260.0),
+        ("vocab_size", 256.0),
     ],
 )
 def test_decision_report_rejects_resealed_numeric_type_aliases(
