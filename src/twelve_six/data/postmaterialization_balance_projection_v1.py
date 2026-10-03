@@ -1379,6 +1379,26 @@ def verify_balance_result(
 
 _TARGET_20M_STRATUM_BYTES = {"ua": 9_000_000, "en": 7_000_000, "code": 4_000_000}
 _TARGET_20M_FAMILY_CAP_BYTES = {"ua": 5_000_000, "en": 4_200_000, "code": 2_400_000}
+_TARGET_20M_POLICY_IDENTITY_SHA256 = (
+    "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
+)
+
+
+def _require_exact_target_totals(value: Any, expected: Mapping[str, Any], label: str) -> None:
+    if not isinstance(value, Mapping) or set(value) != set(expected):
+        raise ProjectionError(f"{label} target balance totals schema drift")
+    if type(value["total_unique_bytes"]) is not int or value["total_unique_bytes"] != (
+        expected["total_unique_bytes"]
+    ):
+        raise ProjectionError(f"{label} target balance total source-byte drift")
+    for field in ("by_stratum", "family_count"):
+        observed = value[field]
+        required = expected[field]
+        if not isinstance(observed, Mapping) or set(observed) != set(required):
+            raise ProjectionError(f"{label} target balance {field} schema drift")
+        for stratum, amount in required.items():
+            if type(observed[stratum]) is not int or observed[stratum] != amount:
+                raise ProjectionError(f"{label} target balance {field} type/value drift")
 
 
 def _verify_target_balance_evidence(
@@ -1415,8 +1435,17 @@ def _verify_target_balance_evidence(
         ),
         key=lambda row: row["family_id"],
     )
-    if next100_input.get("families") != expected_families:
+    supplied_families = next100_input.get("families")
+    if not isinstance(supplied_families, list) or len(supplied_families) != len(
+        expected_families
+    ):
         raise ProjectionError("target balance input families differ from physical authority")
+    for supplied, expected in zip(supplied_families, expected_families):
+        if not isinstance(supplied, Mapping) or set(supplied) != set(expected):
+            raise ProjectionError("target balance input family fields differ from authority")
+        for field, value in expected.items():
+            if type(supplied[field]) is not type(value) or supplied[field] != value:
+                raise ProjectionError("target balance input family differs from authority")
     grouped: dict[str, list[dict[str, Any]]] = {key: [] for key in _TARGET_20M_STRATUM_BYTES}
     seen: set[str] = set()
     for family in expected_families:
@@ -1443,15 +1472,25 @@ def _verify_target_balance_evidence(
         "by_stratum": physical_capacity,
         "family_count": counts,
     }
-    if next100_input.get("totals") != expected_totals:
-        raise ProjectionError("target balance input totals differ from physical capacities")
+    _require_exact_target_totals(
+        next100_input.get("totals"), expected_totals, "input"
+    )
+    _require_exact_target_totals(
+        result.get("input_totals"), expected_totals, "result"
+    )
     observed_minimum = result.get("family_minimum")
     if (
         not isinstance(observed_minimum, Mapping)
         or set(observed_minimum) != {"required_per_stratum", "observed", "pass"}
         or type(observed_minimum["required_per_stratum"]) is not int
         or observed_minimum["required_per_stratum"] != 2
-        or observed_minimum["observed"] != counts
+        or not isinstance(observed_minimum["observed"], Mapping)
+        or set(observed_minimum["observed"]) != set(counts)
+        or any(
+            type(observed_minimum["observed"][key]) is not int
+            or observed_minimum["observed"][key] != count
+            for key, count in counts.items()
+        )
         or observed_minimum["pass"] is not True
     ):
         raise ProjectionError("target balance independent-family minimum drift")
@@ -1498,8 +1537,17 @@ def _verify_target_balance_evidence(
         if remaining:
             raise ProjectionError("target balance physical capacity cannot meet policy")
     expected_allocations.sort(key=lambda row: row["family_id"])
-    if result.get("deterministic_maximum_allocation") != expected_allocations:
-        raise ProjectionError("target balance allocation is not canonical or policy compliant")
+    actual_allocations = result.get("deterministic_maximum_allocation")
+    if not isinstance(actual_allocations, list) or len(actual_allocations) != len(
+        expected_allocations
+    ):
+        raise ProjectionError("target balance allocation size drift")
+    for actual, expected in zip(actual_allocations, expected_allocations):
+        if not isinstance(actual, Mapping) or set(actual) != set(expected):
+            raise ProjectionError("target balance allocation fields drift")
+        for field, value in expected.items():
+            if type(actual[field]) is not type(value) or actual[field] != value:
+                raise ProjectionError("target balance allocation is not canonical or policy compliant")
 
 
 def build_balance_result_binding(
@@ -1526,6 +1574,11 @@ def build_balance_result_binding(
     )
     if balance_result.get("policy_identity_sha256") != policy_identity:
         raise ProjectionError("NEXT100-106 policy identity mismatch")
+    if (
+        balance_result.get("status") == TARGET_STATUS
+        and policy_identity != _TARGET_20M_POLICY_IDENTITY_SHA256
+    ):
+        raise ProjectionError("target balance policy identity is not the reviewed policy")
     if balance_result.get("dedup_authority") != next100_input.get("dedup_authority"):
         raise ProjectionError("NEXT100-106 result dedup authority differs from input")
     if balance_result.get("input_totals") != next100_input.get("totals"):
