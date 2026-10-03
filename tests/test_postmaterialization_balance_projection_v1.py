@@ -742,6 +742,38 @@ def _reseal(document: dict, identity_field: str) -> bytes:
     return _canonical(document) + b"\n"
 
 
+@pytest.mark.parametrize("current_clean", (False, True))
+@pytest.mark.parametrize(
+    "field", ("record_count", "total_payload_bytes", "source_object_count")
+)
+def test_next100_binding_rejects_physical_authority_numeric_alias(
+    current_clean: bool, field: str,
+) -> None:
+    if current_clean:
+        vector, _, _ = _build_current_clean(_partial_rows())
+    else:
+        vector, _, _ = _build(_partial_rows())
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    assert balance["status"] == "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA"
+    altered = copy.deepcopy(adapted)
+    physical = altered["physical_authority"]
+    physical[field] = float(physical[field])
+    assert altered == adapted
+    with pytest.raises(ProjectionError, match="physical authority mismatch"):
+        build_balance_result_binding(
+            family_vector=vector,
+            expected_family_vector_identity_sha256=vector[
+                "family_vector_identity_sha256"
+            ],
+            next100_input=altered,
+            balance_result=balance,
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=balance["result_identity_sha256"],
+        )
+
+
 def test_current_clean_vector_binds_receipt_repeat_and_raw_files() -> None:
     vector, raw, expected = _build_current_clean(_partial_rows())
     assert vector["schema"] == CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA
