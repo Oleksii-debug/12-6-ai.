@@ -87,18 +87,18 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 def _serialize_report(value: dict[str, Any]) -> str:
-    """One strict finite JSON contract for both file and stdout reports."""
+    """One strict finite UTF-8 JSON contract for file and stdout reports."""
     try:
-        return (
-            json.dumps(
-                value,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-                allow_nan=False,
-            )
-            + "\n"
+        rendered = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
         )
+        # A JSON-escaped lone surrogate must not reach stdout or disk.
+        rendered.encode("utf-8")
+        return rendered + "\n"
     except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError("tokenizer report is not strict finite JSON") from exc
 
