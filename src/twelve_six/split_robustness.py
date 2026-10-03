@@ -33,9 +33,19 @@ class SplitRobustnessError(ValueError):
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
-    return (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
-    ).encode("utf-8")
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+        raise SplitRobustnessError(
+            "split authority JSON must be finite and serializable"
+        ) from exc
+    return (encoded + "\n").encode("utf-8")
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -483,8 +493,11 @@ def split_sensitivity(values: Sequence[float]) -> dict[str, float]:
     """Summarize split sensitivity without selecting a favorable partition."""
 
     _require_finite_metric_sequence(values, field="split metrics")
-    mean = statistics.fmean(values)
-    stdev = statistics.pstdev(values)
+    try:
+        mean = statistics.fmean(values)
+        stdev = statistics.pstdev(values)
+    except (OverflowError, ValueError) as exc:
+        raise SplitRobustnessError("split sensitivity statistics overflowed") from exc
     minimum = min(values)
     maximum = max(values)
     metric_range = maximum - minimum

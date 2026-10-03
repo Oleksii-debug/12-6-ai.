@@ -11,6 +11,7 @@ from twelve_six.split_robustness import (
     assert_checkpoint_split_binding,
     assert_run_split_binding,
     audit_cluster_leakage,
+    bind_split_evidence,
     build_split_family,
     dedup_relations_identity,
     eligible_corpus_identity,
@@ -238,3 +239,50 @@ def test_split_metric_evidence_keeps_finite_integer_and_float_semantics() -> Non
         {"small": [5, 5.1], "large": [4.5, 4]}
     )
     assert stable["all_pairs_stable"] is True
+
+
+@pytest.mark.parametrize("values", [[1e308, 1e308], [1e308, 1e308, 1e308]])
+def test_split_sensitivity_normalizes_statistics_overflow(
+    values: list[float],
+) -> None:
+    # Every input is finite, but statistics.fmean overflows internally.
+    with pytest.raises(SplitRobustnessError, match="statistics overflowed"):
+        split_sensitivity(values)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
+def test_split_evidence_rejects_nested_nonfinite_numbers(invalid: float) -> None:
+    family = {
+        "split_family_identity_sha256": "1" * 64,
+        "eligible_corpus_sha256": "2" * 64,
+    }
+    with pytest.raises(SplitRobustnessError, match="finite and serializable"):
+        bind_split_evidence({"nested": {"score": invalid}}, family)
+
+
+def test_split_evidence_rejects_unserializable_and_overdeep_values() -> None:
+    family = {
+        "split_family_identity_sha256": "1" * 64,
+        "eligible_corpus_sha256": "2" * 64,
+    }
+    with pytest.raises(SplitRobustnessError, match="finite and serializable"):
+        bind_split_evidence({"nested": object()}, family)
+    nested: list[object] = []
+    for _ in range(1500):
+        nested = [nested]
+    with pytest.raises(SplitRobustnessError, match="finite and serializable"):
+        bind_split_evidence({"nested": nested}, family)
+
+
+def test_split_evidence_retains_deterministic_finite_identity() -> None:
+    family = {
+        "split_family_identity_sha256": "1" * 64,
+        "eligible_corpus_sha256": "2" * 64,
+    }
+    payload = {"nested": {"score": 1.25, "count": 2}}
+    first = bind_split_evidence(payload, family)
+    second = bind_split_evidence(payload, family)
+    assert first == second
+    assert len(first["evidence_sha256"]) == 64
+    assert first["nested"] == payload["nested"]
+    assert payload == {"nested": {"score": 1.25, "count": 2}}
