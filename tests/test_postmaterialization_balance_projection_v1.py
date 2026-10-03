@@ -445,6 +445,47 @@ def test_partial_result_rejects_resealed_input_total_numeric_alias(
         )
 
 
+@pytest.mark.parametrize("current_clean", (False, True))
+@pytest.mark.parametrize(
+    "mutation", ("extra_training_claim", "missing_next_step", "promoted_next_step")
+)
+def test_balance_result_rejects_resealed_schema_and_gate_claims(
+    current_clean: bool, mutation: str,
+) -> None:
+    if current_clean:
+        vector, _, _ = _build_current_clean(_partial_rows())
+    else:
+        vector, _, _ = _build(_partial_rows())
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    assert balance["status"] == "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA"
+    altered = copy.deepcopy(balance)
+    if mutation == "extra_training_claim":
+        altered["training_ready"] = True
+    elif mutation == "missing_next_step":
+        del altered["next_step"]
+    else:
+        altered["next_step"] = "MODEL_TRAINING_AUTHORIZED"
+    altered["result_identity_sha256"] = next100_gate.canonical_sha(
+        altered, "result_identity_sha256"
+    )
+    with pytest.raises(
+        ProjectionError,
+        match="fields are not closed-world|cannot promote downstream gates",
+    ):
+        build_balance_result_binding(
+            family_vector=vector,
+            expected_family_vector_identity_sha256=vector[
+                "family_vector_identity_sha256"
+            ],
+            next100_input=adapted,
+            balance_result=altered,
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=altered["result_identity_sha256"],
+        )
+
+
 def test_partial_balance_is_bound_but_cannot_authorize_selection() -> None:
     vector, _, _ = _build(_partial_rows())
     adapted = _adapt(vector)
