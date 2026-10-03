@@ -369,18 +369,19 @@ def _run_worker(command: list[str], *, timeout_seconds: int) -> None:
 
 
 def _run_two_clean(args: argparse.Namespace) -> int:
+    # Reject malformed authority without orphaning a create-only output root.
+    dependency_authority = validate_dependency_authority(
+        args.dependency_authority,
+        expected_raw_sha256=args.expected_dependency_authority_sha256,
+    )
+    worker_timeout_seconds = dependency_authority["worker_timeout_seconds"]
+
     try:
         args.output_root.mkdir(parents=True, exist_ok=False)
     except FileExistsError as exc:
         raise RadaTwoCleanExecutionError(
             f"refusing non-fresh output root: {args.output_root}"
         ) from exc
-
-    dependency_authority = validate_dependency_authority(
-        args.dependency_authority,
-        expected_raw_sha256=args.expected_dependency_authority_sha256,
-    )
-    worker_timeout_seconds = dependency_authority["worker_timeout_seconds"]
 
     script = Path(__file__).resolve()
     common = _common_argv(args)
