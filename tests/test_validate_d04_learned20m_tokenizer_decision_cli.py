@@ -403,14 +403,14 @@ def test_nonfinite_and_recursive_reports_are_not_published(
     output = tmp_path / "out.json"
     recursive: dict[str, object] = {}
     recursive["self"] = recursive
-    for report in ({"loss": float("nan")}, recursive):
+    for report in ({"loss": float("nan")}, recursive, {"surrogate": "\ud800"}):
         with pytest.raises(ValueError, match="not strict finite JSON"):
             cli._write(output, report)
         assert not output.exists()
 
 
 
-@pytest.mark.parametrize("kind", ["nan", "infinity", "circular", "unsupported"])
+@pytest.mark.parametrize("kind", ["nan", "infinity", "circular", "unsupported", "surrogate"])
 def test_main_stdout_rejects_invalid_report_with_one_json_error(
     tmp_path: Path,
     kind: str,
@@ -429,6 +429,7 @@ def test_main_stdout_rejects_invalid_report_with_one_json_error(
         "infinity": {"loss": float("inf")},
         "circular": recursive,
         "unsupported": {"unserializable": object()},
+        "surrogate": {"invalid_unicode": "\ud800"},
     }
     monkeypatch.setattr(
         cli, "bind_byte_baseline_decision",
