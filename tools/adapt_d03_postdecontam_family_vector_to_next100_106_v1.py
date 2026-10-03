@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import tempfile
 from pathlib import Path
+from typing import BinaryIO
 
 from twelve_six.data.postdecontam_balance_projection_v1 import (
     ProjectionError,
@@ -27,10 +30,18 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_staged_bytes(destination: BinaryIO, payload: bytes) -> None:
+    """Do not publish unless the entire staged payload reached durable storage."""
+    if destination.write(payload) != len(payload):
+        raise OSError("incomplete staged adapter output write")
+    destination.flush()
+    os.fsync(destination.fileno())
+
+
 def _write_new_output(
     path: Path, payload: bytes, *, family_vector: Path, dedup_authority: Path,
 ) -> None:
-    """Publish once; never truncate source evidence or an earlier result."""
+    """Stage completely; atomically publish a new name without replacing an incumbent."""
     if path.exists() or path.is_symlink():
         raise ProjectionError(f"refusing to overwrite existing adapter output: {path}")
     try:
@@ -40,13 +51,29 @@ def _write_new_output(
         raise ProjectionError("adapter output path cannot be resolved safely") from exc
     if resolved in protected:
         raise ProjectionError("adapter output must not alias an input authority")
+    staged_path: Path | None = None
     try:
-        with path.open("xb") as destination:
-            destination.write(payload)
+        with tempfile.NamedTemporaryFile(
+            mode="w+b", prefix=f".{path.name}.", suffix=".tmp",
+            dir=path.parent, delete=False,
+        ) as destination:
+            staged_path = Path(destination.name)
+            _write_staged_bytes(destination, payload)
+        # os.link is create-only, unlike os.replace / POSIX os.rename.
+        # Same-directory staging avoids cross-volume publication.
+        os.link(staged_path, path)
     except FileExistsError as exc:
         raise ProjectionError(f"refusing to overwrite existing adapter output: {path}") from exc
     except OSError as exc:
-        raise ProjectionError(f"cannot create adapter output safely: {path}: {exc}") from exc
+        raise ProjectionError(f"cannot publish adapter output safely: {path}: {exc}") from exc
+    finally:
+        if staged_path is not None:
+            try:
+                staged_path.unlink(missing_ok=True)
+            except OSError as exc:
+                raise ProjectionError(
+                    f"cannot clean up staged adapter output: {staged_path}"
+                ) from exc
 
 
 def main() -> int:

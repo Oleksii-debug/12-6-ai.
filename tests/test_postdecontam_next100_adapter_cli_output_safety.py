@@ -109,20 +109,82 @@ def test_exclusive_create_refuses_destination_created_after_preflight(
     vector.write_bytes(b"vector")
     authority.write_bytes(b"authority")
     output = tmp_path / "racing result.json"
-    original_open = Path.open
+    original_link = cli.os.link
 
-    def racing_open(path: Path, mode: str = "r", *args: object, **kwargs: object):
-        if path == output and mode == "xb":
-            with open(output, "wb") as incumbent:
-                incumbent.write(b"concurrent verified result")
-        return original_open(path, mode, *args, **kwargs)
+    def racing_link(source: Path, target: Path) -> None:
+        if target == output:
+            output.write_bytes(b"concurrent verified result")
+        original_link(source, target)
 
-    monkeypatch.setattr(Path, "open", racing_open)
+    monkeypatch.setattr(cli.os, "link", racing_link)
     with pytest.raises(ProjectionError, match="refusing to overwrite"):
         cli._write_new_output(
             output, b"candidate", family_vector=vector, dedup_authority=authority,
         )
     assert output.read_bytes() == b"concurrent verified result"
+
+
+
+def test_short_staging_write_is_rejected() -> None:
+    class ShortWriter:
+        def write(self, payload: bytes) -> int:
+            return len(payload) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("incomplete output must not be flushed")
+
+        def fileno(self) -> int:
+            raise AssertionError("incomplete output must not be synced")
+
+    with pytest.raises(OSError, match="incomplete staged adapter output"):
+        cli._write_staged_bytes(ShortWriter(), b"candidate")
+
+
+def test_mid_staging_write_failure_never_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    vector.write_bytes(b"vector")
+    authority.write_bytes(b"authority")
+    output = tmp_path / "result.json"
+
+    def partial_write(destination: object, payload: bytes) -> None:
+        destination.write(payload[:4])
+        raise OSError("simulated disk full during write")
+
+    monkeypatch.setattr(cli, "_write_staged_bytes", partial_write)
+    with pytest.raises(ProjectionError, match="simulated disk full"):
+        cli._write_new_output(
+            output, b"candidate", family_vector=vector, dedup_authority=authority,
+        )
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert vector.read_bytes() == b"vector"
+    assert authority.read_bytes() == b"authority"
+
+
+def test_staging_sync_failure_never_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    vector.write_bytes(b"vector")
+    authority.write_bytes(b"authority")
+    output = tmp_path / "result.json"
+
+    def fail_sync(_descriptor: int) -> None:
+        raise OSError("simulated fsync failure")
+
+    monkeypatch.setattr(cli.os, "fsync", fail_sync)
+    with pytest.raises(ProjectionError, match="simulated fsync failure"):
+        cli._write_new_output(
+            output, b"candidate", family_vector=vector, dedup_authority=authority,
+        )
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert vector.read_bytes() == b"vector"
+    assert authority.read_bytes() == b"authority"
 
 
 def test_main_does_not_publish_if_authority_validation_fails(
