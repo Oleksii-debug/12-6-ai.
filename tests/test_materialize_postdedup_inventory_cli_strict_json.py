@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "materialize_postdedup_inventory_v1.py"
 ZERO_SHA256 = "0" * 64
@@ -234,3 +236,103 @@ def test_verify_cli_rejects_bad_binding_before_product_semantics(
     payload = json.loads(result.stdout)
     assert payload["status"] == "FAIL"
     assert "non-finite JSON constant" in payload["error"]
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_strict_loader_rejects_excessive_json_nesting(
+    tmp_path: Path,
+    nesting: str,
+) -> None:
+    cli = _load_cli()
+    if nesting == "arrays":
+        raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    path = tmp_path / f"deep-{nesting}.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON nesting limit exceeded"):
+        cli._load(path)
+
+
+@pytest.mark.parametrize(
+    ("action", "target"),
+    (
+        ("materialize", "v8_report"),
+        ("materialize", "survivor_authority"),
+        ("verify", "v8_report"),
+        ("verify", "survivor_authority"),
+        ("verify", "inventory"),
+        ("verify", "binding_evidence"),
+    ),
+)
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_cli_rejects_deep_json_in_each_external_authority_input(
+    tmp_path: Path,
+    action: str,
+    target: str,
+    nesting: str,
+) -> None:
+    paths = {
+        "v8_report": tmp_path / "report.json",
+        "survivor_authority": tmp_path / "survivor.json",
+        "inventory": tmp_path / "inventory.json",
+        "binding_evidence": tmp_path / "binding.json",
+    }
+    paths["v8_report"].write_text("{}", encoding="utf-8")
+    paths["survivor_authority"].write_text("{}", encoding="utf-8")
+    if action == "verify":
+        paths["inventory"].write_text("{}", encoding="utf-8")
+        paths["binding_evidence"].write_text("{}", encoding="utf-8")
+    if nesting == "arrays":
+        raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    paths[target].write_text(raw, encoding="utf-8")
+    existing = {p: p.read_bytes() for p in paths.values() if p.exists()}
+
+    result = _run_cli(action=action, **paths)
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["status"] == "FAIL"
+    assert "JSON nesting limit exceeded" in payload["error"]
+    for path, original in existing.items():
+        assert path.read_bytes() == original
+    if action == "materialize":
+        assert not paths["inventory"].exists()
+        assert not paths["binding_evidence"].exists()
+
+
+def test_unexpected_materialize_recursion_is_not_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    report = tmp_path / "report.json"
+    survivor = tmp_path / "survivor.json"
+    report.write_text("{}", encoding="utf-8")
+    survivor.write_text("{}", encoding="utf-8")
+
+    def unexpected(*_args: object, **_kwargs: object) -> dict:
+        raise RecursionError("unexpected Product recursion")
+
+    monkeypatch.setattr(cli, "materialize_postdedup_inventory", unexpected)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(TOOL),
+            "materialize",
+            "--v8-report", str(report),
+            "--expected-v8-report-sha256", ZERO_SHA256,
+            "--survivor-authority", str(survivor),
+            "--expected-survivor-authority-sha256", ZERO_SHA256,
+            "--inventory", str(tmp_path / "inventory.json"),
+            "--binding-evidence", str(tmp_path / "binding.json"),
+        ],
+    )
+    with pytest.raises(RecursionError, match="unexpected Product recursion"):
+        cli.main()
