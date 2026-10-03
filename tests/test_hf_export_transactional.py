@@ -509,3 +509,48 @@ def test_verifier_rejects_duplicate_config_key_before_hash_checks(tmp_path: Path
 
     with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
         verify_hf_directory(output)
+
+
+
+@pytest.mark.parametrize("root_name", ["reference", "candidate"])
+@pytest.mark.parametrize("replace_root", [False, True])
+def test_hook_cannot_make_exporter_delete_substituted_private_root(
+    tmp_path: Path,
+    root_name: str,
+    replace_root: bool,
+):
+    """A hook-controlled pathname is not proof of private-directory ownership."""
+
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(12.0), identity=identity("8"))
+    retained: dict[str, Path] = {}
+
+    def swapping_hook(reference: Path, candidate: Path):
+        selected = {"reference": reference, "candidate": candidate}[root_name]
+        original = tmp_path / f"retained-original-{root_name}"
+        selected.rename(original)
+        retained["original"] = original
+        if replace_root:
+            selected.mkdir()
+            (selected / "unrelated-evidence.txt").write_text(
+                "preserve unrelated user evidence", encoding="utf-8"
+            )
+            retained["substituted"] = selected
+        return {"status": "PASS", "evidence_ref": "root-identity-regression"}
+
+    with pytest.raises(CheckpointIntegrityError, match="temporary cleanup failed"):
+        export_hf_directory(
+            checkpoint,
+            output,
+            hf_config={"model_type": "twelve_six_export_transactional"},
+            parity_hook=swapping_hook,
+        )
+
+    assert retained["original"].is_dir()
+    if replace_root:
+        assert (
+            retained["substituted"] / "unrelated-evidence.txt"
+        ).read_text(encoding="utf-8") == "preserve unrelated user evidence"
+    assert not output.exists()
+    assert not list(tmp_path.glob(".hf.staging-*"))
