@@ -580,3 +580,90 @@ def test_substituted_control_marker_is_not_deleted(
     assert displaced_marker.read_bytes() == b"INCOMPLETE_NOT_TERMINAL\n"
     assert records.is_file() and report_path.is_file()
     assert not list(tmp_path.glob(".*.stage-*"))
+
+
+@pytest.mark.parametrize("mutation", ("replace_path", "rewrite_in_place"))
+def test_materialization_uses_exact_verified_snapshot_after_source_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    source_a = _archive_from_xml(_xml([_uk("SNAPSHOT_A")]))
+    source_b = _archive_from_xml(_xml([_uk("SUBSTITUTE_B")]))
+    assert source_a != source_b
+    source = tmp_path / "source.zip"
+    source.write_bytes(source_a)
+    displaced = tmp_path / "original-source.zip"
+    work = tmp_path / "private-work"
+    original_hash = mod._hash_file
+
+    def mutate_after_verified_copy(path: Path, *, snapshot_path: Path | None = None):
+        assert path == source
+        assert snapshot_path is not None
+        result = original_hash(path, snapshot_path=snapshot_path)
+        assert snapshot_path.read_bytes() == source_a
+        if mutation == "replace_path":
+            source.rename(displaced)
+            source.write_bytes(source_b)
+        else:
+            source.write_bytes(source_b)
+        return result
+
+    monkeypatch.setattr(mod, "_hash_file", mutate_after_verified_copy)
+    rows, report = mod.materialize_archive_path(
+        source,
+        expected_md5=mod.md5(source_a),
+        expected_sha256=mod.sha256(source_a),
+        work_dir=work,
+    )
+    assert len(rows) == 1
+    assert "SNAPSHOT_A" in rows[0]["text"]
+    assert "SUBSTITUTE_B" not in rows[0]["text"]
+    assert rows[0]["training_eligible"] is False
+    assert rows[0]["evaluation_eligible"] is False
+    assert report["source"]["source_sha256"] == mod.sha256(source_a)
+    assert report["truth_boundary"]["canonical_capacity_credit_bytes"] == 0
+    assert source.read_bytes() == source_b
+    if mutation == "replace_path":
+        assert displaced.read_bytes() == source_a
+    assert not (work / "verified-source.zip").exists()
+
+
+def test_unverified_source_copy_is_discarded_before_nested_zip_parsing(
+    tmp_path: Path,
+) -> None:
+    source_data = _archive_from_xml(_xml([_uk("UNTRUSTED")]))
+    source = tmp_path / "source.zip"
+    source.write_bytes(source_data)
+    work = tmp_path / "private-work"
+    with pytest.raises(mod.ProbeError, match="pinned resource digest mismatch"):
+        mod.materialize_archive_path(
+            source,
+            expected_md5=mod.md5(source_data),
+            expected_sha256="0" * 64,
+            work_dir=work,
+        )
+    assert source.read_bytes() == source_data
+    assert not (work / "verified-source.zip").exists()
+    assert not (work / "nested-text.zip").exists()
+    assert not (work / "candidates.sqlite3").exists()
+
+
+def test_snapshot_streaming_obeys_compressed_byte_limit_and_cleans_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _archive_from_xml(_xml([_uk("LIMIT")]))
+    source = tmp_path / "source.zip"
+    source.write_bytes(payload)
+    work = tmp_path / "private-work"
+    monkeypatch.setattr(mod, "MAX_ARCHIVE_BYTES", len(payload) - 1)
+    with pytest.raises(mod.ProbeError, match="compressed-byte safety limit"):
+        mod.materialize_archive_path(
+            source,
+            expected_md5=mod.md5(payload),
+            expected_sha256=mod.sha256(payload),
+            work_dir=work,
+        )
+    assert source.read_bytes() == payload
+    assert not (work / "verified-source.zip").exists()
+    assert not (work / "nested-text.zip").exists()
