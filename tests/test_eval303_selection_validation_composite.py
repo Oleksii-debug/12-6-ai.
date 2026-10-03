@@ -439,6 +439,34 @@ def test_failed_materialize_preserves_unexpected_stage_file(
     assert injected[0].read_text(encoding="utf-8") == "preserve me"
 
 
+def test_cli_materialize_failure_reports_retained_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output = tmp_path / "failed cli"
+
+    def fail_publication(_staging: Path, _destination: Path) -> None:
+        raise OSError("injected publication failure")
+
+    monkeypatch.setattr(VALIDATOR, "_publish_directory_noreplace", fail_publication)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(SCRIPT), "materialize", "--repo-root", str(ROOT), "--output-dir", str(output)],
+    )
+    assert VALIDATOR.main() == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert len(captured.out.splitlines()) == 1
+    failure = json.loads(captured.out)
+    assert failure["status"] == "FAIL"
+    assert "injected publication failure" in failure["error"]
+    assert "private stage retained for manual inspection" in failure["error"]
+    assert not output.exists()
+    retained = list(tmp_path.glob(".failed cli.staging-*"))
+    assert len(retained) == 1
+    assert str(retained[0]) in failure["error"]
+
+
 def _deep_authority_json(nesting: str) -> str:
     if nesting == "arrays":
         return '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
