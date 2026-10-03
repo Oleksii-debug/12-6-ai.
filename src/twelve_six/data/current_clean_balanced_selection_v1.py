@@ -21,6 +21,7 @@ from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
 from twelve_six.data.postmaterialization_balance_projection_v1 import (
     CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA,
     _canonical_bytes,
+    _family_capacity_projection,
     _current_clean_receipt_self_hash,
     _rebuild_current_clean_survivor_inventory,
     _verify_current_clean_receipt,
@@ -378,6 +379,22 @@ def build_current_clean_balanced_selection(
     )
     if family_vector.get("source_object_count") != physical_sources:
         raise ProjectionError("current-clean source-object count differs from survivor JSONL")
+
+    # The vector can be self-resealed and its digest supplied by a caller. Its
+    # membership and per-family counts must still come from the same raw rows
+    # that authenticated the inventory and producer receipt above.
+    physical_projection = _family_capacity_projection(rebuilt_inventory["records"])
+    for field in (
+        "record_membership_sha256",
+        "families",
+        "stratum_capacity_bytes",
+        "stratum_family_counts",
+        "trusted_family_authority_root_sha256",
+    ):
+        observed = family_vector.get(field)
+        actual = physical_projection[field]
+        if type(observed) is not type(actual) or _canonical_bytes(observed) != _canonical_bytes(actual):
+            raise ProjectionError(f"survivor inventory/family-vector physical projection mismatch: {field}")
     _verify_current_clean_receipt(
         receipt,
         expected_receipt_identity_sha256=family_vector[
