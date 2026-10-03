@@ -120,12 +120,12 @@ def test_builder_cli_rejects_underflow_without_packet_publication(
             id="max-nodes",
         ),
         pytest.param(
-            r'{"nested":"\ud800"}'.encode(),
+            br'{"nested":"\ud800"}',
             "surrogates not allowed",
             id="invalid-unicode-value",
         ),
         pytest.param(
-            r'{"\ud800":"key"}'.encode(),
+            br'{"\ud800":"key"}',
             "surrogates not allowed",
             id="invalid-unicode-key",
         ),
