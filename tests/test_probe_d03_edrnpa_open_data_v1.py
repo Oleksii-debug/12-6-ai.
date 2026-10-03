@@ -430,3 +430,152 @@ def test_competing_target_created_at_publish_survives(
         mod.download_archive_to(destination)
     assert destination.read_bytes() == unrelated
     assert not list(tmp_path.glob(".source.zip.partial-*"))
+
+
+def test_explicit_preexisting_work_dir_is_never_mutated(tmp_path: Path) -> None:
+    data = _archive_from_xml(_xml([_uk("WORK")]))
+    source = tmp_path / "source.zip"
+    source.write_bytes(data)
+    work_dir = tmp_path / "existing workspace"
+    work_dir.mkdir()
+    existing_nested = work_dir / "nested-text.zip"
+    existing_nested.write_bytes(b"UNRELATED EXISTING FILE")
+    with pytest.raises(mod.ProbeError, match="refusing pre-existing work_dir"):
+        mod.materialize_archive_path(
+            source,
+            expected_md5=mod.md5(data),
+            expected_sha256=mod.sha256(data),
+            work_dir=work_dir,
+        )
+    assert existing_nested.read_bytes() == b"UNRELATED EXISTING FILE"
+    assert source.read_bytes() == data
+    assert not (work_dir / "candidates.sqlite3").exists()
+
+
+@pytest.mark.parametrize("existing_kind", ("records", "report"))
+def test_output_publication_never_overwrites_user_files(
+    tmp_path: Path, existing_kind: str
+) -> None:
+    rows, report = _materialize_texts([_uk("OUTPUT")])
+    records = tmp_path / "records.jsonl"
+    report_path = tmp_path / "report.json"
+    selected = {"records": records, "report": report_path}[existing_kind]
+    selected.write_bytes(b"UNRELATED USER EVIDENCE")
+    with pytest.raises(mod.ProbeError, match="refusing to overwrite"):
+        mod._write_outputs(rows, report, records_path=records, report_path=report_path)
+    assert selected.read_bytes() == b"UNRELATED USER EVIDENCE"
+    assert not (tmp_path / "records.jsonl.incomplete").exists()
+    other = report_path if existing_kind == "records" else records
+    assert not other.exists()
+
+
+def test_output_publication_rejects_same_final_path(tmp_path: Path) -> None:
+    rows, report = _materialize_texts([_uk("ALIAS")])
+    shared = tmp_path / "one-file.json"
+    with pytest.raises(mod.ProbeError, match="must be distinct"):
+        mod._write_outputs(rows, report, records_path=shared, report_path=shared)
+    assert not shared.exists()
+
+
+def test_output_publication_preserves_preexisting_foreign_marker(
+    tmp_path: Path,
+) -> None:
+    rows, report = _materialize_texts([_uk("MARKER")])
+    records = tmp_path / "records.jsonl"
+    report_path = tmp_path / "report.json"
+    marker = tmp_path / "records.jsonl.incomplete"
+    marker.write_bytes(b"UNRELATED EXISTING MARKER")
+    with pytest.raises(mod.ProbeError, match="refusing to overwrite"):
+        mod._write_outputs(rows, report, records_path=records, report_path=report_path)
+    assert marker.read_bytes() == b"UNRELATED EXISTING MARKER"
+    assert not records.exists()
+    assert not report_path.exists()
+
+
+def test_output_publication_roundtrips_unicode_paths_and_bytes(
+    tmp_path: Path,
+) -> None:
+    rows, report = _materialize_texts([_uk("УКРАЇНА")])
+    directory = tmp_path / "каталог зі пробілами"
+    records = directory / "записи.jsonl"
+    report_path = directory / "звіт.json"
+    mod._write_outputs(rows, report, records_path=records, report_path=report_path)
+    expected_records = b"".join(
+        (json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+        for row in rows
+    )
+    assert records.read_bytes() == expected_records
+    assert report_path.read_bytes() == mod.cjson(report)
+    assert not (directory / "записи.jsonl.incomplete").exists()
+    assert not list(directory.glob(".*.stage-*"))
+
+
+def test_competing_report_preserves_user_bytes_and_incomplete_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows, report = _materialize_texts([_uk("COMPETE")])
+    records = tmp_path / "records.jsonl"
+    report_path = tmp_path / "report.json"
+    marker = tmp_path / "records.jsonl.incomplete"
+    unexpected = b"COMPETING UNRELATED REPORT"
+    original_link = mod.os.link
+
+    def compete(stage: Path, destination: Path) -> None:
+        if destination == report_path:
+            report_path.write_bytes(unexpected)
+        original_link(stage, destination)
+
+    monkeypatch.setattr(mod.os, "link", compete)
+    with pytest.raises(mod.ProbeError, match="incomplete publication marker"):
+        mod._write_outputs(rows, report, records_path=records, report_path=report_path)
+    assert records.is_file()
+    assert report_path.read_bytes() == unexpected
+    assert marker.read_bytes() == b"INCOMPLETE_NOT_TERMINAL\n"
+    assert not list(tmp_path.glob(".*.stage-*"))
+    with pytest.raises(mod.ProbeError, match="refusing to overwrite"):
+        mod._write_outputs(rows, report, records_path=records, report_path=report_path)
+
+
+def test_failed_report_staging_retains_marker_without_final_outputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows, report = _materialize_texts([_uk("FAIL")])
+    records = tmp_path / "records.jsonl"
+    report_path = tmp_path / "report.json"
+    marker = tmp_path / "records.jsonl.incomplete"
+
+    def fail_report(_value):
+        raise mod.ProbeError("injected report serialization failure")
+
+    monkeypatch.setattr(mod, "cjson", fail_report)
+    with pytest.raises(mod.ProbeError, match="injected report serialization failure"):
+        mod._write_outputs(rows, report, records_path=records, report_path=report_path)
+    assert marker.read_bytes() == b"INCOMPLETE_NOT_TERMINAL\n"
+    assert not records.exists()
+    assert not report_path.exists()
+    assert not list(tmp_path.glob(".*.stage-*"))
+
+
+def test_substituted_control_marker_is_not_deleted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows, report = _materialize_texts([_uk("CONTROL")])
+    records = tmp_path / "records.jsonl"
+    report_path = tmp_path / "report.json"
+    marker = tmp_path / "records.jsonl.incomplete"
+    displaced_marker = tmp_path / "retained original marker"
+    original_link = mod.os.link
+
+    def substitute_marker(stage: Path, destination: Path) -> None:
+        if destination == report_path:
+            marker.rename(displaced_marker)
+            marker.write_bytes(b"UNRELATED REPLACEMENT MARKER")
+        original_link(stage, destination)
+
+    monkeypatch.setattr(mod.os, "link", substitute_marker)
+    with pytest.raises(mod.ProbeError, match="marker identity changed"):
+        mod._write_outputs(rows, report, records_path=records, report_path=report_path)
+    assert marker.read_bytes() == b"UNRELATED REPLACEMENT MARKER"
+    assert displaced_marker.read_bytes() == b"INCOMPLETE_NOT_TERMINAL\n"
+    assert records.is_file() and report_path.is_file()
+    assert not list(tmp_path.glob(".*.stage-*"))
