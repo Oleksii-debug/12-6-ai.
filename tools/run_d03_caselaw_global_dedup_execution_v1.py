@@ -623,7 +623,8 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
         "incomplete publication manifest is not a regular file",
     )
     try:
-        raw = manifest_path.read_bytes()
+        with manifest_path.open("rb") as handle:
+            raw = handle.read(PUBLICATION_MANIFEST_MAX_BYTES + 1)
         if len(raw) > PUBLICATION_MANIFEST_MAX_BYTES:
             raise ValueError("publication manifest exceeds bounded size")
         value = json.loads(
@@ -900,9 +901,15 @@ def _publish_json_outputs(
 ) -> None:
     prepared_list: list[tuple[Path, bytes]] = []
     seen: set[Path] = set()
+    resolved_seen: set[Path] = set()
     for path, value in outputs:
-        _require(path not in seen, f"duplicate output path: {path}")
+        resolved = path.resolve(strict=False)
+        _require(
+            path not in seen and resolved not in resolved_seen,
+            f"duplicate output path: {path}",
+        )
         seen.add(path)
+        resolved_seen.add(resolved)
         prepared_list.append((path, _canonical(dict(value)) + b"\n"))
     prepared = tuple(prepared_list)
     _require(bool(prepared), "publication output set must not be empty")
@@ -911,11 +918,12 @@ def _publish_json_outputs(
         path.parent.mkdir(parents=True, exist_ok=True)
 
     marker_path, manifest_path, stages, pathset_id = _publication_control_paths(prepared)
+    control_paths = (marker_path, manifest_path, *stages)
+    resolved_controls = tuple(path.resolve(strict=False) for path in control_paths)
     _require(
-        marker_path not in seen
-        and manifest_path not in seen
-        and all(stage not in seen for stage in stages),
-        "publication control path collides with output path",
+        len(set(resolved_controls)) == len(resolved_controls)
+        and not (set(resolved_controls) & resolved_seen),
+        "publication control path collision",
     )
 
     if _path_entry_exists(marker_path):

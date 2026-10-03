@@ -761,3 +761,27 @@ with TemporaryDirectory() as raw:
 """
     )
 
+def test_publication_rejects_resolved_output_aliases_before_writing() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    (root / "nested").mkdir()
+    direct = root / "same.json"
+    alias = root / "nested" / ".." / "same.json"
+    assert direct != alias
+    assert direct.resolve() == alias.resolve()
+    try:
+        mod._publish_json_outputs(
+            ((direct, {"a": 1}), (alias, {"b": 2}))
+        )
+    except mod.CaselawGlobalDedupError as exc:
+        assert "duplicate output path" in str(exc)
+    else:
+        raise AssertionError("resolved output alias was accepted")
+    assert not direct.exists()
+"""
+    )
+
