@@ -97,3 +97,55 @@ def test_candidate_byte_arithmetic_is_bound() -> None:
     _resign(document)
     with pytest.raises(SourceAuthorityError, match="candidate byte arithmetic drift"):
         validate_source_authority(document)
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "message"),
+    [
+        (("schema_version",), True, "schema_version"),
+        (("license", "whole_repository_credit_forbidden"), 1, "license boundary"),
+        (("purpose", "training_allowed"), 1, "purpose boundary"),
+        (("purpose", "evaluation_allowed"), 0, "purpose boundary"),
+        (("gates", "requires_materialization"), 1, "downstream gates"),
+        (("gates", "requires_global_cross_source_dedup"), 1, "downstream gates"),
+        (("capacity", "candidate_raw_bytes"), 78307.0, "candidate byte arithmetic"),
+        (("capacity", "canonical_credit_bytes"), False, "canonical credit"),
+        (("allowlist", 0, "git_blob_sha1"), "a" * 40, "unapproved SciPy"),
+        (("allowlist", 0, "raw_bytes"), 25258, "unapproved SciPy"),
+    ],
+)
+def test_resigned_source_authority_rejects_aliases_and_forged_pins(
+    path: tuple[str | int, ...], value: object, message: str,
+) -> None:
+    document = copy.deepcopy(_document())
+    target = document
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    if path == ("allowlist", 0, "raw_bytes"):
+        document["capacity"]["candidate_raw_bytes"] += 1
+    _resign(document)
+    with pytest.raises(SourceAuthorityError, match=message):
+        validate_source_authority(document)
+
+
+def test_resigned_source_authority_rejects_new_uninspected_code_path() -> None:
+    document = copy.deepcopy(_document())
+    entry = document["allowlist"][0]
+    entry["path"] = "scipy/optimize/_uninspected.py"
+    commit = document["upstream"]["commit_sha"]
+    entry["raw_url"] = (
+        f"https://raw.githubusercontent.com/scipy/scipy/{commit}/{entry['path']}"
+    )
+    _resign(document)
+    with pytest.raises(SourceAuthorityError, match="unapproved SciPy"):
+        validate_source_authority(document)
+
+
+def test_resigned_source_authority_rejects_missing_pinned_code_file() -> None:
+    document = copy.deepcopy(_document())
+    document["allowlist"].pop()
+    document["capacity"]["candidate_raw_bytes"] = document["allowlist"][0]["raw_bytes"]
+    _resign(document)
+    with pytest.raises(SourceAuthorityError, match="two pinned first-party files"):
+        validate_source_authority(document)
