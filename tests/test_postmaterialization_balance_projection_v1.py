@@ -999,6 +999,49 @@ def test_current_clean_rebuilds_inventory_from_survivor_jsonl() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    ("record_count_float", "total_bytes_float", "row_bytes_float"),
+)
+def test_current_clean_rejects_resealed_inventory_numeric_alias(
+    mutation: str,
+) -> None:
+    original, raw, expected = _current_clean_bytes(_partial_rows())
+    inventory = copy.deepcopy(original)
+    if mutation == "record_count_float":
+        inventory["record_count"] = float(inventory["record_count"])
+    elif mutation == "total_bytes_float":
+        inventory["total_payload_bytes"] = float(
+            inventory["total_payload_bytes"]
+        )
+    else:
+        first = inventory["records"][0]
+        first["payload_bytes"] = float(first["payload_bytes"])
+    assert inventory == original
+    raw["survivor_inventory"] = _canonical(inventory) + b"\n"
+    inventory_sha = hashlib.sha256(raw["survivor_inventory"]).hexdigest()
+    repeat = json.loads(raw["repeat_proof"])
+    repeat["output_files_sha256"]["survivor_inventory.json"] = inventory_sha
+    raw["repeat_proof"] = _reseal(repeat, "proof_identity_sha256")
+    expected["expected_survivor_inventory_json_sha256"] = inventory_sha
+    expected["expected_repeat_proof_json_sha256"] = hashlib.sha256(
+        raw["repeat_proof"]
+    ).hexdigest()
+    expected["expected_repeat_proof_identity_sha256"] = json.loads(
+        raw["repeat_proof"]
+    )["proof_identity_sha256"]
+    with pytest.raises(
+        ProjectionError, match="differs from rebuilt survivor JSONL"
+    ):
+        build_current_clean_family_vector(
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_inventory_raw=raw["survivor_inventory"],
+            repeat_proof_raw=raw["repeat_proof"],
+            survivor_records_raw=raw["survivor_records"],
+            **expected,
+        )
+
+
 def test_current_clean_rejects_coherently_resealed_record_inventory_mismatch() -> None:
     _, raw, expected = _current_clean_bytes(_partial_rows())
     records = [
