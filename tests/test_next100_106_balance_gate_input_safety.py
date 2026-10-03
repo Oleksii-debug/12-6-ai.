@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import subprocess
@@ -227,3 +228,74 @@ def test_real_current_clean_declared_numeric_aliases_fail_closed(
     vector["totals"][field][stratum] = float(count)
     with pytest.raises(gate.GateError, match=f"declared {field}"):
         gate.evaluate(gate.load_json(POLICY), vector)
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "message"),
+    [
+        (("policy", "target_total_source_bytes"), 20_000_000.0, "20M"),
+        (("policy", "minimum_independent_families_per_stratum"), 2.0, "minimum family"),
+        (("policy", "budget_quantum_bytes"), 100.0, "budget quantum"),
+        (("policy", "strata", "ua", "target_numerator"), 9.0, "ua mixture numerator"),
+        (("policy", "strata", "code", "target_denominator"), 5.0, "code mixture denominator"),
+        (("policy", "max_family_fraction_total", "numerator"), 1.0, "global family cap"),
+        (("policy", "max_family_fraction_total", "denominator"), 4.0, "global family cap"),
+        (("policy", "max_family_fraction_own_stratum", "numerator"), 3.0, "within-stratum"),
+        (("claim_boundary", "authorizes_model_training"), 0, "claim boundary"),
+        (("claim_boundary", "authorizes_tokenizer_fit"), 0, "claim boundary"),
+        (("claim_boundary", "computes_source_mixture_feasibility_only"), 1, "claim boundary"),
+    ],
+)
+def test_self_resealed_policy_rejects_numeric_and_boolean_aliases(
+    path: tuple[str, ...], value: object, message: str,
+) -> None:
+    gate = _gate()
+    policy = copy.deepcopy(gate.load_json(POLICY))
+    target = policy
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    # An attacker controlling the external policy bytes can re-sign its
+    # self-hash; matching a recomputed digest is not a type guarantee.
+    policy["policy_identity_sha256"] = gate.canonical_sha(
+        policy, "policy_identity_sha256"
+    )
+    with pytest.raises(gate.GateError, match=message):
+        gate.validate_policy(policy)
+
+
+@pytest.mark.parametrize(
+    ("path", "message"),
+    [
+        (("policy", "strata", "ua", "target_denominator"), "45/35/20"),
+        (("policy", "max_family_fraction_total", "numerator"), "global family cap"),
+        (("claim_boundary", "authorizes_paid_compute"), "claim boundary"),
+    ],
+)
+def test_self_resealed_policy_missing_required_fields_fail_closed(
+    path: tuple[str, ...], message: str,
+) -> None:
+    gate = _gate()
+    policy = copy.deepcopy(gate.load_json(POLICY))
+    target = policy
+    for key in path[:-1]:
+        target = target[key]
+    del target[path[-1]]
+    policy["policy_identity_sha256"] = gate.canonical_sha(
+        policy, "policy_identity_sha256"
+    )
+    with pytest.raises(gate.GateError, match=message):
+        gate.validate_policy(policy)
+
+
+def test_self_resealed_policy_rejects_extra_stratum() -> None:
+    gate = _gate()
+    policy = copy.deepcopy(gate.load_json(POLICY))
+    policy["policy"]["strata"]["extra"] = {
+        "target_numerator": 0, "target_denominator": 20,
+    }
+    policy["policy_identity_sha256"] = gate.canonical_sha(
+        policy, "policy_identity_sha256"
+    )
+    with pytest.raises(gate.GateError, match="45/35/20"):
+        gate.validate_policy(policy)
