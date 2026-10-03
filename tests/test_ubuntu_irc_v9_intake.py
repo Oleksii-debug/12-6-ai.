@@ -246,7 +246,7 @@ def test_private_v9_runtime_substitution_fails_before_candidate_parse(
         )
 
 
-def test_private_v9_missing_or_symlinked_file_is_rejected(
+def test_private_v9_missing_file_is_rejected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     candidate = prepare(monkeypatch, [row()])
@@ -272,6 +272,28 @@ def test_facade_runtime_path_substitution_fails_even_with_valid_supplied_bytes(
     swapped.write_bytes(V9.read_bytes() + b"\n")
     monkeypatch.setattr(intake, "INCUMBENT_V9_FACADE_PATH", swapped)
     with pytest.raises(intake.UbuntuIrcV9IntakeError, match="facade runtime path/bytes drift"):
+        intake.prepare_ubuntu_v9_intake(
+            incumbent_v9_product_head=intake.INCUMBENT_V9_PRODUCT_HEAD,
+            incumbent_v9_facade_bytes=V9.read_bytes(),
+            crossbind_bytes=CROSSBIND.read_bytes(),
+            rights_authority_bytes=RIGHTS.read_bytes(),
+            parent_registry_bytes=PARENT.read_bytes(),
+            execution_evidence_bytes=EVIDENCE.read_bytes(),
+            candidate_bytes=candidate,
+        )
+
+
+def test_private_v9_symlink_to_valid_file_is_still_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    candidate = prepare(monkeypatch, [row()])
+    link = tmp_path / "_expanded_global_dedup_v9_impl.py"
+    try:
+        link.symlink_to(PRIVATE_V9)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable in this environment")
+    monkeypatch.setattr(intake, "INCUMBENT_V9_PRIVATE_PATH", link)
+    with pytest.raises(intake.UbuntuIrcV9IntakeError, match="regular non-symlink file"):
         intake.prepare_ubuntu_v9_intake(
             incumbent_v9_product_head=intake.INCUMBENT_V9_PRODUCT_HEAD,
             incumbent_v9_facade_bytes=V9.read_bytes(),
