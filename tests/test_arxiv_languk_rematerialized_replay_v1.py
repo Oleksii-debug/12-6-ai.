@@ -405,15 +405,15 @@ def test_publishing_uses_captured_bytes_if_workspace_changes_during_write(
     verified_survivors.write_bytes(saved_survivors)
     args = _runner_args(tmp_path)
     receipt = {"status": "verified"}
-    actual_write = REPLAY_RUNNER._write_new_bytes
+    actual_link = REPLAY_RUNNER._link_staged_new_bytes
 
-    def mutate_after_first_write(path: Path, raw: bytes, *, label: str) -> None:
-        actual_write(path, raw, label=label)
+    def mutate_after_first_link(staged: Path, path: Path, *, label: str) -> None:
+        actual_link(staged, path, label=label)
         if label == "outer report":
             verified_report.write_bytes(b"tampered-report")
             verified_survivors.write_bytes(b"tampered-survivors")
 
-    monkeypatch.setattr(REPLAY_RUNNER, "_write_new_bytes", mutate_after_first_write)
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", mutate_after_first_link)
     REPLAY_RUNNER._publish_verified_outputs(
         args, pass_root=pass_root, pass_result=result, receipt=receipt,
     )
@@ -696,3 +696,165 @@ def test_wrapper_keeps_current_package_out_of_terminal_v7_bootstrap_path() -> No
     )
     assert REPLAY_RUNNER.EXPECTED_V7_TREE == "f6bb58379e9e249583480c246b844b673be38b4c"
     assert REPLAY_RUNNER.sys.dont_write_bytecode is True
+
+
+def _publication_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, SimpleNamespace, dict[str, str], dict[str, object]]:
+    pass_root = tmp_path / "pass-1"
+    pass_root.mkdir()
+    arxiv, languk, report, survivors = _disk_pass_files(pass_root)
+    _fake_disk_verifier(monkeypatch)
+    pass_result = REPLAY_RUNNER._pass_result(
+        arxiv_candidate=arxiv, languk_candidate=languk,
+        report=report, survivors=survivors,
+    )
+    (pass_root / "current-clean-report.json").write_bytes(report.read_bytes())
+    (pass_root / "current-clean-survivors.json").write_bytes(survivors.read_bytes())
+    return pass_root, _runner_args(tmp_path), pass_result, {"status": "zero-credit"}
+
+
+def test_staging_failure_does_not_publish_any_outer_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_stage = REPLAY_RUNNER._stage_new_bytes
+
+    def stage(path: Path, raw: bytes, *, label: str) -> Path:
+        if label == "outer survivors":
+            raise OSError("injected staging ENOSPC")
+        return original_stage(path, raw, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_stage_new_bytes", stage)
+    with pytest.raises(OSError, match="injected staging ENOSPC"):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    for path in (args.output_report, args.output_survivors, args.output_receipt):
+        assert not path.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_partial_outer_publication_keeps_authenticated_recovery_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    real_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def fail_second(staged: Path, path: Path, *, label: str) -> None:
+        if label == "outer survivors":
+            raise REPLAY_RUNNER.RematerializationError("injected publish failure")
+        real_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", fail_second)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="manual reconciliation required",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    intent_path = pass_root / "outer-publication-intent.json"
+    intent = json.loads(intent_path.read_text(encoding="utf-8"))
+    assert intent["status"] == "PREPARED_UNCOMMITTED"
+    assert intent["canonical_capacity_credited"] == 0
+    assert intent["training_authorized"] is False
+    assert intent["outputs"][0]["sha256"] == result["report_file_sha256"]
+    assert args.output_report.read_bytes() == (
+        pass_root / "current-clean-report.json"
+    ).read_bytes()
+    assert not args.output_survivors.exists()
+    assert not args.output_receipt.exists()
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="refusing to overwrite outer report",
+    ):
+        REPLAY_RUNNER._verify_outer_output_targets(args)
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_late_receipt_race_never_clobbers_untrusted_competing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    real_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def compete(staged: Path, path: Path, *, label: str) -> None:
+        if label == "outer receipt":
+            path.write_bytes(b"competing publisher")
+        real_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", compete)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="commit receipt not verified",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert args.output_receipt.read_bytes() == b"competing publisher"
+    assert args.output_report.exists() and args.output_survivors.exists()
+    assert (pass_root / "outer-publication-intent.json").exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_short_staged_write_never_creates_final_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_fdopen = REPLAY_RUNNER.os.fdopen
+
+    class ShortWriter:
+        def __init__(self, original):
+            self.original = original
+
+        def __enter__(self):
+            self.original.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.original.__exit__(*args)
+
+        def write(self, raw: bytes) -> int:
+            self.original.write(raw[:1])
+            return 1
+
+    monkeypatch.setattr(
+        REPLAY_RUNNER.os, "fdopen",
+        lambda descriptor, mode: ShortWriter(real_fdopen(descriptor, mode)),
+    )
+    path = tmp_path / "report.json"
+    with pytest.raises(OSError, match="incomplete staged write"):
+        REPLAY_RUNNER._write_new_bytes(path, b"complete-evidence", label="report")
+    assert not path.exists()
+    assert not list(tmp_path.glob(".report.json.*.tmp"))
+
+
+def test_fsync_failure_never_creates_final_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_sync(_descriptor: int) -> None:
+        raise OSError("injected fsync failure")
+
+    monkeypatch.setattr(REPLAY_RUNNER.os, "fsync", fail_sync)
+    path = tmp_path / "report.json"
+    with pytest.raises(OSError, match="injected fsync failure"):
+        REPLAY_RUNNER._write_new_bytes(path, b"complete-evidence", label="report")
+    assert not path.exists()
+    assert not list(tmp_path.glob(".report.json.*.tmp"))
+
+
+def test_complete_outer_publication_receipt_commits_prepared_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    intent = json.loads(
+        (pass_root / "outer-publication-intent.json").read_text(encoding="utf-8")
+    )
+    assert intent["status"] == "PREPARED_UNCOMMITTED"
+    assert intent["outputs"][-1]["label"] == "outer receipt"
+    for entry in intent["outputs"]:
+        path = Path(entry["path"])
+        assert REPLAY_RUNNER.sha256_bytes(path.read_bytes()) == entry["sha256"]
+    assert args.output_receipt.read_bytes() == canonical_json_bytes(receipt)
+    assert not list(tmp_path.glob(".outer-*.tmp"))
