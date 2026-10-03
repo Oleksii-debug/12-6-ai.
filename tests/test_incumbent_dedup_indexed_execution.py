@@ -1,15 +1,77 @@
+import ast
+import functools
 import importlib.util
+import os
+import subprocess
 import sys
+from pathlib import Path
+from types import ModuleType
+from typing import Any
 
 import pytest
 
-from twelve_six.data import incumbent_dedup_indexed_execution as indexed
-from twelve_six.data.incumbent_dedup_indexed_execution import (
-    IndexedExecutionError,
-    candidate_pair_indices,
-    candidate_pair_indices_with_stats,
-    execution_stats,
-)
+_ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
+
+
+def _isolated_indexed_test(test):
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        current = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+        if os.environ.get(_ISOLATED_INDEXED_TEST_NODE) == current and current:
+            return test(*args, **kwargs)
+        if not current:
+            return test(*args, **kwargs)
+
+        env = os.environ.copy()
+        env[_ISOLATED_INDEXED_TEST_NODE] = current
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", current],
+            cwd=Path(__file__).resolve().parent.parent,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+        )
+        assert completed.returncode == 0, (
+            f"isolated indexed test failed: {current}\n"
+            f"STDOUT:\n{completed.stdout}\n"
+            f"STDERR:\n{completed.stderr}"
+        )
+
+    return wrapper
+
+
+class _LazyIndexed:
+    _module: ModuleType | None = None
+
+    def _load_module(self) -> ModuleType:
+        module = object.__getattribute__(self, "_module")
+        if module is None:
+            module = importlib.import_module(
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            )
+            object.__setattr__(self, "_module", module)
+        return module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._load_module(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_module":
+            object.__setattr__(self, name, value)
+            return
+        setattr(self._load_module(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name == "_module":
+            object.__delattr__(self, name)
+            return
+        delattr(self._load_module(), name)
+
+
+indexed = _LazyIndexed()
 
 
 class FakeV1:
@@ -44,6 +106,7 @@ def _fp(
     }
 
 
+@_isolated_indexed_test
 def test_terminal_science_constants_are_exact_and_non_overridable():
     assert indexed.EXPECTED_DATA232_GIT_BLOB_SHA1 == "dab5da98dfc43133aa8f3c2e3c78c809252b741b"
     assert indexed.EXPECTED_THRESHOLDS == {
@@ -63,6 +126,7 @@ def test_terminal_science_constants_are_exact_and_non_overridable():
     assert "expected_v1_blob" not in indexed.inspect.signature(indexed.audit_payloads_indexed).parameters
 
 
+@_isolated_indexed_test
 def test_executable_attestation_rejects_in_memory_callable_substitution(tmp_path):
     path = tmp_path / "authority.py"
     path.write_text("VALUE = 7\ndef semantic(value):\n    return value + VALUE\n", encoding="utf-8")
@@ -73,10 +137,11 @@ def test_executable_attestation_rejects_in_memory_callable_substitution(tmp_path
     spec.loader.exec_module(module)
     indexed._attest_executable_module(module, "FIXTURE")
     module.semantic = lambda value: value
-    with pytest.raises(IndexedExecutionError, match="callable"):
+    with pytest.raises(indexed.IndexedExecutionError, match="callable"):
         indexed._attest_executable_module(module, "FIXTURE")
 
 
+@_isolated_indexed_test
 def test_candidate_index_contains_each_incumbent_necessary_condition():
     shared_edge = "This shared publisher footer has comfortably more than thirty two characters."
     rows = [
@@ -94,7 +159,7 @@ def test_candidate_index_contains_each_incumbent_necessary_condition():
         _fp("l", text=f"other\n{shared_edge}\ntail"),
         _fp("m"),
     ]
-    pairs = set(candidate_pair_indices(FakeV1, rows))
+    pairs = set(indexed.candidate_pair_indices(FakeV1, rows))
     assert (0, 1) in pairs
     assert (2, 3) in pairs
     assert (4, 5) in pairs
@@ -104,30 +169,34 @@ def test_candidate_index_contains_each_incumbent_necessary_condition():
     assert all(12 not in pair for pair in pairs)
 
 
+@_isolated_indexed_test
 def test_content_shingles_do_not_cross_code_natural_boundary():
     rows = [
         _fp("natural", shingles=frozenset({"same"})),
         _fp("code", modality="code", shingles=frozenset({"same"})),
     ]
-    assert candidate_pair_indices(FakeV1, rows) == []
+    assert indexed.candidate_pair_indices(FakeV1, rows) == []
 
 
+@_isolated_indexed_test
 def test_candidate_budget_fails_closed():
     rows = [_fp(str(index), origin="same") for index in range(5)]
-    with pytest.raises(IndexedExecutionError, match="candidate pair budget exceeded"):
-        candidate_pair_indices(FakeV1, rows, max_candidate_pairs=2)
+    with pytest.raises(indexed.IndexedExecutionError, match="candidate pair budget exceeded"):
+        indexed.candidate_pair_indices(FakeV1, rows, max_candidate_pairs=2)
 
 
+@_isolated_indexed_test
 def test_index_posting_budget_fails_before_unbounded_growth():
     rows = [_fp("a", shingles=frozenset({"s1", "s2", "s3"}))]
-    with pytest.raises(IndexedExecutionError, match="index posting work budget exceeded"):
-        candidate_pair_indices(FakeV1, rows, max_index_postings=5)
+    with pytest.raises(indexed.IndexedExecutionError, match="index posting work budget exceeded"):
+        indexed.candidate_pair_indices(FakeV1, rows, max_index_postings=5)
 
 
+@_isolated_indexed_test
 def test_repeated_key_amplification_collapses_identical_bucket_signature():
     shared = frozenset(f"shared-{index}" for index in range(1_000))
     rows = [_fp(str(index), shingles=shared) for index in range(10)]
-    pairs, stats = candidate_pair_indices_with_stats(
+    pairs, stats = indexed.candidate_pair_indices_with_stats(
         FakeV1,
         rows,
         max_pair_expansions=100,
@@ -138,14 +207,15 @@ def test_repeated_key_amplification_collapses_identical_bucket_signature():
     assert stats["unique_bucket_signatures"] == 1
 
 
+@_isolated_indexed_test
 def test_pair_expansion_budget_is_independent_of_unique_candidate_budget():
     rows = [
         _fp("0", shingles=frozenset({"a", "b"})),
         _fp("1", shingles=frozenset({"a"})),
         _fp("2", shingles=frozenset({"b"})),
     ]
-    with pytest.raises(IndexedExecutionError, match="pair expansion work budget exceeded"):
-        candidate_pair_indices_with_stats(
+    with pytest.raises(indexed.IndexedExecutionError, match="pair expansion work budget exceeded"):
+        indexed.candidate_pair_indices_with_stats(
             FakeV1,
             rows,
             max_candidate_pairs=100,
@@ -153,15 +223,84 @@ def test_pair_expansion_budget_is_independent_of_unique_candidate_budget():
         )
 
 
+@_isolated_indexed_test
 def test_execution_stats_exact_rada_scale_and_work_telemetry():
-    rada = execution_stats(101_559, 0, index_postings=123, pair_expansion_attempts=45)
+    rada = indexed.execution_stats(101_559, 0, index_postings=123, pair_expansion_attempts=45)
     assert rada["incumbent_all_pair_dispatches"] == 5_157_064_461
     assert rada["index_postings"] == 123
     assert rada["pair_expansion_attempts"] == 45
-    combined = execution_stats(101_821, 0)
+    combined = indexed.execution_stats(101_821, 0)
     assert combined["incumbent_all_pair_dispatches"] == 5_183_707_110
 
 
+@_isolated_indexed_test
 def test_execution_stats_rejects_impossible_candidate_count():
-    with pytest.raises(IndexedExecutionError, match="exceeds all-pairs"):
-        execution_stats(2, 2)
+    with pytest.raises(indexed.IndexedExecutionError, match="exceeds all-pairs"):
+        indexed.execution_stats(2, 2)
+
+
+def test_dedicated_indexed_harness_never_imports_authority_during_collection():
+    target = "twelve_six.data.incumbent_dedup_indexed_execution"
+    test_dir = Path(__file__).parent
+    dedicated = (
+        "test_incumbent_dedup_direct_import_behavior.py",
+        "test_incumbent_dedup_imported_member_closure.py",
+        "test_incumbent_dedup_indexed_execution.py",
+        "test_incumbent_dedup_json_re_transitive_closure.py",
+        "test_incumbent_dedup_runtime_closure.py",
+    )
+
+    violations: list[str] = []
+    for filename in dedicated:
+        tree = ast.parse((test_dir / filename).read_text(encoding="utf-8"), filename=filename)
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                if any(alias.name == target for alias in node.names):
+                    violations.append(f"{filename}:{node.lineno}: import {target}")
+            elif isinstance(node, ast.ImportFrom):
+                if node.module == target:
+                    violations.append(f"{filename}:{node.lineno}: from {target} import ...")
+                elif node.module == "twelve_six.data" and any(
+                    alias.name == "incumbent_dedup_indexed_execution" for alias in node.names
+                ):
+                    violations.append(
+                        f"{filename}:{node.lineno}: from twelve_six.data import authority"
+                    )
+
+    assert violations == []
+
+    blocker_script = r"""
+import sys
+
+target = "twelve_six.data.incumbent_dedup_indexed_execution"
+
+
+class BlockAuthorityImport:
+    def find_spec(self, fullname, path=None, target=None):
+        del path, target
+        if fullname == "twelve_six.data.incumbent_dedup_indexed_execution":
+            raise RuntimeError(f"collection imported forbidden authority: {fullname}")
+        return None
+
+
+sys.meta_path.insert(0, BlockAuthorityImport())
+import pytest
+
+raise SystemExit(pytest.main(["--collect-only", "-q", *sys.argv[1:]]))
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            blocker_script,
+            *(str(test_dir / filename) for filename in dedicated),
+        ],
+        cwd=test_dir.parent,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
