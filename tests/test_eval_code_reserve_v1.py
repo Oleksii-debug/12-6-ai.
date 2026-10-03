@@ -287,3 +287,20 @@ def test_reservation_rejects_equal_value_numeric_type_aliases(
     target[field] = replacement
     with pytest.raises(ValueError, match=message):
         validator.validate_document(doc)
+
+
+@pytest.mark.parametrize("replacement", (10438.0, "10438", False))
+def test_reserved_object_raw_byte_identity_rejects_numeric_aliases(
+    replacement: object,
+) -> None:
+    doc = _manifest()
+    doc["objects"][0]["expected_raw_bytes"] = replacement
+    with pytest.raises(ValueError, match="identity drift"):
+        validator.validate_document(doc)
+
+
+def test_reserved_object_requires_object_shape() -> None:
+    doc = _manifest()
+    doc["objects"][0] = 0
+    with pytest.raises(ValueError, match="reserved object must be an object"):
+        validator.validate_document(doc)
