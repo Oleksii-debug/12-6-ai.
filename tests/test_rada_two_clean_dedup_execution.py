@@ -777,6 +777,7 @@ def test_dependency_authority_rejects_missing_indexed_core_binding(tmp_path: Pat
     with pytest.raises(carrier.RadaTwoCleanExecutionError, match="schema drift"):
         carrier.validate_dependency_authority(path, expected_raw_sha256=identity)
 
+
 def _deep_json(nesting: str) -> bytes:
     if nesting == "arrays":
         raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
