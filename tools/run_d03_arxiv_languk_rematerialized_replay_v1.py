@@ -470,7 +470,7 @@ def _publish_verified_outputs(
                     for done_label, done_path, digest in published
                 ]
                 raise RematerializationError(
-                    f"partial outer publication; commit receipt absent; "
+                    f"partial outer publication; commit receipt not verified; "
                     f"inspect {intent_path} and verify immutable outputs {observed}; "
                     f"manual reconciliation required before retry"
                 ) from exc
