@@ -511,7 +511,6 @@ def _is_sha256_hex(value: Any) -> bool:
     )
 
 
-
 def _path_entry_exists(path: Path) -> bool:
     return os.path.lexists(path)
 
@@ -673,8 +672,12 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
         "incomplete publication path-set identity invalid",
     )
     targets = core.get("targets")
-    _require(type(targets) is list and bool(targets), "publication manifest targets missing")
+    _require(
+        type(targets) is list and bool(targets),
+        "publication manifest targets missing",
+    )
     return value
+
 
 def _remove_control_without_payload(
     marker_path: Path,

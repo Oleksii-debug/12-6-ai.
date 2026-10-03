@@ -502,6 +502,7 @@ def test_two_clean_report_hash_uses_real_lf_byte() -> None:
     assert correct in workflow
     assert incorrect not in workflow
 
+
 def test_publication_success_is_create_only_and_cleans_controls() -> None:
     _run_isolated(
         """
@@ -675,6 +676,7 @@ with TemporaryDirectory() as raw:
     assert not path.exists()
 """
     )
+
 
 def test_publication_manifest_json_is_bounded_and_strict() -> None:
     _run_isolated(
