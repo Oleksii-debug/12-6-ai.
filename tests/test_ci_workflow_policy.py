@@ -134,7 +134,7 @@ def test_d03_rada_fresh_snapshot_job_is_same_repo_and_claim_pinned():
     workflow = (
         Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
     ).read_text(encoding="utf-8")
-    job_start = workflow.index("  d03-rada-fresh-snapshot-v2:\\n")
+    job_start = workflow.index("  d03-rada-fresh-snapshot-v2:\n")
     job = workflow[job_start:]
 
     assert "github.event_name == 'pull_request'" in job

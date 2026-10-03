@@ -21,7 +21,7 @@ OUTPUT_SCHEMA = "12-6.d03-rada-bulk-fresh-snapshot-qualification.v2"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 MD5_RE = re.compile(r"^[0-9a-f]{32}$")
 CRC32_RE = re.compile(r"^[0-9a-f]{8}$")
-NAME_RE = re.compile(r"^d[0-9]+\\.htm$")
+NAME_RE = re.compile(r"^d[0-9]+\.htm$")
 NOT_RUN_GATES = (
     "canonical_normalization",
     "quality",

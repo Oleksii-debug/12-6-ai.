@@ -58,11 +58,11 @@ def _report(
     identity = hashlib.sha256()
     for entry in entries:
         identity.update(str(entry["basename"]).encode())
-        identity.update(b"\\0")
+        identity.update(b"\0")
         identity.update(str(entry["raw_bytes"]).encode("ascii"))
-        identity.update(b"\\0")
+        identity.update(b"\0")
         identity.update(str(entry["raw_sha256"]).encode("ascii"))
-        identity.update(b"\\n")
+        identity.update(b"\n")
     probe = config["probe_authority"]
     source = config["source"]
     return {
