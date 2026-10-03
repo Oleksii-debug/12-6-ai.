@@ -27,6 +27,28 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_new_output(
+    path: Path, payload: bytes, *, family_vector: Path, dedup_authority: Path,
+) -> None:
+    """Publish once; never truncate source evidence or an earlier result."""
+    if path.exists() or path.is_symlink():
+        raise ProjectionError(f"refusing to overwrite existing adapter output: {path}")
+    try:
+        resolved = path.resolve()
+        protected = {family_vector.resolve(), dedup_authority.resolve()}
+    except (OSError, RuntimeError) as exc:
+        raise ProjectionError("adapter output path cannot be resolved safely") from exc
+    if resolved in protected:
+        raise ProjectionError("adapter output must not alias an input authority")
+    try:
+        with path.open("xb") as destination:
+            destination.write(payload)
+    except FileExistsError as exc:
+        raise ProjectionError(f"refusing to overwrite existing adapter output: {path}") from exc
+    except OSError as exc:
+        raise ProjectionError(f"cannot create adapter output safely: {path}: {exc}") from exc
+
+
 def main() -> int:
     args = _parser().parse_args()
     try:
@@ -42,9 +64,11 @@ def main() -> int:
                 args.expected_dedup_evidence_identity_sha256
             ),
         )
-        args.output.write_text(
-            json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
+        payload = (json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        _write_new_output(
+            args.output, payload.encode("utf-8"),
+            family_vector=args.family_vector,
+            dedup_authority=args.dedup_authority,
         )
     except ProjectionError as exc:
         raise SystemExit(f"FAIL_CLOSED: {exc}") from exc
