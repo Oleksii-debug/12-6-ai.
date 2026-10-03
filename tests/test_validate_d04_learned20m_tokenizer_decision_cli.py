@@ -8,6 +8,8 @@ from types import ModuleType
 
 import pytest
 
+from twelve_six.tokenization.decision_authority import TokenizerDecisionError
+
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "validate_d04_learned20m_tokenizer_decision.py"
 HASH_ARGS = (
@@ -132,4 +134,137 @@ def test_main_malformed_authority_fails_machine_readably_without_output(
     payload = json.loads(captured.out)
     assert payload["contract_valid"] is False
     assert "duplicate_json_key:same" in payload["error"]
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("target", ["selection", "application", "report"])
+@pytest.mark.parametrize("preexisting_output", [False, True])
+def test_main_semantic_authority_rejection_is_one_line_and_nonpublishing(
+    tmp_path: Path,
+    target: str,
+    preexisting_output: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    report = tmp_path / "report.json"
+    output = tmp_path / "out.json"
+    selection.write_text("{}", encoding="utf-8")
+    application.write_text("{}", encoding="utf-8")
+    report.write_text("{}", encoding="utf-8")
+    old_output = '{"do_not_overwrite":true}\n'
+    if preexisting_output:
+        output.write_text(old_output, encoding="utf-8")
+
+    if target == "application":
+        # The real application validator requires a qualified selection first.
+        # Exercise its domain-error return path without fabricating authority.
+        def reject_application(*_args, **_kwargs):
+            raise TokenizerDecisionError("split application fields are not closed-world")
+
+        monkeypatch.setattr(cli, "bind_byte_baseline_decision", reject_application)
+
+    argv = [
+        str(TOOL),
+        "--balanced-selection",
+        str(selection),
+        "--split-application",
+        str(application),
+        *HASH_ARGS,
+        "--output",
+        str(output),
+    ]
+    if target == "report":
+        argv.extend(["--verify-report", str(report)])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    assert cli.main() == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    lines = captured.out.splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["contract_valid"] is False
+    expected_error = {
+        "selection": "unsupported balanced-selection authority",
+        "application": "split application fields are not closed-world",
+        "report": "report fields are not closed-world",
+    }[target]
+    assert payload["error"] == expected_error
+    if preexisting_output:
+        assert output.read_text(encoding="utf-8") == old_output
+    else:
+        assert not output.exists()
+
+
+def test_main_valid_dispatch_preserves_report_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    output = tmp_path / "out.json"
+    selection.write_text("{}", encoding="utf-8")
+    application.write_text("{}", encoding="utf-8")
+
+    # Test only the CLI's successful dispatch; this stub grants no authority.
+    fake_report = {"schema": "test-only", "training_authorized_by_this_report": False}
+    monkeypatch.setattr(
+        cli, "bind_byte_baseline_decision", lambda *_a, **_k: fake_report
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(TOOL),
+            "--balanced-selection",
+            str(selection),
+            "--split-application",
+            str(application),
+            *HASH_ARGS,
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert cli.main() == 0
+    assert capsys.readouterr().err == ""
+    assert json.loads(output.read_text(encoding="utf-8")) == fake_report
+
+
+def test_main_unexpected_programming_failure_is_not_misreported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    output = tmp_path / "out.json"
+    selection.write_text("{}", encoding="utf-8")
+    application.write_text("{}", encoding="utf-8")
+
+    def unexpected(*_args, **_kwargs):
+        raise RuntimeError("unexpected programming failure")
+
+    monkeypatch.setattr(cli, "bind_byte_baseline_decision", unexpected)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(TOOL),
+            "--balanced-selection",
+            str(selection),
+            "--split-application",
+            str(application),
+            *HASH_ARGS,
+            "--output",
+            str(output),
+        ],
+    )
+    with pytest.raises(RuntimeError, match="unexpected programming failure"):
+        cli.main()
     assert not output.exists()

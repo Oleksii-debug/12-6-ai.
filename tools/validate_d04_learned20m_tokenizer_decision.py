@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from twelve_six.tokenization.decision_authority import (
+    TokenizerDecisionError,
     bind_byte_baseline_decision,
     verify_byte_baseline_decision,
 )
@@ -121,11 +122,15 @@ def main() -> int:
         _emit_input_error(exc)
         return 2
 
-    if verified_report is not None:
-        report = verified_report
-        verify_byte_baseline_decision(report, selection, application, **_kwargs(args))
-    else:
-        report = bind_byte_baseline_decision(selection, application, **_kwargs(args))
+    try:
+        if verified_report is not None:
+            report = verified_report
+            verify_byte_baseline_decision(report, selection, application, **_kwargs(args))
+        else:
+            report = bind_byte_baseline_decision(selection, application, **_kwargs(args))
+    except TokenizerDecisionError as exc:
+        _emit_input_error(exc)
+        return 2
 
     if args.output is not None:
         _write(args.output, report)
