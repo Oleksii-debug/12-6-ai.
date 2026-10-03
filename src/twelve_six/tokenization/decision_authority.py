@@ -91,9 +91,15 @@ class TokenizerDecisionError(ValueError):
 
 def _canonical_json(value: Mapping[str, Any]) -> str:
     try:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    except (TypeError, ValueError) as exc:
-        raise TokenizerDecisionError("authority must be canonical-JSON serializable") from exc
+        rendered = json.dumps(
+            value, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        )
+        # UTF-8 is the identity encoding; lone surrogates are not valid evidence.
+        rendered.encode("utf-8")
+        return rendered
+    except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
+        raise TokenizerDecisionError("authority must be strict UTF-8 JSON") from exc
 
 
 def authority_sha256(value: Mapping[str, Any]) -> str:
