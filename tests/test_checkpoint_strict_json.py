@@ -272,3 +272,105 @@ def test_valid_checkpoint_still_verifies_and_loads(tmp_path: Path) -> None:
     assert result.trainer_state == {"loss": 0.25}
     np.testing.assert_array_equal(target.weights, [1.0, 2.0, 3.0])
     assert target.loads == 1
+
+# External checkpoint JSON depth is a recoverable integrity failure, not a raw
+# Python interpreter exception. These fixtures reseal all outer hashes so the
+# strict decoder itself must enforce the recovery contract.
+
+
+def _deep_json(nesting: str) -> str:
+    if nesting == "arrays":
+        return "[" * 10_000 + "0" + "]" * 10_000
+    if nesting == "objects":
+        return '{"k":' * 10_000 + "0" + "}" * 10_000
+    raise AssertionError(f"unknown nesting: {nesting}")
+
+
+@pytest.mark.parametrize("nesting", ["arrays", "objects"])
+def test_checksum_consistent_deep_manifest_is_checkpoint_integrity_error(
+    tmp_path: Path,
+    nesting: str,
+) -> None:
+    checkpoint = tmp_path / f"deep-manifest-{nesting}"
+    _save(checkpoint)
+    raw = (checkpoint / "manifest.json").read_text(encoding="utf-8").strip()
+    assert raw.endswith("}")
+    malformed = raw[:-1] + ',"excessive":' + _deep_json(nesting) + "}\\n"
+    _write_manifest_bytes(checkpoint, malformed.encode("utf-8"))
+
+    with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
+        verify_checkpoint(checkpoint)
+
+
+@pytest.mark.parametrize("nesting", ["arrays", "objects"])
+def test_checksum_consistent_deep_state_fails_before_model_mutation(
+    tmp_path: Path,
+    nesting: str,
+) -> None:
+    checkpoint = tmp_path / f"deep-state-{nesting}"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+    path = checkpoint / "state.json"
+    raw = path.read_text(encoding="utf-8").strip()
+    assert raw.endswith("}")
+    path.write_text(
+        raw[:-1] + ',"excessive":' + _deep_json(nesting) + "}\\n",
+        encoding="utf-8",
+    )
+    _rebind_manifest_for_payload(checkpoint, "state.json")
+
+    target = NumpyModel([9.0, 9.0, 9.0])
+    before = target.weights.copy()
+    with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
+        load_checkpoint(checkpoint, model=target, restore_rng=False)
+
+    np.testing.assert_array_equal(target.weights, before)
+    assert target.loads == 0
+
+
+@pytest.mark.parametrize("nesting", ["arrays", "objects"])
+def test_immutable_verified_manifest_rejects_excessive_json_depth(
+    nesting: str,
+) -> None:
+    import twelve_six.checkpoint.core as checkpoint_core
+
+    verified = VerifiedCheckpoint(
+        _manifest_bytes=('{"root":' + _deep_json(nesting) + "}").encode("utf-8"),
+        _artifacts={},
+    )
+    with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
+        _ = verified.manifest
+
+
+@pytest.mark.parametrize("nesting", ["arrays", "objects"])
+def test_deep_producer_json_fails_before_output_publication(
+    tmp_path: Path,
+    nesting: str,
+) -> None:
+    import twelve_six.checkpoint.core as checkpoint_core
+
+    value: object = 0
+    for _ in range(2_000):
+        value = [value] if nesting == "arrays" else {"k": value}
+    output = tmp_path / "never-publish.json"
+    with pytest.raises(CheckpointIntegrityError, match="strict finite JSON"):
+        checkpoint_core._write_json(output, {"root": value})
+    assert not output.exists()
+
+
+def test_unexpected_postparse_checkpoint_recursion_is_not_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import twelve_six.checkpoint.core as checkpoint_core
+
+    checkpoint = tmp_path / "valid-input-unexpected-recursion"
+    _save(checkpoint)
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        raise RecursionError("unexpected checkpoint Product recursion")
+
+    monkeypatch.setattr(
+        checkpoint_core, "_validate_manifest_identity", unexpected
+    )
+    with pytest.raises(RecursionError, match="unexpected checkpoint Product recursion"):
+        verify_checkpoint(checkpoint)

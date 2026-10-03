@@ -69,7 +69,7 @@ def _strict_json_bytes(value: Any, *, artifact: str) -> bytes:
             ensure_ascii=False,
             allow_nan=False,
         ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise CheckpointIntegrityError(
             f"{artifact} is not strict finite JSON"
         ) from exc
@@ -118,7 +118,7 @@ def _strict_json_object(
             parse_constant=_reject_json_constant,
             parse_float=_parse_finite_json_float,
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise CheckpointIntegrityError(invalid_message) from exc
     if not isinstance(value, dict):
         raise CheckpointIntegrityError(f"{artifact} must contain a JSON object")
