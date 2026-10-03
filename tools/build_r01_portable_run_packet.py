@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import tempfile
@@ -18,8 +19,33 @@ DEFAULT_TEMPLATE = Path("configs/research/r01_portable_local_free_run_packet_v1.
 DEFAULT_OVERLAY = Path("configs/research/r01_portable_session_overlay_v1.json")
 
 
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate object member: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("JSON number is not finite")
+    return parsed
+
+
 def _load_object(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_object,
+        parse_constant=_reject_nonfinite_constant,
+        parse_float=_parse_finite_float,
+    )
     if not isinstance(value, dict):
         raise ValueError(f"{path}: JSON root must be an object")
     return value
