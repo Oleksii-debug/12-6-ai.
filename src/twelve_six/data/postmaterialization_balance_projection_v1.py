@@ -161,7 +161,9 @@ def load_strict_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
             parse_constant=_strict_json_constant,
             parse_float=_strict_json_float,
         )
-    except (json.JSONDecodeError, OverflowError) as exc:
+    except ProjectionError:
+        raise
+    except (json.JSONDecodeError, OverflowError, RecursionError, ValueError) as exc:
         raise ProjectionError(f"{label} is not strict JSON") from exc
     if not isinstance(value, dict):
         raise ProjectionError(f"{label} must contain a top-level JSON object")
