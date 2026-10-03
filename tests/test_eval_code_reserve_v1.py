@@ -576,3 +576,50 @@ def test_bounded_loader_preserves_committed_eval647_authority() -> None:
     result = validator.validate(MANIFEST, EVIDENCE)
     assert result["reserved_objects"] == 2
     assert result["selection_validation_records_authorized"] == 0
+
+
+@pytest.mark.parametrize("target", ["contract", "evidence"])
+@pytest.mark.parametrize("failure", ["oversize", "invalid_utf8", "surrogate", "nonfinite"])
+def test_eval647_cli_reports_one_zero_credit_error(
+    tmp_path: Path, target: str, failure: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    contract = tmp_path / "контракт із пробілами.json"
+    evidence = tmp_path / "доказ із пробілами.json"
+    contract.write_bytes(MANIFEST.read_bytes())
+    evidence.write_bytes(EVIDENCE.read_bytes())
+    bad_bytes = {
+        "oversize": b"{}" + b" " * validator.MAX_INPUT_BYTES,
+        "invalid_utf8": b'{"bad":"\xff"}',
+        "surrogate": br'{"bad":"\ud800"}',
+        "nonfinite": b'{"bad":1e400}',
+    }[failure]
+    (contract if target == "contract" else evidence).write_bytes(bad_bytes)
+    monkeypatch.setattr(validator, "DEFAULT_MANIFEST", contract)
+    monkeypatch.setattr(validator, "DEFAULT_EVIDENCE", evidence)
+
+    assert validator.main() == 2
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert len(output.out.splitlines()) == 1
+    result = json.loads(output.out)
+    assert result["status"] == "BLOCKED_INVALID_EVAL647_AUTHORITY"
+    assert result["selection_validation_records_authorized"] == 0
+    assert result["model_training_authorized"] is False
+    assert result["final_test_outcomes_read"] is False
+    assert (contract if target == "contract" else evidence).read_bytes() == bad_bytes
+
+
+def test_eval647_cli_keeps_existing_valid_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(validator, "DEFAULT_MANIFEST", MANIFEST)
+    monkeypatch.setattr(validator, "DEFAULT_EVIDENCE", EVIDENCE)
+    assert validator.main() == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    result = json.loads(output.out)
+    assert result["reserved_objects"] == 2
+    assert result["selection_validation_records_authorized"] == 0
