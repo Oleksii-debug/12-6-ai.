@@ -50,7 +50,8 @@ def _archive_from_xml(xml: bytes, *, xml_name: str = "edrnpa_texts_test.xml") ->
 
 def _materialize_texts(texts: list[str], **kwargs):
     data = _archive_from_xml(_xml(texts))
-    return mod.materialize_archive_bytes(data, expected_md5=mod.md5(data), **kwargs)
+    return mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data), **kwargs)
 
 
 def test_materializes_observed_nested_document_shape_and_keeps_zero_credit() -> None:
@@ -70,10 +71,12 @@ def test_materializes_observed_nested_document_shape_and_keeps_zero_credit() -> 
 def test_deterministic_replay_of_identical_source() -> None:
     data = _archive_from_xml(_xml([_uk("A"), _uk("B"), _uk("C")]))
     rows_a, report_a = mod.materialize_archive_bytes(
-        data, expected_md5=mod.md5(data), byte_cap=5_000
+        data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data), byte_cap=5_000
     )
     rows_b, report_b = mod.materialize_archive_bytes(
-        data, expected_md5=mod.md5(data), byte_cap=5_000
+        data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data), byte_cap=5_000
     )
     assert rows_a == rows_b
     assert report_a == report_b
@@ -85,7 +88,8 @@ def test_removes_only_xml10_forbidden_c0_byte_and_binds_offset() -> None:
     offset = xml.index(marker) + len(marker)
     dirty = xml[:offset] + b"\x0c" + xml[offset:]
     data = _archive_from_xml(dirty)
-    rows, report = mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+    rows, report = mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data))
     assert len(rows) == 1
     assert report["selection"]["xml10_control_bytes_removed"] == 1
     expected = mod.sha256(f"{offset}:0c\n".encode("ascii"))
@@ -97,12 +101,13 @@ def test_does_not_recover_malformed_markup_after_control_cleaning() -> None:
     text = _uk("A") + " & незаконний"
     data = _archive_from_xml(_xml([text]))
     with pytest.raises(mod.ProbeError, match="malformed nested EDRNPA XML"):
-        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data))
 
 
 def test_rejects_resource_hash_mismatch() -> None:
     data = _archive_from_xml(_xml([_uk("A")]))
-    with pytest.raises(mod.ProbeError, match="MD5 mismatch"):
+    with pytest.raises(mod.ProbeError, match="pinned resource digest mismatch"):
         mod.materialize_archive_bytes(data, expected_md5="0" * 32)
 
 
@@ -110,13 +115,15 @@ def test_rejects_outer_zip_path_traversal_even_if_target_exists() -> None:
     nested = _zip({"edrnpa.xml": _xml([_uk("A")])})
     data = _zip({mod.NESTED_TEXT_ZIP: nested, "../escape.txt": b"bad"})
     with pytest.raises(mod.ProbeError, match="unsafe zip member"):
-        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data))
 
 
 def test_rejects_nested_zip_path_traversal() -> None:
     data = _archive_from_xml(_xml([_uk("A")]), xml_name="../edrnpa.xml")
     with pytest.raises(mod.ProbeError, match="unsafe zip member"):
-        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data))
 
 
 def test_rejects_dtd_or_entity_even_when_control_byte_interrupts_marker() -> None:
@@ -126,13 +133,15 @@ def test_rejects_dtd_or_entity_even_when_control_byte_interrupts_marker() -> Non
     )
     data = _archive_from_xml(xml)
     with pytest.raises(mod.ProbeError, match="DTD/entity"):
-        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data))
 
 
 def test_rejects_malformed_nested_xml() -> None:
     data = _archive_from_xml(b"<rna><database><document><text>broken")
     with pytest.raises(mod.ProbeError, match="malformed nested"):
-        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data))
 
 
 def test_quarantines_email_and_phone_documents() -> None:
@@ -172,22 +181,26 @@ def test_metadata_items_are_not_mixed_into_candidate_text() -> None:
 def test_rejects_unexpected_root_and_document_outside_database() -> None:
     bad_root = _archive_from_xml(b"<root><database/></root>")
     with pytest.raises(mod.ProbeError, match="unexpected EDRNPA XML root"):
-        mod.materialize_archive_bytes(bad_root, expected_md5=mod.md5(bad_root))
+        mod.materialize_archive_bytes(bad_root, expected_md5=mod.md5(bad_root),
+        expected_sha256=mod.sha256(bad_root))
     outside_xml = ("<rna><document><text>" + _uk("A") + "</text></document></rna>").encode()
     outside = _archive_from_xml(outside_xml)
     with pytest.raises(mod.ProbeError, match="outside database"):
-        mod.materialize_archive_bytes(outside, expected_md5=mod.md5(outside))
+        mod.materialize_archive_bytes(outside, expected_md5=mod.md5(outside),
+        expected_sha256=mod.sha256(outside))
 
 
 def test_rejects_missing_or_multiple_nested_xml_payloads() -> None:
     missing = _zip({"other.zip": _zip({"x.xml": _xml([_uk("A")])})})
     with pytest.raises(mod.ProbeError, match="nested text ZIP member missing"):
-        mod.materialize_archive_bytes(missing, expected_md5=mod.md5(missing))
+        mod.materialize_archive_bytes(missing, expected_md5=mod.md5(missing),
+        expected_sha256=mod.sha256(missing))
 
     nested = _zip({"a.xml": _xml([_uk("A")]), "b.xml": _xml([_uk("B")])})
     multiple = _zip({mod.NESTED_TEXT_ZIP: nested})
     with pytest.raises(mod.ProbeError, match="exactly one XML"):
-        mod.materialize_archive_bytes(multiple, expected_md5=mod.md5(multiple))
+        mod.materialize_archive_bytes(multiple, expected_md5=mod.md5(multiple),
+        expected_sha256=mod.sha256(multiple))
 
 
 def test_rejects_symlink_member() -> None:
@@ -201,7 +214,8 @@ def test_rejects_symlink_member() -> None:
         archive.writestr(info, b"target")
     data = output.getvalue()
     with pytest.raises(mod.ProbeError, match="symlink"):
-        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data))
 
 
 def test_rejects_invalid_cap() -> None:
@@ -223,7 +237,8 @@ def test_rejects_legacy_guessed_text_richtext_path() -> None:
     ).encode()
     data = _archive_from_xml(xml)
     with pytest.raises(mod.ProbeError, match="unexpected EDRNPA richtext path"):
-        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data))
+        mod.materialize_archive_bytes(data, expected_md5=mod.md5(data),
+        expected_sha256=mod.sha256(data))
 
 
 def test_requires_exactly_one_observed_richtext_item() -> None:
@@ -234,7 +249,8 @@ def test_requires_exactly_one_observed_richtext_item() -> None:
     ).encode()
     missing = _archive_from_xml(missing_xml)
     with pytest.raises(mod.ProbeError, match="exactly one richtext"):
-        mod.materialize_archive_bytes(missing, expected_md5=mod.md5(missing))
+        mod.materialize_archive_bytes(missing, expected_md5=mod.md5(missing),
+        expected_sha256=mod.sha256(missing))
 
     text = _uk("TWO")
     multiple_xml = (
@@ -247,7 +263,8 @@ def test_requires_exactly_one_observed_richtext_item() -> None:
     ).encode()
     multiple = _archive_from_xml(multiple_xml)
     with pytest.raises(mod.ProbeError, match="exactly one richtext"):
-        mod.materialize_archive_bytes(multiple, expected_md5=mod.md5(multiple))
+        mod.materialize_archive_bytes(multiple, expected_md5=mod.md5(multiple),
+        expected_sha256=mod.sha256(multiple))
 
 
 def test_rejects_observed_schema_attribute_drift() -> None:
@@ -260,7 +277,8 @@ def test_rejects_observed_schema_attribute_drift() -> None:
     ).encode()
     bad_par = _archive_from_xml(bad_par_xml)
     with pytest.raises(mod.ProbeError, match="paragraph attributes"):
-        mod.materialize_archive_bytes(bad_par, expected_md5=mod.md5(bad_par))
+        mod.materialize_archive_bytes(bad_par, expected_md5=mod.md5(bad_par),
+        expected_sha256=mod.sha256(bad_par))
 
     bad_item_xml = (
         "<rna><database><document>"
@@ -270,4 +288,38 @@ def test_rejects_observed_schema_attribute_drift() -> None:
     ).encode()
     bad_item = _archive_from_xml(bad_item_xml)
     with pytest.raises(mod.ProbeError, match="item attributes"):
-        mod.materialize_archive_bytes(bad_item, expected_md5=mod.md5(bad_item))
+        mod.materialize_archive_bytes(bad_item, expected_md5=mod.md5(bad_item),
+        expected_sha256=mod.sha256(bad_item))
+
+
+def test_known_historical_resource_has_exact_sha256_pin() -> None:
+    assert mod.RESOURCE_SHA256 == (
+        "a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431"
+    )
+
+
+def test_correct_md5_wrong_sha256_rejects_before_zip_processing() -> None:
+    payload = b"not a ZIP archive"
+    with pytest.raises(mod.ProbeError, match="pinned resource digest mismatch"):
+        mod.materialize_archive_bytes(
+            payload,
+            expected_md5=mod.md5(payload),
+            expected_sha256="0" * 64,
+        )
+
+
+def test_download_wrong_sha256_with_matching_md5_unlinks_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"bounded independent test payload"
+
+    class Response(io.BytesIO):
+        headers: dict[str, str] = {}
+
+    monkeypatch.setattr(mod, "RESOURCE_MD5", mod.md5(payload))
+    monkeypatch.setattr(mod, "RESOURCE_SHA256", "0" * 64)
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_a, **_kw: Response(payload))
+    destination = tmp_path / "not-published.zip"
+    with pytest.raises(mod.ProbeError, match="pinned resource digest mismatch"):
+        mod.download_archive_to(destination)
+    assert not destination.exists()

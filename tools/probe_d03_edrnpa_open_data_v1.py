@@ -21,6 +21,7 @@ DATASET_ID = "c98e830c-e39e-4da6-a13c-f9ba32a79bec"
 RESOURCE_ID = "5616dd04-949a-489c-8efc-54004293b238"
 RESOURCE_UPDATED = "2026-09-08T15:02:00+03:00"
 RESOURCE_MD5 = "0ea96e1582e5584ced79be1027f0ae55"
+RESOURCE_SHA256 = "a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431"
 DATASET_PAGE = f"https://data.gov.ua/dataset/{DATASET_ID}"
 RESOURCE_PAGE = f"https://data.gov.ua/dataset/{DATASET_ID}/resource/{RESOURCE_ID}"
 DOWNLOAD_URL = (
@@ -235,10 +236,11 @@ def download_archive_to(
             md5_hash.update(chunk)
             sha_hash.update(chunk)
     observed_md5 = md5_hash.hexdigest()
-    if observed_md5 != RESOURCE_MD5:
+    observed_sha256 = sha_hash.hexdigest()
+    if observed_md5 != RESOURCE_MD5 or observed_sha256 != RESOURCE_SHA256:
         path.unlink(missing_ok=True)
-        raise ProbeError("EDRNPA resource MD5 mismatch")
-    return {"bytes": total, "md5": observed_md5, "sha256": sha_hash.hexdigest()}
+        raise ProbeError("EDRNPA pinned resource digest mismatch")
+    return {"bytes": total, "md5": observed_md5, "sha256": observed_sha256}
 
 
 def download_archive(url: str = DOWNLOAD_URL, *, timeout: float = 240.0) -> bytes:
@@ -564,6 +566,7 @@ def materialize_archive_path(
     archive_path: Path,
     *,
     expected_md5: str = RESOURCE_MD5,
+    expected_sha256: str = RESOURCE_SHA256,
     byte_cap: int = MAX_SELECTED_BYTES,
     work_dir: Path | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -571,8 +574,8 @@ def materialize_archive_path(
     if byte_cap < 1 or byte_cap > MAX_SELECTED_BYTES:
         raise ProbeError("byte_cap outside allowed range")
     archive_size, observed_md5, source_sha256 = _hash_file(archive_path)
-    if observed_md5 != expected_md5:
-        raise ProbeError("EDRNPA resource MD5 mismatch")
+    if observed_md5 != expected_md5 or source_sha256 != expected_sha256:
+        raise ProbeError("EDRNPA pinned resource digest mismatch")
 
     temp_ctx: tempfile.TemporaryDirectory[str] | None = None
     if work_dir is None:
@@ -722,6 +725,7 @@ def materialize_archive_bytes(
     archive_bytes: bytes,
     *,
     expected_md5: str = RESOURCE_MD5,
+    expected_sha256: str = RESOURCE_SHA256,
     byte_cap: int = MAX_SELECTED_BYTES,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if len(archive_bytes) > MAX_ARCHIVE_BYTES:
@@ -732,6 +736,7 @@ def materialize_archive_bytes(
         return materialize_archive_path(
             archive_path,
             expected_md5=expected_md5,
+            expected_sha256=expected_sha256,
             byte_cap=byte_cap,
             work_dir=Path(tmp) / "work",
         )
