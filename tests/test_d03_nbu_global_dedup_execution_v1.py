@@ -710,6 +710,82 @@ def test_publish_rolls_back_files_from_failed_publication(tmp_path) -> None:
     assert existing.read_text(encoding="utf-8") == "{}\n"
 
 
+def test_publication_manifest_json_is_bounded_and_strict(tmp_path: Path) -> None:
+    mod = _load()
+    manifest = tmp_path / "manifest.json"
+    bad_inputs = (
+        b'{"a":1,"a":1}\n',
+        b'{"a":NaN}\n',
+        b'{"a":1.25}\n',
+        b'{"a":' + b'[' * 3000 + b'0' + b']' * 3000 + b'}\n',
+        b"x" * (mod.PUBLICATION_MANIFEST_MAX_BYTES + 1),
+    )
+    for payload in bad_inputs:
+        manifest.write_bytes(payload)
+        with pytest.raises(mod.NbuGlobalDedupError, match="unreadable"):
+            mod._load_publication_manifest(manifest)
+
+
+def test_publication_manifest_rejects_extra_root_key(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    _, manifest_path, stages, pathset_id = mod._publication_control_paths(prepared)
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    manifest["extra"] = "forbidden"
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    manifest_path.write_bytes(mod._canonical(manifest) + b"\n")
+    with pytest.raises(mod.NbuGlobalDedupError, match="keys invalid"):
+        mod._load_publication_manifest(manifest_path)
+
+
+def test_publication_manifest_rejects_extra_target_key(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    marker, manifest_path, stages, pathset_id = mod._publication_control_paths(prepared)
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    manifest["targets"][0]["extra"] = "forbidden"
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(manifest_path, mod._canonical(manifest) + b"\n")
+    with pytest.raises(mod.NbuGlobalDedupError, match="target keys invalid"):
+        mod._recover_incomplete_publication(
+            marker, manifest_path, prepared, stages, pathset_id
+        )
+    assert marker.exists()
+    assert manifest_path.exists()
+
+
+def test_publish_rejects_resolved_output_aliases(tmp_path: Path) -> None:
+    mod = _load()
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    direct = tmp_path / "same.json"
+    alias = nested / ".." / "same.json"
+    assert direct != alias
+    assert direct.resolve() == alias.resolve()
+    with pytest.raises(mod.NbuGlobalDedupError, match="duplicate output path"):
+        mod._publish_json_outputs(
+            ((direct, {"a": 1}), (alias, {"b": 2}))
+        )
+    assert not direct.exists()
+
+
 def test_execute_binds_head_and_authority_before_reconstruction() -> None:
     source = MODULE.read_text(encoding="utf-8")
     head = source.index("execution_head = _bind_execution_head(expected_execution_head)")
