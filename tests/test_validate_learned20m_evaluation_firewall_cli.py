@@ -177,3 +177,47 @@ def test_cli_unexpected_programming_error_is_not_suppressed(
     )
     with pytest.raises(RuntimeError, match="unexpected programmer defect"):
         cli.main()
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_cli_rejects_excessive_json_nesting_without_traceback(
+    tmp_path: Path,
+    nesting: str,
+) -> None:
+    if nesting == "arrays":
+        raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    path = tmp_path / f"deep-{nesting}.json"
+    path.write_text(raw, encoding="utf-8")
+
+    cli = _load_cli()
+    with pytest.raises(ValueError, match="JSON nesting limit exceeded"):
+        cli._load_policy(path)
+
+    result = _run_cli(path)
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["status"] == "FAIL"
+    assert payload["error"] == "evaluation firewall policy JSON nesting limit exceeded"
+
+
+def test_unexpected_product_recursion_remains_visible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+
+    def unexpected(_policy: dict) -> dict:
+        raise RecursionError("unexpected programmer recursion")
+
+    monkeypatch.setattr(cli, "validate_policy", unexpected)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(TOOL), "--policy", str(POLICY)],
+    )
+    with pytest.raises(RecursionError, match="unexpected programmer recursion"):
+        cli.main()
