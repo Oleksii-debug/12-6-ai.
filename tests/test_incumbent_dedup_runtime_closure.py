@@ -374,6 +374,98 @@ def test_verifier_attests_before_reference_callable(
         verifier.main()
     assert events == ["attest"]
 
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ('{"outer":{"a":1,"a":2}}', "duplicate JSON object member"),
+        ('{"a":1,"\\u0061":2}', "duplicate JSON object member"),
+        ('{"value":NaN}', "non-finite JSON constant"),
+        ('{"value":Infinity}', "non-finite JSON constant"),
+        ('{"value":-Infinity}', "non-finite JSON constant"),
+        ('{"value":1e400}', "non-finite JSON number"),
+        ('{"value":-1e400}', "non-finite JSON number"),
+    ),
+)
+@_isolated_indexed_test
+def test_equivalence_verifier_strict_json_rejects_ambiguous_input(
+    tmp_path: Path,
+    payload: str,
+    message: str,
+) -> None:
+    from tools import verify_incumbent_dedup_indexed_equivalence as verifier
+
+    path = tmp_path / "authority.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(SystemExit, match=message):
+        verifier._json(path)
+
+
+
+
+@pytest.mark.parametrize("target", ("inventory", "payload-map"))
+@_isolated_indexed_test
+def test_equivalence_verifier_rejects_deep_authority_before_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str], target: str,
+) -> None:
+    from tools import verify_incumbent_dedup_indexed_equivalence as verifier
+
+    depth = 10_000
+    inventory = tmp_path / "inventory.json"
+    payload_map = tmp_path / "payload-map.json"
+    inventory.write_text("[]", encoding="utf-8")
+    payload_map.write_text("{}", encoding="utf-8")
+    selected = inventory if target == "inventory" else payload_map
+    raw = ("[" * depth + "0" + "]" * depth) if target == "inventory" else (
+        '{"item":' * depth + "0" + "}" * depth
+    )
+    selected.write_text(raw, encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="invalid strict JSON: nesting exceeds decoder limit"):
+        verifier._json(selected)
+
+    class DummyV3:
+        def audit_payloads(self, *_args: object) -> None:
+            pytest.fail("reference execution reached after invalid JSON")
+
+    monkeypatch.setattr(verifier.importlib, "import_module", lambda _name: DummyV3())
+    monkeypatch.setattr(verifier, "attest_incumbent_runtime", lambda _v3: None)
+    output = tmp_path / "must-not-exist.json"
+    monkeypatch.setattr(
+        sys, "argv", [
+            "verify_incumbent_dedup_indexed_equivalence.py",
+            "--v3-module", "dummy-v3", "--inventory", str(inventory),
+            "--payload-map", str(payload_map), "--output", str(output),
+        ],
+    )
+    with pytest.raises(SystemExit, match="invalid strict JSON: nesting exceeds decoder limit"):
+        verifier.main()
+    assert not output.exists()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+@_isolated_indexed_test
+def test_equivalence_verifier_strict_json_preserves_valid_finite_json(
+    tmp_path: Path,
+) -> None:
+    from tools import verify_incumbent_dedup_indexed_equivalence as verifier
+
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        '[{"source_id":"a","score":1.25,"nested":{"count":2}}]',
+        encoding="utf-8",
+    )
+    payload_map = tmp_path / "payload-map.json"
+    payload_map.write_text('{"a":"payload.bin"}', encoding="utf-8")
+
+    assert verifier._json(inventory) == [
+        {"source_id": "a", "score": 1.25, "nested": {"count": 2}}
+    ]
+    assert verifier._json(payload_map) == {"a": "payload.bin"}
+
+
 @_isolated_indexed_test
 def test_loader_rejects_html_replace_charref_transitive_rebinding(
     monkeypatch: pytest.MonkeyPatch,
