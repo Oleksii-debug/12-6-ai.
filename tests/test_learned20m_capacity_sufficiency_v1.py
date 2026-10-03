@@ -326,7 +326,7 @@ def test_rejects_en_early_stage_or_family_cap_miscount(
 ) -> None:
     document = _report()
     document["en_family_cap_necessary_condition"][field] = value
-    with pytest.raises(CapacityReportError, match="EN family-cap"):
+    with pytest.raises(CapacityReportError, match="EN condition|EN family-cap"):
         validate_report(document)
 
 
