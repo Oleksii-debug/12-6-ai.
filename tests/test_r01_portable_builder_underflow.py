@@ -94,3 +94,93 @@ def test_builder_cli_rejects_underflow_without_packet_publication(
     assert result["binding_ready"] is False
     assert "nonzero JSON number underflowed to zero" in result["error"]
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        pytest.param(
+            b" " * (_builder().MAX_PORTABLE_JSON_BYTES + 1),
+            "exceeds byte limit",
+            id="bounded-byte-read",
+        ),
+        pytest.param(
+            ('{"nested":' + "[" * 80 + "0" + "]" * 80 + "}").encode(),
+            "structure limit",
+            id="max-depth",
+        ),
+        pytest.param(
+            ('{"nested":' + "[" * 10000 + "0" + "]" * 10000 + "}").encode(),
+            "nesting limit",
+            id="parser-recursion",
+        ),
+        pytest.param(
+            ('{"values":[' + ",".join(["0"] * 10010) + "]}").encode(),
+            "structure limit",
+            id="max-nodes",
+        ),
+        pytest.param(
+            r'{"nested":"\ud800"}'.encode(),
+            "surrogates not allowed",
+            id="invalid-unicode-value",
+        ),
+        pytest.param(
+            r'{"\ud800":"key"}'.encode(),
+            "surrogates not allowed",
+            id="invalid-unicode-key",
+        ),
+        pytest.param(
+            b'{"nested":"\xff"}',
+            "decode",
+            id="invalid-utf8",
+        ),
+    ],
+)
+def test_builder_rejects_unsafe_external_json(
+    tmp_path: Path, raw: bytes, message: str,
+) -> None:
+    source = tmp_path / "джерело із пробілами.json"
+    source.write_bytes(raw)
+    with pytest.raises(ValueError, match=message):
+        _builder()._load_object(source)
+
+
+@pytest.mark.parametrize("kind", ["readiness", "template", "overlay"])
+def test_builder_cli_rejects_oversized_input_before_publication(
+    tmp_path: Path, kind: str,
+) -> None:
+    files = {
+        "readiness": READINESS,
+        "template": TEMPLATE,
+        "overlay": OVERLAY,
+    }
+    invalid = tmp_path / "зовнішній великий файл.json"
+    invalid.write_bytes(b" " * (_builder().MAX_PORTABLE_JSON_BYTES + 1))
+    files[kind] = invalid
+    output = tmp_path / "published.json"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(BUILDER),
+            "--readiness", str(files["readiness"]),
+            "--template", str(files["template"]),
+            "--overlay", str(files["overlay"]),
+            "--output", str(output),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == 2
+    assert proc.stderr == ""
+    assert json.loads(proc.stdout)["binding_ready"] is False
+    assert "exceeds byte limit" in proc.stdout
+    assert not output.exists()
+
+
+def test_builder_preserves_canonical_current_inputs(tmp_path: Path) -> None:
+    builder = _builder()
+    for path in (READINESS, TEMPLATE, OVERLAY):
+        parsed = builder._load_object(path)
+        assert parsed == json.loads(path.read_text(encoding="utf-8"))
