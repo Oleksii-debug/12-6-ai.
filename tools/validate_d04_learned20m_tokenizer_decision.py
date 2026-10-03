@@ -90,7 +90,8 @@ def _write(path: Path, value: dict[str, Any]) -> None:
     temporary = Path(name)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            handle.write(payload)
+            if handle.write(payload) != len(payload):
+                raise OSError("incomplete tokenizer report staging write")
             handle.flush()
             os.fsync(handle.fileno())
         # Same-directory hard link atomically fails if the target already exists.
