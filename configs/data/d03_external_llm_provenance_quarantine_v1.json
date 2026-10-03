@@ -1,0 +1,45 @@
+{
+  "schema_version": "12-6.d03-external-llm-provenance-quarantine.v1",
+  "status": "ACTIVE_STOP_THE_LINE",
+  "scope": "TRAINING_DATA_AUTHORITY_ONLY",
+  "reason": "Retained Nomis1864 training text traversed an external Sonnet LLM extraction pipeline upstream; public-domain rights are not disputed.",
+  "blocked_records": [
+    {
+      "family": "ua.verba.public-domain.nomis1864",
+      "record_id": "ua.verba.nomis1864.bounded24",
+      "source_id": "ua.verba.nomis1864.bounded24",
+      "payload_sha256": "1eb91dbd631898c6a2efe274b700a5be0deaca243c0a9d5d30994ddadcf43598",
+      "payload_bytes": 1659,
+      "source_pr": 462,
+      "upstream_verba_commit": "34a2c10ac35e1febad6c270a88fc8b83790407da",
+      "physical_materialization_run_id": 34783440822,
+      "physical_materialization_artifact_id": 10325234135
+    }
+  ],
+  "invalidated_for_training_admission": {
+    "next100_063_terminal_source_registry_v5_git_blob_sha1": "2dcc57cfba8ab6d600bc431a8713f7b8e305dcbf",
+    "next100_063_terminal_source_registry_v6_git_blob_sha1": "13789effe506a815e92e4f0e22ada773d366f316",
+    "next100_063_terminal_source_registry_v6_identity_sha256": "c7b988081a270cd53c37f22721499568ec44f67daa998c87573b43c463642eae",
+    "next100_065f_global_dedup_v8_report_sha256": "942cc15af60ee36a79345beba77fec347e33ee919d8148fb319b19d9ee072e5a",
+    "next100_065f_global_dedup_v8_survivor_authority_sha256": "8115b35662fa89900b37f54f7cffd5f2fa8b2f8c60a72bcb18b89c92aaade0cf"
+  },
+  "enforcement": {
+    "reject_matching_payload_sha256_under_any_record_or_source_name": true,
+    "reject_known_family_record_or_source_identity_even_if_payload_changes": true,
+    "silent_filtering_forbidden": true,
+    "successor_authority_rebuild_required": true,
+    "all_other_corpus_bytes_declared_external_llm_clean": false
+  },
+  "truth_boundary": {
+    "current_contaminated_materialization_launch_authoritative": false,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false
+  },
+  "quarantine_identity_sha256": "e9f29dd9f710fac057550e5cd671b7f412720e1ceb36568565a79909f11cf5b6"
+}

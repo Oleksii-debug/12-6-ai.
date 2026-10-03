@@ -14,6 +14,7 @@ RIGHTS = ROOT / "configs/data/d03_common_pile_ubuntu_irc_source_rights_v1.json"
 PARENT = ROOT / "configs/data/common_pile_source_rights_v1.json"
 EVIDENCE = ROOT / "evidence/d03_common_pile_ubuntu_irc_real_execution_v1.json"
 V9 = ROOT / "src/twelve_six/data/expanded_global_dedup_v9.py"
+PRIVATE_V9 = ROOT / "src/twelve_six/data/_expanded_global_dedup_v9_impl.py"
 
 
 def canonical_jsonl(rows: list[dict]) -> bytes:
@@ -54,6 +55,12 @@ def test_real_repository_authority_blobs_are_pinned() -> None:
     assert intake.git_blob_sha1(CROSSBIND.read_bytes()) == intake.CROSSBIND_BLOB_SHA1
     assert intake.git_blob_sha1(EVIDENCE.read_bytes()) == intake.EVIDENCE_BLOB_SHA1
     assert intake.git_blob_sha1(V9.read_bytes()) == intake.INCUMBENT_V9_FACADE_BLOB_SHA1
+    assert (
+        intake.git_blob_sha1(PRIVATE_V9.read_bytes())
+        == intake.INCUMBENT_V9_PRIVATE_IMPL_BLOB_SHA1
+    )
+    assert intake.INCUMBENT_V9_FACADE_PATH == V9
+    assert intake.INCUMBENT_V9_PRIVATE_PATH == PRIVATE_V9
 
 
 def test_crossbind_revalidates_real_merged_authorities() -> None:
@@ -210,7 +217,67 @@ def test_receipt_scopes_external_llm_truth_to_upstream_source(
         execution_evidence_bytes=EVIDENCE.read_bytes(),
         candidate_bytes=candidate,
     )
+    assert (
+        receipt["incumbent_v9_private_impl_blob_sha1"]
+        == intake.INCUMBENT_V9_PRIVATE_IMPL_BLOB_SHA1
+    )
     truth = receipt["truth_boundary"]
     assert truth["upstream_source_evidence_external_llm_or_api_used"] is False
     assert truth["current_corpus_external_llm_free_claimed_by_this_adapter"] is False
     assert "external_llm_or_api_used_for_data_or_intelligence" not in truth
+
+
+def test_private_v9_runtime_substitution_fails_before_candidate_parse(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    candidate = prepare(monkeypatch, [row()])
+    swapped = tmp_path / "_expanded_global_dedup_v9_impl.py"
+    swapped.write_bytes(PRIVATE_V9.read_bytes() + b"\n")
+    monkeypatch.setattr(intake, "INCUMBENT_V9_PRIVATE_PATH", swapped)
+    with pytest.raises(intake.UbuntuIrcV9IntakeError, match="private implementation bytes drift"):
+        intake.prepare_ubuntu_v9_intake(
+            incumbent_v9_product_head=intake.INCUMBENT_V9_PRODUCT_HEAD,
+            incumbent_v9_facade_bytes=V9.read_bytes(),
+            crossbind_bytes=CROSSBIND.read_bytes(),
+            rights_authority_bytes=RIGHTS.read_bytes(),
+            parent_registry_bytes=PARENT.read_bytes(),
+            execution_evidence_bytes=EVIDENCE.read_bytes(),
+            candidate_bytes=candidate,
+        )
+
+
+def test_private_v9_missing_or_symlinked_file_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    candidate = prepare(monkeypatch, [row()])
+    missing = tmp_path / "not-present.py"
+    monkeypatch.setattr(intake, "INCUMBENT_V9_PRIVATE_PATH", missing)
+    with pytest.raises(intake.UbuntuIrcV9IntakeError, match="regular non-symlink file"):
+        intake.prepare_ubuntu_v9_intake(
+            incumbent_v9_product_head=intake.INCUMBENT_V9_PRODUCT_HEAD,
+            incumbent_v9_facade_bytes=V9.read_bytes(),
+            crossbind_bytes=CROSSBIND.read_bytes(),
+            rights_authority_bytes=RIGHTS.read_bytes(),
+            parent_registry_bytes=PARENT.read_bytes(),
+            execution_evidence_bytes=EVIDENCE.read_bytes(),
+            candidate_bytes=candidate,
+        )
+
+
+def test_facade_runtime_path_substitution_fails_even_with_valid_supplied_bytes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    candidate = prepare(monkeypatch, [row()])
+    swapped = tmp_path / "expanded_global_dedup_v9.py"
+    swapped.write_bytes(V9.read_bytes() + b"\n")
+    monkeypatch.setattr(intake, "INCUMBENT_V9_FACADE_PATH", swapped)
+    with pytest.raises(intake.UbuntuIrcV9IntakeError, match="facade runtime path/bytes drift"):
+        intake.prepare_ubuntu_v9_intake(
+            incumbent_v9_product_head=intake.INCUMBENT_V9_PRODUCT_HEAD,
+            incumbent_v9_facade_bytes=V9.read_bytes(),
+            crossbind_bytes=CROSSBIND.read_bytes(),
+            rights_authority_bytes=RIGHTS.read_bytes(),
+            parent_registry_bytes=PARENT.read_bytes(),
+            execution_evidence_bytes=EVIDENCE.read_bytes(),
+            candidate_bytes=candidate,
+        )

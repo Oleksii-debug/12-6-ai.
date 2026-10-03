@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from twelve_six.ubuntu_irc_execution_rights_crossbind import (
@@ -34,6 +35,9 @@ CROSSBIND_BLOB_SHA1 = "8cae172d3c4c86bf64ce5bedb966210448fdf3a5"
 EVIDENCE_BLOB_SHA1 = REPAIRED_EVIDENCE_BLOB
 INCUMBENT_V9_PRODUCT_HEAD = "5dbf143c7ca15999eadb28fecb952118b59040de"
 INCUMBENT_V9_FACADE_BLOB_SHA1 = "2916d5d76d708300ad2e1794829f583bced7c84c"
+INCUMBENT_V9_PRIVATE_IMPL_BLOB_SHA1 = "b160902c0b51595828ff4b389b918b64de398c82"
+INCUMBENT_V9_FACADE_PATH = Path(__file__).resolve().with_name("expanded_global_dedup_v9.py")
+INCUMBENT_V9_PRIVATE_PATH = Path(__file__).resolve().with_name("_expanded_global_dedup_v9_impl.py")
 CANDIDATE_RECORDS = 972
 CANDIDATE_NORMALIZED_BYTES = 4_799_981
 SOURCE_LABEL = "ubuntu-chat"
@@ -92,6 +96,17 @@ def _canonical(value: object) -> bytes:
 
 def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def _read_incumbent_source(path: Path, label: str) -> bytes:
+    _require(
+        not path.is_symlink() and path.is_file(),
+        f"incumbent {label} must be a regular non-symlink file",
+    )
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        raise UbuntuIrcV9IntakeError(f"incumbent {label} is unreadable") from exc
 
 
 def _strict_object(payload: bytes, label: str) -> dict[str, Any]:
@@ -343,6 +358,16 @@ def prepare_ubuntu_v9_intake(
         git_blob_sha1(incumbent_v9_facade_bytes) == INCUMBENT_V9_FACADE_BLOB_SHA1,
         "incumbent expanded-V9 facade bytes drift",
     )
+    actual_facade = _read_incumbent_source(INCUMBENT_V9_FACADE_PATH, "V9 facade")
+    _require(
+        actual_facade == incumbent_v9_facade_bytes,
+        "incumbent V9 facade runtime path/bytes drift",
+    )
+    actual_private = _read_incumbent_source(INCUMBENT_V9_PRIVATE_PATH, "V9 private implementation")
+    _require(
+        git_blob_sha1(actual_private) == INCUMBENT_V9_PRIVATE_IMPL_BLOB_SHA1,
+        "incumbent V9 private implementation bytes drift",
+    )
     _require(git_blob_sha1(crossbind_bytes) == CROSSBIND_BLOB_SHA1, "crossbind bytes drift")
 
     crossbind = _strict_object(crossbind_bytes, "Ubuntu crossbind")
@@ -371,6 +396,7 @@ def prepare_ubuntu_v9_intake(
         "status": STATUS,
         "incumbent_v9_product_head": INCUMBENT_V9_PRODUCT_HEAD,
         "incumbent_v9_facade_blob_sha1": INCUMBENT_V9_FACADE_BLOB_SHA1,
+        "incumbent_v9_private_impl_blob_sha1": INCUMBENT_V9_PRIVATE_IMPL_BLOB_SHA1,
         "crossbind_blob_sha1": CROSSBIND_BLOB_SHA1,
         "execution_evidence_blob_sha1": EVIDENCE_BLOB_SHA1,
         "candidate_payload_sha256": CANDIDATE_SHA256,
