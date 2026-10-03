@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "validate_learned20m_evaluation_firewall.py"
 POLICY = ROOT / "configs" / "evaluation" / "learned20m_evaluation_firewall_v1.json"
@@ -116,3 +118,62 @@ def test_checked_in_policy_cli_still_succeeds() -> None:
     assert result.stderr == ""
     payload = json.loads(result.stdout)
     assert payload["status"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected_error"),
+    [
+        ("empty", "policy"),
+        ("extra_field", "policy"),
+        ("selection_bypass", "selection boundary weakened"),
+        ("final_test_bypass", "final-test boundary weakened"),
+    ],
+)
+def test_cli_rejects_semantically_invalid_json_without_traceback(
+    tmp_path: Path,
+    variant: str,
+    expected_error: str,
+) -> None:
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    if variant == "empty":
+        policy = {}
+    elif variant == "extra_field":
+        policy["unexpected_authority"] = {"training_authorized": True}
+    elif variant == "selection_bypass":
+        policy["selection_validation"]["may_report_final_test"] = True
+    else:
+        policy["final_test_reservation"]["outcomes_access_before_selection_lock"] = True
+
+    path = tmp_path / f"{variant}.json"
+    path.write_text(
+        json.dumps(policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    result = _run_cli(path)
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["status"] == "FAIL"
+    assert expected_error in payload["error"]
+
+
+def test_cli_unexpected_programming_error_is_not_suppressed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+
+    def unexpected(_policy: dict) -> dict:
+        raise RuntimeError("unexpected programmer defect")
+
+    monkeypatch.setattr(cli, "validate_policy", unexpected)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(TOOL), "--policy", str(POLICY)],
+    )
+    with pytest.raises(RuntimeError, match="unexpected programmer defect"):
+        cli.main()

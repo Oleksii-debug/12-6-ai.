@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from twelve_six.learned20m_evaluation_firewall import validate_policy
+from twelve_six.learned20m_evaluation_firewall import EvaluationFirewallError, validate_policy
 
 DEFAULT_POLICY = Path("configs/evaluation/learned20m_evaluation_firewall_v1.json")
 
@@ -55,7 +55,11 @@ def main() -> int:
     except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         print(json.dumps({"status": "FAIL", "error": str(exc)}, sort_keys=True))
         return 2
-    result = validate_policy(policy)
+    try:
+        result = validate_policy(policy)
+    except EvaluationFirewallError as exc:
+        print(json.dumps({"status": "FAIL", "error": str(exc)}, sort_keys=True))
+        return 2
     print(json.dumps(result, sort_keys=True, indent=2))
     return 0
 
