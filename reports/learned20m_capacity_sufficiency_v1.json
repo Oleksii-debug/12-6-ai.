@@ -1,0 +1,242 @@
+{
+  "schema_version": "12-6.learned20m-capacity-sufficiency.v3",
+  "report_id": "LEARNED20M-CAPACITY-SUFFICIENCY-20261003-SWARM2570-MAIN5C677D3E-V3",
+  "source_main_sha": "5c677d3e98a919104c432def6199ad5ba80725e4",
+  "claim_issue": 2570,
+  "control_issues": [
+    548,
+    723,
+    2011,
+    2021,
+    2570
+  ],
+  "scientific_truth": {
+    "current_retained_corpus_launch_authoritative": false,
+    "authorized_postpack_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false
+  },
+  "terminal_physical_clean_supply": {
+    "audit_issue": 2174,
+    "execution_pr": 2153,
+    "execution_head": "6af889c7c3d15d38f463791c9e2ba56c8e936e16",
+    "run_id": 36026689718,
+    "job_id": 107724922341,
+    "artifact_id": 10820342689,
+    "artifact_zip_sha256": "99069ce2183abbbc374749cca5c538efa259df0c64658a9b88cc96b25c0fbba0",
+    "records": 257,
+    "distinct_source_ids": 244,
+    "payload_utf8_bytes": 5601716,
+    "records_jsonl_sha256": "bbeb43b3b8e3e4b0e2631c16895d700896f3733d6cd6fe3833fe678594bc86d8",
+    "record_inventory_sha256": "dbdf741884ec1f147827647908b17a846584b145454e3f82fdb63120422c6059",
+    "payload_inventory_sha256": "2384480c89c19b14d188aa57130ee2967463512bb54241f90b6f17a525653a1e",
+    "materialization_identity_sha256": "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade",
+    "classification": "PHYSICAL_TERMINAL_ZERO_CREDIT_PRE_DOWNSTREAM_AUTHORITY",
+    "postpack_unique_loss_positions": null,
+    "capacity_credit_bytes": 0,
+    "launch_authoritative": false
+  },
+  "balance_policy": {
+    "source_path": "configs/data/next100_106_balance_gate_policy_v1.json",
+    "git_blob_sha": "b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f",
+    "policy_identity_sha256": "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7",
+    "target_total_source_bytes": 20000000,
+    "strata": {
+      "ua": {
+        "numerator": 9,
+        "denominator": 20
+      },
+      "en": {
+        "numerator": 7,
+        "denominator": 20
+      },
+      "code": {
+        "numerator": 1,
+        "denominator": 5
+      }
+    },
+    "minimum_independent_families_per_stratum": 2,
+    "max_family_fraction_total": {
+      "numerator": 1,
+      "denominator": 4
+    },
+    "max_family_fraction_own_stratum": {
+      "numerator": 3,
+      "denominator": 5
+    },
+    "budget_quantum_bytes": 100,
+    "replay_or_duplication_to_meet_quota": false,
+    "source_bytes_are_not_unique_loss_positions": true
+  },
+  "indexed_executor": {
+    "pr": 1459,
+    "head": "2ad5b63bf7107465d6fa7deb25bf8c2f2fa03171",
+    "merge_commit": "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093",
+    "integrated": true,
+    "defines_new_matcher_science": false,
+    "capacity_credit_bytes": 0
+  },
+  "pending_existing_high_yield_work": [
+    {
+      "id": "rada_two_clean",
+      "owner_issue": 2532,
+      "canonical_pr": 2529,
+      "observed_head": "ce1eec8b61883ce7a95a6c7a02c4ff0242dc50b5",
+      "candidate_records": 101559,
+      "candidate_utf8_bytes": 192078166,
+      "candidate_sha256": null,
+      "post_global_dedup_survivor_bytes": null,
+      "capacity_credit_bytes": 0,
+      "launch_authoritative": false,
+      "optimistic_balance_upper_bound_bytes": 5000000
+    },
+    {
+      "id": "franko1901_two_clean",
+      "owner_issue": 2263,
+      "canonical_pr": null,
+      "observed_head": null,
+      "candidate_records": 30660,
+      "candidate_utf8_bytes": 1762005,
+      "candidate_sha256": "9b00da2a2a5110cc4e384711fffbbbdaa917904462ddd133e7178e2d07dcb5ec",
+      "post_global_dedup_survivor_bytes": null,
+      "capacity_credit_bytes": 0,
+      "launch_authoritative": false,
+      "optimistic_balance_upper_bound_bytes": 0
+    },
+    {
+      "id": "caselaw_two_clean",
+      "owner_issue": 2257,
+      "canonical_pr": 2259,
+      "observed_head": "2d4c795340c75d7c13a7a74cd41f2ed22fce81ef",
+      "candidate_records": 5658,
+      "candidate_utf8_bytes": 5962147,
+      "candidate_sha256": "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273",
+      "post_global_dedup_survivor_bytes": null,
+      "capacity_credit_bytes": 0,
+      "launch_authoritative": false,
+      "optimistic_balance_upper_bound_bytes": 0
+    }
+  ],
+  "existing_independent_family_backlog": [
+    {
+      "id": "lesia1892",
+      "owner_issue": 2266,
+      "canonical_pr": 907,
+      "observed_head": "cf3cca3850243198af5d2d51247a24db436ea9ee",
+      "capacity_credit_bytes": 0
+    },
+    {
+      "id": "edrnpa",
+      "owner_issue": 2272,
+      "canonical_pr": 910,
+      "observed_head": "18e4cad6b29bbcb59445ea42ffd0c38f56cdaba6",
+      "capacity_credit_bytes": 0
+    },
+    {
+      "id": "nbu",
+      "owner_issue": 2471,
+      "canonical_pr": 2454,
+      "observed_head": "5bddcb7f37afd722de5b60fcce85e86094b96557",
+      "capacity_credit_bytes": 0
+    }
+  ],
+  "downstream_authority_backlog": [
+    {
+      "id": "clean_current_composition",
+      "canonical_pr": 2211,
+      "owner_issue": 2455,
+      "terminal_authority": true
+    },
+    {
+      "id": "balance_execution",
+      "canonical_pr": 1753,
+      "owner_issue": 2258,
+      "terminal_authority": false
+    },
+    {
+      "id": "packing",
+      "canonical_pr": 2218,
+      "owner_issue": 2239,
+      "terminal_authority": false
+    },
+    {
+      "id": "postpack_unique_loss",
+      "canonical_pr": null,
+      "owner_issue": 2027,
+      "terminal_authority": false
+    }
+  ],
+  "optimistic_source_mixture_bound": {
+    "classification": "ILLUSTRATIVE_UPPER_BOUND_ONLY_NOT_CAPACITY_CREDIT",
+    "terminal_clean_payload_bytes": 5601716,
+    "rada_one_family_cap_bytes": 5000000,
+    "franko_candidate_bytes_before_global_dedup": 1762005,
+    "optimistic_total_before_overlap_or_further_loss": 12363721,
+    "deficit_to_20m_balance_target": 7636279,
+    "authoritative_capacity_credit_bytes": 0,
+    "proves_balance_feasibility": false,
+    "proves_unique_loss_sufficiency": false,
+    "source_stage": "PRE_RESERVED_EVAL_QP_NOT_ADDITIVE_WITH_CLEAN_POST_QP"
+  },
+  "decision": {
+    "status": "INSUFFICIENT_EVIDENCE_TO_STOP_EXISTING_HIGH_YIELD_SOURCE_EXECUTIONS",
+    "routing": "CONTINUE_EXISTING_HIGH_YIELD_AND_INDEPENDENT_FAMILY_EXECUTIONS",
+    "open_new_distant_source_families": false,
+    "stop_new_source_acquisition_finish_pipeline": false,
+    "meaningful_unique_loss_floor": 10000000,
+    "authorized_postpack_unique_loss_positions": 0,
+    "authorized_unique_loss_deficit": 10000000,
+    "recompute_after": [
+      "terminal_rada_two_clean_survivor_authority",
+      "terminal_franko1901_two_clean_survivor_authority",
+      "terminal_caselaw_two_clean_survivor_authority",
+      "terminal_clean_balance_split_pack_authority",
+      "terminal_postpack_unique_loss_ledger"
+    ]
+  },
+  "terminal_clean_post_qp_supply": {
+    "classification": "PHYSICAL_TERMINAL_ZERO_CREDIT_POST_RESERVED_EVAL_QP_PRE_BALANCE",
+    "source_pr": 2211,
+    "audit_issue": 2455,
+    "integration_merge": "dcd85658547818f0835c819e6b0ea8379eb9ca0a",
+    "source_head": "d232e2003d18627534d5436a55ea919322c0a08f",
+    "run_id": 36893337849,
+    "job_id": 110485577178,
+    "artifact_id": 11181030848,
+    "artifact_zip_sha256": "3eef740b52e9db962b01b63a0a48474f735694dca4c3848e3e9c53d8cd7f1988",
+    "records": 254,
+    "distinct_source_ids": 241,
+    "payload_utf8_bytes": 5428358,
+    "records_jsonl_sha256": "3aa6235e07da4fa50c9642639cc0d93d7da22a6b602d822c7c7ca6e1f4a7486a",
+    "record_inventory_sha256": "0807f46418fb5a16a1c553c86a6f6967e5c2854d0016e3f6fe24c1d9c05c628b",
+    "payload_inventory_sha256": "2d2f0f5695ee07dfbba2e49b2d14983ede91051644770804fb734235125353af",
+    "upstream_pre_qp_materialization_identity_sha256": "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade",
+    "by_stratum_bytes": {
+      "ua": 10632,
+      "en": 1753479,
+      "code": 3664247
+    },
+    "postpack_unique_loss_positions": null,
+    "capacity_credit_bytes": 0,
+    "launch_authoritative": false
+  },
+  "en_family_cap_necessary_condition": {
+    "classification": "CLEAN_POST_QP_NECESSARY_CONDITION_ZERO_CREDIT",
+    "en_target_bytes": 7000000,
+    "en_clean_baseline_bytes": 1753479,
+    "en_gap_before_new_candidates_bytes": 5246521,
+    "caselaw_max_optimistic_new_clean_increment_bytes": 4200000,
+    "en_total_if_caselaw_reaches_full_family_cap_bytes": 5953479,
+    "minimum_other_independent_clean_en_bytes": 1046521,
+    "code_clean_gap_before_new_candidates_bytes": 335753,
+    "candidate_bytes_are_not_observed_clean_survivors": true,
+    "authoritative_capacity_credit_bytes": 0,
+    "proves_balance_feasibility": false
+  }
+}
