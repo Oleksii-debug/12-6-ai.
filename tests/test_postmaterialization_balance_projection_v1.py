@@ -745,6 +745,20 @@ def test_strict_current_clean_json_rejects_nested_duplicate_keys() -> None:
         )
 
 
+@pytest.mark.parametrize("container", ["array", "object"])
+def test_strict_current_clean_json_rejects_deeply_nested_input(container: str) -> None:
+    opening, closing = (b"[", b"]") if container == "array" else (b'{"x":', b"}")
+    raw = b'{"v":' + opening * 12_000 + b"0" + closing * 12_000 + b"}"
+    with pytest.raises(ProjectionError, match="not strict JSON"):
+        load_strict_json_object(raw, label="adversarial")
+
+
+def test_strict_current_clean_json_rejects_oversized_integer() -> None:
+    raw = b'{"v":' + b"9" * 10_000 + b"}"
+    with pytest.raises(ProjectionError, match="not strict JSON"):
+        load_strict_json_object(raw, label="adversarial")
+
+
 def test_current_clean_rejects_raw_receipt_byte_substitution() -> None:
     _, raw, expected = _current_clean_bytes(_partial_rows())
     raw["composition_receipt"] += b" "
