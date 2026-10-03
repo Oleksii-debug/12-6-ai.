@@ -180,7 +180,46 @@ def test_rejects_independent_family_credit_promotion() -> None:
 def test_rejects_downstream_terminal_self_promotion() -> None:
     document = _report()
     document["downstream_authority_backlog"][1]["terminal_authority"] = True
-    with pytest.raises(CapacityReportError, match="cannot self-promote"):
+    with pytest.raises(
+        CapacityReportError,
+        match="downstream terminal flag inconsistent with audited clean composition",
+    ):
+        validate_report(document)
+
+
+@pytest.mark.parametrize(
+    ("target_id", "forged_terminal"),
+    [
+        ("clean_current_composition", False),
+        ("balance_execution", True),
+        ("packing", True),
+        ("postpack_unique_loss", True),
+    ],
+)
+def test_downstream_terminal_flags_require_exact_audited_stage(
+    target_id: str, forged_terminal: bool
+) -> None:
+    document = _report()
+    for row in document["downstream_authority_backlog"]:
+        if row["id"] == target_id:
+            row["terminal_authority"] = forged_terminal
+            break
+    else:
+        pytest.fail(f"missing downstream stage fixture: {target_id}")
+    with pytest.raises(
+        CapacityReportError,
+        match="downstream terminal flag inconsistent with audited clean composition",
+    ):
+        validate_report(document)
+
+
+@pytest.mark.parametrize("forged_terminal", [1, "true", None])
+def test_downstream_terminal_flags_reject_non_boolean_values(
+    forged_terminal: object,
+) -> None:
+    document = _report()
+    document["downstream_authority_backlog"][1]["terminal_authority"] = forged_terminal
+    with pytest.raises(CapacityReportError, match="must be a JSON boolean"):
         validate_report(document)
 
 
