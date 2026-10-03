@@ -12,7 +12,7 @@ from twelve_six.learned20m_capacity_sufficiency_v1 import (
 )
 
 REPORT = Path(__file__).parents[1] / "reports" / "learned20m_capacity_sufficiency_v1.json"
-MAIN_SHA = "903bbd642068cf00eab0f864a739b7f7e1d280ea"
+MAIN_SHA = "49bdba879e400e217a8e3b5c1b4015c51177ef58"
 
 
 def _report() -> dict:
@@ -33,6 +33,13 @@ def test_rejects_stale_main_root() -> None:
 def test_rejects_previous_main_even_with_self_consistent_old_evidence() -> None:
     with pytest.raises(CapacityReportError, match="stale report root"):
         load_and_validate(REPORT, expected_main_sha="a1bc7430022d174d27ff57213212a0ec5cc7ed1e")
+
+
+def test_rejects_old_report_main_after_current_main_rebind() -> None:
+    with pytest.raises(CapacityReportError, match="stale report root"):
+        load_and_validate(
+            REPORT, expected_main_sha="903bbd642068cf00eab0f864a739b7f7e1d280ea"
+        )
 
 
 def test_rejects_control_issue_drift() -> None:
@@ -285,7 +292,7 @@ def test_rejects_duplicate_json_key(tmp_path: Path) -> None:
 )
 def test_rejects_nonfinite_json_numbers(tmp_path: Path, number: str) -> None:
     raw = REPORT.read_text(encoding="utf-8")
-    marker = '"claim_issue": 2560'
+    marker = '"claim_issue": 2568'
     assert raw.count(marker) == 1
     raw = raw.replace(marker, f'"claim_issue": {number}', 1)
     path = tmp_path / "nonfinite.json"
