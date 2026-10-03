@@ -27,7 +27,7 @@ def _configure(
         output=output,
     )
     monkeypatch.setattr(cli, "_parser", lambda: SimpleNamespace(parse_args=lambda: args))
-    monkeypatch.setattr(cli, "load_json", lambda path: {"path": str(path)})
+    monkeypatch.setattr(cli, "_load_authority_json", lambda path: {"path": str(path)})
     monkeypatch.setattr(
         cli, "adapt_family_vector_to_next100_106",
         lambda *args, **kwargs: {
@@ -39,6 +39,92 @@ def _configure(
 
 
 @pytest.mark.parametrize("destination", ["family-vector", "dedup-authority", "existing"])
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (b'{"id":1,"id":2}', "duplicate JSON key"),
+        (b'{"id":NaN}', "nonstandard JSON constant"),
+        (b'{"id":Infinity}', "nonstandard JSON constant"),
+        (b'{"id":1e400}', "nonfinite JSON number"),
+        (b'{"id":1e-9999}', "underflowed to zero"),
+        (b'{"id":"\\ud800"}', "invalid Unicode"),
+        (b'{"id":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}", "strict JSON"),
+        (b"x" * (cli.MAX_AUTHORITY_JSON_BYTES + 1), "byte limit"),
+        (b"[]", "top-level JSON object"),
+        (b"\xff", "strict UTF-8"),
+    ],
+)
+def test_authority_loader_rejects_ambiguous_oversized_and_invalid_json(
+    tmp_path: Path, raw: bytes, expected: str,
+) -> None:
+    source = tmp_path / "неоднозначний документ з пробілами.json"
+    source.write_bytes(raw)
+    with pytest.raises(ProjectionError, match=expected):
+        cli._load_authority_json(source)
+
+
+def test_authority_loader_accepts_valid_utf8_and_finite_zero(tmp_path: Path) -> None:
+    source = tmp_path / "правильний документ.json"
+    source.write_bytes('{"word":"Україна","zero":0e-9999}'.encode("utf-8"))
+    assert cli._load_authority_json(source) == {"word": "Україна", "zero": 0.0}
+
+
+def test_authority_loader_rejects_missing_file_and_node_budget(tmp_path: Path) -> None:
+    with pytest.raises(ProjectionError, match="cannot read adapter authority"):
+        cli._load_authority_json(tmp_path / "missing.json")
+    source = tmp_path / "wide.json"
+    source.write_bytes(b'{"rows":[' + b",".join([b"0"] * 10001) + b"]}")
+    with pytest.raises(ProjectionError, match="structure limit"):
+        cli._load_authority_json(source)
+
+
+def test_real_cli_rejects_duplicate_source_keys_before_publication(
+    tmp_path: Path,
+) -> None:
+    from test_postdecontam_balance_projection_v1 import (
+        DEDUP_EVIDENCE_SHA,
+        DEDUP_HEAD_SHA,
+        DEDUP_WORKER_ID,
+        _build,
+        _dedup_authority,
+    )
+
+    vector = _build(tmp_path)
+    original = json.dumps(vector, ensure_ascii=False, separators=(",", ":"))
+    vector_path = tmp_path / "family vector.json"
+    vector_path.write_text(
+        '{"schema_version":"forged",' + original[1:],
+        encoding="utf-8",
+    )
+    authority_path = tmp_path / "dedup authority.json"
+    authority_path.write_text(
+        json.dumps(_dedup_authority(), ensure_ascii=False), encoding="utf-8"
+    )
+    before_vector = vector_path.read_bytes()
+    before_authority = authority_path.read_bytes()
+    output = tmp_path / "result.json"
+    run = subprocess.run(
+        [
+            sys.executable, str(Path(cli.__file__).resolve()),
+            "--family-vector", str(vector_path),
+            "--expected-family-vector-identity-sha256",
+            vector["family_vector_identity_sha256"],
+            "--dedup-authority", str(authority_path),
+            "--expected-dedup-worker-id", DEDUP_WORKER_ID,
+            "--expected-dedup-head-sha", DEDUP_HEAD_SHA,
+            "--expected-dedup-evidence-identity-sha256", DEDUP_EVIDENCE_SHA,
+            "--output", str(output),
+        ],
+        text=True, capture_output=True, check=False,
+    )
+    assert run.returncode != 0
+    assert "FAIL_CLOSED" in run.stderr
+    assert "duplicate JSON key" in run.stderr
+    assert not output.exists()
+    assert vector_path.read_bytes() == before_vector
+    assert authority_path.read_bytes() == before_authority
+
+
 def test_main_never_truncates_inputs_or_existing_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, destination: str,
 ) -> None:
