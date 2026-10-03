@@ -20,6 +20,9 @@ MAX_BALANCE_JSON_BYTES = 1_048_576
 MAX_BALANCE_JSON_DEPTH = 64
 MAX_BALANCE_JSON_NODES = 10_000
 MAX_BALANCE_INT_DIGITS = 64
+EXPECTED_POLICY_IDENTITY_SHA256 = (
+    "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
+)
 
 
 class GateError(ValueError):
@@ -219,6 +222,8 @@ def validate_policy(policy: dict[str, Any]) -> None:
         for key, expected in expected_boundary.items()
     ):
         raise GateError("claim boundary drift")
+    if policy.get("policy_identity_sha256") != EXPECTED_POLICY_IDENTITY_SHA256:
+        raise GateError("policy identity differs from pinned authority")
 
 
 def validate_vector(vector: dict[str, Any]) -> list[dict[str, Any]]:
