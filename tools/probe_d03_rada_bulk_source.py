@@ -12,8 +12,10 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import re
 import stat
+import sys
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -237,12 +239,43 @@ def _validate_config(raw: dict[str, Any]) -> None:
     _require_exact_mapping(raw, "claim_boundary", EXPECTED_CLAIM)
 
 
+def _reject_duplicate_config_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    members: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in members:
+            raise ProbeError(f"duplicate probe config JSON key: {key}")
+        members[key] = value
+    return members
+
+
+def _reject_config_constant(raw: str) -> None:
+    raise ProbeError(f"non-standard probe config JSON constant: {raw}")
+
+
+def _finite_config_float(raw: str) -> float:
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ProbeError("non-finite probe config JSON number")
+    return value
+
+
 def _load_config(path: Path) -> dict[str, Any]:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        raw = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_config_members,
+            parse_constant=_reject_config_constant,
+            parse_float=_finite_config_float,
+        )
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ) as exc:
         raise ProbeError(f"cannot load config: {path}") from exc
-    if not isinstance(raw, dict):
+    if type(raw) is not dict:
         raise ProbeError("probe config root must be an object")
     _validate_config(raw)
     return raw
@@ -538,4 +571,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ProbeError as exc:
+        print(f"Rada source probe rejected input: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
