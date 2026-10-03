@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
+
+import pytest
 
 from twelve_six.learned20m_readiness import scientific_authority_token
 from twelve_six.portable_run_binding import (
@@ -171,6 +175,16 @@ def _run_builder(args: list[str]) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         check=False,
     )
+
+
+def _load_builder_module() -> ModuleType:
+    tool = ROOT / "tools" / "build_r01_portable_run_packet.py"
+    spec = importlib.util.spec_from_file_location("build_r01_portable_run_packet_cli", tool)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_checked_in_overlay_contract_is_valid_but_deliberately_blocked() -> None:
@@ -472,3 +486,178 @@ def test_cli_never_writes_current_blocked_inputs(tmp_path: Path) -> None:
     result = _run_builder(args)
     assert result.returncode == 1, result.stderr or result.stdout
     assert not output_path.exists()
+
+
+def test_builder_strict_json_loader_rejects_ambiguous_and_nonfinite_values(
+    tmp_path: Path,
+) -> None:
+    builder = _load_builder_module()
+    cases = (
+        (
+            "duplicate.json",
+            '{"runtime":{"kind":"a","kind":"b"}}',
+            "duplicate object member",
+        ),
+        ("nan.json", '{"value":NaN}', "non-finite JSON constant"),
+        ("infinity.json", '{"value":Infinity}', "non-finite JSON constant"),
+        ("negative-infinity.json", '{"value":-Infinity}', "non-finite JSON constant"),
+        ("overflow.json", '{"value":1e400}', "JSON number is not finite"),
+        ("negative-overflow.json", '{"value":-1e400}', "JSON number is not finite"),
+        ("nonobject.json", "[]", "JSON root must be an object"),
+    )
+    for name, raw, expected in cases:
+        path = tmp_path / name
+        path.write_text(raw, encoding="utf-8")
+        try:
+            builder._load_object(path)
+        except ValueError as exc:
+            assert expected in str(exc)
+        else:
+            raise AssertionError(f"{name} unexpectedly passed strict JSON loading")
+
+
+def test_builder_strict_json_loader_preserves_valid_finite_values(
+    tmp_path: Path,
+) -> None:
+    builder = _load_builder_module()
+    path = tmp_path / "finite.json"
+    path.write_text(
+        '{"provider":"LOCAL_FREE","limits":{"hours":2.5,"bytes":1e6}}',
+        encoding="utf-8",
+    )
+    assert builder._load_object(path) == {
+        "provider": "LOCAL_FREE",
+        "limits": {"hours": 2.5, "bytes": 1e6},
+    }
+
+
+def test_cli_rejects_malformed_json_in_each_builder_input_without_output(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        (
+            "--readiness",
+            '{"evidence":{"role":"a","role":"b"}}',
+            "duplicate object member",
+        ),
+        ("--template", '{"value":NaN}', "non-finite JSON constant"),
+        ("--overlay", '{"value":1e400}', "JSON number is not finite"),
+    )
+    for flag, raw, expected in cases:
+        bad_path = tmp_path / f"{flag[2:]}.json"
+        bad_path.write_text(raw, encoding="utf-8")
+        output_path = tmp_path / f"{flag[2:]}-must-not-exist.json"
+
+        input_paths = {
+            "--readiness": READINESS,
+            "--template": PACKET,
+            "--overlay": OVERLAY,
+        }
+        input_paths[flag] = bad_path
+        result = _run_builder(
+            [
+                "--readiness",
+                str(input_paths["--readiness"]),
+                "--template",
+                str(input_paths["--template"]),
+                "--overlay",
+                str(input_paths["--overlay"]),
+                "--output",
+                str(output_path),
+            ]
+        )
+
+        assert result.returncode == 2
+        assert result.stderr == ""
+        report = json.loads(result.stdout)
+        assert report["binding_ready"] is False
+        assert expected in report["error"]
+        assert not output_path.exists()
+
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_builder_loader_rejects_excessive_json_nesting(
+    tmp_path: Path,
+    nesting: str,
+) -> None:
+    builder = _load_builder_module()
+    if nesting == "arrays":
+        raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    path = tmp_path / f"deep-{nesting}.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON nesting limit exceeded"):
+        builder._load_object(path)
+
+
+@pytest.mark.parametrize("flag", ("--readiness", "--template", "--overlay"))
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_builder_cli_rejects_deep_external_json_without_output(
+    tmp_path: Path,
+    flag: str,
+    nesting: str,
+) -> None:
+    paths = {
+        "--readiness": tmp_path / "readiness.json",
+        "--template": tmp_path / "template.json",
+        "--overlay": tmp_path / "overlay.json",
+    }
+    for path in paths.values():
+        path.write_text("{}", encoding="utf-8")
+    if nesting == "arrays":
+        raw = '{"root":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"root":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    paths[flag].write_text(raw, encoding="utf-8")
+    originals = {path: path.read_bytes() for path in paths.values()}
+    output = tmp_path / "never-publish.json"
+
+    result = _run_builder(
+        [
+            "--readiness", str(paths["--readiness"]),
+            "--template", str(paths["--template"]),
+            "--overlay", str(paths["--overlay"]),
+            "--output", str(output),
+        ]
+    )
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["binding_ready"] is False
+    assert "JSON nesting limit exceeded" in payload["error"]
+    assert not output.exists()
+    assert {path: path.read_bytes() for path in paths.values()} == originals
+
+
+def test_builder_unexpected_product_recursion_is_not_masked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    paths = {
+        "--readiness": tmp_path / "readiness.json",
+        "--template": tmp_path / "template.json",
+        "--overlay": tmp_path / "overlay.json",
+    }
+    for path in paths.values():
+        path.write_text("{}", encoding="utf-8")
+    output = tmp_path / "never-publish.json"
+
+    def unexpected(*_args: object, **_kwargs: object) -> object:
+        raise RecursionError("unexpected Product recursion")
+
+    monkeypatch.setattr(builder, "bind_portable_run_packet", unexpected)
+    args = [
+        "--readiness", str(paths["--readiness"]),
+        "--template", str(paths["--template"]),
+        "--overlay", str(paths["--overlay"]),
+        "--output", str(output),
+    ]
+    with pytest.raises(RecursionError, match="unexpected Product recursion"):
+        builder.main(args)
+    assert not output.exists()

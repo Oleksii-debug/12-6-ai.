@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -35,12 +36,20 @@ def _reject_constant(value: str) -> None:
     raise ValueError(f"non_finite_json_constant:{value}")
 
 
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("json_number_not_finite")
+    return parsed
+
+
 def _load_mapping(path: Path) -> Mapping[str, Any]:
     raw = path.read_text(encoding="utf-8")
     value = json.loads(
         raw,
         object_pairs_hook=_pairs_without_duplicates,
         parse_constant=_reject_constant,
+        parse_float=_parse_finite_float,
     )
     if not isinstance(value, Mapping):
         raise ValueError("manifest_not_object")

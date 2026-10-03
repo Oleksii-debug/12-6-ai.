@@ -1,13 +1,78 @@
 from __future__ import annotations
 
 import collections
+import functools
 import importlib.util
+import os
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
-from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+_ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
+
+
+def _isolated_indexed_test(test):
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        current = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+        if os.environ.get(_ISOLATED_INDEXED_TEST_NODE) == current and current:
+            return test(*args, **kwargs)
+        if not current:
+            return test(*args, **kwargs)
+
+        env = os.environ.copy()
+        env[_ISOLATED_INDEXED_TEST_NODE] = current
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", current],
+            cwd=Path(__file__).resolve().parent.parent,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+        )
+        assert completed.returncode == 0, (
+            f"isolated indexed test failed: {current}\n"
+            f"STDOUT:\n{completed.stdout}\n"
+            f"STDERR:\n{completed.stderr}"
+        )
+
+    return wrapper
+
+
+class _LazyIndexed:
+    _module: ModuleType | None = None
+
+    def _load_module(self) -> ModuleType:
+        module = object.__getattribute__(self, "_module")
+        if module is None:
+            module = importlib.import_module(
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            )
+            object.__setattr__(self, "_module", module)
+        return module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._load_module(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_module":
+            object.__setattr__(self, name, value)
+            return
+        setattr(self._load_module(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name == "_module":
+            object.__delattr__(self, name)
+            return
+        delattr(self._load_module(), name)
+
+
+indexed = _LazyIndexed()
 
 
 def _load_source_module(tmp_path: Path, name: str, source: str) -> ModuleType:
@@ -22,29 +87,42 @@ def _load_source_module(tmp_path: Path, name: str, source: str) -> ModuleType:
 
 
 def test_frozen_direct_import_inventory_covers_pinned_stdlib_behavior() -> None:
-    actual = {
-        (label, module_name, imported_name, bound_name)
-        for label, module_name, imported_name, bound_name, _state
-        in indexed._FROZEN_DIRECT_IMPORTED_BEHAVIOR
-    }
-    assert actual == {
-        ("DATA232", "collections", "defaultdict", "defaultdict"),
-        ("DATA232", "typing", "Mapping", "Mapping"),
-        ("DATA232", "typing", "Sequence", "Sequence"),
-        ("V1", "collections", "defaultdict", "defaultdict"),
-        ("V1", "collections.abc", "Mapping", "Mapping"),
-        ("V1", "collections.abc", "Sequence", "Sequence"),
-        ("V1", "pathlib", "Path", "Path"),
-        ("V1", "urllib.request", "Request", "Request"),
-        ("V1", "urllib.request", "urlopen", "urlopen"),
-        ("V3", "collections", "Counter", "Counter"),
-        ("V3", "collections", "defaultdict", "defaultdict"),
-        ("V3", "collections.abc", "Mapping", "Mapping"),
-        ("V3", "collections.abc", "Sequence", "Sequence"),
-        ("V3", "pathlib", "Path", "Path"),
-    }
+    script = r"""
+from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+
+actual = {
+    (label, module_name, imported_name, bound_name)
+    for label, module_name, imported_name, bound_name, _state
+    in indexed._FROZEN_DIRECT_IMPORTED_BEHAVIOR
+}
+expected = {
+    ("DATA232", "collections", "defaultdict", "defaultdict"),
+    ("DATA232", "typing", "Mapping", "Mapping"),
+    ("DATA232", "typing", "Sequence", "Sequence"),
+    ("V1", "collections", "defaultdict", "defaultdict"),
+    ("V1", "collections.abc", "Mapping", "Mapping"),
+    ("V1", "collections.abc", "Sequence", "Sequence"),
+    ("V1", "pathlib", "Path", "Path"),
+    ("V1", "urllib.request", "Request", "Request"),
+    ("V1", "urllib.request", "urlopen", "urlopen"),
+    ("V3", "collections", "Counter", "Counter"),
+    ("V3", "collections", "defaultdict", "defaultdict"),
+    ("V3", "collections.abc", "Mapping", "Mapping"),
+    ("V3", "collections.abc", "Sequence", "Sequence"),
+    ("V3", "pathlib", "Path", "Path"),
+}
+assert actual == expected
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
+@_isolated_indexed_test
 def test_attestation_rejects_counter_class_member_replacement(tmp_path: Path) -> None:
     module = _load_source_module(
         tmp_path,
@@ -75,6 +153,7 @@ def test_attestation_rejects_counter_class_member_replacement(tmp_path: Path) ->
     assert caught == "V3 direct imported behavior drift: collections.Counter"
 
 
+@_isolated_indexed_test
 def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() -> None:
     counter_state = next(
         state
@@ -118,6 +197,7 @@ def test_loader_dependency_attestation_rejects_counter_count_helper_rebinding() 
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_attestation_rejects_unfrozen_direct_behavior_import(tmp_path: Path) -> None:
     module = _load_source_module(
         tmp_path,
@@ -140,6 +220,7 @@ def test_attestation_rejects_unfrozen_direct_behavior_import(tmp_path: Path) -> 
     )
 
 
+@_isolated_indexed_test
 def test_counter_restored_after_adversarial_regression() -> None:
     counter = Counter(["a", "a", "b"])
     assert counter == Counter({"a": 2, "b": 1})
