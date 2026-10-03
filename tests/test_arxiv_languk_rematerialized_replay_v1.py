@@ -450,6 +450,65 @@ def test_terminal_v7_namespace_bypasses_init_and_restores_current_modules(
                 sys.modules[name] = value
 
 
+@pytest.mark.parametrize("name", ["historical", "pass-1", "pass-2"])
+def test_workspace_preflight_preserves_existing_evidence(tmp_path: Path, name: str) -> None:
+    workspace = tmp_path / "workspace"
+    occupied = workspace / name
+    occupied.mkdir(parents=True)
+    evidence = occupied / "existing-evidence.json"
+    evidence.write_text('{"important":true}', encoding="utf-8")
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="refusing to reuse workspace evidence",
+    ):
+        REPLAY_RUNNER._verify_workspace_targets(workspace)
+    assert evidence.read_text(encoding="utf-8") == '{"important":true}'
+
+
+def test_workspace_preflight_allows_empty_fresh_workspace(tmp_path: Path) -> None:
+    REPLAY_RUNNER._verify_workspace_targets(tmp_path / "not-created")
+    workspace = tmp_path / "empty"
+    workspace.mkdir()
+    REPLAY_RUNNER._verify_workspace_targets(workspace)
+
+
+def test_workspace_preflight_rejects_symlink_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "important"
+    target.mkdir()
+    evidence = target / "evidence.txt"
+    evidence.write_text("retain", encoding="utf-8")
+    link = tmp_path / "workspace-link"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation unavailable")
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="real directory"):
+        REPLAY_RUNNER._verify_workspace_targets(link)
+    assert evidence.read_text(encoding="utf-8") == "retain"
+
+
+def test_historical_extract_never_deletes_existing_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "historical" / "arxiv"
+    destination.mkdir(parents=True)
+    evidence = destination / "prior-result.json"
+    evidence.write_text('{"sealed":true}', encoding="utf-8")
+
+    def must_not_invoke_git(*args: object, **kwargs: object) -> bytes:
+        raise AssertionError("historical Git execution on occupied destination")
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_git", must_not_invoke_git)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="refusing to overwrite historical checkout",
+    ):
+        REPLAY_RUNNER._extract_commit(tmp_path, "a" * 40, destination)
+    assert evidence.read_text(encoding="utf-8") == '{"sealed":true}'
+
+
 def test_wrapper_keeps_current_package_out_of_terminal_v7_bootstrap_path() -> None:
     source = Path(REPLAY_RUNNER.__file__).read_text(encoding="utf-8")
     assert "from twelve_six.data.arxiv_languk_rematerialized_replay_v1 import" not in source
