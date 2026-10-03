@@ -93,7 +93,7 @@ def test_real_cli_rejects_duplicate_source_keys_before_publication(
     original = json.dumps(vector, ensure_ascii=False, separators=(",", ":"))
     vector_path = tmp_path / "family vector.json"
     vector_path.write_text(
-        '{"schema_version":"forged",' + original[1:],
+        '{"schema":"forged",' + original[1:],
         encoding="utf-8",
     )
     authority_path = tmp_path / "dedup authority.json"

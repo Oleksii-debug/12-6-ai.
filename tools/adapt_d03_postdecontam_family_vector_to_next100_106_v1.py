@@ -9,13 +9,9 @@ import tempfile
 from pathlib import Path
 from typing import BinaryIO
 
-from twelve_six.data.postdecontam_balance_projection_v1 import (
-    ProjectionError,
-)
+from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
+from twelve_six.data.postdecontam_next100_adapter_v1 import adapt_family_vector_to_next100_106
 from twelve_six.data.postmaterialization_balance_projection_v1 import load_strict_json_object
-from twelve_six.data.postdecontam_next100_adapter_v1 import (
-    adapt_family_vector_to_next100_106,
-)
 
 
 def _parser() -> argparse.ArgumentParser:
