@@ -1469,6 +1469,23 @@ def test_current_clean_balanced_selection_materializes_exact_target() -> None:
     assert all(row["evaluation_reserved"] is False for row in projected)
 
 
+
+def test_selected_projection_rejects_extra_unselected_physical_survivor() -> None:
+    selection, _projected, _balance = _build_current_clean_target_selection()
+    _vector, raw, _expected, _adapted, _result, _binding = (
+        _current_clean_target_selection_fixture()
+    )
+    extra = json.loads(raw["survivor_records"].split(b"\n", 1)[0])
+    extra["record_id"] = "zz-unselected-record"
+    extra["source_id"] = "zz-unselected-source"
+    extra["normalized_payload"] = "separate-valid-physical-record"
+    substituted_raw = raw["survivor_records"] + _canonical(extra) + b"\n"
+    # All original selected records are unchanged. The substituted full raw
+    # corpus must still be refused under the retained inventory authority.
+    with pytest.raises(ProjectionError, match="raw survivor inventory"):
+        _project_current_clean_selection(selection, substituted_raw)
+
+
 def test_current_clean_balanced_selection_is_deterministic() -> None:
     first, first_projected, _ = _build_current_clean_target_selection()
     second, second_projected, _ = _build_current_clean_target_selection()
