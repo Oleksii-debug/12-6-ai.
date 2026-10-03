@@ -203,3 +203,27 @@ def test_real_current_clean_vector_reproduces_committed_balance(
     assert json.loads(output.read_text(encoding="utf-8")) == result
     assert output.read_bytes().endswith(b"\n")
     assert b"\r\n" not in output.read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("field", "stratum"),
+    [
+        ("by_stratum", "ua"),
+        ("by_stratum", "code"),
+        ("family_count", "en"),
+        ("family_count", "ua"),
+    ],
+)
+def test_real_current_clean_declared_numeric_aliases_fail_closed(
+    field: str, stratum: str,
+) -> None:
+    gate = _gate()
+    report = gate.load_json(
+        ROOT / "reports/d03/current_clean_balance_local_candidate_execution_v1.json"
+    )
+    vector = report["outputs"]["next100-input.json"]["document"]
+    count = vector["totals"][field][stratum]
+    assert isinstance(count, int) and not isinstance(count, bool)
+    vector["totals"][field][stratum] = float(count)
+    with pytest.raises(gate.GateError, match=f"declared {field}"):
+        gate.evaluate(gate.load_json(POLICY), vector)
