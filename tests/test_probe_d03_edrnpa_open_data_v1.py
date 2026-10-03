@@ -314,7 +314,9 @@ def test_download_wrong_sha256_with_matching_md5_unlinks_file(
     payload = b"bounded independent test payload"
 
     class Response(io.BytesIO):
-        headers: dict[str, str] = {}
+        def __init__(self, data: bytes) -> None:
+            super().__init__(data)
+            self.headers: dict[str, str] = {}
 
     monkeypatch.setattr(mod, "RESOURCE_MD5", mod.md5(payload))
     monkeypatch.setattr(mod, "RESOURCE_SHA256", "0" * 64)
