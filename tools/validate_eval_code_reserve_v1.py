@@ -51,6 +51,13 @@ EXPECTED_LICENSES = {
     },
 }
 EXPECTED_EVIDENCE_IDENTITY = "3401db10bad35fd1c6fac2839413fc6afffac58fa5f2135d2202b944bc2fda82"
+REQUIRED_PENDING_GATES = (
+    "PROJECT_HISTORY_TOKENIZER_EXPOSURE_ZERO_PROVEN",
+    "PROJECT_HISTORY_TRAINING_EXPOSURE_ZERO_PROVEN",
+    "GLOBAL_CORPUS_EXACT_AND_NEAR_OVERLAP_ZERO_PROVEN",
+    "FUTURE_TRAINING_EXCLUSION_CONSUMED_BY_CORPUS_PIPELINE",
+    "PURPOSE_SPECIFIC_EVALUATION_AUTHORITY_TERMINAL",
+)
 
 
 def _require(condition: bool, message: str) -> None:
@@ -63,7 +70,10 @@ def _require_exact_integer(value: object, expected: int, message: str) -> None:
 
 
 def _canonical_bytes(value: object) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")
 
 
 def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -100,11 +110,24 @@ def _require_finite_json_value(
         return
     if type(value) is dict:
         for key, item in value.items():
+            _require(type(key) is str, f"{label} has a non-string JSON key")
+            _require_finite_json_value(key, label=f"{label}.key", depth=depth + 1)
             _require_finite_json_value(item, label=f"{label}.{key}", depth=depth + 1)
         return
     if type(value) is list:
         for index, item in enumerate(value):
             _require_finite_json_value(item, label=f"{label}[{index}]", depth=depth + 1)
+        return
+    if type(value) is str:
+        try:
+            value.encode("utf-8")
+        except UnicodeError as exc:
+            raise ValueError(f"{label} contains invalid UTF-8") from exc
+        return
+    _require(
+        value is None or type(value) is int or type(value) is bool,
+        f"{label} is not a JSON scalar",
+    )
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
@@ -123,17 +146,20 @@ def _load_mapping(path: Path) -> dict[str, Any]:
 
 
 def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
+    _require(type(doc) is dict, "reservation document must be a JSON object")
     _require_finite_json_value(doc, label="reservation document")
     _require(doc.get("schema_version") == "12-6.eval-code-reserve-v1.contract.v1", "schema drift")
     _require(doc.get("worker_id") == "EVAL-647-CODE-SELECTION-RESERVE-V1", "worker drift")
     _require_exact_integer(doc.get("issue"), 647, "issue binding drift")
     _require(doc.get("execution_class") == "LOCAL_FREE", "execution class drift")
     _require(doc.get("purpose") == "selection_validation_only", "purpose drift")
-    predecessor = doc.get("predecessor", {})
+    predecessor = doc.get("predecessor")
+    _require(type(predecessor) is dict, "predecessor must be a JSON object")
     _require(predecessor.get("worker_id") == "NEXT100-057-CODE-EVAL-SET-V2", "predecessor worker drift")
     _require(predecessor.get("head_sha") == "6713fe972b875b8a516122bda347264fb4099b2b", "predecessor head drift")
 
-    reservation = doc.get("reservation", {})
+    reservation = doc.get("reservation")
+    _require(type(reservation) is dict, "reservation must be a JSON object")
     _require(reservation.get("effective_at_utc") == "2026-08-26T19:46:57Z", "reservation timestamp drift")
     _require_exact_integer(reservation.get("minimum_independent_families"), 2, "family minimum drift")
     _require(reservation.get("final_test") is False, "final-test boundary widened")
@@ -150,7 +176,7 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     objects = doc.get("objects")
     _require(isinstance(objects, list) and len(objects) == 2, "exact two-object reservation required")
     for observed, expected in zip(objects, EXPECTED, strict=True):
-        _require(isinstance(observed, dict), "reserved object must be an object")
+        _require(type(observed) is dict, "reserved object must be an object")
         for key, value in expected.items():
             _require(
                 type(observed.get(key)) is type(value) and observed.get(key) == value,
@@ -164,11 +190,18 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     families = {row["source_family"] for row in objects}
     _require(len(families) == 2, "two independent upstream families required")
     _require(doc.get("completed_successor_gates") == ["IMMUTABLE_RAW_BYTES_MATERIALIZED_AND_SHA256_SEALED"], "completed gate drift")
+    _require(
+        type(doc.get("remaining_successor_gates")) is list
+        and doc["remaining_successor_gates"] == list(REQUIRED_PENDING_GATES),
+        "remaining successor gates drift",
+    )
     _require(doc.get("terminal_status") == "EXACT_RAW_OBJECTS_SEALED_PENDING_PROJECT_OVERLAP_AUDIT", "terminal status drift")
-    evidence_ref = doc.get("materialization_evidence", {})
+    evidence_ref = doc.get("materialization_evidence")
+    _require(type(evidence_ref) is dict, "materialization evidence reference must be an object")
     _require(evidence_ref.get("path") == "evidence/eval647/code_selection_source_materialization_v1.json", "evidence path drift")
     _require(evidence_ref.get("identity_sha256") == EXPECTED_EVIDENCE_IDENTITY, "evidence identity drift")
-    truth = doc.get("truth_boundary", {})
+    truth = doc.get("truth_boundary")
+    _require(type(truth) is dict, "reservation truth boundary must be an object")
     _require_exact_integer(truth.get("selection_validation_records_authorized"), 0, "selection records prematurely authorized")
     _require(truth.get("final_test_touched") is False, "final test touched")
     _require(truth.get("model_training_authorized") is False, "model training prematurely authorized")
@@ -186,6 +219,8 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, Any]) -> None:
+    _require(type(doc) is dict, "reservation document must be a JSON object")
+    _require(type(evidence) is dict, "materialization evidence must be a JSON object")
     _require_finite_json_value(doc, label="reservation document")
     _require_finite_json_value(evidence, label="materialization evidence")
     _require(evidence.get("schema_version") == "12-6.eval-code-reserve-v1.source-materialization-terminal.v1", "evidence schema drift")
@@ -201,10 +236,17 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
     _require(evidence.get("raw_payload_persisted_in_repository") is False, "source payload persisted in evidence")
     _require_exact_integer(evidence.get("selection_validation_records_authorized"), 0, "evidence prematurely authorizes selection records")
     _require(evidence.get("status") == doc.get("terminal_status"), "evidence/contract status drift")
+    _require(
+        type(evidence.get("remaining_gates")) is list
+        and evidence["remaining_gates"] == list(REQUIRED_PENDING_GATES)
+        and evidence["remaining_gates"] == doc.get("remaining_successor_gates"),
+        "evidence remaining gates drift",
+    )
     expected_by_repo = {row["repository"]: row for row in EXPECTED}
     observed = evidence.get("objects")
     _require(isinstance(observed, list) and len(observed) == 2, "evidence object count drift")
     for row in observed:
+        _require(type(row) is dict, "evidence reserved object must be an object")
         expected = expected_by_repo.get(row.get("repository"))
         _require(expected is not None, "unexpected evidence repository")
         for key in ("source_family", "repository", "revision", "path", "git_blob_sha1", "raw_sha256", "license_spdx"):
@@ -224,7 +266,8 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
         evidence.get("object_set_identity_sha256") == hashlib.sha256(_canonical_bytes(identity_payload)).hexdigest(),
         "evidence object-set identity drift",
     )
-    truth = evidence.get("truth_boundary", {})
+    truth = evidence.get("truth_boundary")
+    _require(type(truth) is dict, "evidence truth boundary must be an object")
     for key in ("final_test_outcomes_read", "final_test_payload_accessed", "model_training_authorized", "tokenizer_fit_authorized", "training_executed", "learned_weights_created", "paid_compute_used", "foreign_pretrained_weights_used", "external_llm_or_api_used_for_data_or_intelligence"):
         _require(truth.get(key) is False, f"evidence truth boundary widened: {key}")
     _require_exact_integer(truth.get("optimizer_updates_authorized"), 0, "evidence optimizer authority widened")
