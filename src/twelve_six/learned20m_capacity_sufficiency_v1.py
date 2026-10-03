@@ -101,6 +101,87 @@ def canonical_sha(report: dict[str, Any]) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _require_fields(value: Any, name: str, fields: set[str]) -> dict[str, Any]:
+    """Validate external nested shapes before indexing or set membership."""
+    obj = json_object(value, name)
+    missing = fields - obj.keys()
+    if missing:
+        fail(f"{name} missing required fields: {sorted(missing)}")
+    return obj
+
+
+def _check_report_structure(report: dict[str, Any]) -> None:
+    """Reject malformed nested records as controlled input errors, not tracebacks."""
+    _require_fields(
+        report["terminal_physical_clean_supply"],
+        "pre-QP",
+        {
+            "classification", "audit_issue", "execution_pr", "execution_head",
+            "run_id", "artifact_id", "materialization_identity_sha256",
+            "records", "distinct_source_ids", "payload_utf8_bytes",
+            "postpack_unique_loss_positions", "capacity_credit_bytes",
+            "launch_authoritative",
+        },
+    )
+    _require_fields(
+        report["balance_policy"],
+        "balance policy",
+        {
+            "source_path", "git_blob_sha", "policy_identity_sha256",
+            "target_total_source_bytes", "strata", "max_family_fraction_total",
+            "max_family_fraction_own_stratum",
+            "minimum_independent_families_per_stratum", "budget_quantum_bytes",
+            "replay_or_duplication_to_meet_quota",
+            "source_bytes_are_not_unique_loss_positions",
+        },
+    )
+    _require_fields(
+        report["indexed_executor"],
+        "indexed executor",
+        {
+            "pr", "head", "merge_commit", "integrated",
+            "defines_new_matcher_science", "capacity_credit_bytes",
+        },
+    )
+    _require_fields(
+        report["optimistic_source_mixture_bound"],
+        "optimistic source bound",
+        {
+            "classification", "optimistic_total_before_overlap_or_further_loss",
+            "deficit_to_20m_balance_target", "authoritative_capacity_credit_bytes",
+            "proves_balance_feasibility", "source_stage", "terminal_clean_payload_bytes",
+            "proves_unique_loss_sufficiency",
+        },
+    )
+    _require_fields(
+        report["decision"],
+        "capacity decision",
+        {
+            "open_new_distant_source_families",
+            "stop_new_source_acquisition_finish_pipeline",
+            "meaningful_unique_loss_floor",
+            "authorized_postpack_unique_loss_positions",
+            "authorized_unique_loss_deficit",
+        },
+    )
+    for name, fields in (
+        (
+            "pending_existing_high_yield_work",
+            {
+                "id", "post_global_dedup_survivor_bytes", "capacity_credit_bytes",
+                "launch_authoritative", "optimistic_balance_upper_bound_bytes",
+            },
+        ),
+        ("existing_independent_family_backlog",
+         {"id", "observed_head", "capacity_credit_bytes"}),
+        ("downstream_authority_backlog", {"id", "terminal_authority"}),
+    ):
+        for index, item in enumerate(object_list(report[name], name)):
+            row = _require_fields(item, f"{name}[{index}]", fields)
+            if not isinstance(row["id"], str):
+                fail(f"{name}[{index}].id must be a string")
+
+
 def _validate_clean_post_qp(report: dict[str, Any]) -> None:
     """Keep post-QP physical capacity separate from earlier pre-QP supply."""
     clean = json_object(report["terminal_physical_clean_supply"], "pre-QP")
@@ -260,6 +341,7 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
     report = json_object(report, "report")
     if set(report) != TOP:
         fail("report keys mismatch")
+    _check_report_structure(report)
     if report["schema_version"] != SCHEMA or report["report_id"] != REPORT_ID:
         fail("report identity drifted")
     main = hexid(report["source_main_sha"], "source_main_sha", HEX40)
