@@ -501,3 +501,42 @@ def test_rejects_nonfinite_direct_report_values(value: float) -> None:
     document["decision"]["untrusted_metadata"] = value
     with pytest.raises(CapacityReportError, match="nonfinite JSON number"):
         validate_report(document)
+
+
+@pytest.mark.parametrize("surrogate", [0xD800, 0xDFFF])
+def test_rejects_unpaired_unicode_direct_report(surrogate: int) -> None:
+    document = _report()
+    document["decision"]["untrusted_metadata"] = chr(surrogate)
+    with pytest.raises(CapacityReportError, match="invalid Unicode"):
+        validate_report(document)
+
+
+def test_rejects_escaped_unpaired_unicode_in_file(tmp_path: Path) -> None:
+    raw = REPORT.read_text(encoding="utf-8")
+    marker = '"claim_issue": 2570'
+    assert raw.count(marker) == 1
+    path = tmp_path / "surrogate.json"
+    replacement = '"claim_issue": ' + json.dumps(chr(0xD800))
+    path.write_text(raw.replace(marker, replacement, 1), encoding="utf-8")
+    with pytest.raises(CapacityReportError, match="invalid Unicode"):
+        load_and_validate(path)
+
+
+def test_rejects_overlong_integer_literal_without_traceback(tmp_path: Path) -> None:
+    raw = REPORT.read_text(encoding="utf-8")
+    marker = '"claim_issue": 2570'
+    assert raw.count(marker) == 1
+    replacement = '"claim_issue": ' + "9" * 5_000
+    path = tmp_path / "overlong-integer.json"
+    path.write_text(raw.replace(marker, replacement, 1), encoding="utf-8")
+    with pytest.raises(
+        CapacityReportError, match="integer exceeds limit|invalid capacity report JSON"
+    ):
+        load_and_validate(path)
+
+
+def test_rejects_huge_direct_integer_without_serialization() -> None:
+    document = _report()
+    document["decision"]["untrusted_metadata"] = 10**5_000
+    with pytest.raises(CapacityReportError, match="integer exceeds limit"):
+        validate_report(document)
