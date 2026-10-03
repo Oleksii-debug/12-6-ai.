@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -204,6 +205,110 @@ def test_real_current_clean_vector_reproduces_committed_balance(
     assert json.loads(output.read_text(encoding="utf-8")) == result
     assert output.read_bytes().endswith(b"\n")
     assert b"\r\n" not in output.read_bytes()
+
+
+def _isolated_balance_cli(tmp_path: Path) -> tuple[Path, Path]:
+    """Use a disposable policy copy so alias regressions cannot damage the repo."""
+    root = tmp_path / "isolated"
+    tool = root / "tools" / TOOL.name
+    policy = root / "configs" / "data" / POLICY.name
+    tool.parent.mkdir(parents=True)
+    policy.parent.mkdir(parents=True)
+    shutil.copyfile(TOOL, tool)
+    shutil.copyfile(POLICY, policy)
+    return tool, policy
+
+
+@pytest.mark.parametrize(
+    "target", ["policy", "input", "existing", "symlink"],
+)
+def test_cli_refuses_destructive_output_aliases(
+    tmp_path: Path, target: str,
+) -> None:
+    gate = _gate()
+    tool, policy = _isolated_balance_cli(tmp_path)
+    report = gate.load_json(
+        ROOT / "reports/d03/current_clean_balance_local_candidate_execution_v1.json"
+    )
+    vector = tmp_path / "input.json"
+    vector.write_text(
+        json.dumps(
+            report["outputs"]["next100-input.json"]["document"],
+            ensure_ascii=False, sort_keys=True,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    existing = tmp_path / "prior-result.json"
+    existing.write_bytes(b"previous verified result")
+    symlink = tmp_path / "linked-source.json"
+    if target == "symlink":
+        try:
+            symlink.symlink_to(vector)
+        except OSError:
+            pytest.skip("file symlinks unavailable on this platform")
+    destinations = {
+        "policy": policy, "input": vector,
+        "existing": existing, "symlink": symlink,
+    }
+    before = {
+        "policy": policy.read_bytes(),
+        "input": vector.read_bytes(),
+        "existing": existing.read_bytes(),
+    }
+    run = subprocess.run(
+        [
+            sys.executable, str(tool), "evaluate", str(vector),
+            "--output", str(destinations[target]),
+        ],
+        cwd=tool.parent.parent,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert run.returncode == 2
+    assert run.stderr == ""
+    assert json.loads(run.stdout)["status"] == "BLOCKED_INVALID_INPUT"
+    assert policy.read_bytes() == before["policy"]
+    assert vector.read_bytes() == before["input"]
+    assert existing.read_bytes() == before["existing"]
+    if target == "symlink":
+        assert symlink.is_symlink()
+
+
+def test_cli_accepts_new_output_and_unchanged_stdout(tmp_path: Path) -> None:
+    gate = _gate()
+    tool, _ = _isolated_balance_cli(tmp_path)
+    report = gate.load_json(
+        ROOT / "reports/d03/current_clean_balance_local_candidate_execution_v1.json"
+    )
+    vector_value = report["outputs"]["next100-input.json"]["document"]
+    vector = tmp_path / "current-clean-input.json"
+    vector.write_text(
+        json.dumps(vector_value, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    result = gate.evaluate(gate.load_json(POLICY), vector_value)
+    output = tmp_path / "new-output.json"
+    saved = subprocess.run(
+        [
+            sys.executable, str(tool), "evaluate", str(vector),
+            "--output", str(output),
+        ],
+        cwd=tool.parent.parent, capture_output=True, text=True, check=False,
+    )
+    assert saved.returncode == 0
+    assert saved.stdout == ""
+    assert saved.stderr == ""
+    assert json.loads(output.read_text(encoding="utf-8")) == result
+    assert output.read_bytes().endswith(b"\n")
+    stdout = subprocess.run(
+        [sys.executable, str(tool), "evaluate", str(vector)],
+        cwd=tool.parent.parent, capture_output=True, text=True, check=False,
+    )
+    assert stdout.returncode == 0
+    assert stdout.stderr == ""
+    assert json.loads(stdout.stdout) == result
+    assert result["claim_boundary"]["model_training_authorized"] is False
 
 
 @pytest.mark.parametrize(

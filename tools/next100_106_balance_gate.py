@@ -518,6 +518,24 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
+    """Create a result once, never replacing policy, source evidence or old output."""
+    if path.exists() or path.is_symlink():
+        raise GateError(f"refusing to overwrite existing balance output: {path}")
+    try:
+        resolved = path.resolve()
+        protected = {POLICY_PATH.resolve(), input_path.resolve()}
+    except RuntimeError as exc:
+        raise GateError("balance output path has a symlink loop") from exc
+    if resolved in protected:
+        raise GateError("balance output must not alias policy or input")
+    try:
+        with path.open("xb") as destination:
+            destination.write(payload)
+    except FileExistsError as exc:
+        raise GateError(f"refusing to overwrite existing balance output: {path}") from exc
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -535,7 +553,9 @@ def main() -> int:
         result = evaluate(policy, vector)
         payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
         if args.output:
-            args.output.write_bytes(payload.encode("utf-8"))
+            _write_new_output(
+                args.output, payload.encode("utf-8"), input_path=args.input
+            )
         else:
             print(payload, end="")
         return 0
