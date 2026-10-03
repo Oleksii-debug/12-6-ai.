@@ -180,6 +180,23 @@ def test_runtime_dependency_manifest_rejects_unknown_entry_fields() -> None:
         two_clean._runtime_dependency_manifest_identity(manifest)
 
 
+@pytest.mark.parametrize("kind", [[], {}, None, 4, False])
+def test_runtime_dependency_manifest_rejects_nonstring_kind_without_traceback(
+    kind: object,
+) -> None:
+    with pytest.raises(two_clean.TwoCleanBuildError, match="kind must be a string"):
+        two_clean._normalize_runtime_dependency_manifest({"sys": {"kind": kind}})
+
+
+@pytest.mark.parametrize("bad_name", [1, None, ""])
+def test_runtime_dependency_manifest_rejects_invalid_module_name_before_sort(
+    bad_name: object,
+) -> None:
+    manifest = {"sys": {"kind": "built-in"}, bad_name: {"kind": "built-in"}}
+    with pytest.raises(two_clean.TwoCleanBuildError, match="module name must be non-empty"):
+        two_clean._normalize_runtime_dependency_manifest(manifest)
+
+
 def test_windows_extension_origin_uses_explicit_trusted_root(tmp_path: Path) -> None:
     stdlib = tmp_path / "Lib"
     dlls = tmp_path / "DLLs"
