@@ -865,3 +865,50 @@ def test_two_clean_does_not_mask_unexpected_product_recursion(
     with pytest.raises(RecursionError, match="unexpected Product recursion"):
         runner._run_two_clean(args)
     assert not (args.output_root / "two-clean-authority.json").exists()
+
+@pytest.mark.parametrize("failure", ("wrong_digest", "deep_authority"))
+def test_invalid_rada_authority_does_not_orphan_output_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    args = _runner_args(tmp_path)
+    original_bytes = args.dependency_authority.read_bytes()
+    original_digest = args.expected_dependency_authority_sha256
+    if failure == "wrong_digest":
+        args.expected_dependency_authority_sha256 = "0" * 64
+        expected_error = "raw SHA-256 drift"
+    else:
+        malformed = _deep_json("objects")
+        args.dependency_authority.write_bytes(malformed)
+        args.expected_dependency_authority_sha256 = hashlib.sha256(
+            malformed
+        ).hexdigest()
+        expected_error = "JSON nesting limit exceeded"
+    rejected_bytes = args.dependency_authority.read_bytes()
+
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError, match=expected_error
+    ):
+        runner._run_two_clean(args)
+
+    assert not args.output_root.exists()
+    assert args.dependency_authority.read_bytes() == rejected_bytes
+
+    # A corrected authority can retry with precisely the same output path.
+    args.dependency_authority.write_bytes(original_bytes)
+    args.expected_dependency_authority_sha256 = original_digest
+
+    def timeout(_command: list[str], *, timeout_seconds: int) -> None:
+        raise subprocess.TimeoutExpired(cmd="worker", timeout=timeout_seconds)
+
+    monkeypatch.setattr(runner, "_run_worker", timeout)
+    with pytest.raises(
+        carrier.RadaTwoCleanExecutionError, match="authority deadline"
+    ):
+        runner._run_two_clean(args)
+
+    incomplete, _ = runner._read_json(args.output_root / "incomplete.json")
+    assert incomplete["reason"] == "worker_timeout"
+    assert incomplete["authorized_optimized_target_exposure"] == 0
+    assert not (args.output_root / "two-clean-authority.json").exists()
