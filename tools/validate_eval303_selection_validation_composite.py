@@ -2,10 +2,16 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import json
 import math
+import os
 import shutil
+import stat
+import sys
+import tempfile
 from collections import Counter
 from copy import deepcopy
 from pathlib import Path
@@ -244,15 +250,77 @@ def verify(repo_root: Path) -> dict:
     }
 
 
+def _publish_directory_noreplace(staging: Path, destination: Path) -> None:
+    """Atomically publish one verified private directory without clobbering output."""
+    if os.name == 'nt':
+        try:
+            os.rename(staging, destination)
+        except FileExistsError:
+            raise FileExistsError(
+                f'materialization destination appeared during publish: {destination}'
+            ) from None
+        return
+
+    if sys.platform.startswith('linux'):
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, 'renameat2', None)
+        if renameat2 is None:
+            raise Eval303ValidationError('atomic no-replace publication requires renameat2')
+        renameat2.argtypes = [
+            ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint
+        ]
+        renameat2.restype = ctypes.c_int
+        result = renameat2(
+            -100, os.fsencode(staging), -100, os.fsencode(destination), 1
+        )
+        if result == 0:
+            return
+        error_number = ctypes.get_errno()
+        if error_number == errno.EEXIST:
+            raise FileExistsError(
+                f'materialization destination appeared during publish: {destination}'
+            )
+        raise OSError(error_number, os.strerror(error_number), destination)
+
+    raise Eval303ValidationError(
+        'atomic no-replace materialization is unsupported on this platform'
+    )
+
+
 def materialize(repo_root: Path, output_dir: Path) -> None:
+    """Copy authenticated files to a NEW directory without deleting user data."""
     verify(repo_root)
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    for rel in (MANIFEST, MEMBERSHIP, PROOF):
-        src = repo_root / rel
-        dst = output_dir / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(src.read_bytes())
+    if output_dir.is_symlink() or output_dir.exists():
+        raise Eval303ValidationError(
+            f'materialization destination already exists; choose a new path: {output_dir}'
+        )
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(
+        prefix=f'.{output_dir.name}.staging-', dir=output_dir.parent
+    ))
+    created = staging.lstat()
+    try:
+        for rel in (MANIFEST, MEMBERSHIP, PROOF):
+            src = repo_root / rel
+            dst = staging / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            with dst.open('xb') as handle:
+                handle.write(src.read_bytes())
+        # Verify exact copied bytes before publication, even if source paths changed.
+        verify(staging)
+        _publish_directory_noreplace(staging, output_dir)
+        staging = None
+    finally:
+        if staging is not None:
+            current = staging.lstat()
+            if (
+                not stat.S_ISDIR(current.st_mode)
+                or (current.st_dev, current.st_ino) != (created.st_dev, created.st_ino)
+            ):
+                raise Eval303ValidationError(
+                    'private materialization staging path changed; refusing cleanup'
+                )
+            shutil.rmtree(staging)
 
 
 def main() -> int:
@@ -262,13 +330,19 @@ def main() -> int:
     parser.add_argument('--output-dir', type=Path)
     args = parser.parse_args()
     root = args.repo_root.resolve()
-    if args.command == 'verify':
-        print(json.dumps(verify(root), sort_keys=True, indent=2))
-    else:
-        if args.output_dir is None:
-            parser.error('--output-dir is required for materialize')
-        materialize(root, args.output_dir.resolve())
-        print(json.dumps({'status': 'PASS', 'output_dir': str(args.output_dir)}, sort_keys=True))
+    if args.command == 'materialize' and args.output_dir is None:
+        parser.error('--output-dir is required for materialize')
+    try:
+        if args.command == 'verify':
+            report = verify(root)
+        else:
+            # Preserve final symlinks for the no-clobber check.
+            materialize(root, args.output_dir.absolute())
+            report = {'status': 'PASS', 'output_dir': str(args.output_dir)}
+    except (Eval303ValidationError, OSError, UnicodeError) as exc:
+        print(json.dumps({'status': 'FAIL', 'error': str(exc)}, sort_keys=True))
+        return 2
+    print(json.dumps(report, sort_keys=True, indent=2))
     return 0
 
 

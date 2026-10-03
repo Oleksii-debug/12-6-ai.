@@ -121,3 +121,182 @@ def test_membership_jsonl_rejects_non_finite_constant(tmp_path: Path) -> None:
         match="non-finite JSON constant",
     ):
         VALIDATOR.load_records(membership)
+
+
+def test_materialize_fresh_directory_reverifies_exact_files(tmp_path: Path) -> None:
+    output = tmp_path / "new output"
+    VALIDATOR.materialize(ROOT, output)
+
+    for relative in (VALIDATOR.MANIFEST, VALIDATOR.MEMBERSHIP, VALIDATOR.PROOF):
+        assert (output / relative).read_bytes() == (ROOT / relative).read_bytes()
+    assert VALIDATOR.verify(output) == VALIDATOR.verify(ROOT)
+    assert not list(tmp_path.glob(".new output.staging-*"))
+
+
+def test_materialize_existing_user_directory_is_never_deleted(tmp_path: Path) -> None:
+    output = tmp_path / "existing output"
+    output.mkdir()
+    marker = output / "unrelated user data.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+
+    with pytest.raises(VALIDATOR.Eval303ValidationError, match="already exists"):
+        VALIDATOR.materialize(ROOT, output)
+
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+    assert not list(tmp_path.glob(".existing output.staging-*"))
+
+
+def test_materialize_cannot_delete_its_source_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Keep this adversarial source in tmp_path, never risk the actual checkout.
+    root = tmp_path / "source"
+    root.mkdir()
+    marker = root / "do not delete.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+    monkeypatch.setattr(VALIDATOR, "verify", lambda _root: {"status": "PASS"})
+
+    with pytest.raises(VALIDATOR.Eval303ValidationError, match="already exists"):
+        VALIDATOR.materialize(root, root)
+
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+
+
+def test_materialize_rejects_final_symlink_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    protected = tmp_path / "protected"
+    protected.mkdir()
+    marker = protected / "keep.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+    alias = tmp_path / "symlink output"
+    try:
+        alias.symlink_to(protected, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+
+    with pytest.raises(VALIDATOR.Eval303ValidationError, match="already exists"):
+        VALIDATOR.materialize(ROOT, alias)
+
+    assert alias.is_symlink()
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+
+
+def test_materialize_destination_race_fails_without_clobber(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "racing output"
+    publish = VALIDATOR._publish_directory_noreplace
+
+    def create_destination_first(staging: Path, destination: Path) -> None:
+        destination.mkdir()
+        (destination / "other-owner.txt").write_text("preserve me", encoding="utf-8")
+        publish(staging, destination)
+
+    monkeypatch.setattr(
+        VALIDATOR, "_publish_directory_noreplace", create_destination_first
+    )
+    with pytest.raises(FileExistsError, match="appeared during publish"):
+        VALIDATOR.materialize(ROOT, output)
+
+    assert (output / "other-owner.txt").read_text(encoding="utf-8") == "preserve me"
+    assert not list(tmp_path.glob(".racing output.staging-*"))
+
+
+def test_materialize_failed_stage_verification_never_publishes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "unpublished"
+    original_verify = VALIDATOR.verify
+
+    def fail_second_verification(root: Path) -> dict:
+        if root != ROOT:
+            raise VALIDATOR.Eval303ValidationError("candidate did not reverify")
+        return original_verify(root)
+
+    monkeypatch.setattr(VALIDATOR, "verify", fail_second_verification)
+    with pytest.raises(VALIDATOR.Eval303ValidationError, match="did not reverify"):
+        VALIDATOR.materialize(ROOT, output)
+
+    assert not output.exists()
+    assert not list(tmp_path.glob(".unpublished.staging-*"))
+
+
+def test_materialize_existing_target_cli_failure_is_one_json_line(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "existing"
+    output.mkdir()
+    marker = output / "keep.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "materialize",
+            "--repo-root", str(ROOT), "--output-dir", str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["status"] == "FAIL"
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+
+
+def test_materialize_success_cli_reports_published_directory(tmp_path: Path) -> None:
+    output = tmp_path / "fresh"
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "materialize",
+            "--repo-root", str(ROOT), "--output-dir", str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert result.stderr == ""
+    assert json.loads(result.stdout)["status"] == "PASS"
+    assert VALIDATOR.verify(output)["status"] == "PASS"
+
+
+def test_verify_cli_semantic_error_is_machine_readable(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "verify", "--repo-root", str(empty),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stderr == ""
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["status"] == "FAIL"
+
+
+def test_verify_cli_unexpected_error_is_not_hidden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected(_root: Path) -> dict:
+        raise RuntimeError("unexpected programming error")
+
+    monkeypatch.setattr(VALIDATOR, "verify", unexpected)
+    monkeypatch.setattr(
+        sys, "argv", [str(SCRIPT), "verify", "--repo-root", str(ROOT)]
+    )
+    with pytest.raises(RuntimeError, match="unexpected programming error"):
+        VALIDATOR.main()
