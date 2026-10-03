@@ -606,7 +606,10 @@ def materialize_archive_path(
         root = Path(temp_ctx.name)
     else:
         root = work_dir
-        root.mkdir(parents=True, exist_ok=True)
+        try:
+            root.mkdir(parents=True, exist_ok=False)
+        except FileExistsError as exc:
+            raise ProbeError(f"refusing pre-existing work_dir: {root}") from exc
 
     try:
         nested_path = root / "nested-text.zip"
@@ -772,12 +775,88 @@ def _write_outputs(
     records_path: Path,
     report_path: Path,
 ) -> None:
+    """Create a recoverable two-file output set without overwriting user data.
+
+    A durable incomplete marker is created before either final hard link. If
+    publication is interrupted, leave any newly published final and the marker
+    for explicit inspection; never unlink an ambiguous user-visible path.
+    """
+    resolved_records = records_path.resolve(strict=False)
+    resolved_report = report_path.resolve(strict=False)
+    marker = records_path.with_name(records_path.name + ".incomplete")
+    resolved_marker = marker.resolve(strict=False)
+    if len({resolved_records, resolved_report, resolved_marker}) != 3:
+        raise ProbeError("records, report and publication marker must be distinct")
+
     records_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    with records_path.open("w", encoding="utf-8", newline="\n") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-    report_path.write_bytes(cjson(report))
+    for path in (records_path, report_path, marker):
+        if path.is_symlink() or path.exists():
+            raise ProbeError(f"refusing to overwrite existing publication path: {path}")
+
+    # The marker contains no candidate text. Its presence makes any partial
+    # publication nonterminal and prevents silent same-path retries.
+    try:
+        with marker.open("xb") as control:
+            control.write(b"INCOMPLETE_NOT_TERMINAL\n")
+            control.flush()
+            os.fsync(control.fileno())
+            marker_stat = os.fstat(control.fileno())
+    except FileExistsError as exc:
+        raise ProbeError(f"refusing to overwrite existing marker: {marker}") from exc
+
+    stages: list[tuple[Path, Path]] = []
+    try:
+        for destination, is_records in (
+            (records_path, True),
+            (report_path, False),
+        ):
+            fd, stage_name = tempfile.mkstemp(
+                prefix=f".{destination.name}.stage-", dir=destination.parent
+            )
+            stage = Path(stage_name)
+            stages.append((stage, destination))
+            with os.fdopen(fd, "wb") as output:
+                if is_records:
+                    for row in rows:
+                        output.write(
+                            (json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+                            .encode("utf-8")
+                        )
+                else:
+                    output.write(cjson(report))
+                output.flush()
+                os.fsync(output.fileno())
+
+        for stage, destination in stages:
+            try:
+                os.link(stage, destination)
+            except FileExistsError as exc:
+                raise ProbeError(
+                    f"refusing to overwrite: {destination}; "
+                    f"incomplete publication marker: {marker}"
+                ) from exc
+            except OSError as exc:
+                raise ProbeError(
+                    f"cannot publish: {destination}; "
+                    f"incomplete publication marker: {marker}"
+                ) from exc
+
+        # A substituted control path is not ours to remove. This check protects
+        # synchronous substitutions, not arbitrary post-check same-user races.
+        current = marker.lstat()
+        if (
+            not stat.S_ISREG(current.st_mode)
+            or (current.st_dev, current.st_ino)
+            != (marker_stat.st_dev, marker_stat.st_ino)
+        ):
+            raise ProbeError(
+                f"publication marker identity changed; inspect outputs: {marker}"
+            )
+        marker.unlink()
+    finally:
+        for stage, _ in stages:
+            stage.unlink(missing_ok=True)
 
 
 def main() -> None:
