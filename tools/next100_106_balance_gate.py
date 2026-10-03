@@ -124,6 +124,11 @@ def _hex(value: Any, length: int, field: str) -> str:
     return value
 
 
+def _require_exact_policy_int(value: Any, expected: int, field: str) -> None:
+    if type(value) is not int or value != expected:
+        raise GateError(f"{field} drift or invalid integer type")
+
+
 def validate_policy(policy: dict[str, Any]) -> None:
     if policy.get("schema_version") != "12-6.next100-106-balance-gate-policy.v1":
         raise GateError("unexpected policy schema")
@@ -136,38 +141,69 @@ def validate_policy(policy: dict[str, Any]) -> None:
     ):
         raise GateError("policy identity mismatch")
 
-    cfg = policy["policy"]
-    if cfg["target_total_source_bytes"] != 20_000_000:
-        raise GateError("20M source-byte planning target drift")
-    if cfg["minimum_independent_families_per_stratum"] != 2:
-        raise GateError("minimum family count drift")
-    if cfg["budget_quantum_bytes"] != 100:
-        raise GateError("budget quantum drift")
+    cfg = policy.get("policy")
+    expected_cfg_keys = {
+        "target_total_source_bytes",
+        "strata",
+        "minimum_independent_families_per_stratum",
+        "max_family_fraction_total",
+        "max_family_fraction_own_stratum",
+        "budget_quantum_bytes",
+        "replay_or_duplication_to_meet_quota",
+        "model_result_guided_mixture_retuning",
+    }
+    if not isinstance(cfg, dict) or set(cfg) != expected_cfg_keys:
+        raise GateError("balance policy fields drift")
+    _require_exact_policy_int(
+        cfg.get("target_total_source_bytes"), 20_000_000, "20M source-byte planning target"
+    )
+    _require_exact_policy_int(
+        cfg.get("minimum_independent_families_per_stratum"), 2, "minimum family count"
+    )
+    _require_exact_policy_int(cfg.get("budget_quantum_bytes"), 100, "budget quantum")
     if cfg["replay_or_duplication_to_meet_quota"] is not False:
         raise GateError("replay must remain forbidden")
     if cfg["model_result_guided_mixture_retuning"] is not False:
         raise GateError("model-result-guided mixture retuning must remain forbidden")
 
-    expected = {"ua": (9, 20), "en": (7, 20), "code": (1, 5)}
-    observed = {
-        key: (
-            cfg["strata"][key]["target_numerator"],
-            cfg["strata"][key]["target_denominator"],
-        )
-        for key in STRATA
-    }
-    if observed != expected:
+    strata = cfg.get("strata")
+    if not isinstance(strata, dict) or set(strata) != set(STRATA):
         raise GateError("45/35/20 mixture drift")
-    if cfg["max_family_fraction_total"] != {"numerator": 1, "denominator": 4}:
-        raise GateError("global family cap drift")
-    if cfg["max_family_fraction_own_stratum"] != {
-        "numerator": 3,
-        "denominator": 5,
-    }:
-        raise GateError("within-stratum family cap drift")
+    for stratum, (numerator, denominator) in {
+        "ua": (9, 20),
+        "en": (7, 20),
+        "code": (1, 5),
+    }.items():
+        row = strata[stratum]
+        if not isinstance(row, dict) or set(row) != {
+            "target_numerator", "target_denominator"
+        }:
+            raise GateError("45/35/20 mixture drift")
+        _require_exact_policy_int(
+            row["target_numerator"], numerator, f"{stratum} mixture numerator"
+        )
+        _require_exact_policy_int(
+            row["target_denominator"], denominator, f"{stratum} mixture denominator"
+        )
 
-    boundary = policy["claim_boundary"]
-    if boundary != {
+    for key, numerator, denominator, label in (
+        ("max_family_fraction_total", 1, 4, "global family cap"),
+        ("max_family_fraction_own_stratum", 3, 5, "within-stratum family cap"),
+    ):
+        fraction = cfg.get(key)
+        if not isinstance(fraction, dict) or set(fraction) != {
+            "numerator", "denominator"
+        }:
+            raise GateError(f"{label} drift")
+        _require_exact_policy_int(
+            fraction["numerator"], numerator, f"{label} numerator"
+        )
+        _require_exact_policy_int(
+            fraction["denominator"], denominator, f"{label} denominator"
+        )
+
+    boundary = policy.get("claim_boundary")
+    expected_boundary = {
         "computes_source_mixture_feasibility_only": True,
         "creates_corpus_identity": False,
         "creates_shard_identity": False,
@@ -175,7 +211,13 @@ def validate_policy(policy: dict[str, Any]) -> None:
         "authorizes_model_training": False,
         "authorizes_paid_compute": False,
         "relabels_source_bytes_as_loss_positions": False,
-    }:
+    }
+    if not isinstance(boundary, dict) or set(boundary) != set(expected_boundary):
+        raise GateError("claim boundary drift")
+    if any(
+        type(boundary[key]) is not bool or boundary[key] is not expected
+        for key, expected in expected_boundary.items()
+    ):
         raise GateError("claim boundary drift")
 
 
