@@ -1370,6 +1370,86 @@ def test_selection_rejects_resealed_false_current_clean_source_count() -> None:
         )
 
 
+
+def _assert_resealed_vector_rejected_against_raw_survivors(
+    vector: dict, raw: dict[str, bytes], *, rejected_field: str,
+) -> None:
+    # Intentionally allow the attacker to supply a freshly resealed expected
+    # vector and matching derived NEXT100 input/result/binding. The immutable
+    # physical rows and producer receipt must independently reject the alias.
+    vector["family_vector_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {
+                key: value for key, value in vector.items()
+                if key != "family_vector_identity_sha256"
+            }
+        )
+    ).hexdigest()
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    assert balance["status"] == "TARGET_20M_SOURCE_MIX_FEASIBLE"
+    binding = build_balance_result_binding(
+        family_vector=vector,
+        expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+        next100_input=adapted,
+        balance_result=balance,
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    with pytest.raises(ProjectionError, match=rejected_field):
+        build_current_clean_balanced_selection(
+            family_vector=vector,
+            next100_input=adapted,
+            balance_result=balance,
+            balance_binding=binding,
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_records_raw=raw["survivor_records"],
+            expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+            expected_balance_binding_identity_sha256=binding["binding_identity_sha256"],
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=balance["result_identity_sha256"],
+        )
+
+
+def test_selection_rejects_resealed_wrong_physical_record_membership() -> None:
+    vector, raw, _expected, _adapted, _balance, _binding = (
+        _current_clean_target_selection_fixture()
+    )
+    physical_membership = vector["record_membership_sha256"]
+    vector["record_membership_sha256"] = (
+        "0" * 64 if physical_membership != "0" * 64 else "1" * 64
+    )
+    _assert_resealed_vector_rejected_against_raw_survivors(
+        vector, raw, rejected_field="record_membership_sha256",
+    )
+
+
+def test_selection_rejects_resealed_per_family_record_redistribution() -> None:
+    # Two families have two real records each. Reallocate counts 2/2 -> 3/1
+    # while retaining both positive, all bytes, stratum totals and source count.
+    rows = [
+        _row("ua-a-1", UA_A, "uk", 2_000_000),
+        _row("ua-a-2", UA_A, "uk", 2_500_000),
+        _row("ua-b-1", UA_B, "uk", 2_000_000),
+        _row("ua-b-2", UA_B, "uk", 2_500_000),
+        *_target_rows()[2:],
+    ]
+    vector, raw, _expected = _build_current_clean(rows)
+    family_counts = {
+        item["family"]: item["record_count"] for item in vector["families"]
+    }
+    assert family_counts[UA_A] == family_counts[UA_B] == 2
+    for family in vector["families"]:
+        if family["family"] == UA_A:
+            family["record_count"] = 3
+        elif family["family"] == UA_B:
+            family["record_count"] = 1
+    _assert_resealed_vector_rejected_against_raw_survivors(
+        vector, raw, rejected_field="families",
+    )
+
+
 def test_current_clean_balanced_selection_materializes_exact_target() -> None:
     selection, projected, balance = _build_current_clean_target_selection()
     assert selection["schema"] == "12-6.d03-balanced-selection-authority.v1"
