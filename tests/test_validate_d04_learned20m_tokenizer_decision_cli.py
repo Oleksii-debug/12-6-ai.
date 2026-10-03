@@ -548,3 +548,36 @@ def test_external_float_underflow_fails_without_publication(
     assert "nonzero_json_number_underflowed_to_zero" in result["error"]
     assert {path: path.read_bytes() for path in paths.values()} == original
     assert not output.exists()
+
+
+def test_short_staged_report_write_never_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "report.json"
+    actual_fdopen = cli.os.fdopen
+
+    class ShortWriter:
+        def __init__(self, real):
+            self.real = real
+
+        def __enter__(self):
+            self.real.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.real.__exit__(*args)
+
+        def write(self, payload: bytes) -> int:
+            self.real.write(payload[:1])
+            return 1
+
+    monkeypatch.setattr(
+        cli.os, "fdopen", lambda descriptor, mode: ShortWriter(
+            actual_fdopen(descriptor, mode)
+        ),
+    )
+    with pytest.raises(OSError, match="incomplete tokenizer report staging write"):
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    assert not output.exists()
+    assert not list(tmp_path.glob(".report.json.*.tmp"))
