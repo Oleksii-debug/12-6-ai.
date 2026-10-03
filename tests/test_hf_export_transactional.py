@@ -691,3 +691,30 @@ def test_hf_unexpected_product_recursion_is_not_masked(
             hf_config={"model_type": "twelve_six_export_transactional"},
         )
     assert not output.exists()
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_hf_hook_overdeep_result_cleans_private_roots(
+    tmp_path: Path, nesting: str
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(16.0), identity=identity("c"))
+    payload: object = 0
+    for _ in range(10000):
+        payload = [payload] if nesting == "arrays" else {"k": payload}
+
+    def overdeep_hook(_reference: Path, _candidate: Path):
+        return {"nested": payload}
+
+    with pytest.raises(CheckpointIntegrityError, match="not strict finite JSON"):
+        export_hf_directory(
+            checkpoint,
+            output,
+            hf_config={"model_type": "twelve_six_export_transactional"},
+            parity_hook=overdeep_hook,
+        )
+    assert not output.exists()
+    assert not list(tmp_path.glob(".hf.reference-*"))
+    assert not list(tmp_path.glob(".hf.hook-candidate-*"))
+    assert not list(tmp_path.glob(".hf.staging-*"))
