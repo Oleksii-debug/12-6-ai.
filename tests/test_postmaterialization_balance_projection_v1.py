@@ -1450,6 +1450,57 @@ def test_selection_rejects_resealed_per_family_record_redistribution() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    ("physical_capacity_float", "zero_gap_float", "allocation_float"),
+)
+def test_selection_rejects_self_resealed_binding_numeric_alias(
+    mutation: str,
+) -> None:
+    vector, raw, _expected, adapted, balance, binding = (
+        _current_clean_target_selection_fixture()
+    )
+    altered = copy.deepcopy(binding)
+    if mutation == "physical_capacity_float":
+        physical = altered["raw_capacity_by_stratum"]
+        physical["ua"] = float(physical["ua"])
+    elif mutation == "zero_gap_float":
+        gap = altered["raw_gap_to_target_by_stratum"]
+        gap["ua"] = float(gap["ua"])
+    else:
+        allocation = altered["deterministic_maximum_allocation"][0]
+        allocation["allocated_bytes"] = float(allocation["allocated_bytes"])
+    # Python's value-only mapping equality masks these typed JSON changes.
+    assert altered == binding
+    altered["binding_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {
+                key: value
+                for key, value in altered.items()
+                if key != "binding_identity_sha256"
+            }
+        )
+    ).hexdigest()
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    with pytest.raises(ProjectionError, match="deterministic authenticated rebuild"):
+        build_current_clean_balanced_selection(
+            family_vector=vector,
+            next100_input=adapted,
+            balance_result=balance,
+            balance_binding=altered,
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_records_raw=raw["survivor_records"],
+            expected_family_vector_identity_sha256=vector[
+                "family_vector_identity_sha256"
+            ],
+            expected_balance_binding_identity_sha256=altered[
+                "binding_identity_sha256"
+            ],
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=balance["result_identity_sha256"],
+        )
+
+
 def test_current_clean_balanced_selection_materializes_exact_target() -> None:
     selection, projected, balance = _build_current_clean_target_selection()
     assert selection["schema"] == "12-6.d03-balanced-selection-authority.v1"
