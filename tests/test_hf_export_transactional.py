@@ -593,3 +593,101 @@ def test_missing_private_root_identity_preserves_unknown_root_and_cleans_known_r
 
     assert (unknown / "user-evidence.txt").read_text(encoding="utf-8") == "preserve"
     assert not known.exists()
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_hf_parser_rejects_overdeep_json_as_integrity_error(nesting: str):
+    if nesting == "arrays":
+        raw = '{"payload":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"payload":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    with pytest.raises(CheckpointIntegrityError, match="not valid strict UTF-8 JSON"):
+        hf_export._json_object(raw.encode("utf-8"), artifact="overdeep-input")
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+@pytest.mark.parametrize(
+    "artifact",
+    (
+        hf_export.EXPORTED_SOURCE_MANIFEST_NAME,
+        hf_export.EXPORTED_CONFIG_NAME,
+        hf_export.PARITY_REQUEST_NAME,
+        hf_export.EXPORT_ATTESTATION_NAME,
+    ),
+)
+def test_hf_verifier_rejects_overdeep_artifact_without_trusting_hash(
+    tmp_path: Path,
+    nesting: str,
+    artifact: str,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(13.0), identity=identity("9"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    if nesting == "arrays":
+        raw = '{"payload":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    else:
+        raw = '{"payload":' + '{"k":' * 10000 + "0" + "}" * 10000 + "}"
+    target = output / artifact
+    target.write_text(raw, encoding="utf-8")
+    if artifact == hf_export.EXPORT_ATTESTATION_NAME:
+        (output / hf_export.EXPORT_CHECKSUM_NAME).write_text(
+            f"{hf_export.sha256_bytes(target.read_bytes())}  {artifact}\n",
+            encoding="ascii",
+        )
+
+    original = target.read_bytes()
+    with pytest.raises(CheckpointIntegrityError, match="not valid strict UTF-8 JSON"):
+        verify_hf_directory(output)
+    assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_hf_encoder_rejects_overdeep_json_as_integrity_error(nesting: str):
+    payload: object = 0
+    for _ in range(10000):
+        payload = [payload] if nesting == "arrays" else {"k": payload}
+    with pytest.raises(CheckpointIntegrityError, match="not strict finite JSON"):
+        hf_export._strict_json_bytes({"payload": payload}, artifact="overdeep-output")
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_hf_export_rejects_overdeep_config_without_publication(
+    tmp_path: Path, nesting: str
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(14.0), identity=identity("a"))
+    payload: object = 0
+    for _ in range(10000):
+        payload = [payload] if nesting == "arrays" else {"k": payload}
+    config = {"model_type": "twelve_six_export_transactional", "payload": payload}
+
+    with pytest.raises(CheckpointIntegrityError, match="not strict finite JSON"):
+        export_hf_directory(checkpoint, output, hf_config=config)
+    assert not output.exists()
+    assert not list(tmp_path.glob(".hf.staging-*"))
+
+
+def test_hf_unexpected_product_recursion_is_not_masked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(15.0), identity=identity("b"))
+
+    def unexpected(_path: Path):
+        raise RecursionError("unexpected checkpoint Product recursion")
+
+    monkeypatch.setattr(hf_export, "prepare_checkpoint_load", unexpected)
+    with pytest.raises(RecursionError, match="unexpected checkpoint Product recursion"):
+        export_hf_directory(
+            checkpoint,
+            output,
+            hf_config={"model_type": "twelve_six_export_transactional"},
+        )
+    assert not output.exists()
