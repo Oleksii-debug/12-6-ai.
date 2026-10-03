@@ -150,8 +150,12 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     objects = doc.get("objects")
     _require(isinstance(objects, list) and len(objects) == 2, "exact two-object reservation required")
     for observed, expected in zip(objects, EXPECTED, strict=True):
+        _require(isinstance(observed, dict), "reserved object must be an object")
         for key, value in expected.items():
-            _require(observed.get(key) == value, f"identity drift for {expected['repository']}:{key}")
+            _require(
+                type(observed.get(key)) is type(value) and observed.get(key) == value,
+                f"identity drift for {expected['repository']}:{key}",
+            )
         _require(observed.get("evaluation_use") == "selection_validation", "evaluation purpose drift")
         _require(observed.get("training_allowed") is False, "object training accidentally allowed")
         _require(observed.get("tokenizer_fit_allowed") is False, "object tokenizer fitting accidentally allowed")
