@@ -238,14 +238,16 @@ def _with_extra_zip_members(
 ) -> tuple[bytes, dict, dict, dict, dict, dict, bytes]:
     archive, first, second, _, config, rights, _ = _fixture()
     output = io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(archive)) as original:
-        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as result:
-            for info in original.infolist():
-                result.writestr(info.filename, original.read(info))
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message="Duplicate name.*")
-                for member, contents in extras:
-                    result.writestr(member, contents)
+    with (
+        zipfile.ZipFile(io.BytesIO(archive)) as original,
+        zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as result,
+    ):
+        for info in original.infolist():
+            result.writestr(info.filename, original.read(info))
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Duplicate name.*")
+            for member, contents in extras:
+                result.writestr(member, contents)
     modified = output.getvalue()
     for report in (first, second):
         report["archive"]["bytes"] = len(modified)
