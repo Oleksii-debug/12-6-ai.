@@ -495,3 +495,56 @@ def test_unexpected_product_recursion_remains_visible(
     ])
     with pytest.raises(RecursionError, match="unexpected Product recursion"):
         cli.main()
+
+
+@pytest.mark.parametrize("number", ["1e-4000", "-1e-4000", "0.0001e-9999"])
+def test_load_rejects_nonzero_float_underflow(tmp_path: Path, number: str) -> None:
+    path = tmp_path / "underflow.json"
+    path.write_text(f'{{"number":{number}}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="nonzero_json_number_underflowed_to_zero"):
+        _module()._load(path)
+
+
+@pytest.mark.parametrize("number", ["0e-9999", "-0.000e-9999", "0.0", "1.25e-3"])
+def test_load_preserves_genuine_zero_and_finite_float(
+    tmp_path: Path, number: str,
+) -> None:
+    path = tmp_path / "finite.json"
+    path.write_text(f'{{"number":{number}}}', encoding="utf-8")
+    assert _module()._load(path) == {"number": float(number)}
+
+
+@pytest.mark.parametrize("target", ["selection", "application", "report"])
+def test_external_float_underflow_fails_without_publication(
+    tmp_path: Path,
+    target: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    paths = {key: tmp_path / f"{key}.json" for key in (
+        "selection", "application", "report"
+    )}
+    for path in paths.values():
+        path.write_text("{}", encoding="utf-8")
+    paths[target].write_text('{"ignored":1e-4000}', encoding="utf-8")
+    original = {path: path.read_bytes() for path in paths.values()}
+    output = tmp_path / "decision.json"
+    argv = [
+        str(TOOL), "--balanced-selection", str(paths["selection"]),
+        "--split-application", str(paths["application"]),
+        *HASH_ARGS, "--output", str(output),
+    ]
+    if target == "report":
+        argv.extend(["--verify-report", str(paths["report"])])
+    monkeypatch.setattr(sys, "argv", argv)
+    assert cli.main() == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    lines = captured.out.splitlines()
+    assert len(lines) == 1
+    result = json.loads(lines[0])
+    assert result["contract_valid"] is False
+    assert "nonzero_json_number_underflowed_to_zero" in result["error"]
+    assert {path: path.read_bytes() for path in paths.values()} == original
+    assert not output.exists()
