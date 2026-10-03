@@ -188,7 +188,7 @@ def validate_operator_profile(
     cost = resource.get("maximum_cost_usd")
     _expect(
         errors,
-        type(cost) in (int, float) and math.isfinite(float(cost)) and cost == 0,
+        type(cost) in (int, float) and cost == 0,
         "packet_maximum_cost_must_be_zero",
     )
 
