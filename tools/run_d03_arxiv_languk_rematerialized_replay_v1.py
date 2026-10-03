@@ -421,6 +421,84 @@ def _capture_verified_publication_bytes(
     return report_raw, survivors_raw
 
 
+
+def inspect_outer_publication_recovery(
+    args: argparse.Namespace,
+    *,
+    pass_root: Path,
+    pass_result: dict[str, str],
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    """Independently classify a prior publication without modifying any files.
+
+    The verified pass-1 source bytes and caller's two-pass receipt are the
+    external authorities. The journal alone is never trusted as a source of
+    evidence, permission, or content identity.
+    """
+    report_raw, survivors_raw = _capture_verified_publication_bytes(
+        pass_root, pass_result,
+    )
+    outputs = (
+        ("outer report", args.output_report, report_raw),
+        ("outer survivors", args.output_survivors, survivors_raw),
+        ("outer receipt", args.output_receipt, canonical_json_bytes(receipt)),
+    )
+    intent_path = pass_root / "outer-publication-intent.json"
+    expected_intent = {
+        "schema": "12-6.d03-arxiv-languk-outer-publication-intent.v1",
+        "status": "PREPARED_UNCOMMITTED",
+        "commit_marker": str(args.output_receipt.resolve()),
+        "outputs": [
+            {"label": label, "path": str(path.resolve()), "sha256": sha256_bytes(raw)}
+            for label, path, raw in outputs
+        ],
+        "canonical_capacity_credited": 0,
+        "training_authorized": False,
+    }
+    if intent_path.is_symlink() or not intent_path.is_file():
+        raise RematerializationError("recovery publication intent missing or unsafe")
+    try:
+        intent_raw = intent_path.read_bytes()
+    except OSError as exc:
+        raise RematerializationError("cannot read recovery publication intent") from exc
+    if intent_raw != canonical_json_bytes(expected_intent):
+        raise RematerializationError(
+            "recovery publication intent differs from authenticated source identities"
+        )
+    published: list[str] = []
+    for label, path, raw in outputs:
+        if path.is_symlink():
+            raise RematerializationError(f"recovery {label} must not be a symlink")
+        if path.exists():
+            if not path.is_file():
+                raise RematerializationError(f"recovery {label} is not a file")
+            try:
+                observed_sha = sha256_bytes(path.read_bytes())
+            except OSError as exc:
+                raise RematerializationError(f"cannot read recovery {label}") from exc
+            if observed_sha != sha256_bytes(raw):
+                raise RematerializationError(
+                    f"recovery {label} differs from authenticated expected bytes"
+                )
+            published.append(label)
+    if "outer receipt" in published and len(published) != len(outputs):
+        raise RematerializationError(
+            "recovery receipt exists without both authenticated source authorities"
+        )
+    status = (
+        "COMMITTED_ZERO_CREDIT"
+        if len(published) == len(outputs)
+        else "PARTIAL_UNCOMMITTED" if published else "PREPARED_UNCOMMITTED"
+    )
+    return {
+        "status": status,
+        "published": published,
+        "missing": [label for label, _, _ in outputs if label not in published],
+        "canonical_capacity_credited": 0,
+        "training_authorized": False,
+    }
+
+
 def _publish_verified_outputs(
     args: argparse.Namespace,
     *,
