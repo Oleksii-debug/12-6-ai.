@@ -524,3 +524,55 @@ def test_resealed_evidence_rejects_reserved_object_purpose_promotion(
     _resign_evidence(evidence, monkeypatch)
     with pytest.raises(ValueError, match="evidence purpose drift"):
         validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+@pytest.mark.parametrize("target", ["contract", "evidence"])
+def test_evaluation_authority_oversize_blocks_before_validation(
+    tmp_path: Path, target: str,
+) -> None:
+    contract = tmp_path / "контракт з пробілами.json"
+    evidence = tmp_path / "evidence.json"
+    contract.write_bytes(MANIFEST.read_bytes())
+    evidence.write_bytes(EVIDENCE.read_bytes())
+    blocked = contract if target == "contract" else evidence
+    blocked.write_bytes(b"{}" + b" " * validator.MAX_INPUT_BYTES)
+    with pytest.raises(ValueError, match="exceeds byte limit"):
+        validator.validate(contract, evidence)
+    assert blocked.read_bytes().startswith(b"{}")
+
+
+def test_evaluation_loader_accepts_exact_byte_limit(tmp_path: Path) -> None:
+    path = tmp_path / "limit.json"
+    raw = b'{"data":0}'
+    path.write_bytes(raw + b" " * (validator.MAX_INPUT_BYTES - len(raw)))
+    assert validator._load_mapping(path) == {"data": 0}
+
+
+def test_evaluation_loader_rejects_excessive_nodes(tmp_path: Path) -> None:
+    path = tmp_path / "too-many-nodes.json"
+    # Root mapping + list + primitive nodes exceed the fixed node bound.
+    raw = '{"data":[' + ",".join(["0"] * validator.MAX_JSON_NODES) + "]}"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match="exceeds node limit"):
+        validator._load_mapping(path)
+
+
+@pytest.mark.parametrize("kind", ["invalid_utf8", "surrogate_key", "surrogate_value"])
+def test_evaluation_loader_rejects_invalid_unicode(
+    tmp_path: Path, kind: str,
+) -> None:
+    path = tmp_path / "unicode.json"
+    raw = {
+        "invalid_utf8": b'{"data":"\xff"}',
+        "surrogate_key": br'{"\ud800":"data"}',
+        "surrogate_value": br'{"data":"\ud800"}',
+    }[kind]
+    path.write_bytes(raw)
+    with pytest.raises((ValueError, UnicodeError)):
+        validator._load_mapping(path)
+
+
+def test_bounded_loader_preserves_committed_eval647_authority() -> None:
+    result = validator.validate(MANIFEST, EVIDENCE)
+    assert result["reserved_objects"] == 2
+    assert result["selection_validation_records_authorized"] == 0
