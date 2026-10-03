@@ -234,9 +234,21 @@ def _check_bounded_json_tree(value: Any) -> None:
             for key, child in current.items():
                 if not isinstance(key, str):
                     fail("capacity report JSON keys must be strings")
+                try:
+                    key.encode("utf-8")
+                except UnicodeError as exc:
+                    raise CapacityReportError("capacity report contains invalid Unicode") from exc
                 pending.append((child, depth + 1))
         elif isinstance(current, list):
             pending.extend((child, depth + 1) for child in current)
+        elif isinstance(current, str):
+            try:
+                current.encode("utf-8")
+            except UnicodeError as exc:
+                raise CapacityReportError("capacity report contains invalid Unicode") from exc
+        elif isinstance(current, int) and not isinstance(current, bool):
+            if current.bit_length() > 4096:
+                fail("capacity report integer exceeds limit")
         elif isinstance(current, float) and not math.isfinite(current):
             fail("capacity report contains a nonfinite JSON number")
         elif current is not None and not isinstance(current, (str, int, float, bool)):
@@ -481,7 +493,7 @@ def load_and_validate(path: str | Path, *, expected_main_sha: str | None = None)
         )
     except CapacityReportError:
         raise
-    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+    except (UnicodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
         fail(f"invalid capacity report JSON: {type(exc).__name__}")
     if not isinstance(report, dict):
         fail("report root must be an object")
