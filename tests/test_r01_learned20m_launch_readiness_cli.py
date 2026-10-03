@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -178,3 +181,42 @@ def test_loader_preserves_checked_in_readiness_packet() -> None:
     tool = _load_tool()
     path = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
     assert tool._load_packet(path) == json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_real_cli_rejects_oversized_unicode_path_without_science(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "зовнішній пакет із пробілами.json"
+    path.write_bytes(b" " * 1_048_577)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(path)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert "input byte limit" in json.loads(completed.stdout)["error"]
+
+
+def test_real_cli_keeps_canonical_unready_state() -> None:
+    path = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(path)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 1
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout)["material_training_authorized"] is False
