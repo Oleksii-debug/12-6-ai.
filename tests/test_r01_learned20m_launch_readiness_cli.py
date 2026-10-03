@@ -146,9 +146,9 @@ def test_loader_preserves_lexical_decimal_zero(tmp_path: Path, token: str) -> No
             "JSON structure limit",
             id="nodes",
         ),
-        pytest.param(br'{"\\ud800":"bad"}', "surrogates not allowed", id="surrogate-key"),
-        pytest.param(br'{"value":"\\ud800"}', "surrogates not allowed", id="surrogate-value"),
-        pytest.param(b'{"value":"\\xff"}', "decode", id="invalid-utf8"),
+        pytest.param(br'{"\ud800":"bad"}', "surrogates not allowed", id="surrogate-key"),
+        pytest.param(br'{"value":"\ud800"}', "surrogates not allowed", id="surrogate-value"),
+        pytest.param(b'{"value":"\xff"}', "decode", id="invalid-utf8"),
     ],
 )
 def test_loader_bounds_untrusted_json(
