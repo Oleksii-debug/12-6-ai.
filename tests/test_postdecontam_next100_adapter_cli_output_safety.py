@@ -420,4 +420,30 @@ def test_output_parent_symlink_refused_before_staging(
     assert not output.exists()
     assert not list(canonical.iterdir())
     assert vector.read_bytes() == b"unchanged vector"
-    assert authority.read_bytes() == b"unchanged authority"\n\n@pytest.mark.parametrize("bad_value", [\n    float("nan"), float("inf"), float("-inf"), "\ud800", object(),\n])\ndef test_main_rejects_invalid_result_json_before_publication(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_value: object,\n) -> None:\n    vector = tmp_path / "unchanged family vector.json"\n    authority = tmp_path / "unchanged dedup authority.json"\n    vector.write_bytes(b"original vector")\n    authority.write_bytes(b"original dedup")\n    output = tmp_path / "must not publish.json"\n    _configure(monkeypatch, vector, authority, output)\n    monkeypatch.setattr(\n        cli, "adapt_family_vector_to_next100_106",\n        lambda *args, **kwargs: {"claim_boundary": {"model_training_authorized": False},\n                                 "nested": {"bad": bad_value}},\n    )\n    with pytest.raises(\n        SystemExit, match="FAIL_CLOSED: adapter result cannot be encoded as strict UTF-8 JSON",\n    ):\n        cli.main()\n    assert not output.exists()\n    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))\n    assert vector.read_bytes() == b"original vector"\n    assert authority.read_bytes() == b"original dedup"\n
+    assert authority.read_bytes() == b"unchanged authority"
+
+@pytest.mark.parametrize("bad_value", [
+    float("nan"), float("inf"), float("-inf"), "\ud800", object(),
+])
+def test_main_rejects_invalid_result_json_before_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_value: object,
+) -> None:
+    vector = tmp_path / "unchanged family vector.json"
+    authority = tmp_path / "unchanged dedup authority.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original dedup")
+    output = tmp_path / "must not publish.json"
+    _configure(monkeypatch, vector, authority, output)
+    monkeypatch.setattr(
+        cli, "adapt_family_vector_to_next100_106",
+        lambda *args, **kwargs: {"claim_boundary": {"model_training_authorized": False},
+                                 "nested": {"bad": bad_value}},
+    )
+    with pytest.raises(
+        SystemExit, match="FAIL_CLOSED: adapter result cannot be encoded as strict UTF-8 JSON",
+    ):
+        cli.main()
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original dedup"
