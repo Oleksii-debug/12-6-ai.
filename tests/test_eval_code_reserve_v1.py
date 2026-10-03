@@ -422,3 +422,53 @@ def test_programmatic_authority_rejects_invalid_utf8() -> None:
     document["unexpected"] = chr(0xD800)
     with pytest.raises(ValueError, match="contains invalid UTF-8"):
         validator.validate_document(document)
+
+
+@pytest.mark.parametrize(
+    ("section", "injected", "message"),
+    [
+        ("root", "training_allowed", "reservation contract"),
+        ("predecessor", "untrusted_head_sha", "predecessor"),
+        ("reservation", "evaluation_authorized", "reservation fields"),
+        ("object", "training_authorized", "reserved object"),
+        ("materialization_evidence", "alternative_identity", "evidence reference"),
+        ("truth_boundary", "final_test_allowed", "reservation truth boundary"),
+    ],
+)
+def test_reservation_rejects_injected_contradictory_fields(
+    section: str, injected: str, message: str,
+) -> None:
+    doc = _manifest()
+    if section == "root":
+        target = doc
+    elif section == "object":
+        target = doc["objects"][0]
+    else:
+        target = doc[section]
+    target[injected] = True
+    with pytest.raises(ValueError, match=message + " fields are not closed-world"):
+        validator.validate_document(doc)
+
+
+@pytest.mark.parametrize(
+    ("section", "injected", "message"),
+    [
+        ("root", "training_allowed", "materialization evidence"),
+        ("object", "future_training_authorized", "evidence reserved object"),
+        ("truth_boundary", "final_test_allowed", "evidence truth boundary"),
+    ],
+)
+def test_resealed_evidence_rejects_injected_contradictory_fields(
+    section: str, injected: str, message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    target = (
+        evidence if section == "root" else
+        evidence["objects"][0] if section == "object" else
+        evidence["truth_boundary"]
+    )
+    target[injected] = True
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match=message + " fields are not closed-world"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
