@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import json
 import re
 import sqlite3
@@ -209,7 +210,7 @@ def download_archive_to(
     *,
     timeout: float = 240.0,
 ) -> dict[str, Any]:
-    """Download the exact pinned source to disk with bounded streaming hashes."""
+    """Publish only a complete, hash-pinned download; never replace caller files."""
     request = urllib.request.Request(
         url,
         headers={
@@ -218,29 +219,51 @@ def download_archive_to(
         },
     )
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink() or path.exists():
+        raise ProbeError(f"refusing to overwrite existing source path: {path}")
+
     md5_hash = hashlib.md5(usedforsecurity=False)
     sha_hash = hashlib.sha256()
     total = 0
-    with urllib.request.urlopen(request, timeout=timeout) as response, path.open("wb") as output:
-        length = response.headers.get("Content-Length")
-        if length is not None and int(length) > MAX_ARCHIVE_BYTES:
-            raise ProbeError("remote archive exceeds compressed-byte limit")
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_ARCHIVE_BYTES:
+    # A private create-only file on the same volume permits a no-replace hard
+    # link after BOTH pinned hashes match. Errors never expose partial source.
+    stage_fd, stage_name = tempfile.mkstemp(
+        prefix=f".{path.name}.partial-", dir=path.parent
+    )
+    stage_path = Path(stage_name)
+    try:
+        with os.fdopen(stage_fd, "wb") as output, urllib.request.urlopen(
+            request, timeout=timeout
+        ) as response:
+            length = response.headers.get("Content-Length")
+            if length is not None and int(length) > MAX_ARCHIVE_BYTES:
                 raise ProbeError("remote archive exceeds compressed-byte limit")
-            output.write(chunk)
-            md5_hash.update(chunk)
-            sha_hash.update(chunk)
-    observed_md5 = md5_hash.hexdigest()
-    observed_sha256 = sha_hash.hexdigest()
-    if observed_md5 != RESOURCE_MD5 or observed_sha256 != RESOURCE_SHA256:
-        path.unlink(missing_ok=True)
-        raise ProbeError("EDRNPA pinned resource digest mismatch")
-    return {"bytes": total, "md5": observed_md5, "sha256": observed_sha256}
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_ARCHIVE_BYTES:
+                    raise ProbeError("remote archive exceeds compressed-byte limit")
+                output.write(chunk)
+                md5_hash.update(chunk)
+                sha_hash.update(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+
+        observed_md5 = md5_hash.hexdigest()
+        observed_sha256 = sha_hash.hexdigest()
+        if observed_md5 != RESOURCE_MD5 or observed_sha256 != RESOURCE_SHA256:
+            raise ProbeError("EDRNPA pinned resource digest mismatch")
+        try:
+            os.link(stage_path, path)
+        except FileExistsError as exc:
+            raise ProbeError(f"refusing to overwrite existing source path: {path}") from exc
+        except OSError as exc:
+            raise ProbeError(f"cannot publish verified EDRNPA source: {path}") from exc
+        return {"bytes": total, "md5": observed_md5, "sha256": observed_sha256}
+    finally:
+        stage_path.unlink(missing_ok=True)
 
 
 def download_archive(url: str = DOWNLOAD_URL, *, timeout: float = 240.0) -> bytes:
