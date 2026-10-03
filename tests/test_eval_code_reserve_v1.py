@@ -304,3 +304,322 @@ def test_reserved_object_requires_object_shape() -> None:
     doc["objects"][0] = 0
     with pytest.raises(ValueError, match="reserved object must be an object"):
         validator.validate_document(doc)
+
+
+@pytest.mark.parametrize(
+    ("section", "bad"),
+    [
+        ("root", []),
+        ("predecessor", []),
+        ("reservation", "not-an-object"),
+        ("materialization_evidence", None),
+        ("truth_boundary", 0),
+    ],
+)
+def test_reservation_malformed_nested_shape_is_controlled(
+    section: str, bad: object,
+) -> None:
+    document = _manifest()
+    if section == "root":
+        document = bad
+    else:
+        document[section] = bad
+    with pytest.raises(ValueError, match="must be a JSON object|must be an object"):
+        validator.validate_document(document)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "empty", "reversed", "extra", "wrong_type"],
+)
+def test_pending_successor_gates_cannot_be_erased_or_reordered(
+    mutation: str,
+) -> None:
+    document = _manifest()
+    gates = document["remaining_successor_gates"]
+    if mutation == "missing":
+        document.pop("remaining_successor_gates")
+    elif mutation == "empty":
+        document["remaining_successor_gates"] = []
+    elif mutation == "reversed":
+        document["remaining_successor_gates"] = list(reversed(gates))
+    elif mutation == "extra":
+        document["remaining_successor_gates"].append("FIT_OR_TRAINING_ALLOWED")
+    else:
+        document["remaining_successor_gates"] = "all-cleared"
+    with pytest.raises(ValueError, match="remaining successor gates drift"):
+        validator.validate_document(document)
+
+
+def _resign_evidence(evidence: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    body = copy.deepcopy(evidence)
+    body.pop("evidence_identity_sha256")
+    identity = validator.hashlib.sha256(validator._canonical_bytes(body)).hexdigest()
+    evidence["evidence_identity_sha256"] = identity
+    monkeypatch.setattr(validator, "EXPECTED_EVIDENCE_IDENTITY", identity)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "empty", "reversed", "extra", "wrong_type"],
+)
+def test_resealed_evidence_cannot_change_pending_gates(
+    mutation: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    gates = evidence["remaining_gates"]
+    if mutation == "missing":
+        evidence.pop("remaining_gates")
+    elif mutation == "empty":
+        evidence["remaining_gates"] = []
+    elif mutation == "reversed":
+        evidence["remaining_gates"] = list(reversed(gates))
+    elif mutation == "extra":
+        evidence["remaining_gates"].append("ALL_GATES_COMPLETE")
+    else:
+        evidence["remaining_gates"] = "done"
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match="evidence remaining gates drift"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "message"),
+    [
+        ("objects", [[], _evidence()["objects"][1]], "reserved object must be an object"),
+        ("truth_boundary", [], "evidence truth boundary must be an object"),
+    ],
+)
+def test_resealed_evidence_rejects_malformed_nested_shapes(
+    field: str, bad: object, message: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence[field] = bad
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match=message):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+def test_direct_evidence_validator_rejects_malformed_reservation_shape() -> None:
+    document = _manifest()
+    document["reservation"] = []
+    with pytest.raises(ValueError, match="evidence reservation timestamp drift"):
+        validator.validate_materialization_evidence(document, _evidence())
+
+
+@pytest.mark.parametrize(
+    "invalid", [object(), (1, 2), 1 + 2j, {"nested": {1: "bad"}}],
+)
+def test_programmatic_authority_rejects_non_json_types(invalid: object) -> None:
+    document = _manifest()
+    document["unexpected"] = invalid
+    with pytest.raises(ValueError, match="not a JSON scalar|non-string JSON key"):
+        validator.validate_document(document)
+
+
+def test_programmatic_authority_rejects_invalid_utf8() -> None:
+    document = _manifest()
+    document["unexpected"] = chr(0xD800)
+    with pytest.raises(ValueError, match="contains invalid UTF-8"):
+        validator.validate_document(document)
+
+
+@pytest.mark.parametrize(
+    ("section", "injected", "message"),
+    [
+        ("root", "training_allowed", "reservation contract"),
+        ("predecessor", "untrusted_head_sha", "predecessor"),
+        ("reservation", "evaluation_authorized", "reservation fields"),
+        ("object", "training_authorized", "reserved object"),
+        ("materialization_evidence", "alternative_identity", "evidence reference"),
+        ("truth_boundary", "final_test_allowed", "reservation truth boundary"),
+    ],
+)
+def test_reservation_rejects_injected_contradictory_fields(
+    section: str, injected: str, message: str,
+) -> None:
+    doc = _manifest()
+    if section == "root":
+        target = doc
+    elif section == "object":
+        target = doc["objects"][0]
+    else:
+        target = doc[section]
+    target[injected] = True
+    with pytest.raises(ValueError, match=message + " fields are not closed-world"):
+        validator.validate_document(doc)
+
+
+@pytest.mark.parametrize(
+    ("section", "injected", "message"),
+    [
+        ("root", "training_allowed", "materialization evidence"),
+        ("object", "future_training_authorized", "evidence reserved object"),
+        ("truth_boundary", "final_test_allowed", "evidence truth boundary"),
+    ],
+)
+def test_resealed_evidence_rejects_injected_contradictory_fields(
+    section: str, injected: str, message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    target = (
+        evidence if section == "root" else
+        evidence["objects"][0] if section == "object" else
+        evidence["truth_boundary"]
+    )
+    target[injected] = True
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match=message + " fields are not closed-world"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+@pytest.mark.parametrize(
+    ("section", "replacement", "message"),
+    [
+        ("completed_gate", "ALL_GATES_COMPLETE", "completed-gate mismatch"),
+        ("reservation_authority_issue", False, "reservation authority issue drift"),
+    ],
+)
+def test_resealed_evidence_rejects_false_completion_and_authority_issue(
+    section: str, replacement: object, message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence[section] = replacement
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match=message):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+def test_resealed_evidence_rejects_duplicate_source_family(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence["objects"][1] = copy.deepcopy(evidence["objects"][0])
+    payload = {
+        "reservation_effective_at_utc": _manifest()["reservation"]["effective_at_utc"],
+        "objects": evidence["objects"],
+    }
+    evidence["object_set_identity_sha256"] = validator.hashlib.sha256(
+        validator._canonical_bytes(payload)
+    ).hexdigest()
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match="duplicate evidence repository"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+def test_resealed_evidence_rejects_reserved_object_purpose_promotion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence["objects"][0]["evaluation_use"] = "final_test"
+    payload = {
+        "reservation_effective_at_utc": _manifest()["reservation"]["effective_at_utc"],
+        "objects": evidence["objects"],
+    }
+    evidence["object_set_identity_sha256"] = validator.hashlib.sha256(
+        validator._canonical_bytes(payload)
+    ).hexdigest()
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match="evidence purpose drift"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+@pytest.mark.parametrize("target", ["contract", "evidence"])
+def test_evaluation_authority_oversize_blocks_before_validation(
+    tmp_path: Path, target: str,
+) -> None:
+    contract = tmp_path / "контракт з пробілами.json"
+    evidence = tmp_path / "evidence.json"
+    contract.write_bytes(MANIFEST.read_bytes())
+    evidence.write_bytes(EVIDENCE.read_bytes())
+    blocked = contract if target == "contract" else evidence
+    blocked.write_bytes(b"{}" + b" " * validator.MAX_INPUT_BYTES)
+    with pytest.raises(ValueError, match="exceeds byte limit"):
+        validator.validate(contract, evidence)
+    assert blocked.read_bytes().startswith(b"{}")
+
+
+def test_evaluation_loader_accepts_exact_byte_limit(tmp_path: Path) -> None:
+    path = tmp_path / "limit.json"
+    raw = b'{"data":0}'
+    path.write_bytes(raw + b" " * (validator.MAX_INPUT_BYTES - len(raw)))
+    assert validator._load_mapping(path) == {"data": 0}
+
+
+def test_evaluation_loader_rejects_excessive_nodes(tmp_path: Path) -> None:
+    path = tmp_path / "too-many-nodes.json"
+    # Root mapping + list + primitive nodes exceed the fixed node bound.
+    raw = '{"data":[' + ",".join(["0"] * validator.MAX_JSON_NODES) + "]}"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match="exceeds node limit"):
+        validator._load_mapping(path)
+
+
+@pytest.mark.parametrize("kind", ["invalid_utf8", "surrogate_key", "surrogate_value"])
+def test_evaluation_loader_rejects_invalid_unicode(
+    tmp_path: Path, kind: str,
+) -> None:
+    path = tmp_path / "unicode.json"
+    raw = {
+        "invalid_utf8": b'{"data":"\xff"}',
+        "surrogate_key": br'{"\ud800":"data"}',
+        "surrogate_value": br'{"data":"\ud800"}',
+    }[kind]
+    path.write_bytes(raw)
+    with pytest.raises((ValueError, UnicodeError)):
+        validator._load_mapping(path)
+
+
+def test_bounded_loader_preserves_committed_eval647_authority() -> None:
+    result = validator.validate(MANIFEST, EVIDENCE)
+    assert result["reserved_objects"] == 2
+    assert result["selection_validation_records_authorized"] == 0
+
+
+@pytest.mark.parametrize("target", ["contract", "evidence"])
+@pytest.mark.parametrize("failure", ["oversize", "invalid_utf8", "surrogate", "nonfinite"])
+def test_eval647_cli_reports_one_zero_credit_error(
+    tmp_path: Path, target: str, failure: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    contract = tmp_path / "контракт із пробілами.json"
+    evidence = tmp_path / "доказ із пробілами.json"
+    contract.write_bytes(MANIFEST.read_bytes())
+    evidence.write_bytes(EVIDENCE.read_bytes())
+    bad_bytes = {
+        "oversize": b"{}" + b" " * validator.MAX_INPUT_BYTES,
+        "invalid_utf8": b'{"bad":"\xff"}',
+        "surrogate": br'{"bad":"\ud800"}',
+        "nonfinite": b'{"bad":1e400}',
+    }[failure]
+    (contract if target == "contract" else evidence).write_bytes(bad_bytes)
+    monkeypatch.setattr(validator, "DEFAULT_MANIFEST", contract)
+    monkeypatch.setattr(validator, "DEFAULT_EVIDENCE", evidence)
+
+    assert validator.main() == 2
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert len(output.out.splitlines()) == 1
+    result = json.loads(output.out)
+    assert result["status"] == "BLOCKED_INVALID_EVAL647_AUTHORITY"
+    assert result["selection_validation_records_authorized"] == 0
+    assert result["model_training_authorized"] is False
+    assert result["final_test_outcomes_read"] is False
+    assert (contract if target == "contract" else evidence).read_bytes() == bad_bytes
+
+
+def test_eval647_cli_keeps_existing_valid_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(validator, "DEFAULT_MANIFEST", MANIFEST)
+    monkeypatch.setattr(validator, "DEFAULT_EVIDENCE", EVIDENCE)
+    assert validator.main() == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    result = json.loads(output.out)
+    assert result["reserved_objects"] == 2
+    assert result["selection_validation_records_authorized"] == 0
