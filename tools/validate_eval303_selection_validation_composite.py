@@ -314,29 +314,6 @@ def _assert_private_entry(
         )
 
 
-def _cleanup_private_stage(
-    staging: Path,
-    created: os.stat_result,
-    created_files: dict[Path, os.stat_result],
-    created_dirs: dict[Path, os.stat_result],
-) -> None:
-    """Remove only known private files/dirs, never recurse into an untrusted path."""
-    _assert_private_entry(staging, created, directory=True)
-    for path, identity in reversed(list(created_files.items())):
-        _assert_private_entry(staging, created, directory=True)
-        _assert_private_entry(path, identity, directory=False)
-        path.unlink()
-    directories = sorted(
-        created_dirs.items(), key=lambda item: len(item[0].parts), reverse=True
-    )
-    for path, identity in directories:
-        _assert_private_entry(staging, created, directory=True)
-        _assert_private_entry(path, identity, directory=True)
-        path.rmdir()
-    _assert_private_entry(staging, created, directory=True)
-    staging.rmdir()
-
-
 def materialize(repo_root: Path, output_dir: Path) -> None:
     """Copy authenticated files to a NEW directory without deleting user data."""
     verify(repo_root)
@@ -345,11 +322,17 @@ def materialize(repo_root: Path, output_dir: Path) -> None:
             f'materialization destination already exists; choose a new path: {output_dir}'
         )
     output_dir.parent.mkdir(parents=True, exist_ok=True)
+    # One recoverable candidate per destination prevents unbounded retained stages.
+    stage_prefix = f'.{output_dir.name}.staging-'
+    for entry in output_dir.parent.iterdir():
+        if entry.name.startswith(stage_prefix):
+            raise Eval303ValidationError(
+                f'previous private stage exists; inspect it before retry: {entry}'
+            )
     staging = Path(tempfile.mkdtemp(
-        prefix=f'.{output_dir.name}.staging-', dir=output_dir.parent
+        prefix=stage_prefix, dir=output_dir.parent
     ))
     created = staging.lstat()
-    created_files: dict[Path, os.stat_result] = {}
     created_dirs: dict[Path, os.stat_result] = {}
     try:
         for rel in (MANIFEST, MEMBERSHIP, PROOF):
@@ -370,17 +353,17 @@ def materialize(repo_root: Path, output_dir: Path) -> None:
                         folder, created_dirs[folder], directory=True
                     )
             with dst.open('xb') as handle:
-                created_files[dst] = os.fstat(handle.fileno())
                 handle.write(src.read_bytes())
         # Authenticate copied bytes before atomic no-replace publication.
         verify(staging)
         _publish_directory_noreplace(staging, output_dir)
-        staging = None
-    finally:
-        if staging is not None:
-            _cleanup_private_stage(
-                staging, created, created_files, created_dirs
-            )
+    except BaseException as exc:
+        # Precheck-then-unlink/rmdir is unsafe if another same-user process
+        # swaps a pathname. Retain the candidate; never delete on failure.
+        exc.add_note(
+            f'private stage retained for manual inspection: {staging}'
+        )
+        raise
 
 
 
@@ -402,7 +385,9 @@ def main() -> int:
             materialize(root, args.output_dir.absolute())
             report = {'status': 'PASS', 'output_dir': str(args.output_dir)}
     except (Eval303ValidationError, OSError, UnicodeError) as exc:
-        print(json.dumps({'status': 'FAIL', 'error': str(exc)}, sort_keys=True))
+        notes = getattr(exc, '__notes__', ())
+        error = '; '.join((str(exc), *notes))
+        print(json.dumps({'status': 'FAIL', 'error': error}, sort_keys=True))
         return 2
     print(json.dumps(report, sort_keys=True, indent=2))
     return 0
