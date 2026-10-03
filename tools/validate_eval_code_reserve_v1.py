@@ -258,8 +258,14 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
         _require(row.get("training_allowed") is False, "evidence training boundary widened")
         _require(row.get("tokenizer_fit_allowed") is False, "evidence tokenizer boundary widened")
         _require(row.get("permanent_future_training_exclusion") is True, "evidence future exclusion missing")
+    reservation = doc.get("reservation")
+    _require(
+        type(reservation) is dict
+        and reservation.get("effective_at_utc") == "2026-08-26T19:46:57Z",
+        "evidence reservation timestamp drift",
+    )
     identity_payload = {
-        "reservation_effective_at_utc": doc["reservation"]["effective_at_utc"],
+        "reservation_effective_at_utc": reservation["effective_at_utc"],
         "objects": observed,
     }
     _require(
