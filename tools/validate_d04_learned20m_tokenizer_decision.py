@@ -53,12 +53,10 @@ def _load(path: Path) -> dict[str, Any]:
     return value
 
 
-def _write(path: Path, value: dict[str, Any]) -> None:
-    """Publish only a new complete report; never replace existing authority."""
-    if path.exists() or path.is_symlink():
-        raise FileExistsError(f"refusing to overwrite existing output: {path}")
+def _serialize_report(value: dict[str, Any]) -> str:
+    """One strict finite JSON contract for both file and stdout reports."""
     try:
-        payload = (
+        return (
             json.dumps(
                 value,
                 sort_keys=True,
@@ -67,9 +65,16 @@ def _write(path: Path, value: dict[str, Any]) -> None:
                 allow_nan=False,
             )
             + "\n"
-        ).encode("utf-8")
+        )
     except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError("tokenizer report is not strict finite JSON") from exc
+
+
+def _write(path: Path, value: dict[str, Any]) -> None:
+    """Publish only a new complete report; never replace existing authority."""
+    if path.exists() or path.is_symlink():
+        raise FileExistsError(f"refusing to overwrite existing output: {path}")
+    payload = _serialize_report(value).encode("utf-8")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, name = tempfile.mkstemp(
@@ -166,14 +171,12 @@ def main() -> int:
             _emit_input_error(exc)
             return 2
     else:
-        print(
-            json.dumps(
-                report,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-            )
-        )
+        try:
+            serialized = _serialize_report(report)
+        except ValueError as exc:
+            _emit_input_error(exc)
+            return 2
+        print(serialized, end="")
     return 0
 
 

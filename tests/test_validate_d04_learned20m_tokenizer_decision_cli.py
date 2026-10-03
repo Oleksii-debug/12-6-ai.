@@ -409,6 +409,73 @@ def test_nonfinite_and_recursive_reports_are_not_published(
         assert not output.exists()
 
 
+
+@pytest.mark.parametrize("kind", ["nan", "infinity", "circular", "unsupported"])
+def test_main_stdout_rejects_invalid_report_with_one_json_error(
+    tmp_path: Path,
+    kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    selection.write_text("{}", encoding="utf-8")
+    application.write_text("{}", encoding="utf-8")
+    recursive: dict[str, object] = {}
+    recursive["self"] = recursive
+    reports = {
+        "nan": {"loss": float("nan")},
+        "infinity": {"loss": float("inf")},
+        "circular": recursive,
+        "unsupported": {"unserializable": object()},
+    }
+    monkeypatch.setattr(
+        cli, "bind_byte_baseline_decision",
+        lambda *_a, **_k: reports[kind],
+    )
+    monkeypatch.setattr(sys, "argv", [
+        str(TOOL), "--balanced-selection", str(selection),
+        "--split-application", str(application), *HASH_ARGS,
+    ])
+    assert cli.main() == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    lines = captured.out.splitlines()
+    assert len(lines) == 1
+    error = json.loads(lines[0])
+    assert error["contract_valid"] is False
+    assert error["error"] == "tokenizer report is not strict finite JSON"
+
+
+def test_main_stdout_finite_report_is_canonical_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    selection.write_text("{}", encoding="utf-8")
+    application.write_text("{}", encoding="utf-8")
+    fake_report = {"schema": "test-only", "ratio": 1.25, "authorized": False}
+    monkeypatch.setattr(
+        cli, "bind_byte_baseline_decision", lambda *_a, **_k: fake_report
+    )
+    monkeypatch.setattr(sys, "argv", [
+        str(TOOL), "--balanced-selection", str(selection),
+        "--split-application", str(application), *HASH_ARGS,
+    ])
+    assert cli.main() == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == (
+        json.dumps(
+            fake_report, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ) + "\n"
+    )
+
 def test_unexpected_product_recursion_remains_visible(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
