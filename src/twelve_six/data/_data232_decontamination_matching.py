@@ -6,7 +6,8 @@ import json
 import re
 import unicodedata
 from collections import defaultdict
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 SCHEMA = "12-6.data232-decontamination-report.v2"
 ALGORITHM = "data232-deterministic-overlap-cluster-v2"
@@ -37,11 +38,13 @@ STRING = re.compile(
     r"(?s)(?:'''(?:\\.|[^\\])*?'''|\"\"\"(?:\\.|[^\\])*?\"\"\"|"
     r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")"
 )
-KEYWORDS = set(
-    "and as async await break case catch class const continue def delete do else elif except export false "
-    "finally for from function if import in instanceof interface lambda let match new none not null or package "
-    "pass raise return select static struct switch throw true try type var when where while with yield".split()
-)
+KEYWORDS = {
+    "and", "as", "async", "await", "break", "case", "catch", "class", "const", "continue", "def", "delete",
+    "do", "else", "elif", "except", "export", "false", "finally", "for", "from", "function", "if", "import",
+    "in", "instanceof", "interface", "lambda", "let", "match", "new", "none", "not", "null", "or", "package",
+    "pass", "raise", "return", "select", "static", "struct", "switch", "throw", "true", "try", "type", "var",
+    "when", "where", "while", "with", "yield",
+}
 
 
 class DecontaminationError(RuntimeError):
@@ -146,14 +149,19 @@ def _pair(train: dict[str, Any], other: dict[str, Any], other_kind: str, t: Mapp
     min_tokens = int(t["code_fragment_min_tokens"] if same_code else t["natural_fragment_min_tokens"])
     frag_limit = float(t["code_fragment_containment"] if same_code else t["natural_fragment_containment"])
     frag = _containment(train["shingles"], other["shingles"])
-    if min(len(train["tokens"]), len(other["tokens"])) >= min_tokens and frag >= frag_limit:
-        if not any(kind in {"raw_exact", "normalized_exact"} for kind, _ in matches):
-            matches.append(("document_fragment", frag))
+    if (
+        min(len(train["tokens"]), len(other["tokens"])) >= min_tokens
+        and frag >= frag_limit
+        and not any(kind in {"raw_exact", "normalized_exact"} for kind, _ in matches)
+    ):
+        matches.append(("document_fragment", frag))
     if same_code:
         copy = _jaccard(train["skeleton_shingles"], other["skeleton_shingles"])
-        if min(len(train["skeleton"]), len(other["skeleton"])) >= int(t["code_copy_min_tokens"]):
-            if copy >= float(t["code_copy_jaccard"]):
-                matches.append(("code_fork_copy", copy))
+        if (
+            min(len(train["skeleton"]), len(other["skeleton"])) >= int(t["code_copy_min_tokens"])
+            and copy >= float(t["code_copy_jaccard"])
+        ):
+            matches.append(("code_fork_copy", copy))
     result = []
     cross = train["record"]["source_family"] != other["record"]["source_family"]
     for kind, score in matches:

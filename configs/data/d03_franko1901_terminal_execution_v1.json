@@ -1,0 +1,73 @@
+{
+  "schema_version": "12-6.d03-franko1901-terminal-execution.v1",
+  "decision": "CANDIDATE_MATERIALIZED_ZERO_CREDIT",
+  "execution": {
+    "evidence_pr": 855,
+    "execution_head_sha": "181a54e6f7527ed66e59f72d42290a4e0013330f",
+    "workflow_run_id": 34479584975,
+    "job_id": 102878704552,
+    "execution_profile": "LOCAL_FREE",
+    "python_runtime": "CPython 3.11.16",
+    "focused_tests_passed": 16,
+    "independent_materializations": 2,
+    "byte_identical_materializations": true,
+    "artifact_id": 10152982171,
+    "artifact_retention_days": 30,
+    "artifact_zip_sha256": "2c09571dcfc633f52abf9038b3087c870ce0f80801b1e5dcc049b6c20ab37519"
+  },
+  "executed_product_identity": {
+    "config_path": "configs/data/d03_franko1901_exact_materialization_v1.json",
+    "config_git_blob_sha1": "90d6f1f56ad572bbd81f1e3cf87098e2304f7784",
+    "materializer_path": "tools/materialize_d03_franko1901.py",
+    "materializer_git_blob_sha1": "0817f1ca353b22b8de1cbf3049a4aa19c6c2dd46",
+    "focused_test_path": "tests/test_d03_franko1901_materialization.py",
+    "focused_test_git_blob_sha1": "7916ff6ccf9c7609041b20c570c8f916f5eb12a3",
+    "temporary_evidence_workflow_git_blob_sha1": "bd09988b7789db6fdca07f63a41710e5b30dfa2f"
+  },
+  "source": {
+    "source_id": "ua.verba.franko1901",
+    "source_family": "ua.verba.public-domain.franko1901",
+    "upstream_repository": "MurzikVasilyevich/ukr-proverbs-franko",
+    "upstream_revision": "7f62a9d8f0673d325b0a565d508461f4b44dae5b",
+    "source_path": "franko.csv",
+    "source_git_blob_sha1": "45f33ac620907e1d1ed727524975b3a0fd1a0994",
+    "source_bytes": 6225761,
+    "source_sha256": "10b0db2e6451b49d63f931a607a6b27fb10c11288e65802dcd1e6793a7a2586d",
+    "license_id": "CC0-1.0",
+    "license_git_blob_sha1": "0e259d42c996742e9e3cba14c677129b2c1b6311",
+    "license_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+  },
+  "materialization": {
+    "rows_seen": 30936,
+    "accepted_rows": 30660,
+    "rejected_rows": 276,
+    "accepted_text_utf8_bytes": 1762005,
+    "accepted_payload_jsonl_bytes": 10685784,
+    "accepted_payload_jsonl_sha256": "9b00da2a2a5110cc4e384711fffbbbdaa917904462ddd133e7178e2d07dcb5ec",
+    "record_inventory_identity_sha256": "bdedac35f8d3ef1ba6faca6f79f002d1a67da1b13b5fade2a341c526d830a4c7",
+    "report_identity_sha256": "fc7efd35d30e739619503d946112cf4b684f1394d4b07bf4d3cc287f62a01e1b",
+    "rejected_by_reason": {
+      "empty": 30,
+      "exact_duplicate": 244,
+      "low_cyrillic_share": 2
+    }
+  },
+  "truth_boundary": {
+    "candidate_only": true,
+    "canonical_capacity_credit_bytes": 0,
+    "family_credit_authorized": false,
+    "corpus_admitted": false,
+    "global_dedup": "NOT_RUN",
+    "evaluation_decontamination": "NOT_RUN",
+    "post_composition_quality_privacy": "NOT_RUN",
+    "balance_family_caps": "NOT_RUN_FOR_THIS_ADDITION",
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "model_training_executed": false,
+    "optimizer_updates": 0,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "learned_20m_promoted": false
+  }
+}
