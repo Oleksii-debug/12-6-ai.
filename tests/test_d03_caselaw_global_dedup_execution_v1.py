@@ -389,12 +389,111 @@ assert calls == ["attest", "attest"]
     )
 
 
+def test_small_reference_preflight_samples_real_graph_edges_and_attests() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+calls = []
+rows = [{"source_id": f"id:{i}"} for i in range(20)]
+edges = [
+    {"left_source_id": "id:0", "right_source_id": "id:1"},
+    {"left_source_id": "id:8", "right_source_id": "id:9"},
+    {"left_source_id": "id:18", "right_source_id": "id:19"},
+]
+inventory = {"sources": rows, "lineage_edges": edges, "local_free_only": True}
+payloads = {row["source_id"]: b"original-input" for row in rows}
+def audit(sample, raw):
+    calls.append("reference")
+    expected_ids = {f"id:{i}" for i in [*range(8), *range(12, 20)]}
+    assert [row["source_id"] for row in sample["sources"]] == [
+        *[f"id:{i}" for i in range(8)], *[f"id:{i}" for i in range(12, 20)]
+    ]
+    assert set(raw) == expected_ids
+    assert len(sample["lineage_edges"]) == 2
+    assert sample["lineage_edges"] == [edges[0], edges[2]]
+    assert sample["local_free_only"] is True
+    return {"report_sha256": "f" * 64}
+def verify(report):
+    calls.append("verify")
+    assert report == {"report_sha256": "f" * 64}
+def attest(matcher):
+    calls.append("attest")
+mod.indexed.attest_incumbent_runtime = attest
+matcher = SimpleNamespace(audit_payloads=audit, verify_report=verify)
+mod._preflight_attested_reference_sample(matcher, inventory, payloads)
+assert calls == ["reference", "verify", "attest"]
+"""
+    )
+
+
+def test_small_reference_preflight_fails_closed_on_post_reference_drift() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+calls = []
+def audit(*args):
+    calls.append("reference")
+    return {}
+def verify(*args):
+    calls.append("verify")
+def attest(*args):
+    calls.append("attest")
+    raise mod.indexed.IndexedExecutionError("V3 callable code drift: _lineage_matches")
+mod.indexed.attest_incumbent_runtime = attest
+matcher = SimpleNamespace(audit_payloads=audit, verify_report=verify)
+rows = [{"source_id": f"id:{i}"} for i in range(16)]
+try:
+    mod._preflight_attested_reference_sample(
+        matcher, {"sources": rows, "lineage_edges": []},
+        {row["source_id"]: b"x" for row in rows},
+    )
+except mod.indexed.IndexedExecutionError as exc:
+    assert "_lineage_matches" in str(exc)
+else:
+    raise AssertionError("post-reference drift was ignored")
+assert calls == ["reference", "verify", "attest"]
+"""
+    )
+
+
+def test_small_reference_preflight_rejects_insufficient_or_duplicate_inputs() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+matcher = SimpleNamespace(audit_payloads=lambda *args: None)
+for count in (0, 15):
+    rows = [{"source_id": f"id:{i}"} for i in range(count)]
+    try:
+        mod._preflight_attested_reference_sample(
+            matcher, {"sources": rows, "lineage_edges": []},
+            {row["source_id"]: b"x" for row in rows},
+        )
+    except mod.CaselawGlobalDedupError as exc:
+        assert "at least 16" in str(exc)
+    else:
+        raise AssertionError("undersized preflight accepted")
+rows = [{"source_id": f"id:{i % 15}"} for i in range(16)]
+try:
+    mod._preflight_attested_reference_sample(
+        matcher, {"sources": rows, "lineage_edges": []},
+        {row["source_id"]: b"x" for row in rows},
+    )
+except mod.CaselawGlobalDedupError as exc:
+    assert "not unique" in str(exc)
+else:
+    raise AssertionError("repeated source ID accepted")
+"""
+    )
+
+
 def test_lineage_preflight_precedes_expensive_reference() -> None:
     _run_isolated(
         """
 import inspect
 source = inspect.getsource(mod.execute)
 preflight = source.index("_preflight_attested_lineage_warmup(matcher)")
+sample = source.index("_preflight_attested_reference_sample(matcher, inventory, payloads)")
+assert preflight < sample
 reference = source.index("reference = matcher.audit_payloads(inventory, payloads)")
 assert preflight < reference
 """
