@@ -811,6 +811,39 @@ def test_next100_binding_rejects_physical_authority_numeric_alias(
         )
 
 
+@pytest.mark.parametrize("current_clean", (False, True))
+@pytest.mark.parametrize("mutation", ("extra_training_claim", "missing_next_gate"))
+def test_family_vector_rejects_self_resealed_schema_extensions(
+    current_clean: bool, mutation: str,
+) -> None:
+    if current_clean:
+        vector, _, _ = _build_current_clean(_partial_rows())
+    else:
+        vector, _, _ = _build(_partial_rows())
+    assert verify_postmaterialization_family_vector(
+        vector, expected_identity_sha256=vector["family_vector_identity_sha256"]
+    ) == vector["family_vector_identity_sha256"]
+    altered = copy.deepcopy(vector)
+    if mutation == "extra_training_claim":
+        altered["additional_training_claim"] = True
+    else:
+        del altered["next_gate"]
+    altered["family_vector_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {
+                key: value
+                for key, value in altered.items()
+                if key != "family_vector_identity_sha256"
+            }
+        )
+    ).hexdigest()
+    with pytest.raises(ProjectionError, match="fields are not closed-world"):
+        verify_postmaterialization_family_vector(
+            altered,
+            expected_identity_sha256=altered["family_vector_identity_sha256"],
+        )
+
+
 def test_current_clean_vector_binds_receipt_repeat_and_raw_files() -> None:
     vector, raw, expected = _build_current_clean(_partial_rows())
     assert vector["schema"] == CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA
