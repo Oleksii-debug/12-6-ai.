@@ -570,3 +570,26 @@ def test_private_root_identity_requires_an_available_inode():
 
     with pytest.raises(CheckpointIntegrityError, match="inode identity unavailable"):
         hf_export._temporary_directory_identity(UnknownInodeRoot())
+
+
+def test_missing_private_root_identity_preserves_unknown_root_and_cleans_known_root(
+    tmp_path: Path,
+):
+    unknown = tmp_path / "unknown"
+    known = tmp_path / "known"
+    unknown.mkdir()
+    known.mkdir()
+    (unknown / "user-evidence.txt").write_text("preserve", encoding="utf-8")
+    (known / "private-artifact.txt").write_text("cleanup", encoding="utf-8")
+    known_identity = hf_export._temporary_directory_identity(known)
+
+    with pytest.raises(CheckpointIntegrityError, match="temporary cleanup failed"):
+        hf_export._cleanup_temp_paths_strict(
+            (
+                (unknown, "unowned root", None),
+                (known, "owned root", known_identity),
+            )
+        )
+
+    assert (unknown / "user-evidence.txt").read_text(encoding="utf-8") == "preserve"
+    assert not known.exists()
