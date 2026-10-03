@@ -493,3 +493,11 @@ def test_rejects_non_json_direct_value() -> None:
     document["decision"]["untrusted_metadata"] = object()
     with pytest.raises(CapacityReportError, match="non-JSON value"):
         validate_report(document)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_rejects_nonfinite_direct_report_values(value: float) -> None:
+    document = _report()
+    document["decision"]["untrusted_metadata"] = value
+    with pytest.raises(CapacityReportError, match="nonfinite JSON number"):
+        validate_report(document)
