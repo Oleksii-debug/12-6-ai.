@@ -42,13 +42,16 @@ def _configure(
     ("raw", "expected"),
     [
         (b'{"id":1,"id":2}', "duplicate JSON key"),
+        (b'{"outer":{"id":1,"id":2}}', "duplicate JSON key"),
         (b'{"id":NaN}', "nonstandard JSON constant"),
         (b'{"id":Infinity}', "nonstandard JSON constant"),
         (b'{"id":1e400}', "nonfinite JSON number"),
         (b'{"id":1e-9999}', "underflowed to zero"),
         (b'{"id":' + b"9" * 65 + b"}", "digit limit"),
         (b'{"id":"\\ud800"}', "invalid Unicode"),
+        (b'{"\\ud800":"id"}', "invalid Unicode"),
         (b'{"id":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}", "strict JSON"),
+        (b'{"id":' + b"[" * 64 + b"0" + b"]" * 64 + b"}", "structure limit"),
         (b"x" * (cli.MAX_AUTHORITY_JSON_BYTES + 1), "byte limit"),
         (b"[]", "top-level JSON object"),
         (b"\xff", "strict UTF-8"),
@@ -67,6 +70,18 @@ def test_authority_loader_accepts_valid_utf8_and_finite_zero(tmp_path: Path) -> 
     source = tmp_path / "правильний документ.json"
     source.write_bytes('{"word":"Україна","zero":0e-9999}'.encode("utf-8"))
     assert cli._load_authority_json(source) == {"word": "Україна", "zero": 0.0}
+
+
+def test_authority_loader_accepts_exact_byte_and_node_limits(tmp_path: Path) -> None:
+    source = tmp_path / "точна межа байтів.json"
+    raw = b'{"pad":"' + b"x" * (cli.MAX_AUTHORITY_JSON_BYTES - 10) + b'"}'
+    assert len(raw) == cli.MAX_AUTHORITY_JSON_BYTES
+    source.write_bytes(raw)
+    assert len(cli._load_authority_json(source)["pad"]) == cli.MAX_AUTHORITY_JSON_BYTES - 10
+
+    source = tmp_path / "точна межа вузлів.json"
+    source.write_bytes(b'{"rows":[' + b",".join([b"0"] * 9998) + b"]}")
+    assert len(cli._load_authority_json(source)["rows"]) == 9998
 
 
 def test_authority_loader_rejects_missing_file_and_node_budget(tmp_path: Path) -> None:
