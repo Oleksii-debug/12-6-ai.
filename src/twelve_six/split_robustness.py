@@ -41,11 +41,11 @@ def _canonical_json_bytes(value: Any) -> bytes:
             separators=(",", ":"),
             allow_nan=False,
         )
-    except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+        return (encoded + "\n").encode("utf-8")
+    except (TypeError, ValueError, OverflowError, RecursionError, UnicodeError) as exc:
         raise SplitRobustnessError(
             "split authority JSON must be finite and serializable"
         ) from exc
-    return (encoded + "\n").encode("utf-8")
 
 
 def _sha256_bytes(payload: bytes) -> str:

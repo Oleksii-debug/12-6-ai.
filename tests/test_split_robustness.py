@@ -275,6 +275,24 @@ def test_split_evidence_rejects_unserializable_and_overdeep_values() -> None:
         bind_split_evidence({"nested": nested}, family)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"nested": {"text": "\ud800"}},
+        {"nested": {"\ud800": "value"}},
+    ],
+)
+def test_split_evidence_rejects_unpaired_unicode_surrogates(
+    payload: dict[str, object],
+) -> None:
+    family = {
+        "split_family_identity_sha256": "1" * 64,
+        "eligible_corpus_sha256": "2" * 64,
+    }
+    with pytest.raises(SplitRobustnessError, match="finite and serializable"):
+        bind_split_evidence(payload, family)
+
+
 def test_split_evidence_retains_deterministic_finite_identity() -> None:
     family = {
         "split_family_identity_sha256": "1" * 64,
