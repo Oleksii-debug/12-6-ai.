@@ -206,3 +206,28 @@ def test_invalid_real_cli_manifest_never_issues_source_credit(tmp_path: Path) ->
     assert response["status"] == "BLOCKED_INVALID_AUTHORITY"
     assert response["canonical_credit_bytes"] == 0
     assert response["ready_for_corpus_credit"] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["extra-root", "extra-capacity", "allowlist-order", "extra-gate-free-text"],
+)
+def test_resigned_canonical_authority_rejects_extra_or_reordered_metadata(
+    mutation: str,
+) -> None:
+    document = copy.deepcopy(_document())
+    if mutation == "extra-root":
+        document["unreviewed_extension"] = "must-not-be-authority"
+    elif mutation == "extra-capacity":
+        document["capacity"]["unreviewed_bytes"] = 78307
+    elif mutation == "allowlist-order":
+        document["allowlist"].reverse()
+    else:
+        document["gates"]["requires_global_cross_source_dedup"] = "yes"
+        _resign(document)
+        with pytest.raises(SourceAuthorityError, match="downstream gates"):
+            validate_source_authority(document)
+        return
+    _resign(document)
+    with pytest.raises(SourceAuthorityError, match="canonical SciPy authority identity drift"):
+        validate_source_authority(document)
