@@ -148,3 +148,37 @@ def test_decision_report_rejects_resealed_numeric_type_aliases(
         authority.verify_byte_baseline_decision(
             forged, selection, application, **SHA,
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "nested_key", "replacement"),
+    [
+        ("selected_record_count", None, 2.0),
+        ("selected_source_bytes", None, 100.0),
+        ("selected_family_source_bytes", "example", 100.0),
+        ("selected_stratum_source_bytes", "ua", 100.0),
+    ],
+)
+def test_split_application_rejects_resealed_accounting_type_aliases(
+    field: str, nested_key: str | None, replacement: float,
+) -> None:
+    selection = _selection()
+    application, totals = _application(selection)
+    if nested_key is None:
+        application[field] = replacement
+    else:
+        application[field][nested_key] = replacement
+    application.pop("application_identity_sha256")
+    application["application_identity_sha256"] = authority.authority_sha256(
+        application
+    )
+    kwargs = {
+        **SHA,
+        "expected_application_identity_sha256": application[
+            "application_identity_sha256"
+        ],
+    }
+    with pytest.raises(authority.TokenizerDecisionError, match=f"{field} drift"):
+        authority._verify_split_application(
+            application, selection, totals, **kwargs,
+        )
