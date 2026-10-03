@@ -382,7 +382,20 @@ def validate(path: Path = DEFAULT_MANIFEST, evidence_path: Path = DEFAULT_EVIDEN
 
 
 def main() -> int:
-    print(json.dumps(validate(), sort_keys=True))
+    try:
+        result = validate()
+    except (OSError, ValueError, RecursionError) as exc:
+        # Data/contract rejection is not a Python traceback or evidence of
+        # successful evaluation. Preserve a one-line machine-readable failure.
+        print(json.dumps({
+            "status": "BLOCKED_INVALID_EVAL647_AUTHORITY",
+            "error": str(exc),
+            "selection_validation_records_authorized": 0,
+            "model_training_authorized": False,
+            "final_test_outcomes_read": False,
+        }, sort_keys=True))
+        return 2
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 
