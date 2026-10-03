@@ -313,7 +313,7 @@ def test_rejects_duplicate_json_key(tmp_path: Path) -> None:
 )
 def test_rejects_nonfinite_json_numbers(tmp_path: Path, number: str) -> None:
     raw = REPORT.read_text(encoding="utf-8")
-    marker = '"claim_issue": 2568'
+    marker = '"claim_issue": 2570'
     assert raw.count(marker) == 1
     raw = raw.replace(marker, f'"claim_issue": {number}', 1)
     path = tmp_path / "nonfinite.json"
