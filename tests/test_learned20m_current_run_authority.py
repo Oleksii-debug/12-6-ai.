@@ -28,6 +28,7 @@ from twelve_six.learned20m_current_run_authority import (
     verify_terminal_authority_current_run_binding,
 )
 from twelve_six.learned20m_global_training_lease import (
+    GLOBAL_LEASE_STATE_PATH,
     GlobalLeaseInspection,
     acquire_global_training_run_lease,
     build_global_lease_state,
@@ -1243,7 +1244,7 @@ def test_global_lease_binding_uses_full_canonical_contract(
     )
     blob_sha = blob_result.stdout.decode("ascii").strip()
     tree_input = (
-        f"100644 blob {blob_sha}\tglobal-training-run-lease-v1.json\n"
+        f"100644 blob {blob_sha}\t{GLOBAL_LEASE_STATE_PATH}\n"
     ).encode("ascii")
     tree_result = subprocess.run(
         ["git", "mktree"],
