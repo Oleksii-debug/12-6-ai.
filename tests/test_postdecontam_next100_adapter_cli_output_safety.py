@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -142,3 +144,65 @@ def test_main_does_not_publish_if_authority_validation_fails(
     assert not output.exists()
     assert vector.read_bytes() == b"vector"
     assert authority.read_bytes() == b"authority"
+
+
+@pytest.mark.parametrize("output_is_input", [False, True])
+def test_real_cli_binds_valid_vector_and_preserves_original_bytes(
+    tmp_path: Path, output_is_input: bool,
+) -> None:
+    """Execute the actual adapter with checked-in real validation code and synthetic inputs."""
+    from test_postdecontam_balance_projection_v1 import (
+        DEDUP_EVIDENCE_SHA,
+        DEDUP_HEAD_SHA,
+        DEDUP_WORKER_ID,
+        _build,
+        _dedup_authority,
+    )
+
+    vector = _build(tmp_path)
+    vector_path = tmp_path / "source family vector.json"
+    authority_path = tmp_path / "source dedup authority.json"
+    vector_path.write_text(json.dumps(vector, ensure_ascii=False), encoding="utf-8")
+    authority_path.write_text(
+        json.dumps(_dedup_authority(), ensure_ascii=False), encoding="utf-8",
+    )
+    vector_original = vector_path.read_bytes()
+    authority_original = authority_path.read_bytes()
+    output = vector_path if output_is_input else tmp_path / "new vector.json"
+    args = [
+        sys.executable,
+        str(Path(cli.__file__).resolve()),
+        "--family-vector", str(vector_path),
+        "--expected-family-vector-identity-sha256",
+        vector["family_vector_identity_sha256"],
+        "--dedup-authority", str(authority_path),
+        "--expected-dedup-worker-id", DEDUP_WORKER_ID,
+        "--expected-dedup-head-sha", DEDUP_HEAD_SHA,
+        "--expected-dedup-evidence-identity-sha256", DEDUP_EVIDENCE_SHA,
+        "--output", str(output),
+    ]
+    run = subprocess.run(args, capture_output=True, text=True, check=False)
+    assert vector_path.read_bytes() == vector_original
+    assert authority_path.read_bytes() == authority_original
+    if output_is_input:
+        assert run.returncode != 0
+        assert "FAIL_CLOSED" in run.stderr
+        return
+
+    assert run.returncode == 0, run.stderr
+    result = json.loads(output.read_bytes())
+    assert result["schema_version"] == cli.adapt_family_vector_to_next100_106(
+        vector,
+        expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
+        dedup_authority=_dedup_authority(),
+        expected_dedup_worker_id=DEDUP_WORKER_ID,
+        expected_dedup_head_sha=DEDUP_HEAD_SHA,
+        expected_dedup_evidence_identity_sha256=DEDUP_EVIDENCE_SHA,
+    )["schema_version"]
+    assert result["terminal"] is True
+    assert output.read_bytes().endswith(b"\n")
+    assert b"\r\n" not in output.read_bytes()
+    second = subprocess.run(args, capture_output=True, text=True, check=False)
+    assert second.returncode != 0
+    assert "FAIL_CLOSED" in second.stderr
+    assert json.loads(output.read_bytes()) == result
