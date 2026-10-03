@@ -102,7 +102,7 @@ def test_cli_reports_huge_cost_as_one_line_json_without_traceback(
             (" " * (operator.MAX_OPERATOR_JSON_BYTES + 1)).encode(),
             id="oversized-input",
         ),
-        pytest.param(r'{"nested":"\ud800"}'.encode(), id="unpaired-surrogate"),
+        pytest.param(br'{"nested":"\ud800"}', id="unpaired-surrogate"),
         pytest.param(b'{"nested":"\xff"}', id="invalid-utf8"),
     ],
 )
@@ -130,7 +130,7 @@ def test_profile_packet_reader_rejects_untrusted_json_limits(
             (" " * (operator.MAX_OPERATOR_JSON_BYTES + 1)).encode(),
             id="oversized-marker",
         ),
-        pytest.param(r'{"marker_sha256":"0","nested":"\ud800"}'.encode(), id="surrogate-marker"),
+        pytest.param(br'{"marker_sha256":"0","nested":"\ud800"}', id="surrogate-marker"),
         pytest.param(b'{"marker_sha256":"0","nested":"\xff"}', id="invalid-utf8"),
     ],
 )
