@@ -10,15 +10,15 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "12-6.learned20m-capacity-sufficiency.v3"
-MAIN = "49bdba879e400e217a8e3b5c1b4015c51177ef58"
-REPORT_ID = "LEARNED20M-CAPACITY-SUFFICIENCY-20261003-SWARM2568-MAIN49BDBA87-V3"
-REPORT_SHA = "4f00e1d564fe5c3c78f05fbd51ce16917559366dc721be6d849e4d66ed8ef9d2"
+MAIN = "31b9e030cb179e895fcbf3404b1d1fd045515867"
+REPORT_ID = "LEARNED20M-CAPACITY-SUFFICIENCY-20261003-SWARM2570-MAIN31B9E030-V3"
+REPORT_SHA = "2c3f0520dca69bc7aa9faac1be863d4e471ee7c6d361de69b9d688a469ebb1df"
 POLICY_SHA = "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
 POLICY_BLOB = "b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f"
 EXECUTOR_HEAD = "2ad5b63bf7107465d6fa7deb25bf8c2f2fa03171"
 EXECUTOR_MERGE = "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
 CLEAN_ID = "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade"
-CONTROL_ISSUES = [548, 723, 2011, 2021, 2568]
+CONTROL_ISSUES = [548, 723, 2011, 2021, 2570]
 STRATA = {"ua": (9, 20), "en": (7, 20), "code": (1, 5)}
 TRUTH = {
     "current_retained_corpus_launch_authoritative": False,
@@ -227,7 +227,7 @@ def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = N
         fail("report source_main_sha drifted")
     if expected_main_sha is not None and main != expected_main_sha:
         fail(f"stale report root: {main} != {expected_main_sha}")
-    if integer(report["claim_issue"], "claim_issue", 1) != 2568:
+    if integer(report["claim_issue"], "claim_issue", 1) != 2570:
         fail("claim_issue drifted")
     if report["control_issues"] != CONTROL_ISSUES:
         fail("control_issues drifted")

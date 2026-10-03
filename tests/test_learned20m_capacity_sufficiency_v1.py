@@ -12,7 +12,7 @@ from twelve_six.learned20m_capacity_sufficiency_v1 import (
 )
 
 REPORT = Path(__file__).parents[1] / "reports" / "learned20m_capacity_sufficiency_v1.json"
-MAIN_SHA = "49bdba879e400e217a8e3b5c1b4015c51177ef58"
+MAIN_SHA = "31b9e030cb179e895fcbf3404b1d1fd045515867"
 
 
 def _report() -> dict:
@@ -39,6 +39,13 @@ def test_rejects_old_report_main_after_current_main_rebind() -> None:
     with pytest.raises(CapacityReportError, match="stale report root"):
         load_and_validate(
             REPORT, expected_main_sha="903bbd642068cf00eab0f864a739b7f7e1d280ea"
+        )
+
+
+def test_rejects_immediately_previous_main_after_current_main_rebind() -> None:
+    with pytest.raises(CapacityReportError, match="stale report root"):
+        load_and_validate(
+            REPORT, expected_main_sha="49bdba879e400e217a8e3b5c1b4015c51177ef58"
         )
 
 
