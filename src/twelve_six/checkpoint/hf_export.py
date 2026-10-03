@@ -337,6 +337,10 @@ def _temporary_directory_identity(path: Path) -> tuple[int, int]:
     observed = path.lstat()
     if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
         raise CheckpointIntegrityError(f"private temporary root changed type: {path}")
+    if not observed.st_ino:
+        raise CheckpointIntegrityError(
+            f"private temporary root inode identity unavailable: {path}"
+        )
     return observed.st_dev, observed.st_ino
 
 
