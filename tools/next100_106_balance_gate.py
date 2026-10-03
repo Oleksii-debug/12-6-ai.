@@ -85,7 +85,9 @@ def load_json(path: Path) -> dict[str, Any]:
                 pending.extend((child, depth + 1) for child in current)
             elif isinstance(current, str):
                 current.encode("utf-8")
-    except (UnicodeError, ValueError, RecursionError) as exc:
+    except RecursionError as exc:
+        raise GateError("balance JSON nesting limit exceeded") from exc
+    except (UnicodeError, ValueError) as exc:
         raise GateError(f"invalid balance JSON: {exc}") from exc
 
     if not isinstance(value, dict):
