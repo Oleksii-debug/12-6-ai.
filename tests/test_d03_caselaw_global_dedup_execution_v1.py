@@ -304,9 +304,28 @@ def test_incumbent_runtime_attestation_precedes_reference_report_execution() -> 
 import inspect
 
 source = inspect.getsource(mod.execute)
-attest = source.index("indexed.attest_incumbent_runtime(matcher)")
+warmup = source.index("_preflight_attested_lineage_warmup(matcher)")
+sample = source.index("_preflight_attested_reference_sample(matcher, inventory, payloads)")
 reference = source.index("reference = matcher.audit_payloads(inventory, payloads)")
-assert attest < reference
+assert warmup < sample < reference
+
+# The verifier was moved into both actual preflight helpers. Do not merely
+# assert the names of helpers: require unchanged incumbent attestation before
+# and after lineage warmup and after the physical reference sample.
+warmup_source = inspect.getsource(mod._preflight_attested_lineage_warmup)
+attestation = "indexed.attest_incumbent_runtime(matcher)"
+assert warmup_source.count(attestation) == 2
+first = warmup_source.index(attestation)
+work = warmup_source.index("matches = lineage(fingerprints, ())")
+last = warmup_source.rindex(attestation)
+assert first < work < last
+
+sample_source = inspect.getsource(mod._preflight_attested_reference_sample)
+physical = sample_source.index(
+    "sample_report = matcher.audit_payloads(sample_inventory, sample_payloads)"
+)
+attested = sample_source.index(attestation)
+assert physical < attested
 """
     )
 
