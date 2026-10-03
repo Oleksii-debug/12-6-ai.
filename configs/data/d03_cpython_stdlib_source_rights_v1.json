@@ -19,8 +19,8 @@
     "complete_tree_blob_count": 6232,
     "complete_tree_tree_count": 478,
     "complete_tree_commit_count": 0,
-    "complete_tree_semantics_identity_sha256": "a3e9589836fb21749442e5d3475c0b019914a8aea597776340dcde2804c9b198",
-    "complete_tree_blob_map_identity_sha256": "4134496fea301cc7781f5cb2096293394f826cb8d364aad17a3b8650708ce5db"
+    "complete_tree_semantics_identity_sha256": "fcd8a90eeb7ba5816e360f7c336b9fe8d6d56adebb51fbb4cecb13e71b6b3d1c",
+    "complete_tree_blob_map_identity_sha256": "85316aa5932aae00757d3ee9838201a17794400fdde656ac2a21085f5fcc1286"
   },
   "policy": {
     "root_default_license": "PSF-2.0",

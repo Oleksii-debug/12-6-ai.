@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 
@@ -335,3 +336,53 @@ def test_exact_merged_repository_bindings_when_available() -> None:
     if not (root / "reports/d03/cpython_stdlib_terminal_execution_v1.json").exists():
         pytest.skip("standalone focused-test checkout does not contain merged lineage")
     validate_repository_bindings(root)
+
+
+
+def test_pinned_tree_policy_uses_python_codepoint_order_digests() -> None:
+    policy = _policy()
+    assert rights.EXPECTED_TREE_SEMANTICS_IDENTITY_SHA256 == (
+        "fcd8a90eeb7ba5816e360f7c336b9fe8d6d56adebb51fbb4cecb13e71b6b3d1c"
+    )
+    assert rights.EXPECTED_TREE_BLOB_MAP_IDENTITY_SHA256 == (
+        "85316aa5932aae00757d3ee9838201a17794400fdde656ac2a21085f5fcc1286"
+    )
+    assert EXPECTED_POLICY_IDENTITY_SHA256 == (
+        "f4436690d6ea91b17fd0a5a7f110162bc051976eb6083b71c39c1ef274078346"
+    )
+    assert policy["scope"]["complete_tree_semantics_identity_sha256"] == (
+        rights.EXPECTED_TREE_SEMANTICS_IDENTITY_SHA256
+    )
+    assert policy["scope"]["complete_tree_blob_map_identity_sha256"] == (
+        rights.EXPECTED_TREE_BLOB_MAP_IDENTITY_SHA256
+    )
+    assert policy["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+
+
+def test_complete_tree_snapshot_uses_python_codepoint_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uppercase = _row(".github/CODEOWNERS", "a = 1\\n")
+    lowercase = _row(".github/actionlint.yaml", "b = 2\\n")
+    payload, _ = _synthetic_complete_authority(monkeypatch, uppercase, lowercase)
+    payload["tree"].reverse()
+    authority = parse_pinned_tree_response(payload)
+    paths = [entry[0] for entry in authority.entries]
+    assert paths == sorted(paths)
+    assert paths.index(".github/CODEOWNERS") < paths.index(".github/actionlint.yaml")
+
+
+def test_exact_upstream_tree_python_order_replay_when_requested() -> None:
+    """Optional physical Python replay: do not substitute synthetic fixtures."""
+    if os.environ.get("TWELVE_SIX_CPYTHON_TREE_LIVE_REPLAY") != "1":
+        pytest.skip("explicit immutable upstream tree replay not requested")
+    authority = rights.fetch_pinned_tree_authority()
+    snapshot, evidence = rights._validated_tree_snapshot(authority)
+    assert snapshot["LICENSE"] == ROOT_LICENSE_BLOB_SHA1
+    assert len(snapshot) == rights.EXPECTED_TREE_BLOB_COUNT
+    assert evidence["semantics_identity_sha256"] == (
+        rights.EXPECTED_TREE_SEMANTICS_IDENTITY_SHA256
+    )
+    assert evidence["blob_map_identity_sha256"] == (
+        rights.EXPECTED_TREE_BLOB_MAP_IDENTITY_SHA256
+    )
