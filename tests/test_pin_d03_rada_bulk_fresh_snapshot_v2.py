@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import stat
+import subprocess
 import sys
 import warnings
 import zipfile
@@ -407,3 +408,61 @@ def test_resealed_reports_cannot_pin_casefold_ignored_member_alias() -> None:
     ):
         _pin(*inputs)
 
+
+def _deep_pin_json(nesting: str) -> bytes:
+    if nesting == "arrays":
+        value = "[" * 10000 + "0" + "]" * 10000
+    else:
+        value = '{"k":' * 10000 + "0" + "}" * 10000
+    return ('{"root":' + value + "}").encode("utf-8")
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_pin_loader_rejects_deep_probe_with_scoped_error(
+    tmp_path: Path, nesting: str
+) -> None:
+    probe = tmp_path / "deep probe.json"
+    raw = _deep_pin_json(nesting)
+    probe.write_bytes(raw)
+    with pytest.raises(
+        pin.FreshSnapshotPinError,
+        match="cannot load probe A: probe A JSON nesting limit exceeded",
+    ):
+        pin._load_json(probe, "probe A")
+    assert probe.read_bytes() == raw
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_pin_cli_rejects_deep_probe_without_publication(
+    tmp_path: Path, nesting: str
+) -> None:
+    probe = tmp_path / "deep probe.json"
+    raw = _deep_pin_json(nesting)
+    probe.write_bytes(raw)
+    archive = tmp_path / "retained.zip"
+    archive.write_bytes(b"read-only fixture")
+    attribution = tmp_path / "attribution.txt"
+    attribution.write_text("attribution fixture", encoding="utf-8")
+    output = tmp_path / "must-not-publish.json"
+    result = subprocess.run(
+        [
+            sys.executable, str(PIN),
+            "--archive", str(archive),
+            "--probe-report", str(probe), "--probe-b", str(probe),
+            "--qualification", str(probe),
+            "--attribution", str(attribution),
+            "--config", str(ROOT / "configs/data/d03_rada_bulk_fresh_snapshot_v2.json"),
+            "--rights-policy",
+            str(ROOT / "configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json"),
+            "--execution-head-sha", "a" * 40, "--output", str(output),
+        ],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.splitlines() == [
+        "BLOCKED: cannot load probe A: probe A JSON nesting limit exceeded"
+    ]
+    assert probe.read_bytes() == raw
+    assert archive.read_bytes() == b"read-only fixture"
+    assert not output.exists()

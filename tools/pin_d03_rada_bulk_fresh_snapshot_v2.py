@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import re
+import sys
 import zipfile
 from collections.abc import Mapping
 from pathlib import Path
@@ -48,7 +49,7 @@ def _load_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
         raw = path.read_bytes()
         value = _strict_json(raw, label=label)
     except (OSError, FreshSnapshotQualificationError) as exc:
-        raise FreshSnapshotPinError(f"cannot load {label}") from exc
+        raise FreshSnapshotPinError(f"cannot load {label}: {exc}") from exc
     _require(type(value) is dict, f"{label} root must be object")
     return value, raw
 
@@ -300,4 +301,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        exit_code = main()
+    except FreshSnapshotPinError as exc:
+        print(f"BLOCKED: {exc}", file=sys.stderr)
+        exit_code = 2
+    raise SystemExit(exit_code)

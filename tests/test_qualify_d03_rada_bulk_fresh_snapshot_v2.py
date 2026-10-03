@@ -4,6 +4,8 @@ import copy
 import hashlib
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -316,3 +318,54 @@ def test_valid_fixed_predecessor_does_not_pin_mutable_current_source() -> None:
     )
     assert result["archive_sha256"] == "9" * 64
     assert result["authorized_optimized_target_exposure"] == 0
+
+def _deep_qualification_json(nesting: str) -> bytes:
+    if nesting == "arrays":
+        value = "[" * 10000 + "0" + "]" * 10000
+    else:
+        value = '{"k":' * 10000 + "0" + "}" * 10000
+    return ('{"root":' + value + "}").encode("utf-8")
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_shared_qualification_decoder_rejects_deep_json(nesting: str) -> None:
+    with pytest.raises(
+        mod.FreshSnapshotQualificationError, match="JSON nesting limit exceeded"
+    ):
+        mod._strict_json(_deep_qualification_json(nesting), label="probe A")
+
+
+@pytest.mark.parametrize("nesting", ("arrays", "objects"))
+def test_qualification_cli_rejects_deep_probe_without_output(
+    tmp_path: Path, nesting: str
+) -> None:
+    probe = tmp_path / "damaged probe.json"
+    raw = _deep_qualification_json(nesting)
+    probe.write_bytes(raw)
+    output = tmp_path / "qualification.json"
+    attribution = tmp_path / "attribution.txt"
+    result = subprocess.run(
+        [
+            sys.executable, str(MODULE_PATH),
+            "--config", str(ROOT / "configs/data/d03_rada_bulk_fresh_snapshot_v2.json"),
+            "--rights-policy",
+            str(ROOT / "configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json"),
+            "--probe-a", str(probe), "--probe-b", str(probe),
+            "--output", str(output), "--attribution-output", str(attribution),
+        ],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.splitlines() == [
+        "BLOCKED: probe A JSON nesting limit exceeded"
+    ]
+    assert probe.read_bytes() == raw
+    assert not output.exists()
+    assert not attribution.exists()
+
+
+def test_shared_qualification_decoder_preserves_valid_finite_json() -> None:
+    assert mod._strict_json(b'{"ok":true,"value":1e20}', label="fixture") == {
+        "ok": True, "value": 1e20
+    }

@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import re
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,10 @@ def _strict_json(raw: bytes, *, label: str) -> dict[str, Any]:
             parse_float=_float,
             parse_constant=_constant,
         )
+    except RecursionError as exc:
+        raise FreshSnapshotQualificationError(
+            f"{label} JSON nesting limit exceeded"
+        ) from exc
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise FreshSnapshotQualificationError(f"{label} is not strict JSON") from exc
     _require(type(value) is dict, f"{label} root must be exact object")
@@ -600,4 +605,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        exit_code = main()
+    except FreshSnapshotQualificationError as exc:
+        print(f"BLOCKED: {exc}", file=sys.stderr)
+        exit_code = 2
+    raise SystemExit(exit_code)
