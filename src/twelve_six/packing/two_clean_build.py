@@ -231,15 +231,19 @@ def _normalize_runtime_dependency_manifest(
     if not isinstance(value, Mapping) or not value:
         raise TwoCleanBuildError("runtime dependency manifest must be a non-empty object")
     normalized: dict[str, dict[str, str]] = {}
+    if any(not isinstance(name, str) or not name for name in value):
+        raise TwoCleanBuildError("runtime dependency module name must be non-empty")
     for module_name in sorted(value):
-        if not isinstance(module_name, str) or not module_name:
-            raise TwoCleanBuildError("runtime dependency module name must be non-empty")
         entry = value[module_name]
         if not isinstance(entry, Mapping):
             raise TwoCleanBuildError(
                 f"runtime dependency entry must be an object: {module_name}"
             )
         kind = entry.get("kind")
+        if not isinstance(kind, str):
+            raise TwoCleanBuildError(
+                f"runtime dependency {module_name} kind must be a string"
+            )
         if kind in {"built-in", "frozen"}:
             if set(entry) != {"kind"}:
                 raise TwoCleanBuildError(
