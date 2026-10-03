@@ -311,6 +311,96 @@ assert attest < reference
     )
 
 
+def test_lineage_preflight_attests_before_and_after_synthetic_warmup() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+observed = []
+
+def lineage(fingerprints, edges):
+    assert len(fingerprints) == 16 and edges == ()
+    assert all(item["row"]["source_family"] == "local-preflight-only"
+               for item in fingerprints)
+    observed.append("warmup")
+    return [
+        {"match_type": "lineage_same_origin_alias", "capacity_collapsing": True}
+        for _ in range(8)
+    ]
+
+def attest(matcher):
+    assert matcher._lineage_matches is lineage
+    observed.append("attest")
+
+mod.indexed.attest_incumbent_runtime = attest
+mod._preflight_attested_lineage_warmup(SimpleNamespace(_lineage_matches=lineage))
+assert observed == ["attest", *["warmup"] * 10, "attest"]
+"""
+    )
+
+
+def test_lineage_preflight_rejects_changed_semantics_without_second_attest() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+observed = []
+
+def attest(matcher):
+    observed.append("attest")
+
+mod.indexed.attest_incumbent_runtime = attest
+matcher = SimpleNamespace(_lineage_matches=lambda items, edges: [])
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.CaselawGlobalDedupError as exc:
+    assert "warmup semantics drift" in str(exc)
+else:
+    raise AssertionError("invalid lineage semantics accepted")
+assert observed == ["attest"]
+"""
+    )
+
+
+def test_lineage_preflight_propagates_second_attestation_failure() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+calls = []
+
+def attest(matcher):
+    calls.append("attest")
+    if len(calls) == 2:
+        raise mod.indexed.IndexedExecutionError("V3 callable code drift: _lineage_matches")
+
+def lineage(fingerprints, edges):
+    return [
+        {"match_type": "lineage_same_origin_alias", "capacity_collapsing": True}
+        for _ in range(8)
+    ]
+
+mod.indexed.attest_incumbent_runtime = attest
+try:
+    mod._preflight_attested_lineage_warmup(SimpleNamespace(_lineage_matches=lineage))
+except mod.indexed.IndexedExecutionError as exc:
+    assert "V3 callable code drift: _lineage_matches" in str(exc)
+else:
+    raise AssertionError("post-execution attestation drift was bypassed")
+assert calls == ["attest", "attest"]
+"""
+    )
+
+
+def test_lineage_preflight_precedes_expensive_reference() -> None:
+    _run_isolated(
+        """
+import inspect
+source = inspect.getsource(mod.execute)
+preflight = source.index("_preflight_attested_lineage_warmup(matcher)")
+reference = source.index("reference = matcher.audit_payloads(inventory, payloads)")
+assert preflight < reference
+"""
+    )
+
+
 def test_survivor_wrapper_rejects_nonexact_declared_capacity() -> None:
     _run_isolated(
         """
