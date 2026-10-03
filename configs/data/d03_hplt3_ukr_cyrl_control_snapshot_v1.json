@@ -1,0 +1,55 @@
+{
+  "schema_version": "12-6.d03-hplt3-ukr-cyrl-control-snapshot.v1",
+  "worker_id": "D03-HPLT3-UKR-CYRL-CONTROL-SNAPSHOT-20260907",
+  "execution_profile": "LOCAL_FREE",
+  "parent": {
+    "pr": 760,
+    "source_audit_head_sha": "45f13628830a00af6ac8539a2dc62c48be43c4ec",
+    "source_id": "HPLT-3.0-ukr_Cyrl",
+    "dataset_card_commit": "3394d6ba8dae4da834e3b11771daf95028a960b1"
+  },
+  "control_objects": {
+    "map_url": "https://data.hplt-project.org/three/sorted/ukr_Cyrl.map",
+    "md5_url": "https://data.hplt-project.org/three/sorted/ukr_Cyrl.md5",
+    "allowed_host": "data.hplt-project.org",
+    "max_each_bytes": 2097152,
+    "map_snapshot_sha256": null,
+    "md5_snapshot_sha256": null
+  },
+  "shard_policy": {
+    "allowed_url_scheme": "https",
+    "allowed_host": "data.hplt-project.org",
+    "required_path_prefix": "/three/sorted/ukr_Cyrl/",
+    "required_suffix": ".jsonl.zst",
+    "filename_pattern": "^(?:10|[5-9])_[1-9][0-9]*\\.jsonl\\.zst$",
+    "require_unique_urls": true,
+    "require_unique_filenames": true,
+    "require_md5_for_every_map_entry": true,
+    "require_no_orphan_md5_entries": true,
+    "project_sha256_required_after_shard_download": true
+  },
+  "bounded_successor": {
+    "selection_rule": "highest_wds_bin_then_lexicographically_first_shard",
+    "max_selected_shards": 1,
+    "bulk_download_forbidden": true,
+    "preserve_record_provenance_required": true,
+    "source_level_rights_required_before_training_credit": true
+  },
+  "claim_boundary": {
+    "control_snapshot_materialized": false,
+    "immutable_acquisition_identity": false,
+    "shards_downloaded": 0,
+    "downloaded_shard_bytes": 0,
+    "source_level_rights_terminal": false,
+    "privacy_complete": false,
+    "global_dedup_complete": false,
+    "evaluation_decontamination_complete": false,
+    "training_authorized_bytes": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_payload_accessed": false,
+    "paid_compute_used": false
+  }
+}
