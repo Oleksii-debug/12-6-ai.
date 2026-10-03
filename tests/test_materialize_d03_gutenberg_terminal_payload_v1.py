@@ -5,8 +5,8 @@ import importlib.util
 import json
 import tempfile
 import unittest
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "materialize_d03_gutenberg_terminal_payload_v1.py"
@@ -209,7 +209,7 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
                     out = Path(td) / "output"
                     count = 0
 
-                    def failing_fetch(url):
+                    def failing_fetch(url, *, fail_index=fail_index, raw_by_url=raw_by_url):
                         nonlocal count
                         count += 1
                         if count == fail_index + 1:
@@ -272,15 +272,17 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
         seal, records, _, _ = synthetic_source_fixture()
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "output"
-            with mock.patch.object(
-                module.urllib.request, "urlopen",
-                return_value=BoundedResponse(b"x" * (cap + 2)),
-            ):
-                with self.assertRaisesRegex(
+            with (
+                mock.patch.object(
+                    module.urllib.request, "urlopen",
+                    return_value=BoundedResponse(b"x" * (cap + 2)),
+                ),
+                self.assertRaisesRegex(
                     module.MaterializationError,
                     "transport response exceeds pinned maximum",
-                ):
-                    run_synthetic(seal, records, out, module.fetch_bytes)
+                ),
+            ):
+                run_synthetic(seal, records, out, module.fetch_bytes)
             self.assertEqual(requests, [cap + 1, cap + 1])
             self.assertFalse(out.exists())
             self.assertFalse(
@@ -316,11 +318,13 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
                     raise OSError("injected receipt write failure")
                 return real_open(path, mode, *args, **kwargs)
 
-            with mock.patch.object(Path, "open", fail_receipt_open):
-                with self.assertRaisesRegex(
+            with (
+                mock.patch.object(Path, "open", fail_receipt_open),
+                self.assertRaisesRegex(
                     module.MaterializationError, "injected receipt write failure"
-                ):
-                    run_synthetic(seal, records, out, raw_by_url.__getitem__)
+                ),
+            ):
+                run_synthetic(seal, records, out, raw_by_url.__getitem__)
             self.assertFalse(out.exists())
             self.assertTrue((stage / "payload").is_dir())
             calls = []
@@ -346,14 +350,14 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
                 destination.mkdir()
                 original(candidate, destination)
 
-            with mock.patch.object(
-                module, "_publish_directory_noreplace",
-                create_destination_before_publish,
+            with (
+                mock.patch.object(
+                    module, "_publish_directory_noreplace",
+                    create_destination_before_publish,
+                ),
+                self.assertRaises(module.MaterializationError),
             ):
-                with self.assertRaises(module.MaterializationError):
-                    run_synthetic(
-                        seal, records, out, raw_by_url.__getitem__
-                    )
+                run_synthetic(seal, records, out, raw_by_url.__getitem__)
             self.assertTrue(out.is_dir())
             self.assertEqual(list(out.iterdir()), [])
             self.assertTrue((stage / "receipt.json").is_file())
@@ -371,23 +375,22 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
                 (candidate / "payload" / name).write_bytes(b"tampered")
                 original(candidate, payloads, receipt_bytes)
 
-            with mock.patch.object(
-                module, "_verify_private_stage", replace_stage_payload
-            ):
-                with self.assertRaisesRegex(
+            with (
+                mock.patch.object(
+                    module, "_verify_private_stage", replace_stage_payload
+                ),
+                self.assertRaisesRegex(
                     module.MaterializationError, "staged payload identity drift"
-                ):
-                    run_synthetic(
-                        seal, records, out, raw_by_url.__getitem__
-                    )
+                ),
+            ):
+                run_synthetic(seal, records, out, raw_by_url.__getitem__)
             self.assertFalse(out.exists())
             self.assertTrue((stage / "receipt.json").exists())
 
     def test_preexisting_destination_or_private_stage_refuses_before_fetch(self):
         seal, records, raw_by_url, _ = synthetic_source_fixture()
         for occupant in ("destination", "stage"):
-            with self.subTest(occupant=occupant):
-                with tempfile.TemporaryDirectory() as td:
+            with self.subTest(occupant=occupant), tempfile.TemporaryDirectory() as td:
                     out = Path(td) / "output"
                     stage = out.with_name(".output.gutenberg-stage-v1")
                     occupied = out if occupant == "destination" else stage
@@ -395,7 +398,7 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
                     (occupied / "user-marker").write_text("untouched")
                     calls = []
 
-                    def count_fetch(url):
+                    def count_fetch(url, *, calls=calls):
                         calls.append(url)
                         return raw_by_url[url]
 
