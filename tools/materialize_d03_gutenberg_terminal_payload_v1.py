@@ -101,6 +101,9 @@ EXPECTED_RECORDS: dict[str, dict[str, Any]] = {
     },
 }
 
+# All transport objects are pinned; never read an unlimited HTTP body into RAM.
+MAX_TRANSPORT_BYTES = max(row["raw_bytes"] for row in EXPECTED_RECORDS.values())
+
 START_RE = re.compile(r"^\*\*\* START OF .*PROJECT GUTENBERG EBOOK.*\*\*\*$")
 END_RE = re.compile(r"^\*\*\* END OF .*PROJECT GUTENBERG EBOOK.*\*\*\*$")
 
@@ -275,7 +278,12 @@ def fetch_bytes(url: str, attempts: int = 3) -> bytes:
     for attempt in range(attempts):
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
-                return response.read()
+                raw = response.read(MAX_TRANSPORT_BYTES + 1)
+                _require(
+                    len(raw) <= MAX_TRANSPORT_BYTES,
+                    "transport response exceeds pinned maximum raw byte count",
+                )
+                return raw
         except (urllib.error.URLError, TimeoutError) as exc:
             last_error = exc
             if attempt + 1 < attempts:

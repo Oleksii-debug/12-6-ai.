@@ -237,6 +237,56 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
                         module._canonical(receipt),
                     )
 
+    def test_transport_bound_rejects_oversize_before_staging(self):
+        # A hostile server must never force an unlimited response.read().
+        cap = module.MAX_TRANSPORT_BYTES
+        self.assertEqual(cap, 1_203_657)
+        requests = []
+
+        class BoundedResponse:
+            def __init__(self, data):
+                self.data = data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self, size=-1):
+                requests.append(size)
+                if size < 0:
+                    raise AssertionError("unbounded transport read")
+                return self.data[:size]
+
+        with mock.patch.object(
+            module.urllib.request, "urlopen",
+            return_value=BoundedResponse(b"valid-short"),
+        ):
+            self.assertEqual(
+                module.fetch_bytes("https://example.invalid/short", attempts=1),
+                b"valid-short",
+            )
+        self.assertEqual(requests, [cap + 1])
+
+        seal, records, _, _ = synthetic_source_fixture()
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output"
+            with mock.patch.object(
+                module.urllib.request, "urlopen",
+                return_value=BoundedResponse(b"x" * (cap + 2)),
+            ):
+                with self.assertRaisesRegex(
+                    module.MaterializationError,
+                    "transport response exceeds pinned maximum",
+                ):
+                    run_synthetic(seal, records, out, module.fetch_bytes)
+            self.assertEqual(requests, [cap + 1, cap + 1])
+            self.assertFalse(out.exists())
+            self.assertFalse(
+                out.with_name(".output.gutenberg-stage-v1").exists()
+            )
+
     def test_second_record_bad_checksum_does_not_publish_partial_output(self):
         seal, records, raw_by_url, _ = synthetic_source_fixture()
         bad_url = module._transport_url(records[1])
