@@ -4,6 +4,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -949,6 +950,55 @@ def test_outer_output_cannot_replace_or_preempt_publication_intent(
     assert not list(tmp_path.glob(".outer-*.tmp"))
 
 
+def _inspect_in_fresh_process(
+    pass_root: Path, args: SimpleNamespace,
+    pass_result: dict[str, str], receipt: dict[str, object],
+) -> dict[str, object]:
+    """A new interpreter imports the runner and validates persisted evidence."""
+    input_value = {
+        "pass_root": str(pass_root),
+        "output_report": str(args.output_report),
+        "output_survivors": str(args.output_survivors),
+        "output_receipt": str(args.output_receipt),
+        "pass_result": pass_result,
+        "receipt": receipt,
+    }
+    script = """
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+spec = importlib.util.spec_from_file_location(
+    "_pr1851_fresh_recovery_consumer",
+    Path("tools/run_d03_arxiv_languk_rematerialized_replay_v1.py"),
+)
+assert spec is not None and spec.loader is not None
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+data = json.loads(sys.argv[1])
+args = SimpleNamespace(
+    output_report=Path(data["output_report"]),
+    output_survivors=Path(data["output_survivors"]),
+    output_receipt=Path(data["output_receipt"]),
+)
+result = runner.inspect_outer_publication_recovery(
+    args, pass_root=Path(data["pass_root"]),
+    pass_result=data["pass_result"], receipt=data["receipt"],
+)
+print(json.dumps(result, sort_keys=True))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script, json.dumps(input_value)],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, encoding="utf-8",
+        timeout=30, check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    return json.loads(completed.stdout)
+
+
 def test_fresh_runner_inspects_complete_receipt_without_republishing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -957,8 +1007,8 @@ def test_fresh_runner_inspects_complete_receipt_without_republishing(
         args, pass_root=pass_root, pass_result=result, receipt=receipt,
     )
     # Import a fresh consumer module: this is a read-only recovery decision.
-    recovered = _load_replay_runner().inspect_outer_publication_recovery(
-        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    recovered = _inspect_in_fresh_process(
+        pass_root, args, result, receipt,
     )
     assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
     assert recovered["missing"] == []
@@ -987,8 +1037,8 @@ def test_fresh_runner_classifies_interrupted_publication(
         REPLAY_RUNNER._publish_verified_outputs(
             args, pass_root=pass_root, pass_result=result, receipt=receipt,
         )
-    recovered = _load_replay_runner().inspect_outer_publication_recovery(
-        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    recovered = _inspect_in_fresh_process(
+        pass_root, args, result, receipt,
     )
     assert recovered["status"] == (
         "PREPARED_UNCOMMITTED" if stop_after == 0 else "PARTIAL_UNCOMMITTED"
