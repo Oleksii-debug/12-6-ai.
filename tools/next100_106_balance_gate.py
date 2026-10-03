@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -15,14 +16,78 @@ POLICY_PATH = ROOT / "configs/data/next100_106_balance_gate_policy_v1.json"
 
 INPUT_SCHEMA = "12-6.next100-106-post-dedup-family-vector.v1"
 STRATA = ("ua", "en", "code")
+MAX_BALANCE_JSON_BYTES = 1_048_576
+MAX_BALANCE_JSON_DEPTH = 64
+MAX_BALANCE_JSON_NODES = 10_000
+MAX_BALANCE_INT_DIGITS = 64
 
 
 class GateError(ValueError):
     """Raised when an input cannot be trusted for balance evaluation."""
 
 
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise GateError(f"duplicate JSON object member: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(value: str) -> Any:
+    raise GateError(f"non-finite JSON constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise GateError("JSON number is not finite")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise GateError("nonzero JSON number underflowed to zero")
+    return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.lstrip("-")) > MAX_BALANCE_INT_DIGITS:
+        raise GateError("JSON integer exceeds digit limit")
+    return int(value)
+
+
 def load_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    """Bound and strictly decode policy or external family-vector evidence."""
+    with path.open("rb") as source:
+        raw = source.read(MAX_BALANCE_JSON_BYTES + 1)
+    if len(raw) > MAX_BALANCE_JSON_BYTES:
+        raise GateError("balance JSON exceeds byte limit")
+
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
+        )
+        pending = [(value, 0)]
+        nodes = 0
+        while pending:
+            current, depth = pending.pop()
+            nodes += 1
+            if nodes > MAX_BALANCE_JSON_NODES or depth > MAX_BALANCE_JSON_DEPTH:
+                raise GateError("balance JSON structure limit exceeded")
+            if isinstance(current, dict):
+                for key, child in current.items():
+                    key.encode("utf-8")
+                    pending.append((child, depth + 1))
+            elif isinstance(current, list):
+                pending.extend((child, depth + 1) for child in current)
+            elif isinstance(current, str):
+                current.encode("utf-8")
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        raise GateError(f"invalid balance JSON: {exc}") from exc
+
     if not isinstance(value, dict):
         raise GateError(f"expected JSON object: {path}")
     return value
@@ -386,26 +451,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> int:
     args = parse_args()
-    policy = load_json(POLICY_PATH)
-    validate_policy(policy)
+    try:
+        policy = load_json(POLICY_PATH)
+        validate_policy(policy)
 
-    if args.command == "validate-policy":
-        print(
-            "NEXT100-106 policy PASS "
-            f"identity={policy['policy_identity_sha256']}"
-        )
-        return
+        if args.command == "validate-policy":
+            print(
+                "NEXT100-106 policy PASS "
+                f"identity={policy['policy_identity_sha256']}"
+            )
+            return 0
 
-    vector = load_json(args.input)
-    result = evaluate(policy, vector)
-    payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-    if args.output:
-        args.output.write_text(payload, encoding="utf-8")
-    else:
-        print(payload, end="")
+        vector = load_json(args.input)
+        result = evaluate(policy, vector)
+        payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        if args.output:
+            args.output.write_text(payload, encoding="utf-8")
+        else:
+            print(payload, end="")
+        return 0
+    except (OSError, ValueError, UnicodeError, RecursionError, OverflowError) as exc:
+        print(json.dumps({"status": "BLOCKED_INVALID_INPUT", "error": str(exc)}, sort_keys=True))
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
