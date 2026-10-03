@@ -450,8 +450,12 @@ def test_rejects_excessively_nested_json_without_traceback(
     assert raw.count(marker) == 1
     value = "[" * depth + "2570" + "]" * depth
     path = tmp_path / "nested.json"
-    path.write_text(raw.replace(marker, f'"claim_issue": {value}', 1), encoding="utf-8")
-    with pytest.raises(CapacityReportError, match="depth or node limit|invalid capacity report JSON"):
+    path.write_text(
+        raw.replace(marker, f'"claim_issue": {value}', 1), encoding="utf-8"
+    )
+    with pytest.raises(
+        CapacityReportError, match="depth or node limit|invalid capacity report JSON"
+    ):
         load_and_validate(path)
 
 
@@ -474,7 +478,7 @@ def test_rejects_oversized_report_before_json_parse(tmp_path: Path) -> None:
 
 def test_rejects_invalid_utf8_without_traceback(tmp_path: Path) -> None:
     path = tmp_path / "invalid-utf8.json"
-    path.write_bytes(b"\\xff")
+    path.write_bytes(bytes([0xFF]))
     with pytest.raises(CapacityReportError, match="invalid capacity report JSON"):
         load_and_validate(path)
 
