@@ -237,6 +237,8 @@ def _check_bounded_json_tree(value: Any) -> None:
                 pending.append((child, depth + 1))
         elif isinstance(current, list):
             pending.extend((child, depth + 1) for child in current)
+        elif isinstance(current, float) and not math.isfinite(current):
+            fail("capacity report contains a nonfinite JSON number")
         elif current is not None and not isinstance(current, (str, int, float, bool)):
             fail("capacity report contains a non-JSON value")
 
