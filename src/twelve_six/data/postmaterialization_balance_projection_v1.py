@@ -1609,7 +1609,9 @@ def build_balance_result_binding(
     expected_physical = _family_vector_physical_authority(
         family_vector, family_identity
     )
-    if dict(physical) != expected_physical:
+    # A self-resealed input must not turn physical integer counts into floats
+    # (or booleans) merely because Python considers their values equal.
+    if _canonical_bytes(dict(physical)) != _canonical_bytes(expected_physical):
         raise ProjectionError("NEXT100-106 input physical authority mismatch")
 
     binding_common: dict[str, Any] = {
