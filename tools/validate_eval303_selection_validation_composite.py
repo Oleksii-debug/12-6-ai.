@@ -109,6 +109,8 @@ def _decode_json_object(raw: str, *, label: str) -> dict[str, object]:
         )
     except json.JSONDecodeError as exc:
         raise Eval303ValidationError(f'{label} contains invalid JSON') from exc
+    except RecursionError as exc:
+        raise Eval303ValidationError(f'{label} JSON nesting limit exceeded') from exc
     _require(type(value) is dict, f'{label} must contain a JSON object')
     return value
 
