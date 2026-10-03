@@ -991,7 +991,10 @@ def build_current_clean_family_vector(
     rebuilt_inventory = _rebuild_current_clean_survivor_inventory(
         survivor_records_raw
     )
-    if inventory != rebuilt_inventory:
+    # Plain Python mapping equality accepts 1 == 1.0 and False == 0.
+    # The supplied JSON inventory must match the physical rebuild in types
+    # as well as values, even if a caller supplies new self-consistent roots.
+    if _canonical_bytes(inventory) != _canonical_bytes(rebuilt_inventory):
         raise ProjectionError(
             "current-clean survivor inventory differs from rebuilt survivor JSONL"
         )
