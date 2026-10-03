@@ -22,12 +22,12 @@ from typing import Any
 SELECTION_SCHEMA = "12-6.d03-balanced-selection-authority.v1"
 APPLICATION_SCHEMA = "12-6.d03-balanced-split-application.v1"
 SPLIT_SPEC_SCHEMA = "12-6.d03-split-spec-authority.v1"
-CANONICAL_SPLIT_GIT_BLOB_SHA1 = "b7dff7683c7ef3d3492526c92935e40c500dfb5e"
+CANONICAL_SPLIT_GIT_BLOB_SHA1 = "da703286100bf8ea074c758f1722adbcd21f323f"
 CANONICAL_SPLIT_ALGORITHM = "cluster-hash-ranked-greedy-v1"
 CANONICAL_SPLIT_VARIANT_SEEDS = ("split-a", "split-b", "split-c")
 CANONICAL_SPLIT_VALIDATION_FRACTION = 0.2
 CANONICAL_SPLIT_SPEC_IDENTITY_SHA256 = (
-    "507d3e5980365fa9ddbe6abe52898b8b78b0db88b1ea8757bef2dc8758f06887"
+    "2309d094198cdd09e2795fd645ca878c58cbfa2cb9e3372b1b96a8e4bb61a018"
 )
 _ALLOWED_PURPOSES = frozenset({"pretraining", "pretraining_eligible", "training_eligible"})
 _FORBIDDEN_PURPOSES = frozenset(

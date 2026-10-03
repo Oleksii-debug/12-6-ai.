@@ -402,11 +402,7 @@ def verify_split_family_manifest(
     _require_sha256(claimed_family, "split_family_identity_sha256")
 
     validation_fraction = manifest.get("validation_fraction_requested")
-    if (
-        isinstance(validation_fraction, bool)
-        or not isinstance(validation_fraction, (int, float))
-        or not math.isfinite(float(validation_fraction))
-    ):
+    if not _is_finite_real(validation_fraction):
         raise SplitRobustnessError("validation_fraction_requested must be a finite number")
     algorithm = _require_text(manifest.get("algorithm"), "algorithm")
     spec = SplitFamilySpec(

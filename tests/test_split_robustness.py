@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 import pytest
 
@@ -286,3 +287,20 @@ def test_split_evidence_retains_deterministic_finite_identity() -> None:
     assert len(first["evidence_sha256"]) == 64
     assert first["nested"] == payload["nested"]
     assert payload == {"nested": {"score": 1.25, "count": 2}}
+
+
+def test_split_family_manifest_rejects_resigned_huge_fraction_without_overflow() -> None:
+    records, valid = _family()
+    manifest = dict(valid)
+    manifest["validation_fraction_requested"] = 10**400
+    core = {key: value for key, value in manifest.items() if key != "split_family_identity_sha256"}
+    canonical = (
+        json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+    manifest["split_family_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
+    with pytest.raises(
+        SplitRobustnessError,
+        match="validation_fraction_requested must be a finite number",
+    ):
+        verify_split_family_manifest(records, manifest)
