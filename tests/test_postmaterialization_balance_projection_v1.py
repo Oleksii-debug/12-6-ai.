@@ -212,6 +212,41 @@ def _target_rows() -> list[dict]:
     ]
 
 
+@pytest.mark.parametrize(
+    ("field", "replacement", "message"),
+    [
+        ("source_object_count", True, "source_object_count"),
+        ("source_object_count", 6.0, "source_object_count"),
+        ("record_count", 6.0, "record_count"),
+        ("total_payload_bytes", 6000.0, "total_payload_bytes"),
+        ("stratum_capacity_bytes.code", 2000.0, "stratum capacity"),
+        ("stratum_capacity_bytes.en", True, "stratum capacity"),
+        ("stratum_family_counts.uk", 2.0, "stratum family-count"),
+        ("stratum_family_counts.code", True, "stratum family-count"),
+    ],
+)
+def test_family_vector_rejects_self_resealed_scalar_type_aliases(
+    field: str, replacement: object, message: str,
+) -> None:
+    vector, _inventory, _evidence_doc = _build(_partial_rows())
+    if "." in field:
+        name, stratum = field.split(".", 1)
+        vector[name][stratum] = replacement
+    else:
+        vector[field] = replacement
+    vector["family_vector_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {key: value for key, value in vector.items()
+             if key != "family_vector_identity_sha256"}
+        )
+    ).hexdigest()
+    with pytest.raises(ProjectionError, match=message):
+        verify_postmaterialization_family_vector(
+            vector,
+            expected_identity_sha256=vector["family_vector_identity_sha256"],
+        )
+
+
 def test_postmaterialization_vector_binds_machine_inventory() -> None:
     vector, inventory, evidence = _build(_partial_rows())
     assert vector["schema"] == FAMILY_VECTOR_SCHEMA

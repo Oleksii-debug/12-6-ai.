@@ -1167,22 +1167,37 @@ def verify_postmaterialization_family_vector(
         by_stratum[str(row["stratum"])] += capacity
         counts[str(row["stratum"])] += 1
 
-    if total != document.get("total_payload_bytes"):
+    declared_bytes = _require_nonnegative_int(
+        document.get("total_payload_bytes"), "total_payload_bytes"
+    )
+    declared_records = _require_nonnegative_int(
+        document.get("record_count"), "record_count"
+    )
+    declared_sources = _require_nonnegative_int(
+        document.get("source_object_count"), "source_object_count"
+    )
+    if total != declared_bytes:
         raise ProjectionError("family vector payload-byte arithmetic mismatch")
-    if sum(row["record_count"] for row in families) != document.get("record_count"):
+    if sum(row["record_count"] for row in families) != declared_records:
         raise ProjectionError("family vector record-count arithmetic mismatch")
-    if document.get("source_object_count") > document.get("record_count"):
-        raise ProjectionError("source-object count exceeds record count")
+    if declared_sources <= 0 or declared_sources > declared_records:
+        raise ProjectionError("source-object count must be positive and not exceed record count")
     expected_strata = {
         stratum: by_stratum[stratum] for stratum in ("code", "en", "uk")
     }
-    if document.get("stratum_capacity_bytes") != expected_strata:
-        raise ProjectionError("family vector stratum capacity arithmetic mismatch")
     expected_counts = {
         stratum: counts[stratum] for stratum in ("code", "en", "uk")
     }
-    if document.get("stratum_family_counts") != expected_counts:
-        raise ProjectionError("family vector stratum family-count arithmetic mismatch")
+    for name, expected, label in (
+        ("stratum_capacity_bytes", expected_strata, "stratum capacity"),
+        ("stratum_family_counts", expected_counts, "stratum family-count"),
+    ):
+        observed = document.get(name)
+        if not isinstance(observed, Mapping) or set(observed) != set(expected):
+            raise ProjectionError(f"family vector {label} arithmetic mismatch")
+        for stratum, amount in expected.items():
+            if type(observed[stratum]) is not int or observed[stratum] != amount:
+                raise ProjectionError(f"family vector {label} arithmetic mismatch")
     expected_trusted = trusted_family_authority_root_sha256(seen)
     if document.get("trusted_family_authority_root_sha256") != expected_trusted:
         raise ProjectionError("trusted family authority root mismatch")
