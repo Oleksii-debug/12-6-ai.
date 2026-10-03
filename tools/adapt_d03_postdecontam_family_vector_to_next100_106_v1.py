@@ -236,9 +236,15 @@ def main() -> int:
                 args.expected_dedup_evidence_identity_sha256
             ),
         )
-        payload = (json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        try:
+            payload = (
+                json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+                + "\n"
+            ).encode("utf-8")
+        except (TypeError, ValueError, UnicodeError, OverflowError, RecursionError) as exc:
+            raise ProjectionError("adapter result cannot be encoded as strict UTF-8 JSON") from exc
         _write_new_output(
-            args.output, payload.encode("utf-8"),
+            args.output, payload,
             family_vector=args.family_vector,
             dedup_authority=args.dedup_authority,
         )
