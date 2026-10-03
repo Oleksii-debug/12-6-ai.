@@ -216,7 +216,33 @@ def _validate_clean_post_qp(report: dict[str, Any]) -> None:
         fail("EN necessary condition alone cannot prove balance feasibility")
 
 
+MAX_REPORT_BYTES = 1_048_576
+MAX_JSON_DEPTH = 64
+MAX_JSON_NODES = 10_000
+
+
+def _check_bounded_json_tree(value: Any) -> None:
+    """Bound the shape of both decoded and direct in-memory report inputs."""
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        current, depth = pending.pop()
+        nodes += 1
+        if nodes > MAX_JSON_NODES or depth > MAX_JSON_DEPTH:
+            fail("capacity report JSON exceeds depth or node limit")
+        if isinstance(current, dict):
+            for key, child in current.items():
+                if not isinstance(key, str):
+                    fail("capacity report JSON keys must be strings")
+                pending.append((child, depth + 1))
+        elif isinstance(current, list):
+            pending.extend((child, depth + 1) for child in current)
+        elif current is not None and not isinstance(current, (str, int, float, bool)):
+            fail("capacity report contains a non-JSON value")
+
+
 def validate_report(report: dict[str, Any], *, expected_main_sha: str | None = None) -> None:
+    _check_bounded_json_tree(report)
     report = json_object(report, "report")
     if set(report) != TOP:
         fail("report keys mismatch")
@@ -437,12 +463,24 @@ def _float(value: str) -> float:
 
 
 def load_and_validate(path: str | Path, *, expected_main_sha: str | None = None) -> dict[str, Any]:
-    report = json.loads(
-        Path(path).read_text(encoding="utf-8"),
-        object_pairs_hook=_duplicates,
-        parse_constant=_nonfinite,
-        parse_float=_float,
-    )
+    try:
+        with Path(path).open("rb") as source:
+            raw = source.read(MAX_REPORT_BYTES + 1)
+    except OSError as exc:
+        fail(f"cannot read capacity report: {exc}")
+    if len(raw) > MAX_REPORT_BYTES:
+        fail("capacity report exceeds byte limit")
+    try:
+        report = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_duplicates,
+            parse_constant=_nonfinite,
+            parse_float=_float,
+        )
+    except CapacityReportError:
+        raise
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+        fail(f"invalid capacity report JSON: {type(exc).__name__}")
     if not isinstance(report, dict):
         fail("report root must be an object")
     validate_report(report, expected_main_sha=expected_main_sha)
