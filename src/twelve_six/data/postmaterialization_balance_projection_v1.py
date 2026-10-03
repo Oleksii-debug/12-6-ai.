@@ -1062,6 +1062,45 @@ def build_current_clean_family_vector(
     return vector
 
 
+_FAMILY_VECTOR_COMMON_KEYS = {
+    "schema",
+    "status",
+    "source_git_sha",
+    "record_inventory_digest_sha256",
+    "payload_inventory_digest_sha256",
+    "record_count",
+    "total_payload_bytes",
+    "source_object_count",
+    "record_membership_sha256",
+    "trusted_family_authority_root_sha256",
+    "families",
+    "stratum_capacity_bytes",
+    "stratum_family_counts",
+    "next_gate",
+    "training_eligible",
+    "evaluation_eligible",
+    "tokenizer_fit_authorized",
+    "model_training_authorized",
+    "authorized_optimized_target_exposure",
+    "training_authorized_by_this_report",
+    "family_vector_identity_sha256",
+}
+_FAMILY_VECTOR_LEGACY_KEYS = _FAMILY_VECTOR_COMMON_KEYS | {
+    "materialization_identity_sha256",
+    "materialization_execution_head_sha",
+    "record_payload_jsonl_sha256",
+}
+_FAMILY_VECTOR_CURRENT_CLEAN_KEYS = _FAMILY_VECTOR_COMMON_KEYS | {
+    "current_clean_execution_head_sha",
+    "current_clean_receipt_identity_sha256",
+    "current_clean_repeat_proof_identity_sha256",
+    "composition_receipt_json_sha256",
+    "survivor_inventory_json_sha256",
+    "repeat_proof_json_sha256",
+    "survivor_records_jsonl_sha256",
+}
+
+
 def verify_postmaterialization_family_vector(
     document: Mapping[str, Any],
     *,
@@ -1070,6 +1109,13 @@ def verify_postmaterialization_family_vector(
     schema = document.get("schema")
     if schema not in {FAMILY_VECTOR_SCHEMA, CURRENT_CLEAN_FAMILY_VECTOR_SCHEMA}:
         raise ProjectionError("unsupported post-materialization family vector schema")
+    expected_keys = (
+        _FAMILY_VECTOR_LEGACY_KEYS
+        if schema == FAMILY_VECTOR_SCHEMA
+        else _FAMILY_VECTOR_CURRENT_CLEAN_KEYS
+    )
+    if set(document) != expected_keys:
+        raise ProjectionError("post-materialization family vector fields are not closed-world")
     claimed = _require_sha256(
         document.get("family_vector_identity_sha256"),
         "family_vector_identity_sha256",
