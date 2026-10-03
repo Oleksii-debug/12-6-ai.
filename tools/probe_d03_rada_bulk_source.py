@@ -170,16 +170,34 @@ def _zipinfo_is_symlink(info: zipfile.ZipInfo) -> bool:
     return stat.S_ISLNK(mode)
 
 
+_WINDOWS_DEVICE_NAMES = (
+    {"con", "prn", "aux", "nul"}
+    | {
+        f"{prefix}{digit}"
+        for prefix in ("com", "lpt")
+        for digit in "123456789¹²³"
+    }
+)
+
+
 def _safe_archive_name(name: str) -> bool:
     normalized = name.replace("\\", "/")
-    # Accept portable relative names and one optional directory trailing slash.
-    # Empty or dot components can alias a different ZIP entry on Windows/POSIX.
+    # Check every ZIP member, including ignored extras, before reading/pinning.
     if normalized.startswith("/") or ":" in normalized:
         return False
     parts = normalized.split("/")
     if normalized.endswith("/"):
         parts.pop()
-    return bool(parts) and all(part not in ("", ".", "..") for part in parts)
+    if not parts:
+        return False
+    for part in parts:
+        if part in ("", ".", "..") or part.endswith((" ", ".")):
+            return False
+        if any(ord(ch) < 32 or ch in '<>"|?*' for ch in part):
+            return False
+        if part.split(".", 1)[0].casefold() in _WINDOWS_DEVICE_NAMES:
+            return False
+    return True
 
 
 def _require_exact_mapping(
@@ -243,6 +261,7 @@ def _scan_archive(archive: bytes, config: dict[str, Any]) -> dict[str, Any]:
     max_total_uncompressed = int(policy["max_total_uncompressed_bytes"])
     rows: list[dict[str, Any]] = []
     seen_basenames: set[str] = set()
+    seen_portable_paths: dict[str, str] = {}
     total_uncompressed = 0
     ignored_files = 0
 
@@ -255,6 +274,14 @@ def _scan_archive(archive: bytes, config: dict[str, Any]) -> dict[str, Any]:
         for info in zf.infolist():
             if not _safe_archive_name(info.filename):
                 raise ProbeError(f"unsafe archive path: {info.filename!r}")
+            portable_path = info.filename.replace("\\", "/").removesuffix("/")
+            path_key = portable_path.casefold()
+            previous = seen_portable_paths.get(path_key)
+            if previous is not None and previous != portable_path:
+                raise ProbeError(
+                    f"case-folded ZIP path collision: {info.filename!r}"
+                )
+            seen_portable_paths.setdefault(path_key, portable_path)
             if _zipinfo_is_symlink(info):
                 raise ProbeError(f"symlink entry rejected: {info.filename!r}")
             if info.flag_bits & 0x1:

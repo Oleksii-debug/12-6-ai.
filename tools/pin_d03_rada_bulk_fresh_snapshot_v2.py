@@ -138,11 +138,12 @@ def _verify_archive_against_probe(
             # The checked probe rejects empty/dot segments. A directory
             # and a file with the same normalized target are also aliases.
             normalized_path = info.filename.replace("\\", "/").removesuffix("/")
+            portable_key = normalized_path.casefold()
             _require(
-                normalized_path not in seen_paths,
+                portable_key not in seen_paths,
                 f"duplicate retained ZIP path: {normalized_path}",
             )
-            seen_paths.add(normalized_path)
+            seen_paths.add(portable_key)
 
     _require(
         probe.get("archive") == observed["archive"],

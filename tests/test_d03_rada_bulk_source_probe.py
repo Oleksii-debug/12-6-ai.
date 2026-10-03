@@ -220,6 +220,49 @@ def test_rejects_windows_drive_and_ads_zip_paths(unsafe_path: str) -> None:
         observe_archive_inventory(archive, _config(min_entries=2))
 
 
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "docs/CON",
+        "docs/aux.txt",
+        "docs/LPT1.txt",
+        "docs/COM¹",
+        "docs/report.",
+        "docs/report ",
+        "docs/question?.txt",
+        "docs/control\x01.txt",
+    ],
+)
+def test_rejects_windows_reserved_and_invalid_ignored_paths(
+    unsafe_path: str,
+) -> None:
+    assert not probe_mod._safe_archive_name(unsafe_path)
+    archive = _archive(
+        {"d1.htm": b"a", "d2.htm": b"b", unsafe_path: b"unsafe"}
+    )
+    with pytest.raises(ProbeError, match="unsafe archive path"):
+        observe_archive_inventory(archive, _config(min_entries=2))
+
+
+def test_rejects_casefold_aliases_in_ignored_zip_entries() -> None:
+    archive = _archive(
+        {
+            "d1.htm": b"a",
+            "d2.htm": b"b",
+            "docs/README.txt": b"first",
+            "docs/readme.txt": b"second",
+        }
+    )
+    with pytest.raises(ProbeError, match="case-folded ZIP path collision"):
+        observe_archive_inventory(archive, _config(min_entries=2))
+
+
+def test_portable_zip_names_still_accepted() -> None:
+    assert probe_mod._safe_archive_name("docs/")
+    assert probe_mod._safe_archive_name("docs/README.txt")
+    assert probe_mod._safe_archive_name("zak/perv/text/d100.htm")
+
+
 def test_rejects_too_few_canonical_entries() -> None:
     archive = _archive({"d1.htm": b"a", "readme.txt": b"x"})
     with pytest.raises(ProbeError, match="below minimum"):

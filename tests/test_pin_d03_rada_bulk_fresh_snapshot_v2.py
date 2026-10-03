@@ -375,3 +375,33 @@ def test_duplicate_ignored_zip_path_fails_even_when_counted() -> None:
         pin.FreshSnapshotPinError, match="duplicate retained ZIP path"
     ):
         _pin(*inputs)
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    ["docs/CON", "docs/aux.txt", "docs/COM¹", "docs/report.", "docs/report "],
+)
+def test_resealed_reports_cannot_pin_windows_reserved_ignored_members(
+    unsafe_path: str,
+) -> None:
+    inputs = _with_extra_zip_members(
+        [(unsafe_path, b"unsafe")], account_ignored=True
+    )
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="original probe safety policy"
+    ):
+        _pin(*inputs)
+
+
+def test_resealed_reports_cannot_pin_casefold_ignored_member_alias() -> None:
+    inputs = _with_extra_zip_members(
+        [
+            ("docs/README.txt", b"first"),
+            ("docs/readme.txt", b"second"),
+        ],
+        account_ignored=True,
+    )
+    with pytest.raises(
+        pin.FreshSnapshotPinError, match="original probe safety policy"
+    ):
+        _pin(*inputs)
+
