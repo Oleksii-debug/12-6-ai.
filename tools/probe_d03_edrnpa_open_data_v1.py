@@ -14,6 +14,7 @@ import unicodedata
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -77,11 +78,17 @@ def md5(data: bytes) -> str:
     return hashlib.md5(data, usedforsecurity=False).hexdigest()
 
 
-def _hash_file(path: Path) -> tuple[int, str, str]:
+def _hash_file(
+    path: Path, *, snapshot_path: Path | None = None
+) -> tuple[int, str, str]:
+    """Hash the exact bytes copied to a private, create-only consumption snapshot."""
     md5_hash = hashlib.md5(usedforsecurity=False)
     sha_hash = hashlib.sha256()
     size = 0
-    with path.open("rb") as handle:
+    snapshot_context = (
+        snapshot_path.open("xb") if snapshot_path is not None else nullcontext()
+    )
+    with path.open("rb") as handle, snapshot_context as snapshot:
         while True:
             chunk = handle.read(1024 * 1024)
             if not chunk:
@@ -89,8 +96,13 @@ def _hash_file(path: Path) -> tuple[int, str, str]:
             size += len(chunk)
             if size > MAX_ARCHIVE_BYTES:
                 raise ProbeError("archive exceeds compressed-byte safety limit")
+            if snapshot is not None:
+                snapshot.write(chunk)
             md5_hash.update(chunk)
             sha_hash.update(chunk)
+        if snapshot is not None:
+            snapshot.flush()
+            os.fsync(snapshot.fileno())
     return size, md5_hash.hexdigest(), sha_hash.hexdigest()
 
 
@@ -596,10 +608,6 @@ def materialize_archive_path(
     """Materialize the exact nested EDRNPA source without loading multi-GB XML in memory."""
     if byte_cap < 1 or byte_cap > MAX_SELECTED_BYTES:
         raise ProbeError("byte_cap outside allowed range")
-    archive_size, observed_md5, source_sha256 = _hash_file(archive_path)
-    if observed_md5 != expected_md5 or source_sha256 != expected_sha256:
-        raise ProbeError("EDRNPA pinned resource digest mismatch")
-
     temp_ctx: tempfile.TemporaryDirectory[str] | None = None
     if work_dir is None:
         temp_ctx = tempfile.TemporaryDirectory(prefix="edrnpa-materialize-")
@@ -611,9 +619,15 @@ def materialize_archive_path(
         except FileExistsError as exc:
             raise ProbeError(f"refusing pre-existing work_dir: {root}") from exc
 
+    snapshot_path = root / "verified-source.zip"
     try:
+        archive_size, observed_md5, source_sha256 = _hash_file(
+            archive_path, snapshot_path=snapshot_path
+        )
+        if observed_md5 != expected_md5 or source_sha256 != expected_sha256:
+            raise ProbeError("EDRNPA pinned resource digest mismatch")
         nested_path = root / "nested-text.zip"
-        nested_name, nested_size = _extract_nested_zip(archive_path, nested_path)
+        nested_name, nested_size = _extract_nested_zip(snapshot_path, nested_path)
         nested, xml_info, xml_path = _nested_xml_info(nested_path)
         db_path = root / "candidates.sqlite3"
         conn = _create_candidate_db(db_path)
@@ -743,6 +757,7 @@ def materialize_archive_path(
         report["report_identity_sha256"] = sha256(cjson(report))
         return selected, report
     finally:
+        snapshot_path.unlink(missing_ok=True)
         if temp_ctx is not None:
             temp_ctx.cleanup()
 
