@@ -182,3 +182,28 @@ def test_split_application_rejects_resealed_accounting_type_aliases(
         authority._verify_split_application(
             application, selection, totals, **kwargs,
         )
+
+
+@pytest.mark.parametrize(
+    "invalid", [float("nan"), float("inf"), -float("inf"), chr(0xD800)],
+)
+def test_canonical_authority_hash_refuses_nonfinite_or_invalid_unicode(
+    invalid: object,
+) -> None:
+    with pytest.raises(authority.TokenizerDecisionError, match="strict UTF-8 JSON"):
+        authority.authority_sha256({"untrusted": invalid})
+
+
+def test_canonical_authority_hash_refuses_recursive_input() -> None:
+    recursive: dict[str, object] = {}
+    recursive["self"] = recursive
+    with pytest.raises(authority.TokenizerDecisionError, match="strict UTF-8 JSON"):
+        authority.authority_sha256(recursive)
+
+
+def test_canonical_authority_hash_preserves_finite_identity() -> None:
+    import hashlib
+
+    value = {"b": 2, "a": 1, "fraction": 0.25}
+    expected = hashlib.sha256(b'{"a":1,"b":2,"fraction":0.25}').hexdigest()
+    assert authority.authority_sha256(value) == expected
