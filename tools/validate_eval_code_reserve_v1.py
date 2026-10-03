@@ -279,6 +279,16 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
     _require_exact_integer(evidence.get("selection_validation_records_authorized"), 0, "evidence prematurely authorizes selection records")
     _require(evidence.get("status") == doc.get("terminal_status"), "evidence/contract status drift")
     _require(
+        evidence.get("completed_gate")
+        == "IMMUTABLE_RAW_BYTES_MATERIALIZED_AND_SHA256_SEALED"
+        and doc.get("completed_successor_gates") == [evidence["completed_gate"]],
+        "evidence completed-gate mismatch",
+    )
+    _require_exact_integer(
+        evidence.get("reservation_authority_issue"), 647,
+        "evidence reservation authority issue drift",
+    )
+    _require(
         type(evidence.get("remaining_gates")) is list
         and evidence["remaining_gates"] == list(REQUIRED_PENDING_GATES)
         and evidence["remaining_gates"] == doc.get("remaining_successor_gates"),
@@ -287,6 +297,7 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
     expected_by_repo = {row["repository"]: row for row in EXPECTED}
     observed = evidence.get("objects")
     _require(isinstance(observed, list) and len(observed) == 2, "evidence object count drift")
+    seen_repositories: set[str] = set()
     for row in observed:
         _require(type(row) is dict, "evidence reserved object must be an object")
         _require_exact_fields(row, {
@@ -298,15 +309,22 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
         }, "evidence reserved object")
         expected = expected_by_repo.get(row.get("repository"))
         _require(expected is not None, "unexpected evidence repository")
+        _require(row["repository"] not in seen_repositories, "duplicate evidence repository")
+        seen_repositories.add(row["repository"])
         for key in ("source_family", "repository", "revision", "path", "git_blob_sha1", "raw_sha256", "license_spdx"):
             _require(row.get(key) == expected.get(key), f"evidence identity drift: {key}")
         license_expected = EXPECTED_LICENSES[row["repository"]]
         for key, value in license_expected.items():
             _require(row.get(key) == value, f"evidence license identity drift: {key}")
         _require_exact_integer(row.get("raw_bytes"), expected["expected_raw_bytes"], "evidence raw byte-count drift")
+        _require(
+            row.get("evaluation_use") == "selection_validation",
+            "evidence purpose drift",
+        )
         _require(row.get("training_allowed") is False, "evidence training boundary widened")
         _require(row.get("tokenizer_fit_allowed") is False, "evidence tokenizer boundary widened")
         _require(row.get("permanent_future_training_exclusion") is True, "evidence future exclusion missing")
+    _require(seen_repositories == set(expected_by_repo), "evidence family membership drift")
     reservation = doc.get("reservation")
     _require(
         type(reservation) is dict
