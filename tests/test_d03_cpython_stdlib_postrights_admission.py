@@ -374,8 +374,15 @@ def test_complete_tree_snapshot_uses_python_codepoint_order(
 
 def test_exact_upstream_tree_python_order_replay_when_requested() -> None:
     """Optional physical Python replay: do not substitute synthetic fixtures."""
-    if os.environ.get("TWELVE_SIX_CPYTHON_TREE_LIVE_REPLAY") != "1":
-        pytest.skip("explicit immutable upstream tree replay not requested")
+    canonical_ci = (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+        and os.environ.get("GITHUB_REPOSITORY") == "Oleksii-debug/12-6-ai."
+        and os.environ.get("GITHUB_HEAD_REF")
+        == "swarm/1378-cpython-stdlib-rights"
+    )
+    if not canonical_ci and os.environ.get("TWELVE_SIX_CPYTHON_TREE_LIVE_REPLAY") != "1":
+        pytest.skip("explicit or same-repo PR2390 live replay not requested")
     authority = rights.fetch_pinned_tree_authority()
     snapshot, evidence = rights._validated_tree_snapshot(authority)
     assert snapshot["LICENSE"] == ROOT_LICENSE_BLOB_SHA1
