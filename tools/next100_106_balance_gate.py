@@ -237,9 +237,27 @@ def validate_vector(vector: dict[str, Any]) -> list[dict[str, Any]]:
         by_stratum.values()
     ):
         raise GateError("declared total_unique_bytes mismatch")
-    if declared.get("by_stratum") != {key: by_stratum[key] for key in STRATA}:
+    by_stratum_claim = declared.get("by_stratum")
+    if (
+        not isinstance(by_stratum_claim, dict)
+        or set(by_stratum_claim) != set(STRATA)
+        or any(
+            type(by_stratum_claim[key]) is not int
+            or by_stratum_claim[key] != by_stratum[key]
+            for key in STRATA
+        )
+    ):
         raise GateError("declared by_stratum totals mismatch")
-    if declared.get("family_count") != {key: counts[key] for key in STRATA}:
+    family_count_claim = declared.get("family_count")
+    if (
+        not isinstance(family_count_claim, dict)
+        or set(family_count_claim) != set(STRATA)
+        or any(
+            type(family_count_claim[key]) is not int
+            or family_count_claim[key] != counts[key]
+            for key in STRATA
+        )
+    ):
         raise GateError("declared family_count mismatch")
 
     return sorted(normalized, key=lambda item: item["family_id"])
