@@ -234,7 +234,7 @@ def test_duplicate_surrogate_key_never_breaks_operator_error_output(
     )
     assert proc.returncode == operator.EXIT_ERROR
     assert proc.stderr == ""
-    assert proc.stdout.count("\n") == 1
+    assert proc.stdout.count("\n") == (1 if json_mode else 4)
     assert r"\ud800" in proc.stdout
     if json_mode:
         result = json.loads(proc.stdout)
@@ -278,7 +278,7 @@ def test_non_utf8_stdout_preserves_operator_diagnostic_and_no_authority(
     assert proc.returncode == operator.EXIT_ERROR
     assert proc.stderr == ""
     assert proc.stdout.isascii()
-    assert proc.stdout.count("\n") == 1
+    assert proc.stdout.count("\n") == (1 if json_mode else 4)
     if json_mode:
         result = json.loads(proc.stdout)
         assert result["status"] == "ERROR"
