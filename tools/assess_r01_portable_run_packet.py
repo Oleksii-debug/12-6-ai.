@@ -35,12 +35,15 @@ def _parse_finite_float(value: str) -> float:
 
 
 def _load_packet(path: Path) -> dict[str, Any]:
-    payload = json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=_reject_duplicate_object,
-        parse_constant=_reject_nonfinite_constant,
-        parse_float=_parse_finite_float,
-    )
+    try:
+        payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        raise ValueError("JSON nesting exceeds decoder limit") from exc
     if not isinstance(payload, dict):
         raise ValueError("run packet root must be an object")
     return payload

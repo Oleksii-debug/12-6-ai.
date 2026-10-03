@@ -101,3 +101,39 @@ def test_main_reports_missing_file_without_traceback(
     payload = json.loads(captured.out)
     assert payload["contract_valid"] is False
     assert captured.err == ""
+
+
+@pytest.mark.parametrize("kind", ("array", "object"))
+def test_nesting_depth_is_a_controlled_input_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: str
+) -> None:
+    cli = _load_cli()
+    depth = 10_000
+    raw = ("[" * depth + "0" + "]" * depth) if kind == "array" else (
+        '{"item":' * depth + "0" + "}" * depth
+    )
+    path = _write(tmp_path, raw)
+    with pytest.raises(ValueError, match="JSON nesting exceeds decoder limit"):
+        cli._load_packet(path)
+    assert cli.main(["assess_r01_portable_run_packet.py", str(path)]) == 2
+    output = capsys.readouterr()
+    assert output.err == ""
+    report = json.loads(output.out)
+    assert report["contract_valid"] is False
+    assert report["error"] == "JSON nesting exceeds decoder limit"
+
+
+def test_assessor_programmer_recursion_is_not_swallowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli = _load_cli()
+    path = _write(tmp_path, "{}")
+
+    def fail_assessor(_payload: object) -> None:
+        raise RecursionError("programmer error inside assessment")
+
+    monkeypatch.setattr(cli, "assess_portable_run_packet", fail_assessor)
+    with pytest.raises(RecursionError, match="programmer error inside assessment"):
+        cli.main(["assess_r01_portable_run_packet.py", str(path)])
+    assert capsys.readouterr().out == ""
