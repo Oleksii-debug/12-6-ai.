@@ -68,6 +68,12 @@ def _require(condition: bool, message: str) -> None:
 def _require_exact_integer(value: object, expected: int, message: str) -> None:
     _require(type(value) is int and value == expected, message)
 
+def _require_exact_fields(value: object, expected: set[str], label: str) -> None:
+    _require(
+        type(value) is dict and set(value) == expected,
+        f"{label} fields are not closed-world",
+    )
+
 
 def _canonical_bytes(value: object) -> bytes:
     return json.dumps(
@@ -148,6 +154,12 @@ def _load_mapping(path: Path) -> dict[str, Any]:
 def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     _require(type(doc) is dict, "reservation document must be a JSON object")
     _require_finite_json_value(doc, label="reservation document")
+    _require_exact_fields(doc, {
+        "schema_version", "worker_id", "issue", "execution_class",
+        "purpose", "predecessor", "reservation", "objects",
+        "materialization_evidence", "completed_successor_gates",
+        "remaining_successor_gates", "terminal_status", "truth_boundary",
+    }, "reservation contract")
     _require(doc.get("schema_version") == "12-6.eval-code-reserve-v1.contract.v1", "schema drift")
     _require(doc.get("worker_id") == "EVAL-647-CODE-SELECTION-RESERVE-V1", "worker drift")
     _require_exact_integer(doc.get("issue"), 647, "issue binding drift")
@@ -155,11 +167,20 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     _require(doc.get("purpose") == "selection_validation_only", "purpose drift")
     predecessor = doc.get("predecessor")
     _require(type(predecessor) is dict, "predecessor must be a JSON object")
+    _require_exact_fields(predecessor, {"worker_id", "head_sha"}, "predecessor")
     _require(predecessor.get("worker_id") == "NEXT100-057-CODE-EVAL-SET-V2", "predecessor worker drift")
     _require(predecessor.get("head_sha") == "6713fe972b875b8a516122bda347264fb4099b2b", "predecessor head drift")
 
     reservation = doc.get("reservation")
     _require(type(reservation) is dict, "reservation must be a JSON object")
+    _require_exact_fields(reservation, {
+        "effective_at_utc", "minimum_independent_families", "final_test",
+        "final_test_payload_access_allowed", "final_test_outcome_access_allowed",
+        "training_allowed", "tokenizer_fit_allowed",
+        "permanent_future_training_exclusion", "historical_training_exposure_required",
+        "historical_tokenizer_fit_exposure_required", "training_overlap_required",
+        "raw_payload_persisted_in_repository",
+    }, "reservation")
     _require(reservation.get("effective_at_utc") == "2026-08-26T19:46:57Z", "reservation timestamp drift")
     _require_exact_integer(reservation.get("minimum_independent_families"), 2, "family minimum drift")
     _require(reservation.get("final_test") is False, "final-test boundary widened")
@@ -177,6 +198,10 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     _require(isinstance(objects, list) and len(objects) == 2, "exact two-object reservation required")
     for observed, expected in zip(objects, EXPECTED, strict=True):
         _require(type(observed) is dict, "reserved object must be an object")
+        _require_exact_fields(observed, set(expected) | {
+            "evaluation_use", "training_allowed", "tokenizer_fit_allowed",
+            "permanent_future_training_exclusion",
+        }, "reserved object")
         for key, value in expected.items():
             _require(
                 type(observed.get(key)) is type(value) and observed.get(key) == value,
@@ -198,10 +223,17 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     _require(doc.get("terminal_status") == "EXACT_RAW_OBJECTS_SEALED_PENDING_PROJECT_OVERLAP_AUDIT", "terminal status drift")
     evidence_ref = doc.get("materialization_evidence")
     _require(type(evidence_ref) is dict, "materialization evidence reference must be an object")
+    _require_exact_fields(evidence_ref, {"path", "identity_sha256"}, "evidence reference")
     _require(evidence_ref.get("path") == "evidence/eval647/code_selection_source_materialization_v1.json", "evidence path drift")
     _require(evidence_ref.get("identity_sha256") == EXPECTED_EVIDENCE_IDENTITY, "evidence identity drift")
     truth = doc.get("truth_boundary")
     _require(type(truth) is dict, "reservation truth boundary must be an object")
+    _require_exact_fields(truth, {
+        "selection_validation_records_authorized", "final_test_touched",
+        "model_training_authorized", "optimizer_updates_authorized",
+        "tokenizer_fit_authorized", "training_executed",
+        "learned_weights_created", "paid_compute_used",
+    }, "reservation truth boundary")
     _require_exact_integer(truth.get("selection_validation_records_authorized"), 0, "selection records prematurely authorized")
     _require(truth.get("final_test_touched") is False, "final test touched")
     _require(truth.get("model_training_authorized") is False, "model training prematurely authorized")
@@ -223,6 +255,16 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
     _require(type(evidence) is dict, "materialization evidence must be a JSON object")
     _require_finite_json_value(doc, label="reservation document")
     _require_finite_json_value(evidence, label="materialization evidence")
+    _require_exact_fields(evidence, {
+        "completed_gate", "discovery_head_sha", "evidence_identity_sha256",
+        "execution_profile", "object_set_identity_sha256", "objects",
+        "raw_payload_persisted_in_repository", "remaining_gates",
+        "repeat_execution_byte_identical", "repeat_materializations",
+        "reservation_authority_issue", "schema_version",
+        "selection_validation_records_authorized", "status",
+        "swarm_control_issue", "truth_boundary", "worker_id",
+        "workflow_conclusion", "workflow_job_id", "workflow_run_id",
+    }, "materialization evidence")
     _require(evidence.get("schema_version") == "12-6.eval-code-reserve-v1.source-materialization-terminal.v1", "evidence schema drift")
     claimed = evidence.get("evidence_identity_sha256")
     _require(claimed == EXPECTED_EVIDENCE_IDENTITY, "evidence claimed identity drift")
@@ -247,6 +289,13 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
     _require(isinstance(observed, list) and len(observed) == 2, "evidence object count drift")
     for row in observed:
         _require(type(row) is dict, "evidence reserved object must be an object")
+        _require_exact_fields(row, {
+            "evaluation_use", "git_blob_sha1", "license_git_blob_sha1",
+            "license_path", "license_raw_sha256", "license_spdx", "path",
+            "permanent_future_training_exclusion", "raw_bytes", "raw_sha256",
+            "repository", "revision", "source_family",
+            "tokenizer_fit_allowed", "training_allowed",
+        }, "evidence reserved object")
         expected = expected_by_repo.get(row.get("repository"))
         _require(expected is not None, "unexpected evidence repository")
         for key in ("source_family", "repository", "revision", "path", "git_blob_sha1", "raw_sha256", "license_spdx"):
@@ -274,6 +323,13 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
     )
     truth = evidence.get("truth_boundary")
     _require(type(truth) is dict, "evidence truth boundary must be an object")
+    _require_exact_fields(truth, {
+        "external_llm_or_api_used_for_data_or_intelligence",
+        "final_test_outcomes_read", "final_test_payload_accessed",
+        "foreign_pretrained_weights_used", "learned_weights_created",
+        "model_training_authorized", "optimizer_updates_authorized",
+        "paid_compute_used", "tokenizer_fit_authorized", "training_executed",
+    }, "evidence truth boundary")
     for key in ("final_test_outcomes_read", "final_test_payload_accessed", "model_training_authorized", "tokenizer_fit_authorized", "training_executed", "learned_weights_created", "paid_compute_used", "foreign_pretrained_weights_used", "external_llm_or_api_used_for_data_or_intelligence"):
         _require(truth.get(key) is False, f"evidence truth boundary widened: {key}")
     _require_exact_integer(truth.get("optimizer_updates_authorized"), 0, "evidence optimizer authority widened")
