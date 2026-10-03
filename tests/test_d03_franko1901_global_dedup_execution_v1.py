@@ -1085,6 +1085,59 @@ def test_preexisting_authority_fails_before_incomplete_marker(tmp_path: Path) ->
     assert not outputs[1][0].exists()
 
 
+
+def test_publication_manifest_json_is_bounded_and_strict(tmp_path: Path) -> None:
+    mod = _load()
+    manifest = tmp_path / "manifest.json"
+    bad_inputs = (
+        b'{"a":1,"a":1}\n',
+        b'{"a":NaN}\n',
+        b'{"a":1.25}\n',
+        b'{"a":' + b'[' * 3000 + b'0' + b']' * 3000 + b'}\n',
+        b"x" * (mod.PUBLICATION_MANIFEST_MAX_BYTES + 1),
+    )
+    for payload in bad_inputs:
+        manifest.write_bytes(payload)
+        with pytest.raises(mod.Franko1901GlobalDedupError, match="unreadable"):
+            mod._load_publication_manifest(manifest)
+
+
+def test_publication_manifest_rejects_extra_root_key(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = (
+        (tmp_path / "report.json", {"kind": "report"}),
+        (tmp_path / "survivors.json", {"kind": "survivors"}),
+        (tmp_path / "evidence.json", {"kind": "evidence"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    _, manifest_path, stages, pathset_id = mod._publication_control_paths(prepared)
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    manifest["extra"] = "forbidden"
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    manifest_path.write_bytes(mod._canonical(manifest) + b"\n")
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="keys invalid"):
+        mod._load_publication_manifest(manifest_path)
+
+
+def test_publish_rejects_resolved_output_aliases(tmp_path: Path) -> None:
+    mod = _load()
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    direct = tmp_path / "same.json"
+    alias = nested / ".." / "same.json"
+    assert direct != alias
+    assert direct.resolve() == alias.resolve()
+    with pytest.raises(mod.Franko1901GlobalDedupError, match="duplicate output path"):
+        mod._publish_json_outputs(((direct, {"a": 1}), (alias, {"b": 2})))
+    assert not direct.exists()
+
 def test_no_training_or_capacity_promotion_in_execution_evidence() -> None:
     raw = MODULE.read_text(encoding="utf-8")
     assert '"canonical_capacity_credited": 0' in raw
