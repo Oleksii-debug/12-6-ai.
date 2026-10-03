@@ -94,6 +94,11 @@ def _json_finite_float(token: str) -> float:
     value = float(token)
     if not math.isfinite(value):
         raise ValueError(f"non_finite_number:{token}")
+    # Do not turn a nonzero budget (or other evidence) into exact zero via
+    # IEEE-754 underflow before the LOCAL_FREE policy checks its JSON value.
+    significand = token.split("e", 1)[0].split("E", 1)[0]
+    if value == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero_number_underflowed_to_zero")
     return value
 
 

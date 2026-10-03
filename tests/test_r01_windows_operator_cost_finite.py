@@ -148,3 +148,53 @@ def test_safe_stop_status_fails_closed_on_malformed_marker(
         "marker": None,
         "errors": ["safe_stop_marker_invalid_json"],
     }
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "1e-9999",
+        "-1e-9999",
+        "0.000000000000000000000001e-9999",
+        "-0.000000000000000000000001e-9999",
+    ],
+)
+def test_nonzero_json_cost_cannot_underflow_to_free(
+    tmp_path: Path, token: str, capsys: pytest.CaptureFixture[str],
+) -> None:
+    profile, packet = _inputs()
+    profile_path = tmp_path / "профіль.json"
+    packet_path = tmp_path / "пакет.json"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+    payload = json.dumps(packet)
+    marker = '"maximum_cost_usd": 0'
+    assert payload.count(marker) == 1
+    packet_path.write_text(
+        payload.replace(marker, f'"maximum_cost_usd": {token}'),
+        encoding="utf-8",
+    )
+
+    code = operator.main([
+        "--profile", str(profile_path),
+        "--packet", str(packet_path),
+        "--json", "verify", "--target", "20m",
+    ])
+    captured = capsys.readouterr()
+    assert code == operator.EXIT_ERROR
+    assert captured.err == ""
+    assert captured.out.count("\n") == 1
+    result = json.loads(captured.out)
+    assert result["status"] == "ERROR"
+    assert "nonzero_number_underflowed_to_zero" in result["error"]
+    assert result["launch_authorized"] is False
+    assert result["training_authorized"] is False
+
+
+@pytest.mark.parametrize("token", ["0e-9999", "-0.000e-9999", "0.0"])
+def test_lexical_zero_json_float_remains_readable(
+    tmp_path: Path, token: str,
+) -> None:
+    path = tmp_path / "нуль.json"
+    path.write_text('{"cost": ' + token + '}', encoding="utf-8")
+    parsed, _digest = operator._read_json_file(path)
+    assert parsed == {"cost": 0.0}
