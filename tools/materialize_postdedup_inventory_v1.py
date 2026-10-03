@@ -36,12 +36,15 @@ def _parse_finite_float(value: str) -> float:
 
 
 def _load(path: Path) -> dict[str, Any]:
-    value = json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=_reject_duplicate_object,
-        parse_constant=_reject_nonfinite_constant,
-        parse_float=_parse_finite_float,
-    )
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        raise ValueError("postdedup input JSON nesting limit exceeded") from exc
     if not isinstance(value, dict):
         raise TypeError(f"{path} must contain a JSON object")
     return value
