@@ -8,7 +8,6 @@ import hashlib
 import json
 import math
 import os
-import shutil
 import stat
 import sys
 import tempfile
@@ -92,6 +91,13 @@ def _parse_finite_float(value: str) -> float:
     return parsed
 
 
+def _parse_bounded_int(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise Eval303ValidationError('JSON integer exceeds interpreter limit') from exc
+
+
 def _decode_json_object(raw: str, *, label: str) -> dict[str, object]:
     try:
         value = json.loads(
@@ -99,6 +105,7 @@ def _decode_json_object(raw: str, *, label: str) -> dict[str, object]:
             object_pairs_hook=_reject_duplicate_pairs,
             parse_constant=_reject_constant,
             parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
         )
     except json.JSONDecodeError as exc:
         raise Eval303ValidationError(f'{label} contains invalid JSON') from exc
@@ -287,6 +294,47 @@ def _publish_directory_noreplace(staging: Path, destination: Path) -> None:
     )
 
 
+def _assert_private_entry(
+    path: Path, original: os.stat_result, *, directory: bool
+) -> None:
+    current = path.lstat()
+    correct_type = (
+        stat.S_ISDIR(current.st_mode)
+        if directory else stat.S_ISREG(current.st_mode)
+    )
+    if (
+        not correct_type
+        or (current.st_dev, current.st_ino)
+        != (original.st_dev, original.st_ino)
+    ):
+        raise Eval303ValidationError(
+            'private materialization staging path changed; refusing cleanup'
+        )
+
+
+def _cleanup_private_stage(
+    staging: Path,
+    created: os.stat_result,
+    created_files: dict[Path, os.stat_result],
+    created_dirs: dict[Path, os.stat_result],
+) -> None:
+    """Remove only known private files/dirs, never recurse into an untrusted path."""
+    _assert_private_entry(staging, created, directory=True)
+    for path, identity in reversed(list(created_files.items())):
+        _assert_private_entry(staging, created, directory=True)
+        _assert_private_entry(path, identity, directory=False)
+        path.unlink()
+    directories = sorted(
+        created_dirs.items(), key=lambda item: len(item[0].parts), reverse=True
+    )
+    for path, identity in directories:
+        _assert_private_entry(staging, created, directory=True)
+        _assert_private_entry(path, identity, directory=True)
+        path.rmdir()
+    _assert_private_entry(staging, created, directory=True)
+    staging.rmdir()
+
+
 def materialize(repo_root: Path, output_dir: Path) -> None:
     """Copy authenticated files to a NEW directory without deleting user data."""
     verify(repo_root)
@@ -299,28 +347,40 @@ def materialize(repo_root: Path, output_dir: Path) -> None:
         prefix=f'.{output_dir.name}.staging-', dir=output_dir.parent
     ))
     created = staging.lstat()
+    created_files: dict[Path, os.stat_result] = {}
+    created_dirs: dict[Path, os.stat_result] = {}
     try:
         for rel in (MANIFEST, MEMBERSHIP, PROOF):
+            _assert_private_entry(staging, created, directory=True)
             src = repo_root / rel
             dst = staging / rel
-            dst.parent.mkdir(parents=True, exist_ok=True)
+            ancestors: list[Path] = []
+            parent = dst.parent
+            while parent != staging:
+                ancestors.append(parent)
+                parent = parent.parent
+            for folder in reversed(ancestors):
+                if folder not in created_dirs:
+                    folder.mkdir()
+                    created_dirs[folder] = folder.lstat()
+                else:
+                    _assert_private_entry(
+                        folder, created_dirs[folder], directory=True
+                    )
             with dst.open('xb') as handle:
+                created_files[dst] = os.fstat(handle.fileno())
                 handle.write(src.read_bytes())
-        # Verify exact copied bytes before publication, even if source paths changed.
+        # Authenticate copied bytes before atomic no-replace publication.
         verify(staging)
         _publish_directory_noreplace(staging, output_dir)
         staging = None
     finally:
         if staging is not None:
-            current = staging.lstat()
-            if (
-                not stat.S_ISDIR(current.st_mode)
-                or (current.st_dev, current.st_ino) != (created.st_dev, created.st_ino)
-            ):
-                raise Eval303ValidationError(
-                    'private materialization staging path changed; refusing cleanup'
-                )
-            shutil.rmtree(staging)
+            _cleanup_private_stage(
+                staging, created, created_files, created_dirs
+            )
+
+
 
 
 def main() -> int:

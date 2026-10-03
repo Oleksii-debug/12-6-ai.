@@ -300,3 +300,111 @@ def test_verify_cli_unexpected_error_is_not_hidden(
     )
     with pytest.raises(RuntimeError, match="unexpected programming error"):
         VALIDATOR.main()
+
+
+def test_strict_decoder_rejects_integer_exceeding_interpreter_limit() -> None:
+    limit = sys.get_int_max_str_digits()
+    if limit == 0:
+        pytest.skip("Python integer digit limit is disabled")
+    raw = '{"value":' + '9' * (limit + 1) + '}'
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError,
+        match="JSON integer exceeds interpreter limit",
+    ):
+        VALIDATOR._decode_json_object(raw, label="fixture")
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [VALIDATOR.MANIFEST, VALIDATOR.PROOF, VALIDATOR.MEMBERSHIP],
+)
+def test_verify_cli_rejects_oversized_json_integer_as_one_error(
+    tmp_path: Path, relative: Path
+) -> None:
+    limit = sys.get_int_max_str_digits()
+    if limit == 0:
+        pytest.skip("Python integer digit limit is disabled")
+    for original in (VALIDATOR.MANIFEST, VALIDATOR.PROOF, VALIDATOR.MEMBERSHIP):
+        target = tmp_path / original
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / original).read_bytes())
+    (tmp_path / relative).write_text(
+        '{"count":' + '9' * (limit + 1) + '}\n', encoding="utf-8"
+    )
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "verify", "--repo-root", str(tmp_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert len(result.stdout.splitlines()) == 1
+    failure = json.loads(result.stdout)
+    assert failure["status"] == "FAIL"
+    assert "JSON integer exceeds interpreter limit" in failure["error"]
+
+
+def test_private_cleanup_rejects_staging_path_swap_and_preserves_other_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "unpublished"
+    unrelated = tmp_path / "user data"
+    unrelated.mkdir()
+    (unrelated / "keep.txt").write_text("preserve me", encoding="utf-8")
+    original_verify = VALIDATOR.verify
+    original_check = VALIDATOR._assert_private_entry
+    race = {"armed": False, "swapped": False}
+
+    def force_staging_failure(root: Path) -> dict:
+        if root != ROOT:
+            race["armed"] = True
+            raise VALIDATOR.Eval303ValidationError("staging verification failed")
+        return original_verify(root)
+
+    def swap_after_first_check(path: Path, identity, *, directory: bool) -> None:
+        original_check(path, identity, directory=directory)
+        if race["armed"] and not race["swapped"] and path.name.startswith(
+            ".unpublished.staging-"
+        ):
+            path.rename(tmp_path / "original stage retained")
+            unrelated.rename(path)
+            race["swapped"] = True
+
+    monkeypatch.setattr(VALIDATOR, "verify", force_staging_failure)
+    monkeypatch.setattr(VALIDATOR, "_assert_private_entry", swap_after_first_check)
+    with pytest.raises(
+        VALIDATOR.Eval303ValidationError,
+        match="private materialization staging path changed",
+    ):
+        VALIDATOR.materialize(ROOT, output)
+    assert race["swapped"]
+    assert not output.exists()
+    candidates = list(tmp_path.glob(".unpublished.staging-*"))
+    assert len(candidates) == 1
+    assert (candidates[0] / "keep.txt").read_text(encoding="utf-8") == "preserve me"
+    assert (tmp_path / "original stage retained").is_dir()
+
+
+def test_private_cleanup_never_deletes_unexpected_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "unexpected"
+    original_verify = VALIDATOR.verify
+    injected = []
+
+    def inject_unexpected_entry(root: Path) -> dict:
+        if root != ROOT:
+            extra = root / "unrelated extra.txt"
+            extra.write_text("preserve me", encoding="utf-8")
+            injected.append(extra)
+            raise VALIDATOR.Eval303ValidationError("staging verification failed")
+        return original_verify(root)
+
+    monkeypatch.setattr(VALIDATOR, "verify", inject_unexpected_entry)
+    with pytest.raises(OSError):
+        VALIDATOR.materialize(ROOT, output)
+    assert not output.exists()
+    assert len(injected) == 1
+    assert injected[0].read_text(encoding="utf-8") == "preserve me"
