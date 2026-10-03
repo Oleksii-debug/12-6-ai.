@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -198,3 +201,48 @@ def test_lexical_zero_json_float_remains_readable(
     path.write_text('{"cost": ' + token + '}', encoding="utf-8")
     parsed, _digest = operator._read_json_file(path)
     assert parsed == {"cost": 0.0}
+
+
+@pytest.mark.parametrize("broken_input", ["profile", "packet"])
+@pytest.mark.parametrize("json_mode", [True, False], ids=["json", "text"])
+def test_duplicate_surrogate_key_never_breaks_operator_error_output(
+    tmp_path: Path, broken_input: str, json_mode: bool,
+) -> None:
+    malformed = tmp_path / "некоректний Unicode.json"
+    malformed.write_text(
+        r'{"\ud800": 1, "\ud800": 2}',
+        encoding="utf-8",
+    )
+    profile = malformed if broken_input == "profile" else PROFILE
+    packet = malformed if broken_input == "packet" else PACKET
+    args = [
+        sys.executable,
+        "-m", "twelve_six.windows_operator_preflight",
+        "--profile", str(profile),
+        "--packet", str(packet),
+    ]
+    if json_mode:
+        args.append("--json")
+    args.extend(["verify", "--target", "20m"])
+    proc = subprocess.run(
+        args,
+        cwd=ROOT,
+        env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == operator.EXIT_ERROR
+    assert proc.stderr == ""
+    assert proc.stdout.count("\n") == 1
+    assert r"\ud800" in proc.stdout
+    if json_mode:
+        result = json.loads(proc.stdout)
+        assert result["status"] == "ERROR"
+        assert "duplicate_object_key:" in result["error"]
+        assert result["launch_authorized"] is False
+        assert result["training_authorized"] is False
+    else:
+        assert "OPERATOR_STATUS: ERROR" in proc.stdout
+        assert "LAUNCH_AUTHORIZED: false" in proc.stdout
+        assert "TRAINING_AUTHORIZED: false" in proc.stdout

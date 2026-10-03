@@ -765,11 +765,14 @@ def _render_text(result: Mapping[str, Any]) -> str:
 
 
 def _print_result(result: Mapping[str, Any], *, as_json: bool) -> None:
-    print(
-        json.dumps(result, sort_keys=True, ensure_ascii=False)
-        if as_json
-        else _render_text(result)
-    )
+    if as_json:
+        rendered = json.dumps(result, sort_keys=True, ensure_ascii=False)
+        # A rejected duplicate JSON member can contain an unpaired surrogate.
+        # Escape only unencodable characters; retain valid Ukrainian text.
+        rendered = rendered.encode("utf-8", errors="backslashreplace").decode("utf-8")
+    else:
+        rendered = _render_text(result)
+    print(rendered)
 
 
 def main(argv: list[str] | None = None) -> int:
