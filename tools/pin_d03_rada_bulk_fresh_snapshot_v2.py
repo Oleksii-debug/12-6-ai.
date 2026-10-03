@@ -15,10 +15,12 @@ from typing import Any
 from qualify_d03_rada_bulk_fresh_snapshot_v2 import (
     FreshSnapshotQualificationError,
     _canonical,
+    _strict_json,
     _validate_config,
     _validate_report,
     _validate_rights,
     attribution_text,
+    qualify_two_clean_probes,
 )
 
 SCHEMA = "12-6.d03-rada-bulk-successor-pin.v2"
@@ -43,8 +45,8 @@ def _sha256(raw: bytes) -> str:
 def _load_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
     try:
         raw = path.read_bytes()
-        value = json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = _strict_json(raw, label=label)
+    except (OSError, FreshSnapshotQualificationError) as exc:
         raise FreshSnapshotPinError(f"cannot load {label}") from exc
     _require(type(value) is dict, f"{label} root must be object")
     return value, raw
@@ -157,15 +159,37 @@ def pin_capture(
     rights: Mapping[str, Any],
     *,
     execution_head_sha: str,
+    probe_b: Mapping[str, Any],
+    probe_a_bytes: bytes,
+    probe_b_bytes: bytes,
 ) -> dict[str, Any]:
     try:
         _validate_config(config)
         _validate_rights(rights)
-        _validate_report(probe, config, label="pin probe")
+        _require(
+            _strict_json(probe_a_bytes, label="probe A") == probe,
+            "probe A raw bytes/object mismatch",
+        )
+        _require(
+            _strict_json(probe_b_bytes, label="probe B") == probe_b,
+            "probe B raw bytes/object mismatch",
+        )
+        expected_qualification = qualify_two_clean_probes(
+            config,
+            rights,
+            probe,
+            probe_b,
+            probe_a_bytes=probe_a_bytes,
+            probe_b_bytes=probe_b_bytes,
+        )
     except FreshSnapshotQualificationError as exc:
         raise FreshSnapshotPinError(str(exc)) from exc
     _require(SHA40_RE.fullmatch(execution_head_sha) is not None, "execution head malformed")
     _verify_qualification(qualification, config, rights, probe)
+    _require(
+        qualification == expected_qualification,
+        "qualification does not match two original raw probe reports",
+    )
     _verify_archive_against_probe(archive, probe)
 
     wanted_attribution = attribution_text(rights, probe["archive"]).encode("utf-8")
@@ -223,6 +247,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--probe-report", type=Path, required=True)
+    parser.add_argument("--probe-b", type=Path, required=True)
     parser.add_argument("--qualification", type=Path, required=True)
     parser.add_argument("--attribution", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
@@ -236,7 +261,8 @@ def main() -> int:
         attribution = args.attribution.read_bytes()
     except OSError as exc:
         raise FreshSnapshotPinError("cannot read retained capture input") from exc
-    probe, _ = _load_json(args.probe_report, "probe report")
+    probe, raw_a = _load_json(args.probe_report, "probe A")
+    probe_b, raw_b = _load_json(args.probe_b, "probe B")
     qualification, _ = _load_json(args.qualification, "qualification")
     config, _ = _load_json(args.config, "capture config")
     rights, _ = _load_json(args.rights_policy, "rights policy")
@@ -248,6 +274,9 @@ def main() -> int:
         config,
         rights,
         execution_head_sha=args.execution_head_sha,
+        probe_b=probe_b,
+        probe_a_bytes=raw_a,
+        probe_b_bytes=raw_b,
     )
     encoded = json.dumps(result, sort_keys=True, indent=2).encode() + b"\n"
     _write_new(args.output, encoded)
