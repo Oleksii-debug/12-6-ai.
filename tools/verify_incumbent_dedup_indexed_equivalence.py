@@ -53,6 +53,8 @@ def _json(path: Path) -> Any:
             parse_constant=_reject_constant,
             parse_float=_strict_float,
         )
+    except RecursionError:
+        raise SystemExit(f"{path}: invalid strict JSON: nesting exceeds decoder limit") from None
     except (json.JSONDecodeError, ValueError) as exc:
         raise SystemExit(f"{path}: invalid strict JSON: {exc}") from None
 
