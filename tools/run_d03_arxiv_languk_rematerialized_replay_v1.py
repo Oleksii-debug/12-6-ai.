@@ -242,11 +242,28 @@ def _repo_rooted(path: Path) -> Path:
     return (path if path.is_absolute() else ROOT / path).resolve()
 
 
-def _load_json_object(path: Path, *, label: str) -> dict[str, Any]:
+def _load_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
+    """Decode exactly the bytes being hashed; reject ambiguous JSON."""
+
+    def unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise RematerializationError(f"{label} duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(token: str) -> None:
+        raise RematerializationError(f"{label} nonfinite JSON: {token}")
+
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RematerializationError(f"cannot read {label}") from exc
+        value = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=unique_pairs,
+            parse_constant=reject_nonfinite,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise RematerializationError(f"cannot decode {label}") from exc
     if type(value) is not dict:
         raise RematerializationError(f"{label} must be a JSON object")
     return value
@@ -266,15 +283,30 @@ def _pass_result(
 
     report_raw = report.read_bytes()
     survivor_raw = survivors.read_bytes()
-    report_value = _load_json_object(report, label="replay report")
-    survivor_value = _load_json_object(survivors, label="survivor authority")
+    report_value = _load_json_object(report_raw, label="replay report")
+    survivor_value = _load_json_object(survivor_raw, label="survivor authority")
+    if report_raw != canonical_json_bytes(report_value):
+        raise RematerializationError("on-disk replay report is noncanonical")
+    if survivor_raw != canonical_json_bytes(survivor_value):
+        raise RematerializationError("on-disk survivor authority is noncanonical")
 
     report_identity = report_value.get("report_sha256")
     survivor_identity = survivor_value.get("survivor_authority_sha256")
-    if not isinstance(report_identity, str):
-        raise RematerializationError("replay report identity missing")
-    if not isinstance(survivor_identity, str):
+    report_body = dict(report_value)
+    report_body.pop("report_sha256", None)
+    if type(report_identity) is not str or report_identity != sha256_bytes(
+        canonical_json_bytes(report_body)
+    ):
+        raise RematerializationError("on-disk replay report self-hash mismatch")
+    if type(survivor_identity) is not str:
         raise RematerializationError("survivor authority identity missing")
+    try:
+        survivor_tool = _load_module(
+            "_pr1851_disk_survivor_verifier", ROOT / SURVIVOR_TOOL_REL
+        )
+        survivor_tool.verify_survivor_authority(report_value, survivor_value)
+    except Exception as exc:
+        raise RematerializationError("on-disk survivor authority invalid") from exc
 
     return {
         "arxiv_candidate_sha256": sha256_bytes(arxiv_raw),

@@ -219,6 +219,113 @@ def _runner_args(tmp_path: Path) -> SimpleNamespace:
         output_receipt=tmp_path / "outer-receipt.json",
     )
 
+def _disk_pass_files(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    arxiv = tmp_path / "arxiv.jsonl"
+    languk = tmp_path / "languk.jsonl"
+    report = tmp_path / "report.json"
+    survivors = tmp_path / "survivors.json"
+    arxiv.write_bytes(b"candidate-arxiv")
+    languk.write_bytes(b"candidate-languk")
+    body = {"truth_boundary": {"canonical_capacity_credited": 0}}
+    report_value = {
+        **body,
+        "report_sha256": hashlib.sha256(canonical_json_bytes(body)).hexdigest(),
+    }
+    survivor_value = {
+        "v8_report_sha256": report_value["report_sha256"],
+        "survivor_authority_sha256": "a" * 64,
+    }
+    report.write_bytes(canonical_json_bytes(report_value))
+    survivors.write_bytes(canonical_json_bytes(survivor_value))
+    return arxiv, languk, report, survivors
+
+
+def _fake_disk_verifier(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    observed: list[str] = []
+
+    def verify(report: dict[str, object], authority: dict[str, object]) -> None:
+        observed.append("verified")
+        if (
+            authority["v8_report_sha256"] != report["report_sha256"]
+            or authority["survivor_authority_sha256"] != "a" * 64
+        ):
+            raise ValueError("survivor authority mismatch")
+
+    monkeypatch.setattr(REPLAY_RUNNER, "verify_candidate", lambda *_: None)
+    monkeypatch.setattr(
+        REPLAY_RUNNER,
+        "_load_module",
+        lambda *args: SimpleNamespace(verify_survivor_authority=verify),
+    )
+    return observed
+
+
+def test_disk_pass_rechecks_serialized_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = _disk_pass_files(tmp_path)
+    observed = _fake_disk_verifier(monkeypatch)
+    result = REPLAY_RUNNER._pass_result(
+        arxiv_candidate=paths[0],
+        languk_candidate=paths[1],
+        report=paths[2],
+        survivors=paths[3],
+    )
+    assert result["report_file_sha256"] == hashlib.sha256(
+        paths[2].read_bytes()
+    ).hexdigest()
+    assert observed == ["verified"]
+
+
+def test_disk_pass_rejects_modified_report_with_stale_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    arxiv, languk, report, survivors = _disk_pass_files(tmp_path)
+    _fake_disk_verifier(monkeypatch)
+    value = json.loads(report.read_text(encoding="utf-8"))
+    value["truth_boundary"]["canonical_capacity_credited"] = 1
+    report.write_bytes(canonical_json_bytes(value))
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="replay report self-hash mismatch"
+    ):
+        REPLAY_RUNNER._pass_result(
+            arxiv_candidate=arxiv, languk_candidate=languk,
+            report=report, survivors=survivors,
+        )
+
+
+def test_disk_pass_rejects_modified_survivor_with_stale_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    arxiv, languk, report, survivors = _disk_pass_files(tmp_path)
+    observed = _fake_disk_verifier(monkeypatch)
+    value = json.loads(survivors.read_text(encoding="utf-8"))
+    value["survivor_authority_sha256"] = "b" * 64
+    survivors.write_bytes(canonical_json_bytes(value))
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="survivor authority invalid"
+    ):
+        REPLAY_RUNNER._pass_result(
+            arxiv_candidate=arxiv, languk_candidate=languk,
+            report=report, survivors=survivors,
+        )
+    assert observed == ["verified"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        (b'{"a":1,"a":2}', "duplicate JSON key"),
+        (b'{"a":NaN}', "nonfinite JSON"),
+        (b'{"a":Infinity}', "nonfinite JSON"),
+        (b'{"a":1} trailing', "cannot decode"),
+    ],
+)
+def test_disk_json_loader_rejects_ambiguous_inputs(raw: bytes, message: str) -> None:
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match=message):
+        REPLAY_RUNNER._load_json_object(raw, label="test authority")
+
+
 def test_outer_outputs_reject_existing_and_symlink_targets(tmp_path: Path) -> None:
     args = _runner_args(tmp_path)
     args.output_report.write_bytes(b"do-not-overwrite")
