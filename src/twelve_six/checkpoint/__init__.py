@@ -46,7 +46,7 @@ from .d04_resume_binding import (
     assert_d04_resume_binding,
     bind_d04_resume_identity,
 )
-from .hf_export import export_hf_directory
+from .hf_export import export_hf_directory, verify_hf_directory
 from .progress_trainer import load_trainer_checkpoint
 from .retention import CheckpointRetentionPlan, plan_checkpoint_retention
 from .run_binding import bind_checkpoint_identity
@@ -80,4 +80,5 @@ __all__ = [
     "save_trainer_checkpoint",
     "sha256_file",
     "verify_checkpoint",
+    "verify_hf_directory",
 ]

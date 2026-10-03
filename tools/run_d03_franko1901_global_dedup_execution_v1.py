@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Execute exact source-admitted Caselaw through the incumbent global-dedup authority.
+"""Execute exact source-admitted Franko1901 through the incumbent global-dedup authority.
 
-This runner is execution glue only.  It composes the exact merged Caselaw intake
-with the exact reconstructed V8 graph, runs the incumbent V3 all-pairs authority
-and the merged performance-equivalent indexed executor, requires byte-identical
-reports, and emits only text-free zero-credit evidence.
+This runner is execution glue only.  It composes the exact merged Franko1901 intake
+with the exact reconstructed V8 graph and runs the merged, independently qualified
+performance-equivalent indexed executor under incumbent V3 verification.  It emits
+only text-free zero-credit evidence.
 """
 from __future__ import annotations
 
 import argparse
+import ctypes
 import copy
 import hashlib
 import importlib
@@ -35,27 +36,29 @@ for location in (str(TOOLS), str(SRC)):
 import run_d03_expanded_global_dedup_v9 as v9_runner
 import run_d03_nomis_free_clean_successor_v1 as clean_successor
 import run_next100_065f_global_dedup_v8 as v8
-from twelve_six.data import caselaw_source_admitted_dedup_intake as caselaw
 from twelve_six.data import external_llm_provenance_quarantine_v1 as quarantine
 from twelve_six.data import expanded_global_dedup_v9 as v9_semantics
+from twelve_six.data import franko1901_dedup_intake as franko1901
 from twelve_six.data import incumbent_dedup_indexed_execution as indexed
 
-SCHEMA = "12-6.d03-caselaw-global-dedup-execution.v1"
-SURVIVOR_SCHEMA = "12-6.d03-caselaw-global-dedup-survivors.v1"
-EXPECTED_MAIN = "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
-EXECUTION_CLAIM = 2257
-EXECUTION_PR = 2259
-CASELAW_FINAL_HEAD = "deaf0730fe04a12e9abb8f3cecb14d6ad2cc7a4d"
+SCHEMA = "12-6.d03-franko1901-global-dedup-execution.v1"
+SURVIVOR_SCHEMA = "12-6.d03-franko1901-global-dedup-survivors.v1"
+EXPECTED_MAIN = "ba9e49cedba4a110e1c4f7d83702e8fcf8a42461"
+EXECUTION_CLAIM = 2394
+EXECUTION_PR = 2448
+CARRIER_PATH = "tools/run_d03_franko1901_global_dedup_execution_v1.py"
+FRANKO1901_FINAL_HEAD = franko1901.UPSTREAM_PRODUCT_HEAD
 EXPECTED_BASE_OBJECTS = 263
 EXPECTED_BASE_BYTES = 6_093_965
-EXPECTED_CASELAW_OBJECTS = 5_658
-EXPECTED_CASELAW_BYTES = 5_962_147
-EXPECTED_COMBINED_OBJECTS = EXPECTED_BASE_OBJECTS + EXPECTED_CASELAW_OBJECTS
-EXPECTED_COMBINED_BYTES = EXPECTED_BASE_BYTES + EXPECTED_CASELAW_BYTES
+EXPECTED_FRANKO1901_OBJECTS = franko1901.CANDIDATE_RECORDS
+EXPECTED_FRANKO1901_BYTES = franko1901.CANDIDATE_TEXT_UTF8_BYTES
+EXPECTED_COMBINED_OBJECTS = EXPECTED_BASE_OBJECTS + EXPECTED_FRANKO1901_OBJECTS
+EXPECTED_COMBINED_BYTES = EXPECTED_BASE_BYTES + EXPECTED_FRANKO1901_BYTES
 PAYLOAD_BYTES_SEMANTICS = "DECLARED_CAPACITY_BYTES"
 
 AUTHORITY_PATHS = (
-    "src/twelve_six/data/caselaw_source_admitted_dedup_intake.py",
+    "src/twelve_six/data/franko1901_dedup_intake.py",
+    "configs/data/d03_franko1901_fresh_execution_authority_v1.json",
     "src/twelve_six/data/incumbent_dedup_indexed_execution.py",
     "src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py",
     "src/twelve_six/data/expanded_global_dedup_v9.py",
@@ -71,28 +74,14 @@ AUTHORITY_PATHS = (
     "evidence/data_bulk_code1/permissive_python_bundle_v1_terminal.json",
 )
 
-NOMIS_REMOVAL_PROOF = {
-    "blocked_family": clean_successor.BLOCKED_FAMILY,
-    "blocked_payload_bytes": clean_successor.BLOCKED_BYTES,
-    "blocked_payload_sha256": clean_successor.BLOCKED_SHA256,
-    "blocked_source_id": clean_successor.BLOCKED_SOURCE_ID,
-    "non_blocked_source_ids_byte_for_byte_preserved": True,
-    "post_source_capacity_bytes": 2_213_956,
-    "post_source_object_count": 34,
-    "pre_source_capacity_bytes": 2_215_615,
-    "pre_source_object_count": 35,
-    "quarantine_identity_sha256": clean_successor.EXPECTED_QUARANTINE_IDENTITY,
-    "removed_before_new_global_dedup": True,
-}
 
-
-class CaselawGlobalDedupError(RuntimeError):
+class Franko1901GlobalDedupError(RuntimeError):
     """Fail-closed physical execution or authority mismatch."""
 
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
-        raise CaselawGlobalDedupError(message)
+        raise Franko1901GlobalDedupError(message)
 
 
 def _canonical(value: Any) -> bytes:
@@ -101,18 +90,12 @@ def _canonical(value: Any) -> bytes:
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
 
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
-
-
-def _verify_removal_proof(proof: Any) -> None:
-    _require(
-        type(proof) is dict and _canonical(proof) == _canonical(NOMIS_REMOVAL_PROOF),
-        "Nomis deauthorization proof drift",
-    )
 
 
 def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -126,20 +109,81 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
             timeout=30,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise CaselawGlobalDedupError(f"cannot execute git: {exc}") from exc
+        raise Franko1901GlobalDedupError(f"cannot execute git: {exc}") from exc
     if check and proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
-        raise CaselawGlobalDedupError(f"git {' '.join(args)} failed: {detail}")
+        raise Franko1901GlobalDedupError(f"git {' '.join(args)} failed: {detail}")
     return proc
 
 
+def _git_in(
+    root: Path, *args: str, check: bool = True
+) -> subprocess.CompletedProcess[str]:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Franko1901GlobalDedupError(
+            f"cannot execute git in {root}: {exc}"
+        ) from exc
+    if check and proc.returncode != 0:
+        detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
+        raise Franko1901GlobalDedupError(
+            f"git -C {root} {' '.join(args)} failed: {detail}"
+        )
+    return proc
+
+
+def _prepare_empty_bulk_workspace(workspace: Path) -> Path:
+    _require(not workspace.is_symlink(), "bulk workspace must not be a symlink")
+    try:
+        workspace.mkdir(parents=True, exist_ok=True)
+        resolved = workspace.resolve(strict=True)
+        entries = list(workspace.iterdir())
+    except OSError as exc:
+        raise Franko1901GlobalDedupError(
+            f"cannot prepare bulk workspace {workspace}: {exc}"
+        ) from exc
+    _require(workspace.is_dir(), "bulk workspace is not a directory")
+    _require(not entries, "bulk workspace must be empty")
+    return resolved
+
+
+def _verify_v7_worktree(v7_root: Path) -> str:
+    try:
+        root = v7_root.resolve(strict=True)
+    except OSError as exc:
+        raise Franko1901GlobalDedupError(f"V7 worktree missing: {v7_root}") from exc
+    _require(root.is_dir(), "V7 worktree root is not a directory")
+    head = _git_in(root, "rev-parse", "HEAD").stdout.strip()
+    _require(
+        head == v8.EXPECTED_V7_HEAD,
+        f"V7 worktree HEAD drift: expected {v8.EXPECTED_V7_HEAD}, got {head}",
+    )
+    status = _git_in(root, "status", "--porcelain=v1", "--untracked-files=all").stdout
+    unexpected = [line for line in status.splitlines() if line]
+    _require(
+        not unexpected,
+        "V7 worktree is not clean: " + "; ".join(unexpected[:5]),
+    )
+    return head
+
+
 def verify_repository_authority() -> dict[str, str]:
-    """Bind authority-bearing runtime files to the exact main that merged #1459."""
+    """Bind authority-bearing runtime files to exact committed and worktree bytes."""
     ancestor = _git("merge-base", "--is-ancestor", EXPECTED_MAIN, "HEAD", check=False)
     _require(
         ancestor.returncode == 0,
         f"pinned main {EXPECTED_MAIN} is not an ancestor of execution HEAD",
     )
+    worktree = _git("diff", "--quiet", "HEAD", "--", *AUTHORITY_PATHS, check=False)
+    _require(worktree.returncode == 0, "authority path worktree drift")
     blobs: dict[str, str] = {}
     for path in AUTHORITY_PATHS:
         expected = _git("rev-parse", f"{EXPECTED_MAIN}:{path}").stdout.strip()
@@ -147,6 +191,33 @@ def verify_repository_authority() -> dict[str, str]:
         _require(bool(expected) and observed == expected, f"authority path drift: {path}")
         blobs[path] = observed
     return blobs
+
+
+def verify_execution_carrier() -> str:
+    """Bind the executing carrier bytes to the exact recorded HEAD."""
+    expected = _git("rev-parse", f"HEAD:{CARRIER_PATH}").stdout.strip()
+    observed = _git("hash-object", str(ROOT / CARRIER_PATH)).stdout.strip()
+    _require(
+        len(expected) == 40 and observed == expected,
+        "execution carrier worktree drift",
+    )
+    return observed
+
+
+def _bind_execution_head(expected_execution_head: str) -> str:
+    """Require physical execution on the explicitly selected exact Product head."""
+    _require(
+        type(expected_execution_head) is str
+        and len(expected_execution_head) == 40
+        and all(char in "0123456789abcdef" for char in expected_execution_head),
+        "expected execution head must be exact lowercase 40-hex SHA",
+    )
+    observed = _git("rev-parse", "HEAD").stdout.strip()
+    _require(
+        observed == expected_execution_head,
+        "execution HEAD drift: refusing synthetic/stale/unselected checkout",
+    )
+    return observed
 
 
 _HISTORICAL_MATCHER_MODULES = (
@@ -227,6 +298,7 @@ def _reconstruct_clean_source_inputs(
     bulk_workspace: Path,
     config: Mapping[str, Any],
 ) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    """Reuse incumbent deauthorization before composing the new matcher input."""
     v9_runner.validate_v7_checkout(v7_root)
     clean_successor.validate_runtime_bindings(ROOT)
     quarantine_authority = json.loads(
@@ -241,7 +313,6 @@ def _reconstruct_clean_source_inputs(
         quarantine_authority,
         quarantine,
     )
-    _verify_removal_proof(removal)
     _, bulk_rows, bulk_payloads = v8._materialize_bulk(ROOT, bulk_workspace, config)
     existing_ids = {row["source_id"] for row in clean_inventory["sources"]}
     _require(not (existing_ids & set(bulk_payloads)), "clean base/bulk source-id collision")
@@ -265,6 +336,7 @@ def _reconstruct_v8_with_historical_namespace(
     bulk_workspace: Path,
     config: Mapping[str, Any],
 ) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    """Load exact V7 matcher modules ahead of the cached current-main package paths."""
     for module_name in _HISTORICAL_MATCHER_MODULES:
         _require(module_name not in sys.modules, f"historical matcher preloaded: {module_name}")
 
@@ -310,6 +382,7 @@ def _reconstruct_v8_with_historical_namespace(
         )
     return matcher, inventory, payloads, removal
 
+
 def _compose_graph(
     base_inventory: Mapping[str, Any],
     base_payloads: Mapping[str, bytes],
@@ -338,16 +411,15 @@ def _compose_graph(
         "extension source ids invalid",
     )
     _require(extension_ids == set(extension_payloads), "extension inventory/payload mismatch")
-    _require(not (base_ids & extension_ids), "Caselaw source-id collision with incumbent graph")
+    _require(not (base_ids & extension_ids), "Franko1901 source-id collision with incumbent graph")
 
     inventory = copy.deepcopy(dict(base_inventory))
     inventory["sources"] = [*copy.deepcopy(rows), *copy.deepcopy(extension_sources)]
     inventory["final_refresh_required"] = False
     inventory["terminal_refresh_rule"] = (
-        "Exact reconstructed Nomis-free V8 source graph plus exact PR #1347 "
-        "source-admitted Caselaw rows; pair decisions delegate to terminal PR #824 "
-        "V3 semantics and indexed execution must be byte-equivalent to the all-pairs "
-        "reference."
+        "Exact reconstructed Nomis-free V8 source graph plus exact PR #1025 source-admitted Franko1901 "
+        "rows; pair decisions delegate to terminal PR #824 V3 semantics through the "
+        "independently qualified performance-equivalent indexed executor."
     )
     payloads = dict(base_payloads)
     payloads.update(extension_payloads)
@@ -379,19 +451,19 @@ def _outer_survivor_authority(
     )
     _require(len(set(survivor_ids)) == len(survivor_ids), "duplicate survivor source id")
     _require(all(source_id in by_id for source_id in survivor_ids), "unknown survivor id")
-    caselaw_survivors = [
+    franko1901_survivors = [
         source_id
         for source_id in survivor_ids
-        if by_id[source_id].get("source_family") == caselaw.SOURCE_FAMILY
+        if by_id[source_id].get("source_family") == franko1901.SOURCE_FAMILY
     ]
-    caselaw_survivor_bytes = 0
-    for source_id in caselaw_survivors:
+    franko1901_survivor_bytes = 0
+    for source_id in franko1901_survivors:
         declared_capacity = by_id[source_id].get("declared_capacity_bytes")
         _require(
             type(declared_capacity) is int and declared_capacity >= 0,
-            "Caselaw survivor declared capacity must be exact nonnegative int",
+            "Franko1901 survivor declared capacity must be exact nonnegative int",
         )
-        caselaw_survivor_bytes += declared_capacity
+        franko1901_survivor_bytes += declared_capacity
     core = {
         "schema_version": SURVIVOR_SCHEMA,
         "selection_projection_schema": selection_projection.get("schema_version"),
@@ -415,12 +487,12 @@ def _outer_survivor_authority(
         "duplicate_cluster_count": selection_projection.get("duplicate_cluster_count"),
         "duplicate_clusters": copy.deepcopy(selection_projection.get("duplicate_clusters")),
         "survivor_source_ids": copy.deepcopy(survivor_ids),
-        "caselaw": {
-            "source_family": caselaw.SOURCE_FAMILY,
-            "pre_dedup_source_object_count": EXPECTED_CASELAW_OBJECTS,
-            "pre_dedup_payload_bytes": EXPECTED_CASELAW_BYTES,
-            "post_dedup_survivor_source_object_count": len(caselaw_survivors),
-            "post_dedup_survivor_declared_capacity_bytes": caselaw_survivor_bytes,
+        "franko1901": {
+            "source_family": franko1901.SOURCE_FAMILY,
+            "pre_dedup_source_object_count": EXPECTED_FRANKO1901_OBJECTS,
+            "pre_dedup_payload_bytes": EXPECTED_FRANKO1901_BYTES,
+            "post_dedup_survivor_source_object_count": len(franko1901_survivors),
+            "post_dedup_survivor_declared_capacity_bytes": franko1901_survivor_bytes,
         },
         "truth_boundary": {
             "global_dedup_execution_complete": True,
@@ -448,32 +520,226 @@ def _outer_survivor_authority(
     return {**core, "survivor_authority_sha256": _sha256(_canonical(core))}
 
 
+def _validated_terminal_summary(
+    report: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    _require(
+        type(report.get("source_count")) is int
+        and report.get("source_count") == EXPECTED_COMBINED_OBJECTS,
+        "combined report source count drift",
+    )
+    terminal = report.get("terminal_candidates")
+    _require(isinstance(terminal, Mapping), "terminal dedup summary missing")
+    before = terminal.get("declared_capacity_bytes_before")
+    after = terminal.get("conservative_unique_capacity_bytes_after")
+    discount = terminal.get("duplicate_discount_bytes")
+    cluster_count = terminal.get("duplicate_cluster_count")
+    _require(
+        type(before) is int and before == EXPECTED_COMBINED_BYTES,
+        "combined declared capacity drift",
+    )
+    _require(
+        type(after) is int and 0 < after <= before,
+        "post-dedup conservative capacity invalid",
+    )
+    _require(
+        type(discount) is int and discount >= 0 and before - after == discount,
+        "duplicate discount arithmetic drift",
+    )
+    _require(
+        type(cluster_count) is int and cluster_count >= 0,
+        "duplicate cluster count invalid",
+    )
+    return terminal
+
+
+def _validate_survivor_projection(
+    report: Mapping[str, Any],
+    projection: Mapping[str, Any],
+) -> None:
+    """Bind the derived survivor projection back to the verified terminal report."""
+    terminal = _validated_terminal_summary(report)
+    _require(type(projection) is dict, "survivor projection must be exact object")
+    _require(
+        projection.get("schema_version") == v9_semantics.SURVIVOR_SCHEMA,
+        "survivor projection schema drift",
+    )
+    projection_identity = projection.get("survivor_authority_sha256")
+    _require(
+        type(projection_identity) is str
+        and len(projection_identity) == 64
+        and all(ch in "0123456789abcdef" for ch in projection_identity),
+        "survivor projection identity format invalid",
+    )
+    projection_core = dict(projection)
+    projection_core.pop("survivor_authority_sha256")
+    _require(
+        projection_identity == _sha256(_canonical(projection_core)),
+        "survivor projection identity drift",
+    )
+    _require(
+        projection.get("matcher_report_sha256") == report.get("report_sha256"),
+        "survivor projection matcher identity drift",
+    )
+    survivor_ids = projection.get("survivor_source_ids")
+    _require(
+        type(survivor_ids) is list
+        and all(type(source_id) is str and source_id for source_id in survivor_ids)
+        and len(survivor_ids) == len(set(survivor_ids)),
+        "survivor projection ids invalid",
+    )
+    post_count = projection.get("post_dedup_survivor_source_object_count")
+    _require(
+        type(post_count) is int
+        and 0 < post_count <= EXPECTED_COMBINED_OBJECTS
+        and post_count == len(survivor_ids),
+        "survivor projection post-dedup count drift",
+    )
+    _require(
+        projection.get("pre_dedup_source_object_count") == EXPECTED_COMBINED_OBJECTS,
+        "survivor projection pre-dedup count drift",
+    )
+    _require(
+        projection.get("pre_dedup_declared_capacity_bytes") == EXPECTED_COMBINED_BYTES,
+        "survivor projection pre-dedup bytes drift",
+    )
+    _require(
+        projection.get("post_dedup_declared_capacity_bytes")
+        == terminal.get("conservative_unique_capacity_bytes_after"),
+        "survivor projection post-dedup bytes drift",
+    )
+    _require(
+        projection.get("duplicate_discount_bytes")
+        == terminal.get("duplicate_discount_bytes"),
+        "survivor projection duplicate discount drift",
+    )
+    duplicate_clusters = projection.get("duplicate_clusters")
+    duplicate_cluster_count = projection.get("duplicate_cluster_count")
+    _require(type(duplicate_clusters) is list, "survivor projection clusters missing")
+    _require(
+        type(duplicate_cluster_count) is int
+        and duplicate_cluster_count == len(duplicate_clusters)
+        and duplicate_cluster_count == terminal.get("duplicate_cluster_count"),
+        "survivor projection cluster count drift",
+    )
+
+
 def _source_admission_provenance_scope(receipt: Mapping[str, Any]) -> dict[str, bool]:
     truth = receipt.get("truth_boundary")
     _require(type(truth) is dict, "source-admission truth boundary missing")
     _require(
-        truth.get("upstream_source_evidence_external_llm_or_api_used") is False,
-        "source-admission upstream external-LLM scope drift",
-    )
-    _require(
-        truth.get("current_corpus_external_llm_free_claimed_by_this_adapter") is False,
-        "source-admission corpus-cleanliness non-claim drift",
+        truth.get("external_llm_or_api_used_for_data_or_intelligence") is False,
+        "Franko source-package external-LLM evidence drift",
     )
     return {
-        "upstream_source_evidence_external_llm_or_api_used": False,
-        "current_corpus_external_llm_free_claimed_by_this_adapter": False,
-        "historical_source_admission_report_promoted_as_corpus_global_truth": False,
+        "upstream_source_package_external_llm_or_api_used": False,
+        "current_corpus_external_llm_free_claimed_by_this_carrier": False,
+        "source_local_negative_promoted_as_corpus_global_truth": False,
     }
 
 
+def _runtime_environment() -> dict[str, Any]:
+    """Record observed execution host facts separately from LOCAL_FREE policy."""
+    github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
+    result: dict[str, Any] = {
+        "python_platform": sys.platform,
+        "github_actions": github_actions,
+    }
+    if github_actions:
+        runner_environment = os.environ.get("RUNNER_ENVIRONMENT")
+        runner_os = os.environ.get("RUNNER_OS")
+        runner_arch = os.environ.get("RUNNER_ARCH")
+        _require(
+            runner_environment in {"github-hosted", "self-hosted"},
+            "GitHub Actions runner environment identity missing",
+        )
+        _require(type(runner_os) is str and bool(runner_os), "GitHub runner OS missing")
+        _require(type(runner_arch) is str and bool(runner_arch), "GitHub runner arch missing")
+        result.update(
+            {
+                "runner_environment": runner_environment,
+                "runner_os": runner_os,
+                "runner_arch": runner_arch,
+            }
+        )
+    else:
+        result["runner_environment"] = "local"
+    return result
+
+
+def _windows_peak_working_set_kib() -> int | None:
+    """Return current-process peak working set in KiB via the Windows API."""
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ("cb", ctypes.c_ulong),
+            ("PageFaultCount", ctypes.c_ulong),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    windll = getattr(ctypes, "windll", None)
+    kernel32 = getattr(windll, "kernel32", None)
+    if kernel32 is None:
+        return None
+    query = getattr(kernel32, "K32GetProcessMemoryInfo", None)
+    if query is None:
+        psapi = getattr(windll, "psapi", None)
+        query = getattr(psapi, "GetProcessMemoryInfo", None)
+    get_current_process = getattr(kernel32, "GetCurrentProcess", None)
+    if query is None or get_current_process is None:
+        return None
+
+    counters = ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    try:
+        get_current_process.restype = ctypes.c_void_p
+        query.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ProcessMemoryCounters),
+            ctypes.c_ulong,
+        ]
+        query.restype = ctypes.c_int
+    except (AttributeError, TypeError):
+        pass
+    try:
+        handle = get_current_process()
+        ok = query(handle, ctypes.byref(counters), counters.cb)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+    if not ok:
+        return None
+    peak_bytes = int(counters.PeakWorkingSetSize)
+    if peak_bytes <= 0:
+        return None
+    return (peak_bytes + 1023) // 1024
+
+
 def _max_rss_kib() -> int | None:
+    if sys.platform == "win32":
+        return _windows_peak_working_set_kib()
     if resource is None:
         return None
-    value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-    return value // 1024 if value > 10_000_000 else value
+    try:
+        value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    if sys.platform.startswith("linux"):
+        return value
+    if sys.platform == "darwin":
+        return (value + 1023) // 1024
+    return None
 
 
-PUBLICATION_SCHEMA = "12-6.d03-caselaw-output-publication.v1"
+PUBLICATION_SCHEMA = "12-6.d03-franko1901-output-publication.v2"
 
 
 def _path_entry_exists(path: Path) -> bool:
@@ -493,20 +759,20 @@ def _fsync_directory(path: Path) -> None:
     try:
         fd = os.open(path, flags)
     except OSError as exc:
-        raise CaselawGlobalDedupError(
+        raise Franko1901GlobalDedupError(
             f"cannot open output directory for fsync: {path}"
         ) from exc
     try:
         os.fsync(fd)
     except OSError as exc:
-        raise CaselawGlobalDedupError(
+        raise Franko1901GlobalDedupError(
             f"cannot fsync output directory: {path}"
         ) from exc
     finally:
         os.close(fd)
 
 
-class PublicationWriteCleanupError(CaselawGlobalDedupError):
+class PublicationWriteCleanupError(Franko1901GlobalDedupError):
     """A durable-create failure left residue that must remain recovery-visible."""
 
 
@@ -519,20 +785,20 @@ def _write_create_only_durable(path: Path, payload: bytes) -> None:
             handle.flush()
             os.fsync(handle.fileno())
     except FileExistsError as exc:
-        raise CaselawGlobalDedupError(f"refusing to overwrite: {path}") from exc
+        raise Franko1901GlobalDedupError(f"refusing to overwrite: {path}") from exc
     except OSError as exc:
         cleanup_error: Exception | None = None
         if created:
             try:
                 path.unlink(missing_ok=True)
                 _fsync_directory(path.parent)
-            except (OSError, CaselawGlobalDedupError) as cleanup_exc:
+            except (OSError, Franko1901GlobalDedupError) as cleanup_exc:
                 cleanup_error = cleanup_exc
         if cleanup_error is not None:
             raise PublicationWriteCleanupError(
                 f"cannot write output and cleanup failed: {path}: {cleanup_error}"
             ) from exc
-        raise CaselawGlobalDedupError(f"cannot write output: {path}") from exc
+        raise Franko1901GlobalDedupError(f"cannot write output: {path}") from exc
 
 
 def _publication_control_paths(
@@ -591,7 +857,7 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
         raw = manifest_path.read_bytes()
         value = json.loads(raw.decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CaselawGlobalDedupError(
+        raise Franko1901GlobalDedupError(
             "incomplete publication manifest is unreadable"
         ) from exc
     _require(type(value) is dict, "incomplete publication manifest root invalid")
@@ -655,7 +921,7 @@ def _recover_incomplete_publication(
 
     try:
         manifest = _load_publication_manifest(manifest_path)
-    except CaselawGlobalDedupError:
+    except Franko1901GlobalDedupError:
         _require(
             not any(_path_entry_exists(path) for path, _ in prepared)
             and not any(_path_entry_exists(stage) for stage in stages),
@@ -716,7 +982,7 @@ def _recover_incomplete_publication(
             try:
                 same_file = os.path.samefile(final_path, stage_path)
             except OSError as exc:
-                raise CaselawGlobalDedupError(
+                raise Franko1901GlobalDedupError(
                     f"cannot verify incomplete publication ownership: {final_path}"
                 ) from exc
             _require(
@@ -726,7 +992,7 @@ def _recover_incomplete_publication(
             try:
                 observed = stage_path.read_bytes()
             except OSError as exc:
-                raise CaselawGlobalDedupError(
+                raise Franko1901GlobalDedupError(
                     f"cannot inspect incomplete publication stage: {stage_path}"
                 ) from exc
             _require(
@@ -779,19 +1045,19 @@ def _rollback_current_publication(
         for directory in sorted(touched_dirs, key=str):
             try:
                 _fsync_directory(directory)
-            except CaselawGlobalDedupError as exc:
+            except Franko1901GlobalDedupError as exc:
                 errors.append(str(exc))
     if not errors and manifest_created:
         try:
             manifest_path.unlink(missing_ok=True)
             _fsync_directory(manifest_path.parent)
-        except (OSError, CaselawGlobalDedupError) as exc:
+        except (OSError, Franko1901GlobalDedupError) as exc:
             errors.append(f"{manifest_path}: {exc}")
     if not errors and marker_created:
         try:
             marker_path.unlink(missing_ok=True)
             _fsync_directory(marker_path.parent)
-        except (OSError, CaselawGlobalDedupError) as exc:
+        except (OSError, Franko1901GlobalDedupError) as exc:
             errors.append(f"{marker_path}: {exc}")
     return errors
 
@@ -800,11 +1066,11 @@ def _link_staged_output(stage_path: Path, final_path: Path) -> None:
     try:
         os.link(stage_path, final_path)
     except FileExistsError as exc:
-        raise CaselawGlobalDedupError(
+        raise Franko1901GlobalDedupError(
             f"refusing to overwrite: {final_path}"
         ) from exc
     except OSError as exc:
-        raise CaselawGlobalDedupError(
+        raise Franko1901GlobalDedupError(
             f"cannot atomically publish output: {final_path}"
         ) from exc
 
@@ -828,7 +1094,7 @@ def _cleanup_committed_publication_residue(
     for directory in sorted(touched_dirs, key=str):
         try:
             _fsync_directory(directory)
-        except CaselawGlobalDedupError:
+        except Franko1901GlobalDedupError:
             return
 
 
@@ -927,7 +1193,7 @@ def _publish_json_outputs(
             created_stages=created_stages,
         )
         if rollback_errors:
-            raise CaselawGlobalDedupError(
+            raise Franko1901GlobalDedupError(
                 "output publication failed and rollback was incomplete: "
                 + "; ".join(rollback_errors)
             ) from exc
@@ -936,29 +1202,38 @@ def _publish_json_outputs(
     _cleanup_committed_publication_residue(manifest_path, stages)
 
 
-
+def _write_json(path: Path, value: Mapping[str, Any]) -> None:
+    _publish_json_outputs(((path, value),))
 
 def execute(
     *,
     v7_root: Path,
     bulk_workspace: Path,
     candidate_jsonl: Path,
-    execution_evidence_json: Path,
+    historical_terminal_evidence_json: Path,
+    fresh_execution_authority_json: Path,
     output_report: Path,
     output_survivors: Path,
     output_evidence: Path,
+    expected_execution_head: str,
     max_candidate_pairs: int,
     max_index_postings: int,
     max_pair_expansions: int,
 ) -> dict[str, Any]:
+    execution_head = _bind_execution_head(expected_execution_head)
+    execution_carrier_blob = verify_execution_carrier()
     authority_blobs = verify_repository_authority()
-    execution_head = _git("rev-parse", "HEAD").stdout.strip()
-    _require(len(execution_head) == 40, "execution HEAD identity missing")
+    bulk_workspace = _prepare_empty_bulk_workspace(bulk_workspace)
+    verified_v7_head = _verify_v7_worktree(v7_root)
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
     matcher, base_inventory, base_payloads, removal = _reconstruct_v8_with_historical_namespace(
         v7_root=v7_root,
         bulk_workspace=bulk_workspace,
         config=config,
+    )
+    _require(
+        _verify_v7_worktree(v7_root) == verified_v7_head,
+        "V7 worktree drifted during historical reconstruction",
     )
     _require(len(base_payloads) == EXPECTED_BASE_OBJECTS, "V8 base object count drift")
     _require(
@@ -969,32 +1244,38 @@ def execute(
     base_comparison_payload_bytes = sum(len(raw) for raw in base_payloads.values())
     _require(base_comparison_payload_bytes > 0, "V8 base comparison payload is empty")
 
-    projection = caselaw.validate_and_project_caselaw(
+    projection = franko1901.validate_and_project_franko(
         candidate_jsonl,
-        execution_evidence_json,
-        upstream_head=CASELAW_FINAL_HEAD,
+        historical_terminal_evidence_json,
+        fresh_execution_authority_json,
         retain_payloads=True,
     )
-    _require(projection.sources is not None and projection.payloads is not None, "payload projection missing")
+    _require(
+        projection.sources is not None and projection.payloads is not None,
+        "payload projection missing",
+    )
     source_admission_provenance_scope = _source_admission_provenance_scope(
         projection.receipt
     )
     extension_sources = [dict(row) for row in projection.sources]
     extension_payloads = dict(projection.payloads)
-    _require(len(extension_sources) == EXPECTED_CASELAW_OBJECTS, "Caselaw projection count drift")
-    caselaw_comparison_payload_bytes = sum(len(raw) for raw in extension_payloads.values())
     _require(
-        caselaw_comparison_payload_bytes == EXPECTED_CASELAW_BYTES,
-        "Caselaw projection comparison-payload bytes drift",
+        len(extension_sources) == EXPECTED_FRANKO1901_OBJECTS,
+        "Franko1901 projection count drift",
+    )
+    franko_comparison_payload_bytes = sum(len(raw) for raw in extension_payloads.values())
+    _require(
+        franko_comparison_payload_bytes == EXPECTED_FRANKO1901_BYTES,
+        "Franko1901 projection comparison-payload bytes drift",
     )
     _require(
         _declared_capacity_bytes(
             {"sources": extension_sources},
             extension_payloads,
-            label="Caselaw projection",
+            label="Franko1901 projection",
         )
-        == EXPECTED_CASELAW_BYTES,
-        "Caselaw projection declared-capacity drift",
+        == EXPECTED_FRANKO1901_BYTES,
+        "Franko1901 projection declared-capacity drift",
     )
     inventory, payloads = _compose_graph(
         base_inventory,
@@ -1011,19 +1292,15 @@ def execute(
     combined_comparison_payload_bytes = sum(len(raw) for raw in payloads.values())
     _require(
         combined_comparison_payload_bytes
-        == base_comparison_payload_bytes + caselaw_comparison_payload_bytes,
+        == base_comparison_payload_bytes + franko_comparison_payload_bytes,
         "combined comparison-payload byte arithmetic drift",
     )
 
-    # The merged indexed executor's runtime attestation must protect the original
-    # all-pairs reference too. Differential equality is not authority if both paths
-    # can observe the same mutated stdlib/runtime state before attestation.
+    # PR #1459 independently qualified this indexed executor as performance-equivalent
+    # to the incumbent all-pairs authority. Production-scale source execution must not
+    # reintroduce an O(N^2) reference pass; bind runtime authority, execute indexed,
+    # then require the incumbent V3 verifier to accept the resulting report.
     indexed.attest_incumbent_runtime(matcher)
-
-    reference_started = time.perf_counter()
-    reference = matcher.audit_payloads(inventory, payloads)
-    reference_seconds = time.perf_counter() - reference_started
-    matcher.verify_report(reference)
 
     indexed_started = time.perf_counter()
     indexed_report = indexed.audit_payloads_indexed(
@@ -1037,50 +1314,28 @@ def execute(
     indexed_seconds = time.perf_counter() - indexed_started
     matcher.verify_report(indexed_report)
 
-    reference_bytes = matcher.v1._canonical_bytes(reference)
-    indexed_bytes = matcher.v1._canonical_bytes(indexed_report)
-    _require(reference_bytes == indexed_bytes, "indexed report differs from incumbent all-pairs report")
-
-    rows, _ = matcher._validate_inventory(inventory)
-    validated = matcher.v1._validate_inventory(matcher._as_v1_inventory(rows))
-    fingerprints = [
-        matcher._fingerprint(row, payloads[row["source_id"]])
-        for row in validated
-    ]
-    pairs, work = indexed.candidate_pair_indices_with_stats(
-        matcher.v1,
-        fingerprints,
-        max_candidate_pairs=max_candidate_pairs,
-        max_index_postings=max_index_postings,
-        max_pair_expansions=max_pair_expansions,
-    )
-    work_stats = indexed.execution_stats(
-        len(fingerprints),
-        len(pairs),
-        index_postings=work["index_postings"],
-        pair_expansion_attempts=work["pair_expansion_attempts"],
-        unique_bucket_signatures=work["unique_bucket_signatures"],
-    )
-
-    terminal = indexed_report.get("terminal_candidates")
-    _require(isinstance(terminal, Mapping), "terminal dedup summary missing")
-    _require(
-        terminal.get("declared_capacity_bytes_before") == EXPECTED_COMBINED_BYTES,
-        "combined declared capacity drift",
-    )
+    terminal = _validated_terminal_summary(indexed_report)
     selection_projection = v9_semantics._derive_survivors(indexed_report)
+    _validate_survivor_projection(indexed_report, selection_projection)
     survivors = _outer_survivor_authority(indexed_report, selection_projection)
+    process_max_rss_kib = _max_rss_kib()
+    _require(
+        type(process_max_rss_kib) is int and process_max_rss_kib > 0,
+        "process max RSS unavailable; refusing terminal execution evidence",
+    )
 
     evidence_core = {
         "schema_version": SCHEMA,
-        "execution_profile": "GITHUB_HOSTED_FREE_LOCAL_FREE",
+        "execution_profile": "LOCAL_FREE",
+        "runtime_environment": _runtime_environment(),
         "execution_claim_issue": EXECUTION_CLAIM,
         "execution_pr": EXECUTION_PR,
         "execution_head_sha": execution_head,
+        "execution_carrier_git_blob_sha1": execution_carrier_blob,
         "pinned_main_sha": EXPECTED_MAIN,
         "authority_path_blobs": authority_blobs,
         "baseline_v8": {
-            "v7_head_sha": v8.EXPECTED_V7_HEAD,
+            "v7_head_sha": verified_v7_head,
             "source_object_count": EXPECTED_BASE_OBJECTS,
             "payload_bytes": EXPECTED_BASE_BYTES,
             "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
@@ -1088,15 +1343,15 @@ def execute(
             "comparison_payload_bytes": base_comparison_payload_bytes,
             "nomis1864_deauthorization": removal,
         },
-        "caselaw": {
-            "source_admission_product_pr": caselaw.UPSTREAM_PRODUCT_PR,
-            "source_admission_final_head": CASELAW_FINAL_HEAD,
-            "candidate_sha256": caselaw.CANDIDATE_SHA256,
-            "source_object_count": EXPECTED_CASELAW_OBJECTS,
-            "payload_bytes": EXPECTED_CASELAW_BYTES,
+        "franko1901": {
+            "source_admission_product_pr": franko1901.UPSTREAM_PRODUCT_PR,
+            "source_admission_final_head": FRANKO1901_FINAL_HEAD,
+            "candidate_sha256": franko1901.CANDIDATE_SHA256,
+            "source_object_count": EXPECTED_FRANKO1901_OBJECTS,
+            "payload_bytes": EXPECTED_FRANKO1901_BYTES,
             "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
-            "declared_capacity_bytes": EXPECTED_CASELAW_BYTES,
-            "comparison_payload_bytes": caselaw_comparison_payload_bytes,
+            "declared_capacity_bytes": EXPECTED_FRANKO1901_BYTES,
+            "comparison_payload_bytes": franko_comparison_payload_bytes,
             "intake_receipt_identity_sha256": projection.receipt[
                 "receipt_identity_sha256"
             ],
@@ -1108,9 +1363,8 @@ def execute(
             "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
             "declared_capacity_bytes": EXPECTED_COMBINED_BYTES,
             "comparison_payload_bytes": combined_comparison_payload_bytes,
-            "reference_report_sha256": reference["report_sha256"],
             "indexed_report_sha256": indexed_report["report_sha256"],
-            "reports_byte_identical": True,
+            "indexed_executor_performance_equivalence_authority": "MERGED_PR_1459",
             "post_dedup_conservative_unique_bytes": terminal.get(
                 "conservative_unique_capacity_bytes_after"
             ),
@@ -1118,13 +1372,12 @@ def execute(
             "duplicate_cluster_count": terminal.get("duplicate_cluster_count"),
         },
         "indexed_execution": {
-            **work_stats,
+            "source_count": EXPECTED_COMBINED_OBJECTS,
             "max_candidate_pairs": max_candidate_pairs,
             "max_index_postings": max_index_postings,
             "max_pair_expansions": max_pair_expansions,
-            "reference_wall_clock_seconds": round(reference_seconds, 6),
             "indexed_wall_clock_seconds": round(indexed_seconds, 6),
-            "process_max_rss_kib": _max_rss_kib(),
+            "process_max_rss_kib": process_max_rss_kib,
         },
         "survivor_authority_sha256": survivors["survivor_authority_sha256"],
         "content_boundary": {
@@ -1168,10 +1421,16 @@ def main() -> int:
     parser.add_argument("--v7-root", type=Path, required=True)
     parser.add_argument("--bulk-workspace", type=Path, required=True)
     parser.add_argument("--candidate-jsonl", type=Path, required=True)
-    parser.add_argument("--execution-evidence-json", type=Path, required=True)
+    parser.add_argument("--historical-terminal-evidence-json", type=Path, required=True)
+    parser.add_argument("--fresh-execution-authority-json", type=Path, required=True)
     parser.add_argument("--output-report", type=Path, required=True)
     parser.add_argument("--output-survivors", type=Path, required=True)
     parser.add_argument("--output-evidence", type=Path, required=True)
+    parser.add_argument(
+        "--expected-execution-head",
+        required=True,
+        help="Exact 40-hex Product head; synthetic PR merge commits are rejected.",
+    )
     parser.add_argument("--max-candidate-pairs", type=int, default=5_000_000)
     parser.add_argument(
         "--max-index-postings",
@@ -1188,15 +1447,17 @@ def main() -> int:
         v7_root=args.v7_root,
         bulk_workspace=args.bulk_workspace,
         candidate_jsonl=args.candidate_jsonl,
-        execution_evidence_json=args.execution_evidence_json,
+        historical_terminal_evidence_json=args.historical_terminal_evidence_json,
+        fresh_execution_authority_json=args.fresh_execution_authority_json,
         output_report=args.output_report,
         output_survivors=args.output_survivors,
         output_evidence=args.output_evidence,
+        expected_execution_head=args.expected_execution_head,
         max_candidate_pairs=args.max_candidate_pairs,
         max_index_postings=args.max_index_postings,
         max_pair_expansions=args.max_pair_expansions,
     )
-    print("D03_CASELAW_GLOBAL_DEDUP_EXECUTION=PASS_ZERO_CREDIT")
+    print("D03_FRANKO1901_GLOBAL_DEDUP_EXECUTION=PASS_ZERO_CREDIT")
     print("EVIDENCE_IDENTITY_SHA256=" + evidence["evidence_identity_sha256"])
     print(
         "MATCHER_REPORT_SHA256="
