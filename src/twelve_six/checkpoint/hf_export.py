@@ -380,7 +380,10 @@ def _cleanup_temp_paths_strict(
         if path is None:
             continue
         if expected_identity is None:
-            raise CheckpointIntegrityError(f"{label} is missing its creation identity")
+            failures.append(
+                (label, CheckpointIntegrityError(f"{label} is missing its creation identity"))
+            )
+            continue
         try:
             _remove_temp_path_strict(
                 path, label=label, expected_identity=expected_identity
