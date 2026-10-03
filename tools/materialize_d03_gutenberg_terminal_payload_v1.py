@@ -8,10 +8,14 @@ pipeline. It creates no corpus, tokenizer, unique-loss, or training authority.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import importlib.util
 import json
+import os
 import re
+import sys
 import time
 import unicodedata
 import urllib.error
@@ -379,22 +383,107 @@ def _build_receipt(seal: Mapping[str, Any], rows: list[dict[str, Any]]) -> dict[
     return receipt
 
 
+def _occupied(path: Path) -> bool:
+    """Include dangling symlinks in the create-only destination guard."""
+    return os.path.lexists(path)
+
+
+def _publish_directory_noreplace(stage: Path, destination: Path) -> None:
+    """Atomically publish without clobbering even an empty destination."""
+    if os.name == "nt":
+        os.rename(stage, destination)  # Windows rejects existing destinations.
+        return
+    if sys.platform.startswith("linux"):
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        _require(renameat2 is not None, "atomic no-replace requires renameat2")
+        renameat2.argtypes = [
+            ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+            ctypes.c_char_p, ctypes.c_uint,
+        ]
+        renameat2.restype = ctypes.c_int
+        result = renameat2(
+            -100, os.fsencode(stage), -100, os.fsencode(destination), 1
+        )
+        if result == 0:
+            return
+        number = ctypes.get_errno()
+        if number == errno.EEXIST:
+            raise MaterializationError(
+                f"refusing to overwrite destination during publish: {destination}"
+            )
+        raise MaterializationError(
+            f"atomic no-replace publication failed: {os.strerror(number)}"
+        )
+    raise MaterializationError(
+        "atomic no-replace publication unavailable on this platform"
+    )
+
+
+def _verify_private_stage(
+    stage: Path,
+    payloads: list[tuple[str, bytes]],
+    receipt_bytes: bytes,
+) -> None:
+    """Recheck exact staged bytes and closed-world shape before publication."""
+    payload_dir = stage / "payload"
+    _require(
+        stage.is_dir() and not stage.is_symlink()
+        and payload_dir.is_dir() and not payload_dir.is_symlink(),
+        "private stage directory identity drift",
+    )
+    _require(
+        {item.name for item in stage.iterdir()} == {"payload", "receipt.json"},
+        "unexpected private stage root entries",
+    )
+    _require(
+        {item.name for item in payload_dir.iterdir()}
+        == {name for name, _ in payloads},
+        "unexpected private payload entries",
+    )
+    for name, expected in payloads:
+        path = payload_dir / name
+        _require(
+            path.is_file() and not path.is_symlink()
+            and path.read_bytes() == expected,
+            f"staged payload identity drift: {name}",
+        )
+    receipt_path = stage / "receipt.json"
+    _require(
+        receipt_path.is_file() and not receipt_path.is_symlink()
+        and receipt_path.read_bytes() == receipt_bytes,
+        "staged receipt identity drift",
+    )
+
+
 def materialize(
     seal_path: Path,
     out_root: Path,
     *,
     fetcher: Callable[[str], bytes] = fetch_bytes,
 ) -> dict[str, Any]:
-    """Rematerialize exact payload and return a text-free deterministic receipt."""
-    seal = load_terminal_seal(seal_path)
-    _require(not out_root.exists(), f"refusing to overwrite existing output: {out_root}")
-    payload_dir = out_root / "payload"
-    payload_dir.mkdir(parents=True)
+    """Verify all source bytes, then publish one complete candidate.
 
+    A failed staged candidate is retained for inspection, never recursively
+    deleted by a mutable pathname. One candidate per destination is allowed.
+    """
+    seal = load_terminal_seal(seal_path)
+    _require(
+        not _occupied(out_root),
+        f"refusing to overwrite existing output: {out_root}",
+    )
+    stage = out_root.with_name(f".{out_root.name}.gutenberg-stage-v1")
+    _require(
+        not _occupied(stage),
+        f"inspect/remove the retained private stage before retry: {stage}",
+    )
     encoding_by_source = {
-        source_id: expected["encoding"] for source_id, expected in EXPECTED_RECORDS.items()
+        source_id: expected["encoding"]
+        for source_id, expected in EXPECTED_RECORDS.items()
     }
     rows: list[dict[str, Any]] = []
+    payloads: list[tuple[str, bytes]] = []
+    # Transport, checksum and normalization failures create no output/stage.
     for record in seal["records"]:
         source_id = str(record["source_id"])
         runtime_record = dict(record)
@@ -402,21 +491,44 @@ def materialize(
         raw = fetcher(_transport_url(runtime_record))
         normalized = verify_and_normalize_record(runtime_record, raw)
         output_name = source_id.replace(".", "_") + ".txt"
-        (payload_dir / output_name).write_bytes(normalized)
-        rows.append(_runtime_record(runtime_record, normalized, f"payload/{output_name}"))
-
+        payloads.append((output_name, normalized))
+        rows.append(
+            _runtime_record(runtime_record, normalized, f"payload/{output_name}")
+        )
     rows.sort(key=lambda row: str(row["source_id"]))
     receipt = _build_receipt(seal, rows)
-    (out_root / "receipt.json").write_bytes(_canonical(receipt))
+    receipt_bytes = _canonical(receipt)
+    _require(
+        not _occupied(out_root) and not _occupied(stage),
+        "output or private stage appeared during source verification",
+    )
+    try:
+        out_root.parent.mkdir(parents=True, exist_ok=True)
+        stage.mkdir()
+        payload_dir = stage / "payload"
+        payload_dir.mkdir()
+        for name, data in payloads:
+            with (payload_dir / name).open("xb") as stream:
+                stream.write(data)
+        with (stage / "receipt.json").open("xb") as stream:
+            stream.write(receipt_bytes)
+        _verify_private_stage(stage, payloads, receipt_bytes)
+        _publish_directory_noreplace(stage, out_root)
+    except (MaterializationError, OSError) as exc:
+        raise MaterializationError(
+            f"{exc}; inspect retained private stage if present: {stage}"
+        ) from exc
     return receipt
-
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seal", type=Path, default=DEFAULT_SEAL)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    receipt = materialize(args.seal, args.out)
+    try:
+        receipt = materialize(args.seal, args.out)
+    except MaterializationError as exc:
+        parser.exit(2, f"materialization FAIL: {exc}\n")
     print(json.dumps(receipt, ensure_ascii=False, sort_keys=True))
     return 0
 

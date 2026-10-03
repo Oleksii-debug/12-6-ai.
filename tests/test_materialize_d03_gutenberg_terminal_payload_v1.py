@@ -5,6 +5,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,61 @@ spec.loader.exec_module(module)
 def git_blob_sha1(data: bytes) -> str:
     framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
     return hashlib.sha1(framed).hexdigest()
+
+
+def synthetic_source_fixture():
+    """Three synthetic records; no source download or corpus credit."""
+    records = []
+    raw_by_url = {}
+    expected_payloads = {}
+    for index in range(3):
+        source_id = f"en.project-gutenberg.synthetic-{index}"
+        raw = (
+            b"outside\n"
+            b"*** START OF THE PROJECT GUTENBERG EBOOK TEST ***\n\n"
+            + f"synthetic chapter {index}\n".encode("ascii")
+            + b"\n*** END OF THE PROJECT GUTENBERG EBOOK TEST ***\n"
+        )
+        normalized = module.normalize_pg_body(raw, "ascii")
+        record = {
+            "source_id": source_id,
+            "ebook_id": index + 1,
+            "encoding": "ascii",
+            "raw_bytes": len(raw),
+            "raw_sha256": hashlib.sha256(raw).hexdigest(),
+            "transport_git_blob_sha1": git_blob_sha1(raw),
+            "normalized_utf8_bytes": len(normalized),
+            "normalized_sha256": hashlib.sha256(normalized).hexdigest(),
+            "transport_repo": f"GITenberg/Synthetic_{index}",
+            "transport_commit": f"{index + 1:040x}",
+            "transport_path": f"{index}.txt",
+        }
+        records.append(record)
+        raw_by_url[module._transport_url(record)] = raw
+        expected_payloads[source_id.replace(".", "_") + ".txt"] = normalized
+    seal = {
+        "records": records,
+        "parent_authority": {"head_sha": "a" * 40},
+        "exact_head_execution": {
+            "workflow_run_id": 1,
+            "artifact_id": 2,
+            "artifact_digest": "sha256:" + "0" * 64,
+        },
+    }
+    return seal, records, raw_by_url, expected_payloads
+
+
+def run_synthetic(seal, records, out_root, fetcher):
+    expected_bytes = sum(record["normalized_utf8_bytes"] for record in records)
+    expected_records = {record["source_id"]: record for record in records}
+    with (
+        mock.patch.object(module, "load_terminal_seal", return_value=seal),
+        mock.patch.object(module, "EXPECTED_RECORDS", expected_records),
+        mock.patch.object(module, "EXPECTED_NORMALIZED_TOTAL", expected_bytes),
+    ):
+        return module.materialize(
+            Path("synthetic-seal"), out_root, fetcher=fetcher
+        )
 
 
 class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
@@ -143,6 +199,162 @@ class GutenbergTerminalPayloadMaterializerTests(unittest.TestCase):
         serialized = json.dumps(receipt)
         self.assertNotIn("Ludvig Holberg, The Founder", serialized)
         self.assertNotIn("A Literary History of the Arabs", serialized)
+
+
+    def test_transport_failure_leaves_no_output_and_same_out_retry_succeeds(self):
+        for fail_index in (0, 1):
+            with self.subTest(fail_index=fail_index):
+                seal, records, raw_by_url, expected = synthetic_source_fixture()
+                with tempfile.TemporaryDirectory() as td:
+                    out = Path(td) / "output"
+                    count = 0
+
+                    def failing_fetch(url):
+                        nonlocal count
+                        count += 1
+                        if count == fail_index + 1:
+                            raise module.MaterializationError(
+                                "injected transport error"
+                            )
+                        return raw_by_url[url]
+
+                    with self.assertRaisesRegex(
+                        module.MaterializationError, "injected transport error"
+                    ):
+                        run_synthetic(seal, records, out, failing_fetch)
+                    self.assertFalse(out.exists())
+                    self.assertFalse(
+                        out.with_name(".output.gutenberg-stage-v1").exists()
+                    )
+                    receipt = run_synthetic(
+                        seal, records, out, raw_by_url.__getitem__
+                    )
+                    self.assertEqual(receipt["payload_inventory"]["record_count"], 3)
+                    for name, data in expected.items():
+                        self.assertEqual((out / "payload" / name).read_bytes(), data)
+                    self.assertEqual(
+                        (out / "receipt.json").read_bytes(),
+                        module._canonical(receipt),
+                    )
+
+    def test_second_record_bad_checksum_does_not_publish_partial_output(self):
+        seal, records, raw_by_url, _ = synthetic_source_fixture()
+        bad_url = module._transport_url(records[1])
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output"
+
+            def corrupt_second(url):
+                data = raw_by_url[url]
+                return data + b"x" if url == bad_url else data
+
+            with self.assertRaises(module.MaterializationError):
+                run_synthetic(seal, records, out, corrupt_second)
+            self.assertFalse(out.exists())
+            self.assertFalse(
+                out.with_name(".output.gutenberg-stage-v1").exists()
+            )
+
+    def test_receipt_write_error_retains_single_stage_and_refuses_retry(self):
+        seal, records, raw_by_url, _ = synthetic_source_fixture()
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output"
+            stage = out.with_name(".output.gutenberg-stage-v1")
+            real_open = Path.open
+
+            def fail_receipt_open(path, mode="r", *args, **kwargs):
+                if path.name == "receipt.json" and mode == "xb":
+                    raise OSError("injected receipt write failure")
+                return real_open(path, mode, *args, **kwargs)
+
+            with mock.patch.object(Path, "open", fail_receipt_open):
+                with self.assertRaisesRegex(
+                    module.MaterializationError, "injected receipt write failure"
+                ):
+                    run_synthetic(seal, records, out, raw_by_url.__getitem__)
+            self.assertFalse(out.exists())
+            self.assertTrue((stage / "payload").is_dir())
+            calls = []
+
+            def count_fetch(url):
+                calls.append(url)
+                return raw_by_url[url]
+
+            with self.assertRaisesRegex(
+                module.MaterializationError, "inspect/remove the retained"
+            ):
+                run_synthetic(seal, records, out, count_fetch)
+            self.assertEqual(calls, [])
+
+    def test_existing_empty_destination_at_publish_is_not_replaced(self):
+        seal, records, raw_by_url, _ = synthetic_source_fixture()
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output"
+            stage = out.with_name(".output.gutenberg-stage-v1")
+            original = module._publish_directory_noreplace
+
+            def create_destination_before_publish(candidate, destination):
+                destination.mkdir()
+                original(candidate, destination)
+
+            with mock.patch.object(
+                module, "_publish_directory_noreplace",
+                create_destination_before_publish,
+            ):
+                with self.assertRaises(module.MaterializationError):
+                    run_synthetic(
+                        seal, records, out, raw_by_url.__getitem__
+                    )
+            self.assertTrue(out.is_dir())
+            self.assertEqual(list(out.iterdir()), [])
+            self.assertTrue((stage / "receipt.json").is_file())
+            self.assertEqual(len(list((stage / "payload").iterdir())), 3)
+
+    def test_private_stage_tampering_rejects_publication(self):
+        seal, records, raw_by_url, _ = synthetic_source_fixture()
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output"
+            stage = out.with_name(".output.gutenberg-stage-v1")
+            original = module._verify_private_stage
+
+            def replace_stage_payload(candidate, payloads, receipt_bytes):
+                name = payloads[0][0]
+                (candidate / "payload" / name).write_bytes(b"tampered")
+                original(candidate, payloads, receipt_bytes)
+
+            with mock.patch.object(
+                module, "_verify_private_stage", replace_stage_payload
+            ):
+                with self.assertRaisesRegex(
+                    module.MaterializationError, "staged payload identity drift"
+                ):
+                    run_synthetic(
+                        seal, records, out, raw_by_url.__getitem__
+                    )
+            self.assertFalse(out.exists())
+            self.assertTrue((stage / "receipt.json").exists())
+
+    def test_preexisting_destination_or_private_stage_refuses_before_fetch(self):
+        seal, records, raw_by_url, _ = synthetic_source_fixture()
+        for occupant in ("destination", "stage"):
+            with self.subTest(occupant=occupant):
+                with tempfile.TemporaryDirectory() as td:
+                    out = Path(td) / "output"
+                    stage = out.with_name(".output.gutenberg-stage-v1")
+                    occupied = out if occupant == "destination" else stage
+                    occupied.mkdir()
+                    (occupied / "user-marker").write_text("untouched")
+                    calls = []
+
+                    def count_fetch(url):
+                        calls.append(url)
+                        return raw_by_url[url]
+
+                    with self.assertRaises(module.MaterializationError):
+                        run_synthetic(seal, records, out, count_fetch)
+                    self.assertEqual(calls, [])
+                    self.assertEqual(
+                        (occupied / "user-marker").read_text(), "untouched"
+                    )
 
 
 if __name__ == "__main__":
