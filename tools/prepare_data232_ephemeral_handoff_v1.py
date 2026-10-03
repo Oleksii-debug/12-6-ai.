@@ -41,6 +41,11 @@ _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 
 # Independently qualified clean physical roots.  They are code-bound launch
 # authority, not caller-provided values that can be coherently re-sealed.
+# The qualified artifact distinguishes the execution-only workflow carrier from
+# the Product/materializer Git head whose bytes produced evidence.execution_head_sha.
+# Keep both as independent code-bound roots; neither may be derived from caller input.
+_MATERIALIZER_EXECUTION_HEAD_GIT_SHA = "4588b660fd7650d6ddb072e9a9b666f5cc97238c"
+
 _RELEASE_AUTHORITY: dict[str, Any] = {
     "materialization_schema_version": MATERIALIZATION_SCHEMA,
     "retained_source_count": 257,
@@ -390,7 +395,7 @@ def _verify_evidence(evidence: Mapping[str, Any]) -> None:
         raise ValueError("materialization status drift")
     if evidence.get("execution_profile") != "LOCAL_FREE":
         raise ValueError("materialization profile is not LOCAL_FREE")
-    if evidence.get("execution_head_sha") != _RELEASE_AUTHORITY["physical_head_git_sha"]:
+    if evidence.get("execution_head_sha") != _MATERIALIZER_EXECUTION_HEAD_GIT_SHA:
         raise ValueError("materialization execution head is not independently expected")
     if evidence.get("repeat_materialization_byte_identical") is not True:
         raise ValueError("repeat materialization proof missing")
