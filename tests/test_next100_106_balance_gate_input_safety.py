@@ -299,3 +299,36 @@ def test_self_resealed_policy_rejects_extra_stratum() -> None:
     )
     with pytest.raises(gate.GateError, match="45/35/20"):
         gate.validate_policy(policy)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("issue",), 558),
+        (("lineage", "base_head_sha"), "0" * 40),
+        (("input_contract", "terminal_required"), False),
+        (("input_contract", "family_capacity_semantics"), "RAW_SOURCE_BYTES"),
+        (("new_training_authority",), True),
+    ],
+)
+def test_resigned_policy_cannot_change_unreviewed_identity_fields(
+    path: tuple[str, ...], value: object,
+) -> None:
+    gate = _gate()
+    policy = copy.deepcopy(gate.load_json(POLICY))
+    target = policy
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    policy["policy_identity_sha256"] = gate.canonical_sha(
+        policy, "policy_identity_sha256"
+    )
+    with pytest.raises(gate.GateError, match="pinned authority"):
+        gate.validate_policy(policy)
+
+
+def test_canonical_policy_is_externally_pinned() -> None:
+    gate = _gate()
+    policy = gate.load_json(POLICY)
+    assert policy["policy_identity_sha256"] == gate.EXPECTED_POLICY_IDENTITY_SHA256
+    gate.validate_policy(policy)
