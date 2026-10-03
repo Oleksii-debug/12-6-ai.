@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
+EXPECTED_AUTHORITY_SHA256 = "a9ddc66c826f32299cb9e69aa64d3e7e7526869391e3e2ab3162abf43cf886a9"
 MAX_AUTHORITY_JSON_BYTES = 1_048_576
 MAX_AUTHORITY_JSON_DEPTH = 64
 MAX_AUTHORITY_JSON_NODES = 10_000
@@ -145,6 +146,9 @@ def validate_source_authority(document: dict[str, Any]) -> dict[str, Any]:
         raise SourceAuthorityError("capacity basis drift")
     if capacity.get("materialization_status") != "not_materialized":
         raise SourceAuthorityError("authority cannot claim materialization")
+
+    if actual_identity != EXPECTED_AUTHORITY_SHA256:
+        raise SourceAuthorityError("canonical SciPy authority identity drift")
 
     return {
         "authority_id": document["authority_id"],
