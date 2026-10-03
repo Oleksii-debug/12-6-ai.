@@ -1265,6 +1265,38 @@ def test_target_binding_rejects_resealed_numeric_alias_and_policy_drift(
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "replacement", "error"),
+    [
+        ("authorized_optimized_target_exposure", False, "optimized-target exposure"),
+        ("balance_policy_identity_sha256", "f" * 64, "independently pinned"),
+        ("target_total_source_bytes", 20_000_000.0, "target total drift"),
+        ("maximum_feasible_total_source_bytes", 20_000_000.0, "maximum"),
+    ],
+)
+def test_standalone_balance_readiness_rejects_resealed_alias_and_policy(
+    field: str, replacement: object, error: str,
+) -> None:
+    _vector, _raw, _expected, _adapted, _balance, binding = (
+        _current_clean_target_selection_fixture()
+    )
+    altered = copy.deepcopy(binding)
+    altered[field] = replacement
+    altered["binding_identity_sha256"] = hashlib.sha256(
+        _canonical(
+            {
+                key: value for key, value in altered.items()
+                if key != "binding_identity_sha256"
+            }
+        )
+    ).hexdigest()
+    with pytest.raises(ProjectionError, match=error):
+        require_balanced_selection_ready(
+            altered,
+            expected_binding_identity_sha256=altered["binding_identity_sha256"],
+        )
+
+
 def test_current_clean_balanced_selection_materializes_exact_target() -> None:
     selection, projected, balance = _build_current_clean_target_selection()
     assert selection["schema"] == "12-6.d03-balanced-selection-authority.v1"

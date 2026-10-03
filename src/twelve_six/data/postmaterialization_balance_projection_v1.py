@@ -1673,8 +1673,15 @@ def require_balanced_selection_ready(
         expected_binding_identity_sha256, "expected_binding_identity_sha256"
     ):
         raise ProjectionError("balance binding does not match external expectation")
-    if binding.get("authorized_optimized_target_exposure") != 0:
+    if (
+        type(binding.get("authorized_optimized_target_exposure")) is not int
+        or binding["authorized_optimized_target_exposure"] != 0
+    ):
         raise ProjectionError("balance binding fabricated optimized-target exposure")
+    if binding.get("balance_policy_identity_sha256") != (
+        _TARGET_20M_POLICY_IDENTITY_SHA256
+    ):
+        raise ProjectionError("balance binding policy is not independently pinned")
     if binding.get("tokenizer_fit_authorized") is not False:
         raise ProjectionError("balance binding fabricated tokenizer authority")
     if binding.get("model_training_authorized") is not False:
