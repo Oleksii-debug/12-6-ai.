@@ -409,6 +409,7 @@ def audit(sample, raw):
         *[f"id:{i}" for i in range(8)], *[f"id:{i}" for i in range(12, 20)]
     ]
     assert set(raw) == expected_ids
+    assert list(raw) == [row["source_id"] for row in sample["sources"]]
     assert len(sample["lineage_edges"]) == 2
     assert sample["lineage_edges"] == [edges[0], edges[2]]
     assert sample["local_free_only"] is True
