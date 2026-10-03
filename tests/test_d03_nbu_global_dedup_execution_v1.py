@@ -1,0 +1,1547 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from copy import deepcopy
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+MODULE = ROOT / "tools" / "run_d03_nbu_global_dedup_execution_v1.py"
+WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+NBU_EXECUTION_BRANCH = "swarm/2398-nbu-indexed-dedup-execution-v1"
+NBU_OTHER_PHYSICAL_JOBS = ("nbu-pinned-pdf-access-probe",)
+
+
+def test_nbu_physical_workflow_gates_bind_canonical_pr_origin() -> None:
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    expected_gate = (
+        "    if: github.event_name == 'pull_request' "
+        "&& github.event.pull_request.number == 2454 "
+        f"&& github.head_ref == '{NBU_EXECUTION_BRANCH}' "
+        "&& github.event.pull_request.head.repo.full_name == github.repository"
+    )
+    job_indexes = {
+        line[2:-1]: index
+        for index, line in enumerate(lines)
+        if line.startswith("  nbu-global-dedup-") and line.endswith(":")
+    }
+    assert job_indexes, "expected at least one NBU global-dedup physical job"
+    for job in NBU_OTHER_PHYSICAL_JOBS:
+        job_line = f"  {job}:"
+        assert job_line in lines
+        job_indexes[job] = lines.index(job_line)
+
+    for job, index in job_indexes.items():
+        assert lines[index + 1] == expected_gate, job
+
+
+
+
+
+def test_nbu_expensive_physical_jobs_wait_for_bootstrap() -> None:
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    for job in (
+        "nbu-global-dedup-pass",
+        "nbu-global-dedup-audited-pin-replay",
+        "nbu-pinned-pdf-access-probe",
+    ):
+        index = lines.index(f"  {job}:")
+        block = lines[index : index + 6]
+        assert "    needs: bootstrap" in block, job
+
+
+def test_nbu_audited_pin_replay_runs_two_clean_without_weakening_live_gate() -> None:
+    raw = WORKFLOW.read_text(encoding="utf-8")
+    audited_start = raw.index("  nbu-global-dedup-audited-pin-replay:")
+    audited_end = raw.index("\n  nbu-global-dedup-two-clean:", audited_start)
+    audited = raw[audited_start:audited_end]
+
+    assert "run_d03_nbu_global_dedup_execution_v1.py two-clean" in audited
+    assert '--candidate-jsonl-a "$RUN_DIR/nbu-text-a.jsonl"' in audited
+    assert '--candidate-jsonl-b "$RUN_DIR/nbu-text-b.jsonl"' in audited
+    assert '--materialization-evidence-json-a "$RUN_DIR/nbu-text-evidence-a.json"' in audited
+    assert '--materialization-evidence-json-b "$RUN_DIR/nbu-text-evidence-b.json"' in audited
+    assert 'test -f "$RUN_DIR/two-clean/two-clean-authority.json"' in audited
+    assert 'test ! -e "$RUN_DIR/two-clean/incomplete.json"' in audited
+    assert '"fresh_catalog_discovery_executed": False' in audited
+    assert '"fresh_pinned_pdf_text_materialization_count": 2' in audited
+    assert '"fresh_global_dedup_process_count": authority["dedup"]["fresh_process_count"]' in audited
+
+    live_start = raw.index("  nbu-global-dedup-pass:")
+    live_end = raw.index("\n  nbu-global-dedup-audited-pin-replay:", live_start)
+    live = raw[live_start:live_end]
+    assert "continue-on-error:" not in live
+    assert 'test "$(sha256sum "$RUN_DIR/nbu-text-a.jsonl" | cut -d\' \' -f1)" = "$EXPECTED_CANDIDATE_SHA256"' in live
+
+
+def test_nbu_physical_jobs_pin_action_revisions() -> None:
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    top_level_jobs = [
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("  ") and not line.startswith("    ") and line.endswith(":")
+    ]
+    nbu_job_indexes = [
+        index
+        for index in top_level_jobs
+        if (
+            lines[index].startswith("  nbu-global-dedup-")
+            or lines[index] == "  nbu-pinned-pdf-access-probe:"
+        )
+    ]
+    assert nbu_job_indexes
+    for start in nbu_job_indexes:
+        end = next((index for index in top_level_jobs if index > start), len(lines))
+        for line in lines[start:end]:
+            stripped = line.strip()
+            if not stripped.startswith("uses: actions/"):
+                continue
+            revision = stripped.rsplit("@", 1)[-1]
+            assert len(revision) == 40
+            assert all(char in "0123456789abcdef" for char in revision)
+
+
+
+def test_nbu_physical_jobs_do_not_install_training_stack() -> None:
+    lines = WORKFLOW.read_text(encoding="utf-8").splitlines()
+    top_level_jobs = [
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("  ") and not line.startswith("    ") and line.endswith(":")
+    ]
+    nbu_job_indexes = [
+        index
+        for index in top_level_jobs
+        if (
+            lines[index].startswith("  nbu-global-dedup-")
+            or lines[index] == "  nbu-pinned-pdf-access-probe:"
+        )
+    ]
+    assert nbu_job_indexes
+    for start in nbu_job_indexes:
+        end = next((index for index in top_level_jobs if index > start), len(lines))
+        block = "\n".join(lines[start:end])
+        assert 'pip install -e ".[dev]"' not in block
+        assert "pip install torch" not in block
+
+
+
+def test_two_clean_workflow_binds_distinct_physical_pass_summaries() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert 'P1_DIR"]) / "physical-pass-summary.json"' in workflow
+    assert 'P2_DIR"]) / "physical-pass-summary.json"' in workflow
+    assert 'verify_self_hash(pass_summary, "summary_identity_sha256")' in workflow
+    assert 'assert summary["pass_id"] == expected_pass_id' in workflow
+    assert '"physical_pass_summary_identity_sha256": [' in workflow
+    assert '"discovery_evidence_identity_sha256": discovery_evidence["evidence_identity_sha256"]' in workflow
+    assert '"pdf_pin_evidence_identity_sha256": pdf_pin_evidence["evidence_identity_sha256"]' in workflow
+    assert 'pin["parent_discovery_evidence_identity_sha256"]' in workflow
+    assert 'text["discovery_evidence_identity_sha256"]' in workflow
+    assert 'text["pdf_pin_evidence_identity_sha256"]' in workflow
+
+
+
+def _load():
+    spec = importlib.util.spec_from_file_location("run_d03_nbu_execution_test", MODULE)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_carrier_constants_bind_current_nbu_projection() -> None:
+    mod = _load()
+    assert mod.EXECUTION_CLAIM == 2398
+    assert mod.EXECUTION_PR == 2454
+    assert mod.EXPECTED_NBU_OBJECTS == 40
+    assert mod.EXPECTED_NBU_BYTES == 794_091
+    assert mod.EXPECTED_COMBINED_OBJECTS == 303
+    assert mod.EXPECTED_COMBINED_BYTES == 6_888_056
+    assert mod.INTAKE_PATH in mod.PRODUCT_PATHS
+    assert mod.CARRIER_PATH in mod.PRODUCT_PATHS
+    assert mod.INTAKE_PATH not in mod.MAIN_AUTHORITY_PATHS
+
+
+def test_selected_execution_head_must_equal_observed_head(monkeypatch) -> None:
+    mod = _load()
+    selected = "a" * 40
+    monkeypatch.setattr(
+        mod,
+        "_git",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=selected + "\n",
+            stderr="",
+        ),
+    )
+    assert mod._bind_execution_head(selected) == selected
+
+
+@pytest.mark.parametrize("bad", ["", "a" * 39, "A" * 40, "g" * 40])
+def test_selected_execution_head_rejects_malformed_sha(bad: str) -> None:
+    mod = _load()
+    with pytest.raises(mod.NbuGlobalDedupError, match="exact lowercase 40-hex"):
+        mod._bind_execution_head(bad)
+
+
+@pytest.mark.parametrize("bad", [0, -1, False, 1.5, "10"])
+def test_work_budgets_require_exact_positive_ints(bad: object) -> None:
+    mod = _load()
+    with pytest.raises(mod.NbuGlobalDedupError, match="must be exact positive int"):
+        mod._validate_work_budgets(bad, 1, 1)
+
+
+def test_work_budgets_accept_positive_exact_ints() -> None:
+    mod = _load()
+    mod._validate_work_budgets(1, 2, 3)
+
+
+def test_selected_execution_head_rejects_stale_or_synthetic_checkout(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.setattr(
+        mod,
+        "_git",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="b" * 40 + "\n",
+            stderr="",
+        ),
+    )
+    with pytest.raises(mod.NbuGlobalDedupError, match="execution HEAD drift"):
+        mod._bind_execution_head("a" * 40)
+
+
+def test_compose_graph_is_one_to_one_and_collision_safe() -> None:
+    mod = _load()
+    base_inventory = {"sources": [{"source_id": "base:a"}]}
+    base_payloads = {"base:a": b"a"}
+    extension_sources = [{"source_id": "nbu:a"}]
+    extension_payloads = {"nbu:a": b"b"}
+
+    inventory, payloads = mod._compose_graph(
+        base_inventory,
+        base_payloads,
+        extension_sources,
+        extension_payloads,
+    )
+    assert [row["source_id"] for row in inventory["sources"]] == ["base:a", "nbu:a"]
+    assert payloads == {"base:a": b"a", "nbu:a": b"b"}
+    assert base_inventory == {"sources": [{"source_id": "base:a"}]}
+    assert base_payloads == {"base:a": b"a"}
+
+
+def test_compose_graph_rejects_source_id_collision() -> None:
+    mod = _load()
+    with pytest.raises(mod.NbuGlobalDedupError, match="source-id collision"):
+        mod._compose_graph(
+            {"sources": [{"source_id": "same"}]},
+            {"same": b"a"},
+            [{"source_id": "same"}],
+            {"same": b"b"},
+        )
+
+
+def _nbu_comparison_binding_fixture(mod):
+    payload = b"nbu payload"
+    expected = {
+        "source_id": "nbu:test",
+        "source_family": mod.nbu.SOURCE_FAMILY,
+        "modality": "natural_language",
+        "evidence_status": "DEDICATED_TERMINAL",
+        "declared_capacity_bytes": len(payload),
+        "stable_origin_id": "https://bank.gov.ua/ua/legislation/Resolution_20260101_test",
+        "stable_object_id": "sha256:" + mod._sha256(payload),
+    }
+    observed = {
+        "source_id": expected["source_id"],
+        "source_family": expected["source_family"],
+        "modality": expected["modality"],
+        "evidence_status": expected["evidence_status"],
+        "declared_capacity_bytes": expected["declared_capacity_bytes"],
+        "stable_origin_id_sha256": mod._sha256(expected["stable_origin_id"].encode("utf-8")),
+        "stable_object_id_sha256": mod._sha256(expected["stable_object_id"].encode("utf-8")),
+        "verified_raw_bytes": len(payload),
+        "verified_raw_sha256": mod._sha256(payload),
+        "comparison_policy": "DATA232_GENERIC_FROM_RAW",
+        "comparison_payload_bytes": len(payload),
+        "comparison_payload_sha256": mod._sha256(payload),
+    }
+    return expected, payload, observed
+
+
+def test_nbu_report_binding_accepts_exact_generic_raw_projection() -> None:
+    mod = _load()
+    expected, payload, observed = _nbu_comparison_binding_fixture(mod)
+    mod._validate_nbu_report_binding(
+        {"sources": [observed]},
+        [expected],
+        {expected["source_id"]: payload},
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "message"),
+    [
+        ("comparison_policy", "OTHER", "comparison policy drift"),
+        ("comparison_payload_bytes", 1, "comparison byte drift"),
+        ("comparison_payload_sha256", "f" * 64, "comparison hash drift"),
+    ],
+)
+def test_nbu_report_binding_rejects_comparison_drift(
+    field: str, bad: object, message: str
+) -> None:
+    mod = _load()
+    expected, payload, observed = _nbu_comparison_binding_fixture(mod)
+    observed[field] = bad
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._validate_nbu_report_binding(
+            {"sources": [observed]},
+            [expected],
+            {expected["source_id"]: payload},
+        )
+
+
+def _nbu_binding_fixture(mod):
+    payload = b"abc"
+    stable_origin_id = "https://bank.gov.ua/example#pdf-sha256:" + "1" * 64
+    stable_object_id = "sha256:" + "2" * 64
+    source = {
+        "source_id": "nbu-admitted:test",
+        "source_family": mod.nbu.SOURCE_FAMILY,
+        "stable_origin_id": stable_origin_id,
+        "stable_object_id": stable_object_id,
+        "modality": mod.nbu.MATCHER_MODALITY,
+        "evidence_status": "DEDICATED_TERMINAL",
+        "declared_capacity_bytes": len(payload),
+    }
+    report_row = {
+        "source_id": source["source_id"],
+        "source_family": source["source_family"],
+        "stable_origin_id_sha256": mod._sha256(stable_origin_id.encode("utf-8")),
+        "stable_object_id_sha256": mod._sha256(stable_object_id.encode("utf-8")),
+        "modality": source["modality"],
+        "evidence_status": source["evidence_status"],
+        "declared_capacity_bytes": len(payload),
+        "verified_raw_bytes": len(payload),
+        "verified_raw_sha256": mod._sha256(payload),
+        "comparison_policy": "DATA232_GENERIC_FROM_RAW",
+        "comparison_payload_bytes": len(payload),
+        "comparison_payload_sha256": mod._sha256(payload),
+    }
+    return {"sources": [report_row]}, [source], {source["source_id"]: payload}
+
+
+def test_nbu_report_binding_cross_binds_exact_projected_source() -> None:
+    mod = _load()
+    report, sources, payloads = _nbu_binding_fixture(mod)
+    mod._validate_nbu_report_binding(report, sources, payloads)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "message"),
+    [
+        ("stable_origin_id_sha256", "f" * 64, "stable origin drift"),
+        ("verified_raw_sha256", "f" * 64, "verified raw hash drift"),
+        ("comparison_payload_sha256", "f" * 64, "comparison hash drift"),
+    ],
+)
+def test_nbu_report_binding_rejects_report_drift(
+    field: str, bad: object, message: str
+) -> None:
+    mod = _load()
+    report, sources, payloads = _nbu_binding_fixture(mod)
+    report["sources"][0][field] = bad
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._validate_nbu_report_binding(report, sources, payloads)
+
+
+def test_nbu_report_binding_rejects_duplicate_projected_ids_and_orphan_payload() -> None:
+    mod = _load()
+    report, sources, payloads = _nbu_binding_fixture(mod)
+    duplicate_sources = [sources[0], deepcopy(sources[0])]
+    orphan_payloads = {**payloads, "orphan": b"x"}
+    with pytest.raises(mod.NbuGlobalDedupError, match="source ids duplicate"):
+        mod._validate_nbu_report_binding(report, duplicate_sources, orphan_payloads)
+
+
+def test_nbu_report_binding_rejects_nonstring_stable_identity() -> None:
+    mod = _load()
+    report, sources, payloads = _nbu_binding_fixture(mod)
+    sources[0]["stable_origin_id"] = None
+    with pytest.raises(mod.NbuGlobalDedupError, match="stable origin invalid"):
+        mod._validate_nbu_report_binding(report, sources, payloads)
+
+
+def _report(mod):
+    after = mod.EXPECTED_COMBINED_BYTES - 10
+    core = {
+        "source_count": mod.EXPECTED_COMBINED_OBJECTS,
+        "sources": [
+            {
+                "source_id": "base:a",
+                "source_family": "base",
+                "declared_capacity_bytes": after,
+            },
+            {
+                "source_id": "nbu:a",
+                "source_family": mod.nbu.SOURCE_FAMILY,
+                "declared_capacity_bytes": 10,
+            },
+        ],
+        "terminal_candidates": {
+            "declared_capacity_bytes_before": mod.EXPECTED_COMBINED_BYTES,
+            "conservative_unique_capacity_bytes_after": after,
+            "duplicate_discount_bytes": 10,
+            "duplicate_cluster_count": 1,
+        },
+    }
+    return {**core, "report_sha256": mod._incumbent_report_identity(core)}
+
+
+def _projection(mod):
+    after = mod.EXPECTED_COMBINED_BYTES - 10
+    core = {
+        "schema_version": mod.v9_semantics.SURVIVOR_SCHEMA,
+        "matcher_report_sha256": _report(mod)["report_sha256"],
+        "pre_dedup_source_object_count": mod.EXPECTED_COMBINED_OBJECTS,
+        "post_dedup_survivor_source_object_count": 2,
+        "pre_dedup_declared_capacity_bytes": mod.EXPECTED_COMBINED_BYTES,
+        "post_dedup_declared_capacity_bytes": after,
+        "duplicate_discount_bytes": 10,
+        "duplicate_cluster_count": 1,
+        "duplicate_clusters": [{"selected_source_id": "base:a"}],
+        "survivor_source_ids": ["base:a", "nbu:a"],
+    }
+    return {
+        **core,
+        "survivor_authority_sha256": mod._sha256(mod._canonical(core)),
+    }
+
+
+def test_survivor_projection_cross_binds_terminal_report() -> None:
+    mod = _load()
+    report = _report(mod)
+    projection = _projection(mod)
+    mod._validate_survivor_projection(report, projection)
+    outer = mod._outer_survivor_authority(report, projection)
+    assert outer["nbu_survivor_source_ids"] == ["nbu:a"]
+    assert outer["nbu_survivor_source_object_count"] == 1
+    assert outer["nbu_survivor_declared_capacity_bytes"] == 10
+    assert outer["canonical_capacity_credited"] == 0
+    assert len(outer["survivor_authority_sha256"]) == 64
+
+
+def test_survivor_projection_rejects_forged_self_hash() -> None:
+    mod = _load()
+    projection = _projection(mod)
+    projection["survivor_authority_sha256"] = "f" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="projection self-hash mismatch"):
+        mod._validate_survivor_projection(_report(mod), projection)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "message"),
+    [
+        ("matcher_report_sha256", "f" * 64, "matcher identity"),
+        ("pre_dedup_source_object_count", 1, "pre-dedup count"),
+        ("pre_dedup_declared_capacity_bytes", 1, "pre-dedup bytes"),
+        ("post_dedup_declared_capacity_bytes", 1, "post-dedup bytes"),
+        ("duplicate_discount_bytes", 9, "duplicate discount"),
+        ("duplicate_cluster_count", 0, "duplicate cluster count"),
+    ],
+)
+def test_survivor_projection_rejects_terminal_drift(
+    field: str,
+    bad: object,
+    message: str,
+) -> None:
+    mod = _load()
+    report = _report(mod)
+    projection = _projection(mod)
+    projection[field] = bad
+    core = dict(projection)
+    core.pop("survivor_authority_sha256")
+    projection["survivor_authority_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._validate_survivor_projection(report, projection)
+
+
+def test_survivor_projection_rejects_empty_or_oversized_survivor_set() -> None:
+    mod = _load()
+    report = _report(mod)
+    for ids in ([], [f"source:{index}" for index in range(mod.EXPECTED_COMBINED_OBJECTS + 1)]):
+        projection = _projection(mod)
+        projection["survivor_source_ids"] = ids
+        projection["post_dedup_survivor_source_object_count"] = len(ids)
+        core = dict(projection)
+        core.pop("survivor_authority_sha256")
+        projection["survivor_authority_sha256"] = mod._sha256(mod._canonical(core))
+        with pytest.raises(mod.NbuGlobalDedupError, match="survivor count drift"):
+            mod._validate_survivor_projection(report, projection)
+
+
+def test_two_clean_survivor_readback_rederives_canonical_selection(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.setattr(mod, "EXPECTED_COMBINED_OBJECTS", 2)
+    monkeypatch.setattr(mod, "EXPECTED_COMBINED_BYTES", 20)
+    core = {
+        "source_count": 2,
+        "sources": [
+            {
+                "source_id": "base:a",
+                "source_family": "base",
+                "declared_capacity_bytes": 10,
+            },
+            {
+                "source_id": "nbu:a",
+                "source_family": mod.nbu.SOURCE_FAMILY,
+                "declared_capacity_bytes": 10,
+            },
+        ],
+        "terminal_candidates": {
+            "declared_capacity_bytes_before": 20,
+            "conservative_unique_capacity_bytes_after": 10,
+            "duplicate_discount_bytes": 10,
+            "duplicate_cluster_count": 1,
+            "duplicate_clusters": [["base:a", "nbu:a"]],
+        },
+    }
+    report = {**core, "report_sha256": mod._incumbent_report_identity(core)}
+    selection = mod.v9_semantics._derive_survivors(report)
+    mod._validate_survivor_projection(report, selection)
+    survivor = mod._outer_survivor_authority(report, selection)
+    mod._validate_two_clean_survivor_readback(report, survivor)
+
+    forged = deepcopy(survivor)
+    forged["nbu_survivor_source_ids"] = ["nbu:a"]
+    forged["nbu_survivor_source_object_count"] = 1
+    forged["nbu_survivor_declared_capacity_bytes"] = 10
+    forged_core = dict(forged)
+    forged_core.pop("survivor_authority_sha256")
+    forged["survivor_authority_sha256"] = mod._sha256(mod._canonical(forged_core))
+    with pytest.raises(mod.NbuGlobalDedupError, match="survivor semantic readback drift"):
+        mod._validate_two_clean_survivor_readback(report, forged)
+
+
+def test_runtime_environment_local_is_provider_neutral(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    observed = mod._runtime_environment()
+    assert observed["github_actions"] is False
+    assert observed["runner_environment"] == "local"
+    assert observed["python_platform"] == mod.sys.platform
+    assert observed["python_version"] == mod.platform.python_version()
+    assert observed["python_implementation"] == mod.platform.python_implementation()
+
+
+def test_runtime_environment_rejects_ambiguous_actions_runner(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.delenv("RUNNER_ENVIRONMENT", raising=False)
+    monkeypatch.setenv("RUNNER_OS", "Linux")
+    monkeypatch.setenv("RUNNER_ARCH", "X64")
+    with pytest.raises(mod.NbuGlobalDedupError, match="runner environment missing"):
+        mod._runtime_environment()
+
+
+def test_max_rss_linux_preserves_kib(monkeypatch) -> None:
+    mod = _load()
+    fake_resource = SimpleNamespace(
+        RUSAGE_SELF=0,
+        getrusage=lambda _who: SimpleNamespace(ru_maxrss=2_049),
+    )
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    monkeypatch.setattr(mod, "resource", fake_resource)
+    assert mod._max_rss_kib() == 2_049
+
+
+def test_max_rss_darwin_converts_bytes_to_kib(monkeypatch) -> None:
+    mod = _load()
+    fake_resource = SimpleNamespace(
+        RUSAGE_SELF=0,
+        getrusage=lambda _who: SimpleNamespace(ru_maxrss=2_049),
+    )
+    monkeypatch.setattr(mod.sys, "platform", "darwin")
+    monkeypatch.setattr(mod, "resource", fake_resource)
+    assert mod._max_rss_kib() == 3
+
+
+def test_max_rss_windows_uses_peak_working_set_helper(monkeypatch) -> None:
+    mod = _load()
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "_windows_peak_working_set_kib", lambda: 4_096)
+    assert mod._max_rss_kib() == 4_096
+
+
+def test_max_rss_unknown_posix_fails_closed(monkeypatch) -> None:
+    mod = _load()
+    fake_resource = SimpleNamespace(
+        RUSAGE_SELF=0,
+        getrusage=lambda _who: SimpleNamespace(ru_maxrss=2_049),
+    )
+    monkeypatch.setattr(mod.sys, "platform", "freebsd14")
+    monkeypatch.setattr(mod, "resource", fake_resource)
+    assert mod._max_rss_kib() is None
+
+
+def test_publish_is_create_only(tmp_path) -> None:
+    mod = _load()
+    output = tmp_path / "evidence.json"
+    mod._publish_json_outputs(((output, {"ok": True}),))
+    assert json.loads(output.read_text()) == {"ok": True}
+    with pytest.raises(mod.NbuGlobalDedupError, match="refusing to overwrite"):
+        mod._publish_json_outputs(((output, {"ok": False}),))
+
+
+def _publication_outputs(tmp_path: Path):
+    return (
+        (tmp_path / "report.json", {"kind": "report"}),
+        (tmp_path / "survivors.json", {"kind": "survivors"}),
+        (tmp_path / "evidence.json", {"kind": "evidence"}),
+    )
+
+
+@pytest.mark.parametrize("interrupt_after", [1, 2])
+def test_publish_recovers_process_interruption_after_final_link(
+    tmp_path: Path, monkeypatch, interrupt_after: int
+) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    original_link = mod._link_staged_output
+    calls = 0
+
+    def interrupting_link(stage_path: Path, final_path: Path) -> None:
+        nonlocal calls
+        original_link(stage_path, final_path)
+        calls += 1
+        if calls == interrupt_after:
+            raise KeyboardInterrupt("simulated process interruption")
+
+    monkeypatch.setattr(mod, "_link_staged_output", interrupting_link)
+    with pytest.raises(KeyboardInterrupt, match="simulated process interruption"):
+        mod._publish_json_outputs(outputs)
+
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    marker = mod._publication_marker_path(prepared)
+    assert marker.exists()
+    assert sum(path.exists() for path, _ in outputs) == interrupt_after
+
+    monkeypatch.setattr(mod, "_link_staged_output", original_link)
+    mod._publish_json_outputs(outputs)
+
+    assert not marker.exists()
+    assert [path.read_bytes() for path, _ in outputs] == [
+        b'{"kind":"report"}\n',
+        b'{"kind":"survivors"}\n',
+        b'{"kind":"evidence"}\n',
+    ]
+    assert not list(tmp_path.glob(".*.stage-*"))
+
+
+def test_publish_invalid_manifest_with_stage_residue_fails_closed(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(manifest, b"{broken\n")
+    mod._write_create_only_durable(stages[0], b"partial")
+
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="invalid incomplete manifest coexists with payload paths",
+    ):
+        mod._publish_json_outputs(outputs)
+
+    assert marker.exists()
+    assert manifest.exists()
+    assert stages[0].read_bytes() == b"partial"
+    assert not any(path.exists() for path, _ in outputs)
+
+
+def test_publish_incomplete_marker_never_deletes_digest_mismatched_final(
+    tmp_path: Path, monkeypatch
+) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    original_link = mod._link_staged_output
+
+    def interrupt_first(stage_path: Path, final_path: Path) -> None:
+        original_link(stage_path, final_path)
+        raise KeyboardInterrupt("simulated process interruption")
+
+    monkeypatch.setattr(mod, "_link_staged_output", interrupt_first)
+    with pytest.raises(KeyboardInterrupt):
+        mod._publish_json_outputs(outputs)
+
+    report = outputs[0][0]
+    report.write_bytes(b"tampered\n")
+    monkeypatch.setattr(mod, "_link_staged_output", original_link)
+
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="incomplete publication output digest mismatch",
+    ):
+        mod._publish_json_outputs(outputs)
+
+    assert report.read_bytes() == b"tampered\n"
+
+
+def test_publish_rolls_back_files_from_failed_publication(tmp_path) -> None:
+    mod = _load()
+    first = tmp_path / "first.json"
+    existing = tmp_path / "existing.json"
+    existing.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(mod.NbuGlobalDedupError, match="refusing to overwrite"):
+        mod._publish_json_outputs(
+            (
+                (first, {"one": 1}),
+                (existing, {"two": 2}),
+            )
+        )
+    assert not first.exists()
+    assert existing.read_text(encoding="utf-8") == "{}\n"
+
+
+def test_publication_manifest_json_is_bounded_and_strict(tmp_path: Path) -> None:
+    mod = _load()
+    manifest = tmp_path / "manifest.json"
+    bad_inputs = (
+        b'{"a":1,"a":1}\n',
+        b'{"a":NaN}\n',
+        b'{"a":1.25}\n',
+        b'{"a":' + b'[' * 3000 + b'0' + b']' * 3000 + b'}\n',
+        b"x" * (mod.PUBLICATION_MANIFEST_MAX_BYTES + 1),
+    )
+    for payload in bad_inputs:
+        manifest.write_bytes(payload)
+        with pytest.raises(mod.NbuGlobalDedupError, match="unreadable"):
+            mod._load_publication_manifest(manifest)
+
+
+def test_publication_manifest_rejects_extra_root_key(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    _, manifest_path, stages, pathset_id = mod._publication_control_paths(prepared)
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    manifest["extra"] = "forbidden"
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    manifest_path.write_bytes(mod._canonical(manifest) + b"\n")
+    with pytest.raises(mod.NbuGlobalDedupError, match="keys invalid"):
+        mod._load_publication_manifest(manifest_path)
+
+
+def test_publication_manifest_rejects_extra_target_key(tmp_path: Path) -> None:
+    mod = _load()
+    outputs = _publication_outputs(tmp_path)
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\n") for path, value in outputs
+    )
+    marker, manifest_path, stages, pathset_id = mod._publication_control_paths(prepared)
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    manifest["targets"][0]["extra"] = "forbidden"
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(manifest_path, mod._canonical(manifest) + b"\n")
+    with pytest.raises(mod.NbuGlobalDedupError, match="target keys invalid"):
+        mod._recover_incomplete_publication(
+            marker, manifest_path, prepared, stages, pathset_id
+        )
+    assert marker.exists()
+    assert manifest_path.exists()
+
+
+def test_publish_rejects_resolved_output_aliases(tmp_path: Path) -> None:
+    mod = _load()
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    direct = tmp_path / "same.json"
+    alias = nested / ".." / "same.json"
+    assert direct != alias
+    assert direct.resolve() == alias.resolve()
+    with pytest.raises(mod.NbuGlobalDedupError, match="duplicate output path"):
+        mod._publish_json_outputs(
+            ((direct, {"a": 1}), (alias, {"b": 2}))
+        )
+    assert not direct.exists()
+
+
+def test_execute_binds_head_and_authority_before_reconstruction() -> None:
+    source = MODULE.read_text(encoding="utf-8")
+    head = source.index("execution_head = _bind_execution_head(expected_execution_head)")
+    authority = source.index("main_blobs, product_blobs = verify_repository_authority()")
+    reconstruction = source.index("matcher, base_inventory, base_payloads, removal =")
+    assert head < authority < reconstruction
+
+
+def test_production_executes_only_independently_qualified_indexed_path() -> None:
+    source = MODULE.read_text(encoding="utf-8")
+    assert "indexed.attest_incumbent_runtime(matcher)" in source
+    assert "indexed.audit_payloads_indexed(" in source
+    assert "matcher.audit_payloads(inventory, payloads)" not in source
+    assert "all_pairs_reference_executed\": False" in source
+
+
+def test_indexed_execution_attests_and_verifies_report(monkeypatch) -> None:
+    mod = _load()
+    calls: list[str] = []
+
+    class Matcher:
+        def verify_report(self, report):
+            calls.append("verify")
+            assert report["report_sha256"] == "2" * 64
+
+    matcher = Matcher()
+    monkeypatch.setattr(
+        mod.indexed,
+        "attest_incumbent_runtime",
+        lambda observed: calls.append("attest") if observed is matcher else None,
+    )
+    monkeypatch.setattr(
+        mod.indexed,
+        "audit_payloads_indexed",
+        lambda observed, inventory, payloads, **kwargs: (
+            calls.append("indexed"),
+            {"report_sha256": "2" * 64, "sources": []},
+        )[1],
+    )
+    report, elapsed = mod._execute_indexed_matcher(
+        matcher,
+        {"sources": []},
+        {},
+        max_candidate_pairs=10,
+        max_index_postings=10,
+        max_pair_expansions=10,
+    )
+    assert report["report_sha256"] == "2" * 64
+    assert elapsed >= 0
+    assert calls == ["attest", "indexed", "verify"]
+
+
+
+def _two_clean_evidence(mod, marker: str) -> dict[str, object]:
+    report_sha = _report(mod)["report_sha256"]
+    survivor_sha = _two_clean_survivors(mod)["survivor_authority_sha256"]
+    core: dict[str, object] = {
+        "schema_version": mod.SCHEMA,
+        "execution_profile": "LOCAL_FREE",
+        "execution_claim_issue": mod.EXECUTION_CLAIM,
+        "execution_pr": mod.EXECUTION_PR,
+        "execution_head_sha": "a" * 40,
+        "pinned_main_sha": mod.EXPECTED_MAIN,
+        "baseline_v8": {
+            "v7_head_sha": mod.v8.EXPECTED_V7_HEAD,
+            "source_object_count": mod.EXPECTED_BASE_OBJECTS,
+            "payload_bytes": mod.EXPECTED_BASE_BYTES,
+            "payload_bytes_semantics": mod.PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": mod.EXPECTED_BASE_BYTES,
+            "comparison_payload_bytes": mod.EXPECTED_BASE_BYTES + 26,
+            "nomis1864_deauthorization": deepcopy(mod.NOMIS_REMOVAL_PROOF),
+        },
+        "nbu": {
+            "materialization_head": mod.nbu.MATERIALIZATION_HEAD,
+            "workflow_run_id": mod.nbu.MATERIALIZATION_RUN,
+            "workflow_job_id": mod.nbu.MATERIALIZATION_JOB,
+            "artifact_id": mod.nbu.MATERIALIZATION_ARTIFACT,
+            "independent_audit_issue": mod.nbu.MATERIALIZATION_AUDIT,
+            "candidate_sha256": mod.nbu.CANDIDATE_SHA256,
+            "source_object_count": mod.EXPECTED_NBU_OBJECTS,
+            "payload_bytes": mod.EXPECTED_NBU_BYTES,
+            "payload_bytes_semantics": mod.PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": mod.EXPECTED_NBU_BYTES,
+            "comparison_payload_bytes": mod.EXPECTED_NBU_BYTES,
+            "intake_receipt_identity_sha256": "5" * 64,
+        },
+        "combined": {
+            "source_object_count": mod.EXPECTED_COMBINED_OBJECTS,
+            "payload_bytes": mod.EXPECTED_COMBINED_BYTES,
+            "payload_bytes_semantics": mod.PAYLOAD_BYTES_SEMANTICS,
+            "declared_capacity_bytes": mod.EXPECTED_COMBINED_BYTES,
+            "comparison_payload_bytes": (
+                mod.EXPECTED_BASE_BYTES + 26 + mod.EXPECTED_NBU_BYTES
+            ),
+            "indexed_report_sha256": report_sha,
+        },
+        "matcher_execution": {
+            "engine": "MERGED_PR_1459",
+            "performance_equivalence_authority": "MERGED_PR_1459",
+            "incumbent_runtime_attested": True,
+            "report_sha256": report_sha,
+            "all_pairs_reference_executed": False,
+            "test_marker": marker,
+        },
+        "survivor_authority_sha256": survivor_sha,
+        "content_boundary": {
+            "raw_text_emitted": False,
+            "raw_candidate_written_to_durable_evidence": False,
+            "dedup_report_text_free": True,
+            "survivor_authority_text_free": True,
+        },
+        "truth_boundary": {
+            "canonical_capacity_credited": 0,
+            "training_authorized_bytes": 0,
+            "authorized_unique_loss_positions": 0,
+            "authorized_optimized_target_exposure": 0,
+            "tokenizer_fit_authorized": False,
+            "optimizer_updates_executed_on_real_targets": 0,
+            "training_executed": False,
+            "learned_weights_created": False,
+            "final_test_outcomes_read": False,
+            "paid_compute_used": False,
+            "foreign_pretrained_weights_used": False,
+            "whole_corpus_external_llm_cleanliness_claimed": False,
+        },
+    }
+    return {
+        **core,
+        "evidence_identity_sha256": mod._sha256(mod._canonical(core)),
+    }
+
+
+def _two_clean_survivors(mod) -> dict[str, object]:
+    core: dict[str, object] = {
+        "matcher_report_sha256": _report(mod)["report_sha256"],
+        "nbu_survivor_source_object_count": 1,
+        "nbu_survivor_declared_capacity_bytes": 10,
+    }
+    return {
+        **core,
+        "survivor_authority_sha256": mod._sha256(mod._canonical(core)),
+    }
+
+
+def test_two_clean_authority_is_zero_credit_and_does_not_claim_source_replay() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    authority = mod._build_two_clean_authority(
+        report,
+        deepcopy(report),
+        survivors,
+        deepcopy(survivors),
+        _two_clean_evidence(mod, "run-a"),
+        _two_clean_evidence(mod, "run-b"),
+    )
+    assert authority["dedup"]["fresh_process_count"] == 2
+    assert authority["dedup"]["report_sha256"] == report["report_sha256"]
+    assert len(authority["dedup"]["survivor_authority_sha256"]) == 64
+    assert authority["materialization_authority"]["distinct_input_copies_required"] is True
+    assert authority["materialization_authority"]["source_replay_executed_by_this_carrier"] is False
+    assert authority["truth_boundary"]["canonical_capacity_credited"] == 0
+    assert authority["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+    assert authority["truth_boundary"]["training_executed"] is False
+    assert len(authority["two_clean_authority_sha256"]) == 64
+
+
+def test_two_clean_authority_rejects_self_consistent_pair_with_bad_report_hash() -> None:
+    mod = _load()
+    report = _report(mod)
+    report["report_sha256"] = "f" * 64
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    with pytest.raises(mod.NbuGlobalDedupError, match="report self-hash mismatch"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_authority_rejects_nonhex_report_identity() -> None:
+    mod = _load()
+    report = _report(mod)
+    report["report_sha256"] = "g" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="report identity drift"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            _two_clean_survivors(mod),
+            _two_clean_survivors(mod),
+            _two_clean_evidence(mod, "run-a"),
+            _two_clean_evidence(mod, "run-b"),
+        )
+
+
+def test_two_clean_authority_rejects_nonhex_execution_head_even_when_rehashed() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    for evidence in (evidence_a, evidence_b):
+        evidence["execution_head_sha"] = "z" * 40
+        core = dict(evidence)
+        core.pop("evidence_identity_sha256")
+        evidence["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(mod.NbuGlobalDedupError, match="execution head drift"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_authority_rejects_comparison_payload_drift() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    evidence_b["baseline_v8"]["comparison_payload_bytes"] += 1
+    evidence_b["combined"]["comparison_payload_bytes"] += 1
+    core = dict(evidence_b)
+    core.pop("evidence_identity_sha256")
+    evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="baseline comparison payload bytes differ",
+    ):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_authority_rejects_report_or_survivor_drift() -> None:
+    mod = _load()
+    report = _report(mod)
+    changed_report = deepcopy(report)
+    changed_report["source_count"] = mod.EXPECTED_COMBINED_OBJECTS - 1
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "3" * 64)
+    evidence_b = _two_clean_evidence(mod, "4" * 64)
+    with pytest.raises(mod.NbuGlobalDedupError, match="two-clean dedup reports differ"):
+        mod._build_two_clean_authority(
+            report,
+            changed_report,
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+    changed_survivors = deepcopy(survivors)
+    changed_survivors["nbu_survivor_declared_capacity_bytes"] = 11
+    with pytest.raises(mod.NbuGlobalDedupError, match="two-clean survivor authorities differ"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            changed_survivors,
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_authority_rejects_tampered_survivor_self_hash() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    tampered = deepcopy(survivors)
+    tampered["survivor_authority_sha256"] = "f" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="survivor authorities differ"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            tampered,
+            _two_clean_evidence(mod, "run-a"),
+            _two_clean_evidence(mod, "run-b"),
+        )
+
+    both_tampered = deepcopy(survivors)
+    both_tampered["survivor_authority_sha256"] = "f" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="survivor self-hash mismatch"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            both_tampered,
+            deepcopy(both_tampered),
+            _two_clean_evidence(mod, "run-a"),
+            _two_clean_evidence(mod, "run-b"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ("combined", "combined report identity drift"),
+        ("survivor", "evidence/survivor identity drift"),
+        ("receipt", "intake receipt identities differ"),
+    ],
+)
+def test_two_clean_authority_cross_binds_child_outputs(field: str, message: str) -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    if field == "combined":
+        evidence_b["combined"]["indexed_report_sha256"] = "f" * 64
+    elif field == "survivor":
+        evidence_b["survivor_authority_sha256"] = "f" * 64
+    else:
+        evidence_b["nbu"]["intake_receipt_identity_sha256"] = "6" * 64
+    core = dict(evidence_b)
+    core.pop("evidence_identity_sha256")
+    evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_truth_zero_fields_reject_bool_alias() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    evidence_b["truth_boundary"]["canonical_capacity_credited"] = False
+    core = dict(evidence_b)
+    core.pop("evidence_identity_sha256")
+    evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="truth boundary drift: canonical_capacity_credited",
+    ):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "bad", "message"),
+    [
+        ("truth_boundary", "paid_compute_used", True, "truth boundary drift: paid_compute_used"),
+        (
+            "truth_boundary",
+            "foreign_pretrained_weights_used",
+            True,
+            "truth boundary drift: foreign_pretrained_weights_used",
+        ),
+        ("content_boundary", "raw_text_emitted", True, "child content boundary drift"),
+        (
+            "matcher_execution",
+            "all_pairs_reference_executed",
+            True,
+            "matcher authority drift",
+        ),
+    ],
+)
+def test_two_clean_authority_rejects_rehashed_child_authority_laundering(
+    section: str, field: str, bad: object, message: str
+) -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    evidence_b[section][field] = bad
+    core = dict(evidence_b)
+    core.pop("evidence_identity_sha256")
+    evidence_b["evidence_identity_sha256"] = mod._sha256(mod._canonical(core))
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_two_clean_authority_rejects_tampered_execution_evidence() -> None:
+    mod = _load()
+    report = _report(mod)
+    survivors = _two_clean_survivors(mod)
+    evidence_a = _two_clean_evidence(mod, "run-a")
+    evidence_b = _two_clean_evidence(mod, "run-b")
+    evidence_b["truth_boundary"]["training_executed"] = True
+    with pytest.raises(mod.NbuGlobalDedupError, match="run evidence self-hash mismatch"):
+        mod._build_two_clean_authority(
+            report,
+            deepcopy(report),
+            survivors,
+            deepcopy(survivors),
+            evidence_a,
+            evidence_b,
+        )
+
+
+def test_parent_child_budget_binding_rejects_child_budget_drift() -> None:
+    mod = _load()
+    matcher = {
+        "max_candidate_pairs": 11,
+        "max_index_postings": 12,
+        "max_pair_expansions": 13,
+    }
+    first = {"matcher_execution": deepcopy(matcher)}
+    second = {"matcher_execution": deepcopy(matcher)}
+    mod._validate_parent_child_budget_binding(
+        first,
+        second,
+        max_candidate_pairs=11,
+        max_index_postings=12,
+        max_pair_expansions=13,
+    )
+
+    second["matcher_execution"]["max_pair_expansions"] = 14
+    with pytest.raises(mod.NbuGlobalDedupError, match="max_pair_expansions"):
+        mod._validate_parent_child_budget_binding(
+            first,
+            second,
+            max_candidate_pairs=11,
+            max_index_postings=12,
+            max_pair_expansions=13,
+        )
+
+
+def test_parent_child_repository_binding_rejects_rehashed_blob_drift() -> None:
+    mod = _load()
+    main_blobs = {"main.py": "a" * 40}
+    product_blobs = {"product.py": "b" * 40}
+    first = {
+        "main_authority_path_blobs": deepcopy(main_blobs),
+        "product_path_blobs": deepcopy(product_blobs),
+    }
+    second = deepcopy(first)
+    mod._validate_parent_child_repository_binding(
+        first,
+        second,
+        expected_main_blobs=main_blobs,
+        expected_product_blobs=product_blobs,
+    )
+
+    second["product_path_blobs"]["product.py"] = "c" * 40
+    with pytest.raises(mod.NbuGlobalDedupError, match="child Product blob drift"):
+        mod._validate_parent_child_repository_binding(
+            first,
+            second,
+            expected_main_blobs=main_blobs,
+            expected_product_blobs=product_blobs,
+        )
+
+
+def test_parent_aggregate_binding_cross_binds_head_and_intake_receipt() -> None:
+    mod = _load()
+    authority = {
+        "execution_head_sha": "a" * 40,
+        "materialization_authority": {
+            "intake_receipt_identity_sha256": "b" * 64,
+        },
+    }
+    mod._validate_parent_aggregate_binding(
+        authority,
+        orchestration_head="a" * 40,
+        expected_intake_receipt_sha="b" * 64,
+    )
+
+    with pytest.raises(mod.NbuGlobalDedupError, match="execution head drift"):
+        mod._validate_parent_aggregate_binding(
+            {**authority, "execution_head_sha": "c" * 40},
+            orchestration_head="a" * 40,
+            expected_intake_receipt_sha="b" * 64,
+        )
+
+    forged = deepcopy(authority)
+    forged["materialization_authority"]["intake_receipt_identity_sha256"] = "d" * 64
+    with pytest.raises(mod.NbuGlobalDedupError, match="parent/child intake receipt drift"):
+        mod._validate_parent_aggregate_binding(
+            forged,
+            orchestration_head="a" * 40,
+            expected_intake_receipt_sha="b" * 64,
+        )
+
+
+def test_two_clean_binds_parent_head_before_input_preflight(tmp_path, monkeypatch) -> None:
+    mod = _load()
+
+    def reject_head(expected: str) -> str:
+        raise mod.NbuGlobalDedupError(f"parent-head-sentinel:{expected}")
+
+    monkeypatch.setattr(mod, "_bind_execution_head", reject_head)
+    with pytest.raises(mod.NbuGlobalDedupError, match="parent-head-sentinel"):
+        mod.run_two_clean(
+            v7_root=tmp_path / "missing-v7",
+            bulk_workspace=tmp_path / "missing-bulk",
+            candidate_jsonl_a=tmp_path / "missing-a.jsonl",
+            materialization_evidence_json_a=tmp_path / "missing-a.json",
+            candidate_jsonl_b=tmp_path / "missing-b.jsonl",
+            materialization_evidence_json_b=tmp_path / "missing-b.json",
+            output_root=tmp_path / "out",
+            expected_execution_head="a" * 40,
+            max_candidate_pairs=1,
+            max_index_postings=1,
+            max_pair_expansions=1,
+        )
+
+
+def test_two_clean_workers_use_isolated_bulk_workspaces() -> None:
+    source = MODULE.read_text(encoding="utf-8")
+    start = source.index("def run_two_clean(")
+    end = source.index("\ndef execute(", start)
+    run_two_clean_source = source[start:end]
+    assert 'str(run_dir / "bulk-workspace")' in run_two_clean_source
+    assert "str(bulk_workspace)" not in run_two_clean_source
+
+
+def test_two_clean_requires_non_aliasing_materialization_copies(tmp_path) -> None:
+    mod = _load()
+    candidate = tmp_path / "candidate.jsonl"
+    evidence = tmp_path / "evidence.json"
+    candidate.write_text("{}\n", encoding="utf-8")
+    evidence.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(mod.NbuGlobalDedupError, match="candidate paths must be distinct"):
+        mod._require_distinct_materialization_copies(
+            candidate,
+            evidence,
+            candidate,
+            evidence,
+        )
+
+
+def test_two_clean_rejects_symlink_materialization_input(tmp_path) -> None:
+    mod = _load()
+    candidate_a = tmp_path / "candidate-a.jsonl"
+    candidate_b = tmp_path / "candidate-b.jsonl"
+    evidence_a = tmp_path / "evidence-a.json"
+    evidence_b = tmp_path / "evidence-b.json"
+    for path in (candidate_a, candidate_b, evidence_a, evidence_b):
+        path.write_text("{}\n", encoding="utf-8")
+    candidate_link = tmp_path / "candidate-link.jsonl"
+    candidate_link.symlink_to(candidate_a)
+    with pytest.raises(mod.NbuGlobalDedupError, match="must not be symlink"):
+        mod._require_distinct_materialization_copies(
+            candidate_link,
+            evidence_a,
+            candidate_b,
+            evidence_b,
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b'{"x":1,"x":2}', "duplicate generated JSON key"),
+        (b'{"x":NaN}', "non-finite generated JSON constant"),
+        (b'{"x":1e400}', "non-finite generated JSON number"),
+    ],
+)
+def test_two_clean_generated_json_is_strict(
+    tmp_path, payload: bytes, message: str
+) -> None:
+    mod = _load()
+    path = tmp_path / "generated.json"
+    path.write_bytes(payload)
+    with pytest.raises(mod.NbuGlobalDedupError, match=message):
+        mod._strict_generated_json(path)
+
+
+def test_two_clean_incomplete_is_zero_authority(tmp_path) -> None:
+    mod = _load()
+    root = tmp_path / "run"
+    root.mkdir()
+    mod._write_two_clean_incomplete(root, ["clean-a"], "worker_timeout")
+    value = json.loads((root / "incomplete.json").read_text(encoding="utf-8"))
+    assert value["status"] == "INCOMPLETE_NO_TWO_CLEAN_AUTHORITY"
+    assert value["completed_run_ids"] == ["clean-a"]
+    assert value["canonical_capacity_credited"] == 0
+    assert value["authorized_optimized_target_exposure"] == 0
+    assert value["training_executed"] is False
+    assert not (root / "two-clean-authority.json").exists()
+
+
+def _row(source_id: str, *, family: str = "base", size: int = 5) -> dict[str, object]:
+    return {
+        "source_id": source_id,
+        "source_family": family,
+        "declared_capacity_bytes": size,
+    }
+
+
+@pytest.mark.parametrize(
+    ("source_id", "family"),
+    [
+        ("ua.verba.nomis1864.bounded24", "renamed.family"),
+        ("renamed.id", "ua.verba.public-domain.nomis1864"),
+    ],
+)
+def test_clean_base_rejects_quarantined_identifiers(source_id: str, family: str) -> None:
+    import json
+
+    mod = _load()
+    authority = json.loads(
+        (ROOT / mod.clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
+    )
+    with pytest.raises(mod.quarantine.ExternalLLMProvenanceQuarantineError):
+        mod._verify_clean_payload_graph(
+            {"sources": [_row(source_id, family=family)]},
+            {source_id: b"unrelated payload"},
+            authority,
+        )
+
+
+def test_clean_source_reconstruction_deauthorizes_before_bulk_and_preserves_graph(
+    monkeypatch, tmp_path: Path
+) -> None:
+    mod = _load()
+    events = []
+    matcher = object()
+    historical = {"sources": [_row("quarantined"), _row("keep")], "lineage_edges": []}
+    historical_payloads = {"quarantined": b"bad", "keep": b"alpha\n\n"}
+    clean = {"sources": [_row("keep")], "lineage_edges": []}
+    clean_payloads = {"keep": b"alpha\n\n"}
+    proof = deepcopy(mod.NOMIS_REMOVAL_PROOF)
+
+    def deauthorize(inventory, payloads, authority, quarantine_module):
+        assert inventory is historical
+        assert payloads is historical_payloads
+        assert quarantine_module is mod.quarantine
+        assert authority["schema_version"]
+        events.append("deauthorize")
+        return clean, clean_payloads, proof
+
+    def materialize(*args):
+        assert events == ["capture", "deauthorize"]
+        events.append("bulk")
+        return {}, [_row("bulk", size=4)], {"bulk": b"beta"}
+
+    def capture(*args):
+        events.append("capture")
+        return SimpleNamespace(v6=SimpleNamespace(v3=matcher)), {}, historical, historical_payloads
+
+    monkeypatch.setattr(mod.v9_runner, "validate_v7_checkout", lambda root: root)
+    monkeypatch.setattr(mod.clean_successor, "validate_runtime_bindings", lambda root: None)
+    monkeypatch.setattr(mod.clean_successor, "deauthorize_exact_nomis", deauthorize)
+    monkeypatch.setattr(mod.v8, "_capture_terminal_v7", capture)
+    monkeypatch.setattr(mod.v8, "_materialize_bulk", materialize)
+    monkeypatch.setattr(mod, "EXPECTED_BASE_OBJECTS", 2)
+    monkeypatch.setattr(mod, "EXPECTED_BASE_BYTES", 9)
+
+    observed_matcher, inventory, payloads, removal = mod._reconstruct_clean_source_inputs(
+        v7_root=tmp_path, bulk_workspace=tmp_path, config={}
+    )
+    assert events == ["capture", "deauthorize", "bulk"]
+    assert observed_matcher is matcher and removal is proof
+    assert inventory["sources"] == [_row("keep"), _row("bulk", size=4)]
+    assert payloads == {"keep": b"alpha\n\n", "bulk": b"beta"}
+    assert sum(len(raw) for raw in payloads.values()) == 11
+    assert mod._declared_capacity_bytes(inventory, payloads, label="test") == 9
+    assert clean == {"sources": [_row("keep")], "lineage_edges": []}
+    assert clean_payloads == {"keep": b"alpha\n\n"}
+    assert historical["sources"] == [_row("quarantined"), _row("keep")]
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, "5", -1])
+def test_declared_capacity_bytes_rejects_nonexact_or_negative_values(bad: object) -> None:
+    mod = _load()
+    with pytest.raises(
+        mod.NbuGlobalDedupError,
+        match="declared capacity must be exact nonnegative int",
+    ):
+        mod._declared_capacity_bytes(
+            {"sources": [_row("base:a", size=bad)]},
+            {"base:a": b"payload"},
+            label="fixture",
+        )
+
+
+def test_declared_capacity_bytes_rejects_inventory_payload_coverage_drift() -> None:
+    mod = _load()
+    with pytest.raises(mod.NbuGlobalDedupError, match="inventory/payload coverage mismatch"):
+        mod._declared_capacity_bytes(
+            {"sources": [_row("base:a")]},
+            {"other": b"payload"},
+            label="fixture",
+        )
+
+
+def test_quarantine_failure_stops_before_bulk_or_new_matching(monkeypatch, tmp_path: Path) -> None:
+    mod = _load()
+    monkeypatch.setattr(mod.v9_runner, "validate_v7_checkout", lambda root: root)
+    monkeypatch.setattr(mod.clean_successor, "validate_runtime_bindings", lambda root: None)
+    monkeypatch.setattr(
+        mod.v8, "_capture_terminal_v7",
+        lambda *args: (object(), {}, {"sources": []}, {}),
+    )
+
+    def reject(*args):
+        raise mod.clean_successor.CleanSuccessorError("exact quarantine identity drift")
+
+    def forbidden(*args):
+        pytest.fail("bulk materialization ran after quarantine failure")
+
+    monkeypatch.setattr(mod.clean_successor, "deauthorize_exact_nomis", reject)
+    monkeypatch.setattr(mod.v8, "_materialize_bulk", forbidden)
+    with pytest.raises(mod.clean_successor.CleanSuccessorError, match="quarantine identity drift"):
+        mod._reconstruct_clean_source_inputs(
+            v7_root=tmp_path, bulk_workspace=tmp_path, config={}
+        )
+
+
+def test_final_composition_cannot_reintroduce_quarantined_family() -> None:
+    mod = _load()
+    with pytest.raises(mod.quarantine.ExternalLLMProvenanceQuarantineError):
+        mod._compose_graph(
+            {"sources": [_row("base:a")]}, {"base:a": b"alpha"},
+            [_row("alias", family="ua.verba.public-domain.nomis1864", size=4)],
+            {"alias": b"beta"},
+        )
+
+
+@pytest.mark.parametrize(("field", "bad"), [
+    ("removed_before_new_global_dedup", False),
+    ("post_source_object_count", 34.0),
+    ("blocked_payload_sha256", "f" * 64),
+])
+def test_removal_proof_rejects_semantic_and_type_drift(field: str, bad: object) -> None:
+    mod = _load()
+    proof = deepcopy(mod.NOMIS_REMOVAL_PROOF)
+    mod._verify_removal_proof(proof)
+    proof[field] = bad
+    with pytest.raises(mod.NbuGlobalDedupError, match="deauthorization proof drift"):
+        mod._verify_removal_proof(proof)
