@@ -4,6 +4,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -405,15 +406,15 @@ def test_publishing_uses_captured_bytes_if_workspace_changes_during_write(
     verified_survivors.write_bytes(saved_survivors)
     args = _runner_args(tmp_path)
     receipt = {"status": "verified"}
-    actual_write = REPLAY_RUNNER._write_new_bytes
+    actual_link = REPLAY_RUNNER._link_staged_new_bytes
 
-    def mutate_after_first_write(path: Path, raw: bytes, *, label: str) -> None:
-        actual_write(path, raw, label=label)
+    def mutate_after_first_link(staged: Path, path: Path, *, label: str) -> None:
+        actual_link(staged, path, label=label)
         if label == "outer report":
             verified_report.write_bytes(b"tampered-report")
             verified_survivors.write_bytes(b"tampered-survivors")
 
-    monkeypatch.setattr(REPLAY_RUNNER, "_write_new_bytes", mutate_after_first_write)
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", mutate_after_first_link)
     REPLAY_RUNNER._publish_verified_outputs(
         args, pass_root=pass_root, pass_result=result, receipt=receipt,
     )
@@ -696,3 +697,392 @@ def test_wrapper_keeps_current_package_out_of_terminal_v7_bootstrap_path() -> No
     )
     assert REPLAY_RUNNER.EXPECTED_V7_TREE == "f6bb58379e9e249583480c246b844b673be38b4c"
     assert REPLAY_RUNNER.sys.dont_write_bytecode is True
+
+
+def _publication_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, SimpleNamespace, dict[str, str], dict[str, object]]:
+    pass_root = tmp_path / "pass-1"
+    pass_root.mkdir()
+    arxiv, languk, report, survivors = _disk_pass_files(pass_root)
+    _fake_disk_verifier(monkeypatch)
+    pass_result = REPLAY_RUNNER._pass_result(
+        arxiv_candidate=arxiv, languk_candidate=languk,
+        report=report, survivors=survivors,
+    )
+    (pass_root / "current-clean-report.json").write_bytes(report.read_bytes())
+    (pass_root / "current-clean-survivors.json").write_bytes(survivors.read_bytes())
+    return pass_root, _runner_args(tmp_path), pass_result, {"status": "zero-credit"}
+
+
+def test_staging_failure_does_not_publish_any_outer_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_stage = REPLAY_RUNNER._stage_new_bytes
+
+    def stage(path: Path, raw: bytes, *, label: str) -> Path:
+        if label == "outer survivors":
+            raise OSError("injected staging ENOSPC")
+        return original_stage(path, raw, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_stage_new_bytes", stage)
+    with pytest.raises(OSError, match="injected staging ENOSPC"):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    for path in (args.output_report, args.output_survivors, args.output_receipt):
+        assert not path.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_partial_outer_publication_keeps_authenticated_recovery_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    real_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def fail_second(staged: Path, path: Path, *, label: str) -> None:
+        if label == "outer survivors":
+            raise REPLAY_RUNNER.RematerializationError("injected publish failure")
+        real_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", fail_second)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="manual reconciliation required",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    intent_path = pass_root / "outer-publication-intent.json"
+    intent = json.loads(intent_path.read_text(encoding="utf-8"))
+    assert intent["status"] == "PREPARED_UNCOMMITTED"
+    assert intent["canonical_capacity_credited"] == 0
+    assert intent["training_authorized"] is False
+    assert intent["outputs"][0]["sha256"] == result["report_file_sha256"]
+    assert args.output_report.read_bytes() == (
+        pass_root / "current-clean-report.json"
+    ).read_bytes()
+    assert not args.output_survivors.exists()
+    assert not args.output_receipt.exists()
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="refusing to overwrite outer report",
+    ):
+        REPLAY_RUNNER._verify_outer_output_targets(args)
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_late_receipt_race_never_clobbers_untrusted_competing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    real_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def compete(staged: Path, path: Path, *, label: str) -> None:
+        if label == "outer receipt":
+            path.write_bytes(b"competing publisher")
+        real_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", compete)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="commit receipt not verified",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert args.output_receipt.read_bytes() == b"competing publisher"
+    assert args.output_report.exists() and args.output_survivors.exists()
+    assert (pass_root / "outer-publication-intent.json").exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_short_staged_write_never_creates_final_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_fdopen = REPLAY_RUNNER.os.fdopen
+
+    class ShortWriter:
+        def __init__(self, original):
+            self.original = original
+
+        def __enter__(self):
+            self.original.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.original.__exit__(*args)
+
+        def write(self, raw: bytes) -> int:
+            self.original.write(raw[:1])
+            return 1
+
+    monkeypatch.setattr(
+        REPLAY_RUNNER.os, "fdopen",
+        lambda descriptor, mode: ShortWriter(real_fdopen(descriptor, mode)),
+    )
+    path = tmp_path / "report.json"
+    with pytest.raises(OSError, match="incomplete staged write"):
+        REPLAY_RUNNER._write_new_bytes(path, b"complete-evidence", label="report")
+    assert not path.exists()
+    assert not list(tmp_path.glob(".report.json.*.tmp"))
+
+
+def test_fsync_failure_never_creates_final_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_sync(_descriptor: int) -> None:
+        raise OSError("injected fsync failure")
+
+    monkeypatch.setattr(REPLAY_RUNNER.os, "fsync", fail_sync)
+    path = tmp_path / "report.json"
+    with pytest.raises(OSError, match="injected fsync failure"):
+        REPLAY_RUNNER._write_new_bytes(path, b"complete-evidence", label="report")
+    assert not path.exists()
+    assert not list(tmp_path.glob(".report.json.*.tmp"))
+
+
+def test_complete_outer_publication_receipt_commits_prepared_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    intent = json.loads(
+        (pass_root / "outer-publication-intent.json").read_text(encoding="utf-8")
+    )
+    assert intent["status"] == "PREPARED_UNCOMMITTED"
+    assert intent["outputs"][-1]["label"] == "outer receipt"
+    for entry in intent["outputs"]:
+        path = Path(entry["path"])
+        assert REPLAY_RUNNER.sha256_bytes(path.read_bytes()) == entry["sha256"]
+    assert args.output_receipt.read_bytes() == canonical_json_bytes(receipt)
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+@pytest.mark.parametrize(
+    "failed_label", ["outer report", "outer survivors", "outer receipt"],
+)
+def test_each_staging_failure_keeps_entire_final_batch_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed_label: str,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_stage = REPLAY_RUNNER._stage_new_bytes
+
+    def fail_staging(path: Path, raw: bytes, *, label: str) -> Path:
+        if label == failed_label:
+            raise OSError(f"staging failed: {label}")
+        return original_stage(path, raw, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_stage_new_bytes", fail_staging)
+    with pytest.raises(OSError, match="staging failed"):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    assert not args.output_report.exists()
+    assert not args.output_survivors.exists()
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+@pytest.mark.parametrize(
+    ("failed_label", "published"),
+    [
+        ("outer report", ()),
+        ("outer survivors", ("outer report",)),
+        ("outer receipt", ("outer report", "outer survivors")),
+    ],
+)
+def test_each_link_failure_is_recoverable_without_partial_final_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    failed_label: str, published: tuple[str, ...],
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+    targets = {
+        "outer report": args.output_report,
+        "outer survivors": args.output_survivors,
+        "outer receipt": args.output_receipt,
+    }
+
+    def fail_publication(staged: Path, path: Path, *, label: str) -> None:
+        if label == failed_label:
+            raise REPLAY_RUNNER.RematerializationError(f"link failed: {label}")
+        original_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", fail_publication)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="manual reconciliation required",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    intent = json.loads(
+        (pass_root / "outer-publication-intent.json").read_text(encoding="utf-8")
+    )
+    assert intent["training_authorized"] is False
+    for item in intent["outputs"]:
+        path = targets[item["label"]]
+        if item["label"] in published:
+            assert REPLAY_RUNNER.sha256_bytes(path.read_bytes()) == item["sha256"]
+        else:
+            assert not path.exists()
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_outer_output_cannot_replace_or_preempt_publication_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    args.output_survivors = pass_root / "outer-publication-intent.json"
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="cannot alias publication intent",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert not args.output_report.exists()
+    assert not args.output_survivors.exists()
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def _inspect_in_fresh_process(
+    pass_root: Path, args: SimpleNamespace,
+    pass_result: dict[str, str], receipt: dict[str, object],
+) -> dict[str, object]:
+    """A new interpreter imports the runner and validates persisted evidence."""
+    input_value = {
+        "pass_root": str(pass_root),
+        "output_report": str(args.output_report),
+        "output_survivors": str(args.output_survivors),
+        "output_receipt": str(args.output_receipt),
+        "pass_result": pass_result,
+        "receipt": receipt,
+    }
+    script = """
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+spec = importlib.util.spec_from_file_location(
+    "_pr1851_fresh_recovery_consumer",
+    Path("tools/run_d03_arxiv_languk_rematerialized_replay_v1.py"),
+)
+assert spec is not None and spec.loader is not None
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+data = json.loads(sys.argv[1])
+args = SimpleNamespace(
+    output_report=Path(data["output_report"]),
+    output_survivors=Path(data["output_survivors"]),
+    output_receipt=Path(data["output_receipt"]),
+)
+result = runner.inspect_outer_publication_recovery(
+    args, pass_root=Path(data["pass_root"]),
+    pass_result=data["pass_result"], receipt=data["receipt"],
+)
+print(json.dumps(result, sort_keys=True))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script, json.dumps(input_value)],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, encoding="utf-8",
+        timeout=30, check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    return json.loads(completed.stdout)
+
+
+def test_fresh_runner_inspects_complete_receipt_without_republishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    # Import a fresh consumer module: this is a read-only recovery decision.
+    recovered = _inspect_in_fresh_process(
+        pass_root, args, result, receipt,
+    )
+    assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovered["missing"] == []
+    assert recovered["canonical_capacity_credited"] == 0
+    assert recovered["training_authorized"] is False
+    assert len(recovered["published"]) == 3
+
+
+@pytest.mark.parametrize("stop_after", [0, 1, 2])
+def test_fresh_runner_classifies_interrupted_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stop_after: int,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+    seen: list[str] = []
+
+    def fail_after_prefix(staged: Path, path: Path, *, label: str) -> None:
+        if label != "publication intent":
+            if len(seen) == stop_after:
+                raise REPLAY_RUNNER.RematerializationError("injected crash")
+            seen.append(label)
+        original_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", fail_after_prefix)
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="manual reconciliation"):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    recovered = _inspect_in_fresh_process(
+        pass_root, args, result, receipt,
+    )
+    assert recovered["status"] == (
+        "PREPARED_UNCOMMITTED" if stop_after == 0 else "PARTIAL_UNCOMMITTED"
+    )
+    assert len(recovered["published"]) == stop_after
+    assert len(recovered["missing"]) == 3 - stop_after
+    assert not args.output_receipt.exists()
+    assert recovered["training_authorized"] is False
+
+
+@pytest.mark.parametrize("tamper", ["journal", "report", "survivors", "receipt"])
+def test_recovery_never_accepts_mutated_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    targets = {
+        "journal": pass_root / "outer-publication-intent.json",
+        "report": args.output_report,
+        "survivors": args.output_survivors,
+        "receipt": args.output_receipt,
+    }
+    target = targets[tamper]
+    target.write_bytes(target.read_bytes() + b"tampered")
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="recovery"):
+        REPLAY_RUNNER.inspect_outer_publication_recovery(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+
+
+def test_recovery_refuses_receipt_without_both_verified_outputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    args.output_survivors.unlink()
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="receipt exists without both authenticated source authorities",
+    ):
+        REPLAY_RUNNER.inspect_outer_publication_recovery(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )

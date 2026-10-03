@@ -7,9 +7,11 @@ import copy
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 import tarfile
+import tempfile
 from contextlib import contextmanager
 from importlib import metadata
 from importlib.machinery import ModuleSpec
@@ -356,17 +358,49 @@ def _verify_workspace_targets(workspace: Path) -> None:
             raise RematerializationError(f"refusing to reuse workspace evidence: {target}")
 
 
-def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
-    """Publish authority bytes with exclusive-create semantics; never clobber or follow links."""
+def _stage_new_bytes(path: Path, raw: bytes, *, label: str) -> Path:
+    """Durably stage all bytes beside the final name; never create a partial final."""
     if path.exists() or path.is_symlink():
         raise RematerializationError(f"refusing to overwrite {label}: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with path.open("xb") as handle:
-            handle.write(raw)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, name = tempfile.mkstemp(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp",
+        )
+    except OSError as exc:
+        raise RematerializationError(f"cannot stage {label}: {path}") from exc
+    staged = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            if handle.write(raw) != len(raw):
+                raise OSError(f"incomplete staged write for {label}")
+            handle.flush()
+            os.fsync(handle.fileno())
+        if sha256_bytes(staged.read_bytes()) != sha256_bytes(raw):
+            raise OSError(f"staged {label} digest mismatch")
+        return staged
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
+
+
+def _link_staged_new_bytes(staged: Path, path: Path, *, label: str) -> None:
+    """Atomic no-clobber publication, including a late destination race."""
+    try:
+        os.link(staged, path)
     except FileExistsError as exc:
         raise RematerializationError(f"refusing to overwrite {label}: {path}") from exc
+    except OSError as exc:
+        raise RematerializationError(f"cannot publish {label} atomically: {path}") from exc
 
+
+def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
+    """Create one complete output, without following or replacing existing names."""
+    staged = _stage_new_bytes(path, raw, label=label)
+    try:
+        _link_staged_new_bytes(staged, path, label=label)
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def _capture_verified_publication_bytes(
@@ -387,6 +421,84 @@ def _capture_verified_publication_bytes(
     return report_raw, survivors_raw
 
 
+
+def inspect_outer_publication_recovery(
+    args: argparse.Namespace,
+    *,
+    pass_root: Path,
+    pass_result: dict[str, str],
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    """Independently classify a prior publication without modifying any files.
+
+    The verified pass-1 source bytes and caller's two-pass receipt are the
+    external authorities. The journal alone is never trusted as a source of
+    evidence, permission, or content identity.
+    """
+    report_raw, survivors_raw = _capture_verified_publication_bytes(
+        pass_root, pass_result,
+    )
+    outputs = (
+        ("outer report", args.output_report, report_raw),
+        ("outer survivors", args.output_survivors, survivors_raw),
+        ("outer receipt", args.output_receipt, canonical_json_bytes(receipt)),
+    )
+    intent_path = pass_root / "outer-publication-intent.json"
+    expected_intent = {
+        "schema": "12-6.d03-arxiv-languk-outer-publication-intent.v1",
+        "status": "PREPARED_UNCOMMITTED",
+        "commit_marker": str(args.output_receipt.resolve()),
+        "outputs": [
+            {"label": label, "path": str(path.resolve()), "sha256": sha256_bytes(raw)}
+            for label, path, raw in outputs
+        ],
+        "canonical_capacity_credited": 0,
+        "training_authorized": False,
+    }
+    if intent_path.is_symlink() or not intent_path.is_file():
+        raise RematerializationError("recovery publication intent missing or unsafe")
+    try:
+        intent_raw = intent_path.read_bytes()
+    except OSError as exc:
+        raise RematerializationError("cannot read recovery publication intent") from exc
+    if intent_raw != canonical_json_bytes(expected_intent):
+        raise RematerializationError(
+            "recovery publication intent differs from authenticated source identities"
+        )
+    published: list[str] = []
+    for label, path, raw in outputs:
+        if path.is_symlink():
+            raise RematerializationError(f"recovery {label} must not be a symlink")
+        if path.exists():
+            if not path.is_file():
+                raise RematerializationError(f"recovery {label} is not a file")
+            try:
+                observed_sha = sha256_bytes(path.read_bytes())
+            except OSError as exc:
+                raise RematerializationError(f"cannot read recovery {label}") from exc
+            if observed_sha != sha256_bytes(raw):
+                raise RematerializationError(
+                    f"recovery {label} differs from authenticated expected bytes"
+                )
+            published.append(label)
+    if "outer receipt" in published and len(published) != len(outputs):
+        raise RematerializationError(
+            "recovery receipt exists without both authenticated source authorities"
+        )
+    status = (
+        "COMMITTED_ZERO_CREDIT"
+        if len(published) == len(outputs)
+        else "PARTIAL_UNCOMMITTED" if published else "PREPARED_UNCOMMITTED"
+    )
+    return {
+        "status": status,
+        "published": published,
+        "missing": [label for label, _, _ in outputs if label not in published],
+        "canonical_capacity_credited": 0,
+        "training_authorized": False,
+    }
+
+
 def _publish_verified_outputs(
     args: argparse.Namespace,
     *,
@@ -400,9 +512,52 @@ def _publish_verified_outputs(
         pass_root, pass_result
     )
     receipt_raw = canonical_json_bytes(receipt)
-    _write_new_bytes(args.output_report, report_raw, label="outer report")
-    _write_new_bytes(args.output_survivors, survivors_raw, label="outer survivors")
-    _write_new_bytes(args.output_receipt, receipt_raw, label="outer receipt")
+    # Three filesystem names cannot be linked as one atomic operation. Stage
+    # all three *before* the first final name and publish the receipt LAST as
+    # the commit marker. A durable workspace intent makes interrupted batches
+    # auditable and recoverable without deleting or replacing unrelated files.
+    outputs = (
+        ("outer report", args.output_report, report_raw),
+        ("outer survivors", args.output_survivors, survivors_raw),
+        ("outer receipt", args.output_receipt, receipt_raw),
+    )
+    staged: list[tuple[str, Path, Path, bytes]] = []
+    published: list[tuple[str, Path, str]] = []
+    intent_path = pass_root / "outer-publication-intent.json"
+    if any(path.resolve() == intent_path.resolve() for _, path, _ in outputs):
+        raise RematerializationError("outer output cannot alias publication intent")
+    try:
+        for label, path, raw in outputs:
+            staged.append((label, path, _stage_new_bytes(path, raw, label=label), raw))
+        intent = {
+            "schema": "12-6.d03-arxiv-languk-outer-publication-intent.v1",
+            "status": "PREPARED_UNCOMMITTED",
+            "commit_marker": str(args.output_receipt.resolve()),
+            "outputs": [
+                {"label": label, "path": str(path.resolve()), "sha256": sha256_bytes(raw)}
+                for label, path, _, raw in staged
+            ],
+            "canonical_capacity_credited": 0,
+            "training_authorized": False,
+        }
+        _write_new_bytes(intent_path, canonical_json_bytes(intent), label="publication intent")
+        for label, path, temporary, raw in staged:
+            try:
+                _link_staged_new_bytes(temporary, path, label=label)
+            except RematerializationError as exc:
+                observed = [
+                    {"label": done_label, "path": str(done_path), "sha256": digest}
+                    for done_label, done_path, digest in published
+                ]
+                raise RematerializationError(
+                    f"partial outer publication; commit receipt not verified; "
+                    f"inspect {intent_path} and verify immutable outputs {observed}; "
+                    f"manual reconciliation required before retry"
+                ) from exc
+            published.append((label, path, sha256_bytes(raw)))
+    finally:
+        for _, _, temporary, _ in staged:
+            temporary.unlink(missing_ok=True)
 
 
 def _load_module(name: str, path: Path) -> Any:
