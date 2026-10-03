@@ -1,14 +1,83 @@
 from __future__ import annotations
 
+import functools
+import importlib
 import json
+import os
 import re
+import subprocess
+import sys
+from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
-from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+_ISOLATED_INDEXED_TEST_NODE = "TWELVE_SIX_ISOLATED_INDEXED_TEST_NODE"
 
 
+def _isolated_indexed_test(test):
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        current = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+        if os.environ.get(_ISOLATED_INDEXED_TEST_NODE) == current and current:
+            return test(*args, **kwargs)
+        if not current:
+            return test(*args, **kwargs)
+
+        env = os.environ.copy()
+        env[_ISOLATED_INDEXED_TEST_NODE] = current
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", current],
+            cwd=Path(__file__).resolve().parent.parent,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+        )
+        assert completed.returncode == 0, (
+            f"isolated indexed test failed: {current}\n"
+            f"STDOUT:\n{completed.stdout}\n"
+            f"STDERR:\n{completed.stderr}"
+        )
+
+    return wrapper
+
+
+class _LazyIndexed:
+    _module: ModuleType | None = None
+
+    def _load_module(self) -> ModuleType:
+        module = object.__getattribute__(self, "_module")
+        if module is None:
+            module = importlib.import_module(
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            )
+            object.__setattr__(self, "_module", module)
+        return module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._load_module(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_module":
+            object.__setattr__(self, name, value)
+            return
+        setattr(self._load_module(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name == "_module":
+            object.__delattr__(self, name)
+            return
+        delattr(self._load_module(), name)
+
+
+indexed = _LazyIndexed()
+
+
+@_isolated_indexed_test
 def test_core_executor_bytes_are_preserved_exactly() -> None:
     payload = indexed._core.__file__
     assert isinstance(payload, str)
@@ -16,6 +85,7 @@ def test_core_executor_bytes_are_preserved_exactly() -> None:
         assert indexed._git_blob_sha1(handle.read()) == "af7be7909501ea9d76604ebed084cec32fbd9456"
 
 
+@_isolated_indexed_test
 def test_loader_rejects_json_default_encoder_rebinding(monkeypatch: pytest.MonkeyPatch) -> None:
     with monkeypatch.context() as patch:
         patch.setattr(json, "_default_encoder", json.JSONEncoder())
@@ -28,6 +98,7 @@ def test_loader_rejects_json_default_encoder_rebinding(monkeypatch: pytest.Monke
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_json_default_encoder_in_place_state_drift() -> None:
     encoder = json._default_encoder
     original = encoder.ensure_ascii
@@ -44,6 +115,7 @@ def test_loader_rejects_json_default_encoder_in_place_state_drift() -> None:
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_re_compiler_module_rebinding(monkeypatch: pytest.MonkeyPatch) -> None:
     cache = re._cache
     original_cache = dict(cache)
@@ -65,6 +137,7 @@ def test_loader_rejects_re_compiler_module_rebinding(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.parametrize("member_name", ("compile", "isstring"))
+@_isolated_indexed_test
 def test_loader_rejects_re_compiler_behavior_rebinding(
     monkeypatch: pytest.MonkeyPatch,
     member_name: str,
@@ -92,6 +165,7 @@ def test_loader_rejects_re_compiler_behavior_rebinding(
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_re_cache_rebinding(monkeypatch: pytest.MonkeyPatch) -> None:
     cache = re._cache
     original_cache = dict(cache)
@@ -112,6 +186,7 @@ def test_loader_rejects_re_cache_rebinding(monkeypatch: pytest.MonkeyPatch) -> N
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_rejects_re_maxcache_non_exact_int(monkeypatch: pytest.MonkeyPatch) -> None:
     caught: indexed.IndexedExecutionError | None = None
     with monkeypatch.context() as patch:
@@ -126,6 +201,7 @@ def test_loader_rejects_re_maxcache_non_exact_int(monkeypatch: pytest.MonkeyPatc
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_binds_runtime_specific_re_cache2_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -155,6 +231,7 @@ def test_loader_binds_runtime_specific_re_cache2_contract(
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_loader_binds_runtime_specific_re_maxcache2(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -174,6 +251,7 @@ def test_loader_binds_runtime_specific_re_maxcache2(
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_runtime_specific_re_cache2_is_neutralized_when_present() -> None:
     if not indexed._FROZEN_RE_HAS_CACHE2:
         pytest.skip("runtime has no re._cache2")
@@ -196,6 +274,7 @@ def test_runtime_specific_re_cache2_is_neutralized_when_present() -> None:
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_verified_regex_cache_is_neutralized_not_trusted() -> None:
     class Poison:
         def sub(self, repl: object, string: object, count: int = 0) -> str:
@@ -221,6 +300,26 @@ def test_verified_regex_cache_is_neutralized_not_trusted() -> None:
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
+def test_lazy_proxy_monkeypatch_mutates_real_authority_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = indexed._load_module()
+    original = module._CORE_RUNTIME_ATTEST
+
+    def replacement(_v3: object) -> None:
+        return None
+
+    with monkeypatch.context() as patch:
+        patch.setattr(indexed, "_CORE_RUNTIME_ATTEST", replacement)
+        assert module._CORE_RUNTIME_ATTEST is replacement
+        assert indexed._CORE_RUNTIME_ATTEST is replacement
+
+    assert module._CORE_RUNTIME_ATTEST is original
+    assert indexed._CORE_RUNTIME_ATTEST is original
+
+
+@_isolated_indexed_test
 def test_runtime_attestation_neutralizes_cache_before_and_after_core(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -269,6 +368,7 @@ def test_runtime_attestation_neutralizes_cache_before_and_after_core(
     indexed._attest_loader_frozen_runtime_dependencies()
 
 
+@_isolated_indexed_test
 def test_byte_preserved_core_resolves_hardened_hooks() -> None:
     assert indexed._core._attest_loader_frozen_runtime_dependencies is indexed._attest_loader_frozen_runtime_dependencies
     assert indexed._core.attest_incumbent_runtime is indexed.attest_incumbent_runtime

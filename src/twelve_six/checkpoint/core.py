@@ -11,6 +11,7 @@ import copy
 import hashlib
 import importlib
 import json
+import math
 import os
 import platform
 import random
@@ -55,6 +56,73 @@ class CheckpointIntegrityError(CheckpointError):
 
 class CheckpointCompatibilityError(CheckpointError):
     """Raised when a checkpoint cannot be applied to the requested target."""
+
+
+def _strict_json_bytes(value: Any, *, artifact: str) -> bytes:
+    """Encode checkpoint JSON without Python's non-finite extensions."""
+
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise CheckpointIntegrityError(
+            f"{artifact} is not strict finite JSON"
+        ) from exc
+
+
+def _reject_json_constant(value: str) -> Any:
+    """Reject Python's non-standard NaN/Infinity JSON extensions."""
+
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
+def _parse_finite_json_float(value: str) -> float:
+    """Parse a JSON float only when its runtime value remains finite."""
+
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("non-finite JSON number")
+    return parsed
+
+
+def _object_without_duplicate_keys(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    """Build an object while rejecting duplicate members at every nesting level."""
+
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def _strict_json_object(
+    data: bytes,
+    *,
+    artifact: str,
+    invalid_message: str,
+) -> dict[str, Any]:
+    """Decode one trust-bearing UTF-8 JSON object without ambiguous semantics."""
+
+    try:
+        value = json.loads(
+            data.decode("utf-8"),
+            object_pairs_hook=_object_without_duplicate_keys,
+            parse_constant=_reject_json_constant,
+            parse_float=_parse_finite_json_float,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise CheckpointIntegrityError(invalid_message) from exc
+    if not isinstance(value, dict):
+        raise CheckpointIntegrityError(f"{artifact} must contain a JSON object")
+    return value
 
 
 def _require_exact_hex(value: Any, *, field: str, lengths: set[int]) -> str:
@@ -153,7 +221,11 @@ class VerifiedCheckpoint:
 
     @property
     def manifest(self) -> dict[str, Any]:
-        return json.loads(self._manifest_bytes.decode("utf-8"))
+        return _strict_json_object(
+            self._manifest_bytes,
+            artifact=MANIFEST_NAME,
+            invalid_message="manifest is not valid strict UTF-8 JSON",
+        )
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -729,7 +801,7 @@ def _artifact_record(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.write_bytes(canonical_json_bytes(value) + b"\n")
+    path.write_bytes(_strict_json_bytes(value, artifact=path.name) + b"\n")
 
 
 def _build_identity(identity: CheckpointIdentity, environment: Mapping[str, Any]) -> dict[str, Any]:
@@ -899,10 +971,11 @@ def _parse_manifest_bytes(manifest_bytes: bytes, checksum_bytes: bytes) -> dict[
     actual_manifest_hash = sha256_bytes(manifest_bytes)
     if checksum_line[0] != actual_manifest_hash:
         raise CheckpointIntegrityError("manifest checksum mismatch")
-    try:
-        manifest = json.loads(manifest_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CheckpointIntegrityError("manifest is not valid UTF-8 JSON") from exc
+    manifest = _strict_json_object(
+        manifest_bytes,
+        artifact=MANIFEST_NAME,
+        invalid_message="manifest is not valid strict UTF-8 JSON",
+    )
     if manifest.get("format") != FORMAT_NAME or manifest.get("format_version") != FORMAT_VERSION:
         raise CheckpointCompatibilityError(
             "unsupported checkpoint format: "
@@ -1084,10 +1157,11 @@ def _decode_verified_state(
         state_arrays = load_safetensors_bytes(verified._artifacts[STATE_TENSORS_NAME])
     except Exception as exc:
         raise CheckpointIntegrityError("state.safetensors cannot be decoded") from exc
-    try:
-        state_tree = json.loads(verified._artifacts[STATE_TREE_NAME].decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CheckpointIntegrityError("state.json cannot be decoded") from exc
+    state_tree = _strict_json_object(
+        verified._artifacts[STATE_TREE_NAME],
+        artifact=STATE_TREE_NAME,
+        invalid_message="state.json cannot be decoded as strict UTF-8 JSON",
+    )
     try:
         combined_state = unpack_state_tree(state_tree, state_arrays)
     except (StateTreeError, KeyError, TypeError, ValueError) as exc:
