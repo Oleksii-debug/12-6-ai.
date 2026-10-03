@@ -383,7 +383,7 @@ def validate(path: Path = DEFAULT_MANIFEST, evidence_path: Path = DEFAULT_EVIDEN
 
 def main() -> int:
     try:
-        result = validate()
+        result = validate(DEFAULT_MANIFEST, DEFAULT_EVIDENCE)
     except (OSError, ValueError, RecursionError) as exc:
         # Data/contract rejection is not a Python traceback or evidence of
         # successful evaluation. Preserve a one-line machine-readable failure.
