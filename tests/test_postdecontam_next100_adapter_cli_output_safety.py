@@ -370,3 +370,54 @@ def test_real_cli_binds_valid_vector_and_preserves_original_bytes(
     assert second.returncode != 0
     assert "FAIL_CLOSED" in second.stderr
     assert json.loads(output.read_bytes()) == result
+
+
+def test_staged_byte_mutation_after_sync_fails_and_rolls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "dedup.json"
+    output = tmp_path / "result.json"
+    vector.write_bytes(b"unchanged vector")
+    authority.write_bytes(b"unchanged authority")
+    original_link = cli.os.link
+
+    def tamper_then_link(stage: Path, result: Path) -> None:
+        stage.write_bytes(b"foreign tampered result")
+        original_link(stage, result)
+
+    monkeypatch.setattr(cli.os, "link", tamper_then_link)
+    with pytest.raises(ProjectionError, match="failed byte/path verification"):
+        cli._write_new_output(
+            output, b"validated expected output",
+            family_vector=vector, dedup_authority=authority,
+        )
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert vector.read_bytes() == b"unchanged vector"
+    assert authority.read_bytes() == b"unchanged authority"
+
+
+def test_output_parent_symlink_refused_before_staging(
+    tmp_path: Path,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "dedup.json"
+    canonical = tmp_path / "canonical"
+    alias = tmp_path / "alias"
+    canonical.mkdir()
+    vector.write_bytes(b"unchanged vector")
+    authority.write_bytes(b"unchanged authority")
+    try:
+        alias.symlink_to(canonical, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable on this host")
+    output = alias / "result.json"
+    with pytest.raises(ProjectionError, match="parent must have no symlink"):
+        cli._write_new_output(
+            output, b"candidate", family_vector=vector, dedup_authority=authority,
+        )
+    assert not output.exists()
+    assert not list(canonical.iterdir())
+    assert vector.read_bytes() == b"unchanged vector"
+    assert authority.read_bytes() == b"unchanged authority"

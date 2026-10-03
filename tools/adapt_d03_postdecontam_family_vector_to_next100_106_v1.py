@@ -128,38 +128,93 @@ def _write_staged_bytes(destination: BinaryIO, payload: bytes) -> None:
     os.fsync(destination.fileno())
 
 
+def _same_inode(path: Path, identity: tuple[int, int]) -> bool:
+    """Never clean up a competitor's replacement of our staged/final pathname."""
+    try:
+        info = path.stat(follow_symlinks=False)
+    except OSError:
+        return False
+    return (info.st_dev, info.st_ino) == identity
+
+
+def _staged_payload_matches(
+    path: Path, identity: tuple[int, int], payload: bytes,
+) -> bool:
+    if not _same_inode(path, identity):
+        return False
+    try:
+        with path.open("rb") as source:
+            info = os.fstat(source.fileno())
+            if (info.st_dev, info.st_ino) != identity:
+                return False
+            return source.read(len(payload) + 1) == payload
+    except OSError:
+        return False
+
+
 def _write_new_output(
     path: Path, payload: bytes, *, family_vector: Path, dedup_authority: Path,
 ) -> None:
-    """Stage completely; atomically publish a new name without replacing an incumbent."""
+    """Create only; require trusted stable parents and validate final bytes.
+
+    Cooperative filesystem faults are fail-closed; hostile same-user writers or
+    concurrent parent-directory replacement cannot be made atomic portably.
+    """
     if path.exists() or path.is_symlink():
         raise ProjectionError(f"refusing to overwrite existing adapter output: {path}")
     try:
-        resolved = path.resolve()
+        parent = path.parent.absolute()
+        # Do not rely on a mutable ancestor symlink when publishing or cleaning up.
+        if parent != parent.resolve(strict=True):
+            raise ProjectionError("adapter output parent must have no symlink aliases")
+        final = parent / path.name
         protected = {family_vector.resolve(), dedup_authority.resolve()}
+        if final in protected:
+            raise ProjectionError("adapter output must not alias an input authority")
     except (OSError, RuntimeError) as exc:
         raise ProjectionError("adapter output path cannot be resolved safely") from exc
-    if resolved in protected:
-        raise ProjectionError("adapter output must not alias an input authority")
+
     staged_path: Path | None = None
+    identity: tuple[int, int] | None = None
+    linked = False
+    verified = False
     try:
         with tempfile.NamedTemporaryFile(
             mode="w+b", prefix=f".{path.name}.", suffix=".tmp",
-            dir=path.parent, delete=False,
+            dir=parent, delete=False,
         ) as destination:
             staged_path = Path(destination.name)
+            stage_stat = os.fstat(destination.fileno())
+            identity = (stage_stat.st_dev, stage_stat.st_ino)
+            if not identity[1]:
+                raise OSError("filesystem does not expose a stable staged file identity")
             _write_staged_bytes(destination, payload)
-        # os.link is create-only, unlike os.replace / POSIX os.rename.
-        # Same-directory staging avoids cross-volume publication.
-        os.link(staged_path, path)
+        if not _staged_payload_matches(staged_path, identity, payload):
+            raise ProjectionError("staged adapter bytes changed before publication")
+        # Hard link is create-only, never a replacement of existing final evidence.
+        os.link(staged_path, final)
+        linked = True
+        if (
+            not _staged_payload_matches(final, identity, payload)
+            or not _staged_payload_matches(staged_path, identity, payload)
+            or parent != path.parent.absolute()
+            or parent != path.parent.resolve(strict=True)
+        ):
+            raise ProjectionError("published adapter output failed byte/path verification")
+        verified = True
     except FileExistsError as exc:
         raise ProjectionError(f"refusing to overwrite existing adapter output: {path}") from exc
     except OSError as exc:
         raise ProjectionError(f"cannot publish adapter output safely: {path}: {exc}") from exc
     finally:
-        if staged_path is not None:
+        if linked and not verified and identity is not None and _same_inode(final, identity):
             try:
-                staged_path.unlink(missing_ok=True)
+                final.unlink()
+            except OSError as exc:
+                raise ProjectionError("cannot roll back invalid adapter publication") from exc
+        if staged_path is not None and identity is not None and _same_inode(staged_path, identity):
+            try:
+                staged_path.unlink()
             except OSError as exc:
                 raise ProjectionError(
                     f"cannot clean up staged adapter output: {staged_path}"
