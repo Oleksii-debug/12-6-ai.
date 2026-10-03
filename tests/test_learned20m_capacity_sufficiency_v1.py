@@ -12,7 +12,7 @@ from twelve_six.learned20m_capacity_sufficiency_v1 import (
 )
 
 REPORT = Path(__file__).parents[1] / "reports" / "learned20m_capacity_sufficiency_v1.json"
-MAIN_SHA = "7b3df41c10a826183fab0b04ae85a90cdf0ce351"
+MAIN_SHA = "a1bc7430022d174d27ff57213212a0ec5cc7ed1e"
 
 
 def _report() -> dict:
@@ -179,7 +179,7 @@ def test_rejects_independent_family_credit_promotion() -> None:
 
 def test_rejects_downstream_terminal_self_promotion() -> None:
     document = _report()
-    document["downstream_authority_backlog"][0]["terminal_authority"] = True
+    document["downstream_authority_backlog"][1]["terminal_authority"] = True
     with pytest.raises(CapacityReportError, match="cannot self-promote"):
         validate_report(document)
 
@@ -224,9 +224,9 @@ def test_rejects_unique_loss_credit_without_ledger() -> None:
 def test_rejects_duplicate_json_key(tmp_path: Path) -> None:
     raw = REPORT.read_text(encoding="utf-8")
     raw = raw.replace(
-        '"schema_version": "12-6.learned20m-capacity-sufficiency.v2",',
-        '"schema_version": "12-6.learned20m-capacity-sufficiency.v2",\n'
-        '  "schema_version": "12-6.learned20m-capacity-sufficiency.v2",',
+        '"schema_version": "12-6.learned20m-capacity-sufficiency.v3",',
+        '"schema_version": "12-6.learned20m-capacity-sufficiency.v3",\n'
+        '  "schema_version": "12-6.learned20m-capacity-sufficiency.v3",',
         1,
     )
     path = tmp_path / "duplicate.json"
@@ -241,7 +241,7 @@ def test_rejects_duplicate_json_key(tmp_path: Path) -> None:
 )
 def test_rejects_nonfinite_json_numbers(tmp_path: Path, number: str) -> None:
     raw = REPORT.read_text(encoding="utf-8")
-    raw = raw.replace('"claim_issue": 2277', f'"claim_issue": {number}', 1)
+    raw = raw.replace('"claim_issue": 2537', f'"claim_issue": {number}', 1)
     path = tmp_path / "nonfinite.json"
     path.write_text(raw, encoding="utf-8")
     with pytest.raises(CapacityReportError, match="nonfinite JSON number"):
@@ -252,4 +252,116 @@ def test_rejects_unknown_top_level_key() -> None:
     document = _report()
     document["future_credit"] = 1
     with pytest.raises(CapacityReportError, match="report keys mismatch"):
+        validate_report(document)
+
+def test_post_qp_supply_is_separate_and_zero_credit() -> None:
+    document = _report()
+    assert document["terminal_physical_clean_supply"]["records"] == 257
+    assert document["terminal_clean_post_qp_supply"]["records"] == 254
+    assert document["terminal_clean_post_qp_supply"]["payload_utf8_bytes"] == 5_428_358
+    assert document["terminal_clean_post_qp_supply"]["capacity_credit_bytes"] == 0
+    assert document["optimistic_source_mixture_bound"]["terminal_clean_payload_bytes"] == 5_601_716
+    validate_report(document)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("records", 257),
+    ("payload_utf8_bytes", 5_601_716),
+    ("run_id", 36893337850),
+    ("artifact_zip_sha256", "0" * 64),
+    ("records_jsonl_sha256", "0" * 64),
+    ("upstream_pre_qp_materialization_identity_sha256", "0" * 64),
+])
+def test_rejects_post_qp_stage_or_physical_root_substitution(
+    field: str, value: object
+) -> None:
+    document = _report()
+    document["terminal_clean_post_qp_supply"][field] = value
+    with pytest.raises(CapacityReportError, match="post-QP"):
+        validate_report(document)
+
+
+@pytest.mark.parametrize("stratum,value", [
+    ("ua", 5_601_716),
+    ("en", True),
+    ("code", -1),
+])
+def test_rejects_post_qp_stratum_substitution(stratum: str, value: object) -> None:
+    document = _report()
+    document["terminal_clean_post_qp_supply"]["by_stratum_bytes"][stratum] = value
+    with pytest.raises(CapacityReportError, match="post-QP"):
+        validate_report(document)
+
+
+def test_rejects_post_qp_source_credit_promotion() -> None:
+    document = _report()
+    document["terminal_clean_post_qp_supply"]["capacity_credit_bytes"] = 1
+    with pytest.raises(CapacityReportError, match="cannot grant canonical capacity"):
+        validate_report(document)
+
+
+def test_rejects_missing_post_qp_provenance_field() -> None:
+    document = _report()
+    del document["terminal_clean_post_qp_supply"]["artifact_id"]
+    with pytest.raises(CapacityReportError, match="post-QP evidence keys mismatch"):
+        validate_report(document)
+
+
+def test_rejects_extra_post_qp_provenance_field() -> None:
+    document = _report()
+    document["terminal_clean_post_qp_supply"]["foreign_root"] = "0" * 64
+    with pytest.raises(CapacityReportError, match="post-QP evidence keys mismatch"):
+        validate_report(document)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("en_clean_baseline_bytes", 2_977_845),
+    ("en_gap_before_new_candidates_bytes", 4_022_155),
+    ("caselaw_max_optimistic_new_clean_increment_bytes", 5_000_000),
+    ("minimum_other_independent_clean_en_bytes", 0),
+    ("code_clean_gap_before_new_candidates_bytes", True),
+])
+def test_rejects_en_early_stage_or_family_cap_miscount(
+    field: str, value: object
+) -> None:
+    document = _report()
+    document["en_family_cap_necessary_condition"][field] = value
+    with pytest.raises(CapacityReportError, match="EN family-cap"):
+        validate_report(document)
+
+
+def test_rejects_theoretical_caselaw_as_observed_clean_capacity() -> None:
+    document = _report()
+    document["en_family_cap_necessary_condition"][
+        "candidate_bytes_are_not_observed_clean_survivors"
+    ] = False
+    with pytest.raises(CapacityReportError, match="candidate bytes"):
+        validate_report(document)
+
+
+def test_rejects_optimistic_earlier_stage_double_counting() -> None:
+    document = _report()
+    document["optimistic_source_mixture_bound"]["terminal_clean_payload_bytes"] = 5_428_358
+    with pytest.raises(CapacityReportError, match="mixes clean stages"):
+        validate_report(document)
+
+
+def test_rejects_unknown_en_condition_key() -> None:
+    document = _report()
+    document["en_family_cap_necessary_condition"]["physical_credit"] = 1
+    with pytest.raises(CapacityReportError, match="EN necessary-condition keys mismatch"):
+        validate_report(document)
+
+
+def test_rejects_downstream_clean_qp_terminal_reversal() -> None:
+    document = _report()
+    document["downstream_authority_backlog"][0]["terminal_authority"] = False
+    with pytest.raises(CapacityReportError, match="downstream terminal flag"):
+        validate_report(document)
+
+
+def test_rejects_en_condition_credit_promotion() -> None:
+    document = _report()
+    document["en_family_cap_necessary_condition"]["authoritative_capacity_credit_bytes"] = 1
+    with pytest.raises(CapacityReportError, match="cannot grant capacity credit"):
         validate_report(document)

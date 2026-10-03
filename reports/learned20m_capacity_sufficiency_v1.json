@@ -1,14 +1,14 @@
 {
-  "schema_version": "12-6.learned20m-capacity-sufficiency.v2",
-  "report_id": "LEARNED20M-CAPACITY-SUFFICIENCY-20260929-SWARM2277-V2",
-  "source_main_sha": "7b3df41c10a826183fab0b04ae85a90cdf0ce351",
-  "claim_issue": 2277,
+  "schema_version": "12-6.learned20m-capacity-sufficiency.v3",
+  "report_id": "LEARNED20M-CAPACITY-SUFFICIENCY-20261003-SWARM2537-V3",
+  "source_main_sha": "a1bc7430022d174d27ff57213212a0ec5cc7ed1e",
+  "claim_issue": 2537,
   "control_issues": [
     548,
     723,
     2011,
     2021,
-    2277
+    2537
   ],
   "scientific_truth": {
     "current_retained_corpus_launch_authoritative": false,
@@ -85,9 +85,9 @@
   "pending_existing_high_yield_work": [
     {
       "id": "rada_two_clean",
-      "owner_issue": 2254,
-      "canonical_pr": 2230,
-      "observed_head": "b0c26fdb76b7f7bc5d174b567c0748b20eaf4cba",
+      "owner_issue": 2532,
+      "canonical_pr": 2529,
+      "observed_head": "ce1eec8b61883ce7a95a6c7a02c4ff0242dc50b5",
       "candidate_records": 101559,
       "candidate_utf8_bytes": 192078166,
       "candidate_sha256": null,
@@ -113,7 +113,7 @@
       "id": "caselaw_two_clean",
       "owner_issue": 2257,
       "canonical_pr": 2259,
-      "observed_head": "37d585b3e94dda36ffad58450b7d33fb41dda26a",
+      "observed_head": "2d4c795340c75d7c13a7a74cd41f2ed22fce81ef",
       "candidate_records": 5658,
       "candidate_utf8_bytes": 5962147,
       "candidate_sha256": "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273",
@@ -128,21 +128,21 @@
       "id": "lesia1892",
       "owner_issue": 2266,
       "canonical_pr": 907,
-      "observed_head": "37cbd943ad4ce5a526d3337438f1eeb5d9440f46",
+      "observed_head": "cf3cca3850243198af5d2d51247a24db436ea9ee",
       "capacity_credit_bytes": 0
     },
     {
       "id": "edrnpa",
       "owner_issue": 2272,
       "canonical_pr": 910,
-      "observed_head": "4990c7444f95a79337ee9593cb545da49f3865ea",
+      "observed_head": "18e4cad6b29bbcb59445ea42ffd0c38f56cdaba6",
       "capacity_credit_bytes": 0
     },
     {
       "id": "nbu",
-      "owner_issue": 2248,
-      "canonical_pr": null,
-      "observed_head": "d0d7221cfa4f92b7b281ad4a060deb15b71f3950",
+      "owner_issue": 2471,
+      "canonical_pr": 2454,
+      "observed_head": "5bddcb7f37afd722de5b60fcce85e86094b96557",
       "capacity_credit_bytes": 0
     }
   ],
@@ -150,8 +150,8 @@
     {
       "id": "clean_current_composition",
       "canonical_pr": 2211,
-      "owner_issue": 2253,
-      "terminal_authority": false
+      "owner_issue": 2455,
+      "terminal_authority": true
     },
     {
       "id": "balance_execution",
@@ -181,7 +181,8 @@
     "deficit_to_20m_balance_target": 7636279,
     "authoritative_capacity_credit_bytes": 0,
     "proves_balance_feasibility": false,
-    "proves_unique_loss_sufficiency": false
+    "proves_unique_loss_sufficiency": false,
+    "source_stage": "PRE_RESERVED_EVAL_QP_NOT_ADDITIVE_WITH_CLEAN_POST_QP"
   },
   "decision": {
     "status": "INSUFFICIENT_EVIDENCE_TO_STOP_EXISTING_HIGH_YIELD_SOURCE_EXECUTIONS",
@@ -198,5 +199,44 @@
       "terminal_clean_balance_split_pack_authority",
       "terminal_postpack_unique_loss_ledger"
     ]
+  },
+  "terminal_clean_post_qp_supply": {
+    "classification": "PHYSICAL_TERMINAL_ZERO_CREDIT_POST_RESERVED_EVAL_QP_PRE_BALANCE",
+    "source_pr": 2211,
+    "audit_issue": 2455,
+    "integration_merge": "dcd85658547818f0835c819e6b0ea8379eb9ca0a",
+    "source_head": "d232e2003d18627534d5436a55ea919322c0a08f",
+    "run_id": 36893337849,
+    "job_id": 110485577178,
+    "artifact_id": 11181030848,
+    "artifact_zip_sha256": "3eef740b52e9db962b01b63a0a48474f735694dca4c3848e3e9c53d8cd7f1988",
+    "records": 254,
+    "distinct_source_ids": 241,
+    "payload_utf8_bytes": 5428358,
+    "records_jsonl_sha256": "3aa6235e07da4fa50c9642639cc0d93d7da22a6b602d822c7c7ca6e1f4a7486a",
+    "record_inventory_sha256": "0807f46418fb5a16a1c553c86a6f6967e5c2854d0016e3f6fe24c1d9c05c628b",
+    "payload_inventory_sha256": "2d2f0f5695ee07dfbba2e49b2d14983ede91051644770804fb734235125353af",
+    "upstream_pre_qp_materialization_identity_sha256": "7061d74db13bf45a9a7a1266ebe50feab8e7d22c32fba7a81dd91c2be4135ade",
+    "by_stratum_bytes": {
+      "ua": 10632,
+      "en": 1753479,
+      "code": 3664247
+    },
+    "postpack_unique_loss_positions": null,
+    "capacity_credit_bytes": 0,
+    "launch_authoritative": false
+  },
+  "en_family_cap_necessary_condition": {
+    "classification": "CLEAN_POST_QP_NECESSARY_CONDITION_ZERO_CREDIT",
+    "en_target_bytes": 7000000,
+    "en_clean_baseline_bytes": 1753479,
+    "en_gap_before_new_candidates_bytes": 5246521,
+    "caselaw_max_optimistic_new_clean_increment_bytes": 4200000,
+    "en_total_if_caselaw_reaches_full_family_cap_bytes": 5953479,
+    "minimum_other_independent_clean_en_bytes": 1046521,
+    "code_clean_gap_before_new_candidates_bytes": 335753,
+    "candidate_bytes_are_not_observed_clean_survivors": true,
+    "authoritative_capacity_credit_bytes": 0,
+    "proves_balance_feasibility": false
   }
 }
