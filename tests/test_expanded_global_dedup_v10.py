@@ -545,3 +545,103 @@ def test_runner_consumes_clean_handoff_and_drops_historical_v8_data526_inputs() 
     assert "--v8-survivors" not in source
     assert "--rada-quality-privacy-jsonl" not in source
 
+
+
+def _load_v10_runner():
+    import importlib.util
+
+    path = ROOT / "tools/run_d03_expanded_global_dedup_v10_pep_loc.py"
+    spec = importlib.util.spec_from_file_location("_test_v10_publication_runner", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_v10_publication_create_only_two_outputs(tmp_path: Path) -> None:
+    runner = _load_v10_runner()
+    report = tmp_path / "report.json"
+    survivors = tmp_path / "survivors.json"
+    runner.publish_outputs(report, survivors, {"report_sha256": "a" * 64}, {"ok": True})
+    assert json.loads(report.read_text(encoding="utf-8")) == {
+        "report_sha256": "a" * 64,
+    }
+    assert json.loads(survivors.read_text(encoding="utf-8")) == {"ok": True}
+    with pytest.raises(v10.ExpandedDedupV10Error, match="refusing to overwrite"):
+        runner.publish_outputs(report, survivors, {"another": 1}, {"another": 2})
+
+
+def test_v10_publication_rejects_existing_second_without_creating_first(
+    tmp_path: Path,
+) -> None:
+    runner = _load_v10_runner()
+    report = tmp_path / "report.json"
+    survivors = tmp_path / "survivors.json"
+    survivors.write_bytes(b"existing untouched bytes")
+    with pytest.raises(v10.ExpandedDedupV10Error, match="refusing to overwrite"):
+        runner.publish_outputs(report, survivors, {"a": 1}, {"b": 2})
+    assert not report.exists()
+    assert survivors.read_bytes() == b"existing untouched bytes"
+
+
+def test_v10_publication_rejects_alias_before_creating_output(tmp_path: Path) -> None:
+    runner = _load_v10_runner()
+    output = tmp_path / "one.json"
+    with pytest.raises(v10.ExpandedDedupV10Error, match="must be distinct"):
+        runner.publish_outputs(output, output, {"a": 1}, {"b": 2})
+    assert not output.exists()
+
+
+def test_v10_publication_rejects_nonfinite_second_before_first(
+    tmp_path: Path,
+) -> None:
+    runner = _load_v10_runner()
+    report = tmp_path / "report.json"
+    survivors = tmp_path / "survivors.json"
+    with pytest.raises(v10.ExpandedDedupV10Error, match="finite/serializable"):
+        runner.publish_outputs(report, survivors, {"a": 1}, {"nested": float("nan")})
+    assert not report.exists()
+    assert not survivors.exists()
+
+
+def test_v10_publication_rolls_back_first_on_second_creation_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    runner = _load_v10_runner()
+    report = tmp_path / "report.json"
+    survivors = tmp_path / "survivors.json"
+    real_write = runner.write_json
+
+    def injected_second_failure(path: Path, payload: bytes) -> tuple[int, int]:
+        if path == survivors:
+            raise PermissionError("injected survivors creation failure")
+        return real_write(path, payload)
+
+    monkeypatch.setattr(runner, "write_json", injected_second_failure)
+    with pytest.raises(PermissionError, match="injected survivors"):
+        runner.publish_outputs(report, survivors, {"a": 1}, {"b": 2})
+    assert not report.exists()
+    assert not survivors.exists()
+
+
+def test_v10_publication_never_unlinks_foreign_replacement_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    runner = _load_v10_runner()
+    report = tmp_path / "report.json"
+    survivors = tmp_path / "survivors.json"
+    real_write = runner.write_json
+
+    def replace_before_failure(path: Path, payload: bytes) -> tuple[int, int]:
+        if path == survivors:
+            foreign = tmp_path / "foreign.json"
+            foreign.write_bytes(b"foreign replacement remains")
+            foreign.replace(report)
+            raise PermissionError("injected second-output failure")
+        return real_write(path, payload)
+
+    monkeypatch.setattr(runner, "write_json", replace_before_failure)
+    with pytest.raises(PermissionError, match="injected second-output"):
+        runner.publish_outputs(report, survivors, {"a": 1}, {"b": 2})
+    assert report.read_bytes() == b"foreign replacement remains"
+    assert not survivors.exists()

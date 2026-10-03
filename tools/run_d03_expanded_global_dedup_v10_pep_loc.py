@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -47,16 +49,76 @@ def read_exact_bytes(path: Path, *, label: str) -> bytes:
     return raw
 
 
-def write_json(path: Path, value: dict[str, Any]) -> None:
-    if path.exists() or path.is_symlink():
-        raise ExpandedDedupV10Error(f"refusing to overwrite output: {path}")
+def _json_bytes(value: dict[str, Any]) -> bytes:
+    try:
+        return (
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError, OverflowError, UnicodeError, RecursionError) as exc:
+        raise ExpandedDedupV10Error("output JSON is not finite/serializable") from exc
+
+
+def _remove_if_owned(path: Path, identity: tuple[int, int]) -> None:
+    """Best-effort rollback: never unlink a visibly replaced output."""
+    try:
+        observed = path.lstat()
+        if (
+            stat.S_ISREG(observed.st_mode)
+            and (observed.st_dev, observed.st_ino) == identity
+        ):
+            path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def write_json(path: Path, payload: bytes) -> tuple[int, int]:
+    """Create one durable file exclusively, without replacing existing output."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    created = os.fstat(fd)
+    identity = (created.st_dev, created.st_ino)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(payload)
+            output.flush()
+            os.fsync(output.fileno())
+    except BaseException:
+        _remove_if_owned(path, identity)
+        raise
+    return identity
+
+
+def publish_outputs(
+    report_path: Path,
+    survivors_path: Path,
+    report: dict[str, Any],
+    survivors: dict[str, Any],
+) -> None:
+    """Fail before writing for invalid targets; roll back an ordinary second failure.
+
+    An unexpected hard crash between file creations still requires operator
+    recovery; this is not a crash-atomic multi-file transaction.
+    """
+    if report_path.resolve() == survivors_path.resolve():
+        raise ExpandedDedupV10Error("report and survivors output paths must be distinct")
+    for path in (report_path, survivors_path):
+        if path.exists() or path.is_symlink():
+            raise ExpandedDedupV10Error(f"refusing to overwrite output: {path}")
+    report_bytes = _json_bytes(report)
+    survivors_bytes = _json_bytes(survivors)
+    report_identity = write_json(report_path, report_bytes)
+    try:
+        write_json(survivors_path, survivors_bytes)
+    except BaseException:
+        _remove_if_owned(report_path, report_identity)
+        raise
 
 
 def _load_exact_v3(v7_root: Path) -> Any:
@@ -174,8 +236,7 @@ def main() -> int:
             max_index_postings=args.max_index_postings,
             max_pair_expansions=args.max_pair_expansions,
         )
-        write_json(args.output_report, report)
-        write_json(args.output_survivors, survivors)
+        publish_outputs(args.output_report, args.output_survivors, report, survivors)
     except (ExpandedDedupV10Error, OSError, ValueError) as exc:
         print(f"BLOCKED: {exc}")
         return 2
