@@ -326,7 +326,17 @@ def build_current_clean_balanced_selection(
         expected_policy_identity_sha256=expected_policy_identity_sha256,
         expected_result_identity_sha256=expected_result_identity_sha256,
     )
-    if dict(balance_binding) != rebuilt_binding:
+    # Python mapping equality treats integer/float (and boolean/integer) aliases
+    # as equal. Compare canonical JSON bytes so a caller-resealed binding cannot
+    # substitute differently typed evidence for the deterministic rebuild.
+    try:
+        matches_rebuild = (
+            _canonical_bytes(dict(balance_binding))
+            == _canonical_bytes(rebuilt_binding)
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ProjectionError("balance binding is not canonical JSON") from exc
+    if not matches_rebuild:
         raise ProjectionError("balance binding differs from deterministic authenticated rebuild")
     require_balanced_selection_ready(
         balance_binding,
