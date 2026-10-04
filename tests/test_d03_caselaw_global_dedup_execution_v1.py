@@ -1273,6 +1273,7 @@ except mod.indexed.IndexedExecutionError as exc:
     assert exc is error
     note = "\\n".join(exc.__notes__)
     assert "STRUCTURAL_CODE_MISMATCH" in note
+    assert '"warmup_live_callable_rebound": false' in note
     assert '"warmup_live_digest_changed": false' in note
     assert '"attestation_override_allowed": false' in note
     assert "bounded V3 post-warmup diagnostic:" in note
@@ -1361,5 +1362,104 @@ else:
     raise AssertionError("mutated code was incorrectly accepted")
 assert len(attest_calls) == 2
 assert len(lineage_calls) == 10
+"""
+    )
+
+
+def test_v3_warmup_callable_rebinding_is_attributed_to_current_live_code() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+error = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+attest_calls = []
+lineage_calls = []
+
+def old_lineage(fingerprints, edges):
+    lineage_calls.append(True)
+    if len(lineage_calls) == 10:
+        matcher._lineage_matches = new_lineage
+    return [
+        {
+            "match_type": "lineage_same_origin_alias",
+            "capacity_collapsing": True,
+        }
+        for _ in range(8)
+    ]
+
+def new_lineage(fingerprints, edges):
+    return []
+
+def unrelated_canonical(fingerprints, edges):
+    return [1]
+
+matcher = SimpleNamespace(_lineage_matches=old_lineage)
+def fake_attester(_matcher):
+    attest_calls.append(True)
+    if len(attest_calls) == 2:
+        raise error
+
+mod.indexed.attest_incumbent_runtime = fake_attester
+mod.indexed._canonical_namespace = lambda _matcher, _label: {
+    "_lineage_matches": unrelated_canonical
+}
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is error
+    note = "\\n".join(exc.__notes__)
+    assert '"warmup_live_callable_rebound": true' in note
+    assert '"warmup_live_digest_changed": true' in note
+    assert '"attestation_override_allowed": false' in note
+    assert "STRUCTURAL_CODE_MISMATCH" in note
+else:
+    raise AssertionError("rebound matcher was incorrectly accepted")
+assert len(lineage_calls) == 10 and len(attest_calls) == 2
+"""
+    )
+
+
+def test_v3_warmup_invalid_callable_never_replaces_incumbent_rejection() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+error = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+attest_calls = []
+lineage_calls = []
+
+def old_lineage(fingerprints, edges):
+    lineage_calls.append(True)
+    if len(lineage_calls) == 10:
+        matcher._lineage_matches = None
+    return [
+        {
+            "match_type": "lineage_same_origin_alias",
+            "capacity_collapsing": True,
+        }
+        for _ in range(8)
+    ]
+
+matcher = SimpleNamespace(_lineage_matches=old_lineage)
+def fake_attester(_matcher):
+    attest_calls.append(True)
+    if len(attest_calls) == 2:
+        raise error
+
+mod.indexed.attest_incumbent_runtime = fake_attester
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is error
+    note = "\\n".join(exc.__notes__)
+    assert "bounded V3 post-warmup diagnostic unavailable: TypeError" in note
+    assert "attestation_override_allowed" not in note
+else:
+    raise AssertionError("missing callable was incorrectly accepted")
+assert len(lineage_calls) == 10 and len(attest_calls) == 2
 """
     )
