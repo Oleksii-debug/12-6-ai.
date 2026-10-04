@@ -1287,8 +1287,11 @@ def test_prepublication_cleanup_error_preserves_failed_state(
     with pytest.raises(
         REPLAY_RUNNER.RematerializationError,
         match="publication failed and staged cleanup is pending",
-    ):
+    ) as caught:
         REPLAY_RUNNER._write_new_bytes(final, b"expected", label="failed output")
+    assert "injected link failure" in str(caught.value)
+    assert "injected cleanup error" in str(caught.value)
+    assert isinstance(caught.value.__cause__, REPLAY_RUNNER.RematerializationError)
     assert not final.exists()
     staged = list(tmp_path.glob(".failed-output.json.*.tmp"))
     assert len(staged) == 1
@@ -1694,3 +1697,41 @@ def test_eexist_same_inode_cannot_authorize_removal_of_preexisting_name(
     target.unlink()
     REPLAY_RUNNER._write_new_bytes(target, b"original", label="test output")
     assert target.read_bytes() == b"original"
+
+
+def test_link_and_cleanup_dual_fault_preserves_original_io_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "дві-помилки.json"
+    original_unlink = Path.unlink
+
+    def fail_link(stage: Path, final: Path) -> None:
+        raise OSError(f"injected link ENOSPC: {stage} -> {final}")
+
+    def deny_stage_cleanup(
+        path: Path, *args: object, **kwargs: object,
+    ) -> None:
+        if path.name.startswith(f".{target.name}.") and path.suffix == ".tmp":
+            raise PermissionError("injected stage sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "link", fail_link)
+        fault.setattr(Path, "unlink", deny_stage_cleanup)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError,
+            match="publication failed and staged cleanup is pending",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(target, b"trusted", label="test output")
+
+    orphaned = list(tmp_path.glob(f".{target.name}.*.tmp"))
+    assert len(orphaned) == 1
+    assert str(orphaned[0]) in str(caught.value)
+    assert "injected link ENOSPC" in str(caught.value)
+    assert "injected stage sharing violation" in str(caught.value)
+    assert isinstance(caught.value.__cause__, REPLAY_RUNNER.RematerializationError)
+    assert isinstance(caught.value.__cause__.__cause__, OSError)
+    assert not target.exists()
+    orphaned[0].unlink()
+    REPLAY_RUNNER._write_new_bytes(target, b"trusted", label="test output")
+    assert target.read_bytes() == b"trusted"
