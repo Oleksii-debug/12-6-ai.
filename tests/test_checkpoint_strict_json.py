@@ -171,6 +171,20 @@ def test_manifest_growth_after_fstat_still_has_bounded_read(
     assert intercepted
 
 
+@pytest.mark.parametrize(
+    ("max_bytes", "exact_bytes"),
+    [(None, None), (1, 1), (-1, None), (None, -1), (True, None)],
+)
+def test_checkpoint_reader_rejects_unbounded_or_invalid_limits(
+    tmp_path: Path, max_bytes: int | None, exact_bytes: int | None
+) -> None:
+    # Validate the API contract before touching even a missing file.
+    with pytest.raises(ValueError, match="checkpoint read bound"):
+        checkpoint_core._read_regular_bytes(
+            tmp_path, "missing", max_bytes=max_bytes, exact_bytes=exact_bytes
+        )
+
+
 def test_checkpoint_reads_use_unbuffered_descriptors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
