@@ -640,3 +640,130 @@ def test_committed_warning_survives_restricted_stdout_and_stderr(
     assert json.loads(output.read_bytes())["value"] == "Український текст"
     assert vector.read_bytes() == b"original vector"
     assert authority.read_bytes() == b"original authority"
+
+
+def test_rollback_and_staging_cleanup_dual_failure_preserves_unverified_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "unverified result.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    original_link = cli.os.link
+    original_unlink = Path.unlink
+
+    def tamper_then_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"unauthenticated result")
+        original_link(stage, final)
+
+    def refuse_both_unlinks(path: Path, *args: object, **kwargs: object) -> None:
+        if path == output or (
+            path.name.startswith(f".{output.name}.") and path.suffix == ".tmp"
+        ):
+            raise PermissionError("injected rollback and stage cleanup failures")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", tamper_then_link)
+    monkeypatch.setattr(Path, "unlink", refuse_both_unlinks)
+    with pytest.raises(ProjectionError, match="ROLLBACK_INCOMPLETE"):
+        cli._write_new_output(
+            output, b"expected validated output",
+            family_vector=vector, dedup_authority=authority,
+        )
+    stages = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(stages) == 1
+    assert stages[0].read_bytes() == output.read_bytes() == b"unauthenticated result"
+    assert stages[0].stat().st_ino == output.stat().st_ino
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+    with pytest.raises(ProjectionError, match="refusing to overwrite"):
+        cli._write_new_output(
+            output, b"expected validated output",
+            family_vector=vector, dedup_authority=authority,
+        )
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    monkeypatch.setattr(cli.os, "link", original_link)
+    stages[0].unlink()
+    output.unlink()
+    cli._write_new_output(
+        output, b"expected validated output",
+        family_vector=vector, dedup_authority=authority,
+    )
+    assert output.read_bytes() == b"expected validated output"
+
+
+def test_committed_cleanup_warning_supports_safe_stage_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "verified result.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+    original_unlink = Path.unlink
+
+    def refuse_stage_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("temporary stage lock")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_stage_unlink)
+    assert cli.main() == 0
+    emitted = capsys.readouterr()
+    assert emitted.out.strip() == str(output)
+    warning = json.loads(emitted.err.split("OUTPUT_COMMITTED_CLEANUP_PENDING: ", 1)[1])
+    stage = Path(warning["stage"])
+    assert warning["output"] == str(output)
+    assert stage.read_bytes() == output.read_bytes()
+    assert stage.stat().st_ino == output.stat().st_ino
+    original_output = output.read_bytes()
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    stage.unlink()
+    assert not stage.exists()
+    assert output.read_bytes() == original_output
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+    with pytest.raises(SystemExit, match="FAIL_CLOSED: refusing to overwrite"):
+        cli.main()
+
+
+def test_unpublished_stage_residue_can_be_cleaned_before_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "never published.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    original_unlink = Path.unlink
+    original_link = cli.os.link
+
+    def refuse_stage_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("locked unpublished stage")
+        original_unlink(path, *args, **kwargs)
+
+    def unsupported_link(_stage: Path, _final: Path) -> None:
+        raise OSError("injected publication failure")
+
+    monkeypatch.setattr(Path, "unlink", refuse_stage_unlink)
+    monkeypatch.setattr(cli.os, "link", unsupported_link)
+    with pytest.raises(ProjectionError, match="STAGING_CLEANUP_INCOMPLETE"):
+        cli._write_new_output(
+            output, b"candidate", family_vector=vector, dedup_authority=authority,
+        )
+    assert not output.exists()
+    stages = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(stages) == 1
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    monkeypatch.setattr(cli.os, "link", original_link)
+    stages[0].unlink()
+    cli._write_new_output(
+        output, b"candidate", family_vector=vector, dedup_authority=authority,
+    )
+    assert output.read_bytes() == b"candidate"
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
