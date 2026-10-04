@@ -6,7 +6,6 @@ Synthetic CPU-only integration; no lawful corpus, trained weights, or scale cred
 from __future__ import annotations
 
 import random
-from typing import Any
 
 import numpy as np
 import pytest
