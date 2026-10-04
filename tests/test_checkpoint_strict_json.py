@@ -10,6 +10,8 @@ import pytest
 from twelve_six.checkpoint.core import (
     CheckpointIdentity,
     CheckpointIntegrityError,
+    MAX_CHECKPOINT_CHECKSUM_BYTES,
+    MAX_CHECKPOINT_MANIFEST_BYTES,
     VerifiedCheckpoint,
     canonical_json_bytes,
     hash_json,
@@ -106,6 +108,34 @@ def _write_nonfinite_manifest(checkpoint: Path, *, value: float, token: str) -> 
     assert emitted in raw
     raw = raw.replace(emitted, token, 1)
     _write_manifest_bytes(checkpoint, raw.encode("utf-8"))
+
+
+
+@pytest.mark.parametrize(
+    ("name", "max_bytes"),
+    [
+        ("manifest.json", MAX_CHECKPOINT_MANIFEST_BYTES),
+        ("MANIFEST.sha256", MAX_CHECKPOINT_CHECKSUM_BYTES),
+    ],
+)
+def test_checkpoint_metadata_read_is_bounded_before_parsing(
+    tmp_path: Path, name: str, max_bytes: int
+) -> None:
+    checkpoint = tmp_path / "bounded-metadata"
+    _save(checkpoint)
+    path = checkpoint / name
+    if name == "manifest.json":
+        valid_prefix = path.read_bytes()
+        payload = valid_prefix + b" " * (max_bytes + 1 - len(valid_prefix))
+        _write_manifest_bytes(checkpoint, payload)
+    else:
+        path.write_bytes(path.read_bytes() + b"x" * (max_bytes + 1))
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match=f"checkpoint artifact exceeds {max_bytes}-byte limit: {name}",
+    ):
+        verify_checkpoint(checkpoint)
 
 
 @pytest.mark.parametrize(
