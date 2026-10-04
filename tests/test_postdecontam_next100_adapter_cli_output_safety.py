@@ -767,3 +767,75 @@ def test_unpublished_stage_residue_can_be_cleaned_before_retry(
     assert output.read_bytes() == b"candidate"
     assert vector.read_bytes() == b"original vector"
     assert authority.read_bytes() == b"original authority"
+
+
+@pytest.mark.parametrize("stream_errors", ["replace", "backslashreplace"])
+def test_lossy_console_never_silently_changes_committed_output_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stream_errors: str,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "український шлях із пробілами.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+    narrow_stdout = io.TextIOWrapper(
+        io.BytesIO(), encoding="cp1252", errors=stream_errors,
+    )
+    narrow_stderr = io.TextIOWrapper(
+        io.BytesIO(), encoding="ascii", errors="strict",
+    )
+    monkeypatch.setattr(cli.sys, "stdout", narrow_stdout)
+    monkeypatch.setattr(cli.sys, "stderr", narrow_stderr)
+    assert cli.main() == 0
+    narrow_stdout.flush()
+    narrow_stderr.flush()
+    assert b"\\u" in narrow_stdout.buffer.getvalue()
+    warning = narrow_stderr.buffer.getvalue().decode("ascii")
+    assert warning.startswith("OUTPUT_COMMITTED_STDOUT_ENCODING_UNAVAILABLE: ")
+    assert json.loads(warning.split(": ", 1)[1])["output"] == str(output)
+    assert json.loads(output.read_bytes())["value"] == "Український текст"
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+
+
+def test_postcommit_cleanup_and_narrow_console_warnings_are_both_recoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "підтверджений шлях.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+    original_unlink = Path.unlink
+
+    def refuse_stage(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("injected stage lock")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_stage)
+    out = io.TextIOWrapper(io.BytesIO(), encoding="ascii", errors="replace")
+    err = io.TextIOWrapper(io.BytesIO(), encoding="ascii", errors="strict")
+    monkeypatch.setattr(cli.sys, "stdout", out)
+    monkeypatch.setattr(cli.sys, "stderr", err)
+    assert cli.main() == 0
+    out.flush()
+    err.flush()
+    assert b"\\u" in out.buffer.getvalue()
+    messages = err.buffer.getvalue().decode("ascii").splitlines()
+    assert len(messages) == 2
+    cleanup = json.loads(messages[0].split("OUTPUT_COMMITTED_CLEANUP_PENDING: ", 1)[1])
+    stdout = json.loads(
+        messages[1].split("OUTPUT_COMMITTED_STDOUT_ENCODING_UNAVAILABLE: ", 1)[1]
+    )
+    assert cleanup["output"] == stdout["output"] == str(output)
+    stage = Path(cleanup["stage"])
+    assert stage.read_bytes() == output.read_bytes()
+    assert stage.stat().st_ino == output.stat().st_ino
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    stage.unlink()
+    assert output.is_file()
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"

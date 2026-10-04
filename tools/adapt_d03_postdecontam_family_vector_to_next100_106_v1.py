@@ -274,17 +274,26 @@ def main() -> int:
         raise SystemExit(f"FAIL_CLOSED: {exc}") from exc
     # The report is already committed. A narrow Windows console code page must
     # not turn successful publication into an apparent CLI failure.
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    path_text = str(args.output)
+    # Some text streams silently replace unencodable characters instead of
+    # raising UnicodeEncodeError. Never present that lossy text as an exact path.
     try:
-        print(args.output)
+        path_text.encode(encoding, errors="strict")
+        can_encode = True
     except UnicodeEncodeError:
-        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
-        escaped = str(args.output).encode(encoding, errors="backslashreplace").decode(
-            encoding
-        )
+        can_encode = False
+    if can_encode:
+        try:
+            print(args.output)
+        except UnicodeEncodeError:
+            can_encode = False
+    if not can_encode:
+        escaped = path_text.encode(encoding, errors="backslashreplace").decode(encoding)
         print(escaped)
         print(
             "OUTPUT_COMMITTED_STDOUT_ENCODING_UNAVAILABLE: "
-            + json.dumps({"output": str(args.output)}, ensure_ascii=True),
+            + json.dumps({"output": path_text}, ensure_ascii=True),
             file=sys.stderr,
         )
     return 0
