@@ -339,6 +339,11 @@ def test_partial_restore_poison_prevents_in_place_retry(
 
     with pytest.raises(TrainingStateInvalidError, match="failed training transition"):
         Trainer._assert_trainable(trainer)
+    # A poisoned retry must reject before any model-scale checkpoint I/O.
+    def forbidden_checkpoint_read(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("poisoned retry must not read checkpoint")
+
+    monkeypatch.setattr(progress_trainer, "prepare_checkpoint_load", forbidden_checkpoint_read)
     # The checkpoint was preflighted, but an application-time error may have
     # already changed the model; an in-place restore retry must fail closed.
     with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
