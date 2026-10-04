@@ -81,7 +81,7 @@ def _locate_installed_asset(
             f"found {len(matches)}"
         )
     located = Path(distribution.locate_file(matches[0]))
-    if not located.is_file():
+    if located.is_symlink() or not located.is_file():
         raise RuntimeError(
             f"installed canonical asset is missing or not a regular file: {located}"
         )
