@@ -435,16 +435,22 @@ def _preflight_trainer_state(
         )
     finally:
         # Ambient probe rollback is not the application-stage RNG restore.
-        # Keep it independent of the injectable final checkpoint restore path.
-        _core.restore_rng_state(ambient)
-        # The checkpoint RNG schema records deterministic enablement, not
-        # PyTorch's warn-only mode. Preserve that live setting for a pure
-        # preflight instead of converting warnings into hard errors.
-        if warn_only is not None:
-            torch.use_deterministic_algorithms(
-                bool(torch_state["deterministic_algorithms"]),
-                warn_only=warn_only,
-            )
+        # If it fails, the live RNG is ambiguous even though the model has not
+        # been loaded. Refuse future work on a canonical D02 trainer.
+        try:
+            _core.restore_rng_state(ambient)
+            # Preserve PyTorch's warn-only setting, absent from the RNG schema.
+            if warn_only is not None:
+                torch.use_deterministic_algorithms(
+                    bool(torch_state["deterministic_algorithms"]),
+                    warn_only=warn_only,
+                )
+        except BaseException:
+            if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+                if trainer._failure_reason is None:
+                    trainer._failure_reason = "checkpoint_preflight_rng_rollback_failed"
+                trainer._update_incomplete = True
+            raise
 
 
 def save_trainer_checkpoint(
