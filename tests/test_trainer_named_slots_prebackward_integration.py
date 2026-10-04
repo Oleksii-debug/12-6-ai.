@@ -76,8 +76,9 @@ def test_named_adamw_step_then_policy_drift_preserves_committed_state(
         moments = {name: trainer.optimizer.state[parameter]["exp_avg"].clone() for (
             name, parameter,
         ) in (("left", model.left), ("right", model.right))}
-        backward_calls: list[torch.Tensor] = []
-        model.left.register_hook(lambda grad: backward_calls.append(grad) or grad)
+        backward_calls: list[str] = []
+        model.left.register_hook(lambda grad: backward_calls.append("left") or grad)
+        model.right.register_hook(lambda grad: backward_calls.append("right") or grad)
         if drift_stage == "forward":
             model.drift = True
         else:
@@ -93,7 +94,8 @@ def test_named_adamw_step_then_policy_drift_preserves_committed_state(
         with pytest.raises(TrainingStateInvalidError, match="deterministic"):
             trainer.train_microbatch(_BATCH)
 
-        assert backward_calls == []
+        assert backward_calls == [], "either named parameter received a backward hook"
+        assert model.left.grad is None and model.right.grad is None
         assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2)
         assert trainer._failure_reason is not None
         for name, parameter in (("left", model.left), ("right", model.right)):
