@@ -220,15 +220,20 @@ class Trainer:
         if self._failure_reason is not None:
             return
         self._failure_reason = reason
-        try:
-            self.optimizer.zero_grad(set_to_none=True)
-        except BaseException as cleanup_error:
-            # Preserve the original forward/backward/optimizer failure. Even if
-            # gradients cannot be cleared, the trainer is permanently poisoned
-            # and only a fresh instance plus verified checkpoint may be used.
-            self._failure_reason = (
-                f"{reason}; gradient cleanup failed: {type(cleanup_error).__name__}"
-            )
+        cleanup_faults: list[str] = []
+        # An injected optimizer may have swapped or dropped parameter groups.
+        # Clear model-owned gradients independently, then best-effort clear any
+        # optimizer-owned state without replacing the primary exception.
+        for owner, label in (
+            (self.model, "model gradient cleanup failed"),
+            (self.optimizer, "gradient cleanup failed"),
+        ):
+            try:
+                owner.zero_grad(set_to_none=True)
+            except BaseException as cleanup_error:
+                cleanup_faults.append(f"{label}: {type(cleanup_error).__name__}")
+        if cleanup_faults:
+            self._failure_reason = f"{reason}; " + "; ".join(cleanup_faults)
 
     def _assert_trainable(self) -> None:
         if self._failure_reason is not None:
