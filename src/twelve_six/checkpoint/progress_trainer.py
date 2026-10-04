@@ -23,13 +23,13 @@ from .core import (
     prepare_checkpoint_load,
     restore_rng_state,
 )
-from .d04_resume_binding import assert_d04_resume_binding
+from .d04_resume_binding import assert_d04_resume_binding, _require_sha256
 from .expected_binding import (
     _require_expected_nonempty_string,
     _require_expected_sha256,
     _validate_expected_canonical_binding,
 )
-from .progress_binding import _assert_progress
+from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
     _assert_bound_metadata,
     _assert_d02_checkpoint_rng_policy,
@@ -100,6 +100,20 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
+
+    _validate_expected_counter(_core, "step", expected_step)
+    _validate_expected_counter(_core, "tokens_seen", expected_tokens_seen)
+    for field, value in (
+        ("expected_ledger_identity_sha256", expected_ledger_identity_sha256),
+        ("expected_materialization_identity_sha256", expected_materialization_identity_sha256),
+        ("expected_packing_identity_sha256", expected_packing_identity_sha256),
+        ("expected_exposure_plan_identity_sha256", expected_exposure_plan_identity_sha256),
+        ("expected_ordered_next_exposure_identity_sha256", (
+            expected_ordered_next_exposure_identity_sha256
+        )),
+    ):
+        if value is not None:
+            _require_sha256(value, field=field)
 
     # A canonical trainer's optimizer belongs to trainer.model. Do not mix its
     # state with a separately supplied model, even if weight shapes match.
