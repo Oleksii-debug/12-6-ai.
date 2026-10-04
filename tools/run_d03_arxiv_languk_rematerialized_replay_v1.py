@@ -469,10 +469,23 @@ def _link_verified_new_bytes(
 def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
     """Create one complete output, without following or replacing existing names."""
     staged = _stage_new_bytes(path, raw, label=label)
+    published_and_verified = False
     try:
         _link_verified_new_bytes(staged, path, raw, label=label)
+        published_and_verified = True
     finally:
-        staged.unlink(missing_ok=True)
+        try:
+            staged.unlink(missing_ok=True)
+        except OSError as exc:
+            if published_and_verified:
+                raise RematerializationError(
+                    f"{label} was published and byte-verified, but staged cleanup "
+                    f"is pending: {staged}; inspect the final output before retry"
+                ) from exc
+            raise RematerializationError(
+                f"{label} publication failed and staged cleanup is pending: "
+                f"{staged}; manual reconciliation required"
+            ) from exc
 
 
 def _capture_verified_publication_bytes(
@@ -628,8 +641,25 @@ def _publish_verified_outputs(
                 ) from exc
             published.append((label, path, sha256_bytes(raw)))
     finally:
+        cleanup_error: OSError | None = None
+        cleanup_paths: list[str] = []
         for _, _, temporary, _ in staged:
-            temporary.unlink(missing_ok=True)
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError as exc:
+                cleanup_paths.append(str(temporary))
+                if cleanup_error is None:
+                    cleanup_error = exc
+        if cleanup_error is not None:
+            if len(published) == len(outputs):
+                raise RematerializationError(
+                    "outer receipt published and byte-verified; staged cleanup "
+                    f"pending for {cleanup_paths}; inspect read-only recovery"
+                ) from cleanup_error
+            raise RematerializationError(
+                "outer publication incomplete and staged cleanup pending for "
+                f"{cleanup_paths}; manual reconciliation required"
+            ) from cleanup_error
 
 
 def _load_module(name: str, path: Path) -> Any:
