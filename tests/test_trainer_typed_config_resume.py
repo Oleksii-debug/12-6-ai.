@@ -185,7 +185,6 @@ def test_resume_counters_require_exact_int_before_component_mutation(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
 
 
-
 @pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
 @pytest.mark.parametrize("alias_kind", ["integral_float", "numpy_int"])
 def test_nonzero_counter_numeric_alias_refused_before_optimizer_restore(
