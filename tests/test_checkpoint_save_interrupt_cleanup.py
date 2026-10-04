@@ -41,7 +41,7 @@ def _identity() -> core.CheckpointIdentity:
 
 
 @pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
-@pytest.mark.parametrize("stage", ["weights", "state", "publication"])
+@pytest.mark.parametrize("stage", ["weights", "state", "verified", "publication"])
 def test_interrupted_save_cleans_private_staging_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -71,8 +71,16 @@ def test_interrupted_save_cleans_private_staging_directory(
         if (stage == "weights" and saves == 1) or (stage == "state" and saves == 2):
             raise thrown
 
-    if stage != "publication":
+    if stage in {"weights", "state"}:
         monkeypatch.setattr(core, "save_safetensors", interrupted_save)
+    elif stage == "verified":
+        real_verify = core.verify_checkpoint
+
+        def interrupted_verify(directory: Path) -> dict[str, Any]:
+            real_verify(directory)
+            raise thrown
+
+        monkeypatch.setattr(core, "verify_checkpoint", interrupted_verify)
     else:
         def interrupted_publish(*_args: Any, **_kwargs: Any) -> None:
             raise thrown
@@ -84,7 +92,7 @@ def test_interrupted_save_cleans_private_staging_directory(
 
     assert caught.value is thrown
     assert len(staged) == 1
-    assert saves == {"weights": 1, "state": 2, "publication": 0}[stage]
+    assert saves == {"weights": 1, "state": 2, "verified": 0, "publication": 0}[stage]
     assert not destination.exists(), "an interrupted save must not publish a checkpoint"
     assert not staged[0].exists(), "staged checkpoint bytes must be deleted on interruption"
     assert not list(tmp_path.glob(".checkpoint.tmp-*"))
@@ -94,5 +102,53 @@ def test_uninterrupted_save_still_publishes_a_verified_checkpoint(tmp_path: Path
     destination = tmp_path / "checkpoint"
     core.save_checkpoint(destination, model=_TinyModel(), identity=_identity())
     assert destination.is_dir()
+    assert core.verify_checkpoint(destination)["identity"]["step"] == 0
+    assert not list(tmp_path.glob(".checkpoint.tmp-*"))
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_after_interrupted_save_same_destination_can_be_retried(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+) -> None:
+    destination = tmp_path / "checkpoint"
+    real_save = core.save_safetensors
+    thrown = interruption("first save interrupted after weights")
+
+    def interrupted_first_write(*args: Any, **kwargs: Any) -> None:
+        real_save(*args, **kwargs)
+        raise thrown
+
+    with monkeypatch.context() as patch:
+        patch.setattr(core, "save_safetensors", interrupted_first_write)
+        with pytest.raises(interruption) as caught:
+            core.save_checkpoint(destination, model=_TinyModel(), identity=_identity())
+    assert caught.value is thrown
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".checkpoint.tmp-*"))
+
+    core.save_checkpoint(destination, model=_TinyModel(), identity=_identity())
+    assert core.verify_checkpoint(destination)["identity"]["step"] == 0
+    assert not list(tmp_path.glob(".checkpoint.tmp-*"))
+
+
+@pytest.mark.parametrize("overwrite", [False, True])
+def test_existing_checkpoint_is_never_modified_or_staged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, overwrite: bool,
+) -> None:
+    destination = tmp_path / "checkpoint"
+    core.save_checkpoint(destination, model=_TinyModel(), identity=_identity())
+    original = (destination / core.MANIFEST_NAME).read_bytes()
+
+    def unexpected_save(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("existing destination must reject before any staged write")
+
+    monkeypatch.setattr(core, "save_safetensors", unexpected_save)
+    with pytest.raises(FileExistsError):
+        core.save_checkpoint(
+            destination, model=_TinyModel(), identity=_identity(), overwrite=overwrite,
+        )
+    assert (destination / core.MANIFEST_NAME).read_bytes() == original
     assert core.verify_checkpoint(destination)["identity"]["step"] == 0
     assert not list(tmp_path.glob(".checkpoint.tmp-*"))
