@@ -176,3 +176,11 @@ def test_cli_rejects_invalid_authority_without_network_or_output(
     assert result["model_training_authorized"] is False
     assert result["final_test_outcomes_read"] is False
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_license_marker_is_not_provenance(index: int) -> None:
+    row = _manifest()["objects"][index]
+    forged = materializer.LICENSE_MARKERS[row["license_spdx"]] + b"\\nforged-license-bytes"
+    with pytest.raises(RuntimeError, match="license SHA-256 drift"):
+        materializer._check_pinned_license(row, forged)
