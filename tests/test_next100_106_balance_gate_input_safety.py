@@ -555,3 +555,87 @@ def test_invalid_adapter_result_does_not_publish(
     assert json.loads(capsys.readouterr().out)["status"] == "BLOCKED_INVALID_INPUT"
     assert not output.exists()
     assert source.read_bytes() == b"source"
+
+
+def test_valid_final_with_failed_temp_cleanup_reports_committed_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    gate = _gate()
+    source = tmp_path / "original.json"
+    output = tmp_path / "результат із пробілами.json"
+    source.write_bytes(b"original authority")
+    original_unlink = Path.unlink
+
+    def stage_locked(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name.startswith(f".{output.name}.") and self.suffix == ".tmp":
+            raise PermissionError("injected stage sharing failure")
+        original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", stage_locked)
+    payload = '{"text":"Україна"}\n'.encode("utf-8")
+    gate._write_new_output(output, payload, input_path=source)
+    emitted = capsys.readouterr()
+    assert emitted.err.startswith("OUTPUT_COMMITTED_CLEANUP_PENDING: ")
+    warning = json.loads(emitted.err.split(": ", 1)[1])
+    assert warning["output"] == str(output)
+    assert output.read_bytes() == payload
+    assert len(list(tmp_path.glob(f".{output.name}.*.tmp"))) == 1
+    assert source.read_bytes() == b"original authority"
+    with pytest.raises(gate.GateError, match="refusing to overwrite"):
+        gate._write_new_output(output, b"different", input_path=source)
+    assert output.read_bytes() == payload
+
+
+def test_failed_rollback_reports_invalid_published_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _gate()
+    source = tmp_path / "source.json"
+    output = tmp_path / "result.json"
+    source.write_bytes(b"original authority")
+    original_link = gate.os.link
+    original_unlink = Path.unlink
+
+    def tamper_then_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"invalid modified result")
+        original_link(stage, final)
+
+    def prevent_final_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self == output:
+            raise PermissionError("injected rollback sharing failure")
+        original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(gate.os, "link", tamper_then_link)
+    monkeypatch.setattr(Path, "unlink", prevent_final_unlink)
+    with pytest.raises(gate.GateError, match="ROLLBACK_INCOMPLETE"):
+        gate._write_new_output(output, b"expected", input_path=source)
+    assert output.read_bytes() == b"invalid modified result"
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert source.read_bytes() == b"original authority"
+
+
+def test_unpublished_stage_cleanup_failure_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _gate()
+    source = tmp_path / "source.json"
+    output = tmp_path / "result.json"
+    source.write_bytes(b"original authority")
+    original_unlink = Path.unlink
+
+    def stage_locked(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name.startswith(f".{output.name}.") and self.suffix == ".tmp":
+            raise PermissionError("injected stage sharing failure")
+        original_unlink(self, *args, **kwargs)
+
+    def unavailable_link(_stage: Path, _final: Path) -> None:
+        raise OSError("injected unsupported link")
+
+    monkeypatch.setattr(Path, "unlink", stage_locked)
+    monkeypatch.setattr(gate.os, "link", unavailable_link)
+    with pytest.raises(gate.GateError, match="STAGING_CLEANUP_INCOMPLETE"):
+        gate._write_new_output(output, b"candidate", input_path=source)
+    assert not output.exists()
+    assert len(list(tmp_path.glob(f".{output.name}.*.tmp"))) == 1
+    assert source.read_bytes() == b"original authority"

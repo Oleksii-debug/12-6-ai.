@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import sys
 import tempfile
 from collections import defaultdict
 from pathlib import Path
@@ -598,10 +599,38 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
     except FileExistsError as exc:
         raise GateError(f"refusing to overwrite existing balance output: {path}") from exc
     finally:
+        rollback_error: OSError | None = None
+        cleanup_error: OSError | None = None
         if linked and not verified and identity is not None and _same_inode(final, identity):
-            final.unlink()
+            try:
+                final.unlink()
+            except OSError as exc:
+                rollback_error = exc
         if staged_path is not None and identity is not None and _same_inode(staged_path, identity):
-            staged_path.unlink()
+            try:
+                staged_path.unlink()
+            except OSError as exc:
+                cleanup_error = exc
+        if rollback_error is not None:
+            raise GateError(
+                f"ROLLBACK_INCOMPLETE: invalid balance output may remain: {final}"
+            ) from rollback_error
+        if cleanup_error is not None:
+            if verified:
+                # The final report was byte-verified and is already committed.
+                print(
+                    "OUTPUT_COMMITTED_CLEANUP_PENDING: "
+                    + json.dumps(
+                        {"output": str(final), "stage": str(staged_path)},
+                        ensure_ascii=True, sort_keys=True,
+                    ),
+                    file=sys.stderr,
+                )
+            else:
+                raise GateError(
+                    f"STAGING_CLEANUP_INCOMPLETE: unpublished stage may remain: "
+                    f"{staged_path}"
+                ) from cleanup_error
 
 
 def main() -> int:
