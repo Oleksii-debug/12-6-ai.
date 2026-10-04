@@ -105,8 +105,11 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
                                     for item in left)
                 right_items = sorted((type(item).__name__, _sha256(marshal.dumps(item)))
                                      for item in right)
-            except (TypeError, ValueError):
-                differences.append(f"{path}:unsupported-frozenset")
+            except (TypeError, ValueError, RecursionError, OverflowError):
+                # Member serialization was not completed. This is an
+                # incomplete diagnostic, not proof of a code difference.
+                limited = True
+                return
             else:
                 if left_items != right_items:
                     differences.append(path)
