@@ -345,3 +345,39 @@ def test_partial_restore_poison_prevents_in_place_retry(
         load_trainer_checkpoint(
             checkpoint, model=model, trainer=trainer, restore_rng=False,
         )
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
+def test_interrupted_restore_poison_keeps_original_interruption(
+    interrupt: type[BaseException],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.checkpoint import progress_trainer
+
+    class CanonicalTarget(GenericTrainer):
+        def __init__(self) -> None:
+            super().__init__()
+            self._failure_reason: str | None = None
+            self._update_incomplete = False
+
+    checkpoint = tmp_path / "interrupted-restore"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        trainer=GenericTrainer(),
+        identity=identity(),
+    )
+    model = NumpyModel([9.0, 9.0, 9.0])
+    trainer = CanonicalTarget()
+
+    def interrupted(_state: object) -> None:
+        raise interrupt("interrupted during RNG restore")
+
+    monkeypatch.setattr(progress_trainer, "restore_rng_state", interrupted)
+    with pytest.raises(interrupt, match="interrupted during RNG restore"):
+        load_trainer_checkpoint(
+            checkpoint, model=model, trainer=trainer, restore_rng=True,
+        )
+    assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+    assert trainer._update_incomplete is True
