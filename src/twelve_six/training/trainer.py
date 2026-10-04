@@ -298,7 +298,9 @@ class Trainer:
         )
         try:
             self.scaler.scale(loss * tokens).backward()
-        except RuntimeError:
+        except BaseException:
+            # Autograd may raise non-RuntimeError exceptions or be interrupted after
+            # partially accumulating gradients. A retry requires verified recovery.
             self._mark_failed(f"backward failed at micro_step={self.micro_step + 1}")
             raise
 
