@@ -235,9 +235,12 @@ def load_trainer_checkpoint(
     # in-place retry; avoid copying model-scale weights to attempt rollback.
     try:
         _apply_model_weights(model, materialized, strict_model)
+        trainer.load_state_dict(trainer_state)
+        # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
+        # torch RNG even on success. Restore the checkpoint streams last so
+        # the first resumed batch sees the exact captured next draws.
         if restore_rng:
             restore_rng_state(combined_state["rng"])
-        trainer.load_state_dict(trainer_state)
     except BaseException:
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             # D02 may already have recorded a more specific partial-load error
