@@ -77,6 +77,50 @@ def _identity() -> CheckpointIdentity:
     )
 
 
+
+def _assert_cuda_rng_unchanged(before: list[torch.Tensor] | None) -> None:
+    """Require invalid checkpoint preflight not to consume GPU RNG."""
+    if before is None:
+        return
+    after = torch.cuda.get_rng_state_all()
+    assert len(after) == len(before)
+    for actual, previous in zip(after, before, strict=True):
+        torch.testing.assert_close(actual, previous, rtol=0, atol=0)
+
+
+def _assert_live_rng_matches(expected: dict[str, Any]) -> None:
+    """Require actual stream states, not only deterministic model outputs."""
+    assert random.getstate() == expected["python"]
+    actual_numpy = np.random.get_state()
+    wanted_numpy = expected["numpy"]
+    assert actual_numpy[0] == wanted_numpy[0]
+    np.testing.assert_array_equal(actual_numpy[1], wanted_numpy[1])
+    assert actual_numpy[2:] == wanted_numpy[2:]
+    torch.testing.assert_close(
+        torch.get_rng_state(), expected["torch"]["cpu"], rtol=0, atol=0,
+    )
+    assert (
+        torch.are_deterministic_algorithms_enabled()
+        == expected["torch"]["deterministic_algorithms"]
+    )
+    if torch.cuda.is_available():
+        for actual, wanted in zip(
+            torch.cuda.get_rng_state_all(), expected["torch"]["cuda"], strict=True,
+        ):
+            torch.testing.assert_close(actual, wanted, rtol=0, atol=0)
+
+
+def _advance_rng_for_replay_probe() -> dict[str, Any]:
+    """Create a visible difference from the checkpoint's persisted RNG states."""
+    random.random()
+    np.random.random()
+    torch.rand(())
+    if torch.cuda.is_available():
+        for device in range(torch.cuda.device_count()):
+            torch.rand((), device=f"cuda:{device}")
+    return core.capture_rng_state()
+
+
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
@@ -89,6 +133,7 @@ def _identity() -> CheckpointIdentity:
     ],
     ids=["bool-as-int", "seed-as-float", "nested-beta-alias"],
 )
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -97,6 +142,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     field: str,
     alias: Any,
     config_betas: tuple[float, float],
+    restore_rng: bool,
 ) -> None:
     config = TrainerConfig(seed=703, max_steps=2, betas=config_betas)
     source_model = _TinyLogits()
@@ -132,6 +178,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
+    cuda_before = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
 
     def forbidden_model_apply(*args: Any, **kwargs: Any) -> None:
         application_calls.append(True)
@@ -144,7 +191,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     with pytest.raises(CheckpointCompatibilityError, match="trainer config mismatch"):
         loader.load_trainer_checkpoint(
             invalid_path, model=target_model, trainer=target,
-            strict_model=False, restore_rng=False, **extra,
+            strict_model=False, restore_rng=restore_rng, **extra,
         )
 
     assert application_calls == []
@@ -160,15 +207,26 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     np.testing.assert_array_equal(after_numpy[1], np_before[1])
     assert after_numpy[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    _assert_cuda_rng_unchanged(cuda_before)
     assert policy_before == (
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
 
+    # Decode the trusted bytes, then deliberately drift all live RNG streams.
+    saved_rng = core._decode_verified_state(
+        core.prepare_checkpoint_load(valid_path)
+    )[1]["rng"]
+    drifted_rng = _advance_rng_for_replay_probe()
     monkeypatch.undo()
     loader.load_trainer_checkpoint(
         valid_path, model=target_model, trainer=target,
-        strict_model=False, restore_rng=False, **extra,
+        strict_model=False, restore_rng=restore_rng, **extra,
+    )
+    _assert_live_rng_matches(saved_rng if restore_rng else drifted_rng)
+    assert policy_before == (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
     )
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
     assert target._failure_reason is None and target._update_incomplete is False
@@ -192,6 +250,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
 )
 @pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
 @pytest.mark.parametrize("alias", [False, 0.0], ids=["bool-zero", "float-zero"])
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -199,6 +258,7 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     loader: Any,
     field: str,
     alias: Any,
+    restore_rng: bool,
 ) -> None:
     """Persist representable aliases, not just Python-only int subclasses."""
     config = TrainerConfig(seed=703, max_steps=2)
@@ -231,6 +291,7 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
+    cuda_before = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
 
     def forbid_model_apply(*args: Any, **kwargs: Any) -> None:
         reached_apply.append(True)
@@ -245,7 +306,7 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     ):
         loader.load_trainer_checkpoint(
             invalid_path, model=target_model, trainer=target,
-            strict_model=False, restore_rng=False, **expected,
+            strict_model=False, restore_rng=restore_rng, **expected,
         )
     assert reached_apply == []
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
@@ -258,15 +319,26 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     np.testing.assert_array_equal(after_np[1], np_before[1])
     assert after_np[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    _assert_cuda_rng_unchanged(cuda_before)
     assert policy_before == (
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
 
+    # Decode the trusted bytes, then deliberately drift all live RNG streams.
+    saved_rng = core._decode_verified_state(
+        core.prepare_checkpoint_load(valid_path)
+    )[1]["rng"]
+    drifted_rng = _advance_rng_for_replay_probe()
     monkeypatch.undo()
     loader.load_trainer_checkpoint(
         valid_path, model=target_model, trainer=target,
-        strict_model=False, restore_rng=False, **expected,
+        strict_model=False, restore_rng=restore_rng, **expected,
+    )
+    _assert_live_rng_matches(saved_rng if restore_rng else drifted_rng)
+    assert policy_before == (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
     )
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
     source.train_microbatch(_BATCH)
@@ -285,9 +357,16 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
         ("micro_step", 1.0),
         ("optimizer_step", 1.0),
         ("tokens_seen", 2.0),
+        ("micro_step", np.int64(1)),
+        ("optimizer_step", np.int64(1)),
+        ("tokens_seen", np.int64(2)),
     ],
-    ids=["micro-bool", "optimizer-bool", "micro-float", "optimizer-float", "tokens-float"],
+    ids=[
+        "micro-bool", "optimizer-bool", "micro-float", "optimizer-float",
+        "tokens-float", "micro-numpy-int", "optimizer-numpy-int", "tokens-numpy-int",
+    ],
 )
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -295,6 +374,7 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     loader: Any,
     field: str,
     alias: Any,
+    restore_rng: bool,
 ) -> None:
     """Refuse a semantically invalid nonzero checkpoint before model mutation."""
     from dataclasses import replace
@@ -329,6 +409,7 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
+    cuda_before = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
 
     def refuse_model_apply(*args: Any, **kwargs: Any) -> None:
         model_applications.append(True)
@@ -343,7 +424,7 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     ):
         loader.load_trainer_checkpoint(
             invalid, model=target_model, trainer=target,
-            strict_model=False, restore_rng=False, **expected,
+            strict_model=False, restore_rng=restore_rng, **expected,
         )
     assert model_applications == []
     assert not target.optimizer.state
@@ -357,15 +438,26 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     np.testing.assert_array_equal(after_numpy[1], np_before[1])
     assert after_numpy[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    _assert_cuda_rng_unchanged(cuda_before)
     assert policy_before == (
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
 
+    # Decode the trusted bytes, then deliberately drift all live RNG streams.
+    saved_rng = core._decode_verified_state(
+        core.prepare_checkpoint_load(valid)
+    )[1]["rng"]
+    drifted_rng = _advance_rng_for_replay_probe()
     monkeypatch.undo()
     loader.load_trainer_checkpoint(
         valid, model=target_model, trainer=target,
-        strict_model=False, restore_rng=False, **expected,
+        strict_model=False, restore_rng=restore_rng, **expected,
+    )
+    _assert_live_rng_matches(saved_rng if restore_rng else drifted_rng)
+    assert policy_before == (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
     )
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
