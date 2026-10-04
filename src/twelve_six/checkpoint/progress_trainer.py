@@ -232,7 +232,10 @@ def load_trainer_checkpoint(
         trainer.load_state_dict(trainer_state)
     except BaseException:
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
-            trainer._failure_reason = "checkpoint_restore_apply_failed"
+            # D02 may already have recorded a more specific partial-load error
+            # (including a second gradient-cleanup failure). Preserve it.
+            if trainer._failure_reason is None:
+                trainer._failure_reason = "checkpoint_restore_apply_failed"
             trainer._update_incomplete = True
         raise
     return LoadResult(
