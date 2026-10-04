@@ -470,24 +470,37 @@ def _preflight_trainer_state(
 
 
 
-def _assert_d02_checkpoint_rng_policy(
-    trainer: Any, rng_state: Mapping[str, Any],
-) -> None:
-    """Bind a canonical D02 trainer's deterministic policy before model mutation.
-
-    Checkpoint-v1 captures deterministic enablement but not warn-only. A real
-    Trainer's validated config must agree with the enabled bit when the caller
-    requests exact RNG replay. Warn-only is instead kept from the live config.
-    Generic adapters do not expose this D02 configuration contract.
-    """
+def _assert_live_d02_determinism(trainer: Any) -> bool | None:
+    """Reject ambient torch policy drift before exporting or restoring D02."""
 
     if not (
         hasattr(trainer, "_failure_reason")
         and hasattr(trainer, "_update_incomplete")
     ):
-        return
-    configured = getattr(getattr(trainer, "config", None), "deterministic_algorithms", None)
-    if not isinstance(configured, bool):
+        return None
+    config = getattr(trainer, "config", None)
+    enabled = getattr(config, "deterministic_algorithms", None)
+    warn_only = getattr(config, "deterministic_warn_only", None)
+    if type(enabled) is not bool or type(warn_only) is not bool:
+        return None
+    torch = importlib.import_module("torch")
+    if (
+        torch.are_deterministic_algorithms_enabled() != enabled
+        or torch.is_deterministic_algorithms_warn_only_enabled() != warn_only
+    ):
+        raise CheckpointCompatibilityError(
+            "live torch deterministic policy disagrees with canonical trainer configuration"
+        )
+    return enabled
+
+
+def _assert_d02_checkpoint_rng_policy(
+    trainer: Any, rng_state: Mapping[str, Any],
+) -> None:
+    """Bind captured deterministic enablement to the canonical D02 config."""
+
+    configured = _assert_live_d02_determinism(trainer)
+    if configured is None:
         return
     torch_state = rng_state.get("torch") if isinstance(rng_state, Mapping) else None
     if (
@@ -561,6 +574,9 @@ def save_trainer_checkpoint(
         raise TypeError("trainer must provide state_dict()")
     _assert_trainer_model_binding(model, trainer)
     state = _trainer_state_as_mapping(trainer.state_dict())
+    # A canonical D02 checkpoint should never be produced under a different
+    # ambient PyTorch policy than the validated trainer configuration.
+    _assert_live_d02_determinism(trainer)
     return save_checkpoint(
         directory,
         model=model,
@@ -637,6 +653,8 @@ def load_trainer_checkpoint(
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
+    else:
+        _assert_live_d02_determinism(trainer)
     materialized = _prepare_model_weights(model, arrays, strict_model)
 
     # The decoded source weights are no longer needed after target materialization.
