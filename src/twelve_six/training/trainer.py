@@ -153,6 +153,7 @@ class Trainer:
 
         self._configure_determinism(config)
         self.optimizer = optimizer or build_optimizer(model, config)
+        self._require_optimizer_parameter_coverage()
         self.scheduler = (
             scheduler if scheduler is not None else build_scheduler(self.optimizer, config)
         )
@@ -178,6 +179,113 @@ class Trainer:
             warn_only=config.deterministic_warn_only,
         )
 
+    def _require_optimizer_parameter_coverage(self) -> None:
+        """Require the optimizer to own every trainable model parameter exactly once."""
+        model_parameters = tuple(self.model.parameters())
+        model_ids = {id(parameter) for parameter in model_parameters}
+        trainable_ids = {
+            id(parameter) for parameter in model_parameters if parameter.requires_grad
+        }
+        if not trainable_ids:
+            raise ValueError("model has no trainable parameters for optimizer")
+        optimizer_ids: list[int] = []
+        for group in self.optimizer.param_groups:
+            parameters = group.get("params")
+            if not isinstance(parameters, (list, tuple)):
+                raise TypeError("optimizer group must contain a concrete parameter sequence")
+            for parameter in parameters:
+                if not isinstance(parameter, Tensor) or id(parameter) not in model_ids:
+                    raise ValueError("optimizer contains a parameter not owned by the model")
+                optimizer_ids.append(id(parameter))
+        if len(optimizer_ids) != len(set(optimizer_ids)):
+            raise ValueError("optimizer contains duplicate parameter assignments")
+        if not trainable_ids.issubset(optimizer_ids):
+            raise ValueError("optimizer omits trainable model parameters")
+
+    def _require_no_residual_model_gradients(self) -> None:
+        if any(parameter.grad is not None for parameter in self.model.parameters()):
+            raise RuntimeError("completed optimizer step left residual model gradients")
+
+    def _require_finite_committed_update(self) -> None:
+        """Reject optimizer corruption before crediting an optimizer transition."""
+        for parameter in self.model.parameters():
+            if not torch.isfinite(parameter.detach()).all().item():
+                raise NonFiniteTrainingError(
+                    f"optimizer produced non-finite model weights at micro_step={self.micro_step}"
+                )
+        # Buffers are durable model state too (for example normalization
+        # statistics). They can be corrupted by forward/scheduler hooks even
+        # when every optimizer-managed parameter and moment remains finite.
+        for buffer in self.model.buffers():
+            if (buffer.is_floating_point() or buffer.is_complex()) and not (
+                torch.isfinite(buffer.detach()).all().item()
+            ):
+                raise NonFiniteTrainingError(
+                    f"model contains non-finite buffer at micro_step={self.micro_step}"
+                )
+        for state in self.optimizer.state.values():
+            for value in state.values():
+                if isinstance(value, Tensor) and not torch.isfinite(value).all().item():
+                    raise NonFiniteTrainingError(
+                        f"optimizer produced non-finite state at micro_step={self.micro_step}"
+                    )
+
+    def _require_safe_optimizer_hyperparameters(self) -> None:
+        """Validate all group hyperparameters, not only the reported group LR."""
+        for group in self.optimizer.param_groups:
+            for field in ("lr", "weight_decay", "eps"):
+                if field not in group:
+                    continue  # Other injected optimizer families may omit these fields.
+                value = group[field]
+                label = "learning rate" if field == "lr" else field
+                if isinstance(value, bool) or not math.isfinite(float(value)):
+                    raise NonFiniteTrainingError(
+                        f"optimizer {label} must be finite and >= 0"
+                    )
+                if float(value) < 0 or (field == "eps" and float(value) == 0):
+                    raise NonFiniteTrainingError(
+                        f"optimizer {label} must be finite and >= 0"
+                    )
+            if "betas" in group:
+                betas = group["betas"]
+                if not isinstance(betas, (list, tuple)) or len(betas) != 2:
+                    raise NonFiniteTrainingError("optimizer betas must be valid")
+                for beta in betas:
+                    if isinstance(beta, bool) or not math.isfinite(float(beta)):
+                        raise NonFiniteTrainingError("optimizer betas must be valid")
+                    if not 0 <= float(beta) < 1:
+                        raise NonFiniteTrainingError("optimizer betas must be valid")
+
+    @staticmethod
+    def _require_finite_state_tree(value: Any, label: str) -> None:
+        """Reject nonfinite numeric leaves in nested scheduler/scaler state."""
+        if isinstance(value, Tensor):
+            if (value.is_floating_point() or value.is_complex()) and not (
+                torch.isfinite(value).all().item()
+            ):
+                raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, Mapping):
+            for child in value.values():
+                Trainer._require_finite_state_tree(child, label)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                Trainer._require_finite_state_tree(child, label)
+        elif (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and not math.isfinite(value)
+        ):
+            raise NonFiniteTrainingError(f"{label} has non-finite state")
+
+    def _require_finite_auxiliary_state(self) -> None:
+        # The optimizer or scheduler may have changed groups after the
+        # pre-backward check; a completed step must remain checkpoint-safe.
+        self._require_optimizer_parameter_coverage()
+        self._require_safe_optimizer_hyperparameters()
+        self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
+        if self.scheduler is not None:
+            self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
+
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
         if self.config.precision == "fp16" and self.device.type != "cuda":
@@ -193,9 +301,23 @@ class Trainer:
         return torch.autocast(device_type=self.device.type, dtype=dtype)
 
     def _mark_failed(self, reason: str) -> None:
-        if self._failure_reason is None:
-            self._failure_reason = reason
-        self.optimizer.zero_grad(set_to_none=True)
+        if self._failure_reason is not None:
+            return
+        self._failure_reason = reason
+        cleanup_faults: list[str] = []
+        # An injected optimizer may have swapped or dropped parameter groups.
+        # Clear model-owned gradients independently, then best-effort clear any
+        # optimizer-owned state without replacing the primary exception.
+        for owner, label in (
+            (self.model, "model gradient cleanup failed"),
+            (self.optimizer, "gradient cleanup failed"),
+        ):
+            try:
+                owner.zero_grad(set_to_none=True)
+            except BaseException as cleanup_error:  # noqa: BLE001 - keep interrupt-safe cleanup
+                cleanup_faults.append(f"{label}: {type(cleanup_error).__name__}")
+        if cleanup_faults:
+            self._failure_reason = f"{reason}; " + "; ".join(cleanup_faults)
 
     def _assert_trainable(self) -> None:
         if self._failure_reason is not None:
@@ -217,22 +339,28 @@ class Trainer:
         if "labels" in batch and "target_ids" in batch:
             raise ValueError("batch must not contain both labels and target_ids")
 
-        input_ids = batch["input_ids"].to(self.device)
+        raw_inputs = batch["input_ids"]
         aligned_targets = "target_ids" in batch
-        targets = batch.get(
-            "target_ids",
-            batch.get("labels", batch["input_ids"]),
-        ).to(self.device)
-        loss_mask = batch.get("loss_mask")
-        if loss_mask is not None:
-            if not aligned_targets:
-                raise ValueError("loss_mask is only valid with already-aligned target_ids")
-            loss_mask = loss_mask.to(self.device)
-
-        if input_ids.ndim != 2 or targets.ndim != 2:
+        raw_targets = batch.get("target_ids", batch.get("labels", raw_inputs))
+        raw_mask = batch.get("loss_mask")
+        if raw_mask is not None and not aligned_targets:
+            raise ValueError("loss_mask is only valid with already-aligned target_ids")
+        if raw_inputs.ndim != 2 or raw_targets.ndim != 2:
             raise ValueError("input_ids and training targets must have shape [batch, time]")
-        if input_ids.shape != targets.shape:
+        if raw_inputs.shape != raw_targets.shape:
             raise ValueError("input_ids and training targets must have identical shape")
+        if raw_mask is not None and raw_mask.shape != raw_targets.shape:
+            raise ValueError("loss_mask must match target_ids shape")
+
+        try:
+            input_ids = raw_inputs.to(self.device)
+            targets = raw_targets.to(self.device)
+            loss_mask = None if raw_mask is None else raw_mask.to(self.device)
+        except BaseException:
+            # Transfers can fail after asynchronous device activity. A pending
+            # accumulation group is no longer safe to retry in-place.
+            self._mark_failed(f"batch transfer failed at micro_step={self.micro_step + 1}")
+            raise
         return input_ids, targets, loss_mask, aligned_targets
 
     def _forward_loss(
@@ -243,16 +371,23 @@ class Trainer:
         loss_mask: Tensor | None,
         aligned_targets: bool,
     ) -> Tensor:
-        with self._autocast_context():
-            logits = _extract_logits(self.model(input_ids))
-            if aligned_targets:
-                loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
-            else:
-                loss = causal_lm_loss(logits, targets)
-        if not torch.isfinite(loss).item():
-            reason = f"non-finite loss at micro_step={self.micro_step + 1}"
-            self._mark_failed(reason)
-            raise NonFiniteTrainingError(reason)
+        try:
+            with self._autocast_context():
+                logits = _extract_logits(self.model(input_ids))
+                if aligned_targets:
+                    loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
+                else:
+                    loss = causal_lm_loss(logits, targets)
+            if not torch.isfinite(loss).item():
+                reason = f"non-finite loss at micro_step={self.micro_step + 1}"
+                self._mark_failed(reason)
+                raise NonFiniteTrainingError(reason)
+        except BaseException:
+            # Forward, loss or device synchronization may have changed model
+            # buffers/RNG; an earlier microbatch can have pending gradients.
+            if self._failure_reason is None:
+                self._mark_failed(f"forward/loss failed at micro_step={self.micro_step + 1}")
+            raise
         return loss
 
     def _normalize_gradients_and_norm(self, token_count: int) -> Tensor:
@@ -272,23 +407,49 @@ class Trainer:
             grad.div_(token_count)
             squared_norm += torch.sum(grad.float() * grad.float())
         if not found:
-            return torch.zeros((), device=self.device)
-        return torch.sqrt(squared_norm)
+            # Backward can succeed through tensors not owned by the model. Such
+            # a step would advance optimizer/exposure accounting without even
+            # one model-parameter gradient and must fail closed.
+            raise RuntimeError("optimizer update has no model-parameter gradients")
+        gradient_norm = torch.sqrt(squared_norm)
+        if not torch.isfinite(gradient_norm).item():
+            raise NonFiniteTrainingError(
+                f"non-finite gradient norm at micro_step={self.micro_step}"
+            )
+        return gradient_norm
 
     def train_microbatch(self, batch: Batch) -> StepMetrics:
         """Backpropagate one microbatch and update only at the accumulation boundary."""
         self._assert_trainable()
         if self.optimizer_step >= self.config.max_steps:
             raise RuntimeError("configured max_steps already reached")
-        self.model.train()
+        try:
+            self._require_optimizer_parameter_coverage()
+        except BaseException:
+            self._mark_failed("optimizer parameter coverage changed before microbatch")
+            raise
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
-        tokens = _count_training_tokens(
-            targets,
-            aligned_targets=aligned_targets,
-            loss_mask=loss_mask,
-        )
+        try:
+            tokens = _count_training_tokens(
+                targets,
+                aligned_targets=aligned_targets,
+                loss_mask=loss_mask,
+            )
+        except BaseException:
+            # A device-side reduction/synchronization can fail after successful
+            # transfers; do not reuse earlier accumulated gradients afterward.
+            self._mark_failed(f"target accounting failed at micro_step={self.micro_step + 1}")
+            raise
         if tokens <= 0:
             raise ValueError("microbatch must contain at least one valid target token")
+
+        try:
+            self.model.train()
+        except BaseException:
+            # Custom train-mode hooks can mutate buffers or consume RNG before
+            # failing; prior accumulated gradients must not be replayed.
+            self._mark_failed(f"train-mode transition failed at micro_step={self.micro_step + 1}")
+            raise
 
         loss = self._forward_loss(
             input_ids,
@@ -298,23 +459,38 @@ class Trainer:
         )
         try:
             self.scaler.scale(loss * tokens).backward()
-        except RuntimeError:
+        except BaseException:
+            # Autograd may raise non-RuntimeError exceptions or be interrupted after
+            # partially accumulating gradients. A retry requires verified recovery.
             self._mark_failed(f"backward failed at micro_step={self.micro_step + 1}")
             raise
 
-        self.micro_step += 1
-        self.tokens_seen += tokens
-        self._pending_tokens += tokens
-        self._pending_loss_sum += float(loss.detach().float().item()) * tokens
+        try:
+            observed_loss = float(loss.detach().float().item())
+            self.micro_step += 1
+            self.tokens_seen += tokens
+            self._pending_tokens += tokens
+            self._pending_loss_sum += observed_loss * tokens
 
-        should_step = self.micro_step % self.config.gradient_accumulation_steps == 0
-        grad_norm_value: float | None = None
-        update_loss: float | None = None
-        learning_rate = float(self.optimizer.param_groups[0]["lr"])
+            should_step = self.micro_step % self.config.gradient_accumulation_steps == 0
+            grad_norm_value: float | None = None
+            update_loss: float | None = None
+            # A custom optimizer can have distinct schedules per group. Never
+            # validate only the first group while another can write NaN weights.
+            learning_rate = float(self.optimizer.param_groups[0]["lr"])
+            self._require_safe_optimizer_hyperparameters()
+        except BaseException:
+            # Backward already ran; do not allow a partial accounting transition
+            # or an interrupted device synchronization to reuse these gradients.
+            self._mark_failed(f"post-backward accounting failed at micro_step={self.micro_step}")
+            raise
 
         if should_step:
             self._update_incomplete = True
             try:
+                # Forward/backward hooks may have modified external optimizer
+                # groups after entry preflight. Never count a phantom update.
+                self._require_optimizer_parameter_coverage()
                 self.scaler.unscale_(self.optimizer)
                 raw_grad_norm = self._normalize_gradients_and_norm(self._pending_tokens)
                 grad_norm_value = float(raw_grad_norm.item())
@@ -328,12 +504,25 @@ class Trainer:
                     )
 
                 self.scaler.step(self.optimizer)
+                # A finite gradient and finite LR do not guarantee a finite
+                # AdamW update (e.g. weight-decay overflow). The update may
+                # already have mutated tensors, but must never earn step credit.
+                self._require_finite_committed_update()
                 self.optimizer_step += 1
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
                 if self.scheduler is not None:
                     self.scheduler.step()
-            except Exception:
+                # An effectful scheduler or scaler can corrupt the NEXT step's
+                # state after the finite optimizer update. Reject that now.
+                self._require_finite_auxiliary_state()
+                # Effectful zero_grad/scheduler hooks may modify parameters
+                # or optimizer moments *after* the first post-step check.
+                self._require_finite_committed_update()
+                # A custom optimizer may silently ignore zero_grad or swap
+                # groups inside step(). Never expose that as a clean boundary.
+                self._require_no_residual_model_gradients()
+            except BaseException:
                 self._mark_failed(
                     f"optimizer/scheduler update failed at micro_step={self.micro_step}"
                 )
@@ -345,7 +534,7 @@ class Trainer:
         return StepMetrics(
             micro_step=self.micro_step,
             optimizer_step=self.optimizer_step,
-            loss=float(loss.detach().float().item()),
+            loss=observed_loss,
             update_loss=update_loss,
             learning_rate=learning_rate,
             grad_norm=grad_norm_value,
@@ -379,14 +568,45 @@ class Trainer:
         consumed = 0
         final_metrics: StepMetrics | None = None
 
-        for batch in batches:
-            if self.optimizer_step >= self.config.max_steps:
+        if self.optimizer_step == self.config.max_steps:
+            # Already complete: even constructing a custom iterable may touch
+            # data/RNG. Do not access it after the authorized run boundary.
+            return TrainingRunResult(start_step, start_step, 0, 0, 0, None)
+
+        try:
+            iterator = iter(batches)
+        except BaseException:
+            self._mark_failed("batch iterator construction failed")
+            raise
+        while self.optimizer_step < self.config.max_steps:
+            try:
+                batch = next(iterator)
+            except StopIteration:
                 break
+            except BaseException:
+                # A failing source may have consumed bytes, advanced its cursor
+                # or changed RNG before raising. In-place retry is not safe.
+                self._mark_failed("batch iterator failed after possible cursor advancement")
+                raise
             metrics = self.train_microbatch(batch)
             consumed += 1
             final_metrics = metrics
             if on_metrics is not None:
-                on_metrics(metrics)
+                try:
+                    on_metrics(metrics)
+                except BaseException as exc:
+                    # The batch has already been consumed. The optimizer may
+                    # also have committed, and the checkpoint hook has not run.
+                    self._mark_failed(
+                        f"metrics hook failed after micro_step={metrics.micro_step}, "
+                        f"optimizer_step={metrics.optimizer_step}"
+                    )
+                    if isinstance(exc, Exception):
+                        raise CheckpointHookError(
+                            "metrics hook failed after consumed microbatch; "
+                            "restore a verified checkpoint before retry"
+                        ) from exc
+                    raise
 
             if metrics.optimizer_stepped and on_checkpoint is not None:
                 on_cadence = (
@@ -397,14 +617,28 @@ class Trainer:
                 if on_cadence or is_final:
                     try:
                         on_checkpoint(self, metrics)
-                    except Exception as exc:
-                        raise CheckpointHookError(
-                            "checkpoint hook failed after committed "
-                            f"optimizer_step={metrics.optimizer_step}; do not replay blindly"
-                        ) from exc
+                    except BaseException as exc:
+                        self._mark_failed(
+                            f"checkpoint hook failed after optimizer_step={metrics.optimizer_step}"
+                        )
+                        if isinstance(exc, Exception):
+                            raise CheckpointHookError(
+                                "checkpoint hook failed after committed "
+                                f"optimizer_step={metrics.optimizer_step}; do not replay blindly"
+                            ) from exc
+                        raise
 
         if self.optimizer_step < self.config.max_steps:
-            self.assert_checkpoint_safe()
+            try:
+                self.assert_checkpoint_safe()
+            except RuntimeError:
+                # An exhausted source cannot complete this accumulation group.
+                # Pending gradients do not belong to a committed checkpoint and
+                # cannot be reattached to an arbitrary successor data iterator.
+                self._mark_failed(
+                    f"batch iterable exhausted mid-accumulation at micro_step={self.micro_step}"
+                )
+                raise
             raise RuntimeError(
                 "batch iterable exhausted before max_steps: "
                 f"optimizer_step={self.optimizer_step}, max_steps={self.config.max_steps}"
@@ -433,6 +667,8 @@ class Trainer:
         self._assert_trainable()
         if self.optimizer_step > self.config.max_steps:
             raise RuntimeError("optimizer_step exceeds configured max_steps")
+        # A normal mid-accumulation checkpoint attempt must remain retryable:
+        # its gradients are legitimately pending and no state was exported.
         self.assert_accumulation_boundary()
         expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
         if self.micro_step != expected_micro_steps:
@@ -442,6 +678,13 @@ class Trainer:
             )
         if self._pending_tokens != 0 or self._pending_loss_sum != 0.0:
             raise RuntimeError("trainer has pending accumulation statistics")
+        try:
+            self._require_finite_auxiliary_state()
+            self._require_finite_committed_update()
+            self._require_no_residual_model_gradients()
+        except BaseException:
+            self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
+            raise
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
@@ -471,6 +714,18 @@ class Trainer:
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
                 "and restore the verified model + trainer checkpoint"
             )
+        if (
+            self.micro_step != 0
+            or self.optimizer_step != 0
+            or self.tokens_seen != 0
+            or self._pending_tokens != 0
+            or self._pending_loss_sum != 0.0
+            or any(parameter.grad is not None for parameter in self.model.parameters())
+        ):
+            raise TrainingStateInvalidError(
+                "trainer state restore requires a fresh trainer with no consumed "
+                "exposure or pending gradients; restore the verified model too"
+            )
         if isinstance(state, Mapping):
             state = TrainerState(**state)
 
@@ -487,19 +742,38 @@ class Trainer:
         if state.optimizer_step > self.config.max_steps:
             raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
 
-        self.optimizer.load_state_dict(state.optimizer)
+        # Reject known contract mismatches before touching optimizer state.
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
-        if self.scheduler is not None and state.scheduler is not None:
-            self.scheduler.load_state_dict(state.scheduler)
-        if state.scaler is not None:
-            self.scaler.load_state_dict(state.scaler)
+        if self.scaler.is_enabled() and not state.scaler:
+            raise ValueError("enabled gradient scaler checkpoint state missing")
 
-        self.micro_step = state.micro_step
-        self.optimizer_step = state.optimizer_step
-        self.tokens_seen = state.tokens_seen
-        self._pending_tokens = 0
-        self._pending_loss_sum = 0.0
+        # From the first component load onward a failure may leave optimizer,
+        # scheduler, scaler or counters partially applied. No same-instance
+        # retry is safe without also restoring the verified model/RNG state.
+        self._update_incomplete = True
+        try:
+            self.optimizer.load_state_dict(state.optimizer)
+            self._require_optimizer_parameter_coverage()
+            if self.scheduler is not None and state.scheduler is not None:
+                self.scheduler.load_state_dict(state.scheduler)
+            if state.scaler is not None:
+                self.scaler.load_state_dict(state.scaler)
+
+            self.micro_step = state.micro_step
+            self.optimizer_step = state.optimizer_step
+            self.tokens_seen = state.tokens_seen
+            self._pending_tokens = 0
+            self._pending_loss_sum = 0.0
+            self.optimizer.zero_grad(set_to_none=True)
+            # PyTorch's load_state_dict accepts NaN optimizer moments and
+            # malformed-but-type-compatible group rates. A restore must not
+            # return a supposedly checkpoint-safe trainer with those values.
+            self._require_finite_auxiliary_state()
+            self._require_finite_committed_update()
+            self._require_no_residual_model_gradients()
+        except BaseException:
+            self._mark_failed("trainer state restore failed after possible partial apply")
+            raise
         self._update_incomplete = False
         self._failure_reason = None
-        self.optimizer.zero_grad(set_to_none=True)
