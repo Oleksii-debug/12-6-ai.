@@ -205,6 +205,44 @@ class Trainer:
         if not trainable_ids.issubset(optimizer_ids):
             raise ValueError("optimizer omits trainable model parameters")
 
+    def _optimizer_parameter_name_groups(self) -> list[list[str]]:
+        """Bind optimizer slots to first canonical model names, including tied weights."""
+        self._require_optimizer_parameter_coverage()
+        by_id = {id(parameter): name for name, parameter in self.model.named_parameters()}
+        ordered: list[list[str]] = []
+        for group in self.optimizer.param_groups:
+            names: list[str] = []
+            for parameter in group["params"]:
+                name = by_id.get(id(parameter))
+                if name is None:
+                    raise ValueError(
+                        "optimizer parameter has no stable named model identity"
+                    )
+                names.append(name)
+            ordered.append(names)
+        return ordered
+
+    def _require_optimizer_state_parameter_order(self, state: Any) -> None:
+        """Refuse positional state remapping even between same-shaped parameters."""
+        if not isinstance(state, Mapping):
+            raise ValueError("checkpoint optimizer state must be a mapping")
+        source_groups = state.get("param_groups")
+        expected = self._optimizer_parameter_name_groups()
+        if not isinstance(source_groups, list) or len(source_groups) != len(expected):
+            raise ValueError("checkpoint optimizer parameter-name group count differs")
+        for index, (saved_group, names) in enumerate(
+            zip(source_groups, expected, strict=True)
+        ):
+            if (
+                not isinstance(saved_group, Mapping)
+                or not isinstance(saved_group.get("param_names"), list)
+                or saved_group["param_names"] != names
+            ):
+                raise ValueError(
+                    "checkpoint optimizer parameter order/identity differs "
+                    f"in group {index}; legacy unnamed optimizer state is not exact-resumable"
+                )
+
     def _require_no_residual_model_gradients(self) -> None:
         if any(parameter.grad is not None for parameter in self.model.parameters()):
             raise RuntimeError("completed optimizer step left residual model gradients")
@@ -711,11 +749,25 @@ class Trainer:
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         self.assert_checkpoint_safe()
+        optimizer_state = copy.deepcopy(self.optimizer.state_dict())
+        saved_groups = optimizer_state.get("param_groups")
+        name_groups = self._optimizer_parameter_name_groups()
+        if not isinstance(saved_groups, list) or len(saved_groups) != len(name_groups):
+            raise TrainingStateInvalidError(
+                "optimizer state cannot bind named parameter groups"
+            )
+        for saved_group, names in zip(saved_groups, name_groups, strict=True):
+            if not isinstance(saved_group, dict):
+                raise TrainingStateInvalidError(
+                    "optimizer parameter group is not a mutable mapping"
+                )
+            # Never trust caller-provided param_names over live model identity.
+            saved_group["param_names"] = names
         return TrainerState(
             micro_step=self.micro_step,
             optimizer_step=self.optimizer_step,
             tokens_seen=self.tokens_seen,
-            optimizer=copy.deepcopy(self.optimizer.state_dict()),
+            optimizer=optimizer_state,
             scheduler=(
                 None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
             ),
@@ -769,6 +821,9 @@ class Trainer:
             raise ValueError("scheduler state/config mismatch")
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
+        # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
+        # parameter identity. Reject missing/reordered names before mutation.
+        self._require_optimizer_state_parameter_order(state.optimizer)
 
         # From the first component load onward a failure may leave optimizer,
         # scheduler, scaler or counters partially applied. No same-instance

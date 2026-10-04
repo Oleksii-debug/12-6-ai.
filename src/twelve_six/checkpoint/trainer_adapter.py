@@ -284,6 +284,9 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
+    # Global deterministic mode is a pure target compatibility precondition.
+    # Reject drift before opening a model-scale checkpoint in either loader.
+    _assert_live_d02_determinism(trainer)
     # D02 refuses restoration to a trainer which has already consumed data,
     # has pending accumulation, or retains gradients. Check the same live
     # conditions before opening a checkpoint or changing model weights.
@@ -425,6 +428,16 @@ def _preflight_trainer_state_without_rng_guard(
             ) from exc
         return
 
+    # D02's authoritative names bind serialized optimizer slots to live
+    # parameters before model weights or optimizer moments can be applied.
+    order_check = getattr(trainer, "_require_optimizer_state_parameter_order", None)
+    if callable(order_check):
+        try:
+            order_check(state.get("optimizer"))
+        except (ValueError, TypeError) as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint optimizer parameter order/identity mismatch"
+            ) from exc
     _preflight_optimizer_state(optimizer, state.get("optimizer"))
     _preflight_stateful_component(
         getattr(trainer, "scheduler", None),
