@@ -195,7 +195,7 @@ class Trainer:
         for group in self.optimizer.param_groups:
             parameters = group.get("params")
             if not isinstance(parameters, (list, tuple)):
-                raise ValueError("optimizer group must contain a concrete parameter sequence")
+                raise TypeError("optimizer group must contain a concrete parameter sequence")
             for parameter in parameters:
                 if not isinstance(parameter, Tensor) or id(parameter) not in model_ids:
                     raise ValueError("optimizer contains a parameter not owned by the model")
@@ -311,9 +311,12 @@ class Trainer:
         elif isinstance(value, (list, tuple)):
             for child in value:
                 Trainer._require_finite_state_tree(child, label)
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            if not math.isfinite(value):
-                raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and not math.isfinite(value)
+        ):
+            raise NonFiniteTrainingError(f"{label} has non-finite state")
 
     def _require_finite_auxiliary_state(self) -> None:
         # The optimizer or scheduler may have changed groups after the
@@ -352,7 +355,7 @@ class Trainer:
         ):
             try:
                 owner.zero_grad(set_to_none=True)
-            except BaseException as cleanup_error:
+            except BaseException as cleanup_error:  # noqa: BLE001 - keep interrupt-safe cleanup
                 cleanup_faults.append(f"{label}: {type(cleanup_error).__name__}")
         if cleanup_faults:
             self._failure_reason = f"{reason}; " + "; ".join(cleanup_faults)
@@ -426,6 +429,9 @@ class Trainer:
         try:
             with self._autocast_context():
                 logits = _extract_logits(self.model(input_ids))
+                # A forward hook may change process-global torch policy.
+                # Refuse to compute loss or backpropagate under that drift.
+                self._require_deterministic_policy()
                 if aligned_targets:
                     loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
                 else:
@@ -511,8 +517,21 @@ class Trainer:
             loss_mask=loss_mask,
             aligned_targets=aligned_targets,
         )
+        # A loss callback can change torch's global policy after model.forward.
+        # Check before backward, before gradients can be accumulated.
         try:
-            self.scaler.scale(loss * tokens).backward()
+            self._require_deterministic_policy()
+        except BaseException:
+            self._mark_failed(
+                f"deterministic policy drift before backward at micro_step={self.micro_step + 1}"
+            )
+            raise
+        try:
+            scaled_loss = self.scaler.scale(loss * tokens)
+            # A scaler hook may drift global policy after the loss-side guard.
+            # Do not run backward on any tensor under a mismatched mode.
+            self._require_deterministic_policy()
+            scaled_loss.backward()
         except BaseException:
             # Autograd may raise non-RuntimeError exceptions or be interrupted after
             # partially accumulating gradients. A retry requires verified recovery.
