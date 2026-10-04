@@ -311,10 +311,20 @@ class Trainer:
                 )
         for state in self.optimizer.state.values():
             for value in state.values():
-                if isinstance(value, Tensor) and not torch.isfinite(value).all().item():
-                    raise NonFiniteTrainingError(
-                        f"optimizer produced non-finite state at micro_step={self.micro_step}"
-                    )
+                if isinstance(value, Tensor):
+                    if not torch.isfinite(value).all().item():
+                        raise NonFiniteTrainingError(
+                            f"optimizer produced non-finite state at micro_step={self.micro_step}"
+                        )
+                else:
+                    # Non-Torch optimizer families can store NumPy or nested
+                    # numeric moments. They must not earn phantom step credit.
+                    try:
+                        self._require_finite_state_tree(value, "optimizer")
+                    except NonFiniteTrainingError as exc:
+                        raise NonFiniteTrainingError(
+                            f"optimizer produced non-finite state at micro_step={self.micro_step}"
+                        ) from exc
 
     def _require_safe_optimizer_hyperparameters(self) -> None:
         """Validate all group hyperparameters, not only the reported group LR."""
@@ -349,6 +359,18 @@ class Trainer:
             if (value.is_floating_point() or value.is_complex()) and not (
                 torch.isfinite(value).all().item()
             ):
+                raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, np.ndarray):
+            if value.dtype.kind in {"f", "c"}:
+                # flatiter slices bound copies even for non-contiguous arrays.
+                for start in range(0, value.size, 1_048_576):
+                    if not np.isfinite(value.flat[start:start + 1_048_576]).all():
+                        raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, np.generic):
+            if value.dtype.kind in {"f", "c"} and not np.isfinite(value):
+                raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, complex):
+            if not (math.isfinite(value.real) and math.isfinite(value.imag)):
                 raise NonFiniteTrainingError(f"{label} has non-finite state")
         elif isinstance(value, Mapping):
             for child in value.values():
@@ -810,6 +832,84 @@ class Trainer:
             self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
             raise
 
+    @staticmethod
+    def _exact_export_leaf_equal(saved: Any, live: Any) -> bool:
+        """Compare serialized optimizer values without invoking export hooks again."""
+        if isinstance(saved, Tensor) or isinstance(live, Tensor):
+            return (
+                isinstance(saved, Tensor)
+                and isinstance(live, Tensor)
+                and saved.dtype == live.dtype
+                and saved.device == live.device
+                and torch.equal(saved, live)
+            )
+        if isinstance(saved, np.ndarray) or isinstance(live, np.ndarray):
+            return (
+                isinstance(saved, np.ndarray)
+                and isinstance(live, np.ndarray)
+                and saved.dtype == live.dtype
+                and np.array_equal(saved, live)
+            )
+        if isinstance(saved, Mapping) and isinstance(live, Mapping):
+            return (
+                {(type(k), k) for k in saved} == {(type(k), k) for k in live}
+                and all(Trainer._exact_export_leaf_equal(v, live[k]) for k, v in saved.items())
+            )
+        if isinstance(saved, (list, tuple)) and type(saved) is type(live):
+            return len(saved) == len(live) and all(
+                Trainer._exact_export_leaf_equal(a, b)
+                for a, b in zip(saved, live, strict=True)
+            )
+        return type(saved) is type(live) and bool(saved == live)
+
+    def _require_exported_optimizer_matches_live(self, exported: Any) -> None:
+        """Do not publish finite but forged moments or optimizer hyperparameters."""
+        saved_state = exported.get("state") if isinstance(exported, Mapping) else None
+        saved_groups = exported.get("param_groups") if isinstance(exported, Mapping) else None
+        if not isinstance(saved_state, Mapping) or not isinstance(saved_groups, list):
+            raise TrainingStateInvalidError("optimizer export is not canonical")
+        if len(saved_groups) != len(self.optimizer.param_groups):
+            raise TrainingStateInvalidError("optimizer export group count differs")
+        present: set[int] = set()
+        ordinal = 0
+        for saved_group, live_group in zip(
+            saved_groups, self.optimizer.param_groups, strict=True,
+        ):
+            live_params = live_group["params"]
+            expected_ids = list(range(ordinal, ordinal + len(live_params)))
+            if (
+                not isinstance(saved_group, Mapping)
+                or not isinstance(saved_group.get("params"), list)
+                or any(type(i) is not int for i in saved_group["params"])
+                or saved_group["params"] != expected_ids
+            ):
+                raise TrainingStateInvalidError("optimizer export parameter IDs differ")
+            saved_options = {
+                k: v for k, v in saved_group.items()
+                if k not in ("params", "param_names")
+            }
+            live_options = {
+                k: v for k, v in live_group.items()
+                if k not in ("params", "param_names")
+            }
+            if not self._exact_export_leaf_equal(saved_options, live_options):
+                raise TrainingStateInvalidError("optimizer export hyperparameters differ")
+            for parameter in live_params:
+                live_slot = self.optimizer.state.get(parameter)
+                saved_slot = saved_state.get(ordinal)
+                if live_slot is None:
+                    if ordinal in saved_state:
+                        raise TrainingStateInvalidError("optimizer export has foreign state")
+                elif type(ordinal) is not int or ordinal not in saved_state or not (
+                    self._exact_export_leaf_equal(saved_slot, live_slot)
+                ):
+                    raise TrainingStateInvalidError("optimizer export moments differ")
+                else:
+                    present.add(ordinal)
+                ordinal += 1
+        if any(type(k) is not int for k in saved_state) or set(saved_state) != present:
+            raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
+
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         self.assert_checkpoint_safe()
@@ -845,6 +945,7 @@ class Trainer:
             # Hooks can also return a detached, corrupt snapshot without
             # changing their live component. Validate the bytes to publish.
             self._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
+            self._require_exported_optimizer_matches_live(snapshot.optimizer)
             if snapshot.scheduler is not None:
                 self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
             if snapshot.scaler is not None:
