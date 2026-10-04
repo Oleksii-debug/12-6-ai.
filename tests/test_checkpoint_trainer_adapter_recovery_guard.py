@@ -833,3 +833,65 @@ def test_failed_final_rng_mode_rollback_retains_primary_error(
         )
     finally:
         original_use(enabled, warn_only=warn_only)
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_real_d02_partial_final_rng_failure_poisons_and_preserves_torch_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+) -> None:
+    """A partial final RNG fault must poison the actual trainer, not just test doubles."""
+
+    from dataclasses import replace
+
+    import torch
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
+
+    ambient = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        config = TrainerConfig(max_steps=10, seed=703, deterministic_warn_only=True)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        checkpoint = tmp_path / "real-d02-partial-final-rng"
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
+        )
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, config)
+        loader_module = progress_trainer if use_progress else trainer_adapter
+        original_error = RuntimeError("injected real D02 partial final RNG failure")
+
+        def fail_after_mode_change(_state: object) -> None:
+            torch.use_deterministic_algorithms(False, warn_only=False)
+            raise original_error
+
+        monkeypatch.setattr(loader_module, "restore_rng_state", fail_after_mode_change)
+        with pytest.raises(RuntimeError, match="real D02 partial final RNG") as raised:
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=True,
+            )
+        assert raised.value is original_error
+        assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+        assert trainer._update_incomplete is True
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+        with pytest.raises(TrainingStateInvalidError, match="failed training transition"):
+            trainer._assert_trainable()
+
+        def forbidden_read(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("poisoned real D02 retry must not read checkpoint")
+
+        monkeypatch.setattr(loader_module, "prepare_checkpoint_load", forbidden_read)
+        with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
