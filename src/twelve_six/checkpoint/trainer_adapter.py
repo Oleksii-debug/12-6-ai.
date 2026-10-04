@@ -50,6 +50,21 @@ _CANONICAL_TRAINER_STATE_FIELDS = frozenset(
 )
 
 
+def _typed_config_equal(left: Any, right: Any) -> bool:
+    """Reject Python numeric/bool aliases in canonical checkpoint configuration."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, Mapping):
+        if left.keys() != right.keys():
+            return False
+        return all(_typed_config_equal(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)):
+        if len(left) != len(right):
+            return False
+        return all(_typed_config_equal(a, b) for a, b in zip(left, right, strict=True))
+    return bool(left == right)
+
+
 def _trainer_state_as_mapping(state: Any) -> Mapping[str, Any]:
     if is_dataclass(state) and not isinstance(state, type):
         return asdict(state)
@@ -389,8 +404,23 @@ def _preflight_trainer_state_without_rng_guard(
         live_config = live_config.model_dump(mode="python")
 
     checkpoint_config = state.get("config")
-    if live_config is not None and checkpoint_config != live_config:
-        raise CheckpointCompatibilityError("trainer config mismatch; refusing unsafe resume")
+    if live_config is not None:
+        # D02's typed checkpoint contract must agree with direct Trainer restore
+        # before D05 applies model weights or optimizer moments. Preserve generic
+        # adapter compatibility when its own state loader defines loose equality.
+        canonical_d02 = (
+            hasattr(trainer, "_failure_reason")
+            and hasattr(trainer, "_update_incomplete")
+        )
+        matches = (
+            _typed_config_equal(checkpoint_config, live_config)
+            if canonical_d02
+            else checkpoint_config == live_config
+        )
+        if not matches:
+            raise CheckpointCompatibilityError(
+                "trainer config mismatch; refusing unsafe resume"
+            )
 
     if isinstance(live_config, Mapping):
         accumulation = live_config.get("gradient_accumulation_steps")
