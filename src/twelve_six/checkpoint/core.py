@@ -455,6 +455,15 @@ def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
             raise CheckpointCompatibilityError(
                 f"dtype mismatch: checkpoint {array.dtype} vs target {target.dtype}"
             )
+        # Hash-valid snapshots from older writers can still contain NaN/Inf.
+        # Reject them before any live model component is applied.
+        if array.dtype.kind in {"f", "c"}:
+            flat = array.reshape(-1)
+            for start in range(0, flat.size, 1_048_576):
+                if not np.isfinite(flat[start:start + 1_048_576]).all():
+                    raise CheckpointCompatibilityError(
+                        "checkpoint model tensor contains non-finite values"
+                    )
         return array.copy()
     cls = target.__class__
     if cls.__module__.startswith("torch") and cls.__name__ in {"Tensor", "Parameter"}:
@@ -476,6 +485,15 @@ def _materialize_for_target(array: np.ndarray, target: Any) -> Any:
             raise CheckpointCompatibilityError(
                 f"shape mismatch: checkpoint {tuple(tensor.shape)} vs target {tuple(target.shape)}"
             )
+        # A BF16 payload arrives as uint16 and becomes numeric only after
+        # materialization. Bound temporary masks while scanning model-scale state.
+        if tensor.is_floating_point() or tensor.is_complex():
+            flat = tensor.view(-1)
+            for start in range(0, flat.numel(), 1_048_576):
+                if not torch.isfinite(flat[start:start + 1_048_576]).all().item():
+                    raise CheckpointCompatibilityError(
+                        "checkpoint model tensor contains non-finite values"
+                    )
         return tensor.to(device=target.device)
     raise CheckpointCompatibilityError(f"unsupported target tensor type {type(target)!r}")
 
