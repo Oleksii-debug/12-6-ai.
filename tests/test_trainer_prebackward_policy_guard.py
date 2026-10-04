@@ -55,7 +55,7 @@ def preserve_ambient_state():
         torch.use_deterministic_algorithms(enabled_before, warn_only=warn_only_before)
 
 
-@pytest.mark.parametrize("drift_stage", ["forward", "loss"])
+@pytest.mark.parametrize("drift_stage", ["forward", "loss", "scale"])
 def test_policy_drift_is_poisoned_before_backward(
     monkeypatch: pytest.MonkeyPatch,
     preserve_ambient_state: Any,
@@ -89,6 +89,15 @@ def test_policy_drift_is_poisoned_before_backward(
 
     monkeypatch.setattr(train_module, "causal_pair_loss", observed_loss)
     model.drift_in_forward = drift_stage == "forward"
+    if drift_stage == "scale":
+        native_scale = trainer.scaler.scale
+
+        def drifting_scale(value: torch.Tensor) -> torch.Tensor:
+            scaled = native_scale(value)
+            torch.use_deterministic_algorithms(False, warn_only=False)
+            return scaled
+
+        monkeypatch.setattr(trainer.scaler, "scale", drifting_scale)
 
     with pytest.raises(TrainingStateInvalidError, match="deterministic"):
         trainer.train_microbatch(_BATCH)
