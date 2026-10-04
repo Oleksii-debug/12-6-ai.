@@ -147,7 +147,6 @@ def test_correctly_typed_nonzero_resume_preserves_next_adamw_step(
     assert source.state_dict().optimizer_step == target.state_dict().optimizer_step == 2
 
 
-
 @pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
 @pytest.mark.parametrize("alias", [False, 0.0, "0", np.int64(0), 0j, -1])
 def test_resume_counters_require_exact_int_before_component_mutation(
