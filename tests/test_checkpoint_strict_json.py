@@ -409,6 +409,129 @@ def test_checkpoint_fdopen_denial_closes_descriptor(
         os.fstat(rejected_fd[0])
 
 
+@pytest.mark.parametrize(
+    ("max_bytes", "expected_message"),
+    [
+        (MAX_CHECKPOINT_MANIFEST_BYTES, "cannot close checkpoint artifact: manifest.json"),
+        (0, "checkpoint artifact exceeds 0-byte limit: manifest.json"),
+    ],
+)
+def test_checkpoint_close_failure_preserves_primary_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, max_bytes: int, expected_message: str
+) -> None:
+    checkpoint = tmp_path / "close-denial"
+    _save(checkpoint)
+    target_stat = (checkpoint / "manifest.json").stat()
+    original_close = os.close
+    closed: list[int] = []
+
+    def failing_close(fd: int) -> None:
+        opened = os.fstat(fd)
+        original_close(fd)
+        if (opened.st_dev, opened.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            closed.append(fd)
+            raise OSError("injected close denial after underlying close")
+
+    monkeypatch.setattr(checkpoint_core.os, "close", failing_close)
+    with pytest.raises(CheckpointIntegrityError, match=expected_message) as caught:
+        checkpoint_core._read_regular_bytes(
+            checkpoint, "manifest.json", max_bytes=max_bytes
+        )
+    assert len(closed) == 1
+    with pytest.raises(OSError):
+        os.fstat(closed[0])
+    if max_bytes == 0:
+        assert caught.value.__cause__ is None
+    else:
+        assert isinstance(caught.value.__cause__, OSError)
+
+
+@pytest.mark.parametrize(
+    ("read_failure", "expected_type", "expected_message"),
+    [
+        (OSError, CheckpointIntegrityError, "cannot safely read checkpoint artifact"),
+        (KeyboardInterrupt, KeyboardInterrupt, "interrupted while reading"),
+        (SystemExit, SystemExit, "interrupted while reading"),
+    ],
+)
+def test_checkpoint_close_fault_does_not_mask_read_failure_or_interruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    read_failure: type[BaseException],
+    expected_type: type[BaseException],
+    expected_message: str,
+) -> None:
+    checkpoint = tmp_path / "read-and-close-denial"
+    _save(checkpoint)
+    target_stat = (checkpoint / "manifest.json").stat()
+    original_fdopen = os.fdopen
+    original_close = os.close
+    read_attempts: list[bool] = []
+    close_attempts: list[bool] = []
+
+    class FailingRead:
+        def __enter__(self) -> FailingRead:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _size: int = -1) -> bytes:
+            read_attempts.append(True)
+            raise read_failure("interrupted while reading")
+
+    def failing_fdopen(fd: int, *args: object, **kwargs: object) -> object:
+        opened = os.fstat(fd)
+        if (opened.st_dev, opened.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            return FailingRead()
+        return original_fdopen(fd, *args, **kwargs)
+
+    def failing_close(fd: int) -> None:
+        opened = os.fstat(fd)
+        original_close(fd)
+        if (opened.st_dev, opened.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            close_attempts.append(True)
+            raise OSError("injected secondary close fault")
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", failing_fdopen)
+    monkeypatch.setattr(checkpoint_core.os, "close", failing_close)
+    with pytest.raises(expected_type, match=expected_message) as caught:
+        checkpoint_core._read_regular_bytes(
+            checkpoint, "manifest.json", max_bytes=MAX_CHECKPOINT_MANIFEST_BYTES
+        )
+    assert len(read_attempts) == 1
+    assert len(close_attempts) == 1
+    if read_failure is OSError:
+        assert isinstance(caught.value.__cause__, OSError)
+
+
+def test_checkpoint_close_denial_ignores_unrelated_ambient_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoint = tmp_path / "ambient-close-denial"
+    _save(checkpoint)
+    target_stat = (checkpoint / "manifest.json").stat()
+    original_close = os.close
+
+    def failing_close(fd: int) -> None:
+        opened = os.fstat(fd)
+        original_close(fd)
+        if (opened.st_dev, opened.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            raise OSError("injected close denial after underlying close")
+
+    monkeypatch.setattr(checkpoint_core.os, "close", failing_close)
+    try:
+        raise RuntimeError("unrelated caller exception")
+    except RuntimeError:
+        with pytest.raises(
+            CheckpointIntegrityError, match="cannot close checkpoint artifact: manifest.json"
+        ) as caught:
+            checkpoint_core._read_regular_bytes(
+                checkpoint, "manifest.json", max_bytes=MAX_CHECKPOINT_MANIFEST_BYTES
+            )
+        assert isinstance(caught.value.__cause__, OSError)
+
+
 def test_checkpoint_payload_shrink_after_stale_fstat_is_bounded(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
