@@ -848,3 +848,14 @@ def test_expired_running_lease_cannot_be_renewed_by_backdated_retry(
     assert denied.committed is False
     assert denied.blockers
     assert denied.blockers[0].startswith("global_lease_transition_invalid:expired_lease")
+
+
+def test_remote_global_lease_decoder_bounds_size_and_nesting() -> None:
+    manifest, _ = _authorized_manifest()
+    oversized = b'{"padding":"' + b"a" * global_lease_module.MAX_GLOBAL_LEASE_STATE_BYTES
+    with pytest.raises(ValueError, match="global_lease_state_exceeds_byte_limit"):
+        decode_global_lease_state(oversized, manifest)
+
+    deeply_nested = b'{"nested":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}"
+    with pytest.raises(ValueError, match="global_lease_state_json_invalid"):
+        decode_global_lease_state(deeply_nested, manifest)
