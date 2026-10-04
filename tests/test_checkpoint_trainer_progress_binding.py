@@ -334,6 +334,11 @@ def test_partial_restore_poison_prevents_in_place_retry(
         )
     assert trainer._failure_reason == "checkpoint_restore_apply_failed"
     assert trainer._update_incomplete is True
+    # The real D02 runtime guard refuses optimizer work on this poisoned state.
+    from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
+
+    with pytest.raises(TrainingStateInvalidError, match="failed training transition"):
+        Trainer._assert_trainable(trainer)
     # The checkpoint was preflighted, but an application-time error may have
     # already changed the model; an in-place restore retry must fail closed.
     with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
