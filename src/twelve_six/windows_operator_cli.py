@@ -6,6 +6,7 @@ status, and safe-stop semantics remain in ``windows_operator_preflight``.
 
 from __future__ import annotations
 
+import stat
 import sys
 from collections.abc import Sequence
 from importlib import metadata
@@ -66,6 +67,24 @@ def _matches_installed_asset(entry: object, expected: PurePosixPath) -> bool:
     return all(part == ".." for part in prefix)
 
 
+_ON_WINDOWS = sys.platform == "win32"
+_WINDOWS_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
+
+def _is_redirected_installed_directory(path: Path) -> bool:
+    """Reject symlinks and Windows junction/reparse points in asset parents."""
+    if path.is_symlink():
+        return True
+    if not _ON_WINDOWS:
+        return False
+    try:
+        return bool(path.lstat().st_file_attributes & _WINDOWS_REPARSE_POINT)
+    except OSError as exc:
+        raise RuntimeError(
+            f"cannot inspect installed canonical asset directory: {path}"
+        ) from exc
+
+
 def _locate_installed_asset(
     distribution: metadata.Distribution,
     relative: Path,
@@ -84,6 +103,13 @@ def _locate_installed_asset(
     if located.is_symlink() or not located.is_file():
         raise RuntimeError(
             f"installed canonical asset is missing or not a regular file: {located}"
+        )
+    # A regular leaf can still be substituted via a linked directory below
+    # the canonical share/twelve-six-ai/configs/research asset namespace.
+    # Do not follow those aliases to an untrusted installed profile or packet.
+    if any(_is_redirected_installed_directory(parent) for parent in located.parents[:4]):
+        raise RuntimeError(
+            f"installed canonical asset resolves through a reparse-point or symlinked directory: {located}"
         )
     return located
 

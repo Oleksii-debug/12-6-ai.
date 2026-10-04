@@ -9,6 +9,7 @@ import venv
 import zipfile
 from importlib import metadata
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -529,3 +530,62 @@ def test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them(
     assert missing_result["training_authorized"] is False
     assert missing_result["truth_boundary"]["authorized_optimized_target_exposure"] == 0
     assert missing_result["truth_boundary"]["training_executed"] is False
+
+
+@pytest.mark.parametrize(
+    "linked_component", ["share", "twelve-six-ai", "configs", "research"],
+)
+def test_installed_record_rejects_symlinked_canonical_asset_directory(
+    tmp_path: Path,
+    linked_component: str,
+) -> None:
+    """A regular leaf behind a linked parent is still a substituted asset."""
+    module = _fake_installed_module(tmp_path)
+    location = tmp_path / "installed-prefix"
+    location.mkdir()
+    for component in ("share", "twelve-six-ai", "configs", "research"):
+        child = location / component
+        if component == linked_component:
+            destination = tmp_path / "replacement-tree"
+            destination.mkdir()
+            try:
+                child.symlink_to(destination, target_is_directory=True)
+            except (NotImplementedError, OSError):
+                pytest.skip("creating directory symlinks is unsupported on this machine")
+        else:
+            child.mkdir(parents=True)
+        location = child
+    profile = location / PROFILE_RELATIVE.name
+    profile.write_text("{}\n", encoding="utf-8")
+    assert profile.is_file() and not profile.is_symlink()
+    assert any(parent.is_symlink() for parent in profile.parents[:4])
+    packet = tmp_path / "regular-packet.json"
+    packet.write_text("{}\n", encoding="utf-8")
+    distribution = _FakeDistribution({PROFILE_RECORD: profile, PACKET_RECORD: packet})
+    with pytest.raises(RuntimeError, match="symlinked directory"):
+        resolve_default_paths(module_path=module, distribution=distribution)
+
+
+def test_windows_reparse_directory_detection_on_python311(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Python 3.11 has lstat reparse attributes but no Path.is_junction."""
+    monkeypatch.setattr(windows_operator_cli, "_ON_WINDOWS", True)
+    flag = windows_operator_cli._WINDOWS_REPARSE_POINT
+    redirected = SimpleNamespace(
+        is_symlink=lambda: False,
+        lstat=lambda: SimpleNamespace(st_file_attributes=flag),
+    )
+    ordinary = SimpleNamespace(
+        is_symlink=lambda: False,
+        lstat=lambda: SimpleNamespace(st_file_attributes=0),
+    )
+    assert windows_operator_cli._is_redirected_installed_directory(redirected)
+    assert not windows_operator_cli._is_redirected_installed_directory(ordinary)
+
+    def forbidden_stat() -> None:
+        raise PermissionError("uninspectable directory")
+
+    unreadable = SimpleNamespace(is_symlink=lambda: False, lstat=forbidden_stat)
+    with pytest.raises(RuntimeError, match="cannot inspect installed canonical"):
+        windows_operator_cli._is_redirected_installed_directory(unreadable)
