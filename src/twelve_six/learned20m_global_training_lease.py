@@ -38,6 +38,7 @@ CANONICAL_REPOSITORY = "Oleksii-debug/12-6-ai."
 CANONICAL_LOCK_DOMAIN = "github.com/Oleksii-debug/12-6-ai."
 GLOBAL_LEASE_REF_PREFIX = "refs/heads/ts6-training-run-lease-v1"
 GLOBAL_LEASE_STATE_PATH = "training-run-lease-v1.json"
+MAX_GLOBAL_LEASE_STATE_BYTES = 1_048_576
 MECHANICS_SCOPE = "COOPERATIVE_GIT_REF_CAS_ON_SELECTED_TRANSPORT_ONLY"
 
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -275,6 +276,8 @@ def _reject_json_constant(value: str) -> None:
 def decode_global_lease_state(
     raw: bytes, manifest: Mapping[str, Any]
 ) -> dict[str, Any]:
+    if len(raw) > MAX_GLOBAL_LEASE_STATE_BYTES:
+        raise ValueError("global_lease_state_exceeds_byte_limit")
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -287,7 +290,7 @@ def decode_global_lease_state(
         )
     except _DuplicateKey:
         raise
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError("global_lease_state_json_invalid") from exc
     if not isinstance(parsed, Mapping):
         raise TypeError("global_lease_state_not_object")

@@ -45,6 +45,7 @@ CURRENT_RUN_IDENTITY_SCHEMA = "R01-LEARNED20M-CURRENT-RUN-IDENTITY-V1"
 CURRENT_RUN_POINTER_SCHEMA = "R01-LEARNED20M-CURRENT-RUN-POINTER-V1"
 CURRENT_RUN_POINTER_REF = "refs/heads/ts6-current-training-run-v1"
 CURRENT_RUN_POINTER_PATH = "current-training-run-v1.json"
+MAX_CURRENT_RUN_POINTER_BYTES = 1_048_576
 MECHANICS_SCOPE = "FIXED_REPOSITORY_REF_CURRENT_RUN_SELECTION_ONLY"
 
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -399,10 +400,12 @@ def validate_current_run_pointer_state(state: Mapping[str, Any]) -> tuple[str, .
 
 
 def decode_current_run_pointer_state(raw: bytes) -> dict[str, Any]:
+    if len(raw) > MAX_CURRENT_RUN_POINTER_BYTES:
+        raise ValueError("current_run_pointer_exceeds_byte_limit")
     try:
         text = raw.decode("utf-8")
         parsed = json.loads(text)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise ValueError("current_run_pointer_json_invalid") from exc
     if not isinstance(parsed, Mapping):
         raise TypeError("current_run_pointer_not_object")
