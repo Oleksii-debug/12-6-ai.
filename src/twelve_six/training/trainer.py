@@ -250,15 +250,16 @@ class Trainer:
                     loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
                 else:
                     loss = causal_lm_loss(logits, targets)
+            if not torch.isfinite(loss).item():
+                reason = f"non-finite loss at micro_step={self.micro_step + 1}"
+                self._mark_failed(reason)
+                raise NonFiniteTrainingError(reason)
         except BaseException:
-            # Forward may have changed model buffers or RNG; an earlier
-            # accumulation microbatch may also have left pending gradients.
-            self._mark_failed(f"forward/loss failed at micro_step={self.micro_step + 1}")
+            # Forward, loss or device synchronization may have changed model
+            # buffers/RNG; an earlier microbatch can have pending gradients.
+            if self._failure_reason is None:
+                self._mark_failed(f"forward/loss failed at micro_step={self.micro_step + 1}")
             raise
-        if not torch.isfinite(loss).item():
-            reason = f"non-finite loss at micro_step={self.micro_step + 1}"
-            self._mark_failed(reason)
-            raise NonFiniteTrainingError(reason)
         return loss
 
     def _normalize_gradients_and_norm(self, token_count: int) -> Tensor:
@@ -310,15 +311,22 @@ class Trainer:
             self._mark_failed(f"backward failed at micro_step={self.micro_step + 1}")
             raise
 
-        self.micro_step += 1
-        self.tokens_seen += tokens
-        self._pending_tokens += tokens
-        self._pending_loss_sum += float(loss.detach().float().item()) * tokens
+        try:
+            observed_loss = float(loss.detach().float().item())
+            self.micro_step += 1
+            self.tokens_seen += tokens
+            self._pending_tokens += tokens
+            self._pending_loss_sum += observed_loss * tokens
 
-        should_step = self.micro_step % self.config.gradient_accumulation_steps == 0
-        grad_norm_value: float | None = None
-        update_loss: float | None = None
-        learning_rate = float(self.optimizer.param_groups[0]["lr"])
+            should_step = self.micro_step % self.config.gradient_accumulation_steps == 0
+            grad_norm_value: float | None = None
+            update_loss: float | None = None
+            learning_rate = float(self.optimizer.param_groups[0]["lr"])
+        except BaseException:
+            # Backward already ran; do not allow a partial accounting transition
+            # or an interrupted device synchronization to reuse these gradients.
+            self._mark_failed(f"post-backward accounting failed at micro_step={self.micro_step}")
+            raise
 
         if should_step:
             self._update_incomplete = True
@@ -341,7 +349,7 @@ class Trainer:
                 self.optimizer.zero_grad(set_to_none=True)
                 if self.scheduler is not None:
                     self.scheduler.step()
-            except Exception:
+            except BaseException:
                 self._mark_failed(
                     f"optimizer/scheduler update failed at micro_step={self.micro_step}"
                 )
@@ -353,7 +361,7 @@ class Trainer:
         return StepMetrics(
             micro_step=self.micro_step,
             optimizer_step=self.optimizer_step,
-            loss=float(loss.detach().float().item()),
+            loss=observed_loss,
             update_loss=update_loss,
             learning_rate=learning_rate,
             grad_norm=grad_norm_value,
