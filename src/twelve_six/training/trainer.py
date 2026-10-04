@@ -783,31 +783,39 @@ class Trainer:
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         self.assert_checkpoint_safe()
-        optimizer_state = copy.deepcopy(self.optimizer.state_dict())
-        saved_groups = optimizer_state.get("param_groups")
-        name_groups = self._optimizer_parameter_name_groups()
-        if not isinstance(saved_groups, list) or len(saved_groups) != len(name_groups):
-            raise TrainingStateInvalidError(
-                "optimizer state cannot bind named parameter groups"
-            )
-        for saved_group, names in zip(saved_groups, name_groups, strict=True):
-            if not isinstance(saved_group, dict):
+        try:
+            optimizer_state = copy.deepcopy(self.optimizer.state_dict())
+            saved_groups = optimizer_state.get("param_groups")
+            name_groups = self._optimizer_parameter_name_groups()
+            if not isinstance(saved_groups, list) or len(saved_groups) != len(name_groups):
                 raise TrainingStateInvalidError(
-                    "optimizer parameter group is not a mutable mapping"
+                    "optimizer state cannot bind named parameter groups"
                 )
-            # Never trust caller-provided param_names over live model identity.
-            saved_group["param_names"] = names
-        return TrainerState(
-            micro_step=self.micro_step,
-            optimizer_step=self.optimizer_step,
-            tokens_seen=self.tokens_seen,
-            optimizer=optimizer_state,
-            scheduler=(
-                None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
-            ),
-            scaler=None if self.scaler is None else copy.deepcopy(self.scaler.state_dict()),
-            config=asdict(self.config),
-        )
+            for saved_group, names in zip(saved_groups, name_groups, strict=True):
+                if not isinstance(saved_group, dict):
+                    raise TrainingStateInvalidError(
+                        "optimizer parameter group is not a mutable mapping"
+                    )
+                # Never trust caller-provided param_names over live model identity.
+                saved_group["param_names"] = names
+            snapshot = TrainerState(
+                micro_step=self.micro_step,
+                optimizer_step=self.optimizer_step,
+                tokens_seen=self.tokens_seen,
+                optimizer=optimizer_state,
+                scheduler=(
+                    None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
+                ),
+                scaler=None if self.scaler is None else copy.deepcopy(self.scaler.state_dict()),
+                config=asdict(self.config),
+            )
+            # State-dict hooks can mutate weights, moments, gradients or policy.
+            # Refuse publication unless the extracted state remains checkpoint-safe.
+            self.assert_checkpoint_safe()
+        except BaseException:
+            self._mark_failed("checkpoint state extraction failed after possible mutation")
+            raise
+        return snapshot
 
     def load_state_dict(self, state: TrainerState | Mapping[str, Any]) -> None:
         """Restore checkpoint state into a clean trainer instance.
