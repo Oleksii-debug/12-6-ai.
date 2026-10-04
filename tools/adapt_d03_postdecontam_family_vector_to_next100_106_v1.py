@@ -272,7 +272,16 @@ def main() -> int:
         )
     except ProjectionError as exc:
         raise SystemExit(f"FAIL_CLOSED: {exc}") from exc
-    print(args.output)
+    # The report is already committed. A narrow Windows console code page must
+    # not turn successful publication into an apparent CLI failure.
+    try:
+        print(args.output)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        escaped = str(args.output).encode(encoding, errors="backslashreplace").decode(
+            encoding
+        )
+        print(escaped)
     return 0
 
 

@@ -546,6 +546,41 @@ def test_unpublished_stage_cleanup_failure_is_not_reported_as_success(
     assert authority.read_bytes() == b"original authority"
 
 
+def test_committed_unicode_output_survives_narrow_console_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "dedup authority.json"
+    output = tmp_path / "підтверджений результат.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+
+    class NarrowConsole:
+        encoding = "cp1252"
+
+        def __init__(self) -> None:
+            self.value = ""
+
+        def write(self, text: str) -> int:
+            text.encode(self.encoding, errors="strict")
+            self.value += text
+            return len(text)
+
+        def flush(self) -> None:
+            pass
+
+    console = NarrowConsole()
+    monkeypatch.setattr(cli.sys, "stdout", console)
+    assert cli.main() == 0
+    assert output.is_file()
+    assert json.loads(output.read_bytes())["value"] == "Український текст"
+    assert "\\u" in console.value
+    assert "json" in console.value
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+
+
 def test_rollback_and_staging_cleanup_dual_failure_preserves_unverified_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
