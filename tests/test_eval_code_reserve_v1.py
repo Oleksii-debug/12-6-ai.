@@ -27,7 +27,14 @@ materializer_spec.loader.exec_module(materializer)
 
 
 def _manifest() -> dict:
-    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+    document = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    # Re-signed negative fixtures patch the validator's pinned evidence ID.
+    # Match the synthetic test document reference to that test-only identity;
+    # the committed contract and production pinned identity never change.
+    document["materialization_evidence"]["identity_sha256"] = (
+        validator.EXPECTED_EVIDENCE_IDENTITY
+    )
+    return document
 
 
 def _evidence() -> dict:
