@@ -1179,7 +1179,7 @@ def test_mutated_intent_stage_cannot_publish_outer_names(
 
 def test_verified_one_output_preserves_utf8_and_no_replace(tmp_path: Path) -> None:
     target = tmp_path / "Український результат.json"
-    payload = '{"status":"verified","language":"Українська"}\n'.encode("utf-8")
+    payload = '{"status":"verified","language":"Українська"}\n'.encode()
     REPLAY_RUNNER._write_new_bytes(target, payload, label="test report")
     assert target.read_bytes() == payload
     with pytest.raises(REPLAY_RUNNER.RematerializationError, match="refusing to overwrite"):
