@@ -1316,3 +1316,79 @@ def test_optimizer_group_swap_after_step_with_cleared_model_gradients_poisoned(
     assert model.weight.grad is None
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.state_dict()
+
+
+def test_direct_restore_rejects_consumed_partial_accumulation_before_optimizer_io(
+    monkeypatch,
+):
+    config = TrainerConfig(max_steps=2, gradient_accumulation_steps=2, seed=17)
+    source = Trainer(_TinyLogitModel(), config)
+    source_state = source.state_dict()
+    model = _TinyLogitModel()
+    target = Trainer(model, config)
+    target.train_microbatch(_BATCH)
+    original_grad = model.weight.grad.detach().clone()
+    original_weights = model.weight.detach().clone()
+    optimizer_loads = []
+
+    def forbidden_optimizer_load(_state):
+        optimizer_loads.append(True)
+        raise AssertionError("partial accumulation must fail before optimizer restore")
+
+    monkeypatch.setattr(target.optimizer, "load_state_dict", forbidden_optimizer_load)
+    with pytest.raises(TrainingStateInvalidError, match="requires a fresh trainer"):
+        target.load_state_dict(source_state)
+
+    assert optimizer_loads == []
+    assert target.micro_step == 1
+    assert target.optimizer_step == 0
+    assert target._failure_reason is None
+    torch.testing.assert_close(model.weight.grad, original_grad, rtol=0, atol=0)
+    torch.testing.assert_close(model.weight, original_weights, rtol=0, atol=0)
+    # The rejected pure preflight must not discard a valid accumulation group.
+    assert target.train_microbatch(_BATCH).optimizer_stepped is True
+
+
+def test_direct_restore_rejects_already_committed_trainer_before_optimizer_io(
+    monkeypatch,
+):
+    config = TrainerConfig(max_steps=2, seed=17)
+    source_state = Trainer(_TinyLogitModel(), config).state_dict()
+    model = _TinyLogitModel()
+    target = Trainer(model, config)
+    target.train_microbatch(_BATCH)
+    committed = model.weight.detach().clone()
+    assert target.optimizer_step == 1
+    optimizer_loads = []
+
+    def forbidden_optimizer_load(_state):
+        optimizer_loads.append(True)
+        raise AssertionError("already committed trainer must not accept restore")
+
+    monkeypatch.setattr(target.optimizer, "load_state_dict", forbidden_optimizer_load)
+    with pytest.raises(TrainingStateInvalidError, match="requires a fresh trainer"):
+        target.load_state_dict(source_state)
+
+    assert optimizer_loads == []
+    assert target.optimizer_step == 1
+    assert target.micro_step == 1
+    assert target._failure_reason is None
+    torch.testing.assert_close(model.weight, committed, rtol=0, atol=0)
+
+
+def test_direct_restore_rejects_fresh_trainer_with_unowned_residual_gradients():
+    config = TrainerConfig(max_steps=1, seed=17)
+    source_state = Trainer(_TinyLogitModel(), config).state_dict()
+    model = _TinyLogitModel()
+    target = Trainer(model, config)
+    model.weight.grad = torch.full_like(model.weight, 0.75)
+    saved_grad = model.weight.grad.detach().clone()
+
+    with pytest.raises(TrainingStateInvalidError, match="pending gradients"):
+        target.load_state_dict(source_state)
+
+    torch.testing.assert_close(model.weight.grad, saved_grad, rtol=0, atol=0)
+    assert target._failure_reason is None
+    fresh = Trainer(_TinyLogitModel(), config)
+    fresh.load_state_dict(source_state)
+    assert fresh.state_dict().optimizer_step == 0
