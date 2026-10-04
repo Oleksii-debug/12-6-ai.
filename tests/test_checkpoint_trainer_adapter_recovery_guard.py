@@ -622,13 +622,22 @@ def test_real_d02_trainer_refuses_training_after_failed_probe_rng_rollback(
     from twelve_six.training.config import TrainerConfig
     from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
 
+    from dataclasses import replace
+
     checkpoint = tmp_path / "real-d02-rollback"
-    checkpoint_at(checkpoint)
     ambient = core.capture_rng_state()
     original_restore = core.restore_rng_state
     deterministic = torch.are_deterministic_algorithms_enabled()
     warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     try:
+        source_model = torch.nn.Linear(3, 3)
+        source_trainer = Trainer(source_model, TrainerConfig(max_steps=10, seed=703))
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source_trainer,
+            identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
+        )
         model = torch.nn.Linear(3, 3)
         trainer = Trainer(model, TrainerConfig(max_steps=10, seed=703))
         before = [parameter.detach().clone() for parameter in model.parameters()]
