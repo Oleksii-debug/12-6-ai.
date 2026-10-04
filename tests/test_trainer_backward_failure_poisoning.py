@@ -1502,3 +1502,61 @@ def test_direct_restore_rejects_nonfinite_optimizer_group_rate():
     assert receiver._update_incomplete is True
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         receiver.train_microbatch(_BATCH)
+
+
+def test_nonfinite_model_buffer_after_optimizer_step_never_earns_step_credit(
+    monkeypatch,
+):
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    model.register_buffer("running_statistic", torch.tensor(1.0))
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    original_step = trainer.optimizer.step
+
+    def corrupt_buffer_after_step(*args, **kwargs):
+        result = original_step(*args, **kwargs)
+        model.running_statistic.fill_(float("inf"))
+        return result
+
+    monkeypatch.setattr(trainer.optimizer, "step", corrupt_buffer_after_step)
+    with pytest.raises(NonFiniteTrainingError, match="non-finite buffer"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert trainer._update_incomplete is True
+    assert torch.isinf(model.running_statistic).item()
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_checkpoint_export_rejects_corrupted_persistent_model_buffer():
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    model.register_buffer("running_statistic", torch.tensor(1.0))
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
+    assert trainer.optimizer_step == 1
+    model.running_statistic.fill_(float("nan"))
+
+    with pytest.raises(NonFiniteTrainingError, match="non-finite buffer"):
+        trainer.state_dict()
+
+    assert "checkpoint boundary has invalid optimizer" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_finite_float_and_integer_model_buffers_allow_normal_checkpoint():
+    model = _TinyLogitModel()
+    model.register_buffer("running_statistic", torch.tensor(1.0))
+    model.register_buffer("completed_batches", torch.tensor(0, dtype=torch.long))
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+
+    result = trainer.train_microbatch(_BATCH)
+
+    assert result.optimizer_stepped is True
+    assert trainer.optimizer_step == 1
+    assert trainer.state_dict().optimizer_step == 1
