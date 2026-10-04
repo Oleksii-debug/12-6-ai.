@@ -171,6 +171,272 @@ def test_manifest_growth_after_fstat_still_has_bounded_read(
     assert intercepted
 
 
+@pytest.mark.parametrize(
+    ("max_bytes", "exact_bytes"),
+    [(None, None), (1, 1), (-1, None), (None, -1), (True, None)],
+)
+def test_checkpoint_reader_rejects_unbounded_or_invalid_limits(
+    tmp_path: Path, max_bytes: int | None, exact_bytes: int | None
+) -> None:
+    # Validate the API contract before touching even a missing file.
+    with pytest.raises(ValueError, match="checkpoint read bound"):
+        checkpoint_core._read_regular_bytes(
+            tmp_path, "missing", max_bytes=max_bytes, exact_bytes=exact_bytes
+        )
+
+
+def test_checkpoint_round_trip_with_multichunk_state_payload(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "multichunk-payload"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+    state_path = checkpoint / "state.json"
+    original = state_path.read_bytes()
+    state_path.write_bytes(original + b" " * max(0, 1024 * 1024 + 129 - len(original)))
+    assert state_path.stat().st_size > 1024 * 1024
+    _rebind_manifest_for_payload(checkpoint, "state.json")
+
+    manifest = verify_checkpoint(checkpoint)
+    assert manifest["files"]["state.json"]["bytes"] == state_path.stat().st_size
+    target = NumpyModel([0.0, 0.0, 0.0])
+    restored = load_checkpoint(checkpoint, model=target, restore_rng=False)
+    assert target.loads == 1
+    np.testing.assert_array_equal(target.weights, [1.0, 2.0, 3.0])
+    assert restored.trainer_state["loss"] == 0.25
+
+
+def test_checkpoint_reads_use_unbuffered_descriptors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoint = tmp_path / "unbuffered-reads"
+    _save(checkpoint)
+    original_fdopen = os.fdopen
+    opened: list[int] = []
+
+    def inspect_fdopen(fd: int, *args: object, **kwargs: object) -> object:
+        # A buffered stream may read ahead of the explicit size + 1 probe.
+        assert kwargs.get("buffering") == 0
+        opened.append(fd)
+        return original_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", inspect_fdopen)
+    verify_checkpoint(checkpoint)
+    assert len(opened) == 5
+
+
+@pytest.mark.parametrize("name", ["weights.safetensors", "state.safetensors", "state.json"])
+@pytest.mark.parametrize("mutation", ["grow", "shrink"])
+def test_checkpoint_payload_size_rejected_before_payload_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, mutation: str
+) -> None:
+    checkpoint = tmp_path / "preflight-payload"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+    path = checkpoint / name
+    original = path.read_bytes()
+    assert len(original) > 1
+    path.write_bytes(original + b"tamper" if mutation == "grow" else original[:-1])
+    target_stat = path.stat()
+    original_fdopen = os.fdopen
+
+    def forbid_payload_read(fd: int, *args: object, **kwargs: object) -> object:
+        opened = os.fstat(fd)
+        if (opened.st_dev, opened.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            raise AssertionError("payload bytes read before expected size validation")
+        return original_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", forbid_payload_read)
+    with pytest.raises(CheckpointIntegrityError, match=f"size mismatch for {name}"):
+        verify_checkpoint(checkpoint)
+
+
+def test_checkpoint_payload_growth_after_stale_fstat_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoint = tmp_path / "payload-growth"
+    _save(checkpoint)
+    path = checkpoint / "state.json"
+    original = path.read_bytes()
+    path.write_bytes(original + b"tamper")
+    target_stat = path.stat()
+    original_fstat = os.fstat
+    intercepted: list[bool] = []
+
+    def stale_fstat(fd: int) -> os.stat_result:
+        actual = original_fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            intercepted.append(True)
+            values = list(actual)
+            values[6] = len(original)
+            return os.stat_result(values)
+        return actual
+
+    monkeypatch.setattr(checkpoint_core.os, "fstat", stale_fstat)
+    with pytest.raises(CheckpointIntegrityError, match="size mismatch for state.json"):
+        verify_checkpoint(checkpoint)
+    assert intercepted
+
+
+@pytest.mark.parametrize("operation", ["lstat", "iterdir"])
+def test_checkpoint_root_metadata_denial_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    checkpoint = tmp_path / "root-denial"
+    _save(checkpoint)
+    original = getattr(Path, operation)
+
+    def denied(self: Path) -> object:
+        if self == checkpoint:
+            raise PermissionError("injected root metadata denial")
+        return original(self)
+
+    monkeypatch.setattr(Path, operation, denied)
+    with pytest.raises(CheckpointIntegrityError, match="cannot inspect checkpoint directory"):
+        verify_checkpoint(checkpoint)
+
+
+@pytest.mark.parametrize("name", ["manifest.json", "MANIFEST.sha256", "weights.safetensors"])
+def test_checkpoint_lstat_denial_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    checkpoint = tmp_path / "lstat-denial"
+    _save(checkpoint)
+    target = checkpoint / name
+    original_lstat = Path.lstat
+
+    def denied_lstat(self: Path) -> os.stat_result:
+        if self == target:
+            raise PermissionError("injected lstat denial")
+        return original_lstat(self)
+
+    monkeypatch.setattr(Path, "lstat", denied_lstat)
+    with pytest.raises(
+        CheckpointIntegrityError, match="cannot inspect checkpoint artifact"
+    ):
+        verify_checkpoint(checkpoint)
+
+
+@pytest.mark.parametrize("name", ["manifest.json", "MANIFEST.sha256", "weights.safetensors"])
+def test_checkpoint_opened_fstat_denial_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    checkpoint = tmp_path / "fstat-denial"
+    _save(checkpoint)
+    target_stat = (checkpoint / name).stat()
+    original_fstat = os.fstat
+    intercepted: list[bool] = []
+
+    def denied_fstat(fd: int) -> os.stat_result:
+        actual = original_fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            intercepted.append(True)
+            raise PermissionError("injected fstat denial")
+        return actual
+
+    monkeypatch.setattr(checkpoint_core.os, "fstat", denied_fstat)
+    with pytest.raises(
+        CheckpointIntegrityError, match="cannot inspect opened checkpoint artifact"
+    ):
+        verify_checkpoint(checkpoint)
+    assert intercepted
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "manifest.json",
+        "MANIFEST.sha256",
+        "weights.safetensors",
+        "state.safetensors",
+        "state.json",
+    ],
+)
+def test_checkpoint_read_denial_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    checkpoint = tmp_path / "read-denial"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+    target_stat = (checkpoint / name).stat()
+    original_fdopen = os.fdopen
+    intercepted: list[bool] = []
+
+    class FailingRead:
+        def __enter__(self) -> FailingRead:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _size: int = -1) -> bytes:
+            intercepted.append(True)
+            raise OSError("injected read denial")
+
+    def denied_fdopen(fd: int, *args: object, **kwargs: object) -> object:
+        actual = os.fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            return FailingRead()
+        return original_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", denied_fdopen)
+    with pytest.raises(
+        CheckpointIntegrityError, match="cannot safely read checkpoint artifact"
+    ):
+        verify_checkpoint(checkpoint)
+    assert intercepted
+
+
+@pytest.mark.parametrize("name", ["manifest.json", "weights.safetensors"])
+def test_checkpoint_fdopen_denial_closes_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    checkpoint = tmp_path / "fdopen-denial"
+    _save(checkpoint)
+    target_stat = (checkpoint / name).stat()
+    original_fdopen = os.fdopen
+    rejected_fd: list[int] = []
+
+    def denied_fdopen(fd: int, *args: object, **kwargs: object) -> object:
+        actual = os.fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            rejected_fd.append(fd)
+            raise OSError("injected fdopen denial")
+        return original_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", denied_fdopen)
+    with pytest.raises(
+        CheckpointIntegrityError, match="cannot safely read checkpoint artifact"
+    ):
+        verify_checkpoint(checkpoint)
+    assert len(rejected_fd) == 1
+    with pytest.raises(OSError):
+        os.fstat(rejected_fd[0])
+
+
+def test_checkpoint_payload_shrink_after_stale_fstat_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoint = tmp_path / "payload-shrink"
+    _save(checkpoint)
+    path = checkpoint / "state.json"
+    original = path.read_bytes()
+    assert len(original) > 1
+    path.write_bytes(original[:-1])
+    target_stat = path.stat()
+    original_fstat = os.fstat
+    intercepted: list[bool] = []
+
+    def stale_fstat(fd: int) -> os.stat_result:
+        actual = original_fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            intercepted.append(True)
+            values = list(actual)
+            values[6] = len(original)
+            return os.stat_result(values)
+        return actual
+
+    monkeypatch.setattr(checkpoint_core.os, "fstat", stale_fstat)
+    with pytest.raises(CheckpointIntegrityError, match="size mismatch for state.json"):
+        verify_checkpoint(checkpoint)
+    assert intercepted
+
+
 @pytest.mark.parametrize("token", ["1e-4000", "-1e-4000", "0.0001e-4000"])
 def test_checkpoint_manifest_rejects_nonzero_numeric_underflow(
     tmp_path: Path, token: str
