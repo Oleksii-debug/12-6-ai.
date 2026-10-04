@@ -145,3 +145,40 @@ def test_correctly_typed_nonzero_resume_preserves_next_adamw_step(
         for name in source_state:
             torch.testing.assert_close(source_state[name], target_state[name], rtol=0, atol=0)
     assert source.state_dict().optimizer_step == target.state_dict().optimizer_step == 2
+
+
+
+@pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
+@pytest.mark.parametrize("alias", [False, 0.0, "0", np.int64(0), 0j, -1])
+def test_resume_counters_require_exact_int_before_component_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state,
+    field: str,
+    alias: object,
+) -> None:
+    """Malformed counters must not touch even the optimizer restore boundary."""
+    config = TrainerConfig(seed=703, max_steps=2)
+    saved = Trainer(_TinyModel(), config).state_dict()
+    target = Trainer(_TinyModel(), config)
+    initial_weights = target.model.weight.detach().clone()
+    calls: list[bool] = []
+
+    def forbidden_load(value: object) -> None:
+        calls.append(True)
+        raise AssertionError("counter preflight must run before optimizer restore")
+
+    monkeypatch.setattr(target.optimizer, "load_state_dict", forbidden_load)
+    invalid = replace(saved, **{field: alias})
+    with pytest.raises(ValueError, match="trainer counters must be non-negative integers"):
+        target.load_state_dict(invalid)
+
+    assert calls == []
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert not target.optimizer.state
+    torch.testing.assert_close(target.model.weight.detach(), initial_weights, rtol=0, atol=0)
+
+    # A pure preflight rejection must leave the same fresh target retryable.
+    monkeypatch.undo()
+    target.load_state_dict(saved)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
