@@ -207,6 +207,20 @@ def materialize(manifest: dict[str, Any], *, timeout: int = 30) -> dict[str, Any
     }
 
 
+def _require_safe_output_path(output: Path, manifest: Path) -> None:
+    # A success path must never destroy its source or a canonical pinned
+    # contract/evidence fixture, even through a relative path or symlink.
+    protected = {
+        manifest.resolve(),
+        DEFAULT_MANIFEST.resolve(),
+        _VALIDATOR.DEFAULT_EVIDENCE.resolve(),
+    }
+    _require(
+        output.resolve() not in protected,
+        "output must not overwrite a pinned EVAL647 authority",
+    )
+
+
 def _publish_evidence_atomic(output: Path, evidence: dict[str, Any]) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
@@ -236,6 +250,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        _require_safe_output_path(args.output, args.manifest)
         manifest = _VALIDATOR._load_mapping(args.manifest)
         evidence = materialize(manifest, timeout=args.timeout)
         _publish_evidence_atomic(args.output, evidence)
