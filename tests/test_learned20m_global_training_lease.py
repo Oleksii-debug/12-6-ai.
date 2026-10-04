@@ -402,6 +402,60 @@ def test_non_object_remote_lease_via_real_git_ref_is_fail_closed(
     assert _git("ls-remote", str(remote), ref).split()[0] == corrupt_tip
 
 
+def test_oversized_remote_lease_rejected_before_git_blob_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    remote, writer, reader = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
+    acquired = acquire_global_training_run_lease(
+        writer,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+
+    def write_object(data: bytes, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=writer, input=data, capture_output=True, check=True
+        )
+        return result.stdout.decode("ascii").strip()
+
+    oversized = b"x" * (global_lease_module.MAX_GLOBAL_LEASE_STATE_BYTES + 1)
+    blob_sha = write_object(oversized, "hash-object", "-w", "--stdin")
+    tree_sha = write_object(
+        f"100644 blob {blob_sha}\\t{global_lease_module.GLOBAL_LEASE_STATE_PATH}\\n"
+        .encode("ascii"),
+        "mktree",
+    )
+    corrupt_tip = write_object(
+        b"oversized lease payload\\n",
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree_sha, "-p", acquired.written_remote_tip,
+    )
+    ref = global_training_run_lease_ref(manifest)
+    _git("push", str(remote), f"{corrupt_tip}:{ref}", cwd=writer)
+
+    original_run_git = global_lease_module._run_git
+
+    def reject_blob_capture(repo_root, args, **kwargs):
+        if args[:2] == ["cat-file", "blob"]:
+            raise AssertionError("oversized blob must not be captured")
+        return original_run_git(repo_root, args, **kwargs)
+
+    monkeypatch.setattr(global_lease_module, "_run_git", reject_blob_capture)
+    inspection = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.blockers == ("global_lease_remote_state_invalid",)
+    assert _git("ls-remote", str(remote), ref).split()[0] == corrupt_tip
+
+
 def test_acquire_is_single_winner_and_reread_verified(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
