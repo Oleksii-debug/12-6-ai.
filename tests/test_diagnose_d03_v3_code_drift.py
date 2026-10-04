@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib.util
 import marshal
-from types import CodeType
+import py_compile
+import shutil
+import subprocess
+from collections import defaultdict
+from pathlib import Path
+from types import CodeType, FunctionType
 
 import pytest
 
@@ -96,3 +103,65 @@ def test_adversarially_nested_code_is_bounded_and_untrusted() -> None:
     assert report["diagnostic_limited"] is True
     assert report["structural_fields_equal"] is False
     assert report["attestation_override_allowed"] is False
+
+
+def test_exact_historical_v3_pyc_matches_recompilation_after_warmup(tmp_path: Path) -> None:
+    """Isolate pinned V3 bytecode from Caselaw transport and physical data."""
+    root = Path(__file__).resolve().parents[1]
+    if not (root / ".git").exists() or shutil.which("git") is None:
+        pytest.skip("historical Git graph is unavailable outside a repository checkout")
+    historical_sha = "d3333ec1b4a508df232a5aefccd6686adda745fb"
+    historical_path = "src/twelve_six/data/cross_source_capacity_audit_v3.py"
+    proc = subprocess.run(
+        ["git", "-C", str(root), "show", f"{historical_sha}:{historical_path}"],
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+    source = proc.stdout
+    git_blob = b"blob " + str(len(source)).encode("ascii") + b"\0" + source
+    assert hashlib.sha1(git_blob, usedforsecurity=False).hexdigest() == (
+        "11490b1803e0aa2266d8ac0053676efcfb0f91ba"
+    )
+
+    path = tmp_path / "cross_source_capacity_audit_v3.py"
+    path.write_bytes(source)
+    pyc = tmp_path / "historical_v3.pyc"
+    py_compile.compile(str(path), cfile=str(pyc), dfile=str(path), doraise=True)
+    archived = pyc.read_bytes()
+    assert archived[:4] == importlib.util.MAGIC_NUMBER
+    pyc_module = marshal.loads(archived[16:])
+    current_module = compile(source, str(path), "exec", dont_inherit=True)
+
+    def lineage_code(module: CodeType) -> CodeType:
+        matches = [
+            value for value in module.co_consts
+            if type(value) is CodeType and value.co_name == "_lineage_matches"
+        ]
+        assert len(matches) == 1
+        return matches[0]
+
+    live = lineage_code(pyc_module)
+    canonical = lineage_code(current_module)
+    runtime = FunctionType(live, {"defaultdict": defaultdict, "RELATION_MATCH_TYPES": {}})
+    fingerprints = [
+        {
+            "row": {
+                "source_id": f"offline-{index}",
+                "stable_object_id": f"offline-{index // 2}",
+                "source_family": "offline-diagnostic-only",
+            }
+        }
+        for index in range(16)
+    ]
+    for _ in range(100):
+        matches = runtime(fingerprints, ())
+        assert len(matches) == 8
+
+    report = compare_code_objects(live, canonical)
+    assert report["structural_fields_equal"] is True
+    assert report["classification"] in {
+        "NO_CODE_MISMATCH_OBSERVED", "SERIALIZATION_MISMATCH_UNRESOLVED"
+    }
+    assert report["attestation_override_allowed"] is False
+    assert report["canonical_corpus_credit"] == 0
