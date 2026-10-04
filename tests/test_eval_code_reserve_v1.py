@@ -661,3 +661,28 @@ def test_parsed_value_node_limit_does_not_count_json_mapping_keys(
     path = tmp_path / "node-limit.json"
     path.write_text(json.dumps(document), encoding="utf-8")
     assert validator._load_mapping(path) == document
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("reservation_training", "training accidentally allowed"),
+        ("truth_training", "model training prematurely authorized"),
+        ("object_sha", "identity drift for jd/tenacity:raw_sha256"),
+        ("evidence_identity", "evidence identity drift"),
+    ],
+)
+def test_direct_evidence_validation_rejects_invalid_contract(
+    mutation: str, error: str,
+) -> None:
+    document = _manifest()
+    if mutation == "reservation_training":
+        document["reservation"]["training_allowed"] = True
+    elif mutation == "truth_training":
+        document["truth_boundary"]["model_training_authorized"] = True
+    elif mutation == "object_sha":
+        document["objects"][0]["raw_sha256"] = "0" * 64
+    else:
+        document["materialization_evidence"]["identity_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match=error):
+        validator.validate_materialization_evidence(document, _evidence())
