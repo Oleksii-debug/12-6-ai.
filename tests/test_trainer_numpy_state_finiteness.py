@@ -8,13 +8,15 @@ from __future__ import annotations
 import copy
 import random
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 import torch
 
-from twelve_six.checkpoint import CheckpointCompatibilityError, trainer_adapter
+from twelve_six.checkpoint import CheckpointCompatibilityError, CheckpointIdentity
+from twelve_six.checkpoint import core, progress_trainer, trainer_adapter
 from twelve_six.training import (
     NonFiniteTrainingError,
     Trainer,
@@ -164,3 +166,94 @@ def test_d05_preflight_rejects_numpy_scheduler_state_before_optimizer_probe(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     monkeypatch.undo()
     trainer_adapter._preflight_trainer_state_without_rng_guard(target, clean)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-replay"])
+def test_sealed_numpy_scheduler_nan_rejected_by_both_public_d05_loaders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    """Valid SHA proves integrity, not finite metadata or safe resumed weights."""
+    config = TrainerConfig(seed=703, max_steps=2, scheduler="cosine")
+    source_model = _TinyLogits()
+    source = Trainer(source_model, config, device="cpu")
+    valid = asdict(source.state_dict())
+    invalid = copy.deepcopy(valid)
+    invalid["scheduler"]["numpy_diagnostics"] = np.asarray(
+        [float("nan")], dtype=np.float32,
+    )
+    identity = CheckpointIdentity(
+        git_sha="a" * 40,
+        model_spec={"kind": "numpy-scheduler-preapply", "width": 3},
+        parameter_count=3,
+        tokenizer_hash="b" * 64,
+        tokenizer_vocab_hash="c" * 64,
+        dataset_manifest_hash="d" * 64,
+        run_manifest_hash="e" * 64,
+        training_config={"steps": 2},
+        seed=703,
+        precision="fp32",
+        step=0,
+        tokens_seen=0,
+        optimizer={"name": "AdamW"},
+        scheduler={"name": "cosine"},
+        environment_lock_hash="f" * 64,
+    )
+    invalid_path = tmp_path / "sealed-numpy-invalid-дані"
+    valid_path = tmp_path / "sealed-numpy-valid-дані"
+    for path, payload in ((invalid_path, invalid), (valid_path, valid)):
+        core.save_checkpoint(
+            path, model=source_model, trainer_state=payload, identity=identity,
+        )
+        core.verify_checkpoint(path)
+
+    target_model = _TinyLogits()
+    target = Trainer(target_model, config, device="cpu")
+    weights_before = target_model.weight.detach().clone()
+    reached_apply: list[bool] = []
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+
+    def reject_model_apply(*args: Any, **kwargs: Any) -> None:
+        reached_apply.append(True)
+        raise AssertionError("non-finite NumPy scheduler reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", reject_model_apply)
+    extra = {"expected_step": 0, "expected_tokens_seen": 0} if (
+        loader is progress_trainer
+    ) else {}
+    with pytest.raises(
+        CheckpointCompatibilityError, match="checkpoint trainer scheduler has non-finite",
+    ):
+        loader.load_trainer_checkpoint(
+            invalid_path, model=target_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+    assert reached_apply == []
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert not target.optimizer.state and target_model.weight.grad is None
+    torch.testing.assert_close(target_model.weight, weights_before, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+    monkeypatch.undo()
+    loader.load_trainer_checkpoint(
+        valid_path, model=target_model, trainer=target,
+        strict_model=False, restore_rng=restore_rng, **extra,
+    )
+    torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
