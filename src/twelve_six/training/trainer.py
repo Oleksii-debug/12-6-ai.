@@ -395,16 +395,27 @@ class Trainer:
             # validate only the first group while another can write NaN weights.
             learning_rate = float(self.optimizer.param_groups[0]["lr"])
             for group in self.optimizer.param_groups:
-                group_lr = group["lr"]
-                if isinstance(group_lr, bool):
-                    raise NonFiniteTrainingError(
-                        "optimizer learning rate must be finite and >= 0"
-                    )
-                group_lr = float(group_lr)
-                if not math.isfinite(group_lr) or group_lr < 0:
-                    raise NonFiniteTrainingError(
-                        "optimizer learning rate must be finite and >= 0"
-                    )
+                for field in ("lr", "weight_decay", "eps"):
+                    if field not in group:
+                        continue  # Other injected optimizer families may omit these fields.
+                    value = group[field]
+                    if isinstance(value, bool) or not math.isfinite(float(value)):
+                        raise NonFiniteTrainingError(
+                            f"optimizer {field} must be finite and valid"
+                        )
+                    if float(value) < 0 or (field == "eps" and float(value) == 0):
+                        raise NonFiniteTrainingError(
+                            f"optimizer {field} must be finite and valid"
+                        )
+                if "betas" in group:
+                    betas = group["betas"]
+                    if not isinstance(betas, (list, tuple)) or len(betas) != 2:
+                        raise NonFiniteTrainingError("optimizer betas must be valid")
+                    for beta in betas:
+                        if isinstance(beta, bool) or not math.isfinite(float(beta)):
+                            raise NonFiniteTrainingError("optimizer betas must be valid")
+                        if not 0 <= float(beta) < 1:
+                            raise NonFiniteTrainingError("optimizer betas must be valid")
         except BaseException:
             # Backward already ran; do not allow a partial accounting transition
             # or an interrupted device synchronization to reuse these gradients.
