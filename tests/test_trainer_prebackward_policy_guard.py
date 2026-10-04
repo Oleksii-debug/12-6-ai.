@@ -100,7 +100,8 @@ def test_policy_drift_is_poisoned_before_backward(
     torch.testing.assert_close(model.weight.detach(), initial_weight, rtol=0, atol=0)
     assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (0, 0, 0)
     assert trainer._failure_reason is not None
-    assert trainer._update_incomplete is True
+    # Policy drift before backward must not claim an optimizer effect.
+    assert trainer._update_incomplete is False
 
     # Repairing the global policy cannot silently unpoison a mixed transition.
     torch.use_deterministic_algorithms(True, warn_only=True)
