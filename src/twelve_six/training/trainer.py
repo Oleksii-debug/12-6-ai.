@@ -496,6 +496,9 @@ class Trainer:
                 # An effectful scheduler or scaler can corrupt the NEXT step's
                 # state after the finite optimizer update. Reject that now.
                 self._require_finite_auxiliary_state()
+                # Effectful zero_grad/scheduler hooks may modify parameters
+                # or optimizer moments *after* the first post-step check.
+                self._require_finite_committed_update()
                 # A custom optimizer may silently ignore zero_grad or swap
                 # groups inside step(). Never expose that as a clean boundary.
                 self._require_no_residual_model_gradients()
@@ -657,6 +660,7 @@ class Trainer:
             raise RuntimeError("trainer has pending accumulation statistics")
         try:
             self._require_finite_auxiliary_state()
+            self._require_finite_committed_update()
             self._require_no_residual_model_gradients()
         except BaseException:
             self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
