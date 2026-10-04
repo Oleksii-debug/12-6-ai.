@@ -25,11 +25,13 @@ class _FreshCanonicalTarget:
 @pytest.mark.parametrize("failed_family", ["python", "numpy"])
 @pytest.mark.parametrize("probe_rejects", [False, True])
 @pytest.mark.parametrize("persistent_failure", [False, True])
+@pytest.mark.parametrize("interruption", [OSError, KeyboardInterrupt, SystemExit])
 def test_failed_preflight_rollback_recovers_other_rng_families(
     monkeypatch: pytest.MonkeyPatch,
     failed_family: str,
     probe_rejects: bool,
     persistent_failure: bool,
+    interruption: type[BaseException],
 ) -> None:
     """A failed RNG setter must not strand otherwise recoverable streams."""
 
@@ -49,7 +51,7 @@ def test_failed_preflight_rollback_recovers_other_rng_families(
             torch.rand((), generator=expected_torch).item(),
         )
         target = _FreshCanonicalTarget()
-        original_error = OSError(f"injected {failed_family} RNG setter failure")
+        original_error = interruption(f"injected {failed_family} RNG setter failure")
         setter_calls = 0
 
         def one_shot_failure(state: Any) -> None:
@@ -78,7 +80,7 @@ def test_failed_preflight_rollback_recovers_other_rng_families(
             else:
                 original_setter = np.random.set_state
                 patch.setattr(np.random, "set_state", one_shot_failure)
-            with pytest.raises(OSError, match="injected .* RNG setter failure") as raised:
+            with pytest.raises(interruption, match="injected .* RNG setter failure") as raised:
                 trainer_adapter._preflight_trainer_state(target, {"probe": True})
 
         assert raised.value is original_error
