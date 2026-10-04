@@ -287,7 +287,9 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
 def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, Any]) -> None:
     _require(type(doc) is dict, "reservation document must be a JSON object")
     _require(type(evidence) is dict, "materialization evidence must be a JSON object")
-    _require_finite_json_value(doc, label="reservation document")
+    # A direct caller must not obtain valid evidence against an unvalidated
+    # contract that widens training, tokenizer, or final-test authority.
+    validate_document(doc)
     _require_finite_json_value(evidence, label="materialization evidence")
     _require_exact_fields(evidence, {
         "completed_gate", "discovery_head_sha", "evidence_identity_sha256",
