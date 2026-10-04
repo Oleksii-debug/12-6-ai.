@@ -171,6 +171,58 @@ def test_manifest_growth_after_fstat_still_has_bounded_read(
     assert intercepted
 
 
+@pytest.mark.parametrize("name", ["weights.safetensors", "state.safetensors", "state.json"])
+@pytest.mark.parametrize("mutation", ["grow", "shrink"])
+def test_checkpoint_payload_size_rejected_before_payload_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, mutation: str
+) -> None:
+    checkpoint = tmp_path / "preflight-payload"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+    path = checkpoint / name
+    original = path.read_bytes()
+    assert len(original) > 1
+    path.write_bytes(original + b"tamper" if mutation == "grow" else original[:-1])
+    target_stat = path.stat()
+    original_fdopen = os.fdopen
+
+    def forbid_payload_read(fd: int, *args: object, **kwargs: object) -> object:
+        opened = os.fstat(fd)
+        if (opened.st_dev, opened.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            raise AssertionError("payload bytes read before expected size validation")
+        return original_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", forbid_payload_read)
+    with pytest.raises(CheckpointIntegrityError, match=f"size mismatch for {name}"):
+        verify_checkpoint(checkpoint)
+
+
+def test_checkpoint_payload_growth_after_stale_fstat_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoint = tmp_path / "payload-growth"
+    _save(checkpoint)
+    path = checkpoint / "state.json"
+    original = path.read_bytes()
+    path.write_bytes(original + b"tamper")
+    target_stat = path.stat()
+    original_fstat = os.fstat
+    intercepted: list[bool] = []
+
+    def stale_fstat(fd: int) -> os.stat_result:
+        actual = original_fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            intercepted.append(True)
+            values = list(actual)
+            values[6] = len(original)
+            return os.stat_result(values)
+        return actual
+
+    monkeypatch.setattr(checkpoint_core.os, "fstat", stale_fstat)
+    with pytest.raises(CheckpointIntegrityError, match="size mismatch for state.json"):
+        verify_checkpoint(checkpoint)
+    assert intercepted
+
+
 @pytest.mark.parametrize("token", ["1e-4000", "-1e-4000", "0.0001e-4000"])
 def test_checkpoint_manifest_rejects_nonzero_numeric_underflow(
     tmp_path: Path, token: str
