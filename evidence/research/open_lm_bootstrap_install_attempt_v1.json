@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "worker_issue": 777,
+  "project_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "isolated_environment": "/tmp/open_lm_bootstrap_stress_v1/.venv",
+  "attempts": [
+    {
+      "artifact": "open_lm",
+      "requested_version": "0.0.34",
+      "source": "PyPI",
+      "command": "python -m pip install open_lm==0.0.34",
+      "return_code": 1,
+      "result": "FAILED_ENVIRONMENT",
+      "failure": "DNS resolution unavailable",
+      "artifact_sha256": null,
+      "substitution": false
+    },
+    {
+      "artifact": "pandas",
+      "requested_version": "2.1.4",
+      "source": "PyPI",
+      "command": "python -m pip install pandas==2.1.4",
+      "return_code": 1,
+      "result": "FAILED_ENVIRONMENT",
+      "failure": "DNS resolution unavailable",
+      "artifact_sha256": null,
+      "substitution": false
+    }
+  ],
+  "upstream_full_dependency_closure": "NOT_LOCKED",
+  "reason": "the upstream requirements.txt mixes exact pandas==2.1.4 with floating/lower-bound requirements; a later network-enabled operator must resolve and hash-lock the complete closure before runtime evidence",
+  "final_runtime_status": "NOT_EXECUTED"
+}
