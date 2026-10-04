@@ -51,8 +51,6 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
     if type(live) is not CodeType or type(canonical) is not CodeType:
         raise TypeError("both attestation inputs must be exact Python code objects")
 
-    live_digest = _sha256(marshal.dumps(live))
-    canonical_digest = _sha256(marshal.dumps(canonical))
     differences: list[str] = []
     visited = 0
     limited = False
@@ -84,6 +82,9 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
                     if limited:
                         break
         elif type(left) is frozenset:
+            if len(left) > _MAX_NODES or len(right) > _MAX_NODES:
+                limited = True
+                return
             # Frozen Python constants contain only hashable scalar objects.
             # Hash each separately so outer marshal alias/reference flags do
             # not become the comparison criterion. No constant is printed.
@@ -97,17 +98,31 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
             else:
                 if left_items != right_items:
                     differences.append(path)
-        elif type(left) in {type(None), type(Ellipsis), bool, int, float, complex, str, bytes}:
-            if left != right or (
-                type(left) is float and marshal.dumps(left) != marshal.dumps(right)
-            ):
+        elif type(left) in {float, complex}:
+            # Value equality misses signed zero; NaN is unequal even to itself.
+            # Match the actual encoded scalar without printing its contents.
+            if marshal.dumps(left) != marshal.dumps(right):
+                differences.append(path)
+        elif type(left) in {type(None), type(Ellipsis), bool, int, str, bytes}:
+            if left != right:
                 differences.append(path)
         else:
             # Unknown objects are NOT presumed equivalent.
             differences.append(f"{path}:unsupported-type")
 
+    # Enforce structural depth/node limits BEFORE serializing either code tree.
+    # Otherwise deeply nested inputs raise from marshal instead of returning a
+    # bounded, explicitly incomplete diagnostic.
     visit(live, canonical, "code", 0)
-    marshal_equal = live_digest == canonical_digest
+    live_digest: str | None = None
+    canonical_digest: str | None = None
+    if not limited:
+        try:
+            live_digest = _sha256(marshal.dumps(live))
+            canonical_digest = _sha256(marshal.dumps(canonical))
+        except (ValueError, RecursionError, OverflowError):
+            limited = True
+    marshal_equal = None if limited else live_digest == canonical_digest
     if limited:
         classification = "INCOMPLETE_DIAGNOSTIC"
     elif differences:
