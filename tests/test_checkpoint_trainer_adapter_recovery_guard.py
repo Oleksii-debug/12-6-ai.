@@ -343,3 +343,77 @@ def test_actual_d02_target_refused_without_checkpoint_io(
         assert trainer._update_incomplete is False
     finally:
         core.restore_rng_state(ambient)
+
+
+@pytest.mark.parametrize("operation", ["save", "load"])
+def test_canonical_model_owner_mismatch_refuses_before_io_or_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    owned_model = Model([3.0, 4.0, 5.0])
+    wrong_model = Model([9.0, 9.0, 9.0])
+    trainer = CanonicalTarget(owned_model)
+    destination = tmp_path / "mismatched-model"
+    if operation == "save":
+        with pytest.raises(CheckpointCompatibilityError, match="different model"):
+            trainer_adapter.save_trainer_checkpoint(
+                destination, model=wrong_model, trainer=trainer, identity=identity(),
+            )
+        assert not destination.exists()
+    else:
+        def forbidden_read(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("model ownership rejection must precede checkpoint I/O")
+
+        monkeypatch.setattr(trainer_adapter, "prepare_checkpoint_load", forbidden_read)
+        with pytest.raises(CheckpointCompatibilityError, match="different model"):
+            trainer_adapter.load_trainer_checkpoint(
+                destination, model=wrong_model, trainer=trainer,
+            )
+    np.testing.assert_array_equal(owned_model.weights, [3.0, 4.0, 5.0])
+    np.testing.assert_array_equal(wrong_model.weights, [9.0, 9.0, 9.0])
+    assert owned_model.loads == 0
+    assert wrong_model.loads == 0
+    assert trainer.loads == 0
+    assert trainer._failure_reason is None
+
+
+@pytest.mark.parametrize("operation", ["save", "load"])
+def test_real_d02_trainer_rejects_unowned_checkpoint_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    ambient = core.capture_rng_state()
+    try:
+        owned_model = torch.nn.Linear(3, 3)
+        wrong_model = torch.nn.Linear(3, 3)
+        trainer = Trainer(owned_model, TrainerConfig(max_steps=10, seed=703))
+        before = [parameter.detach().clone() for parameter in wrong_model.parameters()]
+        destination = tmp_path / "wrong-real-model"
+        if operation == "save":
+            with pytest.raises(CheckpointCompatibilityError, match="different model"):
+                trainer_adapter.save_trainer_checkpoint(
+                    destination, model=wrong_model, trainer=trainer, identity=identity(),
+                )
+            assert not destination.exists()
+        else:
+            def forbidden_read(*_args: object, **_kwargs: object) -> None:
+                raise AssertionError("real D02 model mismatch must precede checkpoint I/O")
+
+            monkeypatch.setattr(trainer_adapter, "prepare_checkpoint_load", forbidden_read)
+            with pytest.raises(CheckpointCompatibilityError, match="different model"):
+                trainer_adapter.load_trainer_checkpoint(
+                    destination, model=wrong_model, trainer=trainer,
+                )
+        for parameter, saved in zip(wrong_model.parameters(), before, strict=True):
+            torch.testing.assert_close(parameter.detach(), saved)
+        assert trainer._failure_reason is None
+        assert trainer._update_incomplete is False
+    finally:
+        core.restore_rng_state(ambient)
