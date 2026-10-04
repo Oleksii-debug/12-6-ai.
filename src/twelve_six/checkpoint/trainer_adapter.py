@@ -497,7 +497,7 @@ def _assert_live_d02_determinism(trainer: Any) -> bool | None:
 def _assert_d02_checkpoint_rng_policy(
     trainer: Any, rng_state: Mapping[str, Any],
 ) -> None:
-    """Bind captured deterministic enablement to the canonical D02 config."""
+    """Require an exact canonical D02 replay, not merely checksum-valid RNG."""
 
     configured = _assert_live_d02_determinism(trainer)
     if configured is None:
@@ -517,6 +517,37 @@ def _assert_d02_checkpoint_rng_policy(
             "canonical trainer configuration"
         )
 
+    # A sealed V1 artifact can be valid while omitting one or more streams.
+    # Replaying only the available streams silently changes the next batch.
+    missing = sorted({"python", "numpy"} - rng_state.keys())
+    if missing:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer checkpoint is missing RNG streams: {missing}"
+        )
+    if "cpu" not in torch_state or "cuda" not in torch_state:
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint is missing torch CPU/CUDA RNG streams"
+        )
+    cuda_states = torch_state["cuda"]
+    if not isinstance(cuda_states, list):
+        raise CheckpointCompatibilityError(
+            "canonical trainer CUDA RNG streams must be a list"
+        )
+    torch = importlib.import_module("torch")
+    device_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    if len(cuda_states) != device_count:
+        raise CheckpointCompatibilityError(
+            "canonical trainer CUDA RNG device count differs from checkpoint; "
+            "load with restore_rng=False to opt out of exact replay"
+        )
+    for index, cuda_state in enumerate(cuda_states):
+        try:
+            probe = torch.Generator(device=f"cuda:{index}")
+            probe.set_state(cuda_state.cpu())
+        except (AttributeError, RuntimeError, TypeError) as exc:
+            raise CheckpointCompatibilityError(
+                f"canonical trainer CUDA RNG state for device {index} is invalid"
+            ) from exc
 
 def _snapshot_torch_policy(state: Mapping[str, Any]) -> tuple[bool, bool] | None:
     """Pin the live policy before any model or trainer loader can mutate it."""
