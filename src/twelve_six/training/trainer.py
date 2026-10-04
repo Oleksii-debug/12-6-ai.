@@ -746,6 +746,12 @@ class Trainer:
             self._pending_tokens = 0
             self._pending_loss_sum = 0.0
             self.optimizer.zero_grad(set_to_none=True)
+            # PyTorch's load_state_dict accepts NaN optimizer moments and
+            # malformed-but-type-compatible group rates. A restore must not
+            # return a supposedly checkpoint-safe trainer with those values.
+            self._require_finite_auxiliary_state()
+            self._require_finite_committed_update()
+            self._require_no_residual_model_gradients()
         except BaseException:
             self._mark_failed("trainer state restore failed after possible partial apply")
             raise
