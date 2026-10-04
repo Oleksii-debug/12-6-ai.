@@ -26,7 +26,7 @@ from tools.operate_learned20m_global_training_lease import (
             b'{"nested":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}",
             "manifest_json_invalid",
         ),
-        (b"\\xff", "manifest_utf8_invalid"),
+        (b"\xff", "manifest_utf8_invalid"),
         (b'{"a":1,"a":2}', "duplicate_json_key:a"),
         (b'{"n":NaN}', "non_finite_json_constant:NaN"),
     ],
@@ -68,7 +68,12 @@ def test_operator_emits_structured_failure_before_git(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["operate_learned20m_global_training_lease.py", "--manifest", str(path), "inspect"],
+        [
+            "operate_learned20m_global_training_lease.py",
+            "--manifest",
+            str(path),
+            "inspect",
+        ],
     )
     assert main() == 2
     assert json.loads(capsys.readouterr().out) == {
