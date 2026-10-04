@@ -193,9 +193,18 @@ class Trainer:
         return torch.autocast(device_type=self.device.type, dtype=dtype)
 
     def _mark_failed(self, reason: str) -> None:
-        if self._failure_reason is None:
-            self._failure_reason = reason
-        self.optimizer.zero_grad(set_to_none=True)
+        if self._failure_reason is not None:
+            return
+        self._failure_reason = reason
+        try:
+            self.optimizer.zero_grad(set_to_none=True)
+        except BaseException as cleanup_error:
+            # Preserve the original forward/backward/optimizer failure. Even if
+            # gradients cannot be cleared, the trainer is permanently poisoned
+            # and only a fresh instance plus verified checkpoint may be used.
+            self._failure_reason = (
+                f"{reason}; gradient cleanup failed: {type(cleanup_error).__name__}"
+            )
 
     def _assert_trainable(self) -> None:
         if self._failure_reason is not None:
