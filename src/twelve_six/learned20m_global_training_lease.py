@@ -314,7 +314,7 @@ def _snapshot_mapping(value: Mapping[str, Any], *, field: str) -> dict[str, Any]
             object_pairs_hook=_pairs_without_duplicates,
             parse_constant=_reject_json_constant,
         )
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
         raise ValueError(f"{field}_snapshot_invalid") from exc
     if not isinstance(parsed, Mapping):
         raise TypeError(f"{field}_not_object")
@@ -438,6 +438,10 @@ def _fetch_remote_commit(
         )
         if blob.returncode != 0:
             raise _GlobalLeaseFailure("global_lease_state_blob_missing")
+        # A remote ref may advance while its immutable blob is being read.
+        # Never return a snapshot that was stale before this read completed.
+        if _remote_tip(repo_root, remote, ref) != expected_tip:
+            raise _GlobalLeaseFailure("remote_tip_changed_during_read")
         return blob.stdout
     finally:
         _delete_local_ref(repo_root, temporary_ref)

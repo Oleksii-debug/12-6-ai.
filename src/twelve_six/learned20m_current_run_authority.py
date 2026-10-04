@@ -591,7 +591,7 @@ def inspect_current_run_authority(
         else:
             try:
                 manifest_snapshot = json.loads(canonical_json_bytes(manifest))
-            except (TypeError, ValueError) as exc:
+            except (TypeError, ValueError, RecursionError) as exc:
                 blockers.append(f"current_run_trusted_launch_manifest_invalid:{exc}")
             else:
                 manifest_errors = validate_launch_manifest(manifest_snapshot)
@@ -820,14 +820,14 @@ def activate_current_run_authority(
         )
     try:
         manifest_snapshot = json.loads(canonical_json_bytes(manifest))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         return _operation_failure(
             "ACTIVATE",
             blocker=f"launch_manifest_snapshot_invalid:{exc}",
         )
     try:
         identity_snapshot = json.loads(canonical_json_bytes(current_run_identity))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         return _operation_failure(
             "ACTIVATE",
             blocker=f"current_run_identity_snapshot_invalid:{exc}",
@@ -1033,7 +1033,7 @@ def refresh_current_run_authority(
 
     try:
         manifest_snapshot = json.loads(canonical_json_bytes(manifest))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         return _operation_failure(
             "REFRESH",
             blocker=f"launch_manifest_snapshot_invalid:{exc}",

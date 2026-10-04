@@ -1840,3 +1840,76 @@ def test_pointer_decoder_bounds_remote_bytes_and_recursion() -> None:
     deep_json = b'{"nested":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}"
     with pytest.raises(ValueError, match="current_run_pointer_json_invalid"):
         decode_current_run_pointer_state(deep_json)
+
+
+def test_deep_current_run_caller_mappings_fail_closed_before_remote_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Inspection, activation and refresh cannot leak recursive input faults."""
+    deep: dict = {}
+    child = deep
+    for _ in range(3_000):
+        nested: dict = {}
+        child["nested"] = nested
+        child = nested
+
+    def unexpected_git(*_args, **_kwargs):
+        raise AssertionError("invalid caller mapping must not access Git")
+
+    manifest, identity, _lease, _authority = _authorized_run()
+    # ACTIVE pointer state is only needed to reach the inspection manifest path.
+    global_view = _global_inspection(manifest)
+    pointer = build_current_run_pointer_state(
+        manifest, global_view, identity, generation=1,
+        global_lease_state_sha256=_global_state_sha256(manifest),
+        global_lease_expires_at_utc=(NOW + timedelta(hours=1)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+    )
+    monkeypatch.setattr(
+        current_run, "_read_pointer_state",
+        lambda *_args: ("a" * 40, pointer),
+    )
+    monkeypatch.setattr(current_run, "_run_git", unexpected_git)
+
+    inspected = inspect_current_run_authority(".", "origin", manifest=deep, now=NOW)
+    assert inspected.present is True
+    assert inspected.valid is False
+    assert inspected.active is False
+    assert len(inspected.blockers) == 1
+    assert inspected.blockers[0].startswith(
+        "current_run_trusted_launch_manifest_invalid:"
+    )
+
+    denied = activate_current_run_authority(
+        ".", "origin", deep, identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert denied.committed is False
+    assert denied.blockers[0].startswith("launch_manifest_snapshot_invalid:")
+    assert denied.optimizer_start_permitted_by_this_module is False
+    assert denied.training_authority_granted_by_this_module is False
+
+    denied_identity = activate_current_run_authority(
+        ".", "origin", manifest, deep,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert denied_identity.committed is False
+    assert denied_identity.blockers[0].startswith("current_run_identity_snapshot_invalid:")
+    assert denied_identity.optimizer_start_permitted_by_this_module is False
+    assert denied_identity.training_authority_granted_by_this_module is False
+
+    refresh_denied = refresh_current_run_authority(
+        ".", "origin", deep,
+        expected_pointer_tip="a" * 40,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert refresh_denied.committed is False
+    assert refresh_denied.blockers[0].startswith("launch_manifest_snapshot_invalid:")
+    assert refresh_denied.optimizer_start_permitted_by_this_module is False
+    assert refresh_denied.training_authority_granted_by_this_module is False
