@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
-from pathlib
+from pathlib import Path
 
-import pytest import Path
+import pytest
 
 from twelve_six.typer_source_authority import (
     CONFIG_PATH,
