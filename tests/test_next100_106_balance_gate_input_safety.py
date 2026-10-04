@@ -718,3 +718,72 @@ def test_failed_rollback_and_cleanup_report_both_orphans_and_primary_fault(
     output.unlink()
     gate._write_new_output(output, b"expected", input_path=source)
     assert output.read_bytes() == b"expected"
+
+
+def test_link_created_then_error_rolls_back_only_owned_final(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An error after link creation must not publish unverified output."""
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"original authority")
+    output = tmp_path / "результат із пробілами.json"
+    real_link = gate.os.link
+    published = False
+
+    def link_then_raise(stage: Path, final: Path) -> None:
+        nonlocal published
+        real_link(stage, final)
+        published = True
+        raise OSError("injected postlink response loss")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(gate.os, "link", link_then_raise)
+        with pytest.raises(OSError, match="postlink response loss"):
+            gate._write_new_output(output, b"candidate", input_path=source)
+
+    assert published is True
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert source.read_bytes() == b"original authority"
+    gate._write_new_output(output, b"candidate", input_path=source)
+    assert output.read_bytes() == b"candidate"
+
+
+def test_link_created_then_error_and_rollback_failure_preserves_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recovery reports the original link fault and a stranded own-inode final."""
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"original authority")
+    output = tmp_path / "result.json"
+    real_link = gate.os.link
+    real_unlink = Path.unlink
+
+    def link_then_raise(stage: Path, final: Path) -> None:
+        real_link(stage, final)
+        raise OSError("injected postlink transport failure")
+
+    def lock_final(self: Path, *args: object, **kwargs: object) -> None:
+        if self == output:
+            raise PermissionError("injected locked final")
+        real_unlink(self, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(gate.os, "link", link_then_raise)
+        fault.setattr(Path, "unlink", lock_final)
+        with pytest.raises(gate.GateError, match="ROLLBACK_INCOMPLETE") as caught:
+            gate._write_new_output(output, b"candidate", input_path=source)
+
+    assert str(output) in str(caught.value)
+    assert "postlink transport failure" in str(caught.value)
+    assert "locked final" in str(caught.value)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "postlink transport failure" in str(caught.value.__cause__)
+    assert output.read_bytes() == b"candidate"
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert source.read_bytes() == b"original authority"
+    output.unlink()
+    gate._write_new_output(output, b"candidate", input_path=source)
+    assert output.read_bytes() == b"candidate"
