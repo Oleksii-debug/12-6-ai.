@@ -50,6 +50,21 @@ _CANONICAL_TRAINER_STATE_FIELDS = frozenset(
 )
 
 
+def _typed_config_equal(left: Any, right: Any) -> bool:
+    """Reject Python numeric/bool aliases in canonical checkpoint configuration."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, Mapping):
+        if left.keys() != right.keys():
+            return False
+        return all(_typed_config_equal(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)):
+        if len(left) != len(right):
+            return False
+        return all(_typed_config_equal(a, b) for a, b in zip(left, right, strict=True))
+    return bool(left == right)
+
+
 def _trainer_state_as_mapping(state: Any) -> Mapping[str, Any]:
     if is_dataclass(state) and not isinstance(state, type):
         return asdict(state)
@@ -352,7 +367,11 @@ def _preflight_trainer_state_without_rng_guard(
     # Canonical D02 Trainer and its scale subclasses construct TrainerState(**state)
     # during the real load. Extra keys therefore fail only at that final call unless
     # the adapter mirrors the exact schema now, before model/RNG mutation.
-    if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+    canonical_d02 = (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    )
+    if canonical_d02:
         actual_fields = set(state)
         if actual_fields != _CANONICAL_TRAINER_STATE_FIELDS:
             missing = sorted(_CANONICAL_TRAINER_STATE_FIELDS - actual_fields)
@@ -364,7 +383,14 @@ def _preflight_trainer_state_without_rng_guard(
 
     for field in ("micro_step", "optimizer_step", "tokens_seen"):
         value = state.get(field)
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        # Canonical D02 requires exact Python ints; generic adapters retain
+        # their prior non-bool int-subclass compatibility.
+        valid_type = (
+            type(value) is int
+            if canonical_d02
+            else isinstance(value, int) and not isinstance(value, bool)
+        )
+        if not valid_type or value < 0:
             raise CheckpointCompatibilityError(
                 f"trainer {field} must be a non-negative integer"
             )
@@ -389,8 +415,19 @@ def _preflight_trainer_state_without_rng_guard(
         live_config = live_config.model_dump(mode="python")
 
     checkpoint_config = state.get("config")
-    if live_config is not None and checkpoint_config != live_config:
-        raise CheckpointCompatibilityError("trainer config mismatch; refusing unsafe resume")
+    if live_config is not None:
+        # D02's typed checkpoint contract must agree with direct Trainer restore
+        # before D05 applies model weights or optimizer moments. Preserve generic
+        # adapter compatibility when its own state loader defines loose equality.
+        matches = (
+            _typed_config_equal(checkpoint_config, live_config)
+            if canonical_d02
+            else checkpoint_config == live_config
+        )
+        if not matches:
+            raise CheckpointCompatibilityError(
+                "trainer config mismatch; refusing unsafe resume"
+            )
 
     if isinstance(live_config, Mapping):
         accumulation = live_config.get("gradient_accumulation_steps")
