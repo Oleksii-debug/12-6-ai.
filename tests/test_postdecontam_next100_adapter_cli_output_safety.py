@@ -839,3 +839,100 @@ def test_postcommit_cleanup_and_narrow_console_warnings_are_both_recoverable(
     assert output.is_file()
     assert vector.read_bytes() == b"original vector"
     assert authority.read_bytes() == b"original authority"
+
+
+def test_failed_sync_and_locked_stage_preserve_both_faults_and_orphan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ENOSPC root cause must survive the later cleanup sharing violation."""
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "dedup.json"
+    output = tmp_path / "український результат.json"
+    vector.write_bytes(b"source vector")
+    authority.write_bytes(b"source authority")
+    original_unlink = Path.unlink
+
+    def fail_fsync(_descriptor: int) -> None:
+        raise OSError("injected ENOSPC during staged fsync")
+
+    def lock_stage(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("injected staging sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(cli.os, "fsync", fail_fsync)
+        fault.setattr(Path, "unlink", lock_stage)
+        with pytest.raises(ProjectionError, match="STAGING_CLEANUP_INCOMPLETE") as caught:
+            cli._write_new_output(
+                output, b"verified result",
+                family_vector=vector, dedup_authority=authority,
+            )
+
+    stages = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(stages) == 1
+    assert str(stages[0]) in str(caught.value)
+    assert "ENOSPC" in str(caught.value)
+    assert "staging sharing violation" in str(caught.value)
+    assert isinstance(caught.value.__cause__, ProjectionError)
+    assert isinstance(caught.value.__cause__.__cause__, OSError)
+    assert not output.exists()
+    assert vector.read_bytes() == b"source vector"
+    assert authority.read_bytes() == b"source authority"
+    stages[0].unlink()
+    cli._write_new_output(
+        output, b"verified result",
+        family_vector=vector, dedup_authority=authority,
+    )
+    assert output.read_bytes() == b"verified result"
+
+
+def test_failed_rollback_and_stage_cleanup_report_both_orphans_and_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both paths and the original bad-publication cause survive dual unlink faults."""
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "dedup.json"
+    output = tmp_path / "unverified result.json"
+    vector.write_bytes(b"source vector")
+    authority.write_bytes(b"source authority")
+    original_link = cli.os.link
+    original_unlink = Path.unlink
+
+    def corrupt_and_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"tampered payload")
+        original_link(stage, final)
+
+    def lock_both(path: Path, *args: object, **kwargs: object) -> None:
+        if path == output or (
+            path.name.startswith(f".{output.name}.") and path.suffix == ".tmp"
+        ):
+            raise PermissionError("injected dual sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(cli.os, "link", corrupt_and_link)
+        fault.setattr(Path, "unlink", lock_both)
+        with pytest.raises(ProjectionError, match="ROLLBACK_INCOMPLETE") as caught:
+            cli._write_new_output(
+                output, b"verified result",
+                family_vector=vector, dedup_authority=authority,
+            )
+
+    stages = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(stages) == 1
+    assert str(output) in str(caught.value)
+    assert str(stages[0]) in str(caught.value)
+    assert "staged cleanup also failed" in str(caught.value)
+    assert "failed byte/path verification" in str(caught.value)
+    assert isinstance(caught.value.__cause__, ProjectionError)
+    assert output.read_bytes() == stages[0].read_bytes() == b"tampered payload"
+    assert vector.read_bytes() == b"source vector"
+    assert authority.read_bytes() == b"source authority"
+    stages[0].unlink()
+    output.unlink()
+    cli._write_new_output(
+        output, b"verified result",
+        family_vector=vector, dedup_authority=authority,
+    )
+    assert output.read_bytes() == b"verified result"
