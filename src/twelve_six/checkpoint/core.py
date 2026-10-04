@@ -988,7 +988,7 @@ def _read_regular_bytes(
             )
         limit = exact_bytes if exact_bytes is not None else max_bytes
         try:
-            with os.fdopen(fd, "rb", closefd=False) as handle:
+            with os.fdopen(fd, "rb", buffering=0, closefd=False) as handle:
                 if limit is None:
                     data = handle.read()
                 else:
