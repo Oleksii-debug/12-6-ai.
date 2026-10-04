@@ -232,7 +232,7 @@ def _write_new_output(
                     "OUTPUT_COMMITTED_CLEANUP_PENDING: "
                     + json.dumps(
                         {"output": str(final), "stage": str(staged_path)},
-                        ensure_ascii=False, sort_keys=True,
+                        ensure_ascii=True, sort_keys=True,
                     ),
                     file=sys.stderr,
                 )
