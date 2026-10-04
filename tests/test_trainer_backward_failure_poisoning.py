@@ -648,3 +648,46 @@ def test_checkpoint_hook_error_after_committed_update_requires_verified_recovery
         trainer.state_dict()
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.run([_BATCH])
+
+
+def test_finite_gradients_with_overflowed_aggregate_norm_never_update_model():
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, seed=17, gradient_clip_norm=None),
+    )
+    before_weights = model.weight.detach().clone()
+    model.weight.register_hook(lambda gradient: torch.full_like(gradient, 1e30))
+
+    with pytest.raises(NonFiniteTrainingError, match="non-finite gradient norm"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert trainer._update_incomplete is True
+    assert model.weight.grad is None
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+@pytest.mark.parametrize("unsafe_rate", [float("nan"), float("inf"), float("-inf"), -0.01])
+def test_runtime_unsafe_learning_rate_cannot_commit_optimizer_step(unsafe_rate):
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    before_weights = model.weight.detach().clone()
+    trainer.optimizer.param_groups[0]["lr"] = unsafe_rate
+
+    with pytest.raises(NonFiniteTrainingError, match="learning rate must be finite"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert model.weight.grad is None
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
