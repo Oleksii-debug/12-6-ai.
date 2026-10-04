@@ -125,6 +125,13 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     target = Trainer(target_model, config, device="cpu")
     before_weights = target_model.weight.detach().clone()
     application_calls: list[bool] = []
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
 
     def forbidden_model_apply(*args: Any, **kwargs: Any) -> None:
         application_calls.append(True)
@@ -144,7 +151,19 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     assert target._failure_reason is None and target._update_incomplete is False
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert not target.optimizer.state
+    assert target_model.weight.grad is None
     torch.testing.assert_close(target_model.weight, before_weights, rtol=0, atol=0)
+    # Failed pre-application decoding must not advance future RNG draws.
+    assert random.getstate() == py_before
+    after_numpy = np.random.get_state()
+    assert after_numpy[0] == np_before[0]
+    np.testing.assert_array_equal(after_numpy[1], np_before[1])
+    assert after_numpy[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert policy_before == (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
 
     monkeypatch.undo()
     loader.load_trainer_checkpoint(
