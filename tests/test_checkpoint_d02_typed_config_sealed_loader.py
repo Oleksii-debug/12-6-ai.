@@ -185,3 +185,90 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
             torch.testing.assert_close(
                 target_state[name], source_state[name], rtol=0, atol=0,
             )
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
+@pytest.mark.parametrize("alias", [False, 0.0], ids=["bool-zero", "float-zero"])
+def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state: Any,
+    loader: Any,
+    field: str,
+    alias: Any,
+) -> None:
+    """Persist representable aliases, not just Python-only int subclasses."""
+    config = TrainerConfig(seed=703, max_steps=2)
+    source_model = _TinyLogits()
+    source = Trainer(source_model, config, device="cpu")
+    with torch.no_grad():
+        source_model.weight.add_(1.0)
+    valid_state = asdict(source.state_dict())
+    invalid_state = copy.deepcopy(valid_state)
+    invalid_state[field] = alias
+    assert invalid_state[field] == valid_state[field]
+    assert type(invalid_state[field]) is not int
+
+    invalid_path = tmp_path / f"invalid-{field}-дані"
+    valid_path = tmp_path / f"valid-{field}-дані"
+    for path, payload in ((invalid_path, invalid_state), (valid_path, valid_state)):
+        core.save_checkpoint(
+            path, model=source_model, trainer_state=payload, identity=_identity(),
+        )
+        core.verify_checkpoint(path)
+
+    target_model = _TinyLogits()
+    target = Trainer(target_model, config, device="cpu")
+    original_weight = target_model.weight.detach().clone()
+    reached_apply: list[bool] = []
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    def forbid_model_apply(*args: Any, **kwargs: Any) -> None:
+        reached_apply.append(True)
+        raise AssertionError("counter type rejection must precede model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_apply)
+    expected = {"expected_step": 0, "expected_tokens_seen": 0} if (
+        loader is progress_trainer
+    ) else {}
+    with pytest.raises(
+        CheckpointCompatibilityError, match=f"trainer {field} must be a non-negative integer",
+    ):
+        loader.load_trainer_checkpoint(
+            invalid_path, model=target_model, trainer=target,
+            strict_model=False, restore_rng=False, **expected,
+        )
+    assert reached_apply == []
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert not target.optimizer.state and target_model.weight.grad is None
+    torch.testing.assert_close(target_model.weight, original_weight, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    after_np = np.random.get_state()
+    assert after_np[0] == np_before[0]
+    np.testing.assert_array_equal(after_np[1], np_before[1])
+    assert after_np[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert policy_before == (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    monkeypatch.undo()
+    loader.load_trainer_checkpoint(
+        valid_path, model=target_model, trainer=target,
+        strict_model=False, restore_rng=False, **expected,
+    )
+    torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
+    source.train_microbatch(_BATCH)
+    target.train_microbatch(_BATCH)
+    torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
