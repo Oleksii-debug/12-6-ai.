@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import marshal
 from types import CodeType
 
 import pytest
@@ -64,3 +65,34 @@ def test_non_code_objects_fail_closed(invalid: object) -> None:
     code, _ = _function("def candidate():\n    return 1\n")
     with pytest.raises(TypeError, match="code objects"):
         compare_code_objects(code, invalid)
+
+
+def test_marshal_reference_alias_difference_is_never_a_bypass() -> None:
+    """Equal constant values can have different marshal reference encoding."""
+    code, _ = _function("def candidate():\n    return None\n")
+    shared = "private-unprinted-" + ("z" * 500)
+    distinct = shared.encode("utf-8").decode("utf-8")
+    assert shared == distinct and shared is not distinct
+    live = code.replace(co_consts=(None, shared, shared))
+    canonical = code.replace(co_consts=(None, shared, distinct))
+    assert live.co_consts == canonical.co_consts
+    if marshal.dumps(live) == marshal.dumps(canonical):
+        pytest.skip("this interpreter does not distinguish these alias encodings")
+    report = compare_code_objects(live, canonical)
+    assert report["classification"] == "SERIALIZATION_MISMATCH_UNRESOLVED"
+    assert report["structural_fields_equal"] is True
+    assert report["marshal_equal"] is False
+    assert report["attestation_override_allowed"] is False
+    assert shared not in str(report)
+
+
+def test_adversarially_nested_code_is_bounded_and_untrusted() -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    nested = code
+    for _ in range(40):
+        nested = nested.replace(co_consts=(nested,))
+    report = compare_code_objects(nested, nested)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["structural_fields_equal"] is False
+    assert report["attestation_override_allowed"] is False
