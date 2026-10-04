@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
@@ -542,5 +543,56 @@ def test_unpublished_stage_cleanup_failure_is_not_reported_as_success(
         )
     assert not output.exists()
     assert len(list(tmp_path.glob(f".{output.name}.*.tmp"))) == 1
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+
+
+def test_main_committed_unicode_output_survives_restricted_stdout_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "dedup authority.json"
+    output = tmp_path / "підтверджений результат із пробілами.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+    restricted_stdout = io.TextIOWrapper(
+        io.BytesIO(), encoding="cp1252", errors="strict",
+    )
+    warning_stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", restricted_stdout)
+    monkeypatch.setattr(sys, "stderr", warning_stderr)
+
+    assert cli.main() == 0
+    assert restricted_stdout.buffer.getvalue() == b""
+    warning = warning_stderr.getvalue()
+    assert warning.startswith("OUTPUT_COMMITTED_STDOUT_ENCODING_UNAVAILABLE: ")
+    assert warning.isascii()
+    assert json.loads(warning.split(": ", 1)[1])["output"] == str(output)
+    assert json.loads(output.read_bytes())["value"] == "Український текст"
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+    with pytest.raises(SystemExit, match="FAIL_CLOSED: refusing to overwrite"):
+        cli.main()
+
+
+def test_main_preserves_unicode_stdout_contract_when_encoding_supports_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "dedup authority.json"
+    output = tmp_path / "новий результат із пробілами.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+    normal_stdout = io.StringIO()
+    warning_stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", normal_stdout)
+    monkeypatch.setattr(sys, "stderr", warning_stderr)
+
+    assert cli.main() == 0
+    assert normal_stdout.getvalue() == str(output) + "\n"
+    assert warning_stderr.getvalue() == ""
+    assert json.loads(output.read_bytes())["value"] == "Український текст"
     assert vector.read_bytes() == b"original vector"
     assert authority.read_bytes() == b"original authority"
