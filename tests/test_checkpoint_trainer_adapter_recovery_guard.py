@@ -895,3 +895,122 @@ def test_real_d02_partial_final_rng_failure_poisons_and_preserves_torch_mode(
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+@pytest.mark.parametrize("use_progress", [False, True])
+@pytest.mark.parametrize("probe_rejects", [False, True])
+def test_preflight_double_rollback_fault_keeps_primary_rng_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+    probe_rejects: bool,
+) -> None:
+    """A secondary PyTorch mode error must not mask the original RNG fault."""
+
+    import torch
+
+    checkpoint = tmp_path / "preflight-double-rollback-fault"
+    checkpoint_at(checkpoint)
+    model = Model([9.0, 9.0, 9.0])
+
+    class ProbeTarget(CanonicalTarget):
+        def load_state_dict(self, state: dict[str, object]) -> None:
+            super().load_state_dict(state)
+            if probe_rejects:
+                raise ValueError("injected isolated preflight rejection")
+
+    trainer = ProbeTarget(model)
+    loader_module = progress_trainer if use_progress else trainer_adapter
+    ambient = core.capture_rng_state()
+    original_restore = core.restore_rng_state
+    original_use = torch.use_deterministic_algorithms
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    original_error = OSError("primary preflight RNG rollback failure")
+    try:
+        original_use(True, warn_only=True)
+
+        def fail_rng(_state: object) -> None:
+            raise original_error
+
+        def fail_mode(requested: bool, *, warn_only: bool = False) -> None:
+            if requested and warn_only:
+                raise RuntimeError("secondary preflight mode rollback failure")
+            original_use(requested, warn_only=warn_only)
+
+        monkeypatch.setattr(core, "restore_rng_state", fail_rng)
+        monkeypatch.setattr(torch, "use_deterministic_algorithms", fail_mode)
+        with pytest.raises(OSError, match="primary preflight RNG rollback") as raised:
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+        assert raised.value is original_error
+        assert any(
+            "secondary preflight mode rollback failure" in note
+            for note in getattr(raised.value, "__notes__", ())
+        )
+        if probe_rejects:
+            assert isinstance(raised.value.__context__, CheckpointCompatibilityError)
+            assert "isolated compatibility preflight" in str(raised.value.__context__)
+        assert trainer._failure_reason == "checkpoint_preflight_rng_rollback_failed"
+        assert trainer._update_incomplete is True
+        assert model.loads == 0
+        assert trainer.loads == 0
+
+        def forbidden_read(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("poisoned retry must not read a checkpoint")
+
+        monkeypatch.setattr(loader_module, "prepare_checkpoint_load", forbidden_read)
+        with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+    finally:
+        original_restore(ambient)
+        original_use(enabled, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_failed_final_success_policy_application_rolls_back_original_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+) -> None:
+    """Failure after successful RNG replay must still restore the old mode."""
+
+    import torch
+
+    ambient = core.capture_rng_state()
+    original_use = torch.use_deterministic_algorithms
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        original_use(True, warn_only=True)
+        checkpoint = tmp_path / "final-policy-fault"
+        checkpoint_at(checkpoint)
+        model = Model([9.0, 9.0, 9.0])
+        trainer = CanonicalTarget(model)
+        loader_module = progress_trainer if use_progress else trainer_adapter
+
+        def replay(_state: object) -> None:
+            original_use(False, warn_only=False)
+
+        def fail_success_policy(requested: bool, *, warn_only: bool = False) -> None:
+            if not requested and warn_only:
+                raise OSError("injected final success-policy failure")
+            original_use(requested, warn_only=warn_only)
+
+        monkeypatch.setattr(loader_module, "restore_rng_state", replay)
+        monkeypatch.setattr(torch, "use_deterministic_algorithms", fail_success_policy)
+        with pytest.raises(OSError, match="final success-policy failure"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=True,
+            )
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+        assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+        assert trainer._update_incomplete is True
+        assert model.loads == 1
+        assert trainer.loads == 1
+    finally:
+        core.restore_rng_state(ambient)
+        original_use(enabled, warn_only=warn_only)
