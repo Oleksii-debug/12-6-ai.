@@ -170,3 +170,45 @@ def test_preflight_shape_error_before_forward_does_not_poison_trainer():
     trainer.train_microbatch(_BATCH)
     trainer.train_microbatch(_BATCH)
     assert trainer.optimizer_step == 1
+
+
+def test_post_backward_accounting_error_cannot_reuse_completed_gradients():
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=2, seed=17),
+    )
+    trainer.train_microbatch(_BATCH)
+    before_weights = model.weight.detach().clone()
+
+    trainer.optimizer.param_groups[0]["lr"] = "invalid-rate"
+    with pytest.raises(ValueError, match="convert string to float"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 2  # Backward happened but no update was committed.
+    assert trainer.optimizer_step == 0
+    assert trainer.tokens_seen == 4
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_optimizer_interrupt_cannot_be_replayed(monkeypatch):
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    before_weights = model.weight.detach().clone()
+
+    def interrupted_step(*args, **kwargs):
+        raise KeyboardInterrupt("synthetic optimizer interruption")
+
+    monkeypatch.setattr(trainer.optimizer, "step", interrupted_step)
+    with pytest.raises(KeyboardInterrupt, match="synthetic optimizer interruption"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.assert_checkpoint_safe()
