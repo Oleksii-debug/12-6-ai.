@@ -426,6 +426,11 @@ class Trainer:
         consumed = 0
         final_metrics: StepMetrics | None = None
 
+        if self.optimizer_step == self.config.max_steps:
+            # Already complete: even constructing a custom iterable may touch
+            # data/RNG. Do not access it after the authorized run boundary.
+            return TrainingRunResult(start_step, start_step, 0, 0, 0, None)
+
         try:
             iterator = iter(batches)
         except BaseException:
