@@ -409,6 +409,18 @@ def _fetch_remote_commit(
         if not parent_parts or parent_parts[0] != expected_tip or len(parent_parts) > 2:
             raise _GlobalLeaseFailure("global_lease_commit_parent_shape_invalid")
 
+        # Bound ls-tree stdout using the immutable root tree object size first.
+        # One 100644 entry is: mode + space + name + NUL + raw SHA-1 (20 B).
+        tree_size = _git_ascii(
+            repo_root,
+            ["cat-file", "-s", f"{expected_tip}^{{tree}}"],
+            blocker="global_lease_tree_size_read_failed",
+        ).strip()
+        if not tree_size.isascii() or not tree_size.isdecimal() or len(tree_size) > 20:
+            raise _GlobalLeaseFailure("global_lease_tree_size_invalid")
+        if int(tree_size) != 28 + len(GLOBAL_LEASE_STATE_PATH.encode("ascii")):
+            raise _GlobalLeaseFailure("global_lease_tree_not_closed_world")
+
         tree = _run_git(repo_root, ["ls-tree", "-z", "--full-tree", expected_tip])
         if tree.returncode != 0:
             raise _GlobalLeaseFailure("global_lease_tree_read_failed")
