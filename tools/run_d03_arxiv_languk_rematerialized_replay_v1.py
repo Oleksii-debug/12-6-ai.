@@ -649,25 +649,32 @@ def _publish_verified_outputs(
                 ) from exc
             published.append((label, path, sha256_bytes(raw)))
     finally:
+        primary_failure = sys.exc_info()[1]
         cleanup_error: OSError | None = None
-        cleanup_paths: list[str] = []
+        cleanup_failures: list[str] = []
         for _, _, temporary, _ in staged:
             try:
                 temporary.unlink(missing_ok=True)
             except OSError as exc:
-                cleanup_paths.append(str(temporary))
+                cleanup_failures.append(
+                    f"{temporary}: {type(exc).__name__}: {exc}"
+                )
                 if cleanup_error is None:
                     cleanup_error = exc
         if cleanup_error is not None:
-            if len(published) == len(outputs):
+            if len(published) == len(outputs) and primary_failure is None:
                 raise RematerializationError(
                     "outer receipt published and byte-verified; staged cleanup "
-                    f"pending for {cleanup_paths}; inspect read-only recovery"
+                    f"pending for {cleanup_failures}; inspect read-only recovery"
                 ) from cleanup_error
+            original = (
+                f"; original publication failure: {primary_failure}"
+                if primary_failure is not None else ""
+            )
             raise RematerializationError(
                 "outer publication incomplete and staged cleanup pending for "
-                f"{cleanup_paths}; manual reconciliation required"
-            ) from cleanup_error
+                f"{cleanup_failures}{original}; manual reconciliation required"
+            ) from (primary_failure if primary_failure is not None else cleanup_error)
 
 
 def _load_module(name: str, path: Path) -> Any:
