@@ -78,3 +78,33 @@ def test_member_serialization_failure_is_incomplete(
 
     monkeypatch.setattr(marshal, "dumps", fail_member)
     _assert_incomplete(compare_code_objects(code, code))
+
+
+def test_tuple_length_mismatch_cannot_hide_deep_unvisited_member() -> None:
+    inner: object = 1
+    for _ in range(40):
+        inner = (inner,)
+    left = _code_with_constant((inner,))
+    right = _code_with_constant((inner, 2))
+    _assert_incomplete(compare_code_objects(left, right))
+
+
+def test_type_mismatch_cannot_hide_deep_unvisited_member() -> None:
+    inner: object = 1
+    for _ in range(40):
+        inner = (inner,)
+    left = _code_with_constant((1,))
+    right = _code_with_constant((inner,))
+    _assert_incomplete(compare_code_objects(left, right))
+
+
+def test_small_length_and_type_mismatches_remain_diagnosable() -> None:
+    left = _code_with_constant((1,))
+    different_length = _code_with_constant((1, 2))
+    different_type = _code_with_constant(((1,),))
+    for right in (different_length, different_type):
+        result = compare_code_objects(left, right)
+        assert result["classification"] == "STRUCTURAL_CODE_MISMATCH"
+        assert result["marshal_equal"] is False
+        assert result["diagnostic_limited"] is False
+        assert result["attestation_override_allowed"] is False
