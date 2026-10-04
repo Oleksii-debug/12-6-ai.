@@ -35,10 +35,20 @@ _CODE_FIELDS = (
 _MAX_NODES = 10_000
 _MAX_DEPTH = 32
 _MAX_DIFFERENCES = 24
+_MAX_SCALAR_BYTES = 1_048_576
 
 
 def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _scalar_within_bound(value: Any) -> bool:
+    """Check scalar width before expensive marshal encoding or allocation."""
+    if type(value) in {str, bytes}:
+        return len(value) <= _MAX_SCALAR_BYTES
+    if type(value) is int:
+        return value.bit_length() <= 8 * _MAX_SCALAR_BYTES
+    return True
 
 
 def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
@@ -82,14 +92,20 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
                     if limited:
                         break
         elif type(left) is frozenset:
-            if len(left) > _MAX_NODES or len(right) > _MAX_NODES:
+            # Frozen members are visited as a collection, not via recursive
+            # visit calls. Charge each member to the global three-pass budget.
+            visited += len(left) + len(right)
+            if visited > _MAX_NODES:
                 limited = True
                 return
             # Nested frozensets and code objects can trigger expensive recursive
             # hashing or marshal traversal beyond our depth/node budget.
             # Diagnose only known scalar members, otherwise fail closed.
             scalar = {type(None), type(Ellipsis), bool, int, float, complex, str, bytes}
-            if any(type(item) not in scalar for item in left | right):
+            if any(
+                type(item) not in scalar or not _scalar_within_bound(item)
+                for item in left | right
+            ):
                 limited = True
                 return
             # Hash each scalar separately so outer marshal alias/reference flags
@@ -110,6 +126,9 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
             if marshal.dumps(left) != marshal.dumps(right):
                 differences.append(path)
         elif type(left) in {type(None), type(Ellipsis), bool, int, str, bytes}:
+            if not _scalar_within_bound(left) or not _scalar_within_bound(right):
+                limited = True
+                return
             if left != right:
                 differences.append(path)
         else:
