@@ -41,6 +41,7 @@ REQUIRED_PROMOTION_GATES = {
     "checkpoint_integrity_terminal_retest",
     "selection_validation_terminal",
     "exact_code_model_tokenizer_data_config_hashes",
+    "cross_scale_hyperparameter_evidence",
     "bounded_pilot_loss_and_numerics",
     "compute_authorization_for_material_cost",
     "independent_audit",
@@ -53,6 +54,7 @@ REQUIRED_METRICS = {
     "gradient_health",
     "tokens_per_second",
     "peak_memory_bytes",
+    "non_embedding_flops_per_token",
     "checkpoint_resume_equivalence",
     "deterministic_rebuild_or_seed_evidence",
 }
@@ -61,6 +63,29 @@ EXPECTED_SOURCE_URLS = {
     "https://arxiv.org/abs/2203.15556",
     "https://arxiv.org/abs/2402.14905",
     "https://arxiv.org/abs/2502.02737",
+    "https://arxiv.org/abs/2407.17465",
+    "https://arxiv.org/abs/2401.02954",
+    "https://arxiv.org/abs/2608.18062",
+}
+
+REQUIRED_TRANSFER_PATHS = {
+    "scale_specific_retuning_on_matched_data_tokenizer_metric_contract",
+    "u_mup_proxy_transfer_with_matched_standard_parameterization_control",
+}
+
+REQUIRED_TRANSFER_RECORDS = {
+    "learning_rate",
+    "optimizer_betas",
+    "weight_decay",
+    "warmup",
+    "scheduler",
+    "batch_tokens",
+    "gradient_clip",
+    "precision",
+    "initialization_or_parameterization",
+    "seed",
+    "loss_curve",
+    "gradient_health",
 }
 
 
@@ -99,7 +124,11 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
     boundaries = data.get("hard_boundaries")
     _expect(errors, isinstance(boundaries, dict), "hard_boundaries must be an object")
     if isinstance(boundaries, dict):
-        _expect(errors, boundaries.get("base_lineage") == "PRETRAINING_ONLY", "Base lineage drift")
+        _expect(
+            errors,
+            boundaries.get("base_lineage") == "PRETRAINING_ONLY",
+            "Base lineage drift",
+        )
         for key in (
             "foreign_pretrained_weights_allowed",
             "alignment_or_personality_in_base_allowed",
@@ -109,63 +138,235 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
             "corpus_mutation_in_this_package",
             "checkpoint_code_mutation_in_this_package",
         ):
-            _expect(errors, boundaries.get(key) is False, f"hard_boundaries.{key} must be false")
+            _expect(
+                errors,
+                boundaries.get(key) is False,
+                f"hard_boundaries.{key} must be false",
+            )
 
     readiness = data.get("current_readiness")
     _expect(errors, isinstance(readiness, dict), "current_readiness must be an object")
     if isinstance(readiness, dict):
-        _expect(errors, readiness.get("research_corpus_v1_identity") is None, "v1 snapshot must not fabricate corpus identity")
-        _expect(errors, readiness.get("tokenizer_fit_identity") is None, "v1 snapshot must not fabricate tokenizer identity")
-        _expect(errors, readiness.get("compute_authorization") == "NOT_AUTHORIZED", "compute authorization drift")
-        _expect(errors, readiness.get("long_training_decision") == "BLOCKED", "long training must remain blocked")
+        _expect(
+            errors,
+            readiness.get("research_corpus_v1_identity") is None,
+            "v1 snapshot must not fabricate corpus identity",
+        )
+        _expect(
+            errors,
+            readiness.get("tokenizer_fit_identity") is None,
+            "v1 snapshot must not fabricate tokenizer identity",
+        )
+        _expect(
+            errors,
+            readiness.get("compute_authorization") == "NOT_AUTHORIZED",
+            "compute authorization drift",
+        )
+        _expect(
+            errors,
+            readiness.get("long_training_decision") == "BLOCKED",
+            "long training must remain blocked",
+        )
 
     principles = data.get("scientific_principles")
-    _expect(errors, isinstance(principles, dict), "scientific_principles must be an object")
+    _expect(
+        errors,
+        isinstance(principles, dict),
+        "scientific_principles must be an object",
+    )
     if isinstance(principles, dict):
         for key in (
             "parameter_count_is_not_quality",
             "parameter_count_is_not_training_authorization",
             "data_quality_and_mixture_are_independent_axes",
             "tokenizer_identity_must_be_bound_before_learned_campaign",
+            "cross_scale_hyperparameters_require_evidence",
         ):
-            _expect(errors, principles.get(key) is True, f"scientific_principles.{key} must be true")
-        _expect(errors, principles.get("cross_tokenizer_primary_metric") == "bits_per_byte", "cross-tokenizer primary metric must be BPB")
+            _expect(
+                errors,
+                principles.get(key) is True,
+                f"scientific_principles.{key} must be true",
+            )
+        _expect(
+            errors,
+            principles.get("cross_tokenizer_primary_metric") == "bits_per_byte",
+            "cross-tokenizer primary metric must be BPB",
+        )
+        _expect(
+            errors,
+            principles.get("primary_scale_measurement")
+            == "measured_non_embedding_flops_per_token_with_parameter_count_reported",
+            "primary scale measurement must include compute, not parameter count alone",
+        )
 
     matrix = data.get("experiment_matrix")
     _expect(errors, isinstance(matrix, list), "experiment_matrix must be an array")
     if isinstance(matrix, list):
         ids = [entry.get("id") for entry in matrix if isinstance(entry, dict)]
         _expect(errors, len(ids) == len(set(ids)), "experiment ids must be unique")
-        _expect(errors, set(ids) == {"R01-E00", "R01-E10", "R01-E20", "R01-E30"}, "experiment matrix ids mismatch")
+        _expect(
+            errors,
+            set(ids) == {"R01-E00", "R01-E10", "R01-E20", "R01-E30"},
+            "experiment matrix ids mismatch",
+        )
         for entry in matrix:
             if not isinstance(entry, dict):
                 errors.append("experiment entry must be an object")
                 continue
             if entry.get("long_training") is True:
-                _expect(errors, entry.get("authorized_now") is False, f"{entry.get('id')} long training cannot be authorized now")
+                _expect(
+                    errors,
+                    entry.get("authorized_now") is False,
+                    f"{entry.get('id')} long training cannot be authorized now",
+                )
             if entry.get("id") == "R01-E00":
-                _expect(errors, entry.get("parameters") == 20613440, "R01-E00 must bind exact MODEL-341 parameter count")
-                _expect(errors, entry.get("authorized_now") is True, "R01-E00 local mechanics control should remain executable")
+                _expect(
+                    errors,
+                    entry.get("parameters") == 20613440,
+                    "R01-E00 must bind exact MODEL-341 parameter count",
+                )
+                _expect(
+                    errors,
+                    entry.get("authorized_now") is True,
+                    "R01-E00 local mechanics control should remain executable",
+                )
             if entry.get("id") == "R01-E10":
-                _expect(errors, entry.get("tokenizer_candidate_vocab_sizes") == [320, 384, 437, 512], "R01-E10 tokenizer grid drift")
+                _expect(
+                    errors,
+                    entry.get("tokenizer_candidate_vocab_sizes") == [320, 384, 437, 512],
+                    "R01-E10 tokenizer grid drift",
+                )
             if entry.get("id") in {"R01-E20", "R01-E30"}:
-                _expect(errors, entry.get("planned_tokens_per_parameter") == [10, 20, 40], f"{entry.get('id')} token sweep drift")
-        e30 = next((entry for entry in matrix if isinstance(entry, dict) and entry.get("id") == "R01-E30"), {})
-        _expect(errors, e30.get("parameter_targets") == [20000000, 50000000, 100000000], "R01-E30 target ladder drift")
-        _expect(errors, e30.get("freeze_100m_modelspec_now") is False, "100M ModelSpec must not be frozen before measured evidence")
+                _expect(
+                    errors,
+                    entry.get("planned_tokens_per_parameter") == [10, 20, 40],
+                    f"{entry.get('id')} token sweep drift",
+                )
+        e30 = next(
+            (
+                entry
+                for entry in matrix
+                if isinstance(entry, dict) and entry.get("id") == "R01-E30"
+            ),
+            {},
+        )
+        _expect(
+            errors,
+            e30.get("parameter_targets") == [20000000, 50000000, 100000000],
+            "R01-E30 target ladder drift",
+        )
+        _expect(
+            errors,
+            e30.get("freeze_100m_modelspec_now") is False,
+            "100M ModelSpec must not be frozen before measured evidence",
+        )
+        _expect(
+            errors,
+            e30.get("requires_cross_scale_hyperparameter_evidence") is True,
+            "R01-E30 must require cross-scale hyperparameter evidence",
+        )
+
+    optimizer = data.get("optimizer_research")
+    _expect(errors, isinstance(optimizer, dict), "optimizer_research must be an object")
+    if isinstance(optimizer, dict):
+        _expect(
+            errors,
+            optimizer.get("silent_cross_scale_hyperparameter_copy_allowed") is False,
+            "silent cross-scale hyperparameter copy must remain forbidden",
+        )
+
+    transfer = data.get("cross_scale_hyperparameter_transfer")
+    _expect(
+        errors,
+        isinstance(transfer, dict),
+        "cross_scale_hyperparameter_transfer must be an object",
+    )
+    if isinstance(transfer, dict):
+        _expect(
+            errors,
+            transfer.get("status") == "EXPERIMENT_PROPOSAL_ONLY",
+            "cross-scale transfer must remain an experiment proposal",
+        )
+        _expect(
+            errors,
+            transfer.get("silent_20m_to_50m_or_100m_copy_allowed") is False,
+            "silent 20M hyperparameter copy must remain forbidden",
+        )
+        _expect(
+            errors,
+            transfer.get("required_policy")
+            == "either_scale_specific_retuning_or_validated_transfer_parameterization",
+            "cross-scale hyperparameter policy drift",
+        )
+        _expect(
+            errors,
+            transfer.get("u_mup_adopted_now") is False,
+            "u-muP may not be silently adopted by the planning contract",
+        )
+        _expect(
+            errors,
+            transfer.get("u_mup_reference") == "https://arxiv.org/abs/2407.17465",
+            "u-muP reference drift",
+        )
+        paths = transfer.get("allowed_evidence_paths")
+        _expect(
+            errors,
+            isinstance(paths, list) and REQUIRED_TRANSFER_PATHS.issubset(set(paths)),
+            "cross-scale transfer evidence paths are incomplete",
+        )
+        records = transfer.get("must_record")
+        _expect(
+            errors,
+            isinstance(records, list) and REQUIRED_TRANSFER_RECORDS.issubset(set(records)),
+            "cross-scale transfer record set is incomplete",
+        )
+        _expect(
+            errors,
+            transfer.get("transfer_parameter_targets") == [50000000, 100000000],
+            "cross-scale transfer targets drift",
+        )
+
+    compute = data.get("compute_accounting")
+    _expect(errors, isinstance(compute, dict), "compute_accounting must be an object")
+    if isinstance(compute, dict):
+        for key in (
+            "parameter_count_report_required",
+            "measured_or_exact_non_embedding_flops_per_token_required",
+            "attention_compute_must_be_included",
+            "vocabulary_projection_compute_reported_separately",
+            "tokens_per_parameter_grid_is_measurement_grid",
+        ):
+            _expect(errors, compute.get(key) is True, f"compute_accounting.{key} must be true")
+        for key in (
+            "parameter_only_6nd_is_primary_scale_axis",
+            "tokens_per_parameter_grid_is_declared_optimum",
+        ):
+            _expect(errors, compute.get(key) is False, f"compute_accounting.{key} must be false")
 
     gates = data.get("promotion_gates")
     _expect(errors, isinstance(gates, list), "promotion_gates must be an array")
     if isinstance(gates, list):
-        _expect(errors, REQUIRED_PROMOTION_GATES.issubset(set(gates)), "promotion gate set is incomplete")
+        _expect(
+            errors,
+            REQUIRED_PROMOTION_GATES.issubset(set(gates)),
+            "promotion gate set is incomplete",
+        )
 
     metrics = data.get("metric_contract")
     _expect(errors, isinstance(metrics, dict), "metric_contract must be an object")
     if isinstance(metrics, dict):
         required = metrics.get("required")
-        _expect(errors, isinstance(required, list), "metric_contract.required must be an array")
+        _expect(
+            errors,
+            isinstance(required, list),
+            "metric_contract.required must be an array",
+        )
         if isinstance(required, list):
-            _expect(errors, REQUIRED_METRICS.issubset(set(required)), "required metric set is incomplete")
+            _expect(
+                errors,
+                REQUIRED_METRICS.issubset(set(required)),
+                "required metric set is incomplete",
+            )
         _expect(
             errors,
             metrics.get("tokenizer_comparison_rule")
@@ -177,7 +378,11 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
     _expect(errors, isinstance(sources, list), "research_sources must be an array")
     if isinstance(sources, list):
         urls = {item.get("url") for item in sources if isinstance(item, dict)}
-        _expect(errors, EXPECTED_SOURCE_URLS.issubset(urls), "required research source set is incomplete")
+        _expect(
+            errors,
+            EXPECTED_SOURCE_URLS.issubset(urls),
+            "required research source set is incomplete",
+        )
 
     return errors
 
@@ -190,8 +395,10 @@ def validate_path(path: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    path = Path(argv[1]) if len(argv) > 1 else Path(
-        "configs/research/r01_20m_to_100m_scaling_campaign_v1.json"
+    path = (
+        Path(argv[1])
+        if len(argv) > 1
+        else Path("configs/research/r01_20m_to_100m_scaling_campaign_v1.json")
     )
     errors = validate_path(path)
     if errors:
