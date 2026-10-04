@@ -1745,3 +1745,15 @@ def test_active_pointer_rejects_untrusted_manifest_variants(
     assert rejected.active is False
     assert len(rejected.blockers) == 1
     assert rejected.blockers[0].startswith("current_run_trusted_launch_manifest_invalid:")
+
+
+def test_pointer_decoder_bounds_remote_bytes_and_recursion() -> None:
+    oversized = (
+        b'{"padding":"' + b"a" * current_run.MAX_CURRENT_RUN_POINTER_BYTES
+    )
+    with pytest.raises(ValueError, match="current_run_pointer_exceeds_byte_limit"):
+        decode_current_run_pointer_state(oversized)
+
+    deep_json = b'{"nested":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}"
+    with pytest.raises(ValueError, match="current_run_pointer_json_invalid"):
+        decode_current_run_pointer_state(deep_json)
