@@ -243,16 +243,11 @@ class Trainer:
             raise ValueError("checkpoint optimizer state must be a mapping")
         source_groups = state.get("param_groups")
         expected = self._optimizer_parameter_name_groups()
-        live_groups = self.optimizer.state_dict().get("param_groups")
-        if (
-            not isinstance(source_groups, list)
-            or not isinstance(live_groups, list)
-            or len(source_groups) != len(expected)
-            or len(live_groups) != len(expected)
-        ):
+        if not isinstance(source_groups, list) or len(source_groups) != len(expected):
             raise ValueError("checkpoint optimizer parameter-name group count differs")
-        for index, (saved_group, live_group, names) in enumerate(
-            zip(source_groups, live_groups, expected, strict=True)
+        next_id = 0
+        for index, (saved_group, names) in enumerate(
+            zip(source_groups, expected, strict=True)
         ):
             if (
                 not isinstance(saved_group, Mapping)
@@ -263,18 +258,20 @@ class Trainer:
                     "checkpoint optimizer parameter order/identity differs "
                     f"in group {index}; legacy unnamed optimizer state is not exact-resumable"
                 )
-            # PyTorch assigns optimizer state to live parameters by positional
-            # serialized ID, not by param_names. Reordered or numeric-aliased IDs
-            # can silently exchange same-shaped AdamW moments despite correct names.
+            # PyTorch assigns unique parameters ordinal IDs in optimizer-group
+            # order. Derive this layout from the live parameter groups already
+            # checked above; state_dict() may have harmful export side effects.
             saved_ids = saved_group.get("params")
-            live_ids = live_group.get("params") if isinstance(live_group, Mapping) else None
+            canonical_ids = list(range(next_id, next_id + len(names)))
+            next_id += len(names)
             if (
                 not isinstance(saved_ids, list)
-                or not isinstance(live_ids, list)
-                or len(saved_ids) != len(live_ids)
+                or len(saved_ids) != len(canonical_ids)
                 or any(
-                    type(saved_id) is not type(live_id) or saved_id != live_id
-                    for saved_id, live_id in zip(saved_ids, live_ids, strict=True)
+                    type(saved_id) is not int or saved_id != canonical_id
+                    for saved_id, canonical_id in zip(
+                        saved_ids, canonical_ids, strict=True
+                    )
                 )
             ):
                 raise ValueError(

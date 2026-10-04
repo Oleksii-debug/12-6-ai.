@@ -213,3 +213,31 @@ def test_sealed_id_alias_or_permutation_refused_before_model_apply_and_retryable
         torch.testing.assert_close(
             getattr(source_model, name), getattr(target_model, name), rtol=0, atol=0,
         )
+
+
+@pytest.mark.parametrize("separate_groups", [False, True], ids=["one", "two"])
+def test_id_preflight_never_reexports_an_effectful_live_optimizer(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state: Any,
+    separate_groups: bool,
+) -> None:
+    """Validate canonical ID order without invoking a second state export."""
+    source_model = _TwoSameShapeParameters()
+    source = _trainer(source_model, separate_groups=separate_groups)
+    state = source.state_dict().optimizer
+    target_model = _TwoSameShapeParameters()
+    target = _trainer(target_model, separate_groups=separate_groups)
+    before = {name: value.clone() for name, value in target_model.state_dict().items()}
+    called: list[bool] = []
+
+    def forbidden_export() -> None:
+        called.append(True)
+        with torch.no_grad():
+            target_model.left.add_(1.0)
+        raise AssertionError("preflight called effectful optimizer.state_dict")
+
+    monkeypatch.setattr(target.optimizer, "state_dict", forbidden_export)
+    target._require_optimizer_state_parameter_order(state)
+    assert called == []
+    for name, value in before.items():
+        torch.testing.assert_close(target_model.state_dict()[name], value, rtol=0, atol=0)
