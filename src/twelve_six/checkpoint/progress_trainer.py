@@ -27,6 +27,7 @@ from .d04_resume_binding import assert_d04_resume_binding
 from .progress_binding import _assert_progress
 from .trainer_adapter import (
     _assert_bound_metadata,
+    _assert_d02_checkpoint_rng_policy,
     _assert_trainer_model_binding,
     _preflight_trainer_state,
     _preflight_trainer_target,
@@ -231,9 +232,10 @@ def load_trainer_checkpoint(
     del verified
     trainer_state = combined_state.get("trainer")
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
-    materialized = _prepare_model_weights(model, arrays, strict_model)
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
+        _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
+    materialized = _prepare_model_weights(model, arrays, strict_model)
     del arrays
 
     # Preflight prevents known incompatibilities, but an application-time
