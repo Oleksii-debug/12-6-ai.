@@ -518,10 +518,39 @@ def _assert_d02_checkpoint_rng_policy(
         )
 
 
+def _snapshot_torch_policy(state: Mapping[str, Any]) -> tuple[bool, bool] | None:
+    """Pin the live policy before any model or trainer loader can mutate it."""
+
+    if not state.get("torch"):
+        return None
+    torch = importlib.import_module("torch")
+    return (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+
+def _restore_initial_torch_policy(
+    initial_policy: tuple[bool, bool] | None, exc: BaseException,
+) -> None:
+    """Best-effort rollback without masking an application-stage failure."""
+
+    if initial_policy is None:
+        return
+    try:
+        torch = importlib.import_module("torch")
+        torch.use_deterministic_algorithms(
+            initial_policy[0], warn_only=initial_policy[1],
+        )
+    except BaseException as mode_exc:
+        exc.add_note(f"PyTorch initial-mode rollback also failed: {mode_exc!r}")
+
+
 def _restore_checkpoint_rng_preserving_warn_only(
     state: Mapping[str, Any],
     *,
     restore: Any,
+    initial_policy: tuple[bool, bool] | None = None,
 ) -> None:
     """Do not erase the live PyTorch warn-only policy on checkpoint RNG replay.
 
@@ -530,33 +559,21 @@ def _restore_checkpoint_rng_preserving_warn_only(
     core RNG restore defaults warn_only to False even when it was True.
     """
 
-    torch_state = state.get("torch")
-    warn_only = None
-    if torch_state:
-        torch = importlib.import_module("torch")
-        enabled = torch.are_deterministic_algorithms_enabled()
-        warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    policy = initial_policy
+    if policy is None:
+        policy = _snapshot_torch_policy(state)
     try:
         restore(state)
-        if warn_only is not None:
+        if policy is not None:
+            torch = importlib.import_module("torch")
             torch.use_deterministic_algorithms(
-                torch.are_deterministic_algorithms_enabled(), warn_only=warn_only,
+                torch.are_deterministic_algorithms_enabled(),
+                warn_only=policy[1],
             )
     except BaseException as exc:
-        # Final replay or its follow-up policy application can partially
-        # change process-global PyTorch execution
-        # mode before it fails. The target trainer is poisoned by the caller,
-        # but unrelated trainers must not inherit a half-applied mode.
-        if warn_only is not None:
-            try:
-                torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
-            except BaseException as mode_exc:
-                # Never replace the primary interrupted/failed RNG restore.
-                if hasattr(exc, "add_note"):
-                    exc.add_note(
-                        "PyTorch deterministic-mode rollback also failed: "
-                        f"{mode_exc!r}"
-                    )
+        # Model/trainer loaders may already have changed process-global mode.
+        # Roll back to the pre-application policy, not to that later value.
+        _restore_initial_torch_policy(policy, exc)
         raise
 
 
@@ -656,6 +673,7 @@ def load_trainer_checkpoint(
     else:
         _assert_live_d02_determinism(trainer)
     materialized = _prepare_model_weights(model, arrays, strict_model)
+    policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
 
     # The decoded source weights are no longer needed after target materialization.
     # Releasing them before the first mutation keeps resume peak memory bounded as
@@ -670,9 +688,14 @@ def load_trainer_checkpoint(
         trainer.load_state_dict(trainer_state)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
-                combined_state["rng"], restore=restore_rng_state,
+                combined_state["rng"],
+                restore=restore_rng_state,
+                initial_policy=policy_before_apply,
             )
-    except BaseException:
+        else:
+            _assert_live_d02_determinism(trainer)
+    except BaseException as exc:
+        _restore_initial_torch_policy(policy_before_apply, exc)
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             if trainer._failure_reason is None:
                 trainer._failure_reason = "checkpoint_restore_apply_failed"
