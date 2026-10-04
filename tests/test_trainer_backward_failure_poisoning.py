@@ -1041,3 +1041,66 @@ def test_disabled_scaler_legacy_none_state_remains_restoreable():
     receiver.load_state_dict(replace(state, scaler=None))
     assert receiver.train_microbatch(_BATCH).optimizer_stepped is True
     assert receiver.state_dict().optimizer_step == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("weight_decay", float("nan")),
+        ("weight_decay", -0.1),
+        ("eps", float("nan")),
+        ("eps", 0.0),
+        ("betas", (float("nan"), 0.9)),
+        ("betas", (0.9, 1.0)),
+        ("betas", (True, 0.9)),
+    ],
+)
+def test_secondary_group_corrupt_adamw_hyperparameters_cannot_write_nan_weights(
+    field, bad_value
+):
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TwoGroupModel()
+    optimizer = torch.optim.AdamW(
+        [
+            {"params": [model.weight], "lr": 1e-3},
+            {"params": [model.extra], "lr": 2e-3},
+        ],
+    )
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17), optimizer=optimizer)
+    original_weight = model.weight.detach().clone()
+    original_extra = model.extra.detach().clone()
+    trainer.optimizer.param_groups[1][field] = bad_value
+
+    with pytest.raises(NonFiniteTrainingError, match=f"optimizer {field}"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert model.weight.grad is None
+    assert model.extra.grad is None
+    torch.testing.assert_close(model.weight, original_weight, rtol=0, atol=0)
+    torch.testing.assert_close(model.extra, original_extra, rtol=0, atol=0)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_distinct_valid_adamw_group_hyperparameters_complete_update():
+    model = _TwoGroupModel()
+    optimizer = torch.optim.AdamW(
+        [
+            {"params": [model.weight], "lr": 1e-3, "weight_decay": 0.0, "eps": 1e-8},
+            {"params": [model.extra], "lr": 2e-3, "weight_decay": 0.1, "eps": 1e-6},
+        ],
+    )
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17), optimizer=optimizer)
+    optimizer.param_groups[1]["betas"] = (0.85, 0.95)
+    previous_weight = model.weight.detach().clone()
+    previous_extra = model.extra.detach().clone()
+
+    metrics = trainer.train_microbatch(_BATCH)
+    assert metrics.optimizer_stepped is True
+    assert trainer.optimizer_step == 1
+    assert not torch.equal(model.weight, previous_weight)
+    assert not torch.equal(model.extra, previous_extra)
+    assert trainer.state_dict().optimizer_step == 1
