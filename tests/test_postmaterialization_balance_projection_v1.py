@@ -933,7 +933,6 @@ def test_strict_current_clean_json_keeps_valid_finite_float(literal: str) -> Non
     assert decoded["value"] == float(literal)
 
 
-
 @pytest.mark.parametrize(
     "raw",
     (
