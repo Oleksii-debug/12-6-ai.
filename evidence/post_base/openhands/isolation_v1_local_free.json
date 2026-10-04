@@ -1,0 +1,78 @@
+{
+  "artifact_sha256": "893e92304ad371e6ee7987e3e7a9cf75dcb72d1ca4d47fd05e1bf47d136d05e3",
+  "evidence_kind": "LOCAL_FREE_CANDIDATE_MECHANICS",
+  "qualification_id": "OPENHANDS-SDK-ISOLATION-V1",
+  "report": {
+    "backend_executed": false,
+    "canonical_base_dependency": false,
+    "contract": "OPENHANDS-SDK-ISOLATION-V1",
+    "declared_tools": [
+      "file_editor",
+      "task_tracker",
+      "terminal"
+    ],
+    "evidence_id": "4986ab1682edd465c5cefd17b1b2d8d0a814489458cf2de9ca9f219b2ceac594",
+    "external_agent_quality_claimed": false,
+    "policy": {
+      "allowed_tools": [
+        "file_editor",
+        "task_tracker",
+        "terminal"
+      ],
+      "audit_log": true,
+      "cpu_cores": 4,
+      "filesystem_roots": [
+        "/workspace"
+      ],
+      "inherit_host_env": false,
+      "isolation_mode": "ephemeral_sandbox",
+      "max_processes": 64,
+      "max_wall_seconds": 900,
+      "memory_mb": 4096,
+      "network_hosts": [],
+      "persistence": "ephemeral",
+      "promotion_state": "CANDIDATE",
+      "provenance_log": true,
+      "secret_names": [],
+      "secrets_injected_by_broker": true
+    },
+    "project_binding": {
+      "base_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+      "control_issue": 720,
+      "lane_issue": 10,
+      "registry_blob_sha": "d80a60357c56eacac135f948b8a72556bb849e5a",
+      "registry_component": {
+        "canonical_base_dependency": false,
+        "decision": "P1_POSTBASE_ISOLATION_REFERENCE",
+        "id": "OPENHANDS_AGENT_SDK",
+        "kind": "software_agent_runtime",
+        "license": "MIT",
+        "upstream": "https://github.com/OpenHands/software-agent-sdk"
+      },
+      "registry_path": "configs/research/open_source_reuse_registry_v2.json",
+      "repository": "Oleksii-debug/12-6-ai."
+    },
+    "promotion_state": "CANDIDATE",
+    "schema_version": 1,
+    "verdict": "PASS_CANDIDATE_MECHANICS",
+    "violations": []
+  },
+  "schema_version": 1,
+  "scientific_truth": {
+    "adoption_authorized": false,
+    "backend_parity_proven": false,
+    "benchmark_or_final_test_payload_accessed": false,
+    "canonical_base_changed": false,
+    "model_training_performed": false,
+    "openhands_executed": false,
+    "openhands_imported": false,
+    "paid_compute_used": false
+  },
+  "validation": {
+    "focused_test_file": "tests/test_openhands_sdk_isolation_v1.py",
+    "focused_tests_failed": 0,
+    "focused_tests_passed": 16,
+    "python_compile_passed": true,
+    "ruff": "NOT_AVAILABLE_IN_LOCAL_SANDBOX"
+  }
+}
