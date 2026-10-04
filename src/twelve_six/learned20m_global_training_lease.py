@@ -39,6 +39,7 @@ CANONICAL_LOCK_DOMAIN = "github.com/Oleksii-debug/12-6-ai."
 GLOBAL_LEASE_REF_PREFIX = "refs/heads/ts6-training-run-lease-v1"
 GLOBAL_LEASE_STATE_PATH = "training-run-lease-v1.json"
 MAX_GLOBAL_LEASE_STATE_BYTES = 1_048_576
+MAX_GLOBAL_LEASE_COMMIT_BYTES = 4_096
 MECHANICS_SCOPE = "COOPERATIVE_GIT_REF_CAS_ON_SELECTED_TRANSPORT_ONLY"
 
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -399,6 +400,18 @@ def _fetch_remote_commit(
             raise _GlobalLeaseFailure("git_fetch_global_lease_failed")
         if _remote_tip(repo_root, remote, ref) != expected_tip:
             raise _GlobalLeaseFailure("remote_tip_changed_during_read")
+
+        # Bound rev-list --parents capture for a hostile octopus commit.
+        # Canonical writer commits have at most one parent and short fixed text.
+        commit_size = _git_ascii(
+            repo_root,
+            ["cat-file", "-s", expected_tip],
+            blocker="global_lease_commit_size_read_failed",
+        ).strip()
+        if not commit_size.isascii() or not commit_size.isdecimal() or len(commit_size) > 20:
+            raise _GlobalLeaseFailure("global_lease_commit_size_invalid")
+        if int(commit_size) > MAX_GLOBAL_LEASE_COMMIT_BYTES:
+            raise _GlobalLeaseFailure("global_lease_commit_exceeds_byte_limit")
 
         parents_output = _git_ascii(
             repo_root,
