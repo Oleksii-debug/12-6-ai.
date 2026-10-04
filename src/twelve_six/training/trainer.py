@@ -634,19 +634,30 @@ class Trainer:
         if state.optimizer_step > self.config.max_steps:
             raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
 
-        self.optimizer.load_state_dict(state.optimizer)
+        # Reject known contract mismatches before touching optimizer state.
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
-        if self.scheduler is not None and state.scheduler is not None:
-            self.scheduler.load_state_dict(state.scheduler)
-        if state.scaler is not None:
-            self.scaler.load_state_dict(state.scaler)
 
-        self.micro_step = state.micro_step
-        self.optimizer_step = state.optimizer_step
-        self.tokens_seen = state.tokens_seen
-        self._pending_tokens = 0
-        self._pending_loss_sum = 0.0
+        # From the first component load onward a failure may leave optimizer,
+        # scheduler, scaler or counters partially applied. No same-instance
+        # retry is safe without also restoring the verified model/RNG state.
+        self._update_incomplete = True
+        try:
+            self.optimizer.load_state_dict(state.optimizer)
+            self._require_optimizer_parameter_coverage()
+            if self.scheduler is not None and state.scheduler is not None:
+                self.scheduler.load_state_dict(state.scheduler)
+            if state.scaler is not None:
+                self.scaler.load_state_dict(state.scaler)
+
+            self.micro_step = state.micro_step
+            self.optimizer_step = state.optimizer_step
+            self.tokens_seen = state.tokens_seen
+            self._pending_tokens = 0
+            self._pending_loss_sum = 0.0
+            self.optimizer.zero_grad(set_to_none=True)
+        except BaseException:
+            self._mark_failed("trainer state restore failed after possible partial apply")
+            raise
         self._update_incomplete = False
         self._failure_reason = None
-        self.optimizer.zero_grad(set_to_none=True)
