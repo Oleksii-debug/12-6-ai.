@@ -379,8 +379,16 @@ def _stage_new_bytes(path: Path, raw: bytes, *, label: str) -> Path:
         if sha256_bytes(staged.read_bytes()) != sha256_bytes(raw):
             raise OSError(f"staged {label} digest mismatch")
         return staged
-    except BaseException:
-        staged.unlink(missing_ok=True)
+    except BaseException as failure:
+        try:
+            staged.unlink(missing_ok=True)
+        except OSError as cleanup_error:
+            raise RematerializationError(
+                "STAGING_CLEANUP_INCOMPLETE: "
+                f"{label} write/verification failed ({type(failure).__name__}), "
+                f"staged cleanup failed ({type(cleanup_error).__name__}); "
+                f"unpublished stage: {staged}; manual reconciliation required"
+            ) from failure
         raise
 
 
