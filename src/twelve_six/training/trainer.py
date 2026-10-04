@@ -426,9 +426,21 @@ class Trainer:
         consumed = 0
         final_metrics: StepMetrics | None = None
 
-        for batch in batches:
-            if self.optimizer_step >= self.config.max_steps:
+        try:
+            iterator = iter(batches)
+        except BaseException:
+            self._mark_failed("batch iterator construction failed")
+            raise
+        while self.optimizer_step < self.config.max_steps:
+            try:
+                batch = next(iterator)
+            except StopIteration:
                 break
+            except BaseException:
+                # A failing source may have consumed bytes, advanced its cursor
+                # or changed RNG before raising. In-place retry is not safe.
+                self._mark_failed("batch iterator failed after possible cursor advancement")
+                raise
             metrics = self.train_microbatch(batch)
             consumed += 1
             final_metrics = metrics
