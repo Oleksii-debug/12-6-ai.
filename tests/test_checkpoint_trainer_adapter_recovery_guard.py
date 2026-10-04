@@ -1025,7 +1025,7 @@ def test_real_d02_rejects_checkpoint_rng_policy_drift_before_model_mutation(
 ) -> None:
     """A sealed checkpoint cannot silently override D02's deterministic config."""
 
-    from dataclasses import replace
+    from dataclasses import asdict, replace
 
     import torch
 
@@ -1040,13 +1040,13 @@ def test_real_d02_rejects_checkpoint_rng_policy_drift_before_model_mutation(
         source_model = torch.nn.Linear(3, 3)
         source = Trainer(source_model, config)
         checkpoint = tmp_path / "mismatched-deterministic-policy"
-        # Deliberately save a valid checkpoint while an external component
-        # has changed the process-global policy away from source.config.
+        # Test the loader against an integrity-valid but semantically invalid
+        # low-level checkpoint; the public D02 save adapter now rejects it.
         torch.use_deterministic_algorithms(False, warn_only=False)
-        trainer_adapter.save_trainer_checkpoint(
+        core.save_checkpoint(
             checkpoint,
             model=source_model,
-            trainer=source,
+            trainer_state=asdict(source.state_dict()),
             identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
         )
         model = torch.nn.Linear(3, 3)
@@ -1078,6 +1078,106 @@ def test_real_d02_rejects_checkpoint_rng_policy_drift_before_model_mutation(
         assert trainer._failure_reason is None
         assert trainer._update_incomplete is False
         assert torch.are_deterministic_algorithms_enabled()
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+@pytest.mark.parametrize("drift", ["enabled", "warn_only"])
+def test_real_d02_refuses_to_publish_checkpoint_with_ambient_policy_drift(
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    """A live policy mismatch must not create a non-resumable D02 checkpoint."""
+
+    from dataclasses import replace
+
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    ambient = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        config = TrainerConfig(max_steps=10, seed=703, deterministic_warn_only=True)
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, config)
+        if drift == "enabled":
+            torch.use_deterministic_algorithms(False, warn_only=True)
+        else:
+            torch.use_deterministic_algorithms(True, warn_only=False)
+        destination = tmp_path / "must-not-publish"
+        with pytest.raises(CheckpointCompatibilityError, match="live torch deterministic policy"):
+            trainer_adapter.save_trainer_checkpoint(
+                destination,
+                model=model,
+                trainer=trainer,
+                identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
+            )
+        assert not destination.exists()
+        assert list(tmp_path.iterdir()) == []
+        assert trainer._failure_reason is None
+        assert trainer._update_incomplete is False
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+@pytest.mark.parametrize("restore_rng", [False, True])
+@pytest.mark.parametrize("drift", ["enabled", "warn_only"])
+def test_real_d02_refuses_restore_under_live_policy_drift_before_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+    restore_rng: bool,
+    drift: str,
+) -> None:
+    """Even opting out of replay cannot make an unsafe ambient D02 mode safe."""
+
+    from dataclasses import replace
+
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    ambient = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        config = TrainerConfig(max_steps=10, seed=703, deterministic_warn_only=True)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        checkpoint = tmp_path / "valid-checkpoint"
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
+        )
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, config)
+        before = [parameter.detach().clone() for parameter in model.parameters()]
+        if drift == "enabled":
+            torch.use_deterministic_algorithms(False, warn_only=True)
+        else:
+            torch.use_deterministic_algorithms(True, warn_only=False)
+        loader_module = progress_trainer if use_progress else trainer_adapter
+
+        def forbidden_materialization(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("live policy mismatch must reject before materialization")
+
+        monkeypatch.setattr(loader_module, "_prepare_model_weights", forbidden_materialization)
+        with pytest.raises(CheckpointCompatibilityError, match="live torch deterministic policy"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=restore_rng,
+            )
+        for parameter, saved in zip(model.parameters(), before, strict=True):
+            torch.testing.assert_close(parameter.detach(), saved)
+        assert trainer._failure_reason is None
+        assert trainer._update_incomplete is False
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
