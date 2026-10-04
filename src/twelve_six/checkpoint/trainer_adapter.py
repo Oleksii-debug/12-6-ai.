@@ -32,6 +32,7 @@ from .core import (
     restore_rng_state,
     save_checkpoint,
 )
+from .expected_binding import _validate_expected_canonical_binding
 
 _CANONICAL_TRAINER_STATE_FIELDS = frozenset(
     {
@@ -726,6 +727,15 @@ def load_trainer_checkpoint(
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
+    _validate_expected_canonical_binding(
+        expected_init_spec_hash=expected_init_spec_hash,
+        expected_split_identity=expected_split_identity,
+        expected_packing_hash=expected_packing_hash,
+        expected_packing_version=expected_packing_version,
+        expected_training_config_hash=expected_training_config_hash,
+        expected_environment_lock_hash=expected_environment_lock_hash,
+        expected_seed=expected_seed,
+    )
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_target(trainer)
     verified = prepare_checkpoint_load(directory)
