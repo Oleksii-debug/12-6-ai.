@@ -23,76 +23,26 @@ from .core import (
     prepare_checkpoint_load,
     restore_rng_state,
 )
-from .d04_resume_binding import assert_d04_resume_binding
-from .progress_binding import _assert_progress
+from .d04_resume_binding import assert_d04_resume_binding, _require_sha256
+from .expected_binding import (
+    _require_expected_nonempty_string,
+    _require_expected_sha256,
+    _validate_expected_canonical_binding,
+    _validate_expected_core_identity,
+)
+from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
     _assert_bound_metadata,
+    _assert_d02_checkpoint_rng_policy,
+    _assert_live_d02_determinism,
     _assert_trainer_model_binding,
     _preflight_trainer_state,
     _preflight_trainer_target,
+    _restore_ambient_rng_after_failed_apply,
     _restore_checkpoint_rng_preserving_warn_only,
+    _restore_initial_torch_policy,
+    _snapshot_torch_policy,
 )
-
-_HEX = frozenset("0123456789abcdef")
-
-
-def _require_expected_sha256(value: str | None, *, field: str) -> None:
-    if value is None:
-        return
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or value != value.lower()
-        or any(character not in _HEX for character in value)
-    ):
-        raise _core.CheckpointCompatibilityError(
-            f"{field} must be an exact lowercase 64-hex SHA-256 or None"
-        )
-
-
-def _require_expected_nonempty_string(value: str | None, *, field: str) -> None:
-    if value is not None and (not isinstance(value, str) or not value):
-        raise _core.CheckpointCompatibilityError(
-            f"{field} must be a non-empty string or None"
-        )
-
-
-def _validate_expected_canonical_binding(
-    *,
-    expected_init_spec_hash: str | None,
-    expected_split_identity: str | None,
-    expected_packing_hash: str | None,
-    expected_packing_version: str | None,
-    expected_training_config_hash: str | None,
-    expected_environment_lock_hash: str | None,
-    expected_seed: int | None,
-) -> None:
-    """Reject malformed caller provenance before accepting equal malformed metadata."""
-
-    for field, value in (
-        ("expected_init_spec_hash", expected_init_spec_hash),
-        ("expected_packing_hash", expected_packing_hash),
-        ("expected_training_config_hash", expected_training_config_hash),
-        ("expected_environment_lock_hash", expected_environment_lock_hash),
-    ):
-        _require_expected_sha256(value, field=field)
-    _require_expected_nonempty_string(
-        expected_split_identity,
-        field="expected_split_identity",
-    )
-    _require_expected_nonempty_string(
-        expected_packing_version,
-        field="expected_packing_version",
-    )
-    if expected_seed is not None and (
-        not isinstance(expected_seed, int)
-        or isinstance(expected_seed, bool)
-        or expected_seed < 0
-    ):
-        raise _core.CheckpointCompatibilityError(
-            "expected_seed must be a non-negative integer or None"
-        )
-
 
 def load_trainer_checkpoint(
     directory: str | Path,
@@ -142,6 +92,14 @@ def load_trainer_checkpoint(
         expected_previous_run_id,
         field="expected_previous_run_id",
     )
+    _validate_expected_core_identity(
+        expected_git_sha=expected_git_sha,
+        expected_model_spec_hash=expected_model_spec_hash,
+        expected_tokenizer_hash=expected_tokenizer_hash,
+        expected_tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        expected_dataset_manifest_hash=expected_dataset_manifest_hash,
+        expected_run_manifest_hash=expected_run_manifest_hash,
+    )
     _validate_expected_canonical_binding(
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
@@ -151,6 +109,20 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
+
+    _validate_expected_counter(_core, "step", expected_step)
+    _validate_expected_counter(_core, "tokens_seen", expected_tokens_seen)
+    for field, value in (
+        ("expected_ledger_identity_sha256", expected_ledger_identity_sha256),
+        ("expected_materialization_identity_sha256", expected_materialization_identity_sha256),
+        ("expected_packing_identity_sha256", expected_packing_identity_sha256),
+        ("expected_exposure_plan_identity_sha256", expected_exposure_plan_identity_sha256),
+        ("expected_ordered_next_exposure_identity_sha256", (
+            expected_ordered_next_exposure_identity_sha256
+        )),
+    ):
+        if value is not None:
+            _require_sha256(value, field=field)
 
     # A canonical trainer's optimizer belongs to trainer.model. Do not mix its
     # state with a separately supplied model, even if weight shapes match.
@@ -231,9 +203,21 @@ def load_trainer_checkpoint(
     del verified
     trainer_state = combined_state.get("trainer")
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
-    materialized = _prepare_model_weights(model, arrays, strict_model)
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
+        _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
+    else:
+        _assert_live_d02_determinism(trainer)
+    materialized = _prepare_model_weights(model, arrays, strict_model)
+    policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
+    ambient_before_apply = _core.capture_rng_state()
+    # An integrity-valid opt-out snapshot may omit torch; failure rollback
+    # must still recover the live process-global deterministic/warn-only mode.
+    rollback_policy = (
+        policy_before_apply
+        if policy_before_apply is not None
+        else _snapshot_torch_policy(ambient_before_apply)
+    )
     del arrays
 
     # Preflight prevents known incompatibilities, but an application-time
@@ -248,9 +232,17 @@ def load_trainer_checkpoint(
         # the first resumed batch sees the exact captured next draws.
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
-                combined_state["rng"], restore=restore_rng_state,
+                combined_state["rng"],
+                restore=restore_rng_state,
+                initial_policy=policy_before_apply,
             )
-    except BaseException:
+        else:
+            _assert_live_d02_determinism(trainer)
+    except BaseException as exc:
+        try:
+            _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
+        finally:
+            _restore_initial_torch_policy(rollback_policy, exc)
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             # D02 may already have recorded a more specific partial-load error
             # (including a second gradient-cleanup failure). Preserve it.
