@@ -122,6 +122,7 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
             canonical_digest = _sha256(marshal.dumps(canonical))
         except (ValueError, RecursionError, OverflowError):
             limited = True
+            live_digest = canonical_digest = None
     marshal_equal = None if limited else live_digest == canonical_digest
     if limited:
         classification = "INCOMPLETE_DIAGNOSTIC"
