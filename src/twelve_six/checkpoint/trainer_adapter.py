@@ -456,6 +456,30 @@ def _preflight_trainer_state(
             raise
 
 
+def _restore_checkpoint_rng_preserving_warn_only(
+    state: Mapping[str, Any],
+    *,
+    restore: Any,
+) -> None:
+    """Do not erase the live PyTorch warn-only policy on checkpoint RNG replay.
+
+    The V1 RNG snapshot records deterministic enablement, but not warn_only.
+    A canonical D02 Trainer has already configured its validated policy; the
+    core RNG restore defaults warn_only to False even when it was True.
+    """
+
+    torch_state = state.get("torch")
+    warn_only = None
+    if torch_state:
+        torch = importlib.import_module("torch")
+        warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    restore(state)
+    if warn_only is not None:
+        torch.use_deterministic_algorithms(
+            torch.are_deterministic_algorithms_enabled(), warn_only=warn_only,
+        )
+
+
 def save_trainer_checkpoint(
     directory: str | Path,
     *,
@@ -559,7 +583,9 @@ def load_trainer_checkpoint(
         _apply_model_weights(model, materialized, strict_model)
         trainer.load_state_dict(trainer_state)
         if restore_rng:
-            restore_rng_state(combined_state["rng"])
+            _restore_checkpoint_rng_preserving_warn_only(
+                combined_state["rng"], restore=restore_rng_state,
+            )
     except BaseException:
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             if trainer._failure_reason is None:
