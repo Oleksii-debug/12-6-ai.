@@ -89,6 +89,7 @@ def _identity() -> CheckpointIdentity:
     ],
     ids=["bool-as-int", "seed-as-float", "nested-beta-alias"],
 )
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -97,6 +98,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     field: str,
     alias: Any,
     config_betas: tuple[float, float],
+    restore_rng: bool,
 ) -> None:
     config = TrainerConfig(seed=703, max_steps=2, betas=config_betas)
     source_model = _TinyLogits()
@@ -144,7 +146,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     with pytest.raises(CheckpointCompatibilityError, match="trainer config mismatch"):
         loader.load_trainer_checkpoint(
             invalid_path, model=target_model, trainer=target,
-            strict_model=False, restore_rng=False, **extra,
+            strict_model=False, restore_rng=restore_rng, **extra,
         )
 
     assert application_calls == []
@@ -168,7 +170,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     monkeypatch.undo()
     loader.load_trainer_checkpoint(
         valid_path, model=target_model, trainer=target,
-        strict_model=False, restore_rng=False, **extra,
+        strict_model=False, restore_rng=restore_rng, **extra,
     )
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
     assert target._failure_reason is None and target._update_incomplete is False
@@ -192,6 +194,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
 )
 @pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
 @pytest.mark.parametrize("alias", [False, 0.0], ids=["bool-zero", "float-zero"])
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -199,6 +202,7 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     loader: Any,
     field: str,
     alias: Any,
+    restore_rng: bool,
 ) -> None:
     """Persist representable aliases, not just Python-only int subclasses."""
     config = TrainerConfig(seed=703, max_steps=2)
@@ -245,7 +249,7 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     ):
         loader.load_trainer_checkpoint(
             invalid_path, model=target_model, trainer=target,
-            strict_model=False, restore_rng=False, **expected,
+            strict_model=False, restore_rng=restore_rng, **expected,
         )
     assert reached_apply == []
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
@@ -266,7 +270,7 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     monkeypatch.undo()
     loader.load_trainer_checkpoint(
         valid_path, model=target_model, trainer=target,
-        strict_model=False, restore_rng=False, **expected,
+        strict_model=False, restore_rng=restore_rng, **expected,
     )
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
     source.train_microbatch(_BATCH)
