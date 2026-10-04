@@ -233,6 +233,20 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
     _semantic_stateful_probe(component, state, label=label)
 
 
+def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
+    """Refuse mismatched D02 model/optimizer owners before saving or restoring."""
+
+    if (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+        and hasattr(trainer, "model")
+        and trainer.model is not model
+    ):
+        raise CheckpointCompatibilityError(
+            "canonical trainer owns a different model than the checkpoint target"
+        )
+
+
 def _preflight_trainer_target(trainer: Any) -> None:
     """Reject a D02 trainer target that its own loader would refuse after mutation."""
 
@@ -403,6 +417,7 @@ def save_trainer_checkpoint(
 
     if not hasattr(trainer, "state_dict"):
         raise TypeError("trainer must provide state_dict()")
+    _assert_trainer_model_binding(model, trainer)
     state = _trainer_state_as_mapping(trainer.state_dict())
     return save_checkpoint(
         directory,
@@ -444,6 +459,7 @@ def load_trainer_checkpoint(
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
+    _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_target(trainer)
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
