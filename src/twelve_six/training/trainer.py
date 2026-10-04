@@ -202,6 +202,10 @@ class Trainer:
         if not trainable_ids.issubset(optimizer_ids):
             raise ValueError("optimizer omits trainable model parameters")
 
+    def _require_no_residual_model_gradients(self) -> None:
+        if any(parameter.grad is not None for parameter in self.model.parameters()):
+            raise RuntimeError("completed optimizer step left residual model gradients")
+
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
         if self.config.precision == "fp16" and self.device.type != "cuda":
@@ -447,6 +451,9 @@ class Trainer:
                 self.optimizer.zero_grad(set_to_none=True)
                 if self.scheduler is not None:
                     self.scheduler.step()
+                # A custom optimizer may silently ignore zero_grad or swap
+                # groups inside step(). Never expose that as a clean boundary.
+                self._require_no_residual_model_gradients()
             except BaseException:
                 self._mark_failed(
                     f"optimizer/scheduler update failed at micro_step={self.micro_step}"
@@ -590,6 +597,12 @@ class Trainer:
     def assert_checkpoint_safe(self) -> None:
         """Require all consumed microbatches to belong to committed optimizer steps."""
         self._assert_trainable()
+        try:
+            self._require_optimizer_parameter_coverage()
+            self._require_no_residual_model_gradients()
+        except BaseException:
+            self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
+            raise
         if self.optimizer_step > self.config.max_steps:
             raise RuntimeError("optimizer_step exceeds configured max_steps")
         self.assert_accumulation_boundary()
