@@ -653,6 +653,7 @@ def _publish_verified_outputs(
     )
     staged: list[tuple[str, Path, Path, bytes]] = []
     published: list[tuple[str, Path, str]] = []
+    preserved_stage: Path | None = None
     intent_path = pass_root / "outer-publication-intent.json"
     if any(path.resolve() == intent_path.resolve() for _, path, _ in outputs):
         raise RematerializationError("outer output cannot alias publication intent")
@@ -675,13 +676,15 @@ def _publish_verified_outputs(
             try:
                 _link_verified_new_bytes(temporary, path, raw, label=label)
             except RematerializationError as exc:
+                if isinstance(exc, PublicationIndeterminate):
+                    preserved_stage = exc.staged
                 observed = [
                     {"label": done_label, "path": str(done_path), "sha256": digest}
                     for done_label, done_path, digest in published
                 ]
                 raise RematerializationError(
                     f"partial outer publication; commit receipt not verified; "
-                    f"inspect {intent_path} and verify immutable outputs {observed}; "
+                    f"{exc}; inspect {intent_path} and verify outputs {observed}; "
                     f"manual reconciliation required before retry"
                 ) from exc
             published.append((label, path, sha256_bytes(raw)))
@@ -690,6 +693,8 @@ def _publish_verified_outputs(
         cleanup_error: OSError | None = None
         cleanup_failures: list[str] = []
         for _, _, temporary, _ in staged:
+            if temporary == preserved_stage:
+                continue  # Indeterminate final: retain the original inode alias.
             try:
                 temporary.unlink(missing_ok=True)
             except OSError as exc:
