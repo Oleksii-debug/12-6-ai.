@@ -180,3 +180,143 @@ def test_generic_adapter_non_strict_remains_permissive(
     torch.testing.assert_close(target_model.extra, torch.tensor(9.0), rtol=0, atol=0)
     for name, weight in source_model.state_dict().items():
         torch.testing.assert_close(target_model.state_dict()[name], weight, rtol=0, atol=0)
+
+
+def _checkpoint_after_synthetic_adamw_update(
+    checkpoint: Path,
+    identity: CheckpointIdentity,
+    *,
+    with_buffer: bool,
+) -> tuple[torch.nn.Linear, Trainer, TrainerConfig]:
+    """Persist nonempty AdamW moments; synthetic gradients carry no training credit."""
+    from dataclasses import replace
+
+    config = TrainerConfig(max_steps=3, seed=703)
+    model = torch.nn.Linear(3, 3)
+    if with_buffer:
+        model.register_buffer("resume_scale", torch.tensor(3.0))
+    trainer = Trainer(model, config, device="cpu")
+    for parameter in model.parameters():
+        parameter.grad = torch.full_like(parameter, 0.125)
+    trainer.optimizer.step()
+    trainer.optimizer.zero_grad(set_to_none=True)
+    # Synthetic committed counters exercise the resume contract. They are not
+    # evidence of consumed corpus tokens or an admitted training campaign.
+    trainer.micro_step = 1
+    trainer.optimizer_step = 1
+    trainer.tokens_seen = 3
+    trainer.assert_checkpoint_safe()
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=model,
+        trainer=trainer,
+        identity=replace(identity, step=1, tokens_seen=3),
+    )
+    core.verify_checkpoint(checkpoint)
+    assert any(trainer.optimizer.state.values())
+    return model, trainer, config
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [True, False], ids=["replay", "opt-out"])
+@pytest.mark.parametrize("missing_from", ["checkpoint", "target"])
+def test_nonzero_adamw_resume_rejects_incomplete_persistent_model(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    restore_rng: bool,
+    missing_from: str,
+) -> None:
+    checkpoint = tmp_path / "committed-checkpoint"
+    _, source, config = _checkpoint_after_synthetic_adamw_update(
+        checkpoint,
+        checkpoint_identity,
+        with_buffer=missing_from == "target",
+    )
+    assert source.optimizer_step == 1
+    target_model = torch.nn.Linear(3, 3)
+    if missing_from == "checkpoint":
+        target_model.register_buffer("resume_scale", torch.tensor(-2.0))
+    target = Trainer(target_model, config, device="cpu")
+    initial = {
+        name: value.detach().clone()
+        for name, value in target_model.state_dict().items()
+    }
+    extra = {"expected_step": 1, "expected_tokens_seen": 3} if (
+        loader is progress_trainer
+    ) else {}
+    with pytest.raises(CheckpointCompatibilityError, match="state_dict|model|key"):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+    for name, before in initial.items():
+        torch.testing.assert_close(target_model.state_dict()[name], before, rtol=0, atol=0)
+    assert not target.optimizer.state
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("with_buffer", [False, True], ids=["parameters", "and-buffer"])
+def test_nonzero_adamw_complete_resume_preserves_next_optimizer_update(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    with_buffer: bool,
+) -> None:
+    checkpoint = tmp_path / "committed-complete"
+    source_model, source, config = _checkpoint_after_synthetic_adamw_update(
+        checkpoint, checkpoint_identity, with_buffer=with_buffer,
+    )
+    target_model = torch.nn.Linear(3, 3)
+    if with_buffer:
+        target_model.register_buffer("resume_scale", torch.tensor(-2.0))
+    target = Trainer(target_model, config, device="cpu")
+    extra = {"expected_step": 1, "expected_tokens_seen": 3} if (
+        loader is progress_trainer
+    ) else {}
+    loader.load_trainer_checkpoint(
+        checkpoint,
+        model=target_model,
+        trainer=target,
+        strict_model=False,
+        restore_rng=True,
+        **extra,
+    )
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 3)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    for name, source_tensor in source_model.state_dict().items():
+        torch.testing.assert_close(
+            target_model.state_dict()[name], source_tensor, rtol=0, atol=0,
+        )
+    for source_param, target_param in zip(
+        source_model.parameters(), target_model.parameters(), strict=True,
+    ):
+        source_state = source.optimizer.state[source_param]
+        target_state = target.optimizer.state[target_param]
+        assert source_state.keys() == target_state.keys()
+        assert "exp_avg" in source_state and "exp_avg_sq" in source_state
+        for key in source_state:
+            torch.testing.assert_close(target_state[key], source_state[key], rtol=0, atol=0)
+        source_param.grad = torch.full_like(source_param, 0.25)
+        target_param.grad = torch.full_like(target_param, 0.25)
+    source.optimizer.step()
+    target.optimizer.step()
+    for source_param, target_param in zip(
+        source_model.parameters(), target_model.parameters(), strict=True,
+    ):
+        torch.testing.assert_close(target_param, source_param, rtol=0, atol=0)
+    source.optimizer.zero_grad(set_to_none=True)
+    target.optimizer.zero_grad(set_to_none=True)
+    target.assert_checkpoint_safe()
