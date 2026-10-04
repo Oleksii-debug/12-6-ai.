@@ -439,3 +439,101 @@ def test_partial_d02_restore_diagnostic_survives_d05_failure_wrapper(
         load_trainer_checkpoint(
             checkpoint, model=model, trainer=trainer, restore_rng=False,
         )
+
+
+def test_fresh_target_recovers_after_partial_model_apply_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.checkpoint import progress_trainer
+
+    class CanonicalTarget(GenericTrainer):
+        def __init__(self) -> None:
+            super().__init__()
+            self._failure_reason: str | None = None
+            self._update_incomplete = False
+
+    checkpoint = tmp_path / "fresh-recovery"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        trainer=GenericTrainer(),
+        identity=identity(),
+    )
+    original_apply = progress_trainer._apply_model_weights
+    call_count = 0
+
+    def fail_only_first_application(*args: object, **kwargs: object) -> None:
+        nonlocal call_count
+        call_count += 1
+        original_apply(*args, **kwargs)
+        if call_count == 1:
+            raise RuntimeError("first model apply failed after mutation")
+
+    monkeypatch.setattr(
+        progress_trainer, "_apply_model_weights", fail_only_first_application,
+    )
+    poisoned = CanonicalTarget()
+    with pytest.raises(RuntimeError, match="first model apply failed"):
+        load_trainer_checkpoint(
+            checkpoint,
+            model=NumpyModel([9.0, 9.0, 9.0]),
+            trainer=poisoned,
+            restore_rng=False,
+        )
+    assert poisoned._failure_reason == "checkpoint_restore_apply_failed"
+    assert poisoned._update_incomplete is True
+
+    fresh_model = NumpyModel([8.0, 8.0, 8.0])
+    fresh_trainer = CanonicalTarget()
+    restored = load_trainer_checkpoint(
+        checkpoint, model=fresh_model, trainer=fresh_trainer, restore_rng=False,
+    )
+    assert call_count == 2
+    np.testing.assert_array_equal(fresh_model.weights, np.asarray([1.0, 2.0, 3.0]))
+    assert fresh_trainer.loads == 1
+    assert fresh_trainer._failure_reason is None
+    assert fresh_trainer._update_incomplete is False
+    assert restored.manifest["identity"]["step"] == 7
+    from twelve_six.training.trainer import Trainer
+
+    Trainer._assert_trainable(fresh_trainer)
+
+
+def test_rejected_preflight_does_not_poison_fresh_canonical_target(
+    tmp_path: Path,
+) -> None:
+    class CanonicalTarget(GenericTrainer):
+        def __init__(self) -> None:
+            super().__init__()
+            self._failure_reason: str | None = None
+            self._update_incomplete = False
+
+    checkpoint = tmp_path / "preflight-remains-retryable"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        trainer=GenericTrainer(),
+        identity=identity(),
+    )
+    model = NumpyModel([8.0, 8.0, 8.0])
+    trainer = CanonicalTarget()
+    with pytest.raises(CheckpointCompatibilityError, match="progress mismatch"):
+        load_trainer_checkpoint(
+            checkpoint, model=model, trainer=trainer,
+            restore_rng=False, expected_step=8,
+        )
+
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+    assert model.loads == 0
+    assert trainer.loads == 0
+
+    result = load_trainer_checkpoint(
+        checkpoint, model=model, trainer=trainer,
+        restore_rng=False, expected_step=7,
+    )
+    assert result.manifest["identity"]["step"] == 7
+    np.testing.assert_array_equal(model.weights, np.asarray([1.0, 2.0, 3.0]))
+    assert model.loads == 1
+    assert trainer.loads == 1
