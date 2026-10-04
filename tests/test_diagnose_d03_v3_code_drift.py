@@ -105,6 +105,47 @@ def test_adversarially_nested_code_is_bounded_and_untrusted() -> None:
     assert report["attestation_override_allowed"] is False
 
 
+
+def test_deep_code_is_bounded_before_marshal(monkeypatch: pytest.MonkeyPatch) -> None:
+    code, _ = _function("def candidate():\\n    return 1\\n")
+    nested = code
+    for _ in range(40):
+        nested = nested.replace(co_consts=(nested,))
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("over-depth code must not be marshalled")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(nested, nested)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+
+def test_same_nan_constant_is_not_false_structural_drift() -> None:
+    code, _ = _function("def candidate():\\n    return 1\\n")
+    candidate = code.replace(co_consts=(float("nan"),))
+    report = compare_code_objects(candidate, candidate)
+    assert report["classification"] == "NO_CODE_MISMATCH_OBSERVED"
+    assert report["structural_fields_equal"] is True
+    assert report["marshal_equal"] is True
+    assert report["attestation_override_allowed"] is False
+
+
+def test_complex_signed_zero_is_real_structural_difference() -> None:
+    code, _ = _function("def candidate():\\n    return 1\\n")
+    live = code.replace(co_consts=(complex(0.0, -0.0),))
+    canonical = code.replace(co_consts=(complex(0.0, 0.0),))
+    assert live.co_consts == canonical.co_consts
+    assert marshal.dumps(live) != marshal.dumps(canonical)
+    report = compare_code_objects(live, canonical)
+    assert report["classification"] == "STRUCTURAL_CODE_MISMATCH"
+    assert report["marshal_equal"] is False
+    assert report["attestation_override_allowed"] is False
+
 def test_exact_historical_v3_pyc_matches_recompilation_after_warmup(tmp_path: Path) -> None:
     """Isolate pinned V3 bytecode from Caselaw transport and physical data."""
     root = Path(__file__).resolve().parents[1]
