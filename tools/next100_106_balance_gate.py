@@ -642,12 +642,20 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
             not indeterminate_publication
             and staged_path is not None
             and identity is not None
-            and _same_inode(staged_path, identity)
         ):
             try:
-                staged_path.unlink()
+                staged_info = staged_path.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                pass
             except OSError as exc:
+                # Inaccessible staging is an orphan, not a successful cleanup.
                 cleanup_error = exc
+            else:
+                if (staged_info.st_dev, staged_info.st_ino) == identity:
+                    try:
+                        staged_path.unlink()
+                    except OSError as exc:
+                        cleanup_error = exc
         if rollback_error is not None:
             stranded_stage = (
                 f"; staged cleanup also failed: {staged_path}: {cleanup_error}"
