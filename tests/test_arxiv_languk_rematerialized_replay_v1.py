@@ -1735,3 +1735,134 @@ def test_link_and_cleanup_dual_fault_preserves_original_io_error(
     orphaned[0].unlink()
     REPLAY_RUNNER._write_new_bytes(target, b"trusted", label="test output")
     assert target.read_bytes() == b"trusted"
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_link_then_process_interrupt_rolls_back_owned_single_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interruption: type[BaseException],
+) -> None:
+    target = tmp_path / "interrupt-after-link.json"
+    raw = b"exact source"
+    original_link = REPLAY_RUNNER.os.link
+
+    def link_then_interrupt(stage: Path, final: Path) -> None:
+        original_link(stage, final)
+        raise interruption("injected interruption after link")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "link", link_then_interrupt)
+        with pytest.raises(interruption, match="interruption after link"):
+            REPLAY_RUNNER._write_new_bytes(target, raw, label="interrupted output")
+
+    assert not target.exists()
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+    REPLAY_RUNNER._write_new_bytes(target, raw, label="interrupted output")
+    assert target.read_bytes() == raw
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_interrupt_during_postlink_stat_retains_original_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interruption: type[BaseException],
+) -> None:
+    target = tmp_path / "interrupted-inspection.json"
+    raw = b"verified source"
+    original_stat = Path.stat
+
+    def interrupt_final_stat(path: Path, *args: object, **kwargs: object):
+        if path == target and kwargs.get("follow_symlinks") is False:
+            raise interruption("injected interruption during inode inspection")
+        return original_stat(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(Path, "stat", interrupt_final_stat)
+        with pytest.raises(
+            REPLAY_RUNNER.PublicationIndeterminate,
+            match="PUBLICATION_INDETERMINATE",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(target, raw, label="interrupted output")
+
+    retained = list(tmp_path.glob(f".{target.name}.*.tmp"))
+    assert len(retained) == 1
+    assert caught.value.staged == retained[0]
+    assert target.read_bytes() == retained[0].read_bytes() == raw
+    assert isinstance(caught.value.__cause__, interruption)
+    target.unlink()
+    retained[0].unlink()
+    REPLAY_RUNNER._write_new_bytes(target, raw, label="interrupted output")
+    assert target.read_bytes() == raw
+
+
+def test_interrupt_during_own_rollback_retains_stage_for_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "interrupted-rollback.json"
+    raw = b"exact source"
+    original_match = REPLAY_RUNNER._matches_staged_identity
+    original_unlink = Path.unlink
+
+    def deny_final_validation(
+        path: Path, expected: bytes, identity: tuple[int, int],
+    ) -> bool:
+        return path != target and original_match(path, expected, identity)
+
+    def interrupt_rollback(path: Path, *args: object, **kwargs: object) -> None:
+        if path == target:
+            raise KeyboardInterrupt("injected interrupt during rollback")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER, "_matches_staged_identity", deny_final_validation)
+        fault.setattr(Path, "unlink", interrupt_rollback)
+        with pytest.raises(
+            REPLAY_RUNNER.PublicationIndeterminate, match="ROLLBACK_INCOMPLETE",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(target, raw, label="interrupted output")
+
+    retained = list(tmp_path.glob(f".{target.name}.*.tmp"))
+    assert len(retained) == 1 and caught.value.staged == retained[0]
+    assert target.read_bytes() == retained[0].read_bytes() == raw
+    assert isinstance(caught.value.__cause__, KeyboardInterrupt)
+    target.unlink()
+    retained[0].unlink()
+    REPLAY_RUNNER._write_new_bytes(target, raw, label="interrupted output")
+    assert target.read_bytes() == raw
+
+
+def test_outer_link_interrupt_preserves_receipt_last_and_clean_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER.os.link
+
+    def interrupt_outer_report(stage: Path, final: Path) -> None:
+        original_link(stage, final)
+        if final == args.output_report:
+            raise KeyboardInterrupt("injected post-link interruption")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "link", interrupt_outer_report)
+        with pytest.raises(KeyboardInterrupt, match="post-link interruption"):
+            REPLAY_RUNNER._publish_verified_outputs(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+
+    assert not args.output_report.exists()
+    assert not args.output_survivors.exists()
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+    intent = pass_root / "outer-publication-intent.json"
+    assert intent.exists()
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["status"] == "PREPARED_UNCOMMITTED"
+    assert recovery["training_authorized"] is False
+    intent.unlink()
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovery["training_authorized"] is False
