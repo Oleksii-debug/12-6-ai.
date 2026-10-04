@@ -33,6 +33,8 @@ from .trainer_adapter import (
     _preflight_trainer_state,
     _preflight_trainer_target,
     _restore_checkpoint_rng_preserving_warn_only,
+    _restore_initial_torch_policy,
+    _snapshot_torch_policy,
 )
 
 _HEX = frozenset("0123456789abcdef")
@@ -239,6 +241,7 @@ def load_trainer_checkpoint(
     else:
         _assert_live_d02_determinism(trainer)
     materialized = _prepare_model_weights(model, arrays, strict_model)
+    policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     del arrays
 
     # Preflight prevents known incompatibilities, but an application-time
@@ -253,9 +256,14 @@ def load_trainer_checkpoint(
         # the first resumed batch sees the exact captured next draws.
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
-                combined_state["rng"], restore=restore_rng_state,
+                combined_state["rng"],
+                restore=restore_rng_state,
+                initial_policy=policy_before_apply,
             )
-    except BaseException:
+        else:
+            _assert_live_d02_determinism(trainer)
+    except BaseException as exc:
+        _restore_initial_torch_policy(policy_before_apply, exc)
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             # D02 may already have recorded a more specific partial-load error
             # (including a second gradient-cleanup failure). Preserve it.
