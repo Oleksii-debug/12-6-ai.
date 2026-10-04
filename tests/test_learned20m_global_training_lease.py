@@ -1026,9 +1026,10 @@ def test_remote_global_lease_decoder_bounds_size_and_nesting() -> None:
 
 
 @pytest.mark.parametrize("race_action", ("advance", "delete"))
+@pytest.mark.parametrize("operation", ("INSPECT", "RENEW", "TERMINATE"))
 def test_remote_lease_tip_change_after_blob_read_is_fail_closed(
     git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
-    race_action: str,
+    race_action: str, operation: str,
 ) -> None:
     """Reject a remote advance or deletion between blob read and return."""
     remote, writer, reader = git_pair
@@ -1069,14 +1070,34 @@ def test_remote_lease_tip_change_after_blob_read_is_fail_closed(
                 _git("push", str(remote), f":{ref}", cwd=writer)
         return result
 
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("stale remote state must not be published")
+
     monkeypatch.setattr(global_lease_module, "_run_git", advance_after_blob)
-    inspected = inspect_global_training_run_lease(reader, str(remote), manifest)
+    monkeypatch.setattr(global_lease_module, "_write_state_commit", unexpected_write)
+    monkeypatch.setattr(global_lease_module, "_push_candidate", unexpected_write)
+    if operation == "INSPECT":
+        inspected = inspect_global_training_run_lease(reader, str(remote), manifest)
+        assert inspected.present is True
+        assert inspected.valid is False
+        assert inspected.blockers == ("remote_tip_changed_during_read",)
+        assert inspected.optimizer_start_permitted_by_this_module is False
+        assert inspected.training_authority_granted_by_this_module is False
+    else:
+        if operation == "RENEW":
+            rejected = renew_global_training_run_lease(
+                reader, str(remote), manifest, expected_remote_tip=old_tip,
+                ttl_seconds=3600, now=NOW,
+            )
+        else:
+            rejected = terminate_global_training_run_lease(
+                reader, str(remote), manifest, expected_remote_tip=old_tip,
+                status="COMPLETED", now=NOW,
+            )
+        assert rejected.committed is False
+        assert rejected.blockers == ("remote_tip_changed_during_read",)
+        _assert_no_authority_widening(rejected)
     assert switched is True
-    assert inspected.present is True
-    assert inspected.valid is False
-    assert inspected.blockers == ("remote_tip_changed_during_read",)
-    assert inspected.optimizer_start_permitted_by_this_module is False
-    assert inspected.training_authority_granted_by_this_module is False
     remote_tip = _git("ls-remote", str(remote), ref)
     if race_action == "advance":
         assert remote_tip.split()[0] == descendant
