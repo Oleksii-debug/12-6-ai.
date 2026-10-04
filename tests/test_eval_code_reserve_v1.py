@@ -623,3 +623,33 @@ def test_eval647_cli_keeps_existing_valid_output(
     result = json.loads(output.out)
     assert result["reserved_objects"] == 2
     assert result["selection_validation_records_authorized"] == 0
+
+
+def test_programmatic_authority_shared_dag_has_node_budget() -> None:
+    document = _manifest()
+    shared: object = 0
+    for _ in range(15):
+        shared = [shared, shared]
+    document["predecessor"]["head_sha"] = shared
+    with pytest.raises(ValueError, match="exceeds node limit"):
+        validator.validate_document(document)
+
+
+@pytest.mark.parametrize("bad", [[], {}])
+def test_resealed_evidence_rejects_unhashable_repository(
+    bad: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence["objects"][0]["repository"] = bad
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match="evidence repository must be a string"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+def test_parsed_value_node_limit_does_not_count_json_mapping_keys(
+    tmp_path: Path,
+) -> None:
+    document = {"items": {str(i): 0 for i in range(validator.MAX_JSON_NODES - 2)}}
+    path = tmp_path / "node-limit.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    assert validator._load_mapping(path) == document
