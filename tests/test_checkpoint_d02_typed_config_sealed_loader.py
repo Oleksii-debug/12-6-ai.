@@ -285,9 +285,16 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
         ("micro_step", 1.0),
         ("optimizer_step", 1.0),
         ("tokens_seen", 2.0),
+        ("micro_step", np.int64(1)),
+        ("optimizer_step", np.int64(1)),
+        ("tokens_seen", np.int64(2)),
     ],
-    ids=["micro-bool", "optimizer-bool", "micro-float", "optimizer-float", "tokens-float"],
+    ids=[
+        "micro-bool", "optimizer-bool", "micro-float", "optimizer-float",
+        "tokens-float", "micro-numpy-int", "optimizer-numpy-int", "tokens-numpy-int",
+    ],
 )
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -295,6 +302,7 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     loader: Any,
     field: str,
     alias: Any,
+    restore_rng: bool,
 ) -> None:
     """Refuse a semantically invalid nonzero checkpoint before model mutation."""
     from dataclasses import replace
@@ -343,7 +351,7 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     ):
         loader.load_trainer_checkpoint(
             invalid, model=target_model, trainer=target,
-            strict_model=False, restore_rng=False, **expected,
+            strict_model=False, restore_rng=restore_rng, **expected,
         )
     assert model_applications == []
     assert not target.optimizer.state
@@ -365,7 +373,7 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     monkeypatch.undo()
     loader.load_trainer_checkpoint(
         valid, model=target_model, trainer=target,
-        strict_model=False, restore_rng=False, **expected,
+        strict_model=False, restore_rng=restore_rng, **expected,
     )
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
