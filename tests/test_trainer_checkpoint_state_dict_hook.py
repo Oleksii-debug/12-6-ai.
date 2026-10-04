@@ -203,3 +203,47 @@ def test_detached_corrupt_snapshot_poisoned_even_when_live_state_stays_finite(
         trainer.train_microbatch(_BATCH)
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.state_dict()
+
+@pytest.mark.parametrize(
+    "attack", ["finite-moment", "finite-hyperparam", "finite-live-lr", "alias-state-id"],
+)
+def test_finite_detached_optimizer_export_must_match_live_committed_state(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+    attack: str,
+) -> None:
+    import copy
+
+    model = _Logits()
+    trainer = Trainer(model, TrainerConfig(seed=703, max_steps=2), device="cpu")
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    original_export = trainer.optimizer.state_dict
+    weights = model.weight.detach().clone()
+    original_moment = trainer.optimizer.state[model.weight]["exp_avg"].clone()
+
+    def divergent_export() -> dict[str, Any]:
+        data = copy.deepcopy(original_export())
+        if attack == "finite-moment":
+            next(iter(data["state"].values()))["exp_avg"].add_(0.125)
+        elif attack == "finite-hyperparam":
+            data["param_groups"][0]["lr"] += 0.00001
+        elif attack == "finite-live-lr":
+            trainer.optimizer.param_groups[0]["lr"] *= 2.0
+        else:
+            value = data["state"].pop(0)
+            data["state"][False] = value
+        return data
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", divergent_export)
+    with pytest.raises(TrainingStateInvalidError, match="optimizer export"):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2)
+    torch.testing.assert_close(model.weight, weights, rtol=0, atol=0)
+    torch.testing.assert_close(
+        trainer.optimizer.state[model.weight]["exp_avg"], original_moment,
+        rtol=0, atol=0,
+    )
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
