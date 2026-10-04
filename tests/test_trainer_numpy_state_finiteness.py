@@ -257,3 +257,63 @@ def test_sealed_numpy_scheduler_nan_rejected_by_both_public_d05_loaders(
     assert source.train_microbatch(_BATCH).optimizer_stepped
     assert target.train_microbatch(_BATCH).optimizer_stepped
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        np.asarray([float("nan")], dtype=np.float32),
+        np.float32(float("inf")),
+        {"nested_moment": np.asarray([float("nan")], dtype=np.float64)},
+        float("nan"),
+    ],
+    ids=["numpy-array", "numpy-scalar", "nested-numpy", "python-float"],
+)
+def test_effectful_optimizer_numpy_corruption_never_earns_step_credit(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state,
+    bad: Any,
+) -> None:
+    trainer = Trainer(_TinyLogits(), TrainerConfig(seed=703, max_steps=2), device="cpu")
+    original_step = trainer.optimizer.step
+    weight = trainer.model.weight
+
+    def inject_invalid_numeric_state(*args: Any, **kwargs: Any):
+        result = original_step(*args, **kwargs)
+        trainer.optimizer.state[weight]["numpy_diagnostics"] = copy.deepcopy(bad)
+        return result
+
+    monkeypatch.setattr(trainer.optimizer, "step", inject_invalid_numeric_state)
+    with pytest.raises(NonFiniteTrainingError, match="optimizer produced non-finite state"):
+        trainer.train_microbatch(_BATCH)
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 0, 2)
+    assert trainer._failure_reason is not None and trainer._update_incomplete
+    assert trainer.model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_effectful_optimizer_finite_numpy_state_preserves_step_credit(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state,
+) -> None:
+    trainer = Trainer(_TinyLogits(), TrainerConfig(seed=703, max_steps=2), device="cpu")
+    original_step = trainer.optimizer.step
+    weight = trainer.model.weight
+
+    def add_valid_numeric_state(*args: Any, **kwargs: Any):
+        result = original_step(*args, **kwargs)
+        trainer.optimizer.state[weight]["numpy_diagnostics"] = np.asarray(
+            [0.5, 1.0], dtype=np.float32,
+        )
+        return result
+
+    monkeypatch.setattr(trainer.optimizer, "step", add_valid_numeric_state)
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2)
+    assert trainer._failure_reason is None and not trainer._update_incomplete
+    state = trainer.state_dict()
+    moment = state.optimizer["state"][0]["numpy_diagnostics"]
+    np.testing.assert_array_equal(moment, np.asarray([0.5, 1.0], dtype=np.float32))
