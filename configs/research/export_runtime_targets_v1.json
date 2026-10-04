@@ -1,0 +1,51 @@
+{
+  "schema": "12-6.export-runtime-targets.v1",
+  "project_repo": "Oleksii-debug/12-6-ai.",
+  "project_base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "parent_issue": 720,
+  "lane_issue": 8,
+  "claim_issue": 744,
+  "promotion_sequence": [
+    "DISCOVERED",
+    "CANDIDATE",
+    "PARITY_PROVEN",
+    "ADOPTED"
+  ],
+  "truth_boundary": {
+    "backend_execution_required": true,
+    "adoption_authority_required": true,
+    "canonical_base_random_init_only": true,
+    "foreign_pretrained_weights_allowed": false,
+    "paid_compute_authorized": false,
+    "final_test_access_authorized": false
+  },
+  "targets": [
+    {
+      "id": "onnxruntime",
+      "upstream_repo": "microsoft/onnxruntime",
+      "release_tag": "v1.29.0",
+      "upstream_commit_sha": "2e2543fbe9fae542f921d47a72d21d5a4ef0b710",
+      "release_published_at": "2026-08-12T06:15:37Z",
+      "license_spdx": "MIT",
+      "license_path": "LICENSE",
+      "license_git_blob_sha": "48bc6bb4996ac924359e8e28b9ae88970e5ed3fc",
+      "candidate_state": "CANDIDATE",
+      "parity_evidence_identity": null,
+      "adoption_authority": null
+    },
+    {
+      "id": "openvino",
+      "upstream_repo": "openvinotoolkit/openvino",
+      "release_tag": "2026.3.1",
+      "upstream_commit_sha": "759c5a6ab8c066af5f4bc5ebd04643706012a37d",
+      "release_published_at": "2026-08-26T11:27:49Z",
+      "license_spdx": "Apache-2.0",
+      "license_path": "LICENSE",
+      "license_git_blob_sha": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+      "candidate_state": "CANDIDATE",
+      "parity_evidence_identity": null,
+      "adoption_authority": null
+    }
+  ],
+  "manifest_identity": "a799199c84cffb979310a1f5e2cde41ac345825d38f2891fbc7568c7821ff29e"
+}
