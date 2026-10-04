@@ -230,10 +230,11 @@ def test_exact_historical_v3_pyc_matches_recompilation_after_warmup(tmp_path: Pa
     assert report["attestation_override_allowed"] is False
     assert report["canonical_corpus_credit"] == 0
 
+
 def test_nested_frozenset_is_limited_before_marshal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    code, _ = _function("def candidate():\\n    return 1\\n")
+    code, _ = _function("def candidate():\n    return 1\n")
     nested = frozenset({frozenset({1})})
     live = code.replace(co_consts=(nested,))
 
@@ -251,7 +252,7 @@ def test_nested_frozenset_is_limited_before_marshal(
 
 
 def test_simple_scalar_frozenset_remains_comparable() -> None:
-    code, _ = _function("def candidate():\\n    return 1\\n")
+    code, _ = _function("def candidate():\n    return 1\n")
     frozen = frozenset({1, 2, 3})
     left = code.replace(co_consts=(frozen,))
     right = code.replace(co_consts=(frozenset({3, 2, 1}),))
