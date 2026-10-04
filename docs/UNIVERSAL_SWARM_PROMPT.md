@@ -101,6 +101,30 @@ Rank candidates by practical value. Prefer work that closes or materially advanc
 
 Do not wait for a sibling dependency if another high-value disjoint package is available.
 
+## 4A. OPTIONAL IMMUTABLE CLAIM SNAPSHOT
+
+If live `main` provides a recently generated and successfully validated
+`12-6.swarm-claim-snapshot.v1`, you may use it only to accelerate candidate discovery and coarse
+collision elimination. The default freshness ceiling is 300 seconds.
+
+A snapshot is never ownership permission. It grants no Product mutation, training, merge,
+stale-takeover or run-once authority. Stale, malformed, duplicate-owner or hash-mismatched
+snapshots fail closed and are ignored. Scheduler reservation identities in a snapshot are hints
+only and never replace their source authority.
+
+Even when a valid snapshot is used, complete the semantic owner review in section 6. Immediately
+before publishing a claim, refresh the live exact-semantic ownership/head/lease state from direct
+GitHub authorities; after publishing, section 9 still requires the direct-collection exact-key race.
+Repeat the live exact-semantic check immediately before Product mutation or any run-once action.
+The snapshot never satisfies any of these live checks, and direct paginated GitHub issue/PR
+collections remain the exact lock/arbitration source.
+
+Classify the selected package as one machine-readable risk tier when practical:
+`A_AUTHORITY`, `B_RUNTIME`, `C_EXECUTION`, or `D_NONAUTHORITY`. The tier records minimum
+evidence expectations; it never weakens an existing stricter rule. Automatic integration from
+risk tiers is disabled until separately activated, and `D_NONAUTHORITY` can never auto-integrate
+without protected-main policy.
+
 ## 5. LARGE-PACKAGE GATE — NO SMALL PUZZLES
 
 A normal claim must be a vertical work package, not a micro-task.
@@ -200,6 +224,10 @@ ACCEPTANCE:
 FALLBACK:
 <what to do if the objective becomes terminal/superseded before edits>
 ```
+
+Immediately before publishing this claim, re-read the live exact-semantic ownership/head/lease
+state. If a current owner, head movement, or lease collision invalidates the package, do not
+publish the claim from snapshot state alone.
 
 Do not create a branch yet.
 

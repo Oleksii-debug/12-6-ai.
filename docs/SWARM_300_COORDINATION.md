@@ -114,6 +114,42 @@ Examples:
 
 Semantic review against existing non-swarm ownership remains mandatory.
 
+## Immutable claim snapshot acceleration
+
+An optional immutable claim snapshot may accelerate candidate discovery and coarse collision elimination.
+The canonical schema is `12-6.swarm-claim-snapshot.v1`; the builder is
+`tools/build_swarm_claim_snapshot.py`.
+
+A usable snapshot must bind exact `main`, complete direct OPEN issue/PR pagination with terminal
+empty-page sentinels, fixed 100-item page geometry, the final non-empty page counts, normalized
+claim/lease records, CI pressure, optional scheduler reservation identities, the canonical
+risk-policy identity, and its own SHA-256. Snapshot age is capped at 300 seconds. Impossible
+count/page geometry, duplicate active ownership keys, malformed coverage, stale timestamps,
+non-finite JSON, type aliases and content-hash drift fail closed.
+
+The snapshot is an acceleration index only. It grants no Product mutation, training, merge,
+stale-takeover or run-once authority. Scheduler reservation identities are mirrored hints only,
+not GitHub locks and not a replacement for Drive scheduler authority. Immediately before
+publishing a claim, and again before any Product mutation or run-once action, the worker performs
+the live exact-semantic ownership/head/lease check required by this protocol. A snapshot never
+satisfies those live checks. After claim publication, direct paginated GitHub collections remain
+the exact-key arbitration source.
+
+## Risk-tier routing
+
+The machine-readable policy `12-6.swarm-risk-tier-policy.v1` classifies work as
+`A_AUTHORITY`, `B_RUNTIME`, `C_EXECUTION` or `D_NONAUTHORITY`.
+
+- `A_AUTHORITY`: exact CI/contract evidence plus a fresh independent exact-head audit.
+- `B_RUNTIME`: exact CI/contract evidence plus targeted adversarial different-worker audit.
+- `C_EXECUTION`: exact CI/contract evidence; independent audit is required when sensitive
+  authority fields change.
+- `D_NONAUTHORITY`: exact green CI is necessary, but automatic integration remains disabled.
+  It may be considered only after protected-main policy and explicit protocol activation exist.
+
+These tiers never grant mutation or merge authority and never relax stricter existing #723,
+scientific, data, training, security or release rules.
+
 ## Exact race arbitration
 
 GitHub Search is allowed for discovery but is not the exact lock mechanism.
