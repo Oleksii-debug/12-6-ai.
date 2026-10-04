@@ -148,7 +148,9 @@ def test_correctly_typed_nonzero_resume_preserves_next_adamw_step(
 
 
 @pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
-@pytest.mark.parametrize("alias", [False, 0.0, "0", np.int64(0), 0j, -1])
+@pytest.mark.parametrize(
+    "alias", [False, True, 0.0, float("nan"), float("inf"), "0", np.int64(0), 0j, -1],
+)
 def test_resume_counters_require_exact_int_before_component_mutation(
     monkeypatch: pytest.MonkeyPatch,
     preserve_ambient_state,
