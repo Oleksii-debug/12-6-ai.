@@ -190,3 +190,62 @@ def test_clean_model_payload_remains_materializable(
     restored = core._prepare_model_weights(model, payload, strict=True)
     for name, expected in model.state_dict().items():
         torch.testing.assert_close(restored[name], expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_checksum_valid_nonfinite_legacy_checkpoint_refused_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype: torch.dtype,
+) -> None:
+    """A resealed malformed file passes SHA checks but cannot enter live weights."""
+    import json
+
+    from safetensors.numpy import load_file, save_file
+
+    source = torch.nn.Linear(3, 1).to(dtype=dtype)
+    directory = tmp_path / "resealed-nonfinite-дані"
+    core.save_checkpoint(directory, model=source, identity=_identity())
+    weights_path = directory / core.WEIGHTS_NAME
+    arrays = load_file(str(weights_path))
+    if dtype == torch.bfloat16:
+        assert arrays["weight"].dtype == np.uint16
+        arrays["weight"].reshape(-1)[0] = np.uint16(0x7FC1)
+    else:
+        arrays["weight"].reshape(-1)[0] = np.float32(float("nan"))
+    save_file(arrays, str(weights_path))
+
+    manifest_path = directory / core.MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"][core.WEIGHTS_NAME] = {
+        "sha256": core.sha256_file(weights_path),
+        "bytes": weights_path.stat().st_size,
+    }
+    manifest["checkpoint_id"] = core.hash_json({
+        "identity": manifest["identity"], "files": manifest["files"],
+    })
+    core._write_json(manifest_path, manifest)
+    manifest_digest = core.sha256_file(manifest_path)
+    (directory / core.MANIFEST_CHECKSUM_NAME).write_text(
+        f"{manifest_digest}  {core.MANIFEST_NAME}\n", encoding="ascii",
+    )
+    verified = core.verify_checkpoint(directory)
+    assert verified["checkpoint_id"] == manifest["checkpoint_id"]
+
+    target = torch.nn.Linear(3, 1).to(dtype=dtype)
+    before = {name: tensor.detach().clone() for name, tensor in target.state_dict().items()}
+    applied: list[bool] = []
+
+    def forbidden_apply(*args, **kwargs) -> None:
+        applied.append(True)
+        raise AssertionError("non-finite verified model may never be applied")
+
+    monkeypatch.setattr(core, "_apply_model_weights", forbidden_apply)
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="checkpoint model tensor contains non-finite values",
+    ):
+        core.load_checkpoint(
+            directory, model=target, strict_model=True, restore_rng=False,
+        )
+    assert applied == []
+    for name, original in before.items():
+        torch.testing.assert_close(target.state_dict()[name], original, rtol=0, atol=0)
