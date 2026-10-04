@@ -745,3 +745,91 @@ def test_real_d02_replay_keeps_configured_torch_warn_only(
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
+
+@pytest.mark.parametrize("use_progress", [False, True])
+@pytest.mark.parametrize("interruption", [RuntimeError, KeyboardInterrupt, SystemExit])
+def test_partial_final_rng_replay_rolls_back_torch_mode_and_poisons_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+    interruption: type[BaseException],
+) -> None:
+    """A partial final RNG replay must not leak a changed global PyTorch mode."""
+
+    import torch
+
+    ambient = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        checkpoint = tmp_path / "partial-final-rng-mode"
+        checkpoint_at(checkpoint)
+        model = Model([9.0, 9.0, 9.0])
+        trainer = CanonicalTarget(model)
+        loader_module = progress_trainer if use_progress else trainer_adapter
+        original_error = interruption("injected partial final RNG replay")
+
+        def fail_after_mode_change(_state: object) -> None:
+            torch.use_deterministic_algorithms(False, warn_only=False)
+            raise original_error
+
+        monkeypatch.setattr(loader_module, "restore_rng_state", fail_after_mode_change)
+        with pytest.raises(interruption, match="injected partial final RNG replay") as raised:
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=True,
+            )
+        assert raised.value is original_error
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+        assert model.loads == 1
+        assert trainer.loads == 1
+        assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+        assert trainer._update_incomplete is True
+
+        def forbidden_read(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("poisoned retry must not read the checkpoint")
+
+        monkeypatch.setattr(loader_module, "prepare_checkpoint_load", forbidden_read)
+        with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+def test_failed_final_rng_mode_rollback_retains_primary_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A secondary PyTorch policy failure must not replace the RNG error."""
+
+    import torch
+
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    original_use = torch.use_deterministic_algorithms
+    try:
+        original_use(True, warn_only=True)
+
+        def fail_mode_rollback(requested: bool, *, warn_only: bool = False) -> None:
+            if requested and warn_only:
+                raise OSError("injected secondary mode rollback failure")
+            original_use(requested, warn_only=warn_only)
+
+        def fail_rng(_state: object) -> None:
+            original_use(False, warn_only=False)
+            raise RuntimeError("injected primary final RNG failure")
+
+        monkeypatch.setattr(torch, "use_deterministic_algorithms", fail_mode_rollback)
+        with pytest.raises(RuntimeError, match="primary final RNG failure") as raised:
+            trainer_adapter._restore_checkpoint_rng_preserving_warn_only(
+                {"torch": {"cpu": object()}}, restore=fail_rng,
+            )
+        assert any(
+            "secondary mode rollback failure" in note
+            for note in getattr(raised.value, "__notes__", ())
+        )
+    finally:
+        original_use(enabled, warn_only=warn_only)
