@@ -451,10 +451,10 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
         try:
             from diagnose_d03_v3_code_drift import compare_code_objects
 
-            canonical = indexed._canonical_namespace(matcher, "V3")["_lineage_matches"]
             current_lineage = getattr(matcher, "_lineage_matches", None)
             if not callable(current_lineage) or not hasattr(current_lineage, "__code__"):
                 raise TypeError("the live V3 callable is no longer inspectable")
+            canonical = indexed._canonical_namespace(matcher, "V3")["_lineage_matches"]
             diagnostic = compare_code_objects(
                 current_lineage.__code__, canonical.__code__,
             )
