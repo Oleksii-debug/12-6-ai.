@@ -1704,3 +1704,44 @@ def test_replacement_activate_pointer_deletion_race_fails_closed(
         _git("ls-remote", "--refs", str(remote), CURRENT_RUN_POINTER_REF)
         == ""
     )
+
+
+def test_active_pointer_rejects_untrusted_manifest_variants(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest, identity, lease, authority = _authorized_run()
+    acquired = acquire_global_training_run_lease(
+        writer_a, str(remote), manifest, lease.as_dict(),
+        expected_terminal_authority_sha256=authority, now=NOW,
+    )
+    assert acquired.committed is True
+    pointer = activate_current_run_authority(
+        writer_a, str(remote), manifest, identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert pointer.committed is True
+
+    alternate, _, _, _ = _authorized_run(
+        base_manifest=_manifest(source_git_sha="c" * 40),
+    )
+    wrong = inspect_current_run_authority(
+        writer_b, str(remote), manifest=alternate, now=NOW,
+    )
+    assert wrong.present is True
+    assert wrong.valid is False
+    assert wrong.active is False
+    assert wrong.blockers == ("current_run_trusted_launch_manifest_mismatch",)
+
+    malformed = deepcopy(manifest)
+    malformed["resource"]["maximum_cost_usd"] = float("nan")
+    rejected = inspect_current_run_authority(
+        writer_b, str(remote), manifest=malformed, now=NOW,
+    )
+    assert rejected.present is True
+    assert rejected.valid is False
+    assert rejected.active is False
+    assert len(rejected.blockers) == 1
+    assert rejected.blockers[0].startswith("current_run_trusted_launch_manifest_invalid:")
