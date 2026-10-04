@@ -206,6 +206,20 @@ class Trainer:
         if any(parameter.grad is not None for parameter in self.model.parameters()):
             raise RuntimeError("completed optimizer step left residual model gradients")
 
+    def _require_finite_committed_update(self) -> None:
+        """Reject optimizer corruption before crediting an optimizer transition."""
+        for parameter in self.model.parameters():
+            if not torch.isfinite(parameter.detach()).all().item():
+                raise NonFiniteTrainingError(
+                    f"optimizer produced non-finite model weights at micro_step={self.micro_step}"
+                )
+        for state in self.optimizer.state.values():
+            for value in state.values():
+                if isinstance(value, Tensor) and not torch.isfinite(value).all().item():
+                    raise NonFiniteTrainingError(
+                        f"optimizer produced non-finite state at micro_step={self.micro_step}"
+                    )
+
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
         if self.config.precision == "fp16" and self.device.type != "cuda":
@@ -446,6 +460,10 @@ class Trainer:
                     )
 
                 self.scaler.step(self.optimizer)
+                # A finite gradient and finite LR do not guarantee a finite
+                # AdamW update (e.g. weight-decay overflow). The update may
+                # already have mutated tensors, but must never earn step credit.
+                self._require_finite_committed_update()
                 self.optimizer_step += 1
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
