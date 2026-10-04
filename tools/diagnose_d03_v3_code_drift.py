@@ -85,9 +85,15 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
             if len(left) > _MAX_NODES or len(right) > _MAX_NODES:
                 limited = True
                 return
-            # Frozen Python constants contain only hashable scalar objects.
-            # Hash each separately so outer marshal alias/reference flags do
-            # not become the comparison criterion. No constant is printed.
+            # Nested frozensets and code objects can trigger expensive recursive
+            # hashing or marshal traversal beyond our depth/node budget.
+            # Diagnose only known scalar members, otherwise fail closed.
+            scalar = {type(None), type(Ellipsis), bool, int, float, complex, str, bytes}
+            if any(type(item) not in scalar for item in left | right):
+                limited = True
+                return
+            # Hash each scalar separately so outer marshal alias/reference flags
+            # do not become the comparison criterion. No constant is printed.
             try:
                 left_items = sorted((type(item).__name__, _sha256(marshal.dumps(item)))
                                     for item in left)
