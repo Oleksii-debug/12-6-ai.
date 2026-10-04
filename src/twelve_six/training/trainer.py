@@ -450,7 +450,21 @@ class Trainer:
             consumed += 1
             final_metrics = metrics
             if on_metrics is not None:
-                on_metrics(metrics)
+                try:
+                    on_metrics(metrics)
+                except BaseException as exc:
+                    # The batch has already been consumed. The optimizer may
+                    # also have committed, and the checkpoint hook has not run.
+                    self._mark_failed(
+                        f"metrics hook failed after micro_step={metrics.micro_step}, "
+                        f"optimizer_step={metrics.optimizer_step}"
+                    )
+                    if isinstance(exc, Exception):
+                        raise CheckpointHookError(
+                            "metrics hook failed after consumed microbatch; "
+                            "restore a verified checkpoint before retry"
+                        ) from exc
+                    raise
 
             if metrics.optimizer_stepped and on_checkpoint is not None:
                 on_cadence = (
@@ -461,11 +475,16 @@ class Trainer:
                 if on_cadence or is_final:
                     try:
                         on_checkpoint(self, metrics)
-                    except Exception as exc:
-                        raise CheckpointHookError(
-                            "checkpoint hook failed after committed "
-                            f"optimizer_step={metrics.optimizer_step}; do not replay blindly"
-                        ) from exc
+                    except BaseException as exc:
+                        self._mark_failed(
+                            f"checkpoint hook failed after optimizer_step={metrics.optimizer_step}"
+                        )
+                        if isinstance(exc, Exception):
+                            raise CheckpointHookError(
+                                "checkpoint hook failed after committed "
+                                f"optimizer_step={metrics.optimizer_step}; do not replay blindly"
+                            ) from exc
+                        raise
 
         if self.optimizer_step < self.config.max_steps:
             self.assert_checkpoint_safe()
