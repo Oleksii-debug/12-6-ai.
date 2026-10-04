@@ -36,6 +36,7 @@ _MAX_NODES = 10_000
 _MAX_DEPTH = 32
 _MAX_DIFFERENCES = 24
 _MAX_SCALAR_BYTES = 1_048_576
+_MAX_TOTAL_SCALAR_BYTES = 16_777_216
 
 
 def _sha256(value: bytes) -> str:
@@ -51,6 +52,21 @@ def _scalar_within_bound(value: Any) -> bool:
     return True
 
 
+def _scalar_width(value: Any) -> int:
+    """Conservative serialization cost; Unicode can take four UTF-8 bytes."""
+    if type(value) is str:
+        return 4 * len(value)
+    if type(value) is bytes:
+        return len(value)
+    if type(value) is int:
+        return (value.bit_length() + 7) // 8
+    if type(value) is float:
+        return 8
+    if type(value) is complex:
+        return 16
+    return 1
+
+
 def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
     """Report bounded, non-payload code-object differences for independent triage.
 
@@ -63,14 +79,23 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
 
     differences: list[str] = []
     visited = 0
+    scanned_bytes = 0
     limited = False
 
     def visit(left: Any, right: Any, path: str, depth: int) -> None:
-        nonlocal visited, limited
+        nonlocal visited, scanned_bytes, limited
         if limited:
             return
         visited += 1
         if visited > _MAX_NODES or depth > _MAX_DEPTH:
+            limited = True
+            return
+        scalar = {type(None), type(Ellipsis), bool, int, float, complex, str, bytes}
+        if type(left) in scalar:
+            scanned_bytes += _scalar_width(left)
+        if type(right) in scalar:
+            scanned_bytes += _scalar_width(right)
+        if scanned_bytes > _MAX_TOTAL_SCALAR_BYTES:
             limited = True
             return
         if len(differences) >= _MAX_DIFFERENCES:
@@ -106,6 +131,13 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
                 type(item) not in scalar or not _scalar_within_bound(item)
                 for item in left | right
             ):
+                limited = True
+                return
+            scanned_bytes += (
+                sum(_scalar_width(item) for item in left)
+                + sum(_scalar_width(item) for item in right)
+            )
+            if scanned_bytes > _MAX_TOTAL_SCALAR_BYTES:
                 limited = True
                 return
             # Hash each scalar separately so outer marshal alias/reference flags
