@@ -171,6 +171,25 @@ def test_manifest_growth_after_fstat_still_has_bounded_read(
     assert intercepted
 
 
+def test_checkpoint_reads_use_unbuffered_descriptors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoint = tmp_path / "unbuffered-reads"
+    _save(checkpoint)
+    original_fdopen = os.fdopen
+    opened: list[int] = []
+
+    def inspect_fdopen(fd: int, *args: object, **kwargs: object) -> object:
+        # A buffered stream may read ahead of the explicit size + 1 probe.
+        assert kwargs.get("buffering") == 0
+        opened.append(fd)
+        return original_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", inspect_fdopen)
+    verify_checkpoint(checkpoint)
+    assert len(opened) == 5
+
+
 @pytest.mark.parametrize("name", ["weights.safetensors", "state.safetensors", "state.json"])
 @pytest.mark.parametrize("mutation", ["grow", "shrink"])
 def test_checkpoint_payload_size_rejected_before_payload_read(
