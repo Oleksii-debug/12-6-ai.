@@ -8,6 +8,7 @@ import importlib.util
 import io
 import json
 import os
+import stat
 import subprocess
 import sys
 import tarfile
@@ -626,20 +627,28 @@ def inspect_outer_publication_recovery(
         )
     published: list[str] = []
     for label, path, raw in outputs:
-        if path.is_symlink():
+        # A permission error must not be misclassified as a missing output.
+        try:
+            final_stat = path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise RematerializationError(
+                f"cannot inspect recovery {label}: {path}"
+            ) from exc
+        if stat.S_ISLNK(final_stat.st_mode):
             raise RematerializationError(f"recovery {label} must not be a symlink")
-        if path.exists():
-            if not path.is_file():
-                raise RematerializationError(f"recovery {label} is not a file")
-            try:
-                observed_sha = sha256_bytes(path.read_bytes())
-            except OSError as exc:
-                raise RematerializationError(f"cannot read recovery {label}") from exc
-            if observed_sha != sha256_bytes(raw):
-                raise RematerializationError(
-                    f"recovery {label} differs from authenticated expected bytes"
-                )
-            published.append(label)
+        if not stat.S_ISREG(final_stat.st_mode):
+            raise RematerializationError(f"recovery {label} is not a file")
+        try:
+            observed_sha = sha256_bytes(path.read_bytes())
+        except OSError as exc:
+            raise RematerializationError(f"cannot read recovery {label}") from exc
+        if observed_sha != sha256_bytes(raw):
+            raise RematerializationError(
+                f"recovery {label} differs from authenticated expected bytes"
+            )
+        published.append(label)
     if "outer receipt" in published and len(published) != len(outputs):
         raise RematerializationError(
             "recovery receipt exists without both authenticated source authorities"

@@ -1969,3 +1969,69 @@ def test_outer_stage_cleanup_interrupt_keeps_committed_receipt(
     assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
     assert recovery["training_authorized"] is False
     staged[0].unlink()
+
+
+@pytest.mark.parametrize(
+    "denied_label", ["outer report", "outer survivors", "outer receipt"],
+)
+def test_recovery_refuses_uninspectable_existing_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, denied_label: str,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    targets = {
+        "outer report": args.output_report,
+        "outer survivors": args.output_survivors,
+        "outer receipt": args.output_receipt,
+    }
+    before = {label: path.read_bytes() for label, path in targets.items()}
+    original_lstat = Path.lstat
+
+    def deny_final_lstat(path: Path, *a: object, **kw: object):
+        if path == targets[denied_label]:
+            raise PermissionError("injected NTFS metadata sharing denial")
+        return original_lstat(path, *a, **kw)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(Path, "lstat", deny_final_lstat)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError,
+            match=f"cannot inspect recovery {denied_label}",
+        ) as caught:
+            REPLAY_RUNNER.inspect_outer_publication_recovery(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+    assert isinstance(caught.value.__cause__, PermissionError)
+    assert {label: path.read_bytes() for label, path in targets.items()} == before
+    recovered = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovered["training_authorized"] is False
+
+
+def test_recovery_does_not_trust_hidden_exists_for_real_committed_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    original_exists = Path.exists
+
+    def hide_existing_report(path: Path, *a: object, **kw: object) -> bool:
+        if path == args.output_report:
+            return False
+        return original_exists(path, *a, **kw)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(Path, "exists", hide_existing_report)
+        recovered = REPLAY_RUNNER.inspect_outer_publication_recovery(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovered["missing"] == []
+    assert len(recovered["published"]) == 3
+    assert recovered["training_authorized"] is False
