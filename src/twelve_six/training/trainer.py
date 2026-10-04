@@ -486,7 +486,11 @@ class Trainer:
             )
             raise
         try:
-            self.scaler.scale(loss * tokens).backward()
+            scaled_loss = self.scaler.scale(loss * tokens)
+            # A scaler hook may drift global policy after the loss-side guard.
+            # Do not run backward on any tensor under a mismatched mode.
+            self._require_deterministic_policy()
+            scaled_loss.backward()
         except BaseException:
             # Autograd may raise non-RuntimeError exceptions or be interrupted after
             # partially accumulating gradients. A retry requires verified recovery.
