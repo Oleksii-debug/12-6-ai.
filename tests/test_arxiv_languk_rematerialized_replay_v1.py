@@ -1328,3 +1328,107 @@ def test_receipt_commit_with_cleanup_error_is_recoverable(
     assert len(staged) == 1
     monkeypatch.setattr(Path, "unlink", original_unlink)
     staged[0].unlink()
+
+
+def test_staging_dual_fault_reports_orphan_and_preserves_original_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed fsync plus locked cleanup must expose the exact orphan path."""
+    target = tmp_path / "Український результат.json"
+    payload = b"verified bytes"
+    blocked: list[Path] = []
+
+    def fail_fsync(descriptor: int) -> None:
+        del descriptor
+        raise OSError("injected ENOSPC during fsync")
+
+    original_unlink = Path.unlink
+
+    def lock_stage(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{target.name}.") and path.suffix == ".tmp":
+            blocked.append(path)
+            raise PermissionError("injected sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "fsync", fail_fsync)
+        fault.setattr(Path, "unlink", lock_stage)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError, match="STAGING_CLEANUP_INCOMPLETE",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(target, payload, label="test report")
+
+    assert not target.exists()
+    assert len(blocked) == 1
+    assert str(blocked[0]) in str(caught.value)
+    assert "manual reconciliation required" in str(caught.value)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "ENOSPC" in str(caught.value.__cause__)
+    assert list(tmp_path.glob(f".{target.name}.*.tmp")) == blocked
+    assert blocked[0].read_bytes() == payload
+
+    blocked[0].unlink()
+    REPLAY_RUNNER._write_new_bytes(target, payload, label="test report")
+    assert target.read_bytes() == payload
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+
+
+def test_outer_staging_dual_fault_cleans_prior_stages_without_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failed current stage is reported even if not in the batch registry."""
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_fsync = REPLAY_RUNNER.os.fsync
+    original_unlink = Path.unlink
+    calls = 0
+    blocked: list[Path] = []
+
+    def fail_second_fsync(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected ENOSPC on survivors stage")
+        original_fsync(descriptor)
+
+    def lock_survivors_stage(path: Path, *args: object, **kwargs: object) -> None:
+        if (
+            path.name.startswith(f".{args.output_survivors.name}.")
+            and path.suffix == ".tmp"
+        ):
+            blocked.append(path)
+            raise PermissionError("injected survivors sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "fsync", fail_second_fsync)
+        fault.setattr(Path, "unlink", lock_survivors_stage)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError, match="STAGING_CLEANUP_INCOMPLETE",
+        ) as caught:
+            REPLAY_RUNNER._publish_verified_outputs(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+
+    assert calls == 2
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    assert not any(
+        path.exists()
+        for path in (args.output_report, args.output_survivors, args.output_receipt)
+    )
+    assert not list(tmp_path.glob(f".{args.output_report.name}.*.tmp"))
+    assert len(blocked) == 1
+    assert blocked[0].exists()
+    assert str(blocked[0]) in str(caught.value)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "ENOSPC" in str(caught.value.__cause__)
+
+    blocked[0].unlink()
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    recovered = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovered["canonical_capacity_credited"] == 0
+    assert recovered["training_authorized"] is False
