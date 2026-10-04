@@ -1560,3 +1560,48 @@ def test_finite_float_and_integer_model_buffers_allow_normal_checkpoint():
     assert result.optimizer_stepped is True
     assert trainer.optimizer_step == 1
     assert trainer.state_dict().optimizer_step == 1
+
+
+
+def test_scheduler_corrupting_model_buffer_poisoned_after_committed_step(
+    monkeypatch,
+):
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    model.register_buffer("running_statistic", torch.tensor(1.0))
+    config = TrainerConfig(max_steps=2, warmup_steps=1, scheduler="cosine", seed=17)
+    trainer = Trainer(model, config)
+
+    def corrupt_buffer_after_scheduler():
+        model.running_statistic.fill_(float("nan"))
+
+    monkeypatch.setattr(trainer.scheduler, "step", corrupt_buffer_after_scheduler)
+    with pytest.raises(NonFiniteTrainingError, match="non-finite buffer"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.optimizer_step == 1  # Optimizer already committed.
+    assert trainer._update_incomplete is True
+    assert trainer._failure_reason.startswith("optimizer/scheduler update failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_direct_restore_rejects_existing_corrupted_model_buffer():
+    from twelve_six.training import NonFiniteTrainingError
+
+    config = TrainerConfig(max_steps=1, seed=17)
+    source = Trainer(_TinyLogitModel(), config)
+    snapshot = source.state_dict()
+    model = _TinyLogitModel()
+    model.register_buffer("running_statistic", torch.tensor(1.0))
+    target = Trainer(model, config)
+    model.running_statistic.fill_(float("inf"))
+
+    with pytest.raises(NonFiniteTrainingError, match="non-finite buffer"):
+        target.load_state_dict(snapshot)
+
+    assert target._failure_reason.startswith("trainer state restore failed")
+    assert target._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        target.state_dict()
