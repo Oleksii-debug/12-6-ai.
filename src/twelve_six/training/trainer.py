@@ -288,7 +288,10 @@ class Trainer:
             grad.div_(token_count)
             squared_norm += torch.sum(grad.float() * grad.float())
         if not found:
-            return torch.zeros((), device=self.device)
+            # Backward can succeed through tensors not owned by the model. Such
+            # a step would advance optimizer/exposure accounting without even
+            # one model-parameter gradient and must fail closed.
+            raise RuntimeError("optimizer update has no model-parameter gradients")
         return torch.sqrt(squared_norm)
 
     def train_microbatch(self, batch: Batch) -> StepMetrics:
