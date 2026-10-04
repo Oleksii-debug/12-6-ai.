@@ -472,3 +472,73 @@ def test_rejected_semantic_probe_does_not_advance_global_rng(
         assert trainer.loads == 0
     finally:
         core.restore_rng_state(ambient)
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_successful_semantic_probe_adds_no_extra_rng_draw_on_opt_out(
+    tmp_path: Path,
+    use_progress: bool,
+) -> None:
+    """Only the actual trainer load may advance RNG when restore_rng=False."""
+
+    import torch
+
+    ambient = core.capture_rng_state()
+    try:
+        random.seed(719)
+        np.random.seed(719)
+        torch.manual_seed(719)
+        checkpoint = tmp_path / "rng-opt-out"
+        checkpoint_at(checkpoint)
+
+        class DrawingTrainer(PlainTrainer):
+            def load_state_dict(self, state: dict[str, object]) -> None:
+                super().load_state_dict(state)
+                random.random()
+                np.random.random_sample()
+                torch.rand(())
+
+        saved = core.capture_rng_state()
+        expected_python = random.Random()
+        expected_python.setstate(saved["python"])
+        expected_np = np.random.RandomState()
+        expected_np.set_state(saved["numpy"])
+        expected_torch = torch.Generator(device="cpu")
+        expected_torch.set_state(saved["torch"]["cpu"])
+        expected_python.random()
+        expected_np.random_sample()
+        torch.rand((), generator=expected_torch)
+        expected = (
+            expected_python.random(),
+            expected_np.random_sample(),
+            torch.rand((), generator=expected_torch).item(),
+        )
+        model = Model([9.0, 9.0, 9.0])
+        trainer = DrawingTrainer()
+        loader = (
+            progress_trainer.load_trainer_checkpoint
+            if use_progress else trainer_adapter.load_trainer_checkpoint
+        )
+        loader(checkpoint, model=model, trainer=trainer, restore_rng=False)
+        assert trainer.loads == 1
+        assert model.loads == 1
+        np.testing.assert_array_equal(model.weights, [1.0, 2.0, 3.0])
+        assert (random.random(), np.random.random_sample(), torch.rand(()).item()) == expected
+    finally:
+        core.restore_rng_state(ambient)
+
+
+def test_semantic_preflight_preserves_torch_deterministic_warn_mode() -> None:
+    import torch
+
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        trainer = PlainTrainer()
+        trainer_adapter._preflight_trainer_state(
+            trainer, trainer.state_dict(),
+        )
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
