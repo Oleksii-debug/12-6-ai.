@@ -152,3 +152,26 @@ def test_existing_checkpoint_is_never_modified_or_staged(
     assert (destination / core.MANIFEST_NAME).read_bytes() == original
     assert core.verify_checkpoint(destination)["identity"]["step"] == 0
     assert not list(tmp_path.glob(".checkpoint.tmp-*"))
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_interrupt_after_atomic_rename_preserves_published_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+) -> None:
+    destination = tmp_path / "checkpoint"
+    thrown = interruption("interrupted after atomic publication")
+    real_replace = core.os.replace
+
+    def published_then_interrupted(source: Path, target: Path) -> None:
+        real_replace(source, target)
+        raise thrown
+
+    with monkeypatch.context() as patch:
+        patch.setattr(core.os, "replace", published_then_interrupted)
+        with pytest.raises(interruption) as caught:
+            core.save_checkpoint(destination, model=_TinyModel(), identity=_identity())
+    assert caught.value is thrown
+    assert destination.is_dir(), "a published checkpoint must survive late interruption"
+    assert core.verify_checkpoint(destination)["identity"]["step"] == 0
+    assert not list(tmp_path.glob(".checkpoint.tmp-*"))
