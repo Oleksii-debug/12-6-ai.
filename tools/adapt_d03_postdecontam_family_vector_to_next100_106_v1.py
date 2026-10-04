@@ -169,6 +169,19 @@ class OutputCommittedCleanupPending(ProjectionError):
         )
 
 
+class OutputUnverifiedRollbackPending(ProjectionError):
+    """An unverified result could not be removed; never credit its bytes."""
+
+    def __init__(self, output: Path, stage: Path) -> None:
+        self.output = output
+        self.stage = stage
+        super().__init__(
+            "OUTPUT_UNVERIFIED_ROLLBACK_PENDING "
+            f"output={json.dumps(str(output), ensure_ascii=False)} "
+            f"stage={json.dumps(str(stage), ensure_ascii=False)}"
+        )
+
+
 def _write_new_output(
     path: Path, payload: bytes, *, family_vector: Path, dedup_authority: Path,
 ) -> None:
@@ -224,15 +237,18 @@ def _write_new_output(
     except OSError as exc:
         raise ProjectionError(f"cannot publish adapter output safely: {path}: {exc}") from exc
     finally:
+        rollback_failure: OSError | None = None
         if linked and not verified and identity is not None and _same_inode(final, identity):
             try:
                 final.unlink()
             except OSError as exc:
-                raise ProjectionError("cannot roll back invalid adapter publication") from exc
+                rollback_failure = exc
         if staged_path is not None and identity is not None and _same_inode(staged_path, identity):
             try:
                 staged_path.unlink()
             except OSError as exc:
+                if rollback_failure is not None:
+                    raise OutputUnverifiedRollbackPending(final, staged_path) from rollback_failure
                 if verified:
                     raise OutputCommittedCleanupPending(
                         final, staged_path, payload,
@@ -240,6 +256,8 @@ def _write_new_output(
                 raise ProjectionError(
                     f"cannot clean up staged adapter output: {staged_path}"
                 ) from exc
+        if rollback_failure is not None:
+            raise OutputUnverifiedRollbackPending(final, staged_path) from rollback_failure
 
 
 def main() -> int:
@@ -272,6 +290,9 @@ def main() -> int:
     except OutputCommittedCleanupPending as exc:
         print(exc, file=sys.stderr)
         raise SystemExit(3) from exc
+    except OutputUnverifiedRollbackPending as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(4) from exc
     except ProjectionError as exc:
         raise SystemExit(f"FAIL_CLOSED: {exc}") from exc
     print(args.output)
