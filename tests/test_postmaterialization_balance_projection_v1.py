@@ -1464,7 +1464,9 @@ def test_target_binding_rejects_resealed_numeric_alias_and_policy_drift(
         input_value["totals"]["family_count"]["ua"] = 2.0
         altered["input_totals"] = copy.deepcopy(input_value["totals"])
     elif mutation == "result_total_float":
-        altered["input_totals"]["family_count"]["en"] = 2.0
+        observed_count = altered["input_totals"]["family_count"]["en"]
+        assert type(observed_count) is int
+        altered["input_totals"]["family_count"]["en"] = float(observed_count)
     elif mutation == "minimum_count_float":
         altered["family_minimum"]["observed"]["ua"] = 2.0
     elif mutation == "allocation_float":
@@ -1475,7 +1477,11 @@ def test_target_binding_rejects_resealed_numeric_alias_and_policy_drift(
     altered["result_identity_sha256"] = next100_gate.canonical_sha(
         altered, "result_identity_sha256"
     )
-    with pytest.raises(ProjectionError, match="target balance"):
+    expected_error = (
+        "NEXT100-106 result totals differ from physical input"
+        if mutation == "result_total_float" else "target balance"
+    )
+    with pytest.raises(ProjectionError, match=expected_error):
         build_balance_result_binding(
             family_vector=vector,
             expected_family_vector_identity_sha256=vector["family_vector_identity_sha256"],
