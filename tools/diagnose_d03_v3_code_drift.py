@@ -98,7 +98,9 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
                 if left_items != right_items:
                     differences.append(path)
         elif type(left) in {type(None), type(Ellipsis), bool, int, float, complex, str, bytes}:
-            if left != right or (type(left) is float and marshal.dumps(left) != marshal.dumps(right)):
+            if left != right or (
+                type(left) is float and marshal.dumps(left) != marshal.dumps(right)
+            ):
                 differences.append(path)
         else:
             # Unknown objects are NOT presumed equivalent.
