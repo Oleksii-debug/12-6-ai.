@@ -1747,6 +1747,89 @@ def test_active_pointer_rejects_untrusted_manifest_variants(
     assert rejected.blockers[0].startswith("current_run_trusted_launch_manifest_invalid:")
 
 
+def test_oversized_remote_pointer_denied_before_git_blob_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    remote, writer, reader = git_pair
+    manifest, identity, lease, expected_authority = _authorized_run()
+    acquired = acquire_global_training_run_lease(
+        writer,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    activated = activate_current_run_authority(
+        writer,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert activated.committed is True
+    assert activated.written_remote_tip is not None
+
+    def write_object(data: bytes, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=writer, input=data, capture_output=True, check=True
+        )
+        return result.stdout.decode("ascii").strip()
+
+    oversized = b"y" * (current_run.MAX_CURRENT_RUN_POINTER_BYTES + 1)
+    blob_sha = write_object(oversized, "hash-object", "-w", "--stdin")
+    tree_sha = write_object(
+        f"100644 blob {blob_sha}\t{current_run.CURRENT_RUN_POINTER_PATH}\n"
+        .encode("ascii"),
+        "mktree",
+    )
+    corrupt_tip = write_object(
+        b"oversized current-run pointer\n",
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree_sha, "-p", activated.written_remote_tip,
+    )
+    _git("push", str(remote), f"{corrupt_tip}:{CURRENT_RUN_POINTER_REF}", cwd=writer)
+
+    original_run_git = current_run._run_git
+
+    def reject_blob_capture(repo_root, args, **kwargs):
+        if args[:2] == ["cat-file", "blob"]:
+            raise AssertionError("oversized pointer must not be captured")
+        return original_run_git(repo_root, args, **kwargs)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("invalid pointer must not write or push")
+
+    monkeypatch.setattr(current_run, "_run_git", reject_blob_capture)
+    monkeypatch.setattr(current_run, "_write_pointer_commit", unexpected_write)
+    inspection = inspect_current_run_authority(
+        reader, str(remote), manifest=manifest, now=NOW
+    )
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.active is False
+    assert inspection.blockers == ("current_run_pointer_exceeds_byte_limit",)
+
+    rejected = activate_current_run_authority(
+        reader,
+        str(remote),
+        manifest,
+        identity,
+        expected_pointer_tip=corrupt_tip,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert rejected.committed is False
+    assert rejected.blockers == ("current_run_pointer_exceeds_byte_limit",)
+    assert rejected.training_authority_granted_by_this_module is False
+    assert rejected.optimizer_start_permitted_by_this_module is False
+    assert _git("ls-remote", str(remote), CURRENT_RUN_POINTER_REF).split()[0] == corrupt_tip
+
+
 def test_pointer_decoder_bounds_remote_bytes_and_recursion() -> None:
     oversized = (
         b'{"padding":"' + b"a" * current_run.MAX_CURRENT_RUN_POINTER_BYTES

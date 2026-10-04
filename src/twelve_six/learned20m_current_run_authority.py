@@ -457,6 +457,22 @@ def _fetch_pointer_bytes(
             or not entries[0].endswith(expected_suffix)
         ):
             raise CurrentRunAuthorityError("current_run_pointer_tree_not_closed_world")
+        # The pointer JSON size limit must apply before subprocess captures
+        # blob stdout; commit:path identifies an immutable Git object.
+        size_result = _run_git(
+            repo_root,
+            ["cat-file", "-s", f"{expected_tip}:{CURRENT_RUN_POINTER_PATH}"],
+        )
+        if size_result.returncode != 0:
+            raise CurrentRunAuthorityError("current_run_pointer_blob_size_read_failed")
+        try:
+            object_size = size_result.stdout.decode("ascii").strip()
+        except UnicodeDecodeError as exc:
+            raise CurrentRunAuthorityError("current_run_pointer_blob_size_invalid") from exc
+        if not object_size.isascii() or not object_size.isdecimal() or len(object_size) > 20:
+            raise CurrentRunAuthorityError("current_run_pointer_blob_size_invalid")
+        if int(object_size) > MAX_CURRENT_RUN_POINTER_BYTES:
+            raise CurrentRunAuthorityError("current_run_pointer_exceeds_byte_limit")
         blob = _run_git(
             repo_root,
             ["cat-file", "blob", f"{expected_tip}:{CURRENT_RUN_POINTER_PATH}"],
