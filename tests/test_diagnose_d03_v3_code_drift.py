@@ -229,3 +229,33 @@ def test_exact_historical_v3_pyc_matches_recompilation_after_warmup(tmp_path: Pa
     }
     assert report["attestation_override_allowed"] is False
     assert report["canonical_corpus_credit"] == 0
+
+def test_nested_frozenset_is_limited_before_marshal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\\n    return 1\\n")
+    nested = frozenset({frozenset({1})})
+    live = code.replace(co_consts=(nested,))
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("nested frozen constants must not be marshalled")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(live, live)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+
+def test_simple_scalar_frozenset_remains_comparable() -> None:
+    code, _ = _function("def candidate():\\n    return 1\\n")
+    frozen = frozenset({1, 2, 3})
+    left = code.replace(co_consts=(frozen,))
+    right = code.replace(co_consts=(frozenset({3, 2, 1}),))
+    report = compare_code_objects(left, right)
+    assert report["classification"] == "NO_CODE_MISMATCH_OBSERVED"
+    assert report["marshal_equal"] is True
+    assert report["attestation_override_allowed"] is False
