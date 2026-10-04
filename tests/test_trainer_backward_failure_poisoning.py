@@ -716,3 +716,88 @@ def test_run_exhaustion_mid_accumulation_discards_uncheckpointable_gradients(
         trainer.train_microbatch(_BATCH)
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.state_dict()
+
+
+def test_reject_optimizer_over_unrelated_parameter_at_construction():
+    model = _TinyLogitModel()
+    foreign = torch.nn.Parameter(torch.ones(3))
+    optimizer = torch.optim.AdamW([foreign], lr=3e-4)
+    before = model.weight.detach().clone()
+
+    with pytest.raises(ValueError, match="not owned by the model"):
+        Trainer(model, TrainerConfig(max_steps=1, seed=17), optimizer=optimizer)
+    torch.testing.assert_close(model.weight, before, rtol=0, atol=0)
+
+
+def test_reject_optimizer_omitting_a_trainable_model_parameter():
+    class TwoParameterModel(_TinyLogitModel):
+        def __init__(self) -> None:
+            super().__init__()
+            self.additional = torch.nn.Parameter(torch.zeros(3))
+
+    model = TwoParameterModel()
+    optimizer = torch.optim.AdamW([model.weight], lr=3e-4)
+    with pytest.raises(ValueError, match="omits trainable model parameters"):
+        Trainer(model, TrainerConfig(max_steps=1, seed=17), optimizer=optimizer)
+
+
+def test_reject_duplicate_parameter_assignment_across_optimizer_groups():
+    model = _TinyLogitModel()
+    optimizer = torch.optim.AdamW([model.weight], lr=3e-4)
+    optimizer.param_groups[0]["params"].append(model.weight)
+    with pytest.raises(ValueError, match="duplicate parameter"):
+        Trainer(model, TrainerConfig(max_steps=1, seed=17), optimizer=optimizer)
+
+
+def test_optimizer_group_swap_before_microbatch_poisoned_without_exposure():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    original = model.weight.detach().clone()
+    foreign = torch.nn.Parameter(torch.ones(3))
+    trainer.optimizer.param_groups[0]["params"] = [foreign]
+
+    with pytest.raises(ValueError, match="not owned by the model"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 0
+    assert trainer.optimizer_step == 0
+    assert model.weight.grad is None
+    torch.testing.assert_close(model.weight, original, rtol=0, atol=0)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_optimizer_group_swap_during_forward_cannot_commit_phantom_step():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    original_forward = model.forward
+    original = model.weight.detach().clone()
+    foreign = torch.nn.Parameter(torch.ones(3))
+
+    def swapping_forward(input_ids):
+        logits = original_forward(input_ids)
+        trainer.optimizer.param_groups[0]["params"] = [foreign]
+        return logits
+
+    model.forward = swapping_forward
+    with pytest.raises(ValueError, match="not owned by the model"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert model.weight.grad is None
+    torch.testing.assert_close(model.weight, original, rtol=0, atol=0)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_optimizer_coverage_allows_frozen_model_parameters_in_group():
+    class PartiallyFrozenModel(_TinyLogitModel):
+        def __init__(self) -> None:
+            super().__init__()
+            self.frozen = torch.nn.Parameter(torch.ones(3), requires_grad=False)
+
+    model = PartiallyFrozenModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
+    assert trainer.optimizer_step == 1
