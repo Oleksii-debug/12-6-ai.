@@ -488,12 +488,19 @@ def test_fixed_pointer_activation_retirement_and_generation(
     assert first.post_write_reread_verified is True
     assert first.generation == 1
 
-    current = inspect_current_run_authority(writer_b, str(remote), now=NOW)
+    current = inspect_current_run_authority(
+        writer_b, str(remote), manifest=manifest_a, now=NOW,
+    )
     assert current.present is True
     assert current.valid is True
     assert current.active is True
     assert current.ref == CURRENT_RUN_POINTER_REF
     assert current.run_id == "run-a"
+
+    without_manifest = inspect_current_run_authority(writer_b, str(remote), now=NOW)
+    assert without_manifest.valid is False
+    assert without_manifest.active is False
+    assert without_manifest.blockers == ("current_run_trusted_launch_manifest_required",)
 
     duplicate = activate_current_run_authority(
         writer_b,
@@ -586,7 +593,9 @@ def test_retired_pointer_can_advance_only_from_exact_latest_tip(
     )
     assert second.committed is True
     assert second.generation == 2
-    current = inspect_current_run_authority(writer_a, str(remote), now=NOW)
+    current = inspect_current_run_authority(
+        writer_a, str(remote), manifest=manifest_b, now=NOW,
+    )
     assert current.active is True
     assert current.generation == 2
     assert current.run_id == "run-b"
@@ -761,6 +770,7 @@ def test_active_pointer_invalidates_on_global_lease_tip_change_or_expiry(
     expired = inspect_current_run_authority(
         writer_b,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(hours=2),
     )
     assert expired.valid is False
@@ -779,6 +789,7 @@ def test_active_pointer_invalidates_on_global_lease_tip_change_or_expiry(
     drifted = inspect_current_run_authority(
         writer_b,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=10),
     )
     assert drifted.valid is False
@@ -826,6 +837,7 @@ def test_same_run_refresh_after_global_lease_renewal(
     before_refresh = inspect_current_run_authority(
         writer_b,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=10),
     )
     assert before_refresh.valid is False
@@ -849,6 +861,7 @@ def test_same_run_refresh_after_global_lease_renewal(
     current = inspect_current_run_authority(
         writer_a,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=10),
     )
     assert current.valid is True
@@ -1062,6 +1075,7 @@ def test_refresh_second_renewal_race_commits_no_active_authority(
     inspection = inspect_current_run_authority(
         writer_a,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=20),
     )
     assert inspection.valid is False
@@ -1196,6 +1210,7 @@ def test_inspection_rechecks_global_lease_tip_after_blob_read(
     inspection = inspect_current_run_authority(
         writer_b,
         str(remote),
+        manifest=manifest,
         now=NOW + timedelta(minutes=10),
     )
 
