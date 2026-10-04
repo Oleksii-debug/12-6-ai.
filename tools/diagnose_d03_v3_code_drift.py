@@ -68,6 +68,12 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
             return
         if type(left) is not type(right):
             differences.append(f"{path}:type")
+            # A mismatch alone does not certify that either unmatched tree
+            # fits the promised resource limits. Inspect both independently
+            # before attempting marshal of the containing code object.
+            visit(left, left, f"{path}:left", depth + 1)
+            if not limited:
+                visit(right, right, f"{path}:right", depth + 1)
         elif type(left) is CodeType:
             for field in _CODE_FIELDS:
                 visit(getattr(left, field), getattr(right, field), f"{path}.{field}", depth + 1)
@@ -76,6 +82,14 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
         elif type(left) is tuple:
             if len(left) != len(right):
                 differences.append(f"{path}:length")
+                # Comparing only equal-length tuples previously skipped every
+                # nested member when lengths differed, allowing a deep code
+                # tree to reach marshal with an unbounded false conclusion.
+                for side, items in (("left", left), ("right", right)):
+                    for index, item in enumerate(items):
+                        visit(item, item, f"{path}:{side}[{index}]", depth + 1)
+                        if limited:
+                            return
             else:
                 for index, (first, second) in enumerate(zip(left, right)):
                     visit(first, second, f"{path}[{index}]", depth + 1)
