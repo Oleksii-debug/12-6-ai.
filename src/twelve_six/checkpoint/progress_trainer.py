@@ -32,6 +32,7 @@ from .trainer_adapter import (
     _assert_trainer_model_binding,
     _preflight_trainer_state,
     _preflight_trainer_target,
+    _restore_ambient_rng_after_failed_apply,
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
     _snapshot_torch_policy,
@@ -242,6 +243,7 @@ def load_trainer_checkpoint(
         _assert_live_d02_determinism(trainer)
     materialized = _prepare_model_weights(model, arrays, strict_model)
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
+    ambient_before_apply = _core.capture_rng_state()
     del arrays
 
     # Preflight prevents known incompatibilities, but an application-time
@@ -263,7 +265,10 @@ def load_trainer_checkpoint(
         else:
             _assert_live_d02_determinism(trainer)
     except BaseException as exc:
-        _restore_initial_torch_policy(policy_before_apply, exc)
+        try:
+            _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
+        finally:
+            _restore_initial_torch_policy(policy_before_apply, exc)
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             # D02 may already have recorded a more specific partial-load error
             # (including a second gradient-cleanup failure). Preserve it.
