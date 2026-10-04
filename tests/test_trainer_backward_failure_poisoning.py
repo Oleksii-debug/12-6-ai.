@@ -801,3 +801,29 @@ def test_optimizer_coverage_allows_frozen_model_parameters_in_group():
     trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
     assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
     assert trainer.optimizer_step == 1
+
+
+def test_primary_backward_exception_survives_both_gradient_cleanup_failures(
+    monkeypatch,
+):
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    model.failure_type = ValueError
+
+    def broken_model_cleanup(*args, **kwargs):
+        raise RuntimeError("synthetic model cleanup fault")
+
+    def broken_optimizer_cleanup(*args, **kwargs):
+        raise KeyboardInterrupt("synthetic optimizer cleanup fault")
+
+    monkeypatch.setattr(model, "zero_grad", broken_model_cleanup)
+    monkeypatch.setattr(trainer.optimizer, "zero_grad", broken_optimizer_cleanup)
+    with pytest.raises(ValueError, match="synthetic backward interruption"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.optimizer_step == 0
+    assert "backward failed" in trainer._failure_reason
+    assert "model gradient cleanup failed: RuntimeError" in trainer._failure_reason
+    assert "gradient cleanup failed: KeyboardInterrupt" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
