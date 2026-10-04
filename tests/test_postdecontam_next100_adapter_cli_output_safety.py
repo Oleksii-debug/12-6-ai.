@@ -447,3 +447,81 @@ def test_main_rejects_invalid_result_json_before_publication(
     assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert vector.read_bytes() == b"original vector"
     assert authority.read_bytes() == b"original dedup"
+
+
+def test_postcommit_stage_cleanup_failure_reports_committed_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hashlib
+
+    vector = tmp_path / "family vector.json"
+    authority = tmp_path / "dedup authority.json"
+    output = tmp_path / "verified result.json"
+    vector.write_bytes(b"original family")
+    authority.write_bytes(b"original dedup")
+    payload = b'{"terminal":true}\\n'.replace(b"\\n", b"\n")
+    original_unlink = Path.unlink
+
+    def locked_stage_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("injected Windows-style temporary-file sharing lock")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", locked_stage_unlink)
+    with pytest.raises(cli.OutputCommittedCleanupPending) as caught:
+        cli._write_new_output(
+            output, payload, family_vector=vector, dedup_authority=authority,
+        )
+    report = caught.value
+    assert report.output == output
+    assert report.payload_sha256 == hashlib.sha256(payload).hexdigest()
+    assert str(report).startswith("OUTPUT_COMMITTED_CLEANUP_PENDING ")
+    assert output.read_bytes() == payload
+    assert report.stage.read_bytes() == payload
+    assert report.stage.stat().st_ino == output.stat().st_ino
+    assert vector.read_bytes() == b"original family"
+    assert authority.read_bytes() == b"original dedup"
+    # Retry never overwrites committed evidence, even while cleanup is pending.
+    with pytest.raises(ProjectionError, match="refusing to overwrite"):
+        cli._write_new_output(
+            output, b"different result",
+            family_vector=vector, dedup_authority=authority,
+        )
+    assert output.read_bytes() == payload
+    # Once the sharing lock clears, the orphaned stage can be reconciled.
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    report.stage.unlink()
+    assert output.read_bytes() == payload
+
+
+def test_main_has_distinct_postcommit_cleanup_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "dedup.json"
+    output = tmp_path / "published result.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+    original_unlink = Path.unlink
+
+    def locked_stage_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("locked temporary link")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", locked_stage_unlink)
+    with pytest.raises(SystemExit) as caught:
+        cli.main()
+    assert caught.value.code == 3
+    stderr = capsys.readouterr().err
+    assert "OUTPUT_COMMITTED_CLEANUP_PENDING " in stderr
+    assert "sha256=" in stderr
+    assert "FAIL_CLOSED" not in stderr
+    assert output.exists()
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    with pytest.raises(SystemExit, match="FAIL_CLOSED: refusing to overwrite"):
+        cli.main()
