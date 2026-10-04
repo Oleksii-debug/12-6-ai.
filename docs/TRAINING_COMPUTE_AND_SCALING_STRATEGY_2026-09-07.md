@@ -170,3 +170,69 @@ The 12-6 coordinator should now:
 7. update routing/master documents so workers do not keep spending months on unnecessary intermediate full-scale campaigns.
 
 Success criterion: fastest evidence-based path to a genuinely learned, useful and scalable own model — not the largest parameter count on paper.
+
+## 11. Execution-first override — 2026-09-14
+
+The strongest current engineering conclusion is that 12-6 AI is no longer primarily blocked by missing architecture ideas. It is blocked by the gap between mechanics that exist and mechanics that have been physically executed on canonical data under terminal authority.
+
+Until the first lawful optimized-target optimizer step, apply a mechanics freeze: do not open new generic infrastructure unless it closes a direct dependency on the executable learned-20M path. Prefer physical execution, current-lineage convergence and immutable evidence over new framework fanout.
+
+The shortest current path is:
+
+`clean physical successor -> terminal performance-equivalent indexed global dedup -> already-admitted high-yield physical candidates -> one retained inventory -> reserved-evaluation decontamination -> quality/privacy -> family balance -> cluster-safe split -> bounded tokenizer decision -> two-clean deterministic packing -> exact unique causal-loss ledger -> positive optimized-target exposure -> current-main model/trainer + D05/launch closure -> optimizer step 1 -> early checkpoint -> process death -> fresh-process resume -> bounded learned-20M pilot -> profiler -> terminal learned 20M -> measured ~200M feasibility`.
+
+Do not open new source families while the existing high-yield queue remains capable of closing the capacity gap. Do not infer corpus or training credit from mechanics CI.
+
+## 12. Current-main executable runtime is a P0 convergence target
+
+As of the 2026-09-14 live audit, canonical `main` still has no runtime dependencies declared in `pyproject.toml`; training/runtime mechanics remain in incumbent open lineages rather than a single executable current-main stack.
+
+The correct repair is not to create Trainer #2 or blindly merge the full historical PR #1336 tree. Preserve the existing MODEL-341/#1336 Product lineage and, when lawful ownership allows, converge the minimum model/init/trainer/runtime bytes onto current main with numerical parity, NaN/Inf adversarial coverage, checkpoint/recovery compatibility and a deterministic two-step CPU smoke.
+
+The current-main install surface must eventually declare/pin the exact training runtime needed for that smoke and for the manual free-compute carrier. Dependency declaration alone does not grant training authority.
+
+## 13. Commodity backends by measured scale
+
+Use commodity infrastructure below project-owned scientific contracts instead of rebuilding it:
+
+- ~20M: native PyTorch eager, SDPA, AdamW, project exact exposure order, incumbent D05 and sealed D06;
+- ~200M: remain native PyTorch first; use BF16 where supported; qualify `torch.compile`, activation checkpointing, DDP or FSDP only when same-run-packet measurements show a material benefit;
+- ~1B: qualify FSDP2 plus PyTorch Distributed Checkpoint when terminal 200M evidence demonstrates the need; D05 remains the scientific checkpoint/recovery authority above low-level sharded transport;
+- multi-billion: benchmark TorchTitan only when distributed runtime engineering itself becomes a bottleneck; consider Megatron Core for measured NVIDIA tensor/pipeline/context-parallel needs and DeepSpeed for measured optimizer/offload pressure.
+
+For tokenization, keep the accepted byte baseline capable of launching the first lawful pilot. Before ~200M, run one bounded own-corpus byte-vs-own-BPE/Unigram experiment, measuring UA/EN/code tokens per source byte, reversibility, long-sequence inflation, effective causal positions/s and matched-budget validation behavior. Freeze one canonical tokenizer before ~200M.
+
+For evaluation, an external harness may execute development benchmarks only behind project D06/final-test authority. No benchmark runner may become scientific truth by itself.
+
+## 14. Measure before optimizing
+
+The first real pilot and every scale feasibility packet should record at minimum:
+
+- optimizer step;
+- unique and total positions;
+- replay ratio;
+- training and validation loss;
+- positions/s and samples/s;
+- GPU utilization, allocated memory and reserved memory when applicable;
+- CPU RSS;
+- data-wait, forward, backward and optimizer time;
+- checkpoint pause and checkpoint bytes.
+
+Use PyTorch Profiler or another qualified commodity profiler rather than creating a parallel profiler subsystem. `torch.compile`, activation checkpointing, distributed training and tokenizer migration are evidence-driven optimizations, not defaults.
+
+## 15. Coordination and repository governance
+
+SWARM throughput is itself now a systems bottleneck. Preserve collision safety while reducing redundant reads: the preferred next control-plane optimization is one immutable hash-addressed snapshot of OPEN ownership/leases for candidate discovery, followed by one mandatory live exact-semantic race/late-bind before claim or mutation. This is a cache/index over canonical #723 authority, not a scheduler replacement.
+
+Audit effort should be proportional to scientific risk once the protocol encodes and qualifies risk tiers:
+
+- `A_AUTHORITY`: corpus admission, decontamination/final-test authority, tokenizer promotion, positive optimized exposure, optimizer start, scientific checkpoint promotion — fresh independent exact-head audit mandatory;
+- `B_RUNTIME`: Trainer, checkpoint/recovery, matcher/dedup semantics — shared CI plus targeted adversarial different-worker audit;
+- `C_EXECUTION`: carrier, CLI, transport/provider glue — shared CI and automated contract tests, with independent review for sensitive authority fields;
+- `D_NONAUTHORITY`: docs/accessibility/formatting/non-authority telemetry — green CI can become an automatic integration candidate when repository policy supports it.
+
+Existing stricter issue/PR contracts remain binding until these tiers are encoded in canonical protocol/config; this document does not retroactively waive audits.
+
+Repository governance must match the exact-SHA scientific model. Protect `main` with PR-only changes, required CI, no force-push/deletion and exact merge/late-bind checks. Keep code licensing explicit and separate from corpus/source rights. Workers must not infer a project code license from dependency licenses.
+
+Current scientific truth is unchanged until live authorities prove otherwise: optimized-target exposure remains zero; tokenizer fit is unauthorized; real-target optimizer updates are zero; training has not executed; learned weights do not exist; final-test outcomes remain unread; materially paid compute remains unauthorized.
