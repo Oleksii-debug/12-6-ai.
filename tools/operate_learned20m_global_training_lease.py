@@ -16,7 +16,7 @@ from twelve_six.learned20m_global_training_lease import (
     renew_global_training_run_lease,
     terminate_global_training_run_lease,
 )
-from twelve_six.learned20m_training_lease import build_training_run_lease
+from twelve_six.learned20m_training_lease import build_authorized_training_run_lease
 
 
 class _DuplicateKey(ValueError):
@@ -73,6 +73,7 @@ def _parser() -> argparse.ArgumentParser:
     acquire.add_argument("--run-id", required=True)
     acquire.add_argument("--holder-id", required=True)
     acquire.add_argument("--ttl-seconds", type=int, required=True)
+    acquire.add_argument("--expected-terminal-authority-sha256", required=True)
 
     renew = subparsers.add_parser("renew")
     renew.add_argument("--expected-remote-tip", required=True)
@@ -99,14 +100,23 @@ def main() -> int:
             _emit(result.as_dict())
             return 0 if result.present and result.valid else 3
         if args.operation == "acquire":
-            lease = build_training_run_lease(
+            lease = build_authorized_training_run_lease(
                 manifest,
+                expected_terminal_authority_sha256=(
+                    args.expected_terminal_authority_sha256
+                ),
                 run_id=args.run_id,
                 holder_id=args.holder_id,
                 ttl_seconds=args.ttl_seconds,
             )
             result = acquire_global_training_run_lease(
-                args.repo_root, args.remote, manifest, lease.as_dict()
+                args.repo_root,
+                args.remote,
+                manifest,
+                lease.as_dict(),
+                expected_terminal_authority_sha256=(
+                    args.expected_terminal_authority_sha256
+                ),
             )
         elif args.operation == "renew":
             result = renew_global_training_run_lease(

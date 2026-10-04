@@ -34,9 +34,14 @@ from twelve_six.learned20m_global_training_lease import (
     renew_global_training_run_lease,
 )
 from twelve_six.learned20m_training_lease import (
+    TERMINAL_AUTHORITY_SCHEMA,
+    base_launch_manifest_sha256,
+    build_authorized_training_run_lease,
     build_training_run_lease,
     canonical_json_bytes,
+    finalize_launch_manifest,
     launch_manifest_sha256,
+    terminal_authority_sha256,
 )
 
 NOW = datetime(2026, 9, 27, 13, 0, tzinfo=UTC)
@@ -111,6 +116,107 @@ def _identity(
         portable_run_binding_sha256=binding,
         source_git_sha=source_git_sha,
     )
+
+
+def _terminal_authority(
+    manifest: dict,
+    identity: dict,
+    *,
+    exposure: int = 1_000,
+) -> dict:
+    identities = manifest["identities"]
+    authority = {
+        "schema": TERMINAL_AUTHORITY_SCHEMA,
+        "authority_identity_sha256": "0" * 64,
+        "base_manifest_sha256": base_launch_manifest_sha256(manifest),
+        "source_git_sha": identities["source_git_sha"],
+        "carrier_authority_sha256": "0" * 64,
+        "modelspec_sha256": identities["modelspec_sha256"],
+        "initspec_sha256": identities["initspec_sha256"],
+        "random_init": True,
+        "foreign_pretrained_weights_used": False,
+        "launch_input_authority_sha256": "1" * 64,
+        "corpus_manifest_sha256": identities["corpus_manifest_sha256"],
+        "split_sha256": identities["split_sha256"],
+        "tokenizer_decision_sha256": "2" * 64,
+        "tokenizer_sha256": identities["tokenizer_sha256"],
+        "packing_sha256": identities["packing_sha256"],
+        "loss_bearing_manifest_sha256": "3" * 64,
+        "unique_loss_ledger_sha256": identities["unique_loss_ledger_sha256"],
+        "exposure_plan_sha256": "4" * 64,
+        "portable_run_packet_sha256": identities["portable_run_packet_sha256"],
+        "portable_run_binding_sha256": identities["portable_run_binding_sha256"],
+        "recipe_authority_sha256": "5" * 64,
+        "training_config_sha256": identities["training_config_sha256"],
+        "seed_vector_sha256": "6" * 64,
+        "target_unique_loss_positions": manifest["recipe"]["target_unique_loss_positions"],
+        "maximum_total_exposures": manifest["recipe"]["maximum_total_exposures"],
+        "replay_cap": 4_000_000,
+        "recovery_run_id": identity["run_id"],
+        "recovery_run_manifest_sha256": identity["recovery_run_manifest_sha256"],
+        "recovery_attempt_authority_sha256": identity[
+            "recovery_attempt_authority_sha256"
+        ],
+        "checkpoint_contract_sha256": manifest["checkpoint"][
+            "checkpoint_contract_sha256"
+        ],
+        "checkpoint_cadence_sha256": "9" * 64,
+        "resume_rules_sha256": "a" * 64,
+        "safe_stop_current_run_sha256": identity["identity_sha256"],
+        "evaluation_schedule_sha256": "c" * 64,
+        "evaluation_firewall_sha256": manifest["evaluation"]["firewall_sha256"],
+        "poison_stop_semantics_sha256": "d" * 64,
+        "resource_evidence_sha256": "e" * 64,
+        "execution_target_sha256": "f" * 64,
+        "measured_resource_envelope_sha256": "0" * 64,
+        "resource_class": manifest["resource"]["resource_class"],
+        "maximum_cost_usd": 0,
+        "materially_paid": False,
+        "final_test_payload_access": False,
+        "training_authority_ref": manifest["authorities"]["training"]["reference"],
+        "training_authority_sha256": manifest["authorities"]["training"][
+            "evidence_sha256"
+        ],
+        "compute_authority_ref": manifest["authorities"]["compute"]["reference"],
+        "compute_authority_sha256": manifest["authorities"]["compute"][
+            "evidence_sha256"
+        ],
+        "execution_backend": manifest["execution_backend"],
+        "authorized_optimized_target_exposure": exposure,
+    }
+    authority["authority_identity_sha256"] = terminal_authority_sha256(authority)
+    return authority
+
+
+def _authorized_run(
+    base_manifest: dict | None = None,
+    *,
+    run_id: str = "run-a",
+    holder_id: str = "runner-a",
+    recovery_manifest: str = "1" * 64,
+    ttl_seconds: int = 3600,
+    now: datetime = NOW,
+) -> tuple[dict, dict, object, str]:
+    base = deepcopy(_manifest() if base_manifest is None else base_manifest)
+    identity = _identity(
+        manifest=base,
+        run_id=run_id,
+        recovery_manifest=recovery_manifest,
+        binding=base["identities"]["portable_run_binding_sha256"],
+        source_git_sha=base["identities"]["source_git_sha"],
+    )
+    authority = _terminal_authority(base, identity)
+    manifest = finalize_launch_manifest(base, authority)
+    expected_authority = authority["authority_identity_sha256"]
+    lease = build_authorized_training_run_lease(
+        manifest,
+        expected_terminal_authority_sha256=expected_authority,
+        run_id=run_id,
+        holder_id=holder_id,
+        ttl_seconds=ttl_seconds,
+        now=now,
+    )
+    return manifest, identity, lease, expected_authority
 
 
 def _global_inspection(
@@ -358,20 +464,13 @@ def test_fixed_pointer_activation_retirement_and_generation(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest_a = _manifest()
-    identity_a = _identity(manifest=manifest_a)
-    lease_a = build_training_run_lease(
-        manifest_a,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest_a, identity_a, lease_a, expected_authority_a = _authorized_run()
     global_acquire = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest_a,
         lease_a.as_dict(),
+        expected_terminal_authority_sha256=expected_authority_a,
         now=NOW,
     )
     assert global_acquire.committed is True
@@ -435,36 +534,28 @@ def test_retired_pointer_can_advance_only_from_exact_latest_tip(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest_a = _manifest()
-    identity_a = _identity(manifest=manifest_a)
-    manifest_b = _manifest(source_git_sha="c" * 40, binding="f" * 64)
-    identity_b = _identity(
-        manifest=manifest_b,
-        run_id="run-b",
-        recovery_manifest="4" * 64,
-        binding="f" * 64,
-        source_git_sha="c" * 40,
-    )
-
-    lease_a = build_training_run_lease(
-        manifest_a,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
-    lease_b = build_training_run_lease(
-        manifest_b,
+    manifest_a, identity_a, lease_a, expected_authority_a = _authorized_run()
+    manifest_b, identity_b, lease_b, expected_authority_b = _authorized_run(
+        _manifest(source_git_sha="c" * 40, binding="f" * 64),
         run_id="run-b",
         holder_id="runner-b",
-        ttl_seconds=3600,
-        now=NOW,
+        recovery_manifest="4" * 64,
     )
     assert acquire_global_training_run_lease(
-        writer_a, str(remote), manifest_a, lease_a.as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest_a,
+        lease_a.as_dict(),
+        expected_terminal_authority_sha256=expected_authority_a,
+        now=NOW,
     ).committed
     assert acquire_global_training_run_lease(
-        writer_b, str(remote), manifest_b, lease_b.as_dict(), now=NOW
+        writer_b,
+        str(remote),
+        manifest_b,
+        lease_b.as_dict(),
+        expected_terminal_authority_sha256=expected_authority_b,
+        now=NOW,
     ).committed
 
     first = activate_current_run_authority(
@@ -616,21 +707,14 @@ def test_activation_rejects_expired_running_global_lease(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
     acquired_at = datetime(2026, 9, 27, 11, 0, tzinfo=UTC)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=acquired_at,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run(now=acquired_at)
     assert acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=acquired_at,
     ).committed
 
@@ -653,17 +737,14 @@ def test_active_pointer_invalidates_on_global_lease_tip_change_or_expiry(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, lease.as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     assert acquired.committed is True
     pointer = activate_current_run_authority(
@@ -708,20 +789,13 @@ def test_same_run_refresh_after_global_lease_renewal(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -800,20 +874,13 @@ def test_refresh_rejects_identity_substitution_and_unrenewed_lease(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -871,20 +938,13 @@ def test_refresh_rejects_candidate_manifest_substitution(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -928,20 +988,13 @@ def test_refresh_second_renewal_race_commits_no_active_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -1020,20 +1073,13 @@ def test_refresh_rejects_retired_pointer_and_manifest_substitution(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -1099,20 +1145,13 @@ def test_inspection_rechecks_global_lease_tip_after_blob_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -1171,20 +1210,13 @@ def test_pointer_read_rechecks_fixed_ref_after_blob_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -1253,20 +1285,13 @@ def test_retire_contains_pointer_commit_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
@@ -1305,20 +1330,13 @@ def test_mutations_fail_closed_on_pointer_type_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
-    identity = _identity(manifest=manifest)
-    lease = build_training_run_lease(
-        manifest,
-        run_id="run-a",
-        holder_id="runner-a",
-        ttl_seconds=3600,
-        now=NOW,
-    )
+    manifest, identity, lease, expected_authority = _authorized_run()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         manifest,
         lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.committed is True
