@@ -62,6 +62,23 @@ def _fetch(url: str, timeout: int, max_bytes: int) -> bytes:
         raise RuntimeError(f"immutable source fetch failed for {url}: {exc}") from exc
 
 
+def _check_pinned_license(row: dict[str, Any], payload: bytes) -> None:
+    repository = row["repository"]
+    _require(
+        LICENSE_MARKERS[row["license_spdx"]] in payload,
+        f"license marker drift for {repository}",
+    )
+    expected = _VALIDATOR.EXPECTED_LICENSES[repository]
+    _require(
+        hashlib.sha256(payload).hexdigest() == expected["license_raw_sha256"],
+        f"license SHA-256 drift for {repository}",
+    )
+    _require(
+        _git_blob_sha1(payload) == expected["license_git_blob_sha1"],
+        f"license Git blob identity drift for {repository}",
+    )
+
+
 def materialize(manifest: dict[str, Any], *, timeout: int = 30) -> dict[str, Any]:
     # Pinned repository, revision, exact object set, gates and science policy
     # must be valid before any untrusted network access.
@@ -127,10 +144,7 @@ def materialize(manifest: dict[str, Any], *, timeout: int = 30) -> dict[str, Any
             )
 
         license_payload = _fetch(_raw_url(row, "LICENSE"), timeout, MAX_LICENSE_BYTES)
-        _require(
-            LICENSE_MARKERS[row["license_spdx"]] in license_payload,
-            f"license marker drift for {row['repository']}",
-        )
+        _check_pinned_license(row, license_payload)
         sealed.append(
             {
                 "source_family": row["source_family"],
