@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from twelve_six.checkpoint import CheckpointCompatibilityError, CheckpointIdentity
-from twelve_six.checkpoint import core, trainer_adapter
+from twelve_six.checkpoint import core, progress_trainer, trainer_adapter
 
 
 class Model:
@@ -415,5 +415,60 @@ def test_real_d02_trainer_rejects_unowned_checkpoint_model(
             torch.testing.assert_close(parameter.detach(), saved)
         assert trainer._failure_reason is None
         assert trainer._update_incomplete is False
+    finally:
+        core.restore_rng_state(ambient)
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_rejected_semantic_probe_does_not_advance_global_rng(
+    tmp_path: Path,
+    use_progress: bool,
+) -> None:
+    """Even a copied adapter's failed loader must not alter ambient RNG."""
+
+    import torch
+
+    ambient = core.capture_rng_state()
+    try:
+        random.seed(709)
+        np.random.seed(709)
+        torch.manual_seed(709)
+        checkpoint = tmp_path / "rng-preflight"
+        checkpoint_at(checkpoint)
+
+        class DrawingRejectingTrainer(PlainTrainer):
+            def load_state_dict(self, state: dict[str, object]) -> None:
+                random.random()
+                np.random.random_sample()
+                torch.rand(())
+                super().load_state_dict(state)
+                raise RuntimeError("injected semantic preflight rejection")
+
+        saved = core.capture_rng_state()
+        expected_python = random.Random()
+        expected_python.setstate(saved["python"])
+        expected_np = np.random.RandomState()
+        expected_np.set_state(saved["numpy"])
+        expected_torch = torch.Generator(device="cpu")
+        expected_torch.set_state(saved["torch"]["cpu"])
+        expected = (
+            expected_python.random(),
+            expected_np.random_sample(),
+            torch.rand((), generator=expected_torch).item(),
+        )
+        model = Model([9.0, 9.0, 9.0])
+        trainer = DrawingRejectingTrainer()
+        loader = (
+            progress_trainer.load_trainer_checkpoint
+            if use_progress else trainer_adapter.load_trainer_checkpoint
+        )
+        with pytest.raises(
+            CheckpointCompatibilityError, match="isolated compatibility preflight"
+        ):
+            loader(checkpoint, model=model, trainer=trainer, restore_rng=False)
+
+        assert (random.random(), np.random.random_sample(), torch.rand(()).item()) == expected
+        np.testing.assert_array_equal(model.weights, [9.0, 9.0, 9.0])
+        assert model.loads == 0
+        assert trainer.loads == 0
     finally:
         core.restore_rng_state(ambient)
