@@ -525,3 +525,90 @@ def test_main_has_distinct_postcommit_cleanup_exit(
     monkeypatch.setattr(Path, "unlink", original_unlink)
     with pytest.raises(SystemExit, match="FAIL_CLOSED: refusing to overwrite"):
         cli.main()
+
+
+def test_failed_rollback_reports_unverified_output_and_allows_manual_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "unverified result.json"
+    vector.write_bytes(b"trusted vector")
+    authority.write_bytes(b"trusted authority")
+    original_link = cli.os.link
+    original_unlink = Path.unlink
+
+    def tamper_before_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"unverified mutated bytes")
+        original_link(stage, final)
+
+    def locked_final_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path == output:
+            raise PermissionError("injected Windows-style rollback lock")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", tamper_before_link)
+    monkeypatch.setattr(Path, "unlink", locked_final_unlink)
+    with pytest.raises(cli.OutputUnverifiedRollbackPending) as caught:
+        cli._write_new_output(
+            output, b"intended verified bytes",
+            family_vector=vector, dedup_authority=authority,
+        )
+    report = caught.value
+    assert report.output == output
+    assert str(report).startswith("OUTPUT_UNVERIFIED_ROLLBACK_PENDING ")
+    assert output.read_bytes() == b"unverified mutated bytes"
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert vector.read_bytes() == b"trusted vector"
+    assert authority.read_bytes() == b"trusted authority"
+    with pytest.raises(ProjectionError, match="refusing to overwrite"):
+        cli._write_new_output(
+            output, b"intended verified bytes",
+            family_vector=vector, dedup_authority=authority,
+        )
+    assert output.read_bytes() == b"unverified mutated bytes"
+    # After the lock clears, explicitly discard unverified output; never reuse it.
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    monkeypatch.setattr(cli.os, "link", original_link)
+    output.unlink()
+    cli._write_new_output(
+        output, b"intended verified bytes",
+        family_vector=vector, dedup_authority=authority,
+    )
+    assert output.read_bytes() == b"intended verified bytes"
+
+
+def test_main_has_distinct_unverified_rollback_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "unverified.json"
+    vector.write_bytes(b"source vector")
+    authority.write_bytes(b"source authority")
+    _configure(monkeypatch, vector, authority, output)
+    original_link = cli.os.link
+    original_unlink = Path.unlink
+
+    def tamper_before_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"unauthenticated output")
+        original_link(stage, final)
+
+    def locked_final_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path == output:
+            raise PermissionError("cannot unlink unverified output")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", tamper_before_link)
+    monkeypatch.setattr(Path, "unlink", locked_final_unlink)
+    with pytest.raises(SystemExit) as caught:
+        cli.main()
+    assert caught.value.code == 4
+    captured = capsys.readouterr()
+    assert "OUTPUT_UNVERIFIED_ROLLBACK_PENDING " in captured.err
+    assert "sha256=" not in captured.err
+    assert not captured.out
+    assert output.read_bytes() == b"unauthenticated output"
+    assert vector.read_bytes() == b"source vector"
+    assert authority.read_bytes() == b"source authority"
