@@ -934,8 +934,14 @@ def _require_checkpoint_directory(root: Path) -> None:
 
 
 def _read_regular_bytes(
-    root: Path, name: str, *, max_bytes: int | None = None
+    root: Path,
+    name: str,
+    *,
+    max_bytes: int | None = None,
+    exact_bytes: int | None = None,
 ) -> bytes:
+    if max_bytes is not None and exact_bytes is not None:
+        raise ValueError("max_bytes and exact_bytes are mutually exclusive")
     path = root / name
     try:
         before = path.lstat()
@@ -962,16 +968,35 @@ def _read_regular_bytes(
         opened_identity = (opened.st_dev, opened.st_ino)
         if before_identity != opened_identity:
             raise CheckpointIntegrityError(f"checkpoint artifact changed while opening: {name}")
+        if exact_bytes is not None and opened.st_size != exact_bytes:
+            raise CheckpointIntegrityError(f"size mismatch for {name}")
         if max_bytes is not None and opened.st_size > max_bytes:
             raise CheckpointIntegrityError(
                 f"checkpoint artifact exceeds {max_bytes}-byte limit: {name}"
             )
+        limit = exact_bytes if exact_bytes is not None else max_bytes
         with os.fdopen(fd, "rb", closefd=False) as handle:
-            data = handle.read(max_bytes + 1) if max_bytes is not None else handle.read()
-        if max_bytes is not None and len(data) > max_bytes:
-            raise CheckpointIntegrityError(
-                f"checkpoint artifact exceeds {max_bytes}-byte limit: {name}"
-            )
+            if limit is None:
+                data = handle.read()
+            else:
+                chunks: list[bytes] = []
+                remaining = limit
+                while True:
+                    chunk = handle.read(min(1024 * 1024, remaining + 1))
+                    if not chunk:
+                        break
+                    if len(chunk) > remaining:
+                        message = (
+                            f"size mismatch for {name}"
+                            if exact_bytes is not None
+                            else f"checkpoint artifact exceeds {max_bytes}-byte limit: {name}"
+                        )
+                        raise CheckpointIntegrityError(message)
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                data = b"".join(chunks)
+        if exact_bytes is not None and len(data) != exact_bytes:
+            raise CheckpointIntegrityError(f"size mismatch for {name}")
         return data
     finally:
         os.close(fd)
@@ -1114,9 +1139,7 @@ def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
             or expected_bytes < 0
         ):
             raise CheckpointIntegrityError(f"invalid byte length for {name}")
-        data = _read_regular_bytes(root, name)
-        if len(data) != expected_bytes:
-            raise CheckpointIntegrityError(f"size mismatch for {name}")
+        data = _read_regular_bytes(root, name, exact_bytes=expected_bytes)
         if sha256_bytes(data) != expected_hash:
             raise CheckpointIntegrityError(f"checksum mismatch for {name}")
         payloads[name] = data
