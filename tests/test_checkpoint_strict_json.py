@@ -223,6 +223,120 @@ def test_checkpoint_payload_growth_after_stale_fstat_is_bounded(
     assert intercepted
 
 
+
+@pytest.mark.parametrize("name", ["manifest.json", "MANIFEST.sha256", "weights.safetensors"])
+def test_checkpoint_lstat_denial_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    checkpoint = tmp_path / "lstat-denial"
+    _save(checkpoint)
+    target = checkpoint / name
+    original_lstat = Path.lstat
+
+    def denied_lstat(self: Path) -> os.stat_result:
+        if self == target:
+            raise PermissionError("injected lstat denial")
+        return original_lstat(self)
+
+    monkeypatch.setattr(Path, "lstat", denied_lstat)
+    with pytest.raises(
+        CheckpointIntegrityError, match="cannot inspect checkpoint artifact"
+    ):
+        verify_checkpoint(checkpoint)
+
+
+@pytest.mark.parametrize("name", ["manifest.json", "MANIFEST.sha256", "weights.safetensors"])
+def test_checkpoint_opened_fstat_denial_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    checkpoint = tmp_path / "fstat-denial"
+    _save(checkpoint)
+    target_stat = (checkpoint / name).stat()
+    original_fstat = os.fstat
+    intercepted: list[bool] = []
+
+    def denied_fstat(fd: int) -> os.stat_result:
+        actual = original_fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            intercepted.append(True)
+            raise PermissionError("injected fstat denial")
+        return actual
+
+    monkeypatch.setattr(checkpoint_core.os, "fstat", denied_fstat)
+    with pytest.raises(
+        CheckpointIntegrityError, match="cannot inspect opened checkpoint artifact"
+    ):
+        verify_checkpoint(checkpoint)
+    assert intercepted
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["manifest.json", "MANIFEST.sha256", "weights.safetensors",
+     "state.safetensors", "state.json"],
+)
+def test_checkpoint_read_denial_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    checkpoint = tmp_path / "read-denial"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+    target_stat = (checkpoint / name).stat()
+    original_fdopen = os.fdopen
+    intercepted: list[bool] = []
+
+    class FailingRead:
+        def __enter__(self) -> FailingRead:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _size: int = -1) -> bytes:
+            intercepted.append(True)
+            raise OSError("injected read denial")
+
+    def denied_fdopen(fd: int, *args: object, **kwargs: object) -> object:
+        actual = os.fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            return FailingRead()
+        return original_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", denied_fdopen)
+    with pytest.raises(
+        CheckpointIntegrityError, match="cannot safely read checkpoint artifact"
+    ):
+        verify_checkpoint(checkpoint)
+    assert intercepted
+
+
+def test_checkpoint_payload_shrink_after_stale_fstat_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoint = tmp_path / "payload-shrink"
+    _save(checkpoint)
+    path = checkpoint / "state.json"
+    original = path.read_bytes()
+    assert len(original) > 1
+    path.write_bytes(original[:-1])
+    target_stat = path.stat()
+    original_fstat = os.fstat
+    intercepted: list[bool] = []
+
+    def stale_fstat(fd: int) -> os.stat_result:
+        actual = original_fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            intercepted.append(True)
+            values = list(actual)
+            values[6] = len(original)
+            return os.stat_result(values)
+        return actual
+
+    monkeypatch.setattr(checkpoint_core.os, "fstat", stale_fstat)
+    with pytest.raises(CheckpointIntegrityError, match="size mismatch for state.json"):
+        verify_checkpoint(checkpoint)
+    assert intercepted
+
+
 @pytest.mark.parametrize("token", ["1e-4000", "-1e-4000", "0.0001e-4000"])
 def test_checkpoint_manifest_rejects_nonzero_numeric_underflow(
     tmp_path: Path, token: str
