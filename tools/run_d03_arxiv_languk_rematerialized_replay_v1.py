@@ -418,10 +418,13 @@ def _held_publication_source(
     source: Any, staged: Path, final: Path, *, label: str,
 ) -> Iterator[Any]:
     """Never discard a recovery alias when closing a held source fails."""
+    primary_failure: BaseException | None = None
     try:
         yield source
+    except BaseException as exc:
+        primary_failure = exc
+        raise
     finally:
-        primary_failure = sys.exc_info()[1]
         try:
             source.close()
         except (OSError, KeyboardInterrupt, SystemExit) as close_error:
@@ -561,13 +564,16 @@ def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
     """Create one complete output without clobbering existing names."""
     staged = _stage_new_bytes(path, raw, label=label)
     published_and_verified = False
+    primary_failure: BaseException | None = None
     try:
         _link_verified_new_bytes(staged, path, raw, label=label)
         published_and_verified = True
+    except BaseException as exc:
+        primary_failure = exc
+        raise
     finally:
         # Do not discard the sole recovery alias if final-path inspection or
         # owned-only rollback failed. A human must reconcile both names.
-        primary_failure = sys.exc_info()[1]
         if not isinstance(primary_failure, PublicationIndeterminate):
             try:
                 staged.unlink(missing_ok=True)
@@ -723,6 +729,7 @@ def _publish_verified_outputs(
     intent_path = pass_root / "outer-publication-intent.json"
     if any(path.resolve() == intent_path.resolve() for _, path, _ in outputs):
         raise RematerializationError("outer output cannot alias publication intent")
+    primary_failure: BaseException | None = None
     try:
         for label, path, raw in outputs:
             staged.append((label, path, _stage_new_bytes(path, raw, label=label), raw))
@@ -754,8 +761,10 @@ def _publish_verified_outputs(
                     f"manual reconciliation required before retry"
                 ) from exc
             published.append((label, path, sha256_bytes(raw)))
+    except BaseException as exc:
+        primary_failure = exc
+        raise
     finally:
-        primary_failure = sys.exc_info()[1]
         cleanup_error: BaseException | None = None
         cleanup_failures: list[str] = []
         for _, _, temporary, _ in staged:
