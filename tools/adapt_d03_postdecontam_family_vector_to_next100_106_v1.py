@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import BinaryIO
@@ -152,6 +154,21 @@ def _staged_payload_matches(
         return False
 
 
+class OutputCommittedCleanupPending(ProjectionError):
+    """The verified final output exists, but its temporary link remains."""
+
+    def __init__(self, output: Path, stage: Path, payload: bytes) -> None:
+        self.output = output
+        self.stage = stage
+        self.payload_sha256 = hashlib.sha256(payload).hexdigest()
+        super().__init__(
+            "OUTPUT_COMMITTED_CLEANUP_PENDING "
+            f"output={json.dumps(str(output), ensure_ascii=False)} "
+            f"stage={json.dumps(str(stage), ensure_ascii=False)} "
+            f"sha256={self.payload_sha256}"
+        )
+
+
 def _write_new_output(
     path: Path, payload: bytes, *, family_vector: Path, dedup_authority: Path,
 ) -> None:
@@ -216,6 +233,10 @@ def _write_new_output(
             try:
                 staged_path.unlink()
             except OSError as exc:
+                if verified:
+                    raise OutputCommittedCleanupPending(
+                        final, staged_path, payload,
+                    ) from exc
                 raise ProjectionError(
                     f"cannot clean up staged adapter output: {staged_path}"
                 ) from exc
@@ -248,6 +269,9 @@ def main() -> int:
             family_vector=args.family_vector,
             dedup_authority=args.dedup_authority,
         )
+    except OutputCommittedCleanupPending as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(3) from exc
     except ProjectionError as exc:
         raise SystemExit(f"FAIL_CLOSED: {exc}") from exc
     print(args.output)
