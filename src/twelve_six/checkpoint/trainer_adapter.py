@@ -458,10 +458,17 @@ def _preflight_trainer_state(
                 raise
             else:
                 if warn_only is not None:
-                    torch.use_deterministic_algorithms(
-                        bool(torch_state["deterministic_algorithms"]),
-                        warn_only=warn_only,
-                    )
+                    try:
+                        torch.use_deterministic_algorithms(
+                            bool(torch_state["deterministic_algorithms"]),
+                            warn_only=warn_only,
+                        )
+                    except BaseException as mode_exc:
+                        _restore_initial_torch_policy(
+                            (bool(torch_state["deterministic_algorithms"]), warn_only),
+                            mode_exc,
+                        )
+                        raise
         except BaseException:
             if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
                 if trainer._failure_reason is None:
