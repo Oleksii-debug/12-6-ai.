@@ -1605,3 +1605,100 @@ def test_direct_restore_rejects_existing_corrupted_model_buffer():
     assert target._update_incomplete is True
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         target.state_dict()
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("weight_decay", float("nan")),
+        ("weight_decay", -0.1),
+        ("eps", float("inf")),
+        ("betas", (float("nan"), 0.9)),
+    ],
+)
+def test_restore_rejects_invalid_adamw_hyperparameters_before_clean_status(
+    field, invalid,
+):
+    from copy import deepcopy
+    from dataclasses import replace
+
+    from twelve_six.training import NonFiniteTrainingError
+
+    config = TrainerConfig(max_steps=1, seed=17)
+    original = Trainer(_TinyLogitModel(), config)
+    snapshot = original.state_dict()
+    corrupt = deepcopy(snapshot.optimizer)
+    corrupt["param_groups"][0][field] = invalid
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    with pytest.raises(NonFiniteTrainingError, match=f"optimizer {field}"):
+        receiver.load_state_dict(replace(snapshot, optimizer=corrupt))
+
+    assert receiver.optimizer_step == 0
+    assert receiver._update_incomplete is True
+    assert receiver._failure_reason.startswith("trainer state restore failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        receiver.state_dict()
+
+
+def test_checkpoint_export_rejects_nonfinite_group_weight_decay():
+    from twelve_six.training import NonFiniteTrainingError
+
+    trainer = Trainer(_TinyLogitModel(), TrainerConfig(max_steps=1, seed=17))
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
+    trainer.optimizer.param_groups[0]["weight_decay"] = float("nan")
+
+    with pytest.raises(NonFiniteTrainingError, match="optimizer weight_decay"):
+        trainer.state_dict()
+
+    assert trainer._failure_reason.startswith("checkpoint boundary")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_restore_rejects_nonfinite_scheduler_base_lr():
+    from copy import deepcopy
+    from dataclasses import replace
+
+    from twelve_six.training import NonFiniteTrainingError
+
+    config = TrainerConfig(max_steps=2, scheduler="cosine", warmup_steps=1, seed=17)
+    original = Trainer(_TinyLogitModel(), config)
+    original.train_microbatch(_BATCH)
+    snapshot = original.state_dict()
+    corrupt_scheduler = deepcopy(snapshot.scheduler)
+    assert corrupt_scheduler is not None
+    corrupt_scheduler["base_lrs"] = [float("inf")]
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    with pytest.raises(NonFiniteTrainingError, match="scheduler has non-finite state"):
+        receiver.load_state_dict(replace(snapshot, scheduler=corrupt_scheduler))
+
+    assert receiver._failure_reason.startswith("trainer state restore failed")
+    assert receiver._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        receiver.state_dict()
+
+
+def test_scheduler_corrupting_internal_base_lrs_rejects_completed_update(
+    monkeypatch,
+):
+    from twelve_six.training import NonFiniteTrainingError
+
+    config = TrainerConfig(max_steps=2, scheduler="cosine", warmup_steps=1, seed=17)
+    trainer = Trainer(_TinyLogitModel(), config)
+    real_scheduler_step = trainer.scheduler.step
+
+    def corrupt_scheduler():
+        real_scheduler_step()
+        trainer.scheduler.base_lrs[0] = float("nan")
+
+    monkeypatch.setattr(trainer.scheduler, "step", corrupt_scheduler)
+    with pytest.raises(NonFiniteTrainingError, match="scheduler has non-finite state"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.optimizer_step == 1  # Physical step already occurred.
+    assert trainer._update_incomplete is True
+    assert trainer._failure_reason.startswith("optimizer/scheduler update failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
