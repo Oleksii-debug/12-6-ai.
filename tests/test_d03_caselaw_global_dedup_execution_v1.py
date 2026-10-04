@@ -1231,3 +1231,82 @@ assert calls == [url, url]
 assert fetch_module.fetch_exact_source is original_fetch
 """
     )
+
+
+def test_v3_post_warmup_attestation_failure_keeps_original_and_reports_bounded_diff() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+error = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+attest_calls = []
+lineage_calls = []
+
+def live_lineage(fingerprints, edges):
+    lineage_calls.append(True)
+    return [
+        {
+            "match_type": "lineage_same_origin_alias",
+            "capacity_collapsing": True,
+        }
+        for _ in range(8)
+    ]
+
+def canonical_lineage(fingerprints, edges):
+    return []
+
+def fake_attester(_matcher):
+    attest_calls.append(True)
+    if len(attest_calls) == 2:
+        raise error
+
+mod.indexed.attest_incumbent_runtime = fake_attester
+mod.indexed._canonical_namespace = lambda _matcher, _label: {
+    "_lineage_matches": canonical_lineage
+}
+matcher = SimpleNamespace(_lineage_matches=live_lineage)
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is error
+    note = "\\n".join(exc.__notes__)
+    assert "STRUCTURAL_CODE_MISMATCH" in note
+    assert '"attestation_override_allowed": false' in note
+    assert "bounded V3 post-warmup diagnostic:" in note
+    assert "source_payload" not in note
+else:
+    raise AssertionError("incumbent attester rejection was bypassed")
+assert len(attest_calls) == 2
+assert len(lineage_calls) == 10
+"""
+    )
+
+
+def test_unrelated_attestation_failure_does_not_invoke_v3_diagnostic() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+primary = mod.indexed.IndexedExecutionError("V3 matcher source blob drift")
+attest_calls = []
+
+def reject(_matcher):
+    attest_calls.append(True)
+    raise primary
+
+mod.indexed.attest_incumbent_runtime = reject
+mod.indexed._canonical_namespace = lambda *_args: (
+    _ for _ in ()
+).throw(AssertionError("diagnostic must not run"))
+try:
+    mod._preflight_attested_lineage_warmup(SimpleNamespace())
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is primary
+    assert not hasattr(exc, "__notes__")
+else:
+    raise AssertionError("original blob mismatch was swallowed")
+assert len(attest_calls) == 1
+"""
+    )

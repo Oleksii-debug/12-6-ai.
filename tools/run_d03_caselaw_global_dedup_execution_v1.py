@@ -437,7 +437,38 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
                      and match.get("capacity_collapsing") is True
                      for match in matches),
                  "terminal V3 lineage warmup authority drift")
-    indexed.attest_incumbent_runtime(matcher)
+    try:
+        indexed.attest_incumbent_runtime(matcher)
+    except indexed.IndexedExecutionError as exc:
+        if str(exc) != "V3 callable code drift: _lineage_matches":
+            raise
+        # Diagnose the known post-warmup drift on the exact failed authority.
+        # Even equal structural fields cannot bypass the original attester.
+        try:
+            from diagnose_d03_v3_code_drift import compare_code_objects
+
+            canonical = indexed._canonical_namespace(matcher, "V3")["_lineage_matches"]
+            diagnostic = compare_code_objects(lineage.__code__, canonical.__code__)
+            allowed = (
+                "classification", "marshal_equal", "structural_fields_equal",
+                "different_field_paths", "diagnostic_limited",
+                "live_marshal_sha256", "canonical_marshal_sha256",
+                "attestation_override_allowed",
+            )
+            exc.add_note(
+                "bounded V3 post-warmup diagnostic: "
+                + json.dumps(
+                    {key: diagnostic[key] for key in allowed},
+                    sort_keys=True,
+                )
+            )
+        except Exception as diagnostic_error:
+            # Never replace the original fail-closed execution result.
+            exc.add_note(
+                "bounded V3 post-warmup diagnostic unavailable: "
+                + type(diagnostic_error).__name__
+            )
+        raise
 
 
 def _preflight_attested_reference_sample(
