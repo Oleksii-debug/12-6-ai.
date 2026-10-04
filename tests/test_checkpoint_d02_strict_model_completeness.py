@@ -41,9 +41,13 @@ def checkpoint_identity() -> CheckpointIdentity:
 def _sealed_source(
     checkpoint: Path,
     identity: CheckpointIdentity,
+    *,
+    source_has_buffer: bool = False,
 ) -> TrainerConfig:
     config = TrainerConfig(max_steps=3, seed=703)
     source_model = torch.nn.Linear(3, 3)
+    if source_has_buffer:
+        source_model.register_buffer("resume_scale", torch.tensor(3.0))
     source = Trainer(source_model, config, device="cpu")
     trainer_adapter.save_trainer_checkpoint(
         checkpoint, model=source_model, trainer=source, identity=identity,
@@ -56,24 +60,30 @@ def _sealed_source(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
 @pytest.mark.parametrize("restore_rng", [True, False], ids=["replay", "opt-out"])
+@pytest.mark.parametrize("missing_from", ["checkpoint", "target"])
 def test_canonical_d02_non_strict_restore_must_not_accept_missing_buffer(
     tmp_path: Path,
     checkpoint_identity: CheckpointIdentity,
     loader: Any,
     restore_rng: bool,
+    missing_from: str,
 ) -> None:
     checkpoint = tmp_path / "sealed-source"
-    config = _sealed_source(checkpoint, checkpoint_identity)
+    config = _sealed_source(
+        checkpoint, checkpoint_identity, source_has_buffer=missing_from == "target",
+    )
     target_model = torch.nn.Linear(3, 3)
-    target_model.register_buffer("resume_scale", torch.tensor(2.0))
+    if missing_from == "checkpoint":
+        target_model.register_buffer("resume_scale", torch.tensor(2.0))
     target = Trainer(target_model, config, device="cpu")
     initial_parameters = [p.detach().clone() for p in target_model.parameters()]
-    initial_scale = target_model.resume_scale.detach().clone()
+    initial_state = {
+        name: value.detach().clone() for name, value in target_model.state_dict().items()
+    }
 
-    # A valid checkpoint has all of the source's parameters, but the target
-    # also has a persistent buffer absent from the sealed source model state.
-    # PyTorch strict=False silently leaves that buffer at its live initializer.
-    # Exact D02 resume must reject this *before* changing model/trainer state.
+    # A sealed checkpoint and fresh target may have mismatched persistent
+    # buffers in either direction while model parameters still match exactly.
+    # PyTorch strict=False accepts both, but exact D02 replay must not.
     with pytest.raises(CheckpointCompatibilityError, match="state_dict|model|key"):
         loader.load_trainer_checkpoint(
             checkpoint,
@@ -84,7 +94,8 @@ def test_canonical_d02_non_strict_restore_must_not_accept_missing_buffer(
         )
     for current, before in zip(target_model.parameters(), initial_parameters, strict=True):
         torch.testing.assert_close(current.detach(), before, rtol=0, atol=0)
-    torch.testing.assert_close(target_model.resume_scale, initial_scale, rtol=0, atol=0)
+    for name, before in initial_state.items():
+        torch.testing.assert_close(target_model.state_dict()[name], before, rtol=0, atol=0)
     assert target.optimizer_step == 0
     assert target._failure_reason is None
     assert target._update_incomplete is False
@@ -112,3 +123,48 @@ def test_canonical_d02_non_strict_mode_remains_valid_for_complete_model(
     assert result.manifest["identity"]["step"] == 0
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+class _GenericTrainer:
+    """Minimal non-D02 state owner retaining the public permissive API."""
+
+    def state_dict(self) -> dict[str, Any]:
+        return {
+            "micro_step": 0,
+            "optimizer_step": 0,
+            "tokens_seen": 0,
+            "optimizer": None,
+            "scheduler": None,
+            "scaler": None,
+            "config": {"kind": "generic-permissive"},
+        }
+
+    def load_state_dict(self, state: dict[str, Any]) -> None:
+        self.restored = dict(state)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+def test_generic_adapter_non_strict_remains_permissive(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+) -> None:
+    checkpoint = tmp_path / "sealed-generic"
+    source_model = torch.nn.Linear(3, 3)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint, model=source_model, trainer=_GenericTrainer(),
+        identity=checkpoint_identity,
+    )
+    target_model = torch.nn.Linear(3, 3)
+    target_model.register_buffer("extra", torch.tensor(9.0))
+    trainer = _GenericTrainer()
+    loader.load_trainer_checkpoint(
+        checkpoint, model=target_model, trainer=trainer,
+        strict_model=False, restore_rng=False,
+    )
+    assert trainer.restored["optimizer_step"] == 0
+    torch.testing.assert_close(target_model.extra, torch.tensor(9.0), rtol=0, atol=0)
+    for name, weight in source_model.state_dict().items():
+        torch.testing.assert_close(target_model.state_dict()[name], weight, rtol=0, atol=0)
