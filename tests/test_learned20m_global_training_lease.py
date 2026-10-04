@@ -309,6 +309,39 @@ def test_raw_state_decoder_rejects_lock_domain_substitution_and_extra_fields() -
         decode_global_lease_state(canonical_json_bytes(extra), manifest)
 
 
+
+@pytest.mark.parametrize("payload", [b"[]", b"null", b'"text"', b"7"])
+def test_non_object_remote_lease_blocks_inspect_and_renew(
+    monkeypatch: pytest.MonkeyPatch, payload: bytes
+) -> None:
+    manifest, _ = _authorized_manifest()
+    expected_tip = "a" * 40
+
+    with pytest.raises(TypeError, match="global_lease_state_not_object"):
+        decode_global_lease_state(payload, manifest)
+
+    monkeypatch.setattr(global_lease_module, "_remote_tip", lambda *_: expected_tip)
+    monkeypatch.setattr(global_lease_module, "_fetch_remote_commit", lambda *_: payload)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("invalid remote state must not write or push")
+
+    monkeypatch.setattr(global_lease_module, "_write_state_commit", unexpected_write)
+    monkeypatch.setattr(global_lease_module, "_push_candidate", unexpected_write)
+
+    inspected = inspect_global_training_run_lease(".", "origin", manifest)
+    assert inspected.present is True
+    assert inspected.valid is False
+    assert inspected.blockers == ("global_lease_remote_state_invalid",)
+
+    renewed = renew_global_training_run_lease(
+        ".", "origin", manifest,
+        expected_remote_tip=expected_tip, ttl_seconds=3600, now=NOW,
+    )
+    assert renewed.committed is False
+    assert renewed.blockers == ("global_lease_remote_state_invalid",)
+    _assert_no_authority_widening(renewed)
+
 def test_acquire_is_single_winner_and_reread_verified(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
