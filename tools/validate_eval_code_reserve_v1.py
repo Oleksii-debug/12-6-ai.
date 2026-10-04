@@ -139,6 +139,7 @@ def _require_finite_json_value(
             )
         return
     if type(value) is str:
+        _require(len(value) <= MAX_INPUT_BYTES, f"{label} exceeds byte limit")
         try:
             value.encode("utf-8")
         except UnicodeError as exc:
@@ -188,6 +189,10 @@ def _load_mapping(path: Path) -> dict[str, Any]:
 def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     _require(type(doc) is dict, "reservation document must be a JSON object")
     _require_finite_json_value(doc, label="reservation document")
+    _require(
+        len(_canonical_bytes(doc)) <= MAX_INPUT_BYTES,
+        "reservation document exceeds byte limit",
+    )
     _require_exact_fields(doc, {
         "schema_version", "worker_id", "issue", "execution_class",
         "purpose", "predecessor", "reservation", "objects",
@@ -291,6 +296,10 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
     # contract that widens training, tokenizer, or final-test authority.
     validate_document(doc)
     _require_finite_json_value(evidence, label="materialization evidence")
+    _require(
+        len(_canonical_bytes(evidence)) <= MAX_INPUT_BYTES,
+        "materialization evidence exceeds byte limit",
+    )
     _require_exact_fields(evidence, {
         "completed_gate", "discovery_head_sha", "evidence_identity_sha256",
         "execution_profile", "object_set_identity_sha256", "objects",
