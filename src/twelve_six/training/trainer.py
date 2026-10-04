@@ -812,6 +812,13 @@ class Trainer:
             # State-dict hooks can mutate weights, moments, gradients or policy.
             # Refuse publication unless the extracted state remains checkpoint-safe.
             self.assert_checkpoint_safe()
+            # Hooks can also return a detached, corrupt snapshot without
+            # changing their live component. Validate the bytes to publish.
+            self._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
+            if snapshot.scheduler is not None:
+                self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+            if snapshot.scaler is not None:
+                self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
