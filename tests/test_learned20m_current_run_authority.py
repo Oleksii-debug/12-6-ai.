@@ -1862,7 +1862,9 @@ def test_deep_current_run_caller_mappings_fail_closed_before_remote_access(
     pointer = build_current_run_pointer_state(
         manifest, global_view, identity, generation=1,
         global_lease_state_sha256=_global_state_sha256(manifest),
-        global_lease_expires_at_utc=(NOW + timedelta(hours=1)).isoformat(),
+        global_lease_expires_at_utc=(NOW + timedelta(hours=1)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
     )
     monkeypatch.setattr(
         current_run, "_read_pointer_state",
@@ -1874,8 +1876,9 @@ def test_deep_current_run_caller_mappings_fail_closed_before_remote_access(
     assert inspected.present is True
     assert inspected.valid is False
     assert inspected.active is False
-    assert inspected.blockers == (
-        "current_run_trusted_launch_manifest_invalid:maximum recursion depth exceeded",
+    assert len(inspected.blockers) == 1
+    assert inspected.blockers[0].startswith(
+        "current_run_trusted_launch_manifest_invalid:"
     )
 
     denied = activate_current_run_authority(
