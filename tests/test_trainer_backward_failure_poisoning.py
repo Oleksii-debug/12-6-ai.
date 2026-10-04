@@ -575,3 +575,76 @@ def test_run_already_at_limit_does_not_even_construct_data_iterator():
     assert outcome.tokens_consumed == 0
     assert outcome.final_metrics is None
     assert trainer.state_dict().optimizer_step == 1
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, KeyboardInterrupt])
+@pytest.mark.parametrize("accumulation_steps", [1, 2])
+def test_metrics_hook_error_after_consumed_batch_requires_verified_recovery(
+    failure_type, accumulation_steps
+):
+    from twelve_six.training import CheckpointHookError
+
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=accumulation_steps, seed=17),
+    )
+    checkpoint_calls = []
+
+    def failed_metrics(metrics):
+        raise failure_type("synthetic metrics persistence failure")
+
+    def checkpoint_callback(*args):
+        checkpoint_calls.append(True)
+
+    expected_error = failure_type if failure_type is KeyboardInterrupt else CheckpointHookError
+    with pytest.raises(expected_error):
+        trainer.run(
+            [_BATCH] * accumulation_steps,
+            on_metrics=failed_metrics,
+            on_checkpoint=checkpoint_callback,
+            checkpoint_every_steps=1,
+        )
+
+    assert checkpoint_calls == []
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == (1 if accumulation_steps == 1 else 0)
+    assert trainer._failure_reason.startswith("metrics hook failed")
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, KeyboardInterrupt])
+def test_checkpoint_hook_error_after_committed_update_requires_verified_recovery(
+    failure_type
+):
+    from twelve_six.training import CheckpointHookError
+
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    recorded_metrics = []
+
+    def failed_checkpoint(trainer_instance, metrics):
+        assert trainer_instance.optimizer_step == 1
+        raise failure_type("synthetic checkpoint publication failure")
+
+    expected_error = failure_type if failure_type is KeyboardInterrupt else CheckpointHookError
+    with pytest.raises(expected_error):
+        trainer.run(
+            [_BATCH],
+            on_metrics=recorded_metrics.append,
+            on_checkpoint=failed_checkpoint,
+            checkpoint_every_steps=1,
+        )
+
+    assert len(recorded_metrics) == 1
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 1
+    assert trainer._failure_reason.startswith("checkpoint hook failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.run([_BATCH])
