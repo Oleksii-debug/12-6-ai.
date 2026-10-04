@@ -453,6 +453,23 @@ def test_oversized_remote_lease_rejected_before_git_blob_capture(
     assert inspection.present is True
     assert inspection.valid is False
     assert inspection.blockers == ("global_lease_remote_state_invalid",)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("oversized remote state must not write or push")
+
+    monkeypatch.setattr(global_lease_module, "_write_state_commit", unexpected_write)
+    monkeypatch.setattr(global_lease_module, "_push_candidate", unexpected_write)
+    renewed = renew_global_training_run_lease(
+        reader,
+        str(remote),
+        manifest,
+        expected_remote_tip=corrupt_tip,
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    assert renewed.committed is False
+    assert renewed.blockers == ("global_lease_remote_state_invalid",)
+    _assert_no_authority_widening(renewed)
     assert _git("ls-remote", str(remote), ref).split()[0] == corrupt_tip
 
 
