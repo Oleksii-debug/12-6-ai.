@@ -298,7 +298,12 @@ class Trainer:
             # a step would advance optimizer/exposure accounting without even
             # one model-parameter gradient and must fail closed.
             raise RuntimeError("optimizer update has no model-parameter gradients")
-        return torch.sqrt(squared_norm)
+        gradient_norm = torch.sqrt(squared_norm)
+        if not torch.isfinite(gradient_norm).item():
+            raise NonFiniteTrainingError(
+                f"non-finite gradient norm at micro_step={self.micro_step}"
+            )
+        return gradient_norm
 
     def train_microbatch(self, batch: Batch) -> StepMetrics:
         """Backpropagate one microbatch and update only at the accumulation boundary."""
@@ -353,6 +358,8 @@ class Trainer:
             grad_norm_value: float | None = None
             update_loss: float | None = None
             learning_rate = float(self.optimizer.param_groups[0]["lr"])
+            if not math.isfinite(learning_rate) or learning_rate < 0:
+                raise NonFiniteTrainingError("optimizer learning rate must be finite and >= 0")
         except BaseException:
             # Backward already ran; do not allow a partial accounting transition
             # or an interrupted device synchronization to reuse these gradients.
