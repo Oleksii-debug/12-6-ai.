@@ -5,14 +5,21 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from runpy import run_path
 
 import pytest
 
-from tools.operate_learned20m_global_training_lease import (
-    MAX_MANIFEST_BYTES,
-    _load_mapping,
-    main,
+# The operator is a repository tool, not an installed Python package.
+_OPERATOR = run_path(
+    str(
+        Path(__file__).resolve().parents[1]
+        / "tools"
+        / "operate_learned20m_global_training_lease.py"
+    )
 )
+MAX_MANIFEST_BYTES = _OPERATOR["MAX_MANIFEST_BYTES"]
+_load_mapping = _OPERATOR["_load_mapping"]
+main = _OPERATOR["main"]
 
 
 @pytest.mark.parametrize(
