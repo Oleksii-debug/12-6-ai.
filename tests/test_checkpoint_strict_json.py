@@ -112,7 +112,6 @@ def _write_nonfinite_manifest(checkpoint: Path, *, value: float, token: str) -> 
     _write_manifest_bytes(checkpoint, raw.encode("utf-8"))
 
 
-
 @pytest.mark.parametrize(
     ("name", "max_bytes"),
     [
@@ -170,6 +169,57 @@ def test_manifest_growth_after_fstat_still_has_bounded_read(
     ):
         verify_checkpoint(checkpoint)
     assert intercepted
+
+
+@pytest.mark.parametrize("token", ["1e-4000", "-1e-4000", "0.0001e-4000"])
+def test_checkpoint_manifest_rejects_nonzero_numeric_underflow(
+    tmp_path: Path, token: str
+) -> None:
+    checkpoint = tmp_path / "manifest-underflow"
+    save_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        identity=_identity(training_lr=0.0),
+    )
+    raw = (checkpoint / "manifest.json").read_text(encoding="utf-8")
+    assert '"lr":0.0' in raw
+    _write_manifest_bytes(checkpoint, raw.replace('"lr":0.0', f'"lr":{token}', 1).encode("utf-8"))
+
+    with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
+        verify_checkpoint(checkpoint)
+
+
+@pytest.mark.parametrize("token", ["1e-4000", "-1e-4000", "0.0001e-4000"])
+def test_checkpoint_state_rejects_nonzero_numeric_underflow_before_mutation(
+    tmp_path: Path, token: str
+) -> None:
+    checkpoint = tmp_path / "state-underflow"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+    path = checkpoint / "state.json"
+    raw = path.read_text(encoding="utf-8")
+    assert "0.25" in raw
+    path.write_text(raw.replace("0.25", token, 1), encoding="utf-8")
+    _rebind_manifest_for_payload(checkpoint, "state.json")
+
+    target = NumpyModel([9.0, 9.0, 9.0])
+    before = target.weights.copy()
+    with pytest.raises(CheckpointIntegrityError, match="strict UTF-8 JSON"):
+        load_checkpoint(checkpoint, model=target, restore_rng=False)
+    np.testing.assert_array_equal(target.weights, before)
+    assert target.loads == 0
+
+
+def test_checkpoint_allows_lexically_zero_finite_exponent(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "manifest-genuine-zero"
+    save_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        identity=_identity(training_lr=0.0),
+    )
+    raw = (checkpoint / "manifest.json").read_text(encoding="utf-8")
+    assert '"lr":0.0' in raw
+    _write_manifest_bytes(checkpoint, raw.replace('"lr":0.0', '"lr":0e-4000', 1).encode("utf-8"))
+    assert verify_checkpoint(checkpoint)["identity"]["training_config"]["lr"] == 0.0
 
 
 @pytest.mark.parametrize(
