@@ -1086,3 +1086,103 @@ def test_recovery_refuses_receipt_without_both_verified_outputs(
         REPLAY_RUNNER.inspect_outer_publication_recovery(
             args, pass_root=pass_root, pass_result=result, receipt=receipt,
         )
+
+
+@pytest.mark.parametrize("phase", ["before-link", "after-link"])
+@pytest.mark.parametrize(
+    ("bad_label", "expected_published"),
+    [
+        ("outer report", ()),
+        ("outer survivors", ("outer report",)),
+        ("outer receipt", ("outer report", "outer survivors")),
+    ],
+)
+def test_mutated_staged_outer_output_cannot_commit_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    phase: str, bad_label: str, expected_published: tuple[str, ...],
+) -> None:
+    """A corrupt stage cannot get a successful receipt at the link boundary."""
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def corrupt_stage(staged: Path, final: Path, *, label: str) -> None:
+        if label == bad_label and phase == "before-link":
+            staged.write_bytes(b"modified after staging")
+        original_link(staged, final, label=label)
+        if label == bad_label and phase == "after-link":
+            staged.write_bytes(b"modified after linking")
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", corrupt_stage)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="manual reconciliation required",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+
+    targets = {
+        "outer report": args.output_report,
+        "outer survivors": args.output_survivors,
+        "outer receipt": args.output_receipt,
+    }
+    raw = {
+        "outer report": (pass_root / "current-clean-report.json").read_bytes(),
+        "outer survivors": (pass_root / "current-clean-survivors.json").read_bytes(),
+        "outer receipt": REPLAY_RUNNER.canonical_json_bytes(receipt),
+    }
+    for label, path in targets.items():
+        if label in expected_published:
+            assert path.read_bytes() == raw[label]
+        else:
+            assert not path.exists()
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["published"] == list(expected_published)
+    assert recovery["status"] == (
+        "PREPARED_UNCOMMITTED" if not expected_published else "PARTIAL_UNCOMMITTED"
+    )
+    assert recovery["canonical_capacity_credited"] == 0
+    assert recovery["training_authorized"] is False
+
+
+@pytest.mark.parametrize("phase", ["before-link", "after-link"])
+def test_mutated_intent_stage_cannot_publish_outer_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def corrupt_intent(staged: Path, final: Path, *, label: str) -> None:
+        if label == "publication intent" and phase == "before-link":
+            staged.write_bytes(b"forged intent")
+        original_link(staged, final, label=label)
+        if label == "publication intent" and phase == "after-link":
+            staged.write_bytes(b"forged intent")
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", corrupt_intent)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="changed before publication|failed exact byte/inode verification",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    assert not args.output_report.exists()
+    assert not args.output_survivors.exists()
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_verified_one_output_preserves_utf8_and_no_replace(tmp_path: Path) -> None:
+    target = tmp_path / "Український результат.json"
+    payload = '{"status":"verified","language":"Українська"}\n'.encode("utf-8")
+    REPLAY_RUNNER._write_new_bytes(target, payload, label="test report")
+    assert target.read_bytes() == payload
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="refusing to overwrite"):
+        REPLAY_RUNNER._write_new_bytes(target, b"replacement", label="test report")
+    assert target.read_bytes() == payload
+    assert not list(tmp_path.glob(".*.tmp"))
