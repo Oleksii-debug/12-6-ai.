@@ -367,7 +367,11 @@ def _preflight_trainer_state_without_rng_guard(
     # Canonical D02 Trainer and its scale subclasses construct TrainerState(**state)
     # during the real load. Extra keys therefore fail only at that final call unless
     # the adapter mirrors the exact schema now, before model/RNG mutation.
-    if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+    canonical_d02 = (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    )
+    if canonical_d02:
         actual_fields = set(state)
         if actual_fields != _CANONICAL_TRAINER_STATE_FIELDS:
             missing = sorted(_CANONICAL_TRAINER_STATE_FIELDS - actual_fields)
@@ -379,7 +383,14 @@ def _preflight_trainer_state_without_rng_guard(
 
     for field in ("micro_step", "optimizer_step", "tokens_seen"):
         value = state.get(field)
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        # Canonical D02 requires exact Python ints; generic adapters retain
+        # their prior non-bool int-subclass compatibility.
+        valid_type = (
+            type(value) is int
+            if canonical_d02
+            else isinstance(value, int) and not isinstance(value, bool)
+        )
+        if not valid_type or value < 0:
             raise CheckpointCompatibilityError(
                 f"trainer {field} must be a non-negative integer"
             )
@@ -408,10 +419,6 @@ def _preflight_trainer_state_without_rng_guard(
         # D02's typed checkpoint contract must agree with direct Trainer restore
         # before D05 applies model weights or optimizer moments. Preserve generic
         # adapter compatibility when its own state loader defines loose equality.
-        canonical_d02 = (
-            hasattr(trainer, "_failure_reason")
-            and hasattr(trainer, "_update_incomplete")
-        )
         matches = (
             _typed_config_equal(checkpoint_config, live_config)
             if canonical_d02

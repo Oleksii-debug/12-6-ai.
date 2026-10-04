@@ -27,6 +27,10 @@ class _TinyModel(torch.nn.Module):
         return self.weight.reshape(1, 1, 3).expand(*input_ids.shape, 3)
 
 
+class _CounterSubclass(int):
+    """Numerically equal to int but not an exact durable D02 counter type."""
+
+
 @pytest.fixture
 def preserve_ambient_state():
     python_before = random.getstate()
@@ -92,7 +96,10 @@ def test_canonical_alias_refused_before_optimizer_preflight_or_model_apply(
     assert target._failure_reason is None
 
 
-def test_generic_adapter_retains_existing_config_equality() -> None:
+@pytest.mark.parametrize("subclass_counter", [False, True])
+def test_generic_adapter_retains_existing_config_equality(
+    subclass_counter: bool,
+) -> None:
     class GenericAdapter:
         config = {"deterministic_algorithms": True}
         optimizer = None
@@ -101,7 +108,7 @@ def test_generic_adapter_retains_existing_config_equality() -> None:
             self.restored = state
 
     state = {
-        "micro_step": 0,
+        "micro_step": _CounterSubclass(0) if subclass_counter else 0,
         "optimizer_step": 0,
         "tokens_seen": 0,
         "optimizer": None,
@@ -110,3 +117,41 @@ def test_generic_adapter_retains_existing_config_equality() -> None:
         "config": {"deterministic_algorithms": 1},
     }
     trainer_adapter._preflight_trainer_state_without_rng_guard(GenericAdapter(), state)
+
+
+@pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
+def test_canonical_counter_subclass_fails_before_optimizer_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state,
+    field: str,
+) -> None:
+    """D05 must not accept a counter that direct typed D02 restore rejects."""
+    config = TrainerConfig(seed=703, max_steps=1)
+    saved = asdict(Trainer(_TinyModel(), config, device="cpu").state_dict())
+    invalid = copy.deepcopy(saved)
+    invalid[field] = _CounterSubclass(0)
+    assert invalid[field] == saved[field] and type(invalid[field]) is not int
+
+    model = _TinyModel()
+    target = Trainer(model, config, device="cpu")
+    weights_before = model.weight.detach().clone()
+    calls: list[bool] = []
+
+    def forbidden_preflight(*args: Any, **kwargs: Any) -> None:
+        calls.append(True)
+        raise AssertionError("canonical counter preflight must reject before optimizer")
+
+    monkeypatch.setattr(trainer_adapter, "_preflight_optimizer_state", forbidden_preflight)
+    with pytest.raises(
+        CheckpointCompatibilityError, match=f"trainer {field} must be a non-negative integer",
+    ):
+        trainer_adapter._preflight_trainer_state_without_rng_guard(target, invalid)
+
+    assert calls == []
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(model.weight.detach(), weights_before, rtol=0, atol=0)
+
+    monkeypatch.undo()
+    trainer_adapter._preflight_trainer_state_without_rng_guard(target, saved)
+    assert target._failure_reason is None
