@@ -65,3 +65,33 @@ def _validate_expected_canonical_binding(
         )
 
 
+
+
+def _validate_expected_core_identity(
+    *,
+    expected_git_sha: str | None,
+    expected_model_spec_hash: str | None,
+    expected_tokenizer_hash: str | None,
+    expected_tokenizer_vocab_hash: str | None,
+    expected_dataset_manifest_hash: str | None,
+    expected_run_manifest_hash: str | None,
+) -> None:
+    """Reject malformed core caller expectations before checkpoint I/O."""
+
+    if expected_git_sha is not None and (
+        not isinstance(expected_git_sha, str)
+        or len(expected_git_sha) not in (40, 64)
+        or expected_git_sha != expected_git_sha.lower()
+        or any(character not in _HEX for character in expected_git_sha)
+    ):
+        raise _core.CheckpointCompatibilityError(
+            "expected_git_sha must be exact lowercase 40/64-hex or None"
+        )
+    for field, value in (
+        ("expected_model_spec_hash", expected_model_spec_hash),
+        ("expected_tokenizer_hash", expected_tokenizer_hash),
+        ("expected_tokenizer_vocab_hash", expected_tokenizer_vocab_hash),
+        ("expected_dataset_manifest_hash", expected_dataset_manifest_hash),
+        ("expected_run_manifest_hash", expected_run_manifest_hash),
+    ):
+        _require_expected_sha256(value, field=field)
