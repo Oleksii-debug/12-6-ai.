@@ -885,3 +885,122 @@ def test_distinct_valid_optimizer_group_learning_rates_both_commit():
     assert not torch.equal(model.weight, original_weight)
     assert not torch.equal(model.extra, original_extra)
     assert trainer.state_dict().optimizer_step == 1
+
+
+def test_direct_restore_scheduler_presence_mismatch_is_retryable_preflight(monkeypatch):
+    from dataclasses import replace
+
+    config = TrainerConfig(max_steps=2, warmup_steps=1, scheduler="cosine", seed=17)
+    producer = Trainer(_TinyLogitModel(), config)
+    state = producer.state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+    original_load = receiver.optimizer.load_state_dict
+    calls = []
+
+    def record_load(value):
+        calls.append(True)
+        return original_load(value)
+
+    monkeypatch.setattr(receiver.optimizer, "load_state_dict", record_load)
+    with pytest.raises(ValueError, match="scheduler state/config mismatch"):
+        receiver.load_state_dict(replace(state, scheduler=None))
+
+    assert calls == []
+    assert receiver._failure_reason is None
+    assert receiver._update_incomplete is False
+    receiver.load_state_dict(state)
+    assert calls == [True]
+    assert receiver.state_dict().optimizer_step == 0
+
+
+def test_direct_restore_partial_optimizer_load_poisoned_and_original_error(monkeypatch):
+    config = TrainerConfig(max_steps=1, seed=17)
+    state = Trainer(_TinyLogitModel(), config).state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    def corrupt_then_fail(value):
+        receiver.optimizer.param_groups[0]["lr"] = -0.1
+        raise ValueError("synthetic partial optimizer restore")
+
+    monkeypatch.setattr(receiver.optimizer, "load_state_dict", corrupt_then_fail)
+    with pytest.raises(ValueError, match="synthetic partial optimizer restore"):
+        receiver.load_state_dict(state)
+
+    assert receiver._update_incomplete is True
+    assert receiver._failure_reason.startswith("trainer state restore failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        receiver.state_dict()
+    with pytest.raises(TrainingStateInvalidError, match="verified model"):
+        receiver.load_state_dict(state)
+
+
+def test_direct_restore_partial_scheduler_apply_poisoned(monkeypatch):
+    config = TrainerConfig(max_steps=2, warmup_steps=1, scheduler="cosine", seed=17)
+    state = Trainer(_TinyLogitModel(), config).state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    def corrupt_then_fail(value):
+        receiver.scheduler.last_epoch = 99
+        raise RuntimeError("synthetic partial scheduler restore")
+
+    monkeypatch.setattr(receiver.scheduler, "load_state_dict", corrupt_then_fail)
+    with pytest.raises(RuntimeError, match="synthetic partial scheduler restore"):
+        receiver.load_state_dict(state)
+    assert receiver._update_incomplete is True
+    assert receiver._failure_reason.startswith("trainer state restore failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        receiver.train_microbatch(_BATCH)
+
+
+def test_direct_restore_scaler_interrupt_preserves_original_and_poison(monkeypatch):
+    config = TrainerConfig(max_steps=1, seed=17)
+    state = Trainer(_TinyLogitModel(), config).state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    def interrupted_scaler_load(value):
+        raise KeyboardInterrupt("synthetic scaler restore interruption")
+
+    monkeypatch.setattr(receiver.scaler, "load_state_dict", interrupted_scaler_load)
+    with pytest.raises(KeyboardInterrupt, match="synthetic scaler restore interruption"):
+        receiver.load_state_dict(state)
+    assert receiver._update_incomplete is True
+    assert receiver._failure_reason.startswith("trainer state restore failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        receiver.state_dict()
+
+
+def test_direct_restore_cleanup_fault_keeps_primary_failure(monkeypatch):
+    config = TrainerConfig(max_steps=1, seed=17)
+    state = Trainer(_TinyLogitModel(), config).state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    def refused_cleanup(*args, **kwargs):
+        raise ValueError("synthetic final zero_grad failure")
+
+    monkeypatch.setattr(receiver.optimizer, "zero_grad", refused_cleanup)
+    with pytest.raises(ValueError, match="synthetic final zero_grad failure"):
+        receiver.load_state_dict(state)
+    assert receiver._update_incomplete is True
+    assert "trainer state restore failed" in receiver._failure_reason
+    assert "gradient cleanup failed: ValueError" in receiver._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        receiver.state_dict()
+
+
+def test_valid_direct_restore_retains_exact_next_step_trajectory():
+    config = TrainerConfig(max_steps=2, seed=17)
+    original = Trainer(_TinyLogitModel(), config)
+    original.train_microbatch(_BATCH)
+    snapshot = original.state_dict()
+    weights = original.model.state_dict()
+
+    restored = Trainer(_TinyLogitModel(), config)
+    restored.model.load_state_dict(weights)
+    restored.load_state_dict(snapshot)
+
+    original.train_microbatch(_BATCH)
+    restored.train_microbatch(_BATCH)
+    torch.testing.assert_close(
+        original.model.weight, restored.model.weight, rtol=0, atol=0,
+    )
+    assert original.state_dict().optimizer_step == restored.state_dict().optimizer_step == 2
