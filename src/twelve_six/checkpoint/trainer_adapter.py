@@ -543,7 +543,7 @@ def _restore_initial_torch_policy(
             initial_policy[0], warn_only=initial_policy[1],
         )
     except BaseException as mode_exc:
-        exc.add_note(f"PyTorch initial-mode rollback also failed: {mode_exc!r}")
+        exc.add_note(f"PyTorch deterministic-mode rollback also failed: {mode_exc!r}")
 
 
 def _restore_checkpoint_rng_preserving_warn_only(
