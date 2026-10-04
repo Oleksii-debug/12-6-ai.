@@ -327,3 +327,30 @@ def test_oversized_scalar_or_frozen_set_never_reaches_marshal(
     assert report["live_marshal_sha256"] is None
     assert report["canonical_marshal_sha256"] is None
     assert report["attestation_override_allowed"] is False
+
+@pytest.mark.parametrize("frozen", [False, True], ids=["tuple", "frozenset"])
+def test_aggregate_scalar_budget_prevents_large_marshal(
+    frozen: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    values = tuple(bytes([index]) + b"x" * 899_999 for index in range(20))
+    constant = frozenset(values) if frozen else values
+    oversized = code.replace(co_consts=(constant,))
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("large aggregate constants must not reach marshal")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(oversized, oversized)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["attestation_override_allowed"] is False
+
+
+def test_moderate_scalar_constant_still_compares_normally() -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    moderate = code.replace(co_consts=(b"x" * 200_000,))
+    report = compare_code_objects(moderate, moderate)
+    assert report["classification"] == "NO_CODE_MISMATCH_OBSERVED"
+    assert report["marshal_equal"] is True
