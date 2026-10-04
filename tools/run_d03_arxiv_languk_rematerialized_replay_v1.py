@@ -489,6 +489,18 @@ def _link_verified_new_bytes(
             ) from (link_error if link_error is not None else inspect_error)
 
         if (published.st_dev, published.st_ino) == identity:
+            # EEXIST does not establish ownership of an existing final name,
+            # even if a concurrent actor hard-linked our still-open stage.
+            if (
+                link_error is not None
+                and isinstance(link_error.__cause__, FileExistsError)
+            ):
+                raise PublicationIndeterminate(
+                    f"PUBLICATION_INDETERMINATE: {label} already existed at "
+                    f"{path}; retained original stage {staged}; "
+                    "manual reconciliation required",
+                    staged=staged,
+                ) from link_error
             try:
                 path.unlink()
             except OSError as rollback_error:
