@@ -968,6 +968,7 @@ def _read_regular_bytes(
         fd = os.open(path, flags)
     except OSError as exc:
         raise CheckpointIntegrityError(f"cannot safely open checkpoint artifact: {name}") from exc
+    primary_failure = False
     try:
         try:
             opened = os.fstat(fd)
@@ -1014,8 +1015,17 @@ def _read_regular_bytes(
         if exact_bytes is not None and len(data) != exact_bytes:
             raise CheckpointIntegrityError(f"size mismatch for {name}")
         return data
+    except BaseException:
+        primary_failure = True
+        raise
     finally:
-        os.close(fd)
+        try:
+            os.close(fd)
+        except OSError as exc:
+            if not primary_failure:
+                raise CheckpointIntegrityError(
+                    f"cannot close checkpoint artifact: {name}"
+                ) from exc
 
 
 def _parse_manifest_bytes(manifest_bytes: bytes, checksum_bytes: bytes) -> dict[str, Any]:
