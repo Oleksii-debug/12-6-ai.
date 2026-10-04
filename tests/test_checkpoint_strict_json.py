@@ -185,6 +185,24 @@ def test_checkpoint_reader_rejects_unbounded_or_invalid_limits(
         )
 
 
+def test_checkpoint_round_trip_with_multichunk_state_payload(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "multichunk-payload"
+    _save(checkpoint, trainer_state={"loss": 0.25})
+    state_path = checkpoint / "state.json"
+    original = state_path.read_bytes()
+    state_path.write_bytes(original + b" " * max(0, 1024 * 1024 + 129 - len(original)))
+    assert state_path.stat().st_size > 1024 * 1024
+    _rebind_manifest_for_payload(checkpoint, "state.json")
+
+    manifest = verify_checkpoint(checkpoint)
+    assert manifest["files"]["state.json"]["bytes"] == state_path.stat().st_size
+    target = NumpyModel([0.0, 0.0, 0.0])
+    restored = load_checkpoint(checkpoint, model=target, restore_rng=False)
+    assert target.loads == 1
+    np.testing.assert_array_equal(target.weights, [1.0, 2.0, 3.0])
+    assert restored.trainer_state["loss"] == 0.25
+
+
 def test_checkpoint_reads_use_unbuffered_descriptors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
