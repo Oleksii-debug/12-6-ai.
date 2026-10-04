@@ -413,6 +413,34 @@ class PublicationIndeterminate(RematerializationError):
         self.staged = staged
 
 
+@contextmanager
+def _held_publication_source(
+    source: Any, staged: Path, final: Path, *, label: str,
+) -> Iterator[Any]:
+    """Never discard a recovery alias when closing a held source fails."""
+    try:
+        yield source
+    finally:
+        primary_failure = sys.exc_info()[1]
+        try:
+            source.close()
+        except (OSError, KeyboardInterrupt, SystemExit) as close_error:
+            original = (
+                f"; original error: {type(primary_failure).__name__}: "
+                f"{primary_failure}"
+                if primary_failure is not None else ""
+            )
+            raise PublicationIndeterminate(
+                f"SOURCE_CLOSE_INDETERMINATE: cannot close held {label} "
+                f"source for final {final}; retained stage {staged}; "
+                f"close error: {type(close_error).__name__}: {close_error}"
+                f"{original}; manual reconciliation required",
+                staged=staged,
+            ) from (
+                primary_failure if primary_failure is not None else close_error
+            )
+
+
 def _matches_staged_identity(
     path: Path, expected: bytes, identity: tuple[int, int],
 ) -> bool:
@@ -448,7 +476,7 @@ def _link_verified_new_bytes(
         raise RematerializationError(
             f"staged {label} identity unavailable before publication"
         ) from exc
-    with source:
+    with _held_publication_source(source, staged, path, label=label):
         info = os.fstat(source.fileno())
         identity = (info.st_dev, info.st_ino)
         if (

@@ -2035,3 +2035,69 @@ def test_recovery_does_not_trust_hidden_exists_for_real_committed_output(
     assert recovered["missing"] == []
     assert len(recovered["published"]) == 3
     assert recovered["training_authorized"] is False
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("deny_final_inspection", [False, True])
+def test_held_source_close_interruption_keeps_original_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException], deny_final_inspection: bool,
+) -> None:
+    final = tmp_path / "held-source-close.json"
+    raw = b"authenticated result"
+    stage = REPLAY_RUNNER._stage_new_bytes(final, raw, label="test output")
+    original_open = Path.open
+    original_stat = Path.stat
+    wrapped = False
+
+    class InterruptedClose:
+        def __init__(self, held: object) -> None:
+            self.held = held
+
+        def __getattr__(self, name: str):
+            return getattr(self.held, name)
+
+        def close(self) -> None:
+            self.held.close()
+            raise interruption("injected held source close interruption")
+
+    def open_held_once(path: Path, *args: object, **kwargs: object):
+        nonlocal wrapped
+        handle = original_open(path, *args, **kwargs)
+        if path == stage and args and args[0] == "rb" and not wrapped:
+            wrapped = True
+            return InterruptedClose(handle)
+        return handle
+
+    def deny_final_stat(path: Path, *a: object, **kw: object):
+        if (
+            deny_final_inspection and path == final
+            and kw.get("follow_symlinks") is False
+        ):
+            raise PermissionError("injected final metadata denial")
+        return original_stat(path, *a, **kw)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER, "_stage_new_bytes", lambda *a, **kw: stage)
+        fault.setattr(Path, "open", open_held_once)
+        fault.setattr(Path, "stat", deny_final_stat)
+        with pytest.raises(
+            REPLAY_RUNNER.PublicationIndeterminate,
+            match="SOURCE_CLOSE_INDETERMINATE",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(final, raw, label="test output")
+
+    assert wrapped
+    assert caught.value.staged == stage
+    assert stage.read_bytes() == final.read_bytes() == raw
+    assert str(stage) in str(caught.value) and str(final) in str(caught.value)
+    if deny_final_inspection:
+        assert isinstance(
+            caught.value.__cause__, REPLAY_RUNNER.PublicationIndeterminate,
+        )
+    else:
+        assert isinstance(caught.value.__cause__, interruption)
+    final.unlink()
+    stage.unlink()
+    REPLAY_RUNNER._write_new_bytes(final, raw, label="test output")
+    assert final.read_bytes() == raw
