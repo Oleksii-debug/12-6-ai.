@@ -297,3 +297,33 @@ def test_ordinary_tuple_length_mismatch_still_reports_structural_change() -> Non
     assert any(path.endswith(":length") for path in report["different_field_paths"])
     assert report["diagnostic_limited"] is False
     assert report["attestation_override_allowed"] is False
+
+@pytest.mark.parametrize(
+    "constant",
+    [
+        frozenset(range(6_000)),
+        b"x" * 1_048_577,
+        "x" * 1_048_577,
+        frozenset({b"x" * 1_048_577}),
+        1 << (8 * 1_048_576 + 1),
+    ],
+    ids=["frozen-node-budget", "bytes-width", "string-width",
+         "frozen-scalar-width", "integer-bit-width"],
+)
+def test_oversized_scalar_or_frozen_set_never_reaches_marshal(
+    constant: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    oversized = code.replace(co_consts=(constant,))
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("over-budget constants must not be marshalled")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(oversized, oversized)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
