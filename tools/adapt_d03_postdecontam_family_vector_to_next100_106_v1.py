@@ -208,6 +208,8 @@ def _write_new_output(
     except OSError as exc:
         raise ProjectionError(f"cannot publish adapter output safely: {path}: {exc}") from exc
     finally:
+        # A second filesystem fault must not erase the first publication failure.
+        primary_failure = sys.exc_info()[1]
         rollback_error: OSError | None = None
         cleanup_error: OSError | None = None
         if linked and not verified and identity is not None and _same_inode(final, identity):
@@ -221,9 +223,18 @@ def _write_new_output(
             except OSError as exc:
                 cleanup_error = exc
         if rollback_error is not None:
+            stranded_stage = (
+                f"; staged cleanup also failed: {staged_path}: {cleanup_error}"
+                if cleanup_error is not None else ""
+            )
+            original = (
+                f"; initial publication failure: {primary_failure}"
+                if primary_failure is not None else ""
+            )
             raise ProjectionError(
                 f"ROLLBACK_INCOMPLETE: invalid adapter output may remain: {final}"
-            ) from rollback_error
+                f"{stranded_stage}{original}"
+            ) from (primary_failure if primary_failure is not None else rollback_error)
         if cleanup_error is not None:
             if verified:
                 # The fully verified final file is committed. Never report
@@ -237,10 +248,14 @@ def _write_new_output(
                     file=sys.stderr,
                 )
             else:
+                original = (
+                    f"; initial publication failure: {primary_failure}"
+                    if primary_failure is not None else ""
+                )
                 raise ProjectionError(
                     f"STAGING_CLEANUP_INCOMPLETE: unpublished stage may remain: "
-                    f"{staged_path}"
-                ) from cleanup_error
+                    f"{staged_path}; cleanup failure: {cleanup_error}{original}"
+                ) from (primary_failure if primary_failure is not None else cleanup_error)
 
 
 def main() -> int:
