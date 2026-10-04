@@ -542,3 +542,60 @@ def test_semantic_preflight_preserves_torch_deterministic_warn_mode() -> None:
         assert torch.is_deterministic_algorithms_warn_only_enabled()
     finally:
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+@pytest.mark.parametrize("probe_rejects", [False, True])
+def test_failed_preflight_rng_rollback_poisons_canonical_target_before_model_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+    probe_rejects: bool,
+) -> None:
+    """Failed RNG rollback makes even an otherwise fresh target unsafe to reuse."""
+
+    checkpoint = tmp_path / "rollback-fault"
+    checkpoint_at(checkpoint)
+    model = Model([9.0, 9.0, 9.0])
+
+    class ProbeTarget(CanonicalTarget):
+        def load_state_dict(self, state: dict[str, object]) -> None:
+            super().load_state_dict(state)
+            if probe_rejects:
+                raise RuntimeError("detached trainer probe rejected state")
+
+    trainer = ProbeTarget(model)
+    loader_module = progress_trainer if use_progress else trainer_adapter
+    original_restore = core.restore_rng_state
+    ambient = core.capture_rng_state()
+
+    def fail_rng_rollback(_state: object) -> None:
+        random.random()
+        raise OSError("injected ambient RNG rollback failure")
+
+    try:
+        monkeypatch.setattr(core, "restore_rng_state", fail_rng_rollback)
+        with pytest.raises(OSError, match="ambient RNG rollback failure") as raised:
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+        if probe_rejects:
+            assert isinstance(raised.value.__context__, CheckpointCompatibilityError)
+            assert "isolated compatibility preflight" in str(raised.value.__context__)
+
+        assert trainer._failure_reason == "checkpoint_preflight_rng_rollback_failed"
+        assert trainer._update_incomplete is True
+        np.testing.assert_array_equal(model.weights, [9.0, 9.0, 9.0])
+        assert model.loads == 0
+        assert trainer.loads == 0
+
+        def forbidden_read(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("poisoned retry must not read a checkpoint")
+
+        monkeypatch.setattr(loader_module, "prepare_checkpoint_load", forbidden_read)
+        with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+    finally:
+        original_restore(ambient)
