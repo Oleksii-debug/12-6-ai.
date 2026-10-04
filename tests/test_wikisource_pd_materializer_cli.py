@@ -11,7 +11,6 @@ from twelve_six.data.wikisource_pd_contract import (
     validate_control_contract,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_PATH = ROOT / "tools/materialize_d03_wikisource_lesia1892.py"
 CANONICAL_CONTRACT = ROOT / "configs/data/d03_wikisource_lesia1892_current_main_v1.json"
