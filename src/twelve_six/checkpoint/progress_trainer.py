@@ -153,7 +153,7 @@ def load_trainer_checkpoint(
 
     # A canonical trainer's optimizer belongs to trainer.model. Do not mix its
     # state with a separately supplied model, even if weight shapes match.
-    # Parent-adapter companion #2626 centralizes this once both children land.
+    # Reuse the adapter's early model-ownership boundary in both restore paths.
     _assert_trainer_model_binding(model, trainer)
 
     # Refuse a previously poisoned instance before opening or decoding a
