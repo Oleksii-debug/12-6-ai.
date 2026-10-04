@@ -105,9 +105,8 @@ def test_adversarially_nested_code_is_bounded_and_untrusted() -> None:
     assert report["attestation_override_allowed"] is False
 
 
-
 def test_deep_code_is_bounded_before_marshal(monkeypatch: pytest.MonkeyPatch) -> None:
-    code, _ = _function("def candidate():\\n    return 1\\n")
+    code, _ = _function("def candidate():\n    return 1\n")
     nested = code
     for _ in range(40):
         nested = nested.replace(co_consts=(nested,))
@@ -126,7 +125,7 @@ def test_deep_code_is_bounded_before_marshal(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_same_nan_constant_is_not_false_structural_drift() -> None:
-    code, _ = _function("def candidate():\\n    return 1\\n")
+    code, _ = _function("def candidate():\n    return 1\n")
     candidate = code.replace(co_consts=(float("nan"),))
     report = compare_code_objects(candidate, candidate)
     assert report["classification"] == "NO_CODE_MISMATCH_OBSERVED"
@@ -136,7 +135,7 @@ def test_same_nan_constant_is_not_false_structural_drift() -> None:
 
 
 def test_complex_signed_zero_is_real_structural_difference() -> None:
-    code, _ = _function("def candidate():\\n    return 1\\n")
+    code, _ = _function("def candidate():\n    return 1\n")
     live = code.replace(co_consts=(complex(0.0, -0.0),))
     canonical = code.replace(co_consts=(complex(0.0, 0.0),))
     assert live.co_consts == canonical.co_consts
