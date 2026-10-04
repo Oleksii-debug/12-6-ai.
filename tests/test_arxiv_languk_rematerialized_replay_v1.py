@@ -1186,3 +1186,54 @@ def test_verified_one_output_preserves_utf8_and_no_replace(tmp_path: Path) -> No
         REPLAY_RUNNER._write_new_bytes(target, b"replacement", label="test report")
     assert target.read_bytes() == payload
     assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_replaced_stage_inode_does_not_delete_foreign_final(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An open original descriptor prevents inode reuse after a stage-path swap."""
+    final = tmp_path / "outer-report.json"
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def replace_stage(staged: Path, path: Path, *, label: str) -> None:
+        try:
+            staged.unlink()
+        except OSError:
+            pytest.skip("unlink of an open staged file is unsupported")
+        staged.write_bytes(b"foreign replacement")
+        original_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", replace_stage)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="manual reconciliation required",
+    ):
+        REPLAY_RUNNER._write_new_bytes(final, b"original", label="outer report")
+    assert final.read_bytes() == b"foreign replacement"
+    assert not list(tmp_path.glob(".outer-report.json.*.tmp"))
+
+
+def test_failed_owned_rollback_is_reported_for_manual_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final = tmp_path / "outer-report.json"
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+    original_unlink = Path.unlink
+
+    def corrupt_after_link(staged: Path, path: Path, *, label: str) -> None:
+        original_link(staged, path, label=label)
+        staged.write_bytes(b"corrupt-but-owned")
+
+    def fail_final_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path == final:
+            raise OSError("injected rollback failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", corrupt_after_link)
+    monkeypatch.setattr(Path, "unlink", fail_final_unlink)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="rollback failed; manual reconciliation required",
+    ):
+        REPLAY_RUNNER._write_new_bytes(final, b"expected", label="outer report")
+    assert final.read_bytes() == b"corrupt-but-owned"
+    assert not list(tmp_path.glob(".outer-report.json.*.tmp"))
