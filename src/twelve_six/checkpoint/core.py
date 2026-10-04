@@ -922,9 +922,14 @@ def _require_checkpoint_directory(root: Path) -> None:
         root_stat = root.lstat()
     except FileNotFoundError as exc:
         raise CheckpointIntegrityError(f"checkpoint directory does not exist: {root}") from exc
+    except OSError as exc:
+        raise CheckpointIntegrityError("cannot inspect checkpoint directory") from exc
     if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
         raise CheckpointIntegrityError("checkpoint root must be a real directory, not a symlink")
-    names = {entry.name for entry in root.iterdir()}
+    try:
+        names = {entry.name for entry in root.iterdir()}
+    except OSError as exc:
+        raise CheckpointIntegrityError("cannot inspect checkpoint directory") from exc
     if names != _DIRECTORY_NAMES:
         missing = sorted(_DIRECTORY_NAMES - names)
         unexpected = sorted(names - _DIRECTORY_NAMES)
