@@ -85,6 +85,13 @@ def _locate_installed_asset(
         raise RuntimeError(
             f"installed canonical asset is missing or not a regular file: {located}"
         )
+    # A regular leaf can still be substituted via a linked directory below
+    # the canonical share/twelve-six-ai/configs/research asset namespace.
+    # Do not follow those aliases to an untrusted installed profile or packet.
+    if any(parent.is_symlink() for parent in located.parents[:4]):
+        raise RuntimeError(
+            f"installed canonical asset resolves through a symlinked directory: {located}"
+        )
     return located
 
 
