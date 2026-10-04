@@ -411,7 +411,7 @@ def test_resealed_evidence_rejects_malformed_nested_shapes(
 def test_direct_evidence_validator_rejects_malformed_reservation_shape() -> None:
     document = _manifest()
     document["reservation"] = []
-    with pytest.raises(ValueError, match="evidence reservation timestamp drift"):
+    with pytest.raises(ValueError, match="reservation must be a JSON object"):
         validator.validate_materialization_evidence(document, _evidence())
 
 
