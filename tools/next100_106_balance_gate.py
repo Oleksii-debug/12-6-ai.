@@ -619,7 +619,10 @@ def main() -> int:
 
         vector = load_json(args.input)
         result = evaluate(policy, vector)
-        payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n"
+        payload = (
+            json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+            + "\n"
+        )
         if args.output:
             _write_new_output(
                 args.output, payload.encode("utf-8"), input_path=args.input
@@ -627,7 +630,10 @@ def main() -> int:
         else:
             print(payload, end="")
         return 0
-    except (OSError, ValueError, TypeError, UnicodeError, RecursionError, OverflowError) as exc:
+    except (
+        OSError, ValueError, TypeError, UnicodeError, RecursionError,
+        OverflowError, RuntimeError,
+    ) as exc:
         print(json.dumps({"status": "BLOCKED_INVALID_INPUT", "error": str(exc)}, sort_keys=True))
         return 2
 
