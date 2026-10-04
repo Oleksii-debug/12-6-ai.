@@ -610,3 +610,45 @@ def test_loader_rng_draws_are_rewound_only_when_requested(
             assert actual != expected
     finally:
         core.restore_rng_state(ambient_rng)
+
+
+def test_canonical_progress_restore_rejects_unowned_model_before_checkpoint_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.checkpoint import progress_trainer
+
+    checkpoint = tmp_path / "canonical-model-mismatch"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        trainer=GenericTrainer(),
+        identity=identity(),
+    )
+    owned_model = NumpyModel([3.0, 4.0, 5.0])
+    wrong_model = NumpyModel([9.0, 9.0, 9.0])
+
+    class CanonicalTarget(GenericTrainer):
+        def __init__(self) -> None:
+            super().__init__()
+            self.model = owned_model
+            self._failure_reason: str | None = None
+            self._update_incomplete = False
+
+    trainer = CanonicalTarget()
+
+    def forbidden_read(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("cross-model restore must reject before checkpoint read")
+
+    monkeypatch.setattr(progress_trainer, "prepare_checkpoint_load", forbidden_read)
+    with pytest.raises(CheckpointCompatibilityError, match="different model"):
+        load_trainer_checkpoint(
+            checkpoint, model=wrong_model, trainer=trainer, restore_rng=False,
+        )
+    np.testing.assert_array_equal(owned_model.weights, [3.0, 4.0, 5.0])
+    np.testing.assert_array_equal(wrong_model.weights, [9.0, 9.0, 9.0])
+    assert owned_model.loads == 0
+    assert wrong_model.loads == 0
+    assert trainer.loads == 0
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
