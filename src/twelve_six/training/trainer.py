@@ -746,8 +746,14 @@ class Trainer:
 
         if not _typed_state_equal(state.config, asdict(self.config)):
             raise ValueError("trainer config mismatch; refusing unsafe resume")
-        if state.micro_step < 0 or state.optimizer_step < 0 or state.tokens_seen < 0:
-            raise ValueError("trainer counters must be non-negative")
+        # Validate exact counter types before any optimizer/scheduler/scaler mutation.
+        # Python considers False == 0 and 0.0 == 0; those are not durable
+        # training/exposure accounting identities.
+        if any(
+            type(value) is not int or value < 0
+            for value in (state.micro_step, state.optimizer_step, state.tokens_seen)
+        ):
+            raise ValueError("trainer counters must be non-negative integers")
         expected_micro_steps = state.optimizer_step * self.config.gradient_accumulation_steps
         if state.micro_step != expected_micro_steps:
             raise ValueError(
