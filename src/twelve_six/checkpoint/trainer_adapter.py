@@ -9,6 +9,7 @@ ownership inside the checkpoint API.
 from __future__ import annotations
 
 import copy
+import importlib
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -18,6 +19,7 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    capture_rng_state,
     _apply_model_weights,
     _decode_verified_state,
     _preflight_optimizer_state,
@@ -289,7 +291,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
         )
 
 
-def _preflight_trainer_state(
+def _preflight_trainer_state_without_rng_guard(
     trainer: Any,
     state: Any,
     *,
@@ -403,6 +405,43 @@ def _preflight_trainer_state(
         state.get("scaler"),
         label="scaler",
     )
+
+
+
+def _preflight_trainer_state(
+    trainer: Any,
+    state: Any,
+    *,
+    manifest: Mapping[str, Any] | None = None,
+) -> None:
+    """Keep detached loader probes from advancing live process RNG streams.
+
+    A deep-copied trainer, optimizer, scheduler or scaler can still call the
+    module-global Python, NumPy or torch generators. Whether semantic probing
+    succeeds or rejects a checkpoint, it must not silently alter future draws.
+    The actual loader runs later in the guarded model -> trainer -> RNG region.
+    """
+
+    ambient = capture_rng_state()
+    torch_state = ambient.get("torch")
+    warn_only = None
+    if torch_state is not None:
+        torch = importlib.import_module("torch")
+        warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        _preflight_trainer_state_without_rng_guard(
+            trainer, state, manifest=manifest,
+        )
+    finally:
+        restore_rng_state(ambient)
+        # The checkpoint RNG schema records deterministic enablement, not
+        # PyTorch's warn-only mode. Preserve that live setting for a pure
+        # preflight instead of converting warnings into hard errors.
+        if warn_only is not None:
+            torch.use_deterministic_algorithms(
+                bool(torch_state["deterministic_algorithms"]),
+                warn_only=warn_only,
+            )
 
 
 def save_trainer_checkpoint(
