@@ -1,7 +1,7 @@
 """Integrity-valid incomplete-RNG rejection for the D05/D02 restore boundary.
 
-These deliberately red negative tests are a non-owning child of PR #2628.
-They must turn green only after a canonical same-lineage fail-closed repair.
+The independent regression cases were adopted into PR #2628 alongside the
+canonical same-lineage fail-closed repair; execution still requires CI.
 No real corpus, tokenizer fitting or trained-model evidence is used.
 """
 
@@ -53,7 +53,10 @@ def _seal_checkpoint(
     source = Trainer(source_model, config)
     captured = core.capture_rng_state()
     deliberately_incomplete = dict(captured)
-    if missing is not None:
+    if missing == "cuda":
+        deliberately_incomplete["torch"] = dict(captured["torch"])
+        deliberately_incomplete["torch"].pop("cuda")
+    elif missing is not None:
         deliberately_incomplete.pop(missing)
     # Produce a completely re-signed checkpoint through the production writer.
     # There is no checksum tampering, mocked decoder or unverified file input.
@@ -64,14 +67,17 @@ def _seal_checkpoint(
         )
     core.verify_checkpoint(path)
     _, decoded = core._decode_verified_state(core.prepare_checkpoint_load(path))
-    assert missing is None or missing not in decoded["rng"]
+    if missing == "cuda":
+        assert "cuda" not in decoded["rng"]["torch"]
+    elif missing is not None:
+        assert missing not in decoded["rng"]
     return captured, config
 
 
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
-@pytest.mark.parametrize("missing", ["python", "numpy"])
+@pytest.mark.parametrize("missing", ["python", "numpy", "cuda"])
 def test_incomplete_but_verified_rng_rejected_before_model_materialization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -103,7 +109,7 @@ def test_incomplete_but_verified_rng_rejected_before_model_materialization(
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
-@pytest.mark.parametrize("missing", ["python", "numpy"])
+@pytest.mark.parametrize("missing", ["python", "numpy", "cuda"])
 def test_explicit_rng_opt_out_retains_existing_checkpoint_compatibility(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

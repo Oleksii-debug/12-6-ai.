@@ -549,6 +549,7 @@ def _assert_d02_checkpoint_rng_policy(
                 f"canonical trainer CUDA RNG state for device {index} is invalid"
             ) from exc
 
+
 def _snapshot_torch_policy(state: Mapping[str, Any]) -> tuple[bool, bool] | None:
     """Pin the live policy before any model or trainer loader can mutate it."""
 
