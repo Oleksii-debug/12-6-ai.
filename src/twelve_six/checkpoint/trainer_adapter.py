@@ -440,9 +440,22 @@ def _preflight_trainer_state(
         try:
             try:
                 _core.restore_rng_state(ambient)
-            finally:
-                # Attempt to restore warn-only even if RNG rollback itself
-                # raises: global PyTorch execution mode is shared by trainers.
+            except BaseException as rng_exc:
+                # A secondary policy rollback fault must not hide the primary
+                # failed/interrupted RNG rollback or its preflight context.
+                if warn_only is not None:
+                    try:
+                        torch.use_deterministic_algorithms(
+                            bool(torch_state["deterministic_algorithms"]),
+                            warn_only=warn_only,
+                        )
+                    except BaseException as mode_exc:
+                        rng_exc.add_note(
+                            "PyTorch preflight-mode rollback also failed: "
+                            f"{mode_exc!r}"
+                        )
+                raise
+            else:
                 if warn_only is not None:
                     torch.use_deterministic_algorithms(
                         bool(torch_state["deterministic_algorithms"]),
@@ -476,8 +489,13 @@ def _restore_checkpoint_rng_preserving_warn_only(
         warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     try:
         restore(state)
+        if warn_only is not None:
+            torch.use_deterministic_algorithms(
+                torch.are_deterministic_algorithms_enabled(), warn_only=warn_only,
+            )
     except BaseException as exc:
-        # Final replay can partially change process-global PyTorch execution
+        # Final replay or its follow-up policy application can partially
+        # change process-global PyTorch execution
         # mode before it fails. The target trainer is poisoned by the caller,
         # but unrelated trainers must not inherit a half-applied mode.
         if warn_only is not None:
@@ -491,10 +509,6 @@ def _restore_checkpoint_rng_preserving_warn_only(
                         f"{mode_exc!r}"
                     )
         raise
-    if warn_only is not None:
-        torch.use_deterministic_algorithms(
-            torch.are_deterministic_algorithms_enabled(), warn_only=warn_only,
-        )
 
 
 def save_trainer_checkpoint(
