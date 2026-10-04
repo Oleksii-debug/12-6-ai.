@@ -1104,3 +1104,54 @@ def test_distinct_valid_adamw_group_hyperparameters_complete_update():
     assert not torch.equal(model.weight, previous_weight)
     assert not torch.equal(model.extra, previous_extra)
     assert trainer.state_dict().optimizer_step == 1
+
+
+def test_silent_noop_optimizer_zero_grad_cannot_publish_clean_step(monkeypatch):
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    initial_weights = model.weight.detach().clone()
+    monkeypatch.setattr(trainer.optimizer, "zero_grad", lambda *args, **kwargs: None)
+
+    with pytest.raises(RuntimeError, match="residual model gradients"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 1  # Parameter mutation already committed.
+    assert not torch.equal(model.weight, initial_weights)
+    assert model.weight.grad is None  # Independent model cleanup still runs.
+    assert trainer._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_checkpoint_export_rejects_optimizer_group_drift_after_committed_step():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    trainer.train_microbatch(_BATCH)
+    foreign = torch.nn.Parameter(torch.ones(3))
+    trainer.optimizer.param_groups[0]["params"] = [foreign]
+
+    with pytest.raises(ValueError, match="not owned by the model"):
+        trainer.state_dict()
+
+    assert trainer.optimizer_step == 1
+    assert "checkpoint boundary has invalid optimizer" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.assert_checkpoint_safe()
+
+
+def test_checkpoint_export_rejects_residual_gradient_after_committed_step():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    trainer.train_microbatch(_BATCH)
+    model.weight.grad = torch.ones_like(model.weight)
+
+    with pytest.raises(RuntimeError, match="residual model gradients"):
+        trainer.state_dict()
+
+    assert trainer.optimizer_step == 1
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
