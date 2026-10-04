@@ -413,11 +413,28 @@ def _model_state_to_numpy(model: Any) -> dict[str, np.ndarray]:
     output: dict[str, np.ndarray] = {}
     for name, value in state.items():
         if isinstance(value, np.ndarray):
-            output[str(name)] = np.ascontiguousarray(value)
+            array = np.ascontiguousarray(value)
+            if array.dtype.kind in {"f", "c"}:
+                flat = array.reshape(-1)
+                # Bound the temporary Boolean mask even for model-scale arrays.
+                for start in range(0, flat.size, 1_048_576):
+                    if not np.isfinite(flat[start:start + 1_048_576]).all():
+                        raise CheckpointIntegrityError(
+                            f"non-finite model tensor {name!r} cannot be published"
+                        )
+            output[str(name)] = array
             continue
         cls = value.__class__
         if cls.__module__.startswith("torch") and cls.__name__ in {"Tensor", "Parameter"}:
             tensor = value.detach().cpu().contiguous()
+            if tensor.is_floating_point() or tensor.is_complex():
+                torch = importlib.import_module("torch")
+                flat = tensor.view(-1)
+                for start in range(0, flat.numel(), 1_048_576):
+                    if not torch.isfinite(flat[start:start + 1_048_576]).all().item():
+                        raise CheckpointIntegrityError(
+                            f"non-finite model tensor {name!r} cannot be published"
+                        )
             if str(tensor.dtype) == "torch.bfloat16":
                 torch = importlib.import_module("torch")
                 output[str(name)] = tensor.view(torch.uint16).numpy().copy()
