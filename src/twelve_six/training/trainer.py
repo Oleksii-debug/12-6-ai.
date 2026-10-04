@@ -306,11 +306,17 @@ class Trainer:
         if self.optimizer_step >= self.config.max_steps:
             raise RuntimeError("configured max_steps already reached")
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
-        tokens = _count_training_tokens(
-            targets,
-            aligned_targets=aligned_targets,
-            loss_mask=loss_mask,
-        )
+        try:
+            tokens = _count_training_tokens(
+                targets,
+                aligned_targets=aligned_targets,
+                loss_mask=loss_mask,
+            )
+        except BaseException:
+            # A device-side reduction/synchronization can fail after successful
+            # transfers; do not reuse earlier accumulated gradients afterward.
+            self._mark_failed(f"target accounting failed at micro_step={self.micro_step + 1}")
+            raise
         if tokens <= 0:
             raise ValueError("microbatch must contain at least one valid target token")
 
