@@ -28,6 +28,7 @@ from .progress_binding import _assert_progress
 from .trainer_adapter import (
     _assert_bound_metadata,
     _assert_d02_checkpoint_rng_policy,
+    _assert_live_d02_determinism,
     _assert_trainer_model_binding,
     _preflight_trainer_state,
     _preflight_trainer_target,
@@ -235,6 +236,8 @@ def load_trainer_checkpoint(
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
+    else:
+        _assert_live_d02_determinism(trainer)
     materialized = _prepare_model_weights(model, arrays, strict_model)
     del arrays
 
