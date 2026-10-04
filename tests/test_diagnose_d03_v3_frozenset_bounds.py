@@ -5,7 +5,10 @@ Synthetic code objects only. Never grants attestation or corpus/training credit.
 
 from __future__ import annotations
 
+import marshal
 from types import CodeType
+
+import pytest
 
 from tools.diagnose_d03_v3_code_drift import compare_code_objects
 
@@ -57,3 +60,21 @@ def test_different_small_nested_frozensets_are_structural_mismatch() -> None:
     assert result["classification"] == "STRUCTURAL_CODE_MISMATCH"
     assert result["marshal_equal"] is False
     assert result["attestation_override_allowed"] is False
+
+
+@pytest.mark.parametrize(
+    "error", [TypeError, ValueError, RecursionError, OverflowError],
+)
+def test_member_serialization_failure_is_incomplete(
+    monkeypatch: pytest.MonkeyPatch, error: type[Exception],
+) -> None:
+    code = _code_with_constant(frozenset({(1, (2, 3))}))
+    original = marshal.dumps
+
+    def fail_member(value: object) -> bytes:
+        if type(value) is tuple:
+            raise error("synthetic member serialization failure")
+        return original(value)
+
+    monkeypatch.setattr(marshal, "dumps", fail_member)
+    _assert_incomplete(compare_code_objects(code, code))
