@@ -428,12 +428,12 @@ def test_oversized_remote_lease_rejected_before_git_blob_capture(
     oversized = b"x" * (global_lease_module.MAX_GLOBAL_LEASE_STATE_BYTES + 1)
     blob_sha = write_object(oversized, "hash-object", "-w", "--stdin")
     tree_sha = write_object(
-        f"100644 blob {blob_sha}\\t{global_lease_module.GLOBAL_LEASE_STATE_PATH}\\n"
+        f"100644 blob {blob_sha}\t{global_lease_module.GLOBAL_LEASE_STATE_PATH}\n"
         .encode("ascii"),
         "mktree",
     )
     corrupt_tip = write_object(
-        b"oversized lease payload\\n",
+        b"oversized lease payload\n",
         "-c", "user.name=R01 test",
         "-c", "user.email=r01-test@example.invalid",
         "commit-tree", tree_sha, "-p", acquired.written_remote_tip,
