@@ -381,3 +381,56 @@ def test_interrupted_restore_poison_keeps_original_interruption(
         )
     assert trainer._failure_reason == "checkpoint_restore_apply_failed"
     assert trainer._update_incomplete is True
+
+
+def test_partial_d02_restore_diagnostic_survives_d05_failure_wrapper(
+    tmp_path: Path,
+) -> None:
+    """D05 must not overwrite D02's original error and cleanup-fault detail."""
+
+    class DiagnosticTarget(GenericTrainer):
+        def __init__(self) -> None:
+            super().__init__()
+            self._failure_reason: str | None = None
+            self._update_incomplete = False
+
+        def load_state_dict(self, state: dict[str, object]) -> None:
+            super().load_state_dict(state)
+            # The isolated preflight uses a copy and must remain non-mutating.
+            if self is trainer:
+                self._failure_reason = (
+                    "trainer state restore failed after possible partial apply; "
+                    "gradient cleanup failed: RuntimeError"
+                )
+                self._update_incomplete = True
+                raise RuntimeError("injected optimizer restore failure")
+
+    checkpoint = tmp_path / "d02-diagnostic"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        trainer=GenericTrainer(),
+        identity=identity(),
+    )
+    trainer = DiagnosticTarget()
+    model = NumpyModel([9.0, 9.0, 9.0])
+
+    with pytest.raises(RuntimeError, match="injected optimizer restore failure"):
+        load_trainer_checkpoint(
+            checkpoint, model=model, trainer=trainer, restore_rng=False,
+        )
+
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply; "
+        "gradient cleanup failed: RuntimeError"
+    )
+    assert trainer._update_incomplete is True
+    assert trainer.loads == 1
+    from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
+
+    with pytest.raises(TrainingStateInvalidError, match="gradient cleanup failed"):
+        Trainer._assert_trainable(trainer)
+    with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
+        load_trainer_checkpoint(
+            checkpoint, model=model, trainer=trainer, restore_rng=False,
+        )
