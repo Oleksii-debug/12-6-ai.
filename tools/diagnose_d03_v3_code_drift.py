@@ -117,9 +117,14 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
             differences.append(f"{path}:unsupported-type")
 
     # Enforce structural depth/node limits BEFORE serializing either code tree.
-    # Otherwise deeply nested inputs raise from marshal instead of returning a
-    # bounded, explicitly incomplete diagnostic.
+    # Comparison short-circuits on unequal tuple lengths and differing types,
+    # so independently walk BOTH full operands, including unmatched children.
+    # Never let an unseen malicious subtree reach marshal through that shortcut.
     visit(live, canonical, "code", 0)
+    if not limited:
+        visit(live, live, "live", 0)
+    if not limited:
+        visit(canonical, canonical, "canonical", 0)
     live_digest: str | None = None
     canonical_digest: str | None = None
     if not limited:
