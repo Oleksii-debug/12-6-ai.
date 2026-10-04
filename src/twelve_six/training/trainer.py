@@ -494,7 +494,16 @@ class Trainer:
                         raise
 
         if self.optimizer_step < self.config.max_steps:
-            self.assert_checkpoint_safe()
+            try:
+                self.assert_checkpoint_safe()
+            except RuntimeError:
+                # An exhausted source cannot complete this accumulation group.
+                # Pending gradients do not belong to a committed checkpoint and
+                # cannot be reattached to an arbitrary successor data iterator.
+                self._mark_failed(
+                    f"batch iterable exhausted mid-accumulation at micro_step={self.micro_step}"
+                )
+                raise
             raise RuntimeError(
                 "batch iterable exhausted before max_steps: "
                 f"optimizer_step={self.optimizer_step}, max_steps={self.config.max_steps}"
