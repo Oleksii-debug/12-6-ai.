@@ -68,6 +68,21 @@ class TrainerState:
     config: dict[str, Any]
 
 
+def _typed_state_equal(left: Any, right: Any) -> bool:
+    """Compare checkpoint metadata without Python numeric/bool equality aliases."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, Mapping):
+        if left.keys() != right.keys():
+            return False
+        return all(_typed_state_equal(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)):
+        if len(left) != len(right):
+            return False
+        return all(_typed_state_equal(a, b) for a, b in zip(left, right, strict=True))
+    return bool(left == right)
+
+
 def _lr_lambda(config: TrainerConfig):
     def factor(step: int) -> float:
         if config.warmup_steps and step < config.warmup_steps:
@@ -729,7 +744,7 @@ class Trainer:
         if isinstance(state, Mapping):
             state = TrainerState(**state)
 
-        if state.config != asdict(self.config):
+        if not _typed_state_equal(state.config, asdict(self.config)):
             raise ValueError("trainer config mismatch; refusing unsafe resume")
         if state.micro_step < 0 or state.optimizer_step < 0 or state.tokens_seen < 0:
             raise ValueError("trainer counters must be non-negative")
