@@ -573,6 +573,7 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
     identity: tuple[int, int] | None = None
     linked = False
     verified = False
+    indeterminate_publication = False
     try:
         with tempfile.NamedTemporaryFile(
             mode="w+b", prefix=f".{path.name}.", suffix=".tmp",
@@ -588,11 +589,23 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
             raise GateError("staged balance output failed byte verification")
         try:
             os.link(staged_path, final)  # Create-only; never replace a concurrent result.
-        except OSError:
-            # Link publication can succeed before an I/O wrapper reports an error.
-            # Roll back only if the final pathname still names our staged inode.
-            if _same_inode(final, identity):
-                linked = True
+        except OSError as link_error:
+            # A successful link followed by an I/O error is ambiguous. An
+            # inaccessible final is not evidence that publication did not occur.
+            try:
+                final_info = final.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            except OSError as inspection_error:
+                indeterminate_publication = True
+                raise GateError(
+                    f"PUBLICATION_INDETERMINATE: output identity cannot be checked: {final}; "
+                    f"staging retained for reconciliation: {staged_path}; "
+                    f"link failure: {link_error}; inspection failure: {inspection_error}"
+                ) from link_error
+            else:
+                if (final_info.st_dev, final_info.st_ino) == identity:
+                    linked = True
             raise
         linked = True
         if (
@@ -610,12 +623,27 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
         primary_failure = sys.exc_info()[1]
         rollback_error: OSError | None = None
         cleanup_error: OSError | None = None
-        if linked and not verified and identity is not None and _same_inode(final, identity):
+        if linked and not verified and identity is not None:
             try:
-                final.unlink()
+                final_info = final.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                pass
             except OSError as exc:
+                # Do not discard the staged inode while final identity is unknown.
+                indeterminate_publication = True
                 rollback_error = exc
-        if staged_path is not None and identity is not None and _same_inode(staged_path, identity):
+            else:
+                if (final_info.st_dev, final_info.st_ino) == identity:
+                    try:
+                        final.unlink()
+                    except OSError as exc:
+                        rollback_error = exc
+        if (
+            not indeterminate_publication
+            and staged_path is not None
+            and identity is not None
+            and _same_inode(staged_path, identity)
+        ):
             try:
                 staged_path.unlink()
             except OSError as exc:
@@ -629,9 +657,14 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
                 f"; initial publication failure: {primary_failure}"
                 if primary_failure is not None else ""
             )
+            retained_stage = (
+                f"; stage retained for identity reconciliation: {staged_path}"
+                if indeterminate_publication else ""
+            )
             raise GateError(
                 f"ROLLBACK_INCOMPLETE: invalid balance output may remain: {final}"
-                f"; rollback failure: {rollback_error}{stranded_stage}{initial}"
+                f"; rollback failure: {rollback_error}{stranded_stage}"
+                f"{retained_stage}{initial}"
             ) from (primary_failure if primary_failure is not None else rollback_error)
         if cleanup_error is not None:
             if verified:
