@@ -1014,3 +1014,70 @@ def test_failed_final_success_policy_application_rolls_back_original_mode(
     finally:
         core.restore_rng_state(ambient)
         original_use(enabled, warn_only=warn_only)
+
+@pytest.mark.parametrize("use_progress", [False, True])
+@pytest.mark.parametrize("restore_rng", [False, True])
+def test_real_d02_rejects_checkpoint_rng_policy_drift_before_model_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+    restore_rng: bool,
+) -> None:
+    """A sealed checkpoint cannot silently override D02's deterministic config."""
+
+    from dataclasses import replace
+
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    ambient = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        config = TrainerConfig(max_steps=10, seed=703, deterministic_algorithms=True)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        checkpoint = tmp_path / "mismatched-deterministic-policy"
+        # Deliberately save a valid checkpoint while an external component
+        # has changed the process-global policy away from source.config.
+        torch.use_deterministic_algorithms(False, warn_only=False)
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
+        )
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, config)
+        before = [parameter.detach().clone() for parameter in model.parameters()]
+        loader_module = progress_trainer if use_progress else trainer_adapter
+        if restore_rng:
+            def forbidden_materialization(*_args: object, **_kwargs: object) -> None:
+                raise AssertionError("policy mismatch must fail before model materialization")
+
+            monkeypatch.setattr(
+                loader_module, "_prepare_model_weights", forbidden_materialization,
+            )
+            with pytest.raises(CheckpointCompatibilityError, match="deterministic_algorithms"):
+                loader_module.load_trainer_checkpoint(
+                    checkpoint, model=model, trainer=trainer, restore_rng=True,
+                )
+            for parameter, saved in zip(model.parameters(), before, strict=True):
+                torch.testing.assert_close(parameter.detach(), saved)
+        else:
+            # Opting out of checkpoint RNG replay is an explicit caller choice.
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+            for parameter, saved in zip(
+                model.parameters(), source_model.parameters(), strict=True,
+            ):
+                torch.testing.assert_close(parameter.detach(), saved.detach())
+        assert trainer._failure_reason is None
+        assert trainer._update_incomplete is False
+        assert torch.are_deterministic_algorithms_enabled()
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
