@@ -2037,7 +2037,7 @@ def test_recovery_does_not_trust_hidden_exists_for_real_committed_output(
     assert recovered["training_authorized"] is False
 
 
-@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("interruption", [OSError, KeyboardInterrupt, SystemExit])
 @pytest.mark.parametrize("deny_final_inspection", [False, True])
 def test_held_source_close_interruption_keeps_original_stage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -2101,3 +2101,131 @@ def test_held_source_close_interruption_keeps_original_stage(
     stage.unlink()
     REPLAY_RUNNER._write_new_bytes(final, raw, label="test output")
     assert final.read_bytes() == raw
+
+
+def test_close_fault_ignores_unrelated_active_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final = tmp_path / "unrelated-close.json"
+    raw = b"authenticated output"
+    stage = REPLAY_RUNNER._stage_new_bytes(final, raw, label="test output")
+    original_open = Path.open
+    wrapped = False
+
+    class CloseFailure:
+        def __init__(self, held: object) -> None:
+            self.held = held
+
+        def __getattr__(self, name: str):
+            return getattr(self.held, name)
+
+        def close(self) -> None:
+            self.held.close()
+            raise OSError("injected close EIO")
+
+    def open_held_once(path: Path, *a: object, **kw: object):
+        nonlocal wrapped
+        held = original_open(path, *a, **kw)
+        if path == stage and a and a[0] == "rb" and not wrapped:
+            wrapped = True
+            return CloseFailure(held)
+        return held
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER, "_stage_new_bytes", lambda *a, **kw: stage)
+        fault.setattr(Path, "open", open_held_once)
+        try:
+            raise ValueError("unrelated ambient failure")
+        except ValueError:
+            with pytest.raises(
+                REPLAY_RUNNER.PublicationIndeterminate,
+                match="SOURCE_CLOSE_INDETERMINATE",
+            ) as caught:
+                REPLAY_RUNNER._write_new_bytes(final, raw, label="test output")
+
+    assert wrapped
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "injected close EIO" in str(caught.value.__cause__)
+    assert "unrelated ambient" not in str(caught.value)
+    assert caught.value.staged == stage
+    assert final.read_bytes() == stage.read_bytes() == raw
+    stage.unlink()
+    final.unlink()
+    REPLAY_RUNNER._write_new_bytes(final, raw, label="test output")
+    assert final.read_bytes() == raw
+
+
+def test_single_output_cleanup_with_ambient_exception_reports_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final = tmp_path / "ambient-committed.json"
+    original_unlink = Path.unlink
+
+    def deny_stage_unlink(path: Path, *a: object, **kw: object) -> None:
+        if path.name.startswith(f".{final.name}.") and path.suffix == ".tmp":
+            raise PermissionError("injected stage sharing denial")
+        original_unlink(path, *a, **kw)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(Path, "unlink", deny_stage_unlink)
+        try:
+            raise ValueError("unrelated ambient failure")
+        except ValueError:
+            with pytest.raises(
+                REPLAY_RUNNER.RematerializationError,
+                match="published and byte-verified",
+            ) as caught:
+                REPLAY_RUNNER._write_new_bytes(
+                    final, b"trusted", label="test output",
+                )
+
+    staged = list(tmp_path.glob(f".{final.name}.*.tmp"))
+    assert len(staged) == 1
+    assert final.read_bytes() == staged[0].read_bytes() == b"trusted"
+    assert isinstance(caught.value.__cause__, PermissionError)
+    assert "unrelated ambient" not in str(caught.value)
+    staged[0].unlink()
+
+
+def test_outer_cleanup_with_ambient_exception_preserves_receipt_truth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_unlink = Path.unlink
+
+    def deny_report_stage_unlink(
+        path: Path, *a: object, **kw: object,
+    ) -> None:
+        if (
+            path.name.startswith(f".{args.output_report.name}.")
+            and path.suffix == ".tmp"
+        ):
+            raise PermissionError("injected outer sharing denial")
+        original_unlink(path, *a, **kw)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(Path, "unlink", deny_report_stage_unlink)
+        try:
+            raise ValueError("unrelated ambient failure")
+        except ValueError:
+            with pytest.raises(
+                REPLAY_RUNNER.RematerializationError,
+                match="outer receipt published and byte-verified",
+            ) as caught:
+                REPLAY_RUNNER._publish_verified_outputs(
+                    args, pass_root=pass_root, pass_result=result, receipt=receipt,
+                )
+
+    assert isinstance(caught.value.__cause__, PermissionError)
+    assert "unrelated ambient" not in str(caught.value)
+    assert args.output_receipt.read_bytes() == canonical_json_bytes(receipt)
+    staged = list(
+        tmp_path.glob(f".{args.output_report.name}.*.tmp")
+    )
+    assert len(staged) == 1
+    staged[0].unlink()
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovery["training_authorized"] is False
