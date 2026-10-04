@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "worker_id": "SWARM-793",
+  "component_id": "HF_TOKENIZERS_BOOTSTRAP_STRESS_V1",
+  "swarm_protocol": "SWARM-300-V2",
+  "claim_issue": 793,
+  "base_main_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "lane_key": "R01|HF_TOKENIZERS|OPEN_SOURCE_REUSE_RESEARCH|BOOTSTRAP-STRESS-V1",
+  "execution_profile": "LOCAL_FREE",
+  "upstream": {
+    "repository": "https://github.com/huggingface/tokenizers",
+    "tag": "v0.23.1",
+    "version": "0.23.1",
+    "commit": "7f1623b90b5adfb9bc327d4c3468d2f70bbce262",
+    "license": "Apache-2.0",
+    "license_blob_sha256": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "release_artifact": "tokenizers-0.23.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "release_artifact_sha256": "5075b405006415ea148a992d093699c66eb01952bf59f4d5727089a98bda45a4",
+    "notice": "absent_at_v0.23.1_root"
+  },
+  "project_boundary": {
+    "canonical_s0_tokenizer": "s0-byte-v1 remains authoritative",
+    "tokenizer_replacement": false,
+    "canonical_base_dependency": false,
+    "training_authorized": false,
+    "foreign_pretrained_weights": false,
+    "foreign_instruction_behavior": false
+  },
+  "bootstrap_contract": {
+    "package_manager": "pip",
+    "install_command_contract": "pip install --require-hashes --only-binary=:all: --no-deps -r requirements.txt",
+    "exact_requirement": "tokenizers==0.23.1",
+    "exact_artifact_hash_required": true,
+    "global_install_forbidden": true,
+    "isolated_environment_required": true,
+    "cache_first": true,
+    "floating_version_substitution_forbidden": true,
+    "offline_missing_artifact_status": "NOT_EXECUTED",
+    "partial_runtime_status": "RETEST_RUNTIME_REQUIRED"
+  },
+  "qualification_gates": [
+    "DISCOVER", "PIN", "INSTALL", "BOOTSTRAP", "ISOLATED_EXECUTION", "TEST", "BENCHMARK", "PARITY", "ADVERSARIAL_CHECK", "MACHINE_EVIDENCE", "HANDOFF"
+  ],
+  "runtime_promotion_rule": "ADOPTABLE_COMPONENT requires exact installation, real import/runtime benchmark, relevant parity, focused/adversarial tests, provenance/rights and no canonical Base contamination",
+  "local_free_rule": "no paid cloud/GPU compute, no long training, no benchmark/final-test payload access",
+  "rollback": "remove optional qualification package; canonical S0 byte tokenizer and project dependency surface remain unchanged"
+}
