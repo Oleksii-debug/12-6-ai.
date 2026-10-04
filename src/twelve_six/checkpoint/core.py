@@ -89,6 +89,9 @@ def _parse_finite_json_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError("non-finite JSON number")
+    mantissa = value.lower().split("e", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in mantissa):
+        raise ValueError("nonzero JSON number underflowed to zero")
     return parsed
 
 
