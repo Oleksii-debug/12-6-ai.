@@ -24,6 +24,7 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ROOT / "tools"
@@ -221,6 +222,41 @@ def _declared_capacity_bytes(
     return total
 
 
+def _capture_terminal_v7_with_fetch_context(
+    v7_root: Path, config: Mapping[str, Any],
+) -> tuple[Any, dict[str, Any], dict[str, Any], dict[str, bytes]]:
+    """Annotate the original historical transport failure without altering bytes.
+
+    V7's unchanged fetch and later source-hash/rights checks remain mandatory.
+    The temporary wrapper is restored even on interruption; no URL path, query,
+    credentials or source payload is included in the diagnostic.
+    """
+    historical_v7 = v8._load_v7(v7_root)
+    fetch_module = historical_v7.v6.v5.v1
+    original_fetch = fetch_module.fetch_exact_source
+
+    def contextual_fetch(url: str) -> bytes:
+        try:
+            return original_fetch(url)
+        except OSError as exc:
+            try:
+                host = urlsplit(url).hostname or "unknown"
+            except ValueError:
+                host = "invalid-url"
+            url_sha256 = hashlib.sha256(url.encode("utf-8")).hexdigest()
+            exc.add_note(
+                "historical V7 source fetch failed: "
+                f"host={host}; acquisition_url_sha256={url_sha256}"
+            )
+            raise
+
+    fetch_module.fetch_exact_source = contextual_fetch
+    try:
+        return v8._capture_terminal_v7(v7_root, config)
+    finally:
+        fetch_module.fetch_exact_source = original_fetch
+
+
 def _reconstruct_clean_source_inputs(
     *,
     v7_root: Path,
@@ -232,7 +268,7 @@ def _reconstruct_clean_source_inputs(
     quarantine_authority = json.loads(
         (ROOT / clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
     )
-    v7, _, historical_inventory, historical_payloads = v8._capture_terminal_v7(
+    v7, _, historical_inventory, historical_payloads = _capture_terminal_v7_with_fetch_context(
         v7_root, config
     )
     clean_inventory, clean_payloads, removal = clean_successor.deauthorize_exact_nomis(
