@@ -272,3 +272,54 @@ def test_optimizer_and_cleanup_double_fault_preserves_primary_and_poison(
     assert f"gradient cleanup failed: {cleanup_type.__name__}" in trainer._failure_reason
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.assert_checkpoint_safe()
+
+
+@pytest.mark.parametrize("failure_type", [RuntimeError, KeyboardInterrupt])
+def test_train_mode_failure_poisoned_without_replaying_accumulation(
+    monkeypatch, failure_type
+):
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=2, seed=17),
+    )
+    trainer.train_microbatch(_BATCH)
+    before_weights = model.weight.detach().clone()
+
+    def broken_train(*args, **kwargs):
+        torch.rand(())  # train-mode hooks may already have consumed RNG.
+        raise failure_type("synthetic train-mode failure")
+
+    monkeypatch.setattr(model, "train", broken_train)
+    with pytest.raises(failure_type, match="synthetic train-mode failure"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert trainer.tokens_seen == 2
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_invalid_batch_does_not_invoke_effectful_train_mode(monkeypatch):
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    train_calls = []
+
+    def record_train(*args, **kwargs):
+        train_calls.append(True)
+        return model
+
+    monkeypatch.setattr(model, "train", record_train)
+    with pytest.raises(ValueError, match="shape"):
+        trainer.train_microbatch(
+            {"input_ids": torch.tensor([1, 2]), "target_ids": torch.tensor([1, 2])}
+        )
+    assert train_calls == []
+    assert trainer.micro_step == 0
+    assert trainer._failure_reason is None
+    trainer.train_microbatch(_BATCH)
+    assert train_calls == [True]
+    assert trainer.optimizer_step == 1
