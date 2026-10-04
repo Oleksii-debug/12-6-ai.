@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import importlib
+import inspect
 import json
 import math
 import os
@@ -784,13 +785,45 @@ def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> 
 
 
 def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
-    if hasattr(model, "load_state_dict"):
+    """Apply model state exactly once, even if a loader raises TypeError.
+
+    A TypeError raised *inside* load_state_dict may follow a partial weight
+    update or a side effect. Discover keyword support before calling instead
+    of retrying a possibly mutated model with a different calling convention.
+    """
+    loader = getattr(model, "load_state_dict", None)
+    if not callable(loader):
+        raise TypeError("model must provide load_state_dict()")
+    try:
+        signature = inspect.signature(loader)
+    except (TypeError, ValueError) as exc:
+        raise CheckpointCompatibilityError(
+            "model load_state_dict signature unavailable; refusing unsafe retry"
+        ) from exc
+    strict_parameter = signature.parameters.get("strict")
+    if (
+        strict_parameter is not None
+        and strict_parameter.kind == inspect.Parameter.POSITIONAL_ONLY
+    ):
         try:
-            model.load_state_dict(materialized, strict=strict)
-        except TypeError:
-            model.load_state_dict(materialized)
-        return
-    raise TypeError("model must provide load_state_dict()")
+            bound = signature.bind(materialized, strict)
+        except TypeError as exc:
+            raise CheckpointCompatibilityError(
+                "model load_state_dict cannot safely bind positional strict"
+            ) from exc
+        if bound.arguments.get("strict") is not strict:
+            raise CheckpointCompatibilityError(
+                "model load_state_dict cannot safely bind positional strict"
+            )
+        loader(materialized, strict)
+    elif strict_parameter is not None or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        loader(materialized, strict=strict)
+    else:
+        # Generic legacy adapters accept only load_state_dict(state).
+        loader(materialized)
 
 
 def _state_dict_or_none(obj: Any | None) -> Any | None:
