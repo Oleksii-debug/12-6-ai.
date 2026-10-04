@@ -213,6 +213,16 @@ class Trainer:
                 raise NonFiniteTrainingError(
                     f"optimizer produced non-finite model weights at micro_step={self.micro_step}"
                 )
+        # Buffers are durable model state too (for example normalization
+        # statistics). They can be corrupted by forward/scheduler hooks even
+        # when every optimizer-managed parameter and moment remains finite.
+        for buffer in self.model.buffers():
+            if (buffer.is_floating_point() or buffer.is_complex()) and not (
+                torch.isfinite(buffer.detach()).all().item()
+            ):
+                raise NonFiniteTrainingError(
+                    f"model contains non-finite buffer at micro_step={self.micro_step}"
+                )
         for state in self.optimizer.state.values():
             for value in state.values():
                 if isinstance(value, Tensor) and not torch.isfinite(value).all().item():
