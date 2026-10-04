@@ -191,6 +191,22 @@ def test_installed_record_resolution_fails_closed_on_missing_duplicate_or_nonfil
         resolve_default_paths(module_path=module, distribution=nonfile)
 
 
+def test_installed_record_resolution_rejects_symlinked_profile(tmp_path: Path) -> None:
+    module = _fake_installed_module(tmp_path)
+    substituted = tmp_path / "substituted-profile.json"
+    substituted.write_text("{}\n", encoding="utf-8")
+    symlink = tmp_path / "linked-profile.json"
+    try:
+        symlink.symlink_to(substituted)
+    except (NotImplementedError, OSError):
+        pytest.skip("creating symlinks is unsupported on this machine")
+    packet = tmp_path / "packet.json"
+    packet.write_text("{}\n", encoding="utf-8")
+    distribution = _FakeDistribution({PROFILE_RECORD: symlink, PACKET_RECORD: packet})
+    with pytest.raises(RuntimeError, match="not a regular file"):
+        resolve_default_paths(module_path=module, distribution=distribution)
+
+
 def test_installed_record_resolution_fails_closed_without_record_listing(tmp_path: Path) -> None:
     module = _fake_installed_module(tmp_path)
     unavailable = _FakeDistribution({}, files_available=False)
@@ -315,6 +331,46 @@ def test_main_preserves_successful_delegate_path(
     assert windows_operator_cli.main(["verify"]) == 41
     assert observed == [delegated]
 
+
+@pytest.mark.parametrize(
+    "args",
+    [["--help"], ["-h"], ["verify", "--help"], ["--json", "status", "--help"]],
+)
+def test_help_never_requires_installed_record_or_assets(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    args: list[str],
+) -> None:
+    def fail_if_bootstrapped(_argv: object) -> list[str]:
+        raise AssertionError("help must not inspect installed metadata")
+
+    monkeypatch.setattr(windows_operator_cli, "build_delegate_argv", fail_if_bootstrapped)
+    with pytest.raises(SystemExit) as exit_info:
+        windows_operator_cli.main(args)
+    captured = capsys.readouterr()
+    assert exit_info.value.code == 0
+    assert "usage:" in captured.out
+    assert captured.err == ""
+
+
+def test_malformed_installed_record_value_error_is_safe_text_status(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def malformed_record(_argv: object) -> list[str]:
+        raise ValueError("invalid RECORD entry")
+
+    monkeypatch.setattr(windows_operator_cli, "build_delegate_argv", malformed_record)
+    result = windows_operator_cli.main(["verify"])
+    captured = capsys.readouterr()
+    assert result == windows_operator_cli.windows_operator_preflight.EXIT_ERROR
+    assert captured.err == ""
+    assert captured.out.splitlines() == [
+        "OPERATOR_STATUS: ERROR",
+        "ERROR: installed_operator_bootstrap_failed:invalid RECORD entry",
+        "LAUNCH_AUTHORIZED: false",
+        "TRAINING_AUTHORIZED: false",
+    ]
 
 def test_pyproject_packages_exact_canonical_assets_and_one_cli() -> None:
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))

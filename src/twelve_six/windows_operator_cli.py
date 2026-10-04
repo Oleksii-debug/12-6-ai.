@@ -81,7 +81,7 @@ def _locate_installed_asset(
             f"found {len(matches)}"
         )
     located = Path(distribution.locate_file(matches[0]))
-    if not located.is_file():
+    if located.is_symlink() or not located.is_file():
         raise RuntimeError(
             f"installed canonical asset is missing or not a regular file: {located}"
         )
@@ -174,7 +174,7 @@ def build_delegate_argv(
     return [*injected, *argv]
 
 
-def _bootstrap_error_result(exc: OSError | RuntimeError) -> dict[str, object]:
+def _bootstrap_error_result(exc: OSError | RuntimeError | ValueError) -> dict[str, object]:
     return {
         "status": "ERROR",
         "error": f"installed_operator_bootstrap_failed:{exc}",
@@ -187,9 +187,13 @@ def _bootstrap_error_result(exc: OSError | RuntimeError) -> dict[str, object]:
 def main(argv: list[str] | None = None) -> int:
     """Delegate to the canonical operator after install-aware path injection."""
     supplied = list(sys.argv[1:] if argv is None else argv)
+    # Help must remain available even when a wheel's RECORD or assets are broken.
+    # argparse exits before reading either operator input or creating state.
+    if "--help" in supplied or "-h" in supplied:
+        return windows_operator_preflight.main(supplied)
     try:
         delegated = build_delegate_argv(supplied)
-    except (OSError, RuntimeError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         windows_operator_preflight._print_result(
             _bootstrap_error_result(exc),
             as_json=_has_option(supplied, "--json"),
