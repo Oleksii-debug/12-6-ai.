@@ -277,6 +277,16 @@ class Trainer:
                 raise ValueError(
                     f"checkpoint optimizer parameter ID/order differs in group {index}"
                 )
+        # State-map keys are the same positional IDs, not arbitrary values
+        # that merely compare equal (False == 0 and 0.0 == 0 in Python).
+        # A partial state map is valid for a fresh optimizer; every present
+        # entry must nevertheless bind to a canonical live parameter slot.
+        saved_state = state.get("state")
+        if not isinstance(saved_state, Mapping) or any(
+            type(saved_id) is not int or not 0 <= saved_id < next_id
+            for saved_id in saved_state
+        ):
+            raise ValueError("checkpoint optimizer state parameter ID is noncanonical")
 
     def _require_no_residual_model_gradients(self) -> None:
         if any(parameter.grad is not None for parameter in self.model.parameters()):
