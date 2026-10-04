@@ -1,0 +1,101 @@
+{
+  "schema_version": "12-6.d03-common-pile-foodista-bounded.v1",
+  "execution_profile": "LOCAL_FREE",
+  "claim_issue": 1168,
+  "parent_rights": {
+    "merged_pr": 769,
+    "registry_path": "configs/data/common_pile_source_rights_v1.json",
+    "source_key": "foodista",
+    "hf_dataset": "common-pile/foodista",
+    "required_collector_path": "sources/food",
+    "required_rights_basis_class": "SITEWIDE_OPEN_LICENSE",
+    "required_rights_signal": "CC-BY",
+    "required_upstream_rights_claim": "Upstream paper states all Foodista content is licensed under CC BY.",
+    "required_provenance_summary": "Foodista HTML collected with a custom text extraction pipeline.",
+    "required_project_review_status": "REVIEW_REQUIRED"
+  },
+  "collector_authority": {
+    "repository": "https://github.com/r-three/common-pile",
+    "revision": "9457f04a14cb2355ab00023420369d46ffd4a395",
+    "readme_path": "sources/food/README.md",
+    "readme_git_blob_sha1": "155d861c68194b68a18df1fcfa3c32e9105c645d",
+    "supported_fact": "The audited Common Pile Foodista collector README states the Foodista shared recipe site is licensed under CC-BY-3.0.",
+    "legal_conclusion_claimed": false
+  },
+  "source": {
+    "revision": "04d1b7a6562c6d6459426d2a3b88184b8a98f7b6",
+    "file": "v0/documents/00000_foodista.jsonl.gz",
+    "url": "https://huggingface.co/datasets/common-pile/foodista/resolve/04d1b7a6562c6d6459426d2a3b88184b8a98f7b6/v0/documents/00000_foodista.jsonl.gz",
+    "sha256": "286b801bc826f161efad892af5529b201f91f42c5a932e3962d74d24037fe087",
+    "compressed_bytes": 6760466,
+    "max_compressed_bytes": 7000000,
+    "compression": "gzip",
+    "expected_source_label": "foodista",
+    "expected_row_fields": [
+      "id",
+      "text",
+      "source",
+      "added",
+      "created",
+      "metadata"
+    ],
+    "expected_metadata_fields": [
+      "authors",
+      "license",
+      "url"
+    ],
+    "expected_metadata_license": "Creative Commons - Attribution - https://creativecommons.org/licenses/by/3.0/",
+    "required_metadata_hosts": [
+      "www.foodista.com",
+      "foodista.com"
+    ]
+  },
+  "selection": {
+    "max_scanned_records": 8192,
+    "max_retained_records": 4096,
+    "max_retained_normalized_utf8_bytes": 4800000,
+    "order": "exact_shard_file_order_after_fail_closed_filters"
+  },
+  "quality": {
+    "min_chars": 200,
+    "max_chars": 50000,
+    "min_alpha_fraction": 0.25,
+    "min_latin_alpha_ratio": 0.75,
+    "max_cyrillic_alpha_ratio": 0.05
+  },
+  "privacy": {
+    "reject_email": true,
+    "reject_phone": true,
+    "reject_ipv4": true,
+    "reject_secret_markers": true,
+    "reject_control_characters": true,
+    "metadata_authors_emitted": false,
+    "metadata_url_emitted": false,
+    "metadata_provenance_emitted": false,
+    "universal_pii_absence_claimed": false
+  },
+  "downstream_required": [
+    "global_cross_source_dedup",
+    "reserved_evaluation_decontamination",
+    "final_source_rights_review",
+    "post_composition_quality_privacy",
+    "balance_and_family_caps",
+    "cluster_safe_split",
+    "deterministic_packing_two_clean_builds",
+    "positive_unique_loss_ledger"
+  ],
+  "claim_boundary": {
+    "training_authorized_bytes": 0,
+    "canonical_capacity_credited": 0,
+    "family_credit_added": 0,
+    "unique_causal_loss_positions_authorized": 0,
+    "training_eligible": false,
+    "evaluation_eligible": false,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates": 0,
+    "model_training_executed": false,
+    "final_test_accessed": false,
+    "paid_compute_used": false,
+    "research_corpus_v1_released": false
+  }
+}

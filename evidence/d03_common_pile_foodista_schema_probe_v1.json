@@ -1,0 +1,62 @@
+{
+  "added_types": {
+    "str": 8192
+  },
+  "author_values_emitted": false,
+  "authorized_optimized_target_exposure": 0,
+  "authors_types": {
+    "list": 8192
+  },
+  "claim_issue": 1168,
+  "corpus_text_emitted": false,
+  "created_types": {
+    "NoneType": 41,
+    "str": 8151
+  },
+  "executed_product_head": "0252a9922e01ccb975566632380e9de051d0cc62",
+  "execution_profile": "LOCAL_FREE_GITHUB_HOSTED_PUBLIC_REPO",
+  "final_test_accessed": false,
+  "foreign_pretrained_weights": false,
+  "github_run_id": 34559834257,
+  "id_types": {
+    "int": 8192
+  },
+  "learned_weights_created": false,
+  "license_values": {
+    "Creative Commons - Attribution - https://creativecommons.org/licenses/by/3.0/": 8192
+  },
+  "metadata_key_signatures": {
+    "[\"authors\",\"license\",\"url\"]": 8192
+  },
+  "metadata_type_signatures": {
+    "{\"authors\":\"list\",\"license\":\"str\",\"url\":\"str\"}": 8192
+  },
+  "paid_compute_used": false,
+  "pr": 1174,
+  "provenance_shapes": {
+    "<NoneType>": 8192
+  },
+  "scanned_records": 8192,
+  "schema_version": "12-6.d03-common-pile-foodista-text-free-schema-probe.v1",
+  "source_bytes": 6760466,
+  "source_file": "v0/documents/00000_foodista.jsonl.gz",
+  "source_labels": {
+    "foodista": 8192
+  },
+  "source_revision": "04d1b7a6562c6d6459426d2a3b88184b8a98f7b6",
+  "source_sha256": "286b801bc826f161efad892af5529b201f91f42c5a932e3962d74d24037fe087",
+  "status": "SUCCESS_TEXT_FREE_SCHEMA_PROBE",
+  "text_length_max": 12840,
+  "text_length_min": 0,
+  "text_types": {
+    "str": 8192
+  },
+  "top_key_signatures": {
+    "[\"added\",\"created\",\"id\",\"metadata\",\"source\",\"text\"]": 8192
+  },
+  "training_authorized_bytes": 0,
+  "training_executed": false,
+  "url_hosts": {
+    "www.foodista.com": 8192
+  }
+}
