@@ -637,6 +637,8 @@ class Trainer:
         # Reject known contract mismatches before touching optimizer state.
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
+        if self.scaler.is_enabled() and not state.scaler:
+            raise ValueError("enabled gradient scaler checkpoint state missing")
 
         # From the first component load onward a failure may leave optimizer,
         # scheduler, scaler or counters partially applied. No same-instance
