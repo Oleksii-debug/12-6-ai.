@@ -85,9 +85,21 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
             if len(left) > _MAX_NODES or len(right) > _MAX_NODES:
                 limited = True
                 return
-            # Frozen Python constants contain only hashable scalar objects.
-            # Hash each separately so outer marshal alias/reference flags do
-            # not become the comparison criterion. No constant is printed.
+            # A frozenset may contain nested, hashable tuples/frozensets.
+            # Recursively account for every contained node and depth BEFORE
+            # marshal.dumps(item): a shallow outer frozenset is not a bound
+            # on the depth or width of its members. Self-comparison is only
+            # a bounded structural intake, not evidence of left/right equality.
+            for item in left:
+                visit(item, item, f"{path}:left-item", depth + 1)
+                if limited:
+                    return
+            for item in right:
+                visit(item, item, f"{path}:right-item", depth + 1)
+                if limited:
+                    return
+            # Hash each validated member separately so outer marshal alias
+            # flags do not become the comparison criterion. Print no payload.
             try:
                 left_items = sorted((type(item).__name__, _sha256(marshal.dumps(item)))
                                     for item in left)
