@@ -612,3 +612,48 @@ def test_main_has_distinct_unverified_rollback_exit(
     assert output.read_bytes() == b"unauthenticated output"
     assert vector.read_bytes() == b"source vector"
     assert authority.read_bytes() == b"source authority"
+
+
+def test_unverified_rollback_and_stage_cleanup_dual_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "unverified result.json"
+    vector.write_bytes(b"unchanged source")
+    authority.write_bytes(b"unchanged authority")
+    original_link = cli.os.link
+    original_unlink = Path.unlink
+
+    def tamper_before_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"unverified bytes")
+        original_link(stage, final)
+
+    def both_paths_locked(path: Path, *args: object, **kwargs: object) -> None:
+        if path == output or (
+            path.name.startswith(f".{output.name}.") and path.suffix == ".tmp"
+        ):
+            raise PermissionError("injected rollback and cleanup locks")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", tamper_before_link)
+    monkeypatch.setattr(Path, "unlink", both_paths_locked)
+    with pytest.raises(cli.OutputUnverifiedRollbackPending) as caught:
+        cli._write_new_output(
+            output, b"expected authenticated bytes",
+            family_vector=vector, dedup_authority=authority,
+        )
+    assert output.read_bytes() == b"unverified bytes"
+    assert caught.value.stage.read_bytes() == b"unverified bytes"
+    assert output.stat().st_ino == caught.value.stage.stat().st_ino
+    assert vector.read_bytes() == b"unchanged source"
+    assert authority.read_bytes() == b"unchanged authority"
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    monkeypatch.setattr(cli.os, "link", original_link)
+    caught.value.stage.unlink()
+    output.unlink()
+    cli._write_new_output(
+        output, b"expected authenticated bytes",
+        family_vector=vector, dedup_authority=authority,
+    )
+    assert output.read_bytes() == b"expected authenticated bytes"
