@@ -554,6 +554,8 @@ def test_failed_preflight_rng_rollback_poisons_canonical_target_before_model_app
 ) -> None:
     """Failed RNG rollback makes even an otherwise fresh target unsafe to reuse."""
 
+    import torch
+
     checkpoint = tmp_path / "rollback-fault"
     checkpoint_at(checkpoint)
     model = Model([9.0, 9.0, 9.0])
@@ -568,9 +570,12 @@ def test_failed_preflight_rng_rollback_poisons_canonical_target_before_model_app
     loader_module = progress_trainer if use_progress else trainer_adapter
     original_restore = core.restore_rng_state
     ambient = core.capture_rng_state()
+    deterministic = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
 
     def fail_rng_rollback(_state: object) -> None:
         random.random()
+        torch.use_deterministic_algorithms(not deterministic, warn_only=not warn_only)
         raise OSError("injected ambient RNG rollback failure")
 
     try:
@@ -585,6 +590,8 @@ def test_failed_preflight_rng_rollback_poisons_canonical_target_before_model_app
 
         assert trainer._failure_reason == "checkpoint_preflight_rng_rollback_failed"
         assert trainer._update_incomplete is True
+        assert torch.are_deterministic_algorithms_enabled() is deterministic
+        assert torch.is_deterministic_algorithms_warn_only_enabled() is warn_only
         np.testing.assert_array_equal(model.weights, [9.0, 9.0, 9.0])
         assert model.loads == 0
         assert trainer.loads == 0
@@ -599,3 +606,4 @@ def test_failed_preflight_rng_rollback_poisons_canonical_target_before_model_app
             )
     finally:
         original_restore(ambient)
+        torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
