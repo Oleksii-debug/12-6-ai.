@@ -212,3 +212,63 @@ def test_optimizer_interrupt_cannot_be_replayed(monkeypatch):
     assert model.weight.grad is None
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.assert_checkpoint_safe()
+
+
+@pytest.mark.parametrize("cleanup_type", [RuntimeError, KeyboardInterrupt])
+def test_backward_and_cleanup_double_fault_preserves_primary_and_poison(
+    monkeypatch, cleanup_type
+):
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=2, seed=17),
+    )
+    trainer.train_microbatch(_BATCH)
+    before_weights = model.weight.detach().clone()
+    model.failure_type = ValueError
+
+    def broken_cleanup(*args, **kwargs):
+        raise cleanup_type("synthetic zero_grad cleanup failure")
+
+    monkeypatch.setattr(trainer.optimizer, "zero_grad", broken_cleanup)
+    with pytest.raises(ValueError, match="synthetic backward interruption"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert "backward failed" in trainer._failure_reason
+    assert f"gradient cleanup failed: {cleanup_type.__name__}" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+@pytest.mark.parametrize("cleanup_type", [RuntimeError, KeyboardInterrupt])
+def test_optimizer_and_cleanup_double_fault_preserves_primary_and_poison(
+    monkeypatch, cleanup_type
+):
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    before_weights = model.weight.detach().clone()
+
+    def broken_step(*args, **kwargs):
+        raise ValueError("synthetic primary optimizer failure")
+
+    def broken_cleanup(*args, **kwargs):
+        raise cleanup_type("synthetic zero_grad cleanup failure")
+
+    monkeypatch.setattr(trainer.optimizer, "step", broken_step)
+    monkeypatch.setattr(trainer.optimizer, "zero_grad", broken_cleanup)
+    with pytest.raises(ValueError, match="synthetic primary optimizer failure"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert trainer._update_incomplete is True
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert "optimizer/scheduler update failed" in trainer._failure_reason
+    assert f"gradient cleanup failed: {cleanup_type.__name__}" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.assert_checkpoint_safe()
