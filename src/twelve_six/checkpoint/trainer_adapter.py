@@ -581,12 +581,49 @@ def _restore_initial_torch_policy(
 def _restore_ambient_rng_after_failed_apply(
     ambient: Mapping[str, Any], exc: BaseException,
 ) -> None:
-    """Best-effort rollback of every RNG stream on failed checkpoint apply."""
+    """Recover independent streams even if one ambient rollback setter fails."""
 
     try:
         _core.restore_rng_state(ambient)
+        return
     except BaseException as rng_exc:
         exc.add_note(f"Ambient RNG rollback also failed: {rng_exc!r}")
+
+    # core.restore_rng_state stops at its first failed setter. Retry each
+    # independent family separately so a Python/NumPy failure cannot also
+    # strand an otherwise recoverable torch CPU/CUDA stream.
+    if "python" in ambient:
+        try:
+            _core.random.setstate(ambient["python"])
+        except BaseException as rollback_exc:
+            exc.add_note(f"Python RNG rollback also failed: {rollback_exc!r}")
+    if "numpy" in ambient:
+        try:
+            _core.np.random.set_state(ambient["numpy"])
+        except BaseException as rollback_exc:
+            exc.add_note(f"NumPy RNG rollback also failed: {rollback_exc!r}")
+
+    torch_state = ambient.get("torch")
+    if not isinstance(torch_state, Mapping):
+        return
+    try:
+        torch = importlib.import_module("torch")
+    except BaseException as rollback_exc:
+        exc.add_note(f"PyTorch RNG rollback unavailable: {rollback_exc!r}")
+        return
+    if "cpu" in torch_state:
+        try:
+            torch.set_rng_state(torch_state["cpu"].cpu())
+        except BaseException as rollback_exc:
+            exc.add_note(f"PyTorch CPU RNG rollback also failed: {rollback_exc!r}")
+    for index, cuda_state in enumerate(torch_state.get("cuda", ())):
+        try:
+            torch.cuda.set_rng_state(cuda_state.cpu(), device=index)
+        except BaseException as rollback_exc:
+            exc.add_note(
+                f"PyTorch CUDA RNG rollback on device {index} also failed: "
+                f"{rollback_exc!r}"
+            )
 
 
 def _restore_checkpoint_rng_preserving_warn_only(
