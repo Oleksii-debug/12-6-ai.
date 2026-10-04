@@ -150,6 +150,19 @@ def load_trainer_checkpoint(
         expected_seed=expected_seed,
     )
 
+    # A canonical trainer's optimizer belongs to trainer.model. Do not mix its
+    # state with a separately supplied model, even if weight shapes match.
+    # Parent-adapter companion #2626 centralizes this once both children land.
+    if (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+        and hasattr(trainer, "model")
+        and trainer.model is not model
+    ):
+        raise _core.CheckpointCompatibilityError(
+            "canonical trainer owns a different model than the checkpoint target"
+        )
+
     # Refuse a previously poisoned instance before opening or decoding a
     # potentially model-scale checkpoint; post-decode preflight repeats this
     # guard before mutation in case the target state changed meanwhile.
