@@ -129,3 +129,85 @@ def test_matching_policy_still_allows_clean_checkpoint(
     state = trainer.state_dict()
     assert state.optimizer_step == 0
     assert state.tokens_seen == 0
+
+
+@pytest.mark.parametrize(
+    ("enabled", "warn_only"), [(False, True), (True, False)],
+)
+@pytest.mark.parametrize("operation", ["train", "checkpoint"])
+def test_each_torch_policy_bit_is_checked_independently(
+    preserve_ambient_state, enabled: bool, warn_only: bool, operation: str,
+) -> None:
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model, TrainerConfig(max_steps=1, seed=709,
+                             deterministic_algorithms=True,
+                             deterministic_warn_only=True),
+        device="cpu",
+    )
+    torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+    with pytest.raises(TrainingStateInvalidError, match="deterministic"):
+        if operation == "train":
+            trainer.train_microbatch(_BATCH)
+        else:
+            trainer.state_dict()
+    assert model.forward_calls == 0
+    assert trainer.optimizer_step == 0
+    assert trainer.tokens_seen == 0
+
+
+def test_forward_hook_policy_drift_poisoned_before_credit(
+    preserve_ambient_state,
+) -> None:
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model, TrainerConfig(max_steps=1, seed=710,
+                             deterministic_algorithms=True,
+                             deterministic_warn_only=True),
+        device="cpu",
+    )
+    baseline = model.weight.detach().clone()
+    original_forward = model.forward
+
+    def forward_with_policy_drift(input_ids: torch.Tensor) -> torch.Tensor:
+        logits = original_forward(input_ids)
+        torch.use_deterministic_algorithms(False, warn_only=False)
+        return logits
+
+    model.forward = forward_with_policy_drift
+    with pytest.raises(TrainingStateInvalidError, match="deterministic"):
+        trainer.train_microbatch(_BATCH)
+    assert trainer.optimizer_step == 0
+    assert trainer.micro_step == 0
+    assert trainer.tokens_seen == 0
+    assert model.weight.grad is None
+    torch.testing.assert_close(model.weight.detach(), baseline, rtol=0, atol=0)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_optimizer_hook_policy_drift_cannot_earn_step_credit(
+    preserve_ambient_state,
+) -> None:
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model, TrainerConfig(max_steps=1, seed=711,
+                             deterministic_algorithms=True,
+                             deterministic_warn_only=True),
+        device="cpu",
+    )
+    original_step = trainer.optimizer.step
+
+    def step_with_policy_drift(*args, **kwargs):
+        result = original_step(*args, **kwargs)
+        torch.use_deterministic_algorithms(False, warn_only=False)
+        return result
+
+    trainer.optimizer.step = step_with_policy_drift
+    with pytest.raises(TrainingStateInvalidError, match="deterministic"):
+        trainer.train_microbatch(_BATCH)
+    assert trainer.optimizer_step == 0
+    assert trainer._update_incomplete is True
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
