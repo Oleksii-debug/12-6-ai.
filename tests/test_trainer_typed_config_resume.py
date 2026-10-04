@@ -58,10 +58,9 @@ def preserve_ambient_state():
         ("seed", 703.0),  # 703 == 703.0.
         ("max_steps", 2.0),
         ("weight_decay", 0),  # 0.0 == 0.
-        ("betas", (0.9, 0.95)),  # Valid control is tested separately.
         ("betas", (0.9, 0.95, 0.0)),  # Structural mismatch.
         ("betas", [0.9, 0.95]),  # Same numbers, wrong sequence type.
-        ("betas", (0, 0.95)),  # 0 == 0.0 inside nested tuple.
+        ("gradient_clip_norm", 1),  # 1 == 1.0.
     ],
 )
 def test_mistyped_or_malformed_config_fails_before_optimizer_load(
@@ -74,9 +73,6 @@ def test_mistyped_or_malformed_config_fails_before_optimizer_load(
     saved = Trainer(_TinyModel(), config).state_dict()
     invalid = copy.deepcopy(saved.config)
     invalid[field] = alias
-    if field == "betas" and alias == (0.9, 0.95):
-        invalid["betas"] = (0.9, 0.95)
-        invalid["seed"] = 703.0  # Ensure this duplicate-value case remains negative.
     target = Trainer(_TinyModel(), config)
     weights_before = target.model.weight.detach().clone()
     optimizer_load_calls: list[bool] = []
@@ -98,6 +94,18 @@ def test_mistyped_or_malformed_config_fails_before_optimizer_load(
     target.load_state_dict(saved)
     assert target.state_dict().optimizer_step == 0
 
+
+
+def test_nested_numeric_alias_is_rejected_before_mutation(preserve_ambient_state) -> None:
+    config = TrainerConfig(seed=703, max_steps=2, betas=(0.0, 0.95))
+    saved = Trainer(_TinyModel(), config).state_dict()
+    invalid = copy.deepcopy(saved.config)
+    invalid["betas"] = (0, 0.95)  # Python considers these tuples equal.
+    target = Trainer(_TinyModel(), config)
+    with pytest.raises(ValueError, match="trainer config mismatch"):
+        target.load_state_dict(replace(saved, config=invalid))
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
 
 @pytest.mark.parametrize("variant", ["missing", "unexpected"])
 def test_config_key_set_is_exact_before_optimizer_load(
