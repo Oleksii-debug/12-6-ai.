@@ -443,7 +443,7 @@ def _read_snapshot(
     raw = _fetch_remote_commit(repo_root, remote, ref, tip)
     try:
         state = decode_global_lease_state(raw, manifest)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise _GlobalLeaseFailure("global_lease_remote_state_invalid") from exc
     return GlobalLeaseSnapshot(
         ref=ref,
