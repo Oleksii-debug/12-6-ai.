@@ -1866,3 +1866,106 @@ def test_outer_link_interrupt_preserves_receipt_last_and_clean_retry(
     )
     assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
     assert recovery["training_authorized"] is False
+
+
+def test_failed_stage_fsync_and_interrupting_cleanup_preserve_original_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "stage-interruption.json"
+    original_unlink = Path.unlink
+
+    def fail_fsync(_fd: int) -> None:
+        raise OSError("injected primary fsync failure")
+
+    def interrupt_stage_unlink(
+        path: Path, *args: object, **kwargs: object,
+    ) -> None:
+        if path.name.startswith(f".{target.name}.") and path.suffix == ".tmp":
+            raise KeyboardInterrupt("injected stage cleanup interruption")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "fsync", fail_fsync)
+        fault.setattr(Path, "unlink", interrupt_stage_unlink)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError, match="STAGING_CLEANUP_INCOMPLETE",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(target, b"trusted", label="test output")
+
+    staged = list(tmp_path.glob(f".{target.name}.*.tmp"))
+    assert len(staged) == 1
+    assert str(staged[0]) in str(caught.value)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "primary fsync failure" in str(caught.value.__cause__)
+    assert not target.exists()
+    staged[0].unlink()
+    REPLAY_RUNNER._write_new_bytes(target, b"trusted", label="test output")
+    assert target.read_bytes() == b"trusted"
+
+
+def test_verified_output_cleanup_interrupt_reports_committed_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "committed-interruption.json"
+    original_unlink = Path.unlink
+
+    def interrupt_stage_unlink(
+        path: Path, *args: object, **kwargs: object,
+    ) -> None:
+        if path.name.startswith(f".{target.name}.") and path.suffix == ".tmp":
+            raise KeyboardInterrupt("injected cleanup interruption")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(Path, "unlink", interrupt_stage_unlink)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError, match="published and byte-verified",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(target, b"trusted", label="test output")
+
+    staged = list(tmp_path.glob(f".{target.name}.*.tmp"))
+    assert len(staged) == 1
+    assert target.read_bytes() == staged[0].read_bytes() == b"trusted"
+    assert str(staged[0]) in str(caught.value)
+    assert isinstance(caught.value.__cause__, KeyboardInterrupt)
+    staged[0].unlink()
+
+
+def test_outer_stage_cleanup_interrupt_keeps_committed_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_unlink = Path.unlink
+
+    def interrupt_report_stage_unlink(
+        path: Path, *args_: object, **kwargs: object,
+    ) -> None:
+        if (
+            path.name.startswith(f".{args.output_report.name}.")
+            and path.suffix == ".tmp"
+        ):
+            raise KeyboardInterrupt("injected outer cleanup interruption")
+        original_unlink(path, *args_, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(Path, "unlink", interrupt_report_stage_unlink)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError,
+            match="outer receipt published and byte-verified",
+        ) as caught:
+            REPLAY_RUNNER._publish_verified_outputs(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+
+    staged = list(
+        args.output_report.parent.glob(f".{args.output_report.name}.*.tmp")
+    )
+    assert len(staged) == 1
+    assert str(staged[0]) in str(caught.value)
+    assert isinstance(caught.value.__cause__, KeyboardInterrupt)
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovery["training_authorized"] is False
+    staged[0].unlink()
