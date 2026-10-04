@@ -1392,3 +1392,66 @@ def test_direct_restore_rejects_fresh_trainer_with_unowned_residual_gradients():
     fresh = Trainer(_TinyLogitModel(), config)
     fresh.load_state_dict(source_state)
     assert fresh.state_dict().optimizer_step == 0
+
+
+def test_scheduler_corrupting_weights_after_optimizer_step_cannot_report_success(
+    monkeypatch,
+):
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    config = TrainerConfig(max_steps=2, warmup_steps=1, scheduler="cosine", seed=17)
+    trainer = Trainer(model, config)
+    def corrupt_weights_after_scheduler():
+        model.weight.data.fill_(float("inf"))
+
+    monkeypatch.setattr(trainer.scheduler, "step", corrupt_weights_after_scheduler)
+    with pytest.raises(NonFiniteTrainingError, match="non-finite model weights"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.optimizer_step == 1  # Physical AdamW update already happened.
+    assert trainer._update_incomplete is True
+    assert trainer._failure_reason.startswith("optimizer/scheduler update failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_zero_grad_hook_corrupting_optimizer_moment_fails_final_update_check(
+    monkeypatch,
+):
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    actual_zero_grad = trainer.optimizer.zero_grad
+
+    def corrupt_after_zero_grad(*args, **kwargs):
+        result = actual_zero_grad(*args, **kwargs)
+        trainer.optimizer.state[model.weight]["exp_avg"].fill_(float("nan"))
+        return result
+
+    monkeypatch.setattr(trainer.optimizer, "zero_grad", corrupt_after_zero_grad)
+    with pytest.raises(NonFiniteTrainingError, match="non-finite state"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.optimizer_step == 1
+    assert trainer._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_checkpoint_export_refuses_nonfinite_weights_modified_after_valid_step():
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
+    model.weight.data.fill_(float("inf"))
+
+    with pytest.raises(NonFiniteTrainingError, match="non-finite model weights"):
+        trainer.state_dict()
+
+    assert trainer.optimizer_step == 1
+    assert "checkpoint boundary has invalid optimizer" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
