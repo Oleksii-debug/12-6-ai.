@@ -607,3 +607,53 @@ def test_failed_preflight_rng_rollback_poisons_canonical_target_before_model_app
     finally:
         original_restore(ambient)
         torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_real_d02_trainer_refuses_training_after_failed_probe_rng_rollback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+) -> None:
+    """An unrecoverable preflight RNG fault must poison the actual D02 runtime."""
+
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
+
+    checkpoint = tmp_path / "real-d02-rollback"
+    checkpoint_at(checkpoint)
+    ambient = core.capture_rng_state()
+    original_restore = core.restore_rng_state
+    try:
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, TrainerConfig(max_steps=10, seed=703))
+        before = [parameter.detach().clone() for parameter in model.parameters()]
+        loader_module = progress_trainer if use_progress else trainer_adapter
+
+        def fail_rollback(_state: object) -> None:
+            raise OSError("injected actual D02 RNG rollback failure")
+
+        monkeypatch.setattr(core, "restore_rng_state", fail_rollback)
+        with pytest.raises(OSError, match="actual D02 RNG rollback failure"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+        assert trainer._failure_reason == "checkpoint_preflight_rng_rollback_failed"
+        assert trainer._update_incomplete is True
+        with pytest.raises(TrainingStateInvalidError, match="failed training transition"):
+            trainer._assert_trainable()
+        for parameter, saved in zip(model.parameters(), before, strict=True):
+            torch.testing.assert_close(parameter.detach(), saved)
+
+        def forbidden_read(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("poisoned real D02 retry must not read checkpoint")
+
+        monkeypatch.setattr(loader_module, "prepare_checkpoint_load", forbidden_read)
+        with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+    finally:
+        original_restore(ambient)
