@@ -690,6 +690,18 @@ class Trainer:
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
                 "and restore the verified model + trainer checkpoint"
             )
+        if (
+            self.micro_step != 0
+            or self.optimizer_step != 0
+            or self.tokens_seen != 0
+            or self._pending_tokens != 0
+            or self._pending_loss_sum != 0.0
+            or any(parameter.grad is not None for parameter in self.model.parameters())
+        ):
+            raise TrainingStateInvalidError(
+                "trainer state restore requires a fresh trainer with no consumed "
+                "exposure or pending gradients; restore the verified model too"
+            )
         if isinstance(state, Mapping):
             state = TrainerState(**state)
 
