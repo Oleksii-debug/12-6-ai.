@@ -457,18 +457,26 @@ def _link_verified_new_bytes(
         ):
             raise RematerializationError(f"staged {label} changed before publication")
 
-        link_error: Exception | None = None
+        link_error: BaseException | None = None
         try:
             _link_staged_new_bytes(staged, path, label=label)
-        except (OSError, RematerializationError) as exc:
+        except (OSError, RematerializationError, KeyboardInterrupt, SystemExit) as exc:
             link_error = exc
 
-        if (
-            link_error is None
-            and _matches_staged_identity(staged, raw, identity)
-            and _matches_staged_identity(path, raw, identity)
-        ):
-            return
+        try:
+            if (
+                link_error is None
+                and _matches_staged_identity(staged, raw, identity)
+                and _matches_staged_identity(path, raw, identity)
+            ):
+                return
+        except (KeyboardInterrupt, SystemExit) as interruption:
+            raise PublicationIndeterminate(
+                f"PUBLICATION_INDETERMINATE: {label} verification interrupted "
+                f"after a possible link at {path}; retained original stage "
+                f"{staged}; manual reconciliation required",
+                staged=staged,
+            ) from interruption
 
         try:
             published = path.stat(follow_symlinks=False)
@@ -479,7 +487,7 @@ def _link_verified_new_bytes(
                 f"published {label} disappeared before verification; "
                 "manual reconciliation required"
             ) from None
-        except OSError as inspect_error:
+        except (OSError, KeyboardInterrupt, SystemExit) as inspect_error:
             raise PublicationIndeterminate(
                 f"PUBLICATION_INDETERMINATE: cannot inspect final {path}; "
                 f"retained original stage {staged}; "
@@ -503,7 +511,7 @@ def _link_verified_new_bytes(
                 ) from link_error
             try:
                 path.unlink()
-            except OSError as rollback_error:
+            except (OSError, KeyboardInterrupt, SystemExit) as rollback_error:
                 raise PublicationIndeterminate(
                     f"ROLLBACK_INCOMPLETE: own final {path} could not be removed; "
                     f"retained original stage {staged}; "
