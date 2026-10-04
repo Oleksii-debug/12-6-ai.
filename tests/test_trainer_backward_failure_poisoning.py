@@ -1155,3 +1155,22 @@ def test_checkpoint_export_rejects_residual_gradient_after_committed_step():
     assert model.weight.grad is None
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.state_dict()
+
+
+def test_checkpoint_refusal_mid_accumulation_preserves_valid_pending_gradients():
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model, TrainerConfig(max_steps=1, gradient_accumulation_steps=2, seed=17)
+    )
+    trainer.train_microbatch(_BATCH)
+    saved_gradient = model.weight.grad.detach().clone()
+
+    with pytest.raises(RuntimeError, match="mid-accumulation"):
+        trainer.state_dict()
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert trainer._failure_reason is None
+    torch.testing.assert_close(model.weight.grad, saved_gradient, rtol=0, atol=0)
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
+    assert trainer.state_dict().optimizer_step == 1
