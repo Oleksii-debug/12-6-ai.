@@ -347,6 +347,61 @@ def test_non_object_remote_lease_blocks_inspect_and_renew(
     _assert_no_authority_widening(renewed)
 
 
+def test_non_object_remote_lease_via_real_git_ref_is_fail_closed(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer, reader = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
+    acquired = acquire_global_training_run_lease(
+        writer,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.post_write_reread_verified is True
+    assert acquired.written_remote_tip is not None
+
+    def write_git_object(data: bytes, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=writer, input=data, capture_output=True, check=True
+        )
+        return result.stdout.decode("ascii").strip()
+
+    blob = write_git_object(b"[]", "hash-object", "-w", "--stdin")
+    tree = write_git_object(
+        f"100644 blob {blob}\t{global_lease_module.GLOBAL_LEASE_STATE_PATH}\n".encode(
+            "ascii"
+        ),
+        "mktree",
+    )
+    corrupt_tip = write_git_object(
+        b"malformed remote lease object\n",
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree, "-p", acquired.written_remote_tip,
+    )
+    ref = global_training_run_lease_ref(manifest)
+    _git("push", str(remote), f"{corrupt_tip}:{ref}", cwd=writer)
+
+    inspected = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert inspected.present is True
+    assert inspected.valid is False
+    assert inspected.blockers == ("global_lease_remote_state_invalid",)
+
+    renewed = renew_global_training_run_lease(
+        reader, str(remote), manifest,
+        expected_remote_tip=corrupt_tip, ttl_seconds=3600, now=NOW,
+    )
+    assert renewed.committed is False
+    assert renewed.blockers == ("global_lease_remote_state_invalid",)
+    _assert_no_authority_widening(renewed)
+    assert _git("ls-remote", str(remote), ref).split()[0] == corrupt_tip
+
+
 def test_acquire_is_single_winner_and_reread_verified(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
