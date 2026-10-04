@@ -1174,3 +1174,72 @@ def test_checkpoint_refusal_mid_accumulation_preserves_valid_pending_gradients()
     torch.testing.assert_close(model.weight.grad, saved_gradient, rtol=0, atol=0)
     assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
     assert trainer.state_dict().optimizer_step == 1
+
+
+def test_adamw_finite_gradients_but_overflowed_weights_cannot_earn_step_credit():
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    config = TrainerConfig(max_steps=2, seed=17, gradient_clip_norm=None)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e35, weight_decay=1.0)
+    trainer = Trainer(model, config, optimizer=optimizer)
+
+    first = trainer.train_microbatch(_BATCH)
+    assert first.optimizer_stepped is True
+    assert trainer.optimizer_step == 1
+    assert torch.isfinite(model.weight).all().item() is True
+
+    with pytest.raises(NonFiniteTrainingError, match="non-finite model weights"):
+        trainer.train_microbatch(_BATCH)
+
+    # Step 2 may already have physically mutated the parameter to Inf, but
+    # cannot be credited as a valid learned-target transition or replayed.
+    assert trainer.micro_step == 2
+    assert trainer.optimizer_step == 1
+    assert trainer._update_incomplete is True
+    assert trainer._failure_reason.startswith("optimizer/scheduler update failed")
+    assert torch.isfinite(model.weight).all().item() is False
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_nonfinite_optimizer_moment_with_finite_weights_cannot_earn_step_credit(
+    monkeypatch,
+):
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    real_step = trainer.optimizer.step
+
+    def corrupt_moment_after_step(*args, **kwargs):
+        result = real_step(*args, **kwargs)
+        trainer.optimizer.state[model.weight]["exp_avg"].fill_(float("nan"))
+        return result
+
+    monkeypatch.setattr(trainer.optimizer, "step", corrupt_moment_after_step)
+    with pytest.raises(NonFiniteTrainingError, match="non-finite state"):
+        trainer.train_microbatch(_BATCH)
+
+    assert torch.isfinite(model.weight).all().item() is True
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert trainer._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_normal_adamw_step_keeps_finite_weights_and_optimizer_state():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    result = trainer.train_microbatch(_BATCH)
+    assert result.optimizer_stepped is True
+    assert trainer.optimizer_step == 1
+    assert torch.isfinite(model.weight).all().item() is True
+    for state in trainer.optimizer.state.values():
+        for value in state.values():
+            if isinstance(value, torch.Tensor):
+                assert torch.isfinite(value).all().item() is True
+    assert trainer.state_dict().optimizer_step == 1
