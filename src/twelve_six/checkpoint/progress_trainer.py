@@ -30,6 +30,7 @@ from .trainer_adapter import (
     _assert_trainer_model_binding,
     _preflight_trainer_state,
     _preflight_trainer_target,
+    _restore_checkpoint_rng_preserving_warn_only,
 )
 
 _HEX = frozenset("0123456789abcdef")
@@ -246,7 +247,9 @@ def load_trainer_checkpoint(
         # torch RNG even on success. Restore the checkpoint streams last so
         # the first resumed batch sees the exact captured next draws.
         if restore_rng:
-            restore_rng_state(combined_state["rng"])
+            _restore_checkpoint_rng_preserving_warn_only(
+                combined_state["rng"], restore=restore_rng_state,
+            )
     except BaseException:
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             # D02 may already have recorded a more specific partial-load error
