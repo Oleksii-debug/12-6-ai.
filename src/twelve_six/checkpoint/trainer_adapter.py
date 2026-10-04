@@ -32,7 +32,10 @@ from .core import (
     restore_rng_state,
     save_checkpoint,
 )
-from .expected_binding import _validate_expected_canonical_binding
+from .expected_binding import (
+    _validate_expected_canonical_binding,
+    _validate_expected_core_identity,
+)
 
 _CANONICAL_TRAINER_STATE_FIELDS = frozenset(
     {
@@ -727,6 +730,14 @@ def load_trainer_checkpoint(
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
+    _validate_expected_core_identity(
+        expected_git_sha=expected_git_sha,
+        expected_model_spec_hash=expected_model_spec_hash,
+        expected_tokenizer_hash=expected_tokenizer_hash,
+        expected_tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        expected_dataset_manifest_hash=expected_dataset_manifest_hash,
+        expected_run_manifest_hash=expected_run_manifest_hash,
+    )
     _validate_expected_canonical_binding(
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
