@@ -455,6 +455,10 @@ def _preflight_trainer_state(
                             "PyTorch preflight-mode rollback also failed: "
                             f"{mode_exc!r}"
                         )
+                        _restore_initial_torch_policy(
+                            (bool(torch_state["deterministic_algorithms"]), warn_only),
+                            rng_exc,
+                        )
                 raise
             else:
                 if warn_only is not None:
