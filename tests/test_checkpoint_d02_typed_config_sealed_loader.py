@@ -78,6 +78,16 @@ def _identity() -> CheckpointIdentity:
 
 
 
+def _assert_cuda_rng_unchanged(before: list[torch.Tensor] | None) -> None:
+    """Require invalid checkpoint preflight not to consume GPU RNG."""
+    if before is None:
+        return
+    after = torch.cuda.get_rng_state_all()
+    assert len(after) == len(before)
+    for actual, previous in zip(after, before, strict=True):
+        torch.testing.assert_close(actual, previous, rtol=0, atol=0)
+
+
 def _assert_live_rng_matches(expected: dict[str, Any]) -> None:
     """Require actual stream states, not only deterministic model outputs."""
     assert random.getstate() == expected["python"]
@@ -168,6 +178,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
+    cuda_before = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
 
     def forbidden_model_apply(*args: Any, **kwargs: Any) -> None:
         application_calls.append(True)
@@ -196,6 +207,7 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     np.testing.assert_array_equal(after_numpy[1], np_before[1])
     assert after_numpy[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    _assert_cuda_rng_unchanged(cuda_before)
     assert policy_before == (
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
@@ -279,6 +291,7 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
+    cuda_before = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
 
     def forbid_model_apply(*args: Any, **kwargs: Any) -> None:
         reached_apply.append(True)
@@ -306,6 +319,7 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     np.testing.assert_array_equal(after_np[1], np_before[1])
     assert after_np[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    _assert_cuda_rng_unchanged(cuda_before)
     assert policy_before == (
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
@@ -395,6 +409,7 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
     )
+    cuda_before = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
 
     def refuse_model_apply(*args: Any, **kwargs: Any) -> None:
         model_applications.append(True)
@@ -423,6 +438,7 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
     np.testing.assert_array_equal(after_numpy[1], np_before[1])
     assert after_numpy[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    _assert_cuda_rng_unchanged(cuda_before)
     assert policy_before == (
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
