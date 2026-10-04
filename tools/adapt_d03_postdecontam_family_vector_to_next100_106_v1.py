@@ -240,7 +240,7 @@ def _write_new_output(
             )
             raise ProjectionError(
                 f"ROLLBACK_INCOMPLETE: invalid adapter output may remain: {final}"
-                f"{stranded_stage}{original}"
+                f"; rollback failure: {rollback_error}{stranded_stage}{original}"
             ) from (primary_failure if primary_failure is not None else rollback_error)
         if cleanup_error is not None:
             if verified:
