@@ -550,7 +550,11 @@ def test_programmatic_eval_authority_has_same_byte_limit_as_files(
     evidence = _evidence()
     # The second input stays below the per-string cap, but the complete
     # serialized authority must still be rejected at the shared byte limit.
-    size = validator.MAX_INPUT_BYTES + 1 if shape == "single_scalar" else validator.MAX_INPUT_BYTES - 100
+    size = (
+        validator.MAX_INPUT_BYTES + 1
+        if shape == "single_scalar"
+        else validator.MAX_INPUT_BYTES - 100
+    )
     (document if target == "contract" else evidence)["worker_id"] = "x" * size
     with pytest.raises(ValueError, match="exceeds byte limit"):
         if target == "contract":
