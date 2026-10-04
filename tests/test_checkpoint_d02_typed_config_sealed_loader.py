@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import copy
 import random
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -269,6 +269,118 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
         strict_model=False, restore_rng=False, **expected,
     )
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
+    source.train_microbatch(_BATCH)
+    target.train_microbatch(_BATCH)
+    torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
+
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
+@pytest.mark.parametrize("alias_kind", ["float", "numpy-int"])
+def test_sealed_nonzero_counter_alias_preserves_committed_adamw_on_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state: Any,
+    loader: Any,
+    field: str,
+    alias_kind: str,
+) -> None:
+    """A valid sealed step-one checkpoint must survive invalid resume and retry."""
+    config = TrainerConfig(seed=703, max_steps=2)
+    source_model = _TinyLogits()
+    source = Trainer(source_model, config, device="cpu")
+    source.train_microbatch(_BATCH)
+    saved_state = asdict(source.state_dict())
+    assert (
+        saved_state["micro_step"] > 0
+        and saved_state["optimizer_step"] == 1
+        and saved_state["tokens_seen"] > 0
+    )
+    assert source.optimizer.state
+    original = saved_state[field]
+    alias = float(original) if alias_kind == "float" else np.int64(original)
+    assert alias == original and type(alias) is not int
+
+    invalid_state = copy.deepcopy(saved_state)
+    invalid_state[field] = alias
+    identity = replace(
+        _identity(),
+        step=saved_state["optimizer_step"],
+        tokens_seen=saved_state["tokens_seen"],
+    )
+    invalid_path = tmp_path / f"invalid-nonzero-{field}-дані з пробілами"
+    valid_path = tmp_path / f"valid-nonzero-{field}-дані з пробілами"
+    for path, payload in ((invalid_path, invalid_state), (valid_path, saved_state)):
+        core.save_checkpoint(
+            path, model=source_model, trainer_state=payload, identity=identity,
+        )
+        core.verify_checkpoint(path)
+
+    target_model = _TinyLogits()
+    target = Trainer(target_model, config, device="cpu")
+    initial_weights = target_model.weight.detach().clone()
+    initial_counters = (target.micro_step, target.optimizer_step, target.tokens_seen)
+    applied: list[bool] = []
+    python_before = random.getstate()
+    numpy_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    def forbidden_apply(*args: Any, **kwargs: Any) -> None:
+        applied.append(True)
+        raise AssertionError("typed counter rejection must precede model apply")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbidden_apply)
+    extra = (
+        {"expected_step": identity.step, "expected_tokens_seen": identity.tokens_seen}
+        if loader is progress_trainer else {}
+    )
+    with pytest.raises(
+        CheckpointCompatibilityError, match=f"trainer {field} must be a non-negative integer",
+    ):
+        loader.load_trainer_checkpoint(
+            invalid_path, model=target_model, trainer=target,
+            strict_model=False, restore_rng=False, **extra,
+        )
+
+    assert applied == []
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == initial_counters
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert not target.optimizer.state and target_model.weight.grad is None
+    torch.testing.assert_close(target_model.weight, initial_weights, rtol=0, atol=0)
+    assert random.getstate() == python_before
+    numpy_after = np.random.get_state()
+    assert numpy_after[0] == numpy_before[0]
+    np.testing.assert_array_equal(numpy_after[1], numpy_before[1])
+    assert numpy_after[2:] == numpy_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert policy_before == (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    monkeypatch.undo()
+    loader.load_trainer_checkpoint(
+        valid_path, model=target_model, trainer=target,
+        strict_model=False, restore_rng=False, **extra,
+    )
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (
+        saved_state["micro_step"], saved_state["optimizer_step"], saved_state["tokens_seen"],
+    )
+    torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
+    for original_param, restored_param in zip(
+        source.optimizer.state.values(), target.optimizer.state.values(), strict=True,
+    ):
+        for key in original_param:
+            torch.testing.assert_close(
+                restored_param[key], original_param[key], rtol=0, atol=0,
+            )
     source.train_microbatch(_BATCH)
     target.train_microbatch(_BATCH)
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
