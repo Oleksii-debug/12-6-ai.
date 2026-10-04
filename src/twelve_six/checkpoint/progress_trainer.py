@@ -28,6 +28,7 @@ from .expected_binding import (
     _require_expected_nonempty_string,
     _require_expected_sha256,
     _validate_expected_canonical_binding,
+    _validate_expected_core_identity,
 )
 from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
@@ -90,6 +91,14 @@ def load_trainer_checkpoint(
     _require_expected_nonempty_string(
         expected_previous_run_id,
         field="expected_previous_run_id",
+    )
+    _validate_expected_core_identity(
+        expected_git_sha=expected_git_sha,
+        expected_model_spec_hash=expected_model_spec_hash,
+        expected_tokenizer_hash=expected_tokenizer_hash,
+        expected_tokenizer_vocab_hash=expected_tokenizer_vocab_hash,
+        expected_dataset_manifest_hash=expected_dataset_manifest_hash,
+        expected_run_manifest_hash=expected_run_manifest_hash,
     )
     _validate_expected_canonical_binding(
         expected_init_spec_hash=expected_init_spec_hash,
