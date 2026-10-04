@@ -1025,10 +1025,12 @@ def test_remote_global_lease_decoder_bounds_size_and_nesting() -> None:
         decode_global_lease_state(deeply_nested, manifest)
 
 
+@pytest.mark.parametrize("race_action", ("advance", "delete"))
 def test_remote_lease_tip_change_after_blob_read_is_fail_closed(
-    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
+    race_action: str,
 ) -> None:
-    """Reject a real remote descendant published between blob read and return."""
+    """Reject a remote advance or deletion between blob read and return."""
     remote, writer, reader = git_pair
     manifest, expected_authority = _authorized_manifest()
     lease = _authorized_lease(manifest, expected_authority)
@@ -1061,7 +1063,10 @@ def test_remote_lease_tip_change_after_blob_read_is_fail_closed(
         if args[:2] == ["cat-file", "blob"] and not switched:
             assert result.returncode == 0
             switched = True
-            _git("push", str(remote), f"{descendant}:{ref}", cwd=writer)
+            if race_action == "advance":
+                _git("push", str(remote), f"{descendant}:{ref}", cwd=writer)
+            else:
+                _git("push", str(remote), f":{ref}", cwd=writer)
         return result
 
     monkeypatch.setattr(global_lease_module, "_run_git", advance_after_blob)
@@ -1072,4 +1077,8 @@ def test_remote_lease_tip_change_after_blob_read_is_fail_closed(
     assert inspected.blockers == ("remote_tip_changed_during_read",)
     assert inspected.optimizer_start_permitted_by_this_module is False
     assert inspected.training_authority_granted_by_this_module is False
-    assert _git("ls-remote", str(remote), ref).split()[0] == descendant
+    remote_tip = _git("ls-remote", str(remote), ref)
+    if race_action == "advance":
+        assert remote_tip.split()[0] == descendant
+    else:
+        assert remote_tip == ""
