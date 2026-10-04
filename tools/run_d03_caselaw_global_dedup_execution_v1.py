@@ -419,6 +419,10 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
     indexed.attest_incumbent_runtime(matcher)
     lineage = getattr(matcher, "_lineage_matches", None)
     _require(callable(lineage), "terminal V3 lineage function missing")
+    # The first incumbent attestation already established executable authority.
+    # Record its exact live code digest before synthetic execution so a later
+    # attestation fault can distinguish mutated live code from recompile drift.
+    original_live_code_sha256 = indexed._code_digest(lineage.__code__)
     fingerprints = [
         {
             "row": {
@@ -449,7 +453,11 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
 
             canonical = indexed._canonical_namespace(matcher, "V3")["_lineage_matches"]
             diagnostic = compare_code_objects(lineage.__code__, canonical.__code__)
+            diagnostic["warmup_live_digest_changed"] = (
+                indexed._code_digest(lineage.__code__) != original_live_code_sha256
+            )
             allowed = (
+                "warmup_live_digest_changed",
                 "classification", "marshal_equal", "structural_fields_equal",
                 "different_field_paths", "diagnostic_limited",
                 "live_marshal_sha256", "canonical_marshal_sha256",

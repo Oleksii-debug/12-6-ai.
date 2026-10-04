@@ -1273,6 +1273,7 @@ except mod.indexed.IndexedExecutionError as exc:
     assert exc is error
     note = "\\n".join(exc.__notes__)
     assert "STRUCTURAL_CODE_MISMATCH" in note
+    assert '"warmup_live_digest_changed": false' in note
     assert '"attestation_override_allowed": false' in note
     assert "bounded V3 post-warmup diagnostic:" in note
     assert "source_payload" not in note
@@ -1308,5 +1309,57 @@ except mod.indexed.IndexedExecutionError as exc:
 else:
     raise AssertionError("original blob mismatch was swallowed")
 assert len(attest_calls) == 1
+"""
+    )
+
+
+
+def test_v3_warmup_live_code_mutation_is_identified_but_still_rejected() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+error = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+attest_calls = []
+lineage_calls = []
+
+def replacement(fingerprints, edges):
+    return []
+
+def live_lineage(fingerprints, edges):
+    lineage_calls.append(True)
+    if len(lineage_calls) == 10:
+        live_lineage.__code__ = replacement.__code__
+    return [
+        {
+            "match_type": "lineage_same_origin_alias",
+            "capacity_collapsing": True,
+        }
+        for _ in range(8)
+    ]
+
+def fake_attester(_matcher):
+    attest_calls.append(True)
+    if len(attest_calls) == 2:
+        raise error
+
+mod.indexed.attest_incumbent_runtime = fake_attester
+mod.indexed._canonical_namespace = lambda _matcher, _label: {
+    "_lineage_matches": replacement
+}
+matcher = SimpleNamespace(_lineage_matches=live_lineage)
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is error
+    note = "\\n".join(exc.__notes__)
+    assert '"warmup_live_digest_changed": true' in note
+    assert '"attestation_override_allowed": false' in note
+else:
+    raise AssertionError("mutated code was incorrectly accepted")
+assert len(attest_calls) == 2
+assert len(lineage_calls) == 10
 """
     )
