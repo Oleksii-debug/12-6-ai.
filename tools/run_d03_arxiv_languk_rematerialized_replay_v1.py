@@ -403,6 +403,15 @@ def _link_staged_new_bytes(staged: Path, path: Path, *, label: str) -> None:
 
 
 
+
+class PublicationIndeterminate(RematerializationError):
+    """An output may exist, but its inode cannot safely be inspected or removed."""
+
+    def __init__(self, message: str, *, staged: Path) -> None:
+        super().__init__(message)
+        self.staged = staged
+
+
 def _matches_staged_identity(
     path: Path, expected: bytes, identity: tuple[int, int],
 ) -> bool:
@@ -426,11 +435,11 @@ def _matches_staged_identity(
 def _link_verified_new_bytes(
     staged: Path, path: Path, raw: bytes, *, label: str,
 ) -> None:
-    """Hold the original inode open across no-replace publication and rollback.
+    """Verify a held stage across no-replace link and owned-only rollback.
 
-    Trusted stable output directories are required. Keeping the descriptor
-    open prevents deletion/recreation of the staged pathname from reusing the
-    original inode while deciding whether it is safe to remove a failed link.
+    The target directory must be trusted and stable. A failed link syscall can
+    still have created the final name before reporting failure; inspect that
+    name before discarding the original stage's recovery alias.
     """
     try:
         source = staged.open("rb")
@@ -447,53 +456,81 @@ def _link_verified_new_bytes(
             or not _matches_staged_identity(staged, raw, identity)
         ):
             raise RematerializationError(f"staged {label} changed before publication")
-        _link_staged_new_bytes(staged, path, label=label)
+
+        link_error: Exception | None = None
+        try:
+            _link_staged_new_bytes(staged, path, label=label)
+        except (OSError, RematerializationError) as exc:
+            link_error = exc
+
         if (
-            _matches_staged_identity(staged, raw, identity)
+            link_error is None
+            and _matches_staged_identity(staged, raw, identity)
             and _matches_staged_identity(path, raw, identity)
         ):
             return
+
         try:
             published = path.stat(follow_symlinks=False)
-        except OSError:
-            published = None
-        if (
-            published is not None
-            and not path.is_symlink()
-            and (published.st_dev, published.st_ino) == identity
-        ):
+        except FileNotFoundError:
+            if link_error is not None:
+                raise link_error
+            raise RematerializationError(
+                f"published {label} disappeared before verification; "
+                "manual reconciliation required"
+            ) from None
+        except OSError as inspect_error:
+            raise PublicationIndeterminate(
+                f"PUBLICATION_INDETERMINATE: cannot inspect final {path}; "
+                f"retained original stage {staged}; "
+                f"{type(inspect_error).__name__}: {inspect_error}; "
+                "manual reconciliation required",
+                staged=staged,
+            ) from (link_error if link_error is not None else inspect_error)
+
+        if (published.st_dev, published.st_ino) == identity:
             try:
                 path.unlink()
-            except OSError as exc:
-                raise RematerializationError(
-                    f"invalid published {label}; rollback failed; "
-                    "manual reconciliation required"
-                ) from exc
+            except OSError as rollback_error:
+                raise PublicationIndeterminate(
+                    f"ROLLBACK_INCOMPLETE: own final {path} could not be removed; "
+                    f"retained original stage {staged}; "
+                    f"{type(rollback_error).__name__}: {rollback_error}; "
+                    "manual reconciliation required",
+                    staged=staged,
+                ) from (link_error if link_error is not None else rollback_error)
+
+        if link_error is not None:
+            raise link_error
         raise RematerializationError(
             f"published {label} failed exact byte/inode verification; "
             "manual reconciliation required"
         )
 
+
 def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
-    """Create one complete output, without following or replacing existing names."""
+    """Create one complete output without clobbering existing names."""
     staged = _stage_new_bytes(path, raw, label=label)
     published_and_verified = False
     try:
         _link_verified_new_bytes(staged, path, raw, label=label)
         published_and_verified = True
     finally:
-        try:
-            staged.unlink(missing_ok=True)
-        except OSError as exc:
-            if published_and_verified:
+        # Do not discard the sole recovery alias if final-path inspection or
+        # owned-only rollback failed. A human must reconcile both names.
+        if not isinstance(sys.exc_info()[1], PublicationIndeterminate):
+            try:
+                staged.unlink(missing_ok=True)
+            except OSError as exc:
+                if published_and_verified:
+                    raise RematerializationError(
+                        f"{label} was published and byte-verified, but staged cleanup "
+                        f"is pending: {staged}; inspect the final output before retry"
+                    ) from exc
                 raise RematerializationError(
-                    f"{label} was published and byte-verified, but staged cleanup "
-                    f"is pending: {staged}; inspect the final output before retry"
+                    f"{label} publication failed and staged cleanup is pending: "
+                    f"{staged}; manual reconciliation required"
                 ) from exc
-            raise RematerializationError(
-                f"{label} publication failed and staged cleanup is pending: "
-                f"{staged}; manual reconciliation required"
-            ) from exc
 
 
 def _capture_verified_publication_bytes(
