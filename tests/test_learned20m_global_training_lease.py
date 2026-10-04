@@ -335,12 +335,17 @@ def test_non_object_remote_lease_blocks_inspect_and_renew(
     assert inspected.blockers == ("global_lease_remote_state_invalid",)
 
     renewed = renew_global_training_run_lease(
-        ".", "origin", manifest,
-        expected_remote_tip=expected_tip, ttl_seconds=3600, now=NOW,
+        ".",
+        "origin",
+        manifest,
+        expected_remote_tip=expected_tip,
+        ttl_seconds=3600,
+        now=NOW,
     )
     assert renewed.committed is False
     assert renewed.blockers == ("global_lease_remote_state_invalid",)
     _assert_no_authority_widening(renewed)
+
 
 def test_acquire_is_single_winner_and_reread_verified(
     git_pair: tuple[Path, Path, Path],
