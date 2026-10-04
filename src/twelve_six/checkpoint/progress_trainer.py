@@ -202,6 +202,13 @@ def load_trainer_checkpoint(
     materialized = _prepare_model_weights(model, arrays, strict_model)
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = _core.capture_rng_state()
+    # An integrity-valid opt-out snapshot may omit torch; failure rollback
+    # must still recover the live process-global deterministic/warn-only mode.
+    rollback_policy = (
+        policy_before_apply
+        if policy_before_apply is not None
+        else _snapshot_torch_policy(ambient_before_apply)
+    )
     del arrays
 
     # Preflight prevents known incompatibilities, but an application-time
@@ -226,7 +233,7 @@ def load_trainer_checkpoint(
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
-            _restore_initial_torch_policy(policy_before_apply, exc)
+            _restore_initial_torch_policy(rollback_policy, exc)
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             # D02 may already have recorded a more specific partial-load error
             # (including a second gradient-cleanup failure). Preserve it.
