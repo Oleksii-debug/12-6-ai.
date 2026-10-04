@@ -296,7 +296,6 @@ class Trainer:
         self._assert_trainable()
         if self.optimizer_step >= self.config.max_steps:
             raise RuntimeError("configured max_steps already reached")
-        self.model.train()
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
         tokens = _count_training_tokens(
             targets,
@@ -305,6 +304,14 @@ class Trainer:
         )
         if tokens <= 0:
             raise ValueError("microbatch must contain at least one valid target token")
+
+        try:
+            self.model.train()
+        except BaseException:
+            # Custom train-mode hooks can mutate buffers or consume RNG before
+            # failing; prior accumulated gradients must not be replayed.
+            self._mark_failed(f"train-mode transition failed at micro_step={self.micro_step + 1}")
+            raise
 
         loss = self._forward_loss(
             input_ids,
