@@ -182,29 +182,27 @@ def test_generic_adapter_non_strict_remains_permissive(
         torch.testing.assert_close(target_model.state_dict()[name], weight, rtol=0, atol=0)
 
 
-def _checkpoint_after_synthetic_adamw_update(
+def _checkpoint_after_tiny_trainer_step(
     checkpoint: Path,
     identity: CheckpointIdentity,
     *,
     with_buffer: bool,
-) -> tuple[torch.nn.Linear, Trainer, TrainerConfig]:
-    """Persist nonempty AdamW moments; synthetic gradients carry no training credit."""
+) -> tuple[torch.nn.Embedding, Trainer, TrainerConfig]:
+    """Persist D02's genuine transition on tiny synthetic IDs, not corpus evidence."""
     from dataclasses import replace
 
     config = TrainerConfig(max_steps=3, seed=703)
-    model = torch.nn.Linear(3, 3)
+    # Exactly 12 trainable parameters and 3 output logits. This permits a
+    # real D02 optimizer transition without consuming any project data.
+    model = torch.nn.Embedding(4, 3)
     if with_buffer:
         model.register_buffer("resume_scale", torch.tensor(3.0))
     trainer = Trainer(model, config, device="cpu")
-    for parameter in model.parameters():
-        parameter.grad = torch.full_like(parameter, 0.125)
-    trainer.optimizer.step()
-    trainer.optimizer.zero_grad(set_to_none=True)
-    # Synthetic committed counters exercise the resume contract. They are not
-    # evidence of consumed corpus tokens or an admitted training campaign.
-    trainer.micro_step = 1
-    trainer.optimizer_step = 1
-    trainer.tokens_seen = 3
+    metrics = trainer.train_microbatch(
+        {"input_ids": torch.tensor([[0, 1, 2, 0]], dtype=torch.long)},
+    )
+    assert metrics.optimizer_stepped
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 3)
     trainer.assert_checkpoint_safe()
     trainer_adapter.save_trainer_checkpoint(
         checkpoint,
@@ -215,7 +213,6 @@ def _checkpoint_after_synthetic_adamw_update(
     core.verify_checkpoint(checkpoint)
     assert any(trainer.optimizer.state.values())
     return model, trainer, config
-
 
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
@@ -230,13 +227,13 @@ def test_nonzero_adamw_resume_rejects_incomplete_persistent_model(
     missing_from: str,
 ) -> None:
     checkpoint = tmp_path / "committed-checkpoint"
-    _, source, config = _checkpoint_after_synthetic_adamw_update(
+    _, source, config = _checkpoint_after_tiny_trainer_step(
         checkpoint,
         checkpoint_identity,
         with_buffer=missing_from == "target",
     )
     assert source.optimizer_step == 1
-    target_model = torch.nn.Linear(3, 3)
+    target_model = torch.nn.Embedding(4, 3)
     if missing_from == "checkpoint":
         target_model.register_buffer("resume_scale", torch.tensor(-2.0))
     target = Trainer(target_model, config, device="cpu")
@@ -275,10 +272,10 @@ def test_nonzero_adamw_complete_resume_preserves_next_optimizer_update(
     with_buffer: bool,
 ) -> None:
     checkpoint = tmp_path / "committed-complete"
-    source_model, source, config = _checkpoint_after_synthetic_adamw_update(
+    source_model, source, config = _checkpoint_after_tiny_trainer_step(
         checkpoint, checkpoint_identity, with_buffer=with_buffer,
     )
-    target_model = torch.nn.Linear(3, 3)
+    target_model = torch.nn.Embedding(4, 3)
     if with_buffer:
         target_model.register_buffer("resume_scale", torch.tensor(-2.0))
     target = Trainer(target_model, config, device="cpu")
@@ -309,14 +306,15 @@ def test_nonzero_adamw_complete_resume_preserves_next_optimizer_update(
         assert "exp_avg" in source_state and "exp_avg_sq" in source_state
         for key in source_state:
             torch.testing.assert_close(target_state[key], source_state[key], rtol=0, atol=0)
-        source_param.grad = torch.full_like(source_param, 0.25)
-        target_param.grad = torch.full_like(target_param, 0.25)
-    source.optimizer.step()
-    target.optimizer.step()
+    # Advance through the real Trainer API on the same synthetic batch.
+    batch = {"input_ids": torch.tensor([[0, 1, 2, 0]], dtype=torch.long)}
+    source_metrics = source.train_microbatch(batch)
+    target_metrics = target.train_microbatch(batch)
+    assert source_metrics.optimizer_stepped and target_metrics.optimizer_stepped
+    assert (source.micro_step, source.optimizer_step, source.tokens_seen) == (2, 2, 6)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (2, 2, 6)
     for source_param, target_param in zip(
         source_model.parameters(), target_model.parameters(), strict=True,
     ):
         torch.testing.assert_close(target_param, source_param, rtol=0, atol=0)
-    source.optimizer.zero_grad(set_to_none=True)
-    target.optimizer.zero_grad(set_to_none=True)
     target.assert_checkpoint_safe()
