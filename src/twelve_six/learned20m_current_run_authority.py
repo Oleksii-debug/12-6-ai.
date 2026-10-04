@@ -46,6 +46,7 @@ CURRENT_RUN_POINTER_SCHEMA = "R01-LEARNED20M-CURRENT-RUN-POINTER-V1"
 CURRENT_RUN_POINTER_REF = "refs/heads/ts6-current-training-run-v1"
 CURRENT_RUN_POINTER_PATH = "current-training-run-v1.json"
 MAX_CURRENT_RUN_POINTER_BYTES = 1_048_576
+MAX_CURRENT_RUN_COMMIT_BYTES = 4_096
 MECHANICS_SCOPE = "FIXED_REPOSITORY_REF_CURRENT_RUN_SELECTION_ONLY"
 
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -440,6 +441,19 @@ def _fetch_pointer_bytes(
             raise CurrentRunAuthorityError("current_run_pointer_fetch_failed")
         if _remote_tip(repo_root, remote, CURRENT_RUN_POINTER_REF) != expected_tip:
             raise CurrentRunAuthorityError("current_run_pointer_changed_during_read")
+        # Cap immutable commit size before rev-list captures its parent list.
+        commit_size_result = _run_git(repo_root, ["cat-file", "-s", expected_tip])
+        if commit_size_result.returncode != 0:
+            raise CurrentRunAuthorityError("current_run_pointer_commit_size_read_failed")
+        try:
+            commit_size = commit_size_result.stdout.decode("ascii").strip()
+        except UnicodeDecodeError as exc:
+            raise CurrentRunAuthorityError("current_run_pointer_commit_size_invalid") from exc
+        if not commit_size.isascii() or not commit_size.isdecimal() or len(commit_size) > 20:
+            raise CurrentRunAuthorityError("current_run_pointer_commit_size_invalid")
+        if int(commit_size) > MAX_CURRENT_RUN_COMMIT_BYTES:
+            raise CurrentRunAuthorityError("current_run_pointer_commit_exceeds_byte_limit")
+
         parents = _run_git(repo_root, ["rev-list", "--parents", "-n", "1", expected_tip])
         if parents.returncode != 0:
             raise CurrentRunAuthorityError("current_run_pointer_parent_read_failed")
