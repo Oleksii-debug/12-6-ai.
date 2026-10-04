@@ -350,6 +350,18 @@ class Trainer:
                 torch.isfinite(value).all().item()
             ):
                 raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, np.ndarray):
+            if value.dtype.kind in {"f", "c"}:
+                # flatiter slices bound copies even for non-contiguous arrays.
+                for start in range(0, value.size, 1_048_576):
+                    if not np.isfinite(value.flat[start:start + 1_048_576]).all():
+                        raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, np.generic):
+            if value.dtype.kind in {"f", "c"} and not np.isfinite(value):
+                raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, complex):
+            if not (math.isfinite(value.real) and math.isfinite(value.imag)):
+                raise NonFiniteTrainingError(f"{label} has non-finite state")
         elif isinstance(value, Mapping):
             for child in value.values():
                 Trainer._require_finite_state_tree(child, label)
