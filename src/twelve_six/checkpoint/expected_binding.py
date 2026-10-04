@@ -65,8 +65,6 @@ def _validate_expected_canonical_binding(
         )
 
 
-
-
 def _validate_expected_core_identity(
     *,
     expected_git_sha: str | None,
