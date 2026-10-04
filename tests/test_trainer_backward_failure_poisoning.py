@@ -323,3 +323,60 @@ def test_invalid_batch_does_not_invoke_effectful_train_mode(monkeypatch):
     trainer.train_microbatch(_BATCH)
     assert train_calls == [True]
     assert trainer.optimizer_step == 1
+
+
+class _OrphanGradientLogitModel(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.tensor([0.1, -0.2, 0.3]))
+        self.orphan = torch.tensor([0.3, -0.1, 0.2], requires_grad=True)
+
+    def forward(self, input_ids):
+        # Loss has an autograd graph, but none reaches the registered parameter.
+        return self.orphan.reshape(1, 1, 3).expand(*input_ids.shape, 3)
+
+
+@pytest.mark.parametrize("accumulation_steps", [1, 2])
+def test_backward_without_model_parameter_gradients_cannot_count_optimizer_step(
+    accumulation_steps
+):
+    model = _OrphanGradientLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=accumulation_steps, seed=17),
+    )
+    before_weights = model.weight.detach().clone()
+
+    for _ in range(accumulation_steps - 1):
+        metrics = trainer.train_microbatch(_BATCH)
+        assert metrics.optimizer_stepped is False
+    with pytest.raises(RuntimeError, match="no model-parameter gradients"):
+        trainer.train_microbatch(_BATCH)
+
+    assert model.orphan.grad is not None
+    assert model.weight.grad is None
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert trainer.micro_step == accumulation_steps
+    assert trainer.optimizer_step == 0
+    assert trainer._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_actual_zero_gradient_tensor_is_not_confused_with_absent_gradient():
+    class ZeroGradientModel(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.tensor([0.1, -0.2, 0.3]))
+
+        def forward(self, input_ids):
+            return (self.weight * 0).reshape(1, 1, 3).expand(*input_ids.shape, 3)
+
+    model = ZeroGradientModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    metrics = trainer.train_microbatch(_BATCH)
+    assert metrics.optimizer_stepped is True
+    assert trainer.optimizer_step == 1
+    assert trainer.state_dict().optimizer_step == 1
