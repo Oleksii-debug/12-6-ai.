@@ -542,6 +542,24 @@ def test_resealed_evidence_rejects_reserved_object_purpose_promotion(
 
 
 @pytest.mark.parametrize("target", ["contract", "evidence"])
+@pytest.mark.parametrize("shape", ["single_scalar", "total_canonical_bytes"])
+def test_programmatic_eval_authority_has_same_byte_limit_as_files(
+    target: str, shape: str,
+) -> None:
+    document = _manifest()
+    evidence = _evidence()
+    # The second input stays below the per-string cap, but the complete
+    # serialized authority must still be rejected at the shared byte limit.
+    size = validator.MAX_INPUT_BYTES + 1 if shape == "single_scalar" else validator.MAX_INPUT_BYTES - 100
+    (document if target == "contract" else evidence)["worker_id"] = "x" * size
+    with pytest.raises(ValueError, match="exceeds byte limit"):
+        if target == "contract":
+            validator.validate_document(document)
+        else:
+            validator.validate_materialization_evidence(document, evidence)
+
+
+@pytest.mark.parametrize("target", ["contract", "evidence"])
 def test_evaluation_authority_oversize_blocks_before_validation(
     tmp_path: Path, target: str,
 ) -> None:
