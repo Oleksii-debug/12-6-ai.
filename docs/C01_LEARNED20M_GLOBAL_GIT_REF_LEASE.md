@@ -12,21 +12,30 @@ from the canonical launch-manifest SHA-256:
 
 `refs/heads/ts6-training-run-lease-v1/<launch-manifest-sha256>`
 
-Callers choose a Git transport (normally `origin`) but cannot choose the authority namespace.
-A different transport can demonstrate Git mechanics; it cannot change the embedded canonical
-lock domain.
+Callers choose a Git transport (normally `origin`) and supply the candidate launch manifest from
+which the mechanical ref is derived. Ref derivation is **not** authority selection: first
+acquisition additionally requires the independently expected terminal-authority SHA-256 and
+re-authenticates the exact private manifest snapshot against that fixed root before any remote
+publication. A coherent self-resealed candidate cannot authorize its own namespace. A different
+transport can demonstrate Git mechanics; it cannot change the embedded canonical lock domain or
+the independently expected terminal root.
 
 ## State and transitions
 
 The ref points at a closed-world one-file commit containing canonical JSON. Raw state is rejected
 before semantic validation if UTF-8/JSON is malformed, a key is duplicated, NaN/Infinity is used,
 or the bytes are not exactly canonical JSON. The embedded lease must pass the incumbent
-`learned20m_training_lease` validators against the exact launch manifest.
+`learned20m_training_lease` validators against the exact launch manifest. On first acquisition,
+the same private manifest snapshot must also pass `assess_terminal_launch_authority()` against
+the separately supplied expected terminal-authority SHA-256, including positive optimized-target
+exposure and all fail-closed terminal bindings.
 
-First acquisition is a normal non-force ref creation. Renewal and terminal transitions are child
-commits of the exact expected remote tip and are pushed non-force. A stale/sibling writer fails;
-there is no auto-rebase or retry that could manufacture a newly-authorized transition. Every
-authority-relevant caller mappings are frozen once into private canonical JSON snapshots before
+Every write uses an explicit Git `--force-with-lease` compare-and-swap expectation. First
+acquisition requires the canonical ref to be absent. Renewal and terminal transitions require the
+remote ref to equal the exact authenticated predecessor tip; concurrent movement or deletion fails
+instead of recreating the ref. Transition commits remain children of that exact predecessor. There
+is no auto-rebase or retry that could manufacture a newly-authorized transition. Every
+authority-relevant caller mapping is frozen once into a private canonical JSON snapshot before
 validation. Ref/digest derivation, assessment, state construction, push verification, reread, and
 returned metadata all use those exact snapshots; later caller mutation cannot change the operation.
 
@@ -67,7 +76,8 @@ python tools/operate_learned20m_global_training_lease.py \
 
 python tools/operate_learned20m_global_training_lease.py \
   --manifest launch-manifest.json acquire \
-  --run-id <run-id> --holder-id <holder-id> --ttl-seconds 3600
+  --run-id <run-id> --holder-id <holder-id> --ttl-seconds 3600 \
+  --expected-terminal-authority-sha256 <64-hex-independent-root>
 
 python tools/operate_learned20m_global_training_lease.py \
   --manifest launch-manifest.json renew \
@@ -77,6 +87,12 @@ python tools/operate_learned20m_global_training_lease.py \
   --manifest launch-manifest.json terminate \
   --expected-remote-tip <40-hex-tip> --status ABORTED
 ```
+
+For `acquire`, the operator builds the local lease through
+`build_authorized_training_run_lease()` using the same independently supplied terminal root, then
+passes that root again to global acquisition. The root must come from the canonical coordinator or
+other independently authenticated authority; deriving it from the candidate manifest itself is
+forbidden because that would recreate self-rooting.
 
 The operator is noninteractive (`GIT_TERMINAL_PROMPT=0`). It never prints Git stderr or remote
 credentials into its machine-readable result.
