@@ -183,3 +183,47 @@ def test_resume_counters_require_exact_int_before_component_mutation(
     monkeypatch.undo()
     target.load_state_dict(saved)
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+
+
+
+@pytest.mark.parametrize("field", ["micro_step", "optimizer_step", "tokens_seen"])
+@pytest.mark.parametrize("alias_kind", ["integral_float", "numpy_int"])
+def test_nonzero_counter_numeric_alias_refused_before_optimizer_restore(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state,
+    field: str,
+    alias_kind: str,
+) -> None:
+    """An equal numeric value cannot masquerade as a committed int counter."""
+    config = TrainerConfig(seed=703, max_steps=2)
+    source = Trainer(_TinyModel(), config)
+    source.train_microbatch(_BATCH)
+    saved = source.state_dict()
+    assert saved.micro_step > 0 and saved.optimizer_step > 0 and saved.tokens_seen > 0
+    original = getattr(saved, field)
+    alias = float(original) if alias_kind == "integral_float" else np.int64(original)
+    assert alias == original and type(alias) is not int
+
+    target = Trainer(_TinyModel(), config)
+    target.model.load_state_dict(copy.deepcopy(source.model.state_dict()))
+    weights_before = target.model.weight.detach().clone()
+    calls: list[bool] = []
+
+    def forbidden_load(value: object) -> None:
+        calls.append(True)
+        raise AssertionError("counter identity must fail before optimizer restore")
+
+    monkeypatch.setattr(target.optimizer, "load_state_dict", forbidden_load)
+    with pytest.raises(ValueError, match="trainer counters must be non-negative integers"):
+        target.load_state_dict(replace(saved, **{field: alias}))
+    assert calls == []
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert not target.optimizer.state
+    torch.testing.assert_close(target.model.weight.detach(), weights_before, rtol=0, atol=0)
+
+    monkeypatch.undo()
+    target.load_state_dict(saved)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (
+        saved.micro_step, saved.optimizer_step, saved.tokens_seen,
+    )
