@@ -586,7 +586,14 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
             _write_staged_bytes(destination, payload)
         if not _payload_matches(staged_path, identity, payload):
             raise GateError("staged balance output failed byte verification")
-        os.link(staged_path, final)  # Create-only; never replace a concurrent result.
+        try:
+            os.link(staged_path, final)  # Create-only; never replace a concurrent result.
+        except OSError:
+            # Link publication can succeed before an I/O wrapper reports an error.
+            # Roll back only if the final pathname still names our staged inode.
+            if _same_inode(final, identity):
+                linked = True
+            raise
         linked = True
         if (
             not _payload_matches(final, identity, payload)
