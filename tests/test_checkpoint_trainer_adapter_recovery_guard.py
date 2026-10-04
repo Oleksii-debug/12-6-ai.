@@ -1335,3 +1335,131 @@ def test_real_d02_loader_interruption_restores_pre_apply_mode_and_primary_error(
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+@pytest.mark.parametrize("use_progress", [False, True])
+@pytest.mark.parametrize("restore_rng", [False, True])
+def test_failed_apply_rolls_back_all_ambient_rng_streams(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+    restore_rng: bool,
+) -> None:
+    """Partial trainer or final RNG failure must not corrupt unrelated draws."""
+
+    import torch
+
+    original = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        random.seed(1711)
+        np.random.seed(1711)
+        torch.manual_seed(1711)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        checkpoint = tmp_path / "ambient-rng-rollback"
+        checkpoint_at(checkpoint)
+        model = Model([9.0, 9.0, 9.0])
+
+        class InterruptingTrainer(CanonicalTarget):
+            def load_state_dict(self, state: dict[str, object]) -> None:
+                super().load_state_dict(state)
+                if self is trainer and not restore_rng:
+                    random.random()
+                    np.random.random_sample()
+                    torch.rand(())
+                    torch.use_deterministic_algorithms(False, warn_only=False)
+                    raise RuntimeError("injected trainer load RNG failure")
+
+        trainer = InterruptingTrainer(model)
+        loader_module = progress_trainer if use_progress else trainer_adapter
+        random.random()
+        np.random.random_sample()
+        torch.rand(())
+        ambient = core.capture_rng_state()
+        python_probe = random.Random()
+        python_probe.setstate(ambient["python"])
+        numpy_probe = np.random.RandomState()
+        numpy_probe.set_state(ambient["numpy"])
+        torch_probe = torch.Generator(device="cpu")
+        torch_probe.set_state(ambient["torch"]["cpu"])
+        expected = (
+            python_probe.random(),
+            numpy_probe.random_sample(),
+            torch.rand((), generator=torch_probe).item(),
+        )
+
+        if restore_rng:
+            def fail_replay(_state: object) -> None:
+                random.random()
+                np.random.random_sample()
+                torch.rand(())
+                torch.use_deterministic_algorithms(False, warn_only=False)
+                raise RuntimeError("injected final replay RNG failure")
+
+            monkeypatch.setattr(loader_module, "restore_rng_state", fail_replay)
+        with pytest.raises(RuntimeError, match="injected .* RNG failure"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=restore_rng,
+            )
+        assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+        assert trainer._update_incomplete is True
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+        assert (random.random(), np.random.random_sample(), torch.rand(()).item()) == expected
+    finally:
+        core.restore_rng_state(original)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_failed_ambient_rng_rollback_preserves_primary_and_poisons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+) -> None:
+    """The rollback failure cannot turn a failed restore into a false success."""
+
+    import torch
+
+    original = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    original_restore = core.restore_rng_state
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        checkpoint = tmp_path / "double-rng-failure"
+        checkpoint_at(checkpoint)
+        model = Model([9.0, 9.0, 9.0])
+        trainer = CanonicalTarget(model)
+        loader_module = progress_trainer if use_progress else trainer_adapter
+        original_error = RuntimeError("primary checkpoint replay failure")
+        rollbacks = 0
+
+        def fail_ambient_rollback(state: object) -> None:
+            nonlocal rollbacks
+            rollbacks += 1
+            if rollbacks >= 2:
+                raise OSError("secondary ambient RNG rollback failure")
+            original_restore(state)
+
+        def fail_final_replay(_state: object) -> None:
+            raise original_error
+
+        monkeypatch.setattr(core, "restore_rng_state", fail_ambient_rollback)
+        monkeypatch.setattr(loader_module, "restore_rng_state", fail_final_replay)
+        with pytest.raises(RuntimeError, match="primary checkpoint replay") as raised:
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=True,
+            )
+        assert raised.value is original_error
+        assert any(
+            "secondary ambient RNG rollback failure" in note
+            for note in getattr(raised.value, "__notes__", ())
+        )
+        assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+        assert trainer._update_incomplete is True
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        original_restore(original)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
