@@ -15,6 +15,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
+from . import core as _core
 from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
@@ -433,7 +434,9 @@ def _preflight_trainer_state(
             trainer, state, manifest=manifest,
         )
     finally:
-        restore_rng_state(ambient)
+        # Ambient probe rollback is not the application-stage RNG restore.
+        # Keep it independent of the injectable final checkpoint restore path.
+        _core.restore_rng_state(ambient)
         # The checkpoint RNG schema records deterministic enablement, not
         # PyTorch's warn-only mode. Preserve that live setting for a pure
         # preflight instead of converting warnings into hard errors.
