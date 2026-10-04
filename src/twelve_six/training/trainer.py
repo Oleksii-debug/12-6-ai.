@@ -230,29 +230,58 @@ class Trainer:
                         f"optimizer produced non-finite state at micro_step={self.micro_step}"
                     )
 
+    def _require_safe_optimizer_hyperparameters(self) -> None:
+        """Validate all group hyperparameters, not only the reported group LR."""
+        for group in self.optimizer.param_groups:
+            for field in ("lr", "weight_decay", "eps"):
+                if field not in group:
+                    continue  # Other injected optimizer families may omit these fields.
+                value = group[field]
+                label = "learning rate" if field == "lr" else field
+                if isinstance(value, bool) or not math.isfinite(float(value)):
+                    raise NonFiniteTrainingError(
+                        f"optimizer {label} must be finite and >= 0"
+                    )
+                if float(value) < 0 or (field == "eps" and float(value) == 0):
+                    raise NonFiniteTrainingError(
+                        f"optimizer {label} must be finite and >= 0"
+                    )
+            if "betas" in group:
+                betas = group["betas"]
+                if not isinstance(betas, (list, tuple)) or len(betas) != 2:
+                    raise NonFiniteTrainingError("optimizer betas must be valid")
+                for beta in betas:
+                    if isinstance(beta, bool) or not math.isfinite(float(beta)):
+                        raise NonFiniteTrainingError("optimizer betas must be valid")
+                    if not 0 <= float(beta) < 1:
+                        raise NonFiniteTrainingError("optimizer betas must be valid")
+
+    @staticmethod
+    def _require_finite_state_tree(value: Any, label: str) -> None:
+        """Reject nonfinite numeric leaves in nested scheduler/scaler state."""
+        if isinstance(value, Tensor):
+            if (value.is_floating_point() or value.is_complex()) and not (
+                torch.isfinite(value).all().item()
+            ):
+                raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, Mapping):
+            for child in value.values():
+                Trainer._require_finite_state_tree(child, label)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                Trainer._require_finite_state_tree(child, label)
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            if not math.isfinite(value):
+                raise NonFiniteTrainingError(f"{label} has non-finite state")
+
     def _require_finite_auxiliary_state(self) -> None:
         # The optimizer or scheduler may have changed groups after the
         # pre-backward check; a completed step must remain checkpoint-safe.
         self._require_optimizer_parameter_coverage()
-        for group in self.optimizer.param_groups:
-            rate = group["lr"]
-            if (
-                isinstance(rate, bool)
-                or not math.isfinite(float(rate))
-                or float(rate) < 0
-            ):
-                raise NonFiniteTrainingError(
-                    "optimizer learning rate must be finite and >= 0"
-                )
-        for value in self.scaler.state_dict().values():
-            if isinstance(value, Tensor):
-                finite = bool(torch.isfinite(value).all().item())
-            elif isinstance(value, (int, float)):
-                finite = math.isfinite(value)
-            else:
-                continue
-            if not finite:
-                raise NonFiniteTrainingError("gradient scaler has non-finite state")
+        self._require_safe_optimizer_hyperparameters()
+        self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
+        if self.scheduler is not None:
+            self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
 
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
@@ -446,29 +475,7 @@ class Trainer:
             # A custom optimizer can have distinct schedules per group. Never
             # validate only the first group while another can write NaN weights.
             learning_rate = float(self.optimizer.param_groups[0]["lr"])
-            for group in self.optimizer.param_groups:
-                for field in ("lr", "weight_decay", "eps"):
-                    if field not in group:
-                        continue  # Other injected optimizer families may omit these fields.
-                    value = group[field]
-                    label = "learning rate" if field == "lr" else field
-                    if isinstance(value, bool) or not math.isfinite(float(value)):
-                        raise NonFiniteTrainingError(
-                            f"optimizer {label} must be finite and >= 0"
-                        )
-                    if float(value) < 0 or (field == "eps" and float(value) == 0):
-                        raise NonFiniteTrainingError(
-                            f"optimizer {label} must be finite and >= 0"
-                        )
-                if "betas" in group:
-                    betas = group["betas"]
-                    if not isinstance(betas, (list, tuple)) or len(betas) != 2:
-                        raise NonFiniteTrainingError("optimizer betas must be valid")
-                    for beta in betas:
-                        if isinstance(beta, bool) or not math.isfinite(float(beta)):
-                            raise NonFiniteTrainingError("optimizer betas must be valid")
-                        if not 0 <= float(beta) < 1:
-                            raise NonFiniteTrainingError("optimizer betas must be valid")
+            self._require_safe_optimizer_hyperparameters()
         except BaseException:
             # Backward already ran; do not allow a partial accounting transition
             # or an interrupted device synchronization to reuse these gradients.
