@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import urllib.error
 import urllib.request
@@ -13,6 +14,17 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "configs/evaluation/eval_code_reserve_v1.json"
 USER_AGENT = "12-6-ai-eval647-reservation/1.1"
+MAX_LICENSE_BYTES = 1_048_576
+
+# Load the exact sibling authority in both script and importlib-based test modes.
+_VALIDATOR_PATH = Path(__file__).with_name("validate_eval_code_reserve_v1.py")
+_VALIDATOR_SPEC = importlib.util.spec_from_file_location(
+    "eval647_materializer_contract", _VALIDATOR_PATH,
+)
+if _VALIDATOR_SPEC is None or _VALIDATOR_SPEC.loader is None:
+    raise RuntimeError("EVAL647 contract validator is unavailable")
+_VALIDATOR = importlib.util.module_from_spec(_VALIDATOR_SPEC)
+_VALIDATOR_SPEC.loader.exec_module(_VALIDATOR)
 LICENSE_MARKERS = {
     "Apache-2.0": b"Apache License\n                           Version 2.0",
     "MIT": b"Permission is hereby granted, free of charge",
@@ -37,17 +49,25 @@ def _raw_url(record: dict[str, Any], path: str | None = None) -> str:
     )
 
 
-def _fetch(url: str, timeout: int) -> bytes:
+def _fetch(url: str, timeout: int, max_bytes: int) -> bytes:
+    _require(type(max_bytes) is int and max_bytes >= 0, "invalid source byte limit")
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             _require(getattr(response, "status", 200) == 200, f"HTTP status drift for {url}")
-            return response.read()
-    except (urllib.error.URLError, TimeoutError) as exc:
+            # Never buffer an arbitrary remote response before checking its size.
+            payload = response.read(max_bytes + 1)
+            _require(len(payload) <= max_bytes, f"remote source exceeds byte limit for {url}")
+            return payload
+    except OSError as exc:
         raise RuntimeError(f"immutable source fetch failed for {url}: {exc}") from exc
 
 
 def materialize(manifest: dict[str, Any], *, timeout: int = 30) -> dict[str, Any]:
+    # Pinned repository, revision, exact object set, gates and science policy
+    # must be valid before any untrusted network access.
+    _VALIDATOR.validate_document(manifest)
+    _require(type(timeout) is int and timeout > 0, "timeout must be a positive integer")
     reservation = manifest["reservation"]
     _require(manifest["execution_class"] == "LOCAL_FREE", "execution class drift")
     _require(manifest["purpose"] == "selection_validation_only", "purpose drift")
@@ -88,7 +108,7 @@ def materialize(manifest: dict[str, Any], *, timeout: int = 30) -> dict[str, Any
             f"future exclusion missing for {row['repository']}",
         )
 
-        payload = _fetch(_raw_url(row), timeout)
+        payload = _fetch(_raw_url(row), timeout, row["expected_raw_bytes"])
         _require(
             len(payload) == row["expected_raw_bytes"],
             f"raw byte-size drift for {row['repository']}:{row['path']}",
@@ -107,7 +127,7 @@ def materialize(manifest: dict[str, Any], *, timeout: int = 30) -> dict[str, Any
                 f"raw SHA-256 drift for {row['repository']}:{row['path']}",
             )
 
-        license_payload = _fetch(_raw_url(row, "LICENSE"), timeout)
+        license_payload = _fetch(_raw_url(row, "LICENSE"), timeout, MAX_LICENSE_BYTES)
         _require(
             LICENSE_MARKERS[row["license_spdx"]] in license_payload,
             f"license marker drift for {row['repository']}",
@@ -179,8 +199,18 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=30)
     args = parser.parse_args()
 
-    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-    evidence = materialize(manifest, timeout=args.timeout)
+    try:
+        manifest = _VALIDATOR._load_mapping(args.manifest)
+        evidence = materialize(manifest, timeout=args.timeout)
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(json.dumps({
+            "status": "BLOCKED_INVALID_EVAL647_MATERIALIZATION",
+            "error": str(exc),
+            "selection_validation_records_authorized": 0,
+            "model_training_authorized": False,
+            "final_test_outcomes_read": False,
+        }, sort_keys=True))
+        return 2
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(evidence, indent=2, sort_keys=True) + "\n",
