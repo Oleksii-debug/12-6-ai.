@@ -243,12 +243,18 @@ class Trainer:
         loss_mask: Tensor | None,
         aligned_targets: bool,
     ) -> Tensor:
-        with self._autocast_context():
-            logits = _extract_logits(self.model(input_ids))
-            if aligned_targets:
-                loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
-            else:
-                loss = causal_lm_loss(logits, targets)
+        try:
+            with self._autocast_context():
+                logits = _extract_logits(self.model(input_ids))
+                if aligned_targets:
+                    loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
+                else:
+                    loss = causal_lm_loss(logits, targets)
+        except BaseException:
+            # Forward may have changed model buffers or RNG; an earlier
+            # accumulation microbatch may also have left pending gradients.
+            self._mark_failed(f"forward/loss failed at micro_step={self.micro_step + 1}")
+            raise
         if not torch.isfinite(loss).item():
             reason = f"non-finite loss at micro_step={self.micro_step + 1}"
             self._mark_failed(reason)
