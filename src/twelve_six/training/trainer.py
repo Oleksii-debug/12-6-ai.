@@ -391,9 +391,20 @@ class Trainer:
             should_step = self.micro_step % self.config.gradient_accumulation_steps == 0
             grad_norm_value: float | None = None
             update_loss: float | None = None
+            # A custom optimizer can have distinct schedules per group. Never
+            # validate only the first group while another can write NaN weights.
             learning_rate = float(self.optimizer.param_groups[0]["lr"])
-            if not math.isfinite(learning_rate) or learning_rate < 0:
-                raise NonFiniteTrainingError("optimizer learning rate must be finite and >= 0")
+            for group in self.optimizer.param_groups:
+                group_lr = group["lr"]
+                if isinstance(group_lr, bool):
+                    raise NonFiniteTrainingError(
+                        "optimizer learning rate must be finite and >= 0"
+                    )
+                group_lr = float(group_lr)
+                if not math.isfinite(group_lr) or group_lr < 0:
+                    raise NonFiniteTrainingError(
+                        "optimizer learning rate must be finite and >= 0"
+                    )
         except BaseException:
             # Backward already ran; do not allow a partial accounting transition
             # or an interrupted device synchronization to reuse these gradients.
