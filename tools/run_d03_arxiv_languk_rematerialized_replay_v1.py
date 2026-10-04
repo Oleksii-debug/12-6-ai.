@@ -530,19 +530,28 @@ def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
     finally:
         # Do not discard the sole recovery alias if final-path inspection or
         # owned-only rollback failed. A human must reconcile both names.
-        if not isinstance(sys.exc_info()[1], PublicationIndeterminate):
+        primary_failure = sys.exc_info()[1]
+        if not isinstance(primary_failure, PublicationIndeterminate):
             try:
                 staged.unlink(missing_ok=True)
-            except OSError as exc:
-                if published_and_verified:
+            except OSError as cleanup_error:
+                if published_and_verified and primary_failure is None:
                     raise RematerializationError(
                         f"{label} was published and byte-verified, but staged cleanup "
                         f"is pending: {staged}; inspect the final output before retry"
-                    ) from exc
+                    ) from cleanup_error
+                original = (
+                    f"; original publication failure: "
+                    f"{type(primary_failure).__name__}: {primary_failure}"
+                    if primary_failure is not None else ""
+                )
                 raise RematerializationError(
                     f"{label} publication failed and staged cleanup is pending: "
-                    f"{staged}; manual reconciliation required"
-                ) from exc
+                    f"{staged}; cleanup error: {type(cleanup_error).__name__}: "
+                    f"{cleanup_error}{original}; manual reconciliation required"
+                ) from (
+                    primary_failure if primary_failure is not None else cleanup_error
+                )
 
 
 def _capture_verified_publication_bytes(
