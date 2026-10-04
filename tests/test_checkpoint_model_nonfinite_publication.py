@@ -121,3 +121,72 @@ def test_finite_model_state_still_publishes_immutable_verified_checkpoint(
     assert verified["checkpoint_id"] == manifest["checkpoint_id"]
     assert directory.is_dir()
     assert not list(tmp_path.glob(f".{directory.name}.tmp-*"))
+
+
+@pytest.mark.parametrize(
+    ("dtype", "bad"),
+    [
+        (torch.float32, np.array([float("nan"), 1], dtype=np.float32)),
+        (torch.bfloat16, np.array([0x7FC1, 0x3F80], dtype=np.uint16)),
+        (torch.complex64, np.array([complex(float("nan"), 1), 1], dtype=np.complex64)),
+    ],
+    ids=["float-nan", "bfloat16-bits-nan", "complex-nan"],
+)
+def test_nonfinite_verified_tensor_refused_before_application(
+    dtype: torch.dtype, bad: np.ndarray,
+) -> None:
+    destination = torch.nn.Parameter(torch.zeros(2, dtype=dtype))
+    original = destination.detach().clone()
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="checkpoint model tensor contains non-finite values",
+    ):
+        core._materialize_for_target(bad, destination)
+    torch.testing.assert_close(destination.detach(), original, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "bad"),
+    [
+        ("float32", np.array([float("nan"), 1], dtype=np.float32)),
+        ("float64", np.array([float("inf"), 1], dtype=np.float64)),
+        ("complex64", np.array([complex(float("nan"), 1), 1], dtype=np.complex64)),
+    ],
+)
+def test_nonfinite_verified_numpy_target_refused_before_application(
+    dtype: str, bad: np.ndarray,
+) -> None:
+    destination = np.zeros(2, dtype=dtype)
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="checkpoint model tensor contains non-finite values",
+    ):
+        core._materialize_for_target(bad, destination)
+    np.testing.assert_array_equal(destination, np.zeros_like(destination))
+
+
+def test_nonfinite_model_payload_cannot_partially_apply_other_valid_weights() -> None:
+    model = torch.nn.Linear(2, 2)
+    before = {name: value.detach().clone() for name, value in model.state_dict().items()}
+    payload = {
+        "weight": np.full((2, 2), float("nan"), dtype=np.float32),
+        "bias": np.array([1.0, 2.0], dtype=np.float32),
+    }
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="checkpoint model tensor contains non-finite values",
+    ):
+        core._prepare_model_weights(model, payload, strict=True)
+    for name, saved in before.items():
+        torch.testing.assert_close(model.state_dict()[name], saved, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_clean_model_payload_remains_materializable(
+    dtype: torch.dtype,
+) -> None:
+    model = torch.nn.Linear(3, 1).to(dtype=dtype)
+    payload = core._model_state_to_numpy(model)
+    restored = core._prepare_model_weights(model, payload, strict=True)
+    for name, expected in model.state_dict().items():
+        torch.testing.assert_close(restored[name], expected, rtol=0, atol=0)
