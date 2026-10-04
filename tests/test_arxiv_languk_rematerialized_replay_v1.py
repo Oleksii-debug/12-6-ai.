@@ -1237,3 +1237,94 @@ def test_failed_owned_rollback_is_reported_for_manual_reconciliation(
         REPLAY_RUNNER._write_new_bytes(final, b"expected", label="outer report")
     assert final.read_bytes() == b"corrupt-but-owned"
     assert not list(tmp_path.glob(".outer-report.json.*.tmp"))
+
+
+def test_verified_single_output_cleanup_error_is_not_a_publication_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final = tmp_path / "single-output.json"
+    payload = b'{"verified":true}\n'
+    original_unlink = Path.unlink
+
+    def deny_stage_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(".single-output.json.") and path.suffix == ".tmp":
+            raise OSError("injected cleanup sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny_stage_cleanup)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="was published and byte-verified, but staged cleanup is pending",
+    ):
+        REPLAY_RUNNER._write_new_bytes(final, payload, label="single output")
+    assert final.read_bytes() == payload
+    staged = list(tmp_path.glob(".single-output.json.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == payload
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    staged[0].unlink()
+    assert final.read_bytes() == payload
+
+
+def test_prepublication_cleanup_error_preserves_failed_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final = tmp_path / "failed-output.json"
+    original_unlink = Path.unlink
+
+    def refuse_link(staged: Path, path: Path, *, label: str) -> None:
+        raise REPLAY_RUNNER.RematerializationError("injected link failure")
+
+    def deny_stage_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(".failed-output.json.") and path.suffix == ".tmp":
+            raise OSError("injected cleanup error")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", refuse_link)
+    monkeypatch.setattr(Path, "unlink", deny_stage_cleanup)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="publication failed and staged cleanup is pending",
+    ):
+        REPLAY_RUNNER._write_new_bytes(final, b"expected", label="failed output")
+    assert not final.exists()
+    staged = list(tmp_path.glob(".failed-output.json.*.tmp"))
+    assert len(staged) == 1
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    staged[0].unlink()
+
+
+def test_receipt_commit_with_cleanup_error_is_recoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_unlink = Path.unlink
+
+    def deny_report_stage(path: Path, *args: object, **kwargs: object) -> None:
+        if (
+            path.parent == args.output_report.parent
+            and path.name.startswith(f".{args.output_report.name}.")
+            and path.suffix == ".tmp"
+        ):
+            raise OSError("injected outer cleanup failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny_report_stage)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="outer receipt published and byte-verified; staged cleanup pending",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert args.output_receipt.read_bytes() == REPLAY_RUNNER.canonical_json_bytes(
+        receipt
+    )
+    recovered = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovered["training_authorized"] is False
+    staged = list(args.output_report.parent.glob(f".{args.output_report.name}.*.tmp"))
+    assert len(staged) == 1
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    staged[0].unlink()
