@@ -1081,3 +1081,153 @@ else:
 assert fetch_module.fetch_exact_source is original_fetch
 """
     )
+
+
+def test_v7_tls_eof_retry_is_bounded_and_byte_identical() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/private?token=NEVER_EMIT"
+raw = b"\\x00verified-pinned-source\\xff"
+calls = []
+sleeps = []
+original_sleep = mod.time.sleep
+mod.time.sleep = lambda delay: sleeps.append(delay)
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    if len(calls) <= 2:
+        raise URLError(ssl.SSLEOFError(8, "simulated unexpected TLS EOF"))
+    return raw
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    assert mod._capture_terminal_v7_with_fetch_context(Path("."), {}) is raw
+    assert calls == [url, url, url]
+    assert sleeps == [0.25, 0.5]
+    assert fetch_module.fetch_exact_source is original_fetch
+finally:
+    mod.time.sleep = original_sleep
+"""
+    )
+
+
+def test_v7_tls_eof_final_error_stays_original_and_redacted() -> None:
+    _run_isolated(
+        """
+import hashlib
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/private?token=NEVER_EMIT"
+calls = []
+sleeps = []
+errors = [URLError(ssl.SSLEOFError(8, "simulated EOF")) for _ in range(3)]
+mod.time.sleep = lambda delay: sleeps.append(delay)
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    raise errors[len(calls) - 1]
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except URLError as exc:
+    assert exc is errors[-1]
+    note = "\\n".join(exc.__notes__)
+    assert "host=source.example.invalid" in note
+    assert f"acquisition_url_sha256={hashlib.sha256(url.encode()).hexdigest()}" in note
+    assert "attempts=3" in note
+    assert "private" not in note and "NEVER_EMIT" not in note
+else:
+    raise AssertionError("the exhausted TLS error was swallowed")
+assert calls == [url, url, url] and sleeps == [0.25, 0.5]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_v7_non_eof_network_failure_is_not_retried() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/pinned"
+calls = []
+mod.time.sleep = lambda _delay: (_ for _ in ()).throw(
+    AssertionError("non-EOF transport failure must not be retried")
+)
+error = URLError(ssl.SSLCertVerificationError("certificate verification failed"))
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    raise error
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except URLError as exc:
+    assert exc is error and "attempts=1" in "\\n".join(exc.__notes__)
+else:
+    raise AssertionError("certificate error was swallowed")
+assert calls == [url]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_v7_interruption_after_eof_retry_restores_fetch_hook() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/pinned"
+calls = []
+mod.time.sleep = lambda _delay: None
+interrupted = KeyboardInterrupt("user-requested stop")
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    if len(calls) == 1:
+        raise URLError(ssl.SSLEOFError(8, "temporary EOF"))
+    raise interrupted
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except KeyboardInterrupt as exc:
+    assert exc is interrupted and not hasattr(exc, "__notes__")
+else:
+    raise AssertionError("interruption was swallowed")
+assert calls == [url, url]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
