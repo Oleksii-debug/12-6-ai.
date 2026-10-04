@@ -732,7 +732,7 @@ def test_programmatic_byte_limit_does_not_eagerly_canonicalize(
         selected["purpose" if target == "contract" else "status"] = "y" * size
     else:
         # Escaping enlarges canonical JSON beyond the raw UTF-8 string budget.
-        selected["worker_id"] = "\\u0000" * 200_000
+        selected["worker_id"] = chr(0) * 200_000
 
     def eager_serialization_is_forbidden(_value: object) -> bytes:
         raise AssertionError("oversized authority was serialized eagerly")
