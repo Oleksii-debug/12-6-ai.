@@ -446,6 +446,22 @@ def _fetch_pointer_bytes(
         parts = parents.stdout.decode("ascii").strip().split()
         if not parts or parts[0] != expected_tip or len(parts) > 2:
             raise CurrentRunAuthorityError("current_run_pointer_parent_shape_invalid")
+        # Reject large/fan-out trees before ls-tree can capture their stdout.
+        # The required 100644 root entry has 28 fixed bytes plus its filename.
+        tree_size_result = _run_git(
+            repo_root, ["cat-file", "-s", f"{expected_tip}^{{tree}}"]
+        )
+        if tree_size_result.returncode != 0:
+            raise CurrentRunAuthorityError("current_run_pointer_tree_size_read_failed")
+        try:
+            tree_size = tree_size_result.stdout.decode("ascii").strip()
+        except UnicodeDecodeError as exc:
+            raise CurrentRunAuthorityError("current_run_pointer_tree_size_invalid") from exc
+        if not tree_size.isascii() or not tree_size.isdecimal() or len(tree_size) > 20:
+            raise CurrentRunAuthorityError("current_run_pointer_tree_size_invalid")
+        if int(tree_size) != 28 + len(CURRENT_RUN_POINTER_PATH.encode("ascii")):
+            raise CurrentRunAuthorityError("current_run_pointer_tree_not_closed_world")
+
         tree = _run_git(repo_root, ["ls-tree", "-z", "--full-tree", expected_tip])
         if tree.returncode != 0:
             raise CurrentRunAuthorityError("current_run_pointer_tree_read_failed")
