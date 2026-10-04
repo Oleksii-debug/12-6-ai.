@@ -787,3 +787,93 @@ def test_link_created_then_error_and_rollback_failure_preserves_cause(
     output.unlink()
     gate._write_new_output(output, b"candidate", input_path=source)
     assert output.read_bytes() == b"candidate"
+
+
+def test_ambiguous_postlink_stat_failure_preserves_stage_for_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never silently remove stage when final's identity is inaccessible."""
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"original authority")
+    output = tmp_path / "uncertain output.json"
+    real_link = gate.os.link
+    real_stat = Path.stat
+    linked = False
+
+    def link_then_error(stage: Path, final: Path) -> None:
+        nonlocal linked
+        real_link(stage, final)
+        linked = True
+        raise OSError("injected lost link response")
+
+    def inaccessible_final(self: Path, *args: object, **kwargs: object):
+        if self == output and linked:
+            raise PermissionError("injected final stat denial")
+        return real_stat(self, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(gate.os, "link", link_then_error)
+        fault.setattr(Path, "stat", inaccessible_final)
+        with pytest.raises(gate.GateError, match="PUBLICATION_INDETERMINATE") as caught:
+            gate._write_new_output(output, b"candidate", input_path=source)
+
+    stages = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert linked is True
+    assert output.read_bytes() == b"candidate"
+    assert len(stages) == 1
+    assert stages[0].read_bytes() == b"candidate"
+    assert str(output) in str(caught.value)
+    assert str(stages[0]) in str(caught.value)
+    assert "injected final stat denial" in str(caught.value)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "lost link response" in str(caught.value.__cause__)
+    assert source.read_bytes() == b"original authority"
+    output.unlink()
+    stages[0].unlink()
+    gate._write_new_output(output, b"candidate", input_path=source)
+    assert output.read_bytes() == b"candidate"
+
+
+def test_rollback_stat_failure_preserves_stage_and_original_validation_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A linked but uninspectable final is an explicit manual recovery case."""
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"original authority")
+    output = tmp_path / "result.json"
+    real_link = gate.os.link
+    real_stat = Path.stat
+    linked = False
+
+    def mark_link(stage: Path, final: Path) -> None:
+        nonlocal linked
+        real_link(stage, final)
+        linked = True
+
+    def inaccessible_final(self: Path, *args: object, **kwargs: object):
+        if self == output and linked:
+            raise PermissionError("injected rollback stat denial")
+        return real_stat(self, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(gate.os, "link", mark_link)
+        fault.setattr(Path, "stat", inaccessible_final)
+        with pytest.raises(gate.GateError, match="ROLLBACK_INCOMPLETE") as caught:
+            gate._write_new_output(output, b"candidate", input_path=source)
+
+    stages = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert linked is True
+    assert len(stages) == 1
+    assert output.read_bytes() == stages[0].read_bytes() == b"candidate"
+    assert str(output) in str(caught.value)
+    assert str(stages[0]) in str(caught.value)
+    assert "rollback stat denial" in str(caught.value)
+    assert isinstance(caught.value.__cause__, gate.GateError)
+    assert "byte/path verification" in str(caught.value.__cause__)
+    assert source.read_bytes() == b"original authority"
+    output.unlink()
+    stages[0].unlink()
+    gate._write_new_output(output, b"candidate", input_path=source)
+    assert output.read_bytes() == b"candidate"
