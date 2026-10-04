@@ -334,6 +334,9 @@ def test_partial_restore_poison_prevents_in_place_retry(
         )
     assert trainer._failure_reason == "checkpoint_restore_apply_failed"
     assert trainer._update_incomplete is True
+    if failed_stage == "rng":
+        # RNG must be restored last, after trainer state is applied.
+        assert trainer.loads == 1
     # The real D02 runtime guard refuses optimizer work on this poisoned state.
     from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
 
@@ -537,3 +540,73 @@ def test_rejected_preflight_does_not_poison_fresh_canonical_target(
     np.testing.assert_array_equal(model.weights, np.asarray([1.0, 2.0, 3.0]))
     assert model.loads == 1
     assert trainer.loads == 1
+
+
+@pytest.mark.parametrize("restore_rng", [True, False])
+def test_loader_rng_draws_are_rewound_only_when_requested(
+    tmp_path: Path,
+    restore_rng: bool,
+) -> None:
+    """The first resumed draw must use checkpoint, not state-loader, RNG."""
+
+    import random
+    import torch
+
+    from twelve_six.checkpoint import core
+
+    class DrawingTrainer(GenericTrainer):
+        def load_state_dict(self, state: dict[str, object]) -> None:
+            super().load_state_dict(state)
+            if self is target:
+                random.random()
+                np.random.random_sample()
+                torch.rand(())
+
+    ambient_rng = core.capture_rng_state()
+    try:
+        random.seed(703)
+        np.random.seed(703)
+        torch.manual_seed(703)
+        checkpoint = tmp_path / "rng-last"
+        save_trainer_checkpoint(
+            checkpoint,
+            model=NumpyModel([1.0, 2.0, 3.0]),
+            trainer=GenericTrainer(),
+            identity=identity(),
+        )
+
+        from twelve_six.checkpoint import progress_trainer
+
+        verified = progress_trainer.prepare_checkpoint_load(checkpoint)
+        _, combined = progress_trainer._decode_verified_state(verified)
+        saved_rng = combined["rng"]
+        expected_python = random.Random()
+        expected_python.setstate(saved_rng["python"])
+        expected_np = np.random.RandomState()
+        expected_np.set_state(saved_rng["numpy"])
+        expected_torch = torch.Generator(device="cpu")
+        expected_torch.set_state(saved_rng["torch"]["cpu"])
+        next_python = expected_python.random()
+        next_numpy = expected_np.random_sample()
+        next_torch = torch.rand((), generator=expected_torch).item()
+
+        # Ensure that restoring the checkpoint (or opting out) is observable.
+        random.random()
+        np.random.random_sample()
+        torch.rand(())
+        target = DrawingTrainer()
+        load_trainer_checkpoint(
+            checkpoint,
+            model=NumpyModel([9.0, 9.0, 9.0]),
+            trainer=target,
+            restore_rng=restore_rng,
+        )
+        assert target.loads == 1
+        actual = (random.random(), np.random.random_sample(), torch.rand(()).item())
+        expected = (next_python, next_numpy, next_torch)
+        if restore_rng:
+            assert actual == expected
+        else:
+            assert actual != expected
+    finally:
+        core.restore_rng_state(ambient_rng)
