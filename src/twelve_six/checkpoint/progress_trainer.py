@@ -36,6 +36,7 @@ from .trainer_adapter import (
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
     _assert_trainer_model_binding,
+    _effective_strict_model,
     _preflight_trainer_state,
     _preflight_trainer_target,
     _restore_ambient_rng_after_failed_apply,
@@ -208,6 +209,7 @@ def load_trainer_checkpoint(
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
     else:
         _assert_live_d02_determinism(trainer)
+    strict_model = _effective_strict_model(trainer, strict_model)
     materialized = _prepare_model_weights(model, arrays, strict_model)
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = _core.capture_rng_state()

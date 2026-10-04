@@ -254,6 +254,20 @@ def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
         )
 
 
+def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
+    """Canonical D02 resume must restore every persistent model-state key.
+
+    Non-strict loading is still supported for generic checkpoint adapters.
+    D02's optimizer counters must never be credited to a partially restored
+    model, even when the caller explicitly requests strict_model=False.
+    """
+
+    return strict_model or (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    )
+
+
 def _preflight_trainer_target(trainer: Any) -> None:
     """Reject a D02 trainer target that its own loader would refuse after mutation."""
 
@@ -797,6 +811,7 @@ def load_trainer_checkpoint(
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
     else:
         _assert_live_d02_determinism(trainer)
+    strict_model = _effective_strict_model(trainer, strict_model)
     materialized = _prepare_model_weights(model, arrays, strict_model)
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = capture_rng_state()
