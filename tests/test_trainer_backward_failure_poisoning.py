@@ -483,3 +483,76 @@ def test_zero_target_count_preflight_retains_valid_pending_gradients():
     torch.testing.assert_close(model.weight.grad, before_grad, rtol=0, atol=0)
     assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
     assert trainer.optimizer_step == 1
+
+
+@pytest.mark.parametrize("accumulation_steps", [1, 2])
+def test_run_does_not_fetch_one_extra_batch_after_final_optimizer_step(
+    accumulation_steps
+):
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=accumulation_steps, seed=17),
+    )
+    fetched = []
+
+    def counted_batches():
+        for index in range(accumulation_steps + 1):
+            fetched.append(index)
+            yield _BATCH
+
+    result = trainer.run(counted_batches())
+    assert result.optimizer_steps_completed == 1
+    assert result.microbatches_consumed == accumulation_steps
+    assert fetched == list(range(accumulation_steps))
+    assert trainer.state_dict().optimizer_step == 1
+
+
+def test_run_poisoned_if_batch_iterator_faults_with_pending_accumulation():
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=2, seed=17),
+    )
+    before_weights = model.weight.detach().clone()
+
+    def broken_source():
+        yield _BATCH
+        torch.rand(())  # Iterator may mutate RNG/cursor before the error.
+        raise ValueError("synthetic corpus cursor failure")
+
+    with pytest.raises(ValueError, match="synthetic corpus cursor failure"):
+        trainer.run(broken_source())
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_run_poisoned_on_interrupt_during_iterator_creation():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+
+    class BrokenIterable:
+        def __iter__(self):
+            torch.rand(())
+            raise KeyboardInterrupt("synthetic iterable construction interrupt")
+
+    with pytest.raises(KeyboardInterrupt, match="iterable construction interrupt"):
+        trainer.run(BrokenIterable())
+    assert trainer.optimizer_step == 0
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_run_natural_exhaustion_at_committed_boundary_stays_recoverable():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=2, seed=17))
+    with pytest.raises(RuntimeError, match="batch iterable exhausted"):
+        trainer.run([_BATCH])
+    assert trainer.optimizer_step == 1
+    assert trainer._failure_reason is None
+    assert trainer.state_dict().optimizer_step == 1
