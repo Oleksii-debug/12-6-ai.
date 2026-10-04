@@ -315,6 +315,8 @@ class Trainer:
                     raise NonFiniteTrainingError(
                         f"optimizer produced non-finite state at micro_step={self.micro_step}"
                     )
+                if isinstance(value, (np.ndarray, np.generic)):
+                    self._require_finite_state_tree(value, "optimizer")
 
     def _require_safe_optimizer_hyperparameters(self) -> None:
         """Validate all group hyperparameters, not only the reported group LR."""
@@ -349,6 +351,21 @@ class Trainer:
             if (value.is_floating_point() or value.is_complex()) and not (
                 torch.isfinite(value).all().item()
             ):
+                raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, np.ndarray):
+            if value.dtype.kind in {"f", "c"}:
+                # A strided/model-scale NumPy payload must not force an
+                # unbounded contiguous copy just to check finite values.
+                for block in np.nditer(
+                    value,
+                    flags=["external_loop", "buffered", "zerosize_ok"],
+                    op_flags=["readonly"],
+                    buffersize=1_048_576,
+                ):
+                    if not bool(np.isfinite(block).all()):
+                        raise NonFiniteTrainingError(f"{label} has non-finite state")
+        elif isinstance(value, np.generic):
+            if value.dtype.kind in {"f", "c"} and not bool(np.isfinite(value)):
                 raise NonFiniteTrainingError(f"{label} has non-finite state")
         elif isinstance(value, Mapping):
             for child in value.values():
