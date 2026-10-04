@@ -260,3 +260,40 @@ def test_simple_scalar_frozenset_remains_comparable() -> None:
     assert report["classification"] == "NO_CODE_MISMATCH_OBSERVED"
     assert report["marshal_equal"] is True
     assert report["attestation_override_allowed"] is False
+
+@pytest.mark.parametrize("difference", ["tuple-length", "element-type"])
+def test_mismatched_code_subtree_is_bounded_before_marshal(
+    difference: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    deeply_nested = code
+    for _ in range(40):
+        deeply_nested = deeply_nested.replace(co_consts=(deeply_nested,))
+    left = code.replace(co_consts=(0,))
+    right_consts = (
+        (0, deeply_nested) if difference == "tuple-length" else (deeply_nested,)
+    )
+    right = code.replace(co_consts=right_consts)
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("unexamined code subtree must not be marshalled")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(left, right)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+
+def test_ordinary_tuple_length_mismatch_still_reports_structural_change() -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    left = code.replace(co_consts=(1,))
+    right = code.replace(co_consts=(1, 2))
+    report = compare_code_objects(left, right)
+    assert report["classification"] == "STRUCTURAL_CODE_MISMATCH"
+    assert any(path.endswith(":length") for path in report["different_field_paths"])
+    assert report["diagnostic_limited"] is False
+    assert report["attestation_override_allowed"] is False
