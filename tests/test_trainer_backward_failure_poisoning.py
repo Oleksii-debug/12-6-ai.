@@ -380,3 +380,55 @@ def test_actual_zero_gradient_tensor_is_not_confused_with_absent_gradient():
     assert metrics.optimizer_stepped is True
     assert trainer.optimizer_step == 1
     assert trainer.state_dict().optimizer_step == 1
+
+
+@pytest.mark.parametrize("failure_type", [RuntimeError, KeyboardInterrupt])
+def test_effectful_batch_transfer_failure_poisoned_and_no_replay(failure_type):
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=2, seed=17),
+    )
+    trainer.train_microbatch(_BATCH)
+    before_weights = model.weight.detach().clone()
+
+    class FailingTransfer:
+        ndim = 2
+        shape = (1, 2)
+
+        def to(self, device):
+            torch.rand(())  # Simulate side effects before failed device transfer.
+            raise failure_type("synthetic device transfer failure")
+
+    broken = {"input_ids": FailingTransfer(), "target_ids": _BATCH["target_ids"]}
+    with pytest.raises(failure_type, match="synthetic device transfer failure"):
+        trainer.train_microbatch(broken)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert trainer.tokens_seen == 2
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_pure_shape_preflight_error_keeps_pending_accumulation_retryable():
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=2, seed=17),
+    )
+    trainer.train_microbatch(_BATCH)
+    pending_grad = model.weight.grad.detach().clone()
+    bad = {"input_ids": torch.tensor([0, 1]), "target_ids": torch.tensor([1, 2])}
+
+    with pytest.raises(ValueError, match="shape"):
+        trainer.train_microbatch(bad)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert trainer._failure_reason is None
+    torch.testing.assert_close(model.weight.grad, pending_grad, rtol=0, atol=0)
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped is True
+    assert trainer.optimizer_step == 1
