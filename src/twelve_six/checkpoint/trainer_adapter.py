@@ -469,6 +469,42 @@ def _preflight_trainer_state(
             raise
 
 
+
+def _assert_d02_checkpoint_rng_policy(
+    trainer: Any, rng_state: Mapping[str, Any],
+) -> None:
+    """Bind a canonical D02 trainer's deterministic policy before model mutation.
+
+    Checkpoint-v1 captures deterministic enablement but not warn-only. A real
+    Trainer's validated config must agree with the enabled bit when the caller
+    requests exact RNG replay. Warn-only is instead kept from the live config.
+    Generic adapters do not expose this D02 configuration contract.
+    """
+
+    if not (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    ):
+        return
+    configured = getattr(getattr(trainer, "config", None), "deterministic_algorithms", None)
+    if not isinstance(configured, bool):
+        return
+    torch_state = rng_state.get("torch") if isinstance(rng_state, Mapping) else None
+    if (
+        not isinstance(torch_state, Mapping)
+        or type(torch_state.get("deterministic_algorithms")) is not bool
+    ):
+        raise CheckpointCompatibilityError(
+            "canonical trainer requires an exact torch deterministic_algorithms "
+            "checkpoint RNG policy"
+        )
+    if torch_state["deterministic_algorithms"] != configured:
+        raise CheckpointCompatibilityError(
+            "checkpoint torch deterministic_algorithms disagrees with "
+            "canonical trainer configuration"
+        )
+
+
 def _restore_checkpoint_rng_preserving_warn_only(
     state: Mapping[str, Any],
     *,
@@ -598,9 +634,10 @@ def load_trainer_checkpoint(
         trainer_state,
         manifest=manifest,
     )
-    materialized = _prepare_model_weights(model, arrays, strict_model)
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
+        _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
+    materialized = _prepare_model_weights(model, arrays, strict_model)
 
     # The decoded source weights are no longer needed after target materialization.
     # Releasing them before the first mutation keeps resume peak memory bounded as
