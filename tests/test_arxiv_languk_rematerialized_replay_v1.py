@@ -1432,3 +1432,70 @@ def test_outer_staging_dual_fault_cleans_prior_stages_without_receipt(
     assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
     assert recovered["canonical_capacity_credited"] == 0
     assert recovered["training_authorized"] is False
+
+
+def test_outer_staging_and_prior_cleanup_dual_faults_report_both_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prior cleanup fault must not hide the unregistered current orphan."""
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_fsync = REPLAY_RUNNER.os.fsync
+    original_unlink = Path.unlink
+    calls = 0
+    blocked: list[Path] = []
+
+    def fail_second_fsync(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected ENOSPC during survivors staging")
+        original_fsync(descriptor)
+
+    def lock_both_stages(path: Path, *args_: object, **kwargs: object) -> None:
+        if (
+            path.suffix == ".tmp"
+            and (
+                path.name.startswith(f".{args.output_report.name}.")
+                or path.name.startswith(f".{args.output_survivors.name}.")
+            )
+        ):
+            blocked.append(path)
+            raise PermissionError("injected stage sharing violation")
+        original_unlink(path, *args_, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "fsync", fail_second_fsync)
+        fault.setattr(Path, "unlink", lock_both_stages)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError,
+            match="outer publication incomplete and staged cleanup pending",
+        ) as caught:
+            REPLAY_RUNNER._publish_verified_outputs(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+
+    assert calls == 2
+    assert len(blocked) == 2
+    assert len(set(blocked)) == 2
+    assert all(path.exists() for path in blocked)
+    assert all(str(path) in str(caught.value) for path in blocked)
+    assert "STAGING_CLEANUP_INCOMPLETE" in str(caught.value)
+    assert "ENOSPC" in str(caught.value)
+    assert isinstance(caught.value.__cause__, REPLAY_RUNNER.RematerializationError)
+    assert isinstance(caught.value.__cause__.__cause__, OSError)
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    assert not any(
+        path.exists()
+        for path in (args.output_report, args.output_survivors, args.output_receipt)
+    )
+
+    for path in blocked:
+        path.unlink()
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovery["training_authorized"] is False
