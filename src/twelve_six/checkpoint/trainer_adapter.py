@@ -441,6 +441,7 @@ def _preflight_trainer_state(
             try:
                 _core.restore_rng_state(ambient)
             except BaseException as rng_exc:
+                _restore_ambient_rng_after_failed_apply(ambient, rng_exc)
                 # A secondary policy rollback fault must not hide the primary
                 # failed/interrupted RNG rollback or its preflight context.
                 if warn_only is not None:
