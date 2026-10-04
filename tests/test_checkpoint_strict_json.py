@@ -223,6 +223,24 @@ def test_checkpoint_payload_growth_after_stale_fstat_is_bounded(
     assert intercepted
 
 
+@pytest.mark.parametrize("operation", ["lstat", "iterdir"])
+def test_checkpoint_root_metadata_denial_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    checkpoint = tmp_path / "root-denial"
+    _save(checkpoint)
+    original = getattr(Path, operation)
+
+    def denied(self: Path) -> object:
+        if self == checkpoint:
+            raise PermissionError("injected root metadata denial")
+        return original(self)
+
+    monkeypatch.setattr(Path, operation, denied)
+    with pytest.raises(CheckpointIntegrityError, match="cannot inspect checkpoint directory"):
+        verify_checkpoint(checkpoint)
+
+
 @pytest.mark.parametrize("name", ["manifest.json", "MANIFEST.sha256", "weights.safetensors"])
 def test_checkpoint_lstat_denial_is_typed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
