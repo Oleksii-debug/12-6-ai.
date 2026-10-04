@@ -300,3 +300,46 @@ def test_adapter_loader_rng_draws_restored_only_when_requested(
             assert actual != expected
     finally:
         core.restore_rng_state(ambient)
+
+
+@pytest.mark.parametrize(
+    "unfresh",
+    ["micro_step", "tokens_seen", "_pending_tokens", "gradient"],
+)
+def test_actual_d02_target_refused_without_checkpoint_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unfresh: str,
+) -> None:
+    """Exercise the actual Trainer target, not only a duck-typed test adapter."""
+
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    ambient = core.capture_rng_state()
+    try:
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, TrainerConfig(max_steps=10, seed=703))
+        before = [parameter.detach().clone() for parameter in model.parameters()]
+        if unfresh == "gradient":
+            parameter = next(model.parameters())
+            parameter.grad = torch.ones_like(parameter)
+        else:
+            setattr(trainer, unfresh, 1)
+
+        def forbidden_read(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("D02 nonfresh preflight must precede checkpoint I/O")
+
+        monkeypatch.setattr(trainer_adapter, "prepare_checkpoint_load", forbidden_read)
+        with pytest.raises(CheckpointCompatibilityError, match="fresh trainer"):
+            trainer_adapter.load_trainer_checkpoint(
+                tmp_path / "not-opened", model=model, trainer=trainer,
+            )
+        for parameter, saved in zip(model.parameters(), before, strict=True):
+            torch.testing.assert_close(parameter.detach(), saved)
+        assert trainer._failure_reason is None
+        assert trainer._update_incomplete is False
+    finally:
+        core.restore_rng_state(ambient)
