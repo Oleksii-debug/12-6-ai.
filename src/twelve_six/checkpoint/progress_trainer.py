@@ -34,9 +34,9 @@ from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
     _assert_bound_metadata,
     _assert_d02_checkpoint_rng_policy,
-    _effective_strict_model,
     _assert_live_d02_determinism,
     _assert_trainer_model_binding,
+    _effective_strict_model,
     _preflight_trainer_state,
     _preflight_trainer_target,
     _restore_ambient_rng_after_failed_apply,
