@@ -1,0 +1,30 @@
+NEXT100-025-DATA-UA-GOV-OPEN rights evidence
+Captured: 2026-08-26
+
+Dataset:
+https://data.gov.ua/dataset/644b424e-9884-43cb-8204-0214657f2248
+
+Publisher / data controller:
+Державна служба України з питань геодезії, картографії та кадастру
+
+Dataset title:
+Реєстр наборів даних, що перебувають у володінні розпорядника інформації
+
+Dataset page reuse statement:
+- Open data are published for free access and are permitted for further free use and redistribution.
+- Any person may freely copy, publish, distribute, use (including commercially), combine with other information, or include the open data in their own product, with mandatory attribution/link to the source.
+- The dataset is marked “Creative Commons Attribution”.
+- The data.gov.ua portal footer states CC BY 4.0 for portal content unless otherwise stated.
+
+Project rights interpretation:
+- acquisition/storage/analysis: ALLOWED
+- model-training use: ALLOWED under the dataset’s explicit broad reuse grant
+- redistribution: ALLOWED with mandatory source attribution/link
+- evaluation: NOT_ADMITTED by this authority
+- attribution is mandatory
+- no rights inference is made merely from government provenance
+- only the machine-readable dataset resource selected and hash-bound by this worker is in scope
+- linked datasets, attachments, employee lists, and other resources are outside scope unless separately bound
+
+Attribution template:
+Source: Державна служба України з питань геодезії, картографії та кадастру; data.gov.ua dataset 644b424e-9884-43cb-8204-0214657f2248; original resource URL; extracted/normalized text, changes indicated.
