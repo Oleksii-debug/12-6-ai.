@@ -382,7 +382,7 @@ def _stage_new_bytes(path: Path, raw: bytes, *, label: str) -> Path:
     except BaseException as failure:
         try:
             staged.unlink(missing_ok=True)
-        except OSError as cleanup_error:
+        except (OSError, KeyboardInterrupt, SystemExit) as cleanup_error:
             raise RematerializationError(
                 "STAGING_CLEANUP_INCOMPLETE: "
                 f"{label} write/verification failed ({type(failure).__name__}), "
@@ -542,7 +542,7 @@ def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
         if not isinstance(primary_failure, PublicationIndeterminate):
             try:
                 staged.unlink(missing_ok=True)
-            except OSError as cleanup_error:
+            except (OSError, KeyboardInterrupt, SystemExit) as cleanup_error:
                 if published_and_verified and primary_failure is None:
                     raise RematerializationError(
                         f"{label} was published and byte-verified, but staged cleanup "
@@ -719,14 +719,14 @@ def _publish_verified_outputs(
             published.append((label, path, sha256_bytes(raw)))
     finally:
         primary_failure = sys.exc_info()[1]
-        cleanup_error: OSError | None = None
+        cleanup_error: BaseException | None = None
         cleanup_failures: list[str] = []
         for _, _, temporary, _ in staged:
             if temporary == preserved_stage:
                 continue  # Indeterminate final: retain the original inode alias.
             try:
                 temporary.unlink(missing_ok=True)
-            except OSError as exc:
+            except (OSError, KeyboardInterrupt, SystemExit) as exc:
                 cleanup_failures.append(
                     f"{temporary}: {type(exc).__name__}: {exc}"
                 )
