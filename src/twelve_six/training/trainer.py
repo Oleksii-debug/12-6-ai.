@@ -597,14 +597,10 @@ class Trainer:
     def assert_checkpoint_safe(self) -> None:
         """Require all consumed microbatches to belong to committed optimizer steps."""
         self._assert_trainable()
-        try:
-            self._require_optimizer_parameter_coverage()
-            self._require_no_residual_model_gradients()
-        except BaseException:
-            self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
-            raise
         if self.optimizer_step > self.config.max_steps:
             raise RuntimeError("optimizer_step exceeds configured max_steps")
+        # A normal mid-accumulation checkpoint attempt must remain retryable:
+        # its gradients are legitimately pending and no state was exported.
         self.assert_accumulation_boundary()
         expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
         if self.micro_step != expected_micro_steps:
@@ -614,6 +610,12 @@ class Trainer:
             )
         if self._pending_tokens != 0 or self._pending_loss_sum != 0.0:
             raise RuntimeError("trainer has pending accumulation statistics")
+        try:
+            self._require_optimizer_parameter_coverage()
+            self._require_no_residual_model_gradients()
+        except BaseException:
+            self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
+            raise
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
