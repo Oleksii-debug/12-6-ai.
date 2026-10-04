@@ -106,38 +106,72 @@ def _parse_finite_float(value: str) -> float:
 
 
 def _require_finite_json_value(
-    value: object, *, label: str, depth: int = 0
+    value: object, *, label: str, depth: int = 0,
+    _budget: list[int] | None = None, _is_key: bool = False,
+    _byte_budget: list[int] | None = None,
 ) -> None:
-    # Authority documents are small.  Bound programmatic recursion (including
-    # cyclic objects) independently of the JSON decoder's own nesting limit.
+    # Bound both the number of parsed values and their cumulative UTF-8
+    # payload before any whole-document canonical JSON serialization.
+    # Repeated DAG references consume budget on each visit.
     _require(depth <= 64, f"{label} JSON nesting limit exceeded")
+    if _budget is None:
+        _budget = [0]
+    if _byte_budget is None:
+        _byte_budget = [0]
+    if not _is_key:
+        _budget[0] += 1
+        _require(_budget[0] <= MAX_JSON_NODES, f"{label} exceeds node limit")
     if isinstance(value, float):
         _require(math.isfinite(value), f"{label} contains non-finite float")
         return
     if type(value) is dict:
         for key, item in value.items():
             _require(type(key) is str, f"{label} has a non-string JSON key")
-            _require_finite_json_value(key, label=f"{label}.key", depth=depth + 1)
-            _require_finite_json_value(item, label=f"{label}.{key}", depth=depth + 1)
+            _require_finite_json_value(
+                key, label=f"{label}.key", depth=depth + 1,
+                _budget=_budget, _is_key=True, _byte_budget=_byte_budget,
+            )
+            _require_finite_json_value(
+                item, label=f"{label}.{key}", depth=depth + 1,
+                _budget=_budget, _byte_budget=_byte_budget,
+            )
         return
     if type(value) is list:
         for index, item in enumerate(value):
-            _require_finite_json_value(item, label=f"{label}[{index}]", depth=depth + 1)
+            _require_finite_json_value(
+                item, label=f"{label}[{index}]", depth=depth + 1,
+                _budget=_budget, _byte_budget=_byte_budget,
+            )
         return
     if type(value) is str:
+        _require(len(value) <= MAX_INPUT_BYTES, f"{label} exceeds byte limit")
         try:
-            value.encode("utf-8")
+            encoded = value.encode("utf-8")
         except UnicodeError as exc:
             raise ValueError(f"{label} contains invalid UTF-8") from exc
+        _byte_budget[0] += len(encoded)
+        _require(_byte_budget[0] <= MAX_INPUT_BYTES, f"{label} exceeds byte limit")
         return
     _require(
         value is None or type(value) is int or type(value) is bool,
         f"{label} is not a JSON scalar",
     )
 
-
 MAX_INPUT_BYTES = 1_048_576
 MAX_JSON_NODES = 10_000
+
+
+def _require_canonical_byte_limit(value: object, *, label: str) -> None:
+    # JSONEncoder.iterencode yields bounded chunks; avoid constructing a
+    # potentially gigabyte-scale document just to reject it as oversized.
+    encoder = json.JSONEncoder(
+        ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False,
+    )
+    total = 0
+    for chunk in encoder.iterencode(value):
+        total += len(chunk.encode("utf-8"))
+        _require(total <= MAX_INPUT_BYTES, f"{label} exceeds byte limit")
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
@@ -174,6 +208,7 @@ def _load_mapping(path: Path) -> dict[str, Any]:
 def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
     _require(type(doc) is dict, "reservation document must be a JSON object")
     _require_finite_json_value(doc, label="reservation document")
+    _require_canonical_byte_limit(doc, label="reservation document")
     _require_exact_fields(doc, {
         "schema_version", "worker_id", "issue", "execution_class",
         "purpose", "predecessor", "reservation", "objects",
@@ -273,8 +308,11 @@ def validate_document(doc: dict[str, Any]) -> dict[str, Any]:
 def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, Any]) -> None:
     _require(type(doc) is dict, "reservation document must be a JSON object")
     _require(type(evidence) is dict, "materialization evidence must be a JSON object")
-    _require_finite_json_value(doc, label="reservation document")
+    # A direct caller must not obtain valid evidence against an unvalidated
+    # contract that widens training, tokenizer, or final-test authority.
+    validate_document(doc)
     _require_finite_json_value(evidence, label="materialization evidence")
+    _require_canonical_byte_limit(evidence, label="materialization evidence")
     _require_exact_fields(evidence, {
         "completed_gate", "discovery_head_sha", "evidence_identity_sha256",
         "execution_profile", "object_set_identity_sha256", "objects",
@@ -327,7 +365,11 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
             "repository", "revision", "source_family",
             "tokenizer_fit_allowed", "training_allowed",
         }, "evidence reserved object")
-        expected = expected_by_repo.get(row.get("repository"))
+        _require(
+            type(row.get("repository")) is str,
+            "evidence repository must be a string",
+        )
+        expected = expected_by_repo.get(row["repository"])
         _require(expected is not None, "unexpected evidence repository")
         _require(row["repository"] not in seen_repositories, "duplicate evidence repository")
         seen_repositories.add(row["repository"])

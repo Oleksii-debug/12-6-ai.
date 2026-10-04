@@ -27,7 +27,14 @@ materializer_spec.loader.exec_module(materializer)
 
 
 def _manifest() -> dict:
-    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+    document = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    # Re-signed negative fixtures patch the validator's pinned evidence ID.
+    # Match the synthetic test document reference to that test-only identity;
+    # the committed contract and production pinned identity never change.
+    document["materialization_evidence"]["identity_sha256"] = (
+        validator.EXPECTED_EVIDENCE_IDENTITY
+    )
+    return document
 
 
 def _evidence() -> dict:
@@ -347,7 +354,11 @@ def test_pending_successor_gates_cannot_be_erased_or_reordered(
         document["remaining_successor_gates"].append("FIT_OR_TRAINING_ALLOWED")
     else:
         document["remaining_successor_gates"] = "all-cleared"
-    with pytest.raises(ValueError, match="remaining successor gates drift"):
+    message = (
+        "reservation contract fields are not closed-world"
+        if mutation == "missing" else "remaining successor gates drift"
+    )
+    with pytest.raises(ValueError, match=message):
         validator.validate_document(document)
 
 
@@ -379,7 +390,11 @@ def test_resealed_evidence_cannot_change_pending_gates(
     else:
         evidence["remaining_gates"] = "done"
     _resign_evidence(evidence, monkeypatch)
-    with pytest.raises(ValueError, match="evidence remaining gates drift"):
+    message = (
+        "materialization evidence fields are not closed-world"
+        if mutation == "missing" else "evidence remaining gates drift"
+    )
+    with pytest.raises(ValueError, match=message):
         validator.validate_materialization_evidence(_manifest(), evidence)
 
 
@@ -403,7 +418,7 @@ def test_resealed_evidence_rejects_malformed_nested_shapes(
 def test_direct_evidence_validator_rejects_malformed_reservation_shape() -> None:
     document = _manifest()
     document["reservation"] = []
-    with pytest.raises(ValueError, match="evidence reservation timestamp drift"):
+    with pytest.raises(ValueError, match="reservation must be a JSON object"):
         validator.validate_materialization_evidence(document, _evidence())
 
 
@@ -429,7 +444,7 @@ def test_programmatic_authority_rejects_invalid_utf8() -> None:
     [
         ("root", "training_allowed", "reservation contract"),
         ("predecessor", "untrusted_head_sha", "predecessor"),
-        ("reservation", "evaluation_authorized", "reservation fields"),
+        ("reservation", "evaluation_authorized", "reservation"),
         ("object", "training_authorized", "reserved object"),
         ("materialization_evidence", "alternative_identity", "evidence reference"),
         ("truth_boundary", "final_test_allowed", "reservation truth boundary"),
@@ -524,6 +539,28 @@ def test_resealed_evidence_rejects_reserved_object_purpose_promotion(
     _resign_evidence(evidence, monkeypatch)
     with pytest.raises(ValueError, match="evidence purpose drift"):
         validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+@pytest.mark.parametrize("target", ["contract", "evidence"])
+@pytest.mark.parametrize("shape", ["single_scalar", "total_canonical_bytes"])
+def test_programmatic_eval_authority_has_same_byte_limit_as_files(
+    target: str, shape: str,
+) -> None:
+    document = _manifest()
+    evidence = _evidence()
+    # The second input stays below the per-string cap, but the complete
+    # serialized authority must still be rejected at the shared byte limit.
+    size = (
+        validator.MAX_INPUT_BYTES + 1
+        if shape == "single_scalar"
+        else validator.MAX_INPUT_BYTES - 100
+    )
+    (document if target == "contract" else evidence)["worker_id"] = "x" * size
+    with pytest.raises(ValueError, match="exceeds byte limit"):
+        if target == "contract":
+            validator.validate_document(document)
+        else:
+            validator.validate_materialization_evidence(document, evidence)
 
 
 @pytest.mark.parametrize("target", ["contract", "evidence"])
@@ -623,3 +660,86 @@ def test_eval647_cli_keeps_existing_valid_output(
     result = json.loads(output.out)
     assert result["reserved_objects"] == 2
     assert result["selection_validation_records_authorized"] == 0
+
+
+def test_programmatic_authority_shared_dag_has_node_budget() -> None:
+    document = _manifest()
+    shared: object = 0
+    for _ in range(15):
+        shared = [shared, shared]
+    document["predecessor"]["head_sha"] = shared
+    with pytest.raises(ValueError, match="exceeds node limit"):
+        validator.validate_document(document)
+
+
+@pytest.mark.parametrize("bad", [[], {}])
+def test_resealed_evidence_rejects_unhashable_repository(
+    bad: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _evidence()
+    evidence["objects"][0]["repository"] = bad
+    _resign_evidence(evidence, monkeypatch)
+    with pytest.raises(ValueError, match="evidence repository must be a string"):
+        validator.validate_materialization_evidence(_manifest(), evidence)
+
+
+def test_parsed_value_node_limit_does_not_count_json_mapping_keys(
+    tmp_path: Path,
+) -> None:
+    document = {"items": {str(i): 0 for i in range(validator.MAX_JSON_NODES - 2)}}
+    path = tmp_path / "node-limit.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    assert validator._load_mapping(path) == document
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("reservation_training", "training accidentally allowed"),
+        ("truth_training", "model training prematurely authorized"),
+        ("object_sha", "identity drift for jd/tenacity:raw_sha256"),
+        ("evidence_identity", "evidence identity drift"),
+    ],
+)
+def test_direct_evidence_validation_rejects_invalid_contract(
+    mutation: str, error: str,
+) -> None:
+    document = _manifest()
+    if mutation == "reservation_training":
+        document["reservation"]["training_allowed"] = True
+    elif mutation == "truth_training":
+        document["truth_boundary"]["model_training_authorized"] = True
+    elif mutation == "object_sha":
+        document["objects"][0]["raw_sha256"] = "0" * 64
+    else:
+        document["materialization_evidence"]["identity_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match=error):
+        validator.validate_materialization_evidence(document, _evidence())
+
+
+@pytest.mark.parametrize("target", ["contract", "evidence"])
+@pytest.mark.parametrize("shape", ["aggregate_strings", "escaped_string"])
+def test_programmatic_byte_limit_does_not_eagerly_canonicalize(
+    target: str, shape: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _manifest()
+    evidence = _evidence()
+    selected = document if target == "contract" else evidence
+    if shape == "aggregate_strings":
+        # Each string fits the limit, but their combined UTF-8 body does not.
+        size = validator.MAX_INPUT_BYTES // 2 + 1024
+        selected["worker_id"] = "x" * size
+        selected["purpose" if target == "contract" else "status"] = "y" * size
+    else:
+        # Escaping enlarges canonical JSON beyond the raw UTF-8 string budget.
+        selected["worker_id"] = chr(0) * 200_000
+
+    def eager_serialization_is_forbidden(_value: object) -> bytes:
+        raise AssertionError("oversized authority was serialized eagerly")
+
+    monkeypatch.setattr(validator, "_canonical_bytes", eager_serialization_is_forbidden)
+    with pytest.raises(ValueError, match="exceeds byte limit"):
+        if target == "contract":
+            validator.validate_document(document)
+        else:
+            validator.validate_materialization_evidence(document, evidence)
