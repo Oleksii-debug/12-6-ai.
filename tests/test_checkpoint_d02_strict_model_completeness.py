@@ -5,6 +5,7 @@ Synthetic CPU acceptance cases only; not physical model-training evidence.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -189,8 +190,6 @@ def _checkpoint_after_tiny_trainer_step(
     with_buffer: bool,
 ) -> tuple[torch.nn.Embedding, Trainer, TrainerConfig]:
     """Persist D02's genuine transition on tiny synthetic IDs, not corpus evidence."""
-    from dataclasses import replace
-
     config = TrainerConfig(max_steps=3, seed=703)
     # Exactly 12 trainable parameters and 3 output logits. This permits a
     # real D02 optimizer transition without consuming any project data.
@@ -213,6 +212,7 @@ def _checkpoint_after_tiny_trainer_step(
     core.verify_checkpoint(checkpoint)
     assert any(trainer.optimizer.state.values())
     return model, trainer, config
+
 
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
