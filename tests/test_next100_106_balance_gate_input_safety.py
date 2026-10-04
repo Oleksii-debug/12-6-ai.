@@ -640,6 +640,7 @@ def test_unpublished_stage_cleanup_failure_fails_closed(
     assert len(list(tmp_path.glob(f".{output.name}.*.tmp"))) == 1
     assert source.read_bytes() == b"original authority"
 
+
 def test_failed_stage_fsync_and_cleanup_preserve_original_cause(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
