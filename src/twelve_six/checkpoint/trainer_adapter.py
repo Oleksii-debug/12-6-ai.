@@ -452,6 +452,21 @@ def _preflight_trainer_state_without_rng_guard(
                 "checkpoint optimizer_step exceeds configured max_steps"
             )
 
+    # A canonical D02 trainer refuses non-finite committed moments only after
+    # loading them. Reject poisoned tensor leaves here, while the live model,
+    # optimizer, counters and RNG are still untouched. Use D02's own recursive
+    # numerical contract rather than introducing a different finiteness policy.
+    if canonical_d02:
+        require_finite = getattr(trainer, "_require_finite_state_tree", None)
+        if callable(require_finite):
+            for field in ("optimizer", "scheduler", "scaler"):
+                try:
+                    require_finite(state.get(field), f"checkpoint {field}")
+                except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
+                    raise CheckpointCompatibilityError(
+                        f"checkpoint trainer {field} has non-finite or invalid numeric state"
+                    ) from exc
+
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
         if not hasattr(trainer, "load_state_dict"):
