@@ -279,3 +279,64 @@ def test_boolean_seed_cannot_equal_integer_seed_binding(tmp_path: Path) -> None:
     np.testing.assert_array_equal(model.weights, before)
     assert model.loads == 0
     assert trainer.loads == 0
+
+
+@pytest.mark.parametrize("failed_stage", ["model", "trainer", "rng"])
+def test_partial_restore_poison_prevents_in_place_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failed_stage: str,
+) -> None:
+    from twelve_six.checkpoint import progress_trainer
+
+    class CanonicalTarget(GenericTrainer):
+        def __init__(self) -> None:
+            super().__init__()
+            self._failure_reason: str | None = None
+            self._update_incomplete = False
+
+    checkpoint = tmp_path / "apply-fault"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        trainer=GenericTrainer(),
+        identity=identity(),
+    )
+    model = NumpyModel([9.0, 9.0, 9.0])
+    trainer = CanonicalTarget()
+    if failed_stage == "model":
+        original_apply = progress_trainer._apply_model_weights
+
+        def broken_apply(*args: object, **kwargs: object) -> None:
+            original_apply(*args, **kwargs)
+            raise RuntimeError("model apply failed after mutation")
+
+        monkeypatch.setattr(progress_trainer, "_apply_model_weights", broken_apply)
+    elif failed_stage == "trainer":
+        original_load = CanonicalTarget.load_state_dict
+
+        def broken_load(self: CanonicalTarget, state: dict[str, object]) -> None:
+            original_load(self, state)
+            if self is trainer:
+                raise RuntimeError("trainer apply failed after mutation")
+
+        monkeypatch.setattr(CanonicalTarget, "load_state_dict", broken_load)
+    else:
+        def broken_rng(_state: object) -> None:
+            raise RuntimeError("rng apply failed after model mutation")
+
+        monkeypatch.setattr(progress_trainer, "restore_rng_state", broken_rng)
+
+    with pytest.raises(RuntimeError, match="apply failed"):
+        load_trainer_checkpoint(
+            checkpoint, model=model, trainer=trainer,
+            restore_rng=(failed_stage == "rng"),
+        )
+    assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+    assert trainer._update_incomplete is True
+    # The checkpoint was preflighted, but an application-time error may have
+    # already changed the model; an in-place restore retry must fail closed.
+    with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
+        load_trainer_checkpoint(
+            checkpoint, model=model, trainer=trainer, restore_rng=False,
+        )
