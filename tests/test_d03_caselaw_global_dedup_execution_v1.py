@@ -994,3 +994,90 @@ with TemporaryDirectory() as raw:
 """
     )
 
+
+def test_v7_fetch_transport_error_identifies_pinned_url_without_payload_leak() -> None:
+    _run_isolated(
+        """
+import hashlib
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/private/file?token=UNPRINTED"
+primary = URLError("simulated TLS handshake error")
+calls = []
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    raise primary
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: (fetch_module.fetch_exact_source(url), None, None, None)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except URLError as exc:
+    assert exc is primary
+    note = "\\n".join(exc.__notes__)
+    assert "host=source.example.invalid" in note
+    assert hashlib.sha256(url.encode("utf-8")).hexdigest() in note
+    assert "private" not in note
+    assert "UNPRINTED" not in note
+else:
+    raise AssertionError("original network error was swallowed")
+assert calls == [url]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_v7_fetch_success_is_byte_identical_and_restores_original() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+raw = b"\\x00strict-original-utf8\\xff"
+def original_fetch(_url):
+    return raw
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: (None, {}, {},
+                           fetch_module.fetch_exact_source("https://example.org/a"))
+)
+result = mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+assert result[3] is raw
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_v7_fetch_interruption_restores_original_without_relabeling() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+primary = KeyboardInterrupt("stop safely")
+def original_fetch(_url):
+    raise primary
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source("https://example.org/a")
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except KeyboardInterrupt as exc:
+    assert exc is primary
+    assert not hasattr(exc, "__notes__")
+else:
+    raise AssertionError("original interruption was swallowed")
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
