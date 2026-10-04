@@ -145,6 +145,30 @@ def test_complex_signed_zero_is_real_structural_difference() -> None:
     assert report["marshal_equal"] is False
     assert report["attestation_override_allowed"] is False
 
+
+def test_partial_marshal_failure_discards_both_digest_claims(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    original = marshal.dumps
+    calls = 0
+
+    def fail_second(value: object) -> bytes:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ValueError("simulated marshal limit")
+        return original(value)
+
+    monkeypatch.setattr(marshal, "dumps", fail_second)
+    report = compare_code_objects(code, code)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+
 def test_exact_historical_v3_pyc_matches_recompilation_after_warmup(tmp_path: Path) -> None:
     """Isolate pinned V3 bytecode from Caselaw transport and physical data."""
     root = Path(__file__).resolve().parents[1]
