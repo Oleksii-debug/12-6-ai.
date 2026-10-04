@@ -220,6 +220,30 @@ class Trainer:
                         f"optimizer produced non-finite state at micro_step={self.micro_step}"
                     )
 
+    def _require_finite_auxiliary_state(self) -> None:
+        # The optimizer or scheduler may have changed groups after the
+        # pre-backward check; a completed step must remain checkpoint-safe.
+        self._require_optimizer_parameter_coverage()
+        for group in self.optimizer.param_groups:
+            rate = group["lr"]
+            if (
+                isinstance(rate, bool)
+                or not math.isfinite(float(rate))
+                or float(rate) < 0
+            ):
+                raise NonFiniteTrainingError(
+                    "optimizer learning rate must be finite and >= 0"
+                )
+        for value in self.scaler.state_dict().values():
+            if isinstance(value, Tensor):
+                finite = bool(torch.isfinite(value).all().item())
+            elif isinstance(value, (int, float)):
+                finite = math.isfinite(value)
+            else:
+                continue
+            if not finite:
+                raise NonFiniteTrainingError("gradient scaler has non-finite state")
+
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
         if self.config.precision == "fp16" and self.device.type != "cuda":
@@ -469,6 +493,9 @@ class Trainer:
                 self.optimizer.zero_grad(set_to_none=True)
                 if self.scheduler is not None:
                     self.scheduler.step()
+                # An effectful scheduler or scaler can corrupt the NEXT step's
+                # state after the finite optimizer update. Reject that now.
+                self._require_finite_auxiliary_state()
                 # A custom optimizer may silently ignore zero_grad or swap
                 # groups inside step(). Never expose that as a clean boundary.
                 self._require_no_residual_model_gradients()
@@ -629,7 +656,7 @@ class Trainer:
         if self._pending_tokens != 0 or self._pending_loss_sum != 0.0:
             raise RuntimeError("trainer has pending accumulation statistics")
         try:
-            self._require_optimizer_parameter_coverage()
+            self._require_finite_auxiliary_state()
             self._require_no_residual_model_gradients()
         except BaseException:
             self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
