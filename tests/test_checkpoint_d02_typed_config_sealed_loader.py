@@ -272,3 +272,110 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
     source.train_microbatch(_BATCH)
     target.train_microbatch(_BATCH)
     torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    ("field", "alias"),
+    [
+        ("micro_step", True),
+        ("optimizer_step", True),
+        ("micro_step", 1.0),
+        ("optimizer_step", 1.0),
+        ("tokens_seen", 2.0),
+    ],
+    ids=["micro-bool", "optimizer-bool", "micro-float", "optimizer-float", "tokens-float"],
+)
+def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_ambient_state: Any,
+    loader: Any,
+    field: str,
+    alias: Any,
+) -> None:
+    """Refuse a semantically invalid nonzero checkpoint before model mutation."""
+    from dataclasses import replace
+
+    config = TrainerConfig(seed=703, max_steps=2)
+    source_model = _TinyLogits()
+    source = Trainer(source_model, config, device="cpu")
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert (source.micro_step, source.optimizer_step, source.tokens_seen) == (1, 1, 2)
+    state = asdict(source.state_dict())
+    bad_state = copy.deepcopy(state)
+    bad_state[field] = alias
+    assert bad_state[field] == state[field] and type(bad_state[field]) is not int
+
+    identity = replace(_identity(), step=1, tokens_seen=2)
+    invalid = tmp_path / f"invalid-committed-{field}-дані"
+    valid = tmp_path / f"valid-committed-{field}-дані"
+    for location, payload in ((invalid, bad_state), (valid, state)):
+        core.save_checkpoint(
+            location, model=source_model, trainer_state=payload, identity=identity,
+        )
+        core.verify_checkpoint(location)
+
+    target_model = _TinyLogits()
+    target = Trainer(target_model, config, device="cpu")
+    weights_before = target_model.weight.detach().clone()
+    model_applications: list[bool] = []
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    def refuse_model_apply(*args: Any, **kwargs: Any) -> None:
+        model_applications.append(True)
+        raise AssertionError("invalid committed counter reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", refuse_model_apply)
+    expected = {"expected_step": 1, "expected_tokens_seen": 2} if (
+        loader is progress_trainer
+    ) else {}
+    with pytest.raises(
+        CheckpointCompatibilityError, match=f"trainer {field} must be a non-negative integer",
+    ):
+        loader.load_trainer_checkpoint(
+            invalid, model=target_model, trainer=target,
+            strict_model=False, restore_rng=False, **expected,
+        )
+    assert model_applications == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target_model.weight.grad is None
+    torch.testing.assert_close(target_model.weight, weights_before, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    after_numpy = np.random.get_state()
+    assert after_numpy[0] == np_before[0]
+    np.testing.assert_array_equal(after_numpy[1], np_before[1])
+    assert after_numpy[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert policy_before == (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    monkeypatch.undo()
+    loader.load_trainer_checkpoint(
+        valid, model=target_model, trainer=target,
+        strict_model=False, restore_rng=False, **expected,
+    )
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
+    for source_state, target_state in zip(
+        source.optimizer.state.values(), target.optimizer.state.values(), strict=True,
+    ):
+        for key in source_state:
+            torch.testing.assert_close(source_state[key], target_state[key], rtol=0, atol=0)
+
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert (source.optimizer_step, target.optimizer_step) == (2, 2)
+    torch.testing.assert_close(target_model.weight, source_model.weight, rtol=0, atol=0)
