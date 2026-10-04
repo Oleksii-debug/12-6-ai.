@@ -25,7 +25,11 @@ from .core import (
 )
 from .d04_resume_binding import assert_d04_resume_binding
 from .progress_binding import _assert_progress
-from .trainer_adapter import _assert_bound_metadata, _preflight_trainer_state
+from .trainer_adapter import (
+    _assert_bound_metadata,
+    _preflight_trainer_state,
+    _preflight_trainer_target,
+)
 
 _HEX = frozenset("0123456789abcdef")
 
@@ -146,6 +150,10 @@ def load_trainer_checkpoint(
         expected_seed=expected_seed,
     )
 
+    # Refuse a previously poisoned instance before opening or decoding a
+    # potentially model-scale checkpoint; post-decode preflight repeats this
+    # guard before mutation in case the target state changed meanwhile.
+    _preflight_trainer_target(trainer)
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
     if (
