@@ -193,7 +193,14 @@ def _write_new_output(
         if not _staged_payload_matches(staged_path, identity, payload):
             raise ProjectionError("staged adapter bytes changed before publication")
         # Hard link is create-only, never a replacement of existing final evidence.
-        os.link(staged_path, final)
+        try:
+            os.link(staged_path, final)
+        except OSError:
+            # Publication may have succeeded before its caller received an error.
+            # Roll back only a final pathname still naming our staged inode.
+            if _same_inode(final, identity):
+                linked = True
+            raise
         linked = True
         if (
             not _staged_payload_matches(final, identity, payload)
