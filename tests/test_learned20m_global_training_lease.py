@@ -1082,3 +1082,34 @@ def test_remote_lease_tip_change_after_blob_read_is_fail_closed(
         assert remote_tip.split()[0] == descendant
     else:
         assert remote_tip == ""
+
+
+def test_deep_caller_mappings_fail_closed_before_remote_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public lease entry points must not leak a recursive input exception."""
+    nested: dict = {}
+    current = nested
+    for _ in range(3_000):
+        child: dict = {}
+        current["nested"] = child
+        current = child
+
+    def unexpected_git(*_args, **_kwargs):
+        raise AssertionError("invalid caller mapping must not access the remote")
+
+    monkeypatch.setattr(global_lease_module, "_run_git", unexpected_git)
+    inspection = inspect_global_training_run_lease(".", "origin", nested)
+    assert inspection.present is False
+    assert inspection.valid is False
+    assert inspection.blockers == ("launch_manifest_snapshot_invalid",)
+
+    manifest, authority = _authorized_manifest()
+    denied = acquire_global_training_run_lease(
+        ".", "origin", manifest, nested,
+        expected_terminal_authority_sha256=authority,
+        now=NOW,
+    )
+    assert denied.committed is False
+    assert denied.blockers == ("training_run_lease_snapshot_invalid",)
+    _assert_no_authority_widening(denied)
