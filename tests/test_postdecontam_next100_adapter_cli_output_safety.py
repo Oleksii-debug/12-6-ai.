@@ -936,3 +936,90 @@ def test_failed_rollback_and_stage_cleanup_report_both_orphans_and_cause(
         family_vector=vector, dedup_authority=authority,
     )
     assert output.read_bytes() == b"verified result"
+
+
+def test_postlink_adapter_exception_rolls_back_own_unverified_final(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Link creation followed by an exception must leave no final or stage."""
+    vector = tmp_path / "original vector.json"
+    authority = tmp_path / "original authority.json"
+    output = tmp_path / "український результат із пробілами.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    real_link = cli.os.link
+    linked = False
+
+    def link_then_raise(stage: Path, final: Path) -> None:
+        nonlocal linked
+        real_link(stage, final)
+        linked = True
+        raise OSError("injected adapter postlink response loss")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(cli.os, "link", link_then_raise)
+        with pytest.raises(
+            ProjectionError, match="cannot publish adapter output safely",
+        ) as caught:
+            cli._write_new_output(
+                output, b"candidate",
+                family_vector=vector, dedup_authority=authority,
+            )
+
+    assert linked is True
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "postlink response loss" in str(caught.value.__cause__)
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+    cli._write_new_output(
+        output, b"candidate", family_vector=vector, dedup_authority=authority,
+    )
+    assert output.read_bytes() == b"candidate"
+
+
+def test_postlink_adapter_exception_and_locked_final_preserve_both_faults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed own-inode rollback retains the original link failure as cause."""
+    vector = tmp_path / "original vector.json"
+    authority = tmp_path / "original authority.json"
+    output = tmp_path / "unverified result.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    real_link = cli.os.link
+    real_unlink = Path.unlink
+
+    def link_then_raise(stage: Path, final: Path) -> None:
+        real_link(stage, final)
+        raise OSError("injected adapter postlink failure")
+
+    def lock_final(path: Path, *args: object, **kwargs: object) -> None:
+        if path == output:
+            raise PermissionError("injected adapter final lock")
+        real_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(cli.os, "link", link_then_raise)
+        fault.setattr(Path, "unlink", lock_final)
+        with pytest.raises(ProjectionError, match="ROLLBACK_INCOMPLETE") as caught:
+            cli._write_new_output(
+                output, b"candidate",
+                family_vector=vector, dedup_authority=authority,
+            )
+
+    assert str(output) in str(caught.value)
+    assert "postlink failure" in str(caught.value)
+    assert "final lock" in str(caught.value)
+    assert isinstance(caught.value.__cause__, ProjectionError)
+    assert isinstance(caught.value.__cause__.__cause__, OSError)
+    assert output.read_bytes() == b"candidate"
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+    output.unlink()
+    cli._write_new_output(
+        output, b"candidate", family_vector=vector, dedup_authority=authority,
+    )
+    assert output.read_bytes() == b"candidate"
