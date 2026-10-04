@@ -749,6 +749,42 @@ def test_reject_duplicate_parameter_assignment_across_optimizer_groups():
         Trainer(model, TrainerConfig(max_steps=1, seed=17), optimizer=optimizer)
 
 
+
+def test_optimizer_group_nonsequence_is_type_error_and_poisons_before_exposure():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    before = model.weight.detach().clone()
+    trainer.optimizer.param_groups[0]["params"] = iter([model.weight])
+
+    with pytest.raises(TypeError, match="concrete parameter sequence"):
+        trainer.train_microbatch(_BATCH)
+
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(model.weight.detach(), before, rtol=0, atol=0)
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_cleanup_interrupt_preserves_original_backward_failure(monkeypatch):
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    model.failure_type = ValueError
+
+    def interrupted_optimizer_cleanup(*args, **kwargs):
+        raise KeyboardInterrupt("synthetic cleanup interruption")
+
+    monkeypatch.setattr(trainer.optimizer, "zero_grad", interrupted_optimizer_cleanup)
+    with pytest.raises(ValueError, match="synthetic backward interruption"):
+        trainer.train_microbatch(_BATCH)
+
+    assert "gradient cleanup failed: KeyboardInterrupt" in trainer._failure_reason
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (0, 0, 0)
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
 def test_optimizer_group_swap_before_microbatch_poisoned_without_exposure():
     model = _TinyLogitModel()
     trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
