@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from twelve_six.checkpoint import core as checkpoint_core
 from twelve_six.checkpoint.core import (
     CheckpointIdentity,
     CheckpointIntegrityError,
@@ -136,6 +138,38 @@ def test_checkpoint_metadata_read_is_bounded_before_parsing(
         match=f"checkpoint artifact exceeds {max_bytes}-byte limit: {name}",
     ):
         verify_checkpoint(checkpoint)
+
+
+def test_manifest_growth_after_fstat_still_has_bounded_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkpoint = tmp_path / "post-stat-growth"
+    _save(checkpoint)
+    path = checkpoint / "manifest.json"
+    prefix = path.read_bytes()
+    _write_manifest_bytes(
+        checkpoint,
+        prefix + b" " * (MAX_CHECKPOINT_MANIFEST_BYTES + 1 - len(prefix)),
+    )
+    original_fstat = os.fstat
+    intercepted = []
+
+    def stale_fstat(fd: int) -> os.stat_result:
+        actual = original_fstat(fd)
+        if actual.st_size > MAX_CHECKPOINT_MANIFEST_BYTES:
+            intercepted.append(True)
+            values = list(actual)
+            values[6] = MAX_CHECKPOINT_MANIFEST_BYTES
+            return os.stat_result(values)
+        return actual
+
+    monkeypatch.setattr(checkpoint_core.os, "fstat", stale_fstat)
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="checkpoint artifact exceeds .*byte limit: manifest.json",
+    ):
+        verify_checkpoint(checkpoint)
+    assert intercepted
 
 
 @pytest.mark.parametrize(
