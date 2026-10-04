@@ -1,0 +1,125 @@
+{
+  "schema_version": "12-6.d03-caselaw-source-admission-real-execution.v1",
+  "execution_profile": "LOCAL_FREE",
+  "execution_claim_issue": 1474,
+  "finalization_claim_issue": 1766,
+  "prequalification_issue": 1481,
+  "product_pr": 1347,
+  "successful_execution": {
+    "workflow_run_id": 34674050719,
+    "job_id": 103500589035,
+    "execution_head_sha": "0978645d5a8c979852a3c5c401c600cddf77e73a",
+    "checkout_merge_sha": "613db8457197787930486e025a4c7aa50636f05f",
+    "checkout_main_parent_sha": "f250f24fd0004c5021ecbc637ab17d959c266e1d",
+    "github_head_ref": "d03/1342-caselaw-source-admission-real-replay",
+    "github_base_ref": "main",
+    "github_run_attempt": 1,
+    "github_run_number": 3609,
+    "github_job": "bootstrap",
+    "workflow_path": ".github/workflows/ci.yml",
+    "event": "pull_request",
+    "conclusion": "success",
+    "shared_pytest_passed": 1274
+  },
+  "authority": {
+    "historical_product": {
+      "product_pr": 904,
+      "semantic_commit_sha": "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82",
+      "config_path": "configs/data/d03_common_pile_caselaw_zero_credit_v1.json",
+      "config_git_blob_sha1": "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467",
+      "materializer_path": "tools/materialize_d03_common_pile_caselaw.py",
+      "materializer_git_blob_sha1": "a7fcaeee0302c46c43e5a6ae43da16363810f14a"
+    },
+    "source_admission": {
+      "policy_pr": 1079,
+      "merge_commit_sha": "b482d345867779fb8226726d73f11ec8aedd6e27",
+      "policy_path": "configs/data/d03_common_pile_caselaw_source_admission_v1.json",
+      "policy_git_blob_sha1": "7a9caa78095dd1ced12568edaf726ec3657f28ed",
+      "verifier_path": "tools/verify_d03_common_pile_caselaw_source_admission.py",
+      "verifier_git_blob_sha1": "fb9d68339c38c8e44959d830d414b3e4cea0b756"
+    },
+    "product_commit_path_membership_verified": true,
+    "product_binding_observed_from_authenticated_config": true,
+    "source_admission_commit_path_membership_verified": true
+  },
+  "source": {
+    "dataset": "common-pile/caselaw_access_project",
+    "revision": "31e65135501af50f8285b52489bc3b39fd0fc5d5",
+    "family": "en.common-pile.caselaw",
+    "ordering_policy": "PRESERVE_ORIGINAL_CAP_00044_THEN_APPEND_CAP_00043",
+    "objects": [
+      {
+        "file": "cap_00044.jsonl.gz",
+        "compressed_bytes": 9441419,
+        "sha256": "e04bdff817b34d5fd2ab0b4aff272adfe6e863aacef7d4cd24db47e4b7c8db33"
+      },
+      {
+        "file": "cap_00043.jsonl.gz",
+        "compressed_bytes": 10476512,
+        "sha256": "f299c45effc957e1e02d3930e68c5d6dc643eb9d585093ff7445f36095c8531f"
+      }
+    ]
+  },
+  "result": {
+    "historical_product_replay_reproduced": true,
+    "input_records": 5658,
+    "input_normalized_utf8_bytes": 5962147,
+    "historical_candidate_sha256": "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273",
+    "source_admitted_records": 5658,
+    "source_admitted_normalized_utf8_bytes": 5962147,
+    "source_admitted_candidate_sha256": "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273",
+    "candidate_denied_reason_counts": {}
+  },
+  "determinism": {
+    "independent_execution_passes": 2,
+    "raw_source_objects_byte_identical": true,
+    "historical_candidate_bytes_identical": true,
+    "admitted_candidate_bytes_identical": true,
+    "materializer_report_bytes_identical": true,
+    "source_admission_report_bytes_identical": true
+  },
+  "content_boundary": {
+    "candidate_or_source_text_retained_in_git": false,
+    "candidate_payload_uploaded_as_artifact": false,
+    "durable_evidence_text_free": true,
+    "execution_evidence_sources": [
+      "github_actions_run_metadata",
+      "github_actions_job_metadata",
+      "swarm_1481_exact_head_prequalification"
+    ]
+  },
+  "claim_boundary": {
+    "real_source_admission_executed": true,
+    "candidate_status": "CASELAW_SOURCE_ADMITTED_CANDIDATE_ONLY_ZERO_CREDIT",
+    "corpus_admitted": false,
+    "evaluation_eligible": false,
+    "global_dedup_on_this_candidate": "NOT_RUN",
+    "reserved_evaluation_decontamination_on_this_candidate": "NOT_RUN",
+    "privacy_filter_on_this_candidate": "NOT_RUN",
+    "quality_filter_on_this_candidate": "NOT_RUN",
+    "family_balance_on_this_candidate": "NOT_RUN",
+    "cluster_safe_split_on_this_candidate": "NOT_RUN",
+    "deterministic_packing_on_this_candidate": "NOT_RUN",
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "model_training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights_used": false,
+    "external_llm_or_api_used_for_data_or_intelligence": false
+  },
+  "next_required_before_any_training_credit": [
+    "current_global_exact_near_lineage_dedup",
+    "fresh_reserved_evaluation_decontamination",
+    "post_composition_quality_privacy",
+    "balance_and_family_caps",
+    "cluster_safe_split",
+    "deterministic_packing_two_clean_builds",
+    "positive_unique_loss_ledger"
+  ]
+}
