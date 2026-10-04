@@ -226,22 +226,28 @@ class Trainer:
         if "labels" in batch and "target_ids" in batch:
             raise ValueError("batch must not contain both labels and target_ids")
 
-        input_ids = batch["input_ids"].to(self.device)
+        raw_inputs = batch["input_ids"]
         aligned_targets = "target_ids" in batch
-        targets = batch.get(
-            "target_ids",
-            batch.get("labels", batch["input_ids"]),
-        ).to(self.device)
-        loss_mask = batch.get("loss_mask")
-        if loss_mask is not None:
-            if not aligned_targets:
-                raise ValueError("loss_mask is only valid with already-aligned target_ids")
-            loss_mask = loss_mask.to(self.device)
-
-        if input_ids.ndim != 2 or targets.ndim != 2:
+        raw_targets = batch.get("target_ids", batch.get("labels", raw_inputs))
+        raw_mask = batch.get("loss_mask")
+        if raw_mask is not None and not aligned_targets:
+            raise ValueError("loss_mask is only valid with already-aligned target_ids")
+        if raw_inputs.ndim != 2 or raw_targets.ndim != 2:
             raise ValueError("input_ids and training targets must have shape [batch, time]")
-        if input_ids.shape != targets.shape:
+        if raw_inputs.shape != raw_targets.shape:
             raise ValueError("input_ids and training targets must have identical shape")
+        if raw_mask is not None and raw_mask.shape != raw_targets.shape:
+            raise ValueError("loss_mask must match target_ids shape")
+
+        try:
+            input_ids = raw_inputs.to(self.device)
+            targets = raw_targets.to(self.device)
+            loss_mask = None if raw_mask is None else raw_mask.to(self.device)
+        except BaseException:
+            # Transfers can fail after asynchronous device activity. A pending
+            # accumulation group is no longer safe to retry in-place.
+            self._mark_failed(f"batch transfer failed at micro_step={self.micro_step + 1}")
+            raise
         return input_ids, targets, loss_mask, aligned_targets
 
     def _forward_loss(
