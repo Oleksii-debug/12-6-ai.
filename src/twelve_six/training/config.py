@@ -77,6 +77,10 @@ class TrainerConfig:
             minimum=1,
         )
         _require_int("seed", self.seed, minimum=0)
+        # torch.manual_seed accepts [0, 2**64 - 1] for non-negative seeds.
+        # Reject an invalid run identity before any trainer/model side effects.
+        if self.seed >= 2 ** 64:
+            raise ValueError("seed must be <= 2**64 - 1 for torch.manual_seed")
 
         if self.gradient_clip_norm is not None:
             _require_finite("gradient_clip_norm", self.gradient_clip_norm, positive=True)
