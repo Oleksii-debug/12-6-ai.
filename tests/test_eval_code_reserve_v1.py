@@ -347,7 +347,11 @@ def test_pending_successor_gates_cannot_be_erased_or_reordered(
         document["remaining_successor_gates"].append("FIT_OR_TRAINING_ALLOWED")
     else:
         document["remaining_successor_gates"] = "all-cleared"
-    with pytest.raises(ValueError, match="remaining successor gates drift"):
+    message = (
+        "reservation contract fields are not closed-world"
+        if mutation == "missing" else "remaining successor gates drift"
+    )
+    with pytest.raises(ValueError, match=message):
         validator.validate_document(document)
 
 
@@ -379,7 +383,11 @@ def test_resealed_evidence_cannot_change_pending_gates(
     else:
         evidence["remaining_gates"] = "done"
     _resign_evidence(evidence, monkeypatch)
-    with pytest.raises(ValueError, match="evidence remaining gates drift"):
+    message = (
+        "materialization evidence fields are not closed-world"
+        if mutation == "missing" else "evidence remaining gates drift"
+    )
+    with pytest.raises(ValueError, match=message):
         validator.validate_materialization_evidence(_manifest(), evidence)
 
 
@@ -429,7 +437,7 @@ def test_programmatic_authority_rejects_invalid_utf8() -> None:
     [
         ("root", "training_allowed", "reservation contract"),
         ("predecessor", "untrusted_head_sha", "predecessor"),
-        ("reservation", "evaluation_authorized", "reservation fields"),
+        ("reservation", "evaluation_authorized", "reservation"),
         ("object", "training_authorized", "reserved object"),
         ("materialization_evidence", "alternative_identity", "evidence reference"),
         ("truth_boundary", "final_test_allowed", "reservation truth boundary"),
