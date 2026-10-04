@@ -34,6 +34,7 @@ from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
     _assert_bound_metadata,
     _assert_d02_checkpoint_rng_policy,
+    _effective_strict_model,
     _assert_live_d02_determinism,
     _assert_trainer_model_binding,
     _preflight_trainer_state,
@@ -208,6 +209,7 @@ def load_trainer_checkpoint(
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
     else:
         _assert_live_d02_determinism(trainer)
+    strict_model = _effective_strict_model(trainer, strict_model)
     materialized = _prepare_model_weights(model, arrays, strict_model)
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = _core.capture_rng_state()
