@@ -911,7 +911,7 @@ def save_checkpoint(
         verify_checkpoint(temp_dir)
         os.replace(temp_dir, destination)
         return manifest
-    except Exception:
+    except BaseException:
         if temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
         raise
