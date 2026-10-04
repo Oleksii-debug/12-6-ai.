@@ -701,3 +701,47 @@ def test_final_rng_replay_preserves_torch_warn_only_policy(
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_real_d02_replay_keeps_configured_torch_warn_only(
+    tmp_path: Path,
+    use_progress: bool,
+) -> None:
+    """A resumed actual D02 trainer retains its configured deterministic policy."""
+
+    from dataclasses import replace
+
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    ambient = core.capture_rng_state()
+    deterministic = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        config = TrainerConfig(max_steps=10, seed=703, deterministic_warn_only=True)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        checkpoint = tmp_path / "real-d02-warn-only"
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
+        )
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, config)
+        loader = (
+            progress_trainer.load_trainer_checkpoint
+            if use_progress else trainer_adapter.load_trainer_checkpoint
+        )
+        loader(checkpoint, model=model, trainer=trainer, restore_rng=True)
+        assert trainer.optimizer_step == 0
+        assert trainer._failure_reason is None
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
