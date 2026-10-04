@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import BinaryIO
@@ -207,18 +208,39 @@ def _write_new_output(
     except OSError as exc:
         raise ProjectionError(f"cannot publish adapter output safely: {path}: {exc}") from exc
     finally:
+        rollback_error: OSError | None = None
+        cleanup_error: OSError | None = None
         if linked and not verified and identity is not None and _same_inode(final, identity):
             try:
                 final.unlink()
             except OSError as exc:
-                raise ProjectionError("cannot roll back invalid adapter publication") from exc
+                rollback_error = exc
         if staged_path is not None and identity is not None and _same_inode(staged_path, identity):
             try:
                 staged_path.unlink()
             except OSError as exc:
+                cleanup_error = exc
+        if rollback_error is not None:
+            raise ProjectionError(
+                f"ROLLBACK_INCOMPLETE: invalid adapter output may remain: {final}"
+            ) from rollback_error
+        if cleanup_error is not None:
+            if verified:
+                # The fully verified final file is committed. Never report
+                # non-publication merely because its staging alias remains.
+                print(
+                    "OUTPUT_COMMITTED_CLEANUP_PENDING: "
+                    + json.dumps(
+                        {"output": str(final), "stage": str(staged_path)},
+                        ensure_ascii=False, sort_keys=True,
+                    ),
+                    file=sys.stderr,
+                )
+            else:
                 raise ProjectionError(
-                    f"cannot clean up staged adapter output: {staged_path}"
-                ) from exc
+                    f"STAGING_CLEANUP_INCOMPLETE: unpublished stage may remain: "
+                    f"{staged_path}"
+                ) from cleanup_error
 
 
 def main() -> int:

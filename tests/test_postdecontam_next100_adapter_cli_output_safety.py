@@ -447,3 +447,100 @@ def test_main_rejects_invalid_result_json_before_publication(
     assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert vector.read_bytes() == b"original vector"
     assert authority.read_bytes() == b"original dedup"
+
+
+def test_verified_publication_with_stage_cleanup_failure_is_truthful(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "опублікований результат.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+    original_unlink = Path.unlink
+
+    def refuse_stage_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name.startswith(f".{output.name}.") and self.suffix == ".tmp":
+            raise PermissionError("injected stage sharing violation")
+        original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_stage_unlink)
+    assert cli.main() == 0
+    emitted = capsys.readouterr()
+    assert emitted.out.strip() == str(output)
+    assert emitted.err.startswith("OUTPUT_COMMITTED_CLEANUP_PENDING: ")
+    warning = json.loads(emitted.err.split(": ", 1)[1])
+    assert warning["output"] == str(output)
+    assert len(list(tmp_path.glob(f".{output.name}.*.tmp"))) == 1
+    assert json.loads(output.read_bytes())["value"] == "Український текст"
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+    with pytest.raises(SystemExit, match="FAIL_CLOSED: refusing to overwrite"):
+        cli.main()
+    assert json.loads(output.read_bytes())["value"] == "Український текст"
+
+
+def test_failed_rollback_explicitly_reports_unverified_final(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "result.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    original_link = cli.os.link
+    original_unlink = Path.unlink
+
+    def tamper_then_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"unverified tampered bytes")
+        original_link(stage, final)
+
+    def refuse_rollback(self: Path, *args: object, **kwargs: object) -> None:
+        if self == output:
+            raise PermissionError("injected final sharing violation")
+        original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", tamper_then_link)
+    monkeypatch.setattr(Path, "unlink", refuse_rollback)
+    with pytest.raises(ProjectionError, match="ROLLBACK_INCOMPLETE"):
+        cli._write_new_output(
+            output, b"verified expected bytes",
+            family_vector=vector, dedup_authority=authority,
+        )
+    assert output.read_bytes() == b"unverified tampered bytes"
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
+
+
+def test_unpublished_stage_cleanup_failure_is_not_reported_as_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = tmp_path / "vector.json"
+    authority = tmp_path / "authority.json"
+    output = tmp_path / "result.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    original_unlink = Path.unlink
+
+    def refuse_stage_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name.startswith(f".{output.name}.") and self.suffix == ".tmp":
+            raise PermissionError("injected stage sharing violation")
+        original_unlink(self, *args, **kwargs)
+
+    def unsupported_link(_stage: Path, _final: Path) -> None:
+        raise OSError("injected link failure")
+
+    monkeypatch.setattr(Path, "unlink", refuse_stage_unlink)
+    monkeypatch.setattr(cli.os, "link", unsupported_link)
+    with pytest.raises(ProjectionError, match="STAGING_CLEANUP_INCOMPLETE"):
+        cli._write_new_output(
+            output, b"candidate",
+            family_vector=vector, dedup_authority=authority,
+        )
+    assert not output.exists()
+    assert len(list(tmp_path.glob(f".{output.name}.*.tmp"))) == 1
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
