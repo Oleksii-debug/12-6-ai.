@@ -610,3 +610,33 @@ def test_real_text_stream_stdout_fallback_preserves_exact_committed_path(
     assert authority.read_bytes() == b"original authority"
     with pytest.raises(SystemExit, match="FAIL_CLOSED: refusing to overwrite"):
         cli.main()
+
+
+@pytest.mark.parametrize("stream_encoding", ["cp1252", "ascii"])
+def test_committed_warning_survives_restricted_stdout_and_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stream_encoding: str,
+) -> None:
+    vector = tmp_path / "family vector.json"
+    authority = tmp_path / "dedup authority.json"
+    output = tmp_path / "український шлях із пробілами.json"
+    vector.write_bytes(b"original vector")
+    authority.write_bytes(b"original authority")
+    _configure(monkeypatch, vector, authority, output)
+    narrow_stdout = io.TextIOWrapper(
+        io.BytesIO(), encoding=stream_encoding, errors="strict",
+    )
+    narrow_stderr = io.TextIOWrapper(
+        io.BytesIO(), encoding=stream_encoding, errors="strict",
+    )
+    monkeypatch.setattr(cli.sys, "stdout", narrow_stdout)
+    monkeypatch.setattr(cli.sys, "stderr", narrow_stderr)
+    assert cli.main() == 0
+    narrow_stdout.flush()
+    narrow_stderr.flush()
+    assert b"\\u" in narrow_stdout.buffer.getvalue()
+    warning = narrow_stderr.buffer.getvalue().decode("ascii")
+    assert warning.startswith("OUTPUT_COMMITTED_STDOUT_ENCODING_UNAVAILABLE: ")
+    assert json.loads(warning.split(": ", 1)[1])["output"] == str(output)
+    assert json.loads(output.read_bytes())["value"] == "Український текст"
+    assert vector.read_bytes() == b"original vector"
+    assert authority.read_bytes() == b"original authority"
