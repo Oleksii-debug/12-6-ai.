@@ -316,7 +316,6 @@ def test_main_preserves_successful_delegate_path(
     assert observed == [delegated]
 
 
-
 @pytest.mark.parametrize(
     "args",
     [["--help"], ["-h"], ["verify", "--help"], ["--json", "status", "--help"]],
