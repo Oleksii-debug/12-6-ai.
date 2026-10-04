@@ -546,6 +546,17 @@ def _restore_initial_torch_policy(
         exc.add_note(f"PyTorch deterministic-mode rollback also failed: {mode_exc!r}")
 
 
+def _restore_ambient_rng_after_failed_apply(
+    ambient: Mapping[str, Any], exc: BaseException,
+) -> None:
+    """Best-effort rollback of every RNG stream on failed checkpoint apply."""
+
+    try:
+        _core.restore_rng_state(ambient)
+    except BaseException as rng_exc:
+        exc.add_note(f"Ambient RNG rollback also failed: {rng_exc!r}")
+
+
 def _restore_checkpoint_rng_preserving_warn_only(
     state: Mapping[str, Any],
     *,
@@ -674,6 +685,7 @@ def load_trainer_checkpoint(
         _assert_live_d02_determinism(trainer)
     materialized = _prepare_model_weights(model, arrays, strict_model)
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
+    ambient_before_apply = capture_rng_state()
 
     # The decoded source weights are no longer needed after target materialization.
     # Releasing them before the first mutation keeps resume peak memory bounded as
@@ -695,7 +707,10 @@ def load_trainer_checkpoint(
         else:
             _assert_live_d02_determinism(trainer)
     except BaseException as exc:
-        _restore_initial_torch_policy(policy_before_apply, exc)
+        try:
+            _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
+        finally:
+            _restore_initial_torch_policy(policy_before_apply, exc)
         if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
             if trainer._failure_reason is None:
                 trainer._failure_reason = "checkpoint_restore_apply_failed"
