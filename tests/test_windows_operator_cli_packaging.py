@@ -541,6 +541,7 @@ def test_installed_record_rejects_symlinked_canonical_asset_directory(
     """A regular leaf behind a linked parent is still a substituted asset."""
     module = _fake_installed_module(tmp_path)
     location = tmp_path / "installed-prefix"
+    location.mkdir()
     for component in ("share", "twelve-six-ai", "configs", "research"):
         child = location / component
         if component == linked_component:
@@ -554,11 +555,11 @@ def test_installed_record_rejects_symlinked_canonical_asset_directory(
             child.mkdir(parents=True)
         location = child
     profile = location / PROFILE_RELATIVE.name
-    profile.write_text("{}\\n", encoding="utf-8")
+    profile.write_text("{}\n", encoding="utf-8")
     assert profile.is_file() and not profile.is_symlink()
     assert any(parent.is_symlink() for parent in profile.parents[:4])
     packet = tmp_path / "regular-packet.json"
-    packet.write_text("{}\\n", encoding="utf-8")
+    packet.write_text("{}\n", encoding="utf-8")
     distribution = _FakeDistribution({PROFILE_RECORD: profile, PACKET_RECORD: packet})
     with pytest.raises(RuntimeError, match="symlinked directory"):
         resolve_default_paths(module_path=module, distribution=distribution)
