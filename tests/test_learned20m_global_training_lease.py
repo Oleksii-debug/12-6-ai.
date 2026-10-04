@@ -1023,3 +1023,53 @@ def test_remote_global_lease_decoder_bounds_size_and_nesting() -> None:
     deeply_nested = b'{"nested":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}"
     with pytest.raises(ValueError, match="global_lease_state_json_invalid"):
         decode_global_lease_state(deeply_nested, manifest)
+
+
+def test_remote_lease_tip_change_after_blob_read_is_fail_closed(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject a real remote descendant published between blob read and return."""
+    remote, writer, reader = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
+    acquired = acquire_global_training_run_lease(
+        writer,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+    old_tip = acquired.written_remote_tip
+    ref = global_training_run_lease_ref(manifest)
+    tree_sha = _git("rev-parse", f"{old_tip}^{{tree}}", cwd=writer)
+    descendant = _git(
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree_sha, "-p", old_tip,
+        "-m", "remote lease advanced during blob read",
+        cwd=writer,
+    )
+    original_run_git = global_lease_module._run_git
+    switched = False
+
+    def advance_after_blob(repo_root, args, **kwargs):
+        nonlocal switched
+        result = original_run_git(repo_root, args, **kwargs)
+        if args[:2] == ["cat-file", "blob"] and not switched:
+            assert result.returncode == 0
+            switched = True
+            _git("push", str(remote), f"{descendant}:{ref}", cwd=writer)
+        return result
+
+    monkeypatch.setattr(global_lease_module, "_run_git", advance_after_blob)
+    inspected = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert switched is True
+    assert inspected.present is True
+    assert inspected.valid is False
+    assert inspected.blockers == ("remote_tip_changed_during_read",)
+    assert inspected.optimizer_start_permitted_by_this_module is False
+    assert inspected.training_authority_granted_by_this_module is False
+    assert _git("ls-remote", str(remote), ref).split()[0] == descendant
