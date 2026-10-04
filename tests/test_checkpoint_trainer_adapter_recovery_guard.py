@@ -626,6 +626,8 @@ def test_real_d02_trainer_refuses_training_after_failed_probe_rng_rollback(
     checkpoint_at(checkpoint)
     ambient = core.capture_rng_state()
     original_restore = core.restore_rng_state
+    deterministic = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     try:
         model = torch.nn.Linear(3, 3)
         trainer = Trainer(model, TrainerConfig(max_steps=10, seed=703))
@@ -657,3 +659,4 @@ def test_real_d02_trainer_refuses_training_after_failed_probe_rng_rollback(
             )
     finally:
         original_restore(ambient)
+        torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
