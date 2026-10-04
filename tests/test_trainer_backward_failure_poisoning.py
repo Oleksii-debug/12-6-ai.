@@ -691,3 +691,28 @@ def test_runtime_unsafe_learning_rate_cannot_commit_optimizer_step(unsafe_rate):
     torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.state_dict()
+
+
+@pytest.mark.parametrize("accumulation_steps", [2, 3])
+def test_run_exhaustion_mid_accumulation_discards_uncheckpointable_gradients(
+    accumulation_steps
+):
+    model = _TinyLogitModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(max_steps=1, gradient_accumulation_steps=accumulation_steps, seed=17),
+    )
+    before_weights = model.weight.detach().clone()
+
+    with pytest.raises(RuntimeError, match="mid-accumulation"):
+        trainer.run([_BATCH] * (accumulation_steps - 1))
+
+    assert trainer.micro_step == accumulation_steps - 1
+    assert trainer.optimizer_step == 0
+    assert model.weight.grad is None
+    torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
+    assert "exhausted mid-accumulation" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
