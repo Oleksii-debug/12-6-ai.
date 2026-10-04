@@ -556,3 +556,22 @@ def test_run_natural_exhaustion_at_committed_boundary_stays_recoverable():
     assert trainer.optimizer_step == 1
     assert trainer._failure_reason is None
     assert trainer.state_dict().optimizer_step == 1
+
+
+def test_run_already_at_limit_does_not_even_construct_data_iterator():
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    trainer.train_microbatch(_BATCH)
+
+    class MustNotBeRead:
+        def __iter__(self):
+            raise AssertionError("completed run must not touch data source")
+
+    outcome = trainer.run(MustNotBeRead())
+    assert outcome.start_optimizer_step == 1
+    assert outcome.end_optimizer_step == 1
+    assert outcome.optimizer_steps_completed == 0
+    assert outcome.microbatches_consumed == 0
+    assert outcome.tokens_consumed == 0
+    assert outcome.final_metrics is None
+    assert trainer.state_dict().optimizer_step == 1
