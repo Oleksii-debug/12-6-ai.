@@ -379,8 +379,16 @@ def _stage_new_bytes(path: Path, raw: bytes, *, label: str) -> Path:
         if sha256_bytes(staged.read_bytes()) != sha256_bytes(raw):
             raise OSError(f"staged {label} digest mismatch")
         return staged
-    except BaseException:
-        staged.unlink(missing_ok=True)
+    except BaseException as failure:
+        try:
+            staged.unlink(missing_ok=True)
+        except OSError as cleanup_error:
+            raise RematerializationError(
+                "STAGING_CLEANUP_INCOMPLETE: "
+                f"{label} write/verification failed ({type(failure).__name__}), "
+                f"staged cleanup failed ({type(cleanup_error).__name__}); "
+                f"unpublished stage: {staged}; manual reconciliation required"
+            ) from failure
         raise
 
 
@@ -394,13 +402,98 @@ def _link_staged_new_bytes(staged: Path, path: Path, *, label: str) -> None:
         raise RematerializationError(f"cannot publish {label} atomically: {path}") from exc
 
 
+
+def _matches_staged_identity(
+    path: Path, expected: bytes, identity: tuple[int, int],
+) -> bool:
+    """Require the original inode and exact bytes, not merely a matching pathname."""
+    try:
+        if path.is_symlink():
+            return False
+        stat = path.stat(follow_symlinks=False)
+        if (stat.st_dev, stat.st_ino) != identity:
+            return False
+        with path.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
+            return (
+                (opened.st_dev, opened.st_ino) == identity
+                and handle.read(len(expected) + 1) == expected
+            )
+    except OSError:
+        return False
+
+
+def _link_verified_new_bytes(
+    staged: Path, path: Path, raw: bytes, *, label: str,
+) -> None:
+    """Hold the original inode open across no-replace publication and rollback.
+
+    Trusted stable output directories are required. Keeping the descriptor
+    open prevents deletion/recreation of the staged pathname from reusing the
+    original inode while deciding whether it is safe to remove a failed link.
+    """
+    try:
+        source = staged.open("rb")
+    except OSError as exc:
+        raise RematerializationError(
+            f"staged {label} identity unavailable before publication"
+        ) from exc
+    with source:
+        info = os.fstat(source.fileno())
+        identity = (info.st_dev, info.st_ino)
+        if (
+            not info.st_ino
+            or source.read(len(raw) + 1) != raw
+            or not _matches_staged_identity(staged, raw, identity)
+        ):
+            raise RematerializationError(f"staged {label} changed before publication")
+        _link_staged_new_bytes(staged, path, label=label)
+        if (
+            _matches_staged_identity(staged, raw, identity)
+            and _matches_staged_identity(path, raw, identity)
+        ):
+            return
+        try:
+            published = path.stat(follow_symlinks=False)
+        except OSError:
+            published = None
+        if (
+            published is not None
+            and not path.is_symlink()
+            and (published.st_dev, published.st_ino) == identity
+        ):
+            try:
+                path.unlink()
+            except OSError as exc:
+                raise RematerializationError(
+                    f"invalid published {label}; rollback failed; "
+                    "manual reconciliation required"
+                ) from exc
+        raise RematerializationError(
+            f"published {label} failed exact byte/inode verification; "
+            "manual reconciliation required"
+        )
+
 def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
     """Create one complete output, without following or replacing existing names."""
     staged = _stage_new_bytes(path, raw, label=label)
+    published_and_verified = False
     try:
-        _link_staged_new_bytes(staged, path, label=label)
+        _link_verified_new_bytes(staged, path, raw, label=label)
+        published_and_verified = True
     finally:
-        staged.unlink(missing_ok=True)
+        try:
+            staged.unlink(missing_ok=True)
+        except OSError as exc:
+            if published_and_verified:
+                raise RematerializationError(
+                    f"{label} was published and byte-verified, but staged cleanup "
+                    f"is pending: {staged}; inspect the final output before retry"
+                ) from exc
+            raise RematerializationError(
+                f"{label} publication failed and staged cleanup is pending: "
+                f"{staged}; manual reconciliation required"
+            ) from exc
 
 
 def _capture_verified_publication_bytes(
@@ -543,7 +636,7 @@ def _publish_verified_outputs(
         _write_new_bytes(intent_path, canonical_json_bytes(intent), label="publication intent")
         for label, path, temporary, raw in staged:
             try:
-                _link_staged_new_bytes(temporary, path, label=label)
+                _link_verified_new_bytes(temporary, path, raw, label=label)
             except RematerializationError as exc:
                 observed = [
                     {"label": done_label, "path": str(done_path), "sha256": digest}
@@ -556,8 +649,32 @@ def _publish_verified_outputs(
                 ) from exc
             published.append((label, path, sha256_bytes(raw)))
     finally:
+        primary_failure = sys.exc_info()[1]
+        cleanup_error: OSError | None = None
+        cleanup_failures: list[str] = []
         for _, _, temporary, _ in staged:
-            temporary.unlink(missing_ok=True)
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError as exc:
+                cleanup_failures.append(
+                    f"{temporary}: {type(exc).__name__}: {exc}"
+                )
+                if cleanup_error is None:
+                    cleanup_error = exc
+        if cleanup_error is not None:
+            if len(published) == len(outputs) and primary_failure is None:
+                raise RematerializationError(
+                    "outer receipt published and byte-verified; staged cleanup "
+                    f"pending for {cleanup_failures}; inspect read-only recovery"
+                ) from cleanup_error
+            original = (
+                f"; original publication failure: {primary_failure}"
+                if primary_failure is not None else ""
+            )
+            raise RematerializationError(
+                "outer publication incomplete and staged cleanup pending for "
+                f"{cleanup_failures}{original}; manual reconciliation required"
+            ) from (primary_failure if primary_failure is not None else cleanup_error)
 
 
 def _load_module(name: str, path: Path) -> Any:

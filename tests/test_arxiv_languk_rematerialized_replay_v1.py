@@ -1086,3 +1086,416 @@ def test_recovery_refuses_receipt_without_both_verified_outputs(
         REPLAY_RUNNER.inspect_outer_publication_recovery(
             args, pass_root=pass_root, pass_result=result, receipt=receipt,
         )
+
+
+@pytest.mark.parametrize("phase", ["before-link", "after-link"])
+@pytest.mark.parametrize(
+    ("bad_label", "expected_published"),
+    [
+        ("outer report", ()),
+        ("outer survivors", ("outer report",)),
+        ("outer receipt", ("outer report", "outer survivors")),
+    ],
+)
+def test_mutated_staged_outer_output_cannot_commit_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    phase: str, bad_label: str, expected_published: tuple[str, ...],
+) -> None:
+    """A corrupt stage cannot get a successful receipt at the link boundary."""
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def corrupt_stage(staged: Path, final: Path, *, label: str) -> None:
+        if label == bad_label and phase == "before-link":
+            staged.write_bytes(b"modified after staging")
+        original_link(staged, final, label=label)
+        if label == bad_label and phase == "after-link":
+            staged.write_bytes(b"modified after linking")
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", corrupt_stage)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="manual reconciliation required",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+
+    targets = {
+        "outer report": args.output_report,
+        "outer survivors": args.output_survivors,
+        "outer receipt": args.output_receipt,
+    }
+    raw = {
+        "outer report": (pass_root / "current-clean-report.json").read_bytes(),
+        "outer survivors": (pass_root / "current-clean-survivors.json").read_bytes(),
+        "outer receipt": REPLAY_RUNNER.canonical_json_bytes(receipt),
+    }
+    for label, path in targets.items():
+        if label in expected_published:
+            assert path.read_bytes() == raw[label]
+        else:
+            assert not path.exists()
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["published"] == list(expected_published)
+    assert recovery["status"] == (
+        "PREPARED_UNCOMMITTED" if not expected_published else "PARTIAL_UNCOMMITTED"
+    )
+    assert recovery["canonical_capacity_credited"] == 0
+    assert recovery["training_authorized"] is False
+
+
+@pytest.mark.parametrize("phase", ["before-link", "after-link"])
+def test_mutated_intent_stage_cannot_publish_outer_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def corrupt_intent(staged: Path, final: Path, *, label: str) -> None:
+        if label == "publication intent" and phase == "before-link":
+            staged.write_bytes(b"forged intent")
+        original_link(staged, final, label=label)
+        if label == "publication intent" and phase == "after-link":
+            staged.write_bytes(b"forged intent")
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", corrupt_intent)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="changed before publication|failed exact byte/inode verification",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    assert not args.output_report.exists()
+    assert not args.output_survivors.exists()
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+
+
+def test_verified_one_output_preserves_utf8_and_no_replace(tmp_path: Path) -> None:
+    target = tmp_path / "Український результат.json"
+    payload = '{"status":"verified","language":"Українська"}\n'.encode("utf-8")
+    REPLAY_RUNNER._write_new_bytes(target, payload, label="test report")
+    assert target.read_bytes() == payload
+    with pytest.raises(REPLAY_RUNNER.RematerializationError, match="refusing to overwrite"):
+        REPLAY_RUNNER._write_new_bytes(target, b"replacement", label="test report")
+    assert target.read_bytes() == payload
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_replaced_stage_inode_does_not_delete_foreign_final(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An open original descriptor prevents inode reuse after a stage-path swap."""
+    final = tmp_path / "outer-report.json"
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+
+    def replace_stage(staged: Path, path: Path, *, label: str) -> None:
+        try:
+            staged.unlink()
+        except OSError:
+            pytest.skip("unlink of an open staged file is unsupported")
+        staged.write_bytes(b"foreign replacement")
+        original_link(staged, path, label=label)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", replace_stage)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError, match="manual reconciliation required",
+    ):
+        REPLAY_RUNNER._write_new_bytes(final, b"original", label="outer report")
+    assert final.read_bytes() == b"foreign replacement"
+    assert not list(tmp_path.glob(".outer-report.json.*.tmp"))
+
+
+def test_failed_owned_rollback_is_reported_for_manual_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final = tmp_path / "outer-report.json"
+    original_link = REPLAY_RUNNER._link_staged_new_bytes
+    original_unlink = Path.unlink
+
+    def corrupt_after_link(staged: Path, path: Path, *, label: str) -> None:
+        original_link(staged, path, label=label)
+        staged.write_bytes(b"corrupt-but-owned")
+
+    def fail_final_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path == final:
+            raise OSError("injected rollback failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", corrupt_after_link)
+    monkeypatch.setattr(Path, "unlink", fail_final_unlink)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="rollback failed; manual reconciliation required",
+    ):
+        REPLAY_RUNNER._write_new_bytes(final, b"expected", label="outer report")
+    assert final.read_bytes() == b"corrupt-but-owned"
+    assert not list(tmp_path.glob(".outer-report.json.*.tmp"))
+
+
+def test_verified_single_output_cleanup_error_is_not_a_publication_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final = tmp_path / "single-output.json"
+    payload = b'{"verified":true}\n'
+    original_unlink = Path.unlink
+
+    def deny_stage_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(".single-output.json.") and path.suffix == ".tmp":
+            raise OSError("injected cleanup sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny_stage_cleanup)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="was published and byte-verified, but staged cleanup is pending",
+    ):
+        REPLAY_RUNNER._write_new_bytes(final, payload, label="single output")
+    assert final.read_bytes() == payload
+    staged = list(tmp_path.glob(".single-output.json.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == payload
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    staged[0].unlink()
+    assert final.read_bytes() == payload
+
+
+def test_prepublication_cleanup_error_preserves_failed_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final = tmp_path / "failed-output.json"
+    original_unlink = Path.unlink
+
+    def refuse_link(staged: Path, path: Path, *, label: str) -> None:
+        raise REPLAY_RUNNER.RematerializationError("injected link failure")
+
+    def deny_stage_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(".failed-output.json.") and path.suffix == ".tmp":
+            raise OSError("injected cleanup error")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", refuse_link)
+    monkeypatch.setattr(Path, "unlink", deny_stage_cleanup)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="publication failed and staged cleanup is pending",
+    ):
+        REPLAY_RUNNER._write_new_bytes(final, b"expected", label="failed output")
+    assert not final.exists()
+    staged = list(tmp_path.glob(".failed-output.json.*.tmp"))
+    assert len(staged) == 1
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    staged[0].unlink()
+
+
+def test_receipt_commit_with_cleanup_error_is_recoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_unlink = Path.unlink
+
+    def deny_report_stage(path: Path, *args: object, **kwargs: object) -> None:
+        if (
+            path.parent == args.output_report.parent
+            and path.name.startswith(f".{args.output_report.name}.")
+            and path.suffix == ".tmp"
+        ):
+            raise OSError("injected outer cleanup failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny_report_stage)
+    with pytest.raises(
+        REPLAY_RUNNER.RematerializationError,
+        match="outer receipt published and byte-verified; staged cleanup pending",
+    ):
+        REPLAY_RUNNER._publish_verified_outputs(
+            args, pass_root=pass_root, pass_result=result, receipt=receipt,
+        )
+    assert args.output_receipt.read_bytes() == REPLAY_RUNNER.canonical_json_bytes(
+        receipt
+    )
+    recovered = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovered["training_authorized"] is False
+    staged = list(args.output_report.parent.glob(f".{args.output_report.name}.*.tmp"))
+    assert len(staged) == 1
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    staged[0].unlink()
+
+
+def test_staging_dual_fault_reports_orphan_and_preserves_original_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed fsync plus locked cleanup must expose the exact orphan path."""
+    target = tmp_path / "Український результат.json"
+    payload = b"verified bytes"
+    blocked: list[Path] = []
+
+    def fail_fsync(descriptor: int) -> None:
+        del descriptor
+        raise OSError("injected ENOSPC during fsync")
+
+    original_unlink = Path.unlink
+
+    def lock_stage(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{target.name}.") and path.suffix == ".tmp":
+            blocked.append(path)
+            raise PermissionError("injected sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "fsync", fail_fsync)
+        fault.setattr(Path, "unlink", lock_stage)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError, match="STAGING_CLEANUP_INCOMPLETE",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(target, payload, label="test report")
+
+    assert not target.exists()
+    assert len(blocked) == 1
+    assert str(blocked[0]) in str(caught.value)
+    assert "manual reconciliation required" in str(caught.value)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "ENOSPC" in str(caught.value.__cause__)
+    assert list(tmp_path.glob(f".{target.name}.*.tmp")) == blocked
+    assert blocked[0].read_bytes() == payload
+
+    blocked[0].unlink()
+    REPLAY_RUNNER._write_new_bytes(target, payload, label="test report")
+    assert target.read_bytes() == payload
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+
+
+def test_outer_staging_dual_fault_cleans_prior_stages_without_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failed current stage is reported even if not in the batch registry."""
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_fsync = REPLAY_RUNNER.os.fsync
+    original_unlink = Path.unlink
+    calls = 0
+    blocked: list[Path] = []
+
+    def fail_second_fsync(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected ENOSPC on survivors stage")
+        original_fsync(descriptor)
+
+    def lock_survivors_stage(path: Path, *args: object, **kwargs: object) -> None:
+        if (
+            path.name.startswith(f".{args.output_survivors.name}.")
+            and path.suffix == ".tmp"
+        ):
+            blocked.append(path)
+            raise PermissionError("injected survivors sharing violation")
+        original_unlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "fsync", fail_second_fsync)
+        fault.setattr(Path, "unlink", lock_survivors_stage)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError, match="STAGING_CLEANUP_INCOMPLETE",
+        ) as caught:
+            REPLAY_RUNNER._publish_verified_outputs(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+
+    assert calls == 2
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    assert not any(
+        path.exists()
+        for path in (args.output_report, args.output_survivors, args.output_receipt)
+    )
+    assert not list(tmp_path.glob(f".{args.output_report.name}.*.tmp"))
+    assert len(blocked) == 1
+    assert blocked[0].exists()
+    assert str(blocked[0]) in str(caught.value)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "ENOSPC" in str(caught.value.__cause__)
+
+    blocked[0].unlink()
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    recovered = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovered["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovered["canonical_capacity_credited"] == 0
+    assert recovered["training_authorized"] is False
+
+
+def test_outer_staging_and_prior_cleanup_dual_faults_report_both_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prior cleanup fault must not hide the unregistered current orphan."""
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_fsync = REPLAY_RUNNER.os.fsync
+    original_unlink = Path.unlink
+    calls = 0
+    blocked: list[Path] = []
+
+    def fail_second_fsync(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected ENOSPC during survivors staging")
+        original_fsync(descriptor)
+
+    def lock_both_stages(path: Path, *args_: object, **kwargs: object) -> None:
+        if (
+            path.suffix == ".tmp"
+            and (
+                path.name.startswith(f".{args.output_report.name}.")
+                or path.name.startswith(f".{args.output_survivors.name}.")
+            )
+        ):
+            blocked.append(path)
+            raise PermissionError("injected stage sharing violation")
+        original_unlink(path, *args_, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "fsync", fail_second_fsync)
+        fault.setattr(Path, "unlink", lock_both_stages)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError,
+            match="outer publication incomplete and staged cleanup pending",
+        ) as caught:
+            REPLAY_RUNNER._publish_verified_outputs(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+
+    assert calls == 2
+    assert len(blocked) == 2
+    assert len(set(blocked)) == 2
+    assert all(path.exists() for path in blocked)
+    assert all(str(path) in str(caught.value) for path in blocked)
+    assert "STAGING_CLEANUP_INCOMPLETE" in str(caught.value)
+    assert "ENOSPC" in str(caught.value)
+    assert isinstance(caught.value.__cause__, REPLAY_RUNNER.RematerializationError)
+    assert isinstance(caught.value.__cause__.__cause__, OSError)
+    assert not (pass_root / "outer-publication-intent.json").exists()
+    assert not any(
+        path.exists()
+        for path in (args.output_report, args.output_survivors, args.output_receipt)
+    )
+
+    for path in blocked:
+        path.unlink()
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovery["training_authorized"] is False
