@@ -1181,3 +1181,157 @@ def test_real_d02_refuses_restore_under_live_policy_drift_before_materialization
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_successful_generic_rng_replay_ignores_trainer_policy_side_effect(
+    tmp_path: Path,
+    use_progress: bool,
+) -> None:
+    """Warn-only must come from pre-apply policy, not a loader side effect."""
+
+    import torch
+
+    ambient = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        checkpoint = tmp_path / "policy-mutating-generic-trainer"
+        checkpoint_at(checkpoint)
+
+        class PolicyMutatingTrainer(PlainTrainer):
+            def load_state_dict(self, state: dict[str, object]) -> None:
+                super().load_state_dict(state)
+                torch.use_deterministic_algorithms(False, warn_only=False)
+
+        model = Model([9.0, 9.0, 9.0])
+        trainer = PolicyMutatingTrainer()
+        loader_module = progress_trainer if use_progress else trainer_adapter
+        loader_module.load_trainer_checkpoint(
+            checkpoint, model=model, trainer=trainer, restore_rng=True,
+        )
+        assert model.loads == 1
+        assert trainer.loads == 1
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_real_d02_no_replay_rejects_loader_policy_side_effect_and_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+) -> None:
+    """A successful D02 state load cannot return with a different live mode."""
+
+    from dataclasses import replace
+
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    ambient = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        config = TrainerConfig(max_steps=10, seed=703, deterministic_warn_only=True)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        checkpoint = tmp_path / "d02-mutating-no-replay"
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
+        )
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, config)
+        normal_load = trainer.load_state_dict
+
+        def change_mode_after_load(state: object) -> None:
+            normal_load(state)
+            torch.use_deterministic_algorithms(False, warn_only=False)
+
+        monkeypatch.setattr(trainer, "load_state_dict", change_mode_after_load)
+        loader_module = progress_trainer if use_progress else trainer_adapter
+        with pytest.raises(CheckpointCompatibilityError, match="live torch deterministic policy"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+        assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+        assert trainer._update_incomplete is True
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+
+        def forbidden_read(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("poisoned retry must reject before checkpoint read")
+
+        monkeypatch.setattr(loader_module, "prepare_checkpoint_load", forbidden_read)
+        with pytest.raises(CheckpointCompatibilityError, match="poisoned"):
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=False,
+            )
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+@pytest.mark.parametrize("interruption", [RuntimeError, KeyboardInterrupt])
+def test_real_d02_loader_interruption_restores_pre_apply_mode_and_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    use_progress: bool,
+    interruption: type[BaseException],
+) -> None:
+    """An interrupted trainer load must not leave global PyTorch mode corrupted."""
+
+    from dataclasses import replace
+
+    import torch
+
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    ambient = core.capture_rng_state()
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        config = TrainerConfig(max_steps=10, seed=703, deterministic_warn_only=True)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        checkpoint = tmp_path / "interrupted-d02-loader"
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
+        )
+        model = torch.nn.Linear(3, 3)
+        trainer = Trainer(model, config)
+        primary_error = interruption("injected trainer policy interruption")
+        normal_load = trainer.load_state_dict
+
+        def fail_after_load(state: object) -> None:
+            normal_load(state)
+            torch.use_deterministic_algorithms(False, warn_only=False)
+            raise primary_error
+
+        monkeypatch.setattr(trainer, "load_state_dict", fail_after_load)
+        loader_module = progress_trainer if use_progress else trainer_adapter
+        with pytest.raises(interruption, match="trainer policy interruption") as raised:
+            loader_module.load_trainer_checkpoint(
+                checkpoint, model=model, trainer=trainer, restore_rng=True,
+            )
+        assert raised.value is primary_error
+        assert trainer._failure_reason == "checkpoint_restore_apply_failed"
+        assert trainer._update_incomplete is True
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
