@@ -669,3 +669,35 @@ def test_real_d02_trainer_refuses_training_after_failed_probe_rng_rollback(
     finally:
         original_restore(ambient)
         torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
+
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_final_rng_replay_preserves_torch_warn_only_policy(
+    tmp_path: Path,
+    use_progress: bool,
+) -> None:
+    """Checkpoint replay must not silently change warning into hard failure."""
+
+    import torch
+
+    ambient = core.capture_rng_state()
+    deterministic = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        checkpoint = tmp_path / "warn-only-final-rng"
+        checkpoint_at(checkpoint)
+        model = Model([9.0, 9.0, 9.0])
+        trainer = PlainTrainer()
+        loader = (
+            progress_trainer.load_trainer_checkpoint
+            if use_progress else trainer_adapter.load_trainer_checkpoint
+        )
+        loader(checkpoint, model=model, trainer=trainer, restore_rng=True)
+        assert model.loads == 1
+        assert trainer.loads == 1
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
