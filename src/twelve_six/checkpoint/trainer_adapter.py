@@ -428,6 +428,16 @@ def _preflight_trainer_state_without_rng_guard(
             ) from exc
         return
 
+    # D02's authoritative names bind serialized optimizer slots to live
+    # parameters before model weights or optimizer moments can be applied.
+    order_check = getattr(trainer, "_require_optimizer_state_parameter_order", None)
+    if callable(order_check):
+        try:
+            order_check(state.get("optimizer"))
+        except (ValueError, TypeError) as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint optimizer parameter order/identity mismatch"
+            ) from exc
     _preflight_optimizer_state(optimizer, state.get("optimizer"))
     _preflight_stateful_component(
         getattr(trainer, "scheduler", None),
