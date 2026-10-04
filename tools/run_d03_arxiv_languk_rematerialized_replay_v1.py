@@ -418,47 +418,53 @@ def _matches_staged_identity(
 def _link_verified_new_bytes(
     staged: Path, path: Path, raw: bytes, *, label: str,
 ) -> None:
-    """Verify both the staged and published inode/bytes around no-replace linking.
+    """Hold the original inode open across no-replace publication and rollback.
 
-    Assumes a trusted, stable output directory. Never remove a competitor's
-    different inode if verification fails.
+    Trusted stable output directories are required. Keeping the descriptor
+    open prevents deletion/recreation of the staged pathname from reusing the
+    original inode while deciding whether it is safe to remove a failed link.
     """
     try:
-        info = staged.stat(follow_symlinks=False)
+        source = staged.open("rb")
     except OSError as exc:
         raise RematerializationError(
             f"staged {label} identity unavailable before publication"
         ) from exc
-    identity = (info.st_dev, info.st_ino)
-    if not info.st_ino or not _matches_staged_identity(staged, raw, identity):
-        raise RematerializationError(f"staged {label} changed before publication")
-    _link_staged_new_bytes(staged, path, label=label)
-    if (
-        _matches_staged_identity(staged, raw, identity)
-        and _matches_staged_identity(path, raw, identity)
-    ):
-        return
-    try:
-        published = path.stat(follow_symlinks=False)
-    except OSError:
-        published = None
-    if (
-        published is not None
-        and not path.is_symlink()
-        and (published.st_dev, published.st_ino) == identity
-    ):
+    with source:
+        info = os.fstat(source.fileno())
+        identity = (info.st_dev, info.st_ino)
+        if (
+            not info.st_ino
+            or source.read(len(raw) + 1) != raw
+            or not _matches_staged_identity(staged, raw, identity)
+        ):
+            raise RematerializationError(f"staged {label} changed before publication")
+        _link_staged_new_bytes(staged, path, label=label)
+        if (
+            _matches_staged_identity(staged, raw, identity)
+            and _matches_staged_identity(path, raw, identity)
+        ):
+            return
         try:
-            path.unlink()
-        except OSError as exc:
-            raise RematerializationError(
-                f"invalid published {label}; rollback failed; "
-                "manual reconciliation required"
-            ) from exc
-    raise RematerializationError(
-        f"published {label} failed exact byte/inode verification; "
-        "manual reconciliation required"
-    )
-
+            published = path.stat(follow_symlinks=False)
+        except OSError:
+            published = None
+        if (
+            published is not None
+            and not path.is_symlink()
+            and (published.st_dev, published.st_ino) == identity
+        ):
+            try:
+                path.unlink()
+            except OSError as exc:
+                raise RematerializationError(
+                    f"invalid published {label}; rollback failed; "
+                    "manual reconciliation required"
+                ) from exc
+        raise RematerializationError(
+            f"published {label} failed exact byte/inode verification; "
+            "manual reconciliation required"
+        )
 
 def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
     """Create one complete output, without following or replacing existing names."""
