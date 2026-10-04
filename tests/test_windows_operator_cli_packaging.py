@@ -191,6 +191,22 @@ def test_installed_record_resolution_fails_closed_on_missing_duplicate_or_nonfil
         resolve_default_paths(module_path=module, distribution=nonfile)
 
 
+
+def test_installed_record_resolution_rejects_symlinked_profile(tmp_path: Path) -> None:
+    module = _fake_installed_module(tmp_path)
+    substituted = tmp_path / "substituted-profile.json"
+    substituted.write_text("{}\\n", encoding="utf-8")
+    symlink = tmp_path / "linked-profile.json"
+    try:
+        symlink.symlink_to(substituted)
+    except (NotImplementedError, OSError):
+        pytest.skip("creating symlinks is unsupported on this machine")
+    packet = tmp_path / "packet.json"
+    packet.write_text("{}\\n", encoding="utf-8")
+    distribution = _FakeDistribution({PROFILE_RECORD: symlink, PACKET_RECORD: packet})
+    with pytest.raises(RuntimeError, match="not a regular file"):
+        resolve_default_paths(module_path=module, distribution=distribution)
+
 def test_installed_record_resolution_fails_closed_without_record_listing(tmp_path: Path) -> None:
     module = _fake_installed_module(tmp_path)
     unavailable = _FakeDistribution({}, files_available=False)
