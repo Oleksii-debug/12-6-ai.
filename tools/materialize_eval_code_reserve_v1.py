@@ -6,6 +6,8 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
+import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -205,6 +207,27 @@ def materialize(manifest: dict[str, Any], *, timeout: int = 30) -> dict[str, Any
     }
 
 
+def _publish_evidence_atomic(output: Path, evidence: dict[str, Any]) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="\n",
+            prefix=f".{output.name}.", suffix=".tmp",
+            dir=output.parent, delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            json.dump(evidence, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, output)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
@@ -215,6 +238,7 @@ def main() -> int:
     try:
         manifest = _VALIDATOR._load_mapping(args.manifest)
         evidence = materialize(manifest, timeout=args.timeout)
+        _publish_evidence_atomic(args.output, evidence)
     except (OSError, ValueError, RuntimeError) as exc:
         print(json.dumps({
             "status": "BLOCKED_INVALID_EVAL647_MATERIALIZATION",
@@ -224,11 +248,6 @@ def main() -> int:
             "final_test_outcomes_read": False,
         }, sort_keys=True))
         return 2
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
     print(
         json.dumps(
             {
