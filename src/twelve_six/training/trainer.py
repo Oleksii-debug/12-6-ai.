@@ -245,6 +245,7 @@ class Trainer:
         expected = self._optimizer_parameter_name_groups()
         if not isinstance(source_groups, list) or len(source_groups) != len(expected):
             raise ValueError("checkpoint optimizer parameter-name group count differs")
+        next_id = 0
         for index, (saved_group, names) in enumerate(
             zip(source_groups, expected, strict=True)
         ):
@@ -257,6 +258,35 @@ class Trainer:
                     "checkpoint optimizer parameter order/identity differs "
                     f"in group {index}; legacy unnamed optimizer state is not exact-resumable"
                 )
+            # PyTorch assigns unique parameters ordinal IDs in optimizer-group
+            # order. Derive this layout from the live parameter groups already
+            # checked above; state_dict() may have harmful export side effects.
+            saved_ids = saved_group.get("params")
+            canonical_ids = list(range(next_id, next_id + len(names)))
+            next_id += len(names)
+            if (
+                not isinstance(saved_ids, list)
+                or len(saved_ids) != len(canonical_ids)
+                or any(
+                    type(saved_id) is not int or saved_id != canonical_id
+                    for saved_id, canonical_id in zip(
+                        saved_ids, canonical_ids, strict=True
+                    )
+                )
+            ):
+                raise ValueError(
+                    f"checkpoint optimizer parameter ID/order differs in group {index}"
+                )
+        # State-map keys are the same positional IDs, not arbitrary values
+        # that merely compare equal (False == 0 and 0.0 == 0 in Python).
+        # A partial state map is valid for a fresh optimizer; every present
+        # entry must nevertheless bind to a canonical live parameter slot.
+        saved_state = state.get("state")
+        if not isinstance(saved_state, Mapping) or any(
+            type(saved_id) is not int or not 0 <= saved_id < next_id
+            for saved_id in saved_state
+        ):
+            raise ValueError("checkpoint optimizer state parameter ID is noncanonical")
 
     def _require_no_residual_model_gradients(self) -> None:
         if any(parameter.grad is not None for parameter in self.model.parameters()):
@@ -783,31 +813,46 @@ class Trainer:
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         self.assert_checkpoint_safe()
-        optimizer_state = copy.deepcopy(self.optimizer.state_dict())
-        saved_groups = optimizer_state.get("param_groups")
-        name_groups = self._optimizer_parameter_name_groups()
-        if not isinstance(saved_groups, list) or len(saved_groups) != len(name_groups):
-            raise TrainingStateInvalidError(
-                "optimizer state cannot bind named parameter groups"
-            )
-        for saved_group, names in zip(saved_groups, name_groups, strict=True):
-            if not isinstance(saved_group, dict):
+        try:
+            optimizer_state = copy.deepcopy(self.optimizer.state_dict())
+            saved_groups = optimizer_state.get("param_groups")
+            name_groups = self._optimizer_parameter_name_groups()
+            if not isinstance(saved_groups, list) or len(saved_groups) != len(name_groups):
                 raise TrainingStateInvalidError(
-                    "optimizer parameter group is not a mutable mapping"
+                    "optimizer state cannot bind named parameter groups"
                 )
-            # Never trust caller-provided param_names over live model identity.
-            saved_group["param_names"] = names
-        return TrainerState(
-            micro_step=self.micro_step,
-            optimizer_step=self.optimizer_step,
-            tokens_seen=self.tokens_seen,
-            optimizer=optimizer_state,
-            scheduler=(
-                None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
-            ),
-            scaler=None if self.scaler is None else copy.deepcopy(self.scaler.state_dict()),
-            config=asdict(self.config),
-        )
+            for saved_group, names in zip(saved_groups, name_groups, strict=True):
+                if not isinstance(saved_group, dict):
+                    raise TrainingStateInvalidError(
+                        "optimizer parameter group is not a mutable mapping"
+                    )
+                # Never trust caller-provided param_names over live model identity.
+                saved_group["param_names"] = names
+            snapshot = TrainerState(
+                micro_step=self.micro_step,
+                optimizer_step=self.optimizer_step,
+                tokens_seen=self.tokens_seen,
+                optimizer=optimizer_state,
+                scheduler=(
+                    None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
+                ),
+                scaler=None if self.scaler is None else copy.deepcopy(self.scaler.state_dict()),
+                config=asdict(self.config),
+            )
+            # State-dict hooks can mutate weights, moments, gradients or policy.
+            # Refuse publication unless the extracted state remains checkpoint-safe.
+            self.assert_checkpoint_safe()
+            # Hooks can also return a detached, corrupt snapshot without
+            # changing their live component. Validate the bytes to publish.
+            self._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
+            if snapshot.scheduler is not None:
+                self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+            if snapshot.scaler is not None:
+                self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
+        except BaseException:
+            self._mark_failed("checkpoint state extraction failed after possible mutation")
+            raise
+        return snapshot
 
     def load_state_dict(self, state: TrainerState | Mapping[str, Any]) -> None:
         """Restore checkpoint state into a clean trainer instance.
