@@ -184,3 +184,51 @@ def test_license_marker_is_not_provenance(index: int) -> None:
     forged = materializer.LICENSE_MARKERS[row["license_spdx"]] + b"\\nforged-license-bytes"
     with pytest.raises(RuntimeError, match="license SHA-256 drift"):
         materializer._check_pinned_license(row, forged)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_evidence_publication_is_atomic(
+    failure: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    destination = tmp_path / "reports" / "запечатаний доказ.json"
+    destination.parent.mkdir(parents=True)
+    original = b"existing verified evidence must not be truncated\\n"
+    destination.write_bytes(original)
+    manifest_file = tmp_path / "manifest.json"
+    manifest_file.write_bytes(MANIFEST.read_bytes())
+    evidence = {
+        "terminal_status": "EXACT_RAW_OBJECTS_SEALED_PENDING_PROJECT_OVERLAP_AUDIT",
+        "reserved_object_count": 2,
+        "independent_family_count": 2,
+        "object_set_identity_sha256": "0" * 64,
+        "selection_validation_records_authorized": 0,
+    }
+    monkeypatch.setattr(
+        materializer, "materialize", lambda *_args, **_kwargs: evidence,
+    )
+    monkeypatch.setattr(
+        sys, "argv",
+        [str(SCRIPT), "--manifest", str(manifest_file), "--output", str(destination)],
+    )
+    if failure:
+        def reject_replace(_source: object, _destination: object) -> None:
+            raise PermissionError("simulated atomic publication denial")
+
+        monkeypatch.setattr(materializer.os, "replace", reject_replace)
+
+    assert materializer.main() == (2 if failure else 0)
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert len(output.out.splitlines()) == 1
+    if failure:
+        assert destination.read_bytes() == original
+        result = json.loads(output.out)
+        assert result["status"] == "BLOCKED_INVALID_EVAL647_MATERIALIZATION"
+        assert result["selection_validation_records_authorized"] == 0
+    else:
+        assert json.loads(destination.read_text(encoding="utf-8")) == evidence
+        assert json.loads(output.out)["selection_validation_records_authorized"] == 0
+    assert list(destination.parent.glob(".*.tmp")) == []
