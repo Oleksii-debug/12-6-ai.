@@ -420,6 +420,18 @@ def _fetch_remote_commit(
         if not entries[0].startswith(prefix) or not entries[0].endswith(suffix):
             raise _GlobalLeaseFailure("global_lease_tree_not_closed_world")
 
+        # Check immutable Git object size before subprocess captures blob stdout.
+        # The JSON decoder's limit alone is too late for oversized remote blobs.
+        object_size = _git_ascii(
+            repo_root,
+            ["cat-file", "-s", f"{expected_tip}:{GLOBAL_LEASE_STATE_PATH}"],
+            blocker="global_lease_blob_size_read_failed",
+        ).strip()
+        if not object_size.isascii() or not object_size.isdecimal() or len(object_size) > 20:
+            raise _GlobalLeaseFailure("global_lease_blob_size_invalid")
+        if int(object_size) > MAX_GLOBAL_LEASE_STATE_BYTES:
+            raise _GlobalLeaseFailure("global_lease_remote_state_invalid")
+
         blob = _run_git(
             repo_root,
             ["cat-file", "blob", f"{expected_tip}:{GLOBAL_LEASE_STATE_PATH}"],
