@@ -599,6 +599,8 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
     except FileExistsError as exc:
         raise GateError(f"refusing to overwrite existing balance output: {path}") from exc
     finally:
+        # Keep the original publication failure when cleanup or rollback also fails.
+        primary_failure = sys.exc_info()[1]
         rollback_error: OSError | None = None
         cleanup_error: OSError | None = None
         if linked and not verified and identity is not None and _same_inode(final, identity):
@@ -612,9 +614,18 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
             except OSError as exc:
                 cleanup_error = exc
         if rollback_error is not None:
+            stranded_stage = (
+                f"; staged cleanup also failed: {staged_path}: {cleanup_error}"
+                if cleanup_error is not None else ""
+            )
+            initial = (
+                f"; initial publication failure: {primary_failure}"
+                if primary_failure is not None else ""
+            )
             raise GateError(
                 f"ROLLBACK_INCOMPLETE: invalid balance output may remain: {final}"
-            ) from rollback_error
+                f"; rollback failure: {rollback_error}{stranded_stage}{initial}"
+            ) from (primary_failure if primary_failure is not None else rollback_error)
         if cleanup_error is not None:
             if verified:
                 # The final report was byte-verified and is already committed.
@@ -627,10 +638,14 @@ def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
                     file=sys.stderr,
                 )
             else:
+                initial = (
+                    f"; initial publication failure: {primary_failure}"
+                    if primary_failure is not None else ""
+                )
                 raise GateError(
                     f"STAGING_CLEANUP_INCOMPLETE: unpublished stage may remain: "
-                    f"{staged_path}"
-                ) from cleanup_error
+                    f"{staged_path}; cleanup failure: {cleanup_error}{initial}"
+                ) from (primary_failure if primary_failure is not None else cleanup_error)
 
 
 def main() -> int:

@@ -639,3 +639,82 @@ def test_unpublished_stage_cleanup_failure_fails_closed(
     assert not output.exists()
     assert len(list(tmp_path.glob(f".{output.name}.*.tmp"))) == 1
     assert source.read_bytes() == b"original authority"
+
+
+def test_failed_stage_fsync_and_cleanup_preserve_original_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"original authority")
+    output = tmp_path / "результат.json"
+    real_unlink = Path.unlink
+
+    def fail_fsync(_fd: int) -> None:
+        raise OSError("injected ENOSPC during staged fsync")
+
+    def lock_stage(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name.startswith(f".{output.name}.") and self.suffix == ".tmp":
+            raise PermissionError("injected staging sharing violation")
+        real_unlink(self, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(gate.os, "fsync", fail_fsync)
+        fault.setattr(Path, "unlink", lock_stage)
+        with pytest.raises(gate.GateError, match="STAGING_CLEANUP_INCOMPLETE") as caught:
+            gate._write_new_output(output, b"candidate", input_path=source)
+
+    stages = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(stages) == 1
+    assert str(stages[0]) in str(caught.value)
+    assert "ENOSPC" in str(caught.value)
+    assert "staging sharing violation" in str(caught.value)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert not output.exists()
+    assert source.read_bytes() == b"original authority"
+    stages[0].unlink()
+    gate._write_new_output(output, b"candidate", input_path=source)
+    assert output.read_bytes() == b"candidate"
+
+
+def test_failed_rollback_and_cleanup_report_both_orphans_and_primary_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"original authority")
+    output = tmp_path / "result.json"
+    real_link = gate.os.link
+    real_unlink = Path.unlink
+
+    def tamper_then_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"tampered output")
+        real_link(stage, final)
+
+    def lock_final_and_stage(self: Path, *args: object, **kwargs: object) -> None:
+        if self == output or (
+            self.name.startswith(f".{output.name}.") and self.suffix == ".tmp"
+        ):
+            raise PermissionError("injected sharing violation")
+        real_unlink(self, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(gate.os, "link", tamper_then_link)
+        fault.setattr(Path, "unlink", lock_final_and_stage)
+        with pytest.raises(gate.GateError, match="ROLLBACK_INCOMPLETE") as caught:
+            gate._write_new_output(output, b"expected", input_path=source)
+
+    stages = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(stages) == 1
+    assert str(output) in str(caught.value)
+    assert str(stages[0]) in str(caught.value)
+    assert "rollback failure" in str(caught.value)
+    assert "staged cleanup also failed" in str(caught.value)
+    assert "failed byte/path verification" in str(caught.value)
+    assert isinstance(caught.value.__cause__, gate.GateError)
+    assert stages[0].read_bytes() == output.read_bytes() == b"tampered output"
+    assert source.read_bytes() == b"original authority"
+    stages[0].unlink()
+    output.unlink()
+    gate._write_new_output(output, b"expected", input_path=source)
+    assert output.read_bytes() == b"expected"
