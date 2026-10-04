@@ -108,7 +108,10 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     invalid_state["config"][field] = alias
     assert invalid_state["config"] == state["config"]
     # The comparison used before #2653 accepted this metadata despite type drift.
-    assert type(invalid_state["config"][field]) is not type(state["config"][field])
+    if field == "betas":
+        assert type(invalid_state["config"][field][0]) is not float
+    else:
+        assert type(invalid_state["config"][field]) is not type(state["config"][field])
 
     invalid_path = tmp_path / "sealed-invalid з пробілами"
     valid_path = tmp_path / "sealed-valid з пробілами"
