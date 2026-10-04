@@ -272,7 +272,15 @@ def main() -> int:
         )
     except ProjectionError as exc:
         raise SystemExit(f"FAIL_CLOSED: {exc}") from exc
-    print(args.output)
+    try:
+        print(args.output)
+    except UnicodeEncodeError:
+        # A restricted Windows code page must not report failure after commit.
+        print(
+            "OUTPUT_COMMITTED_STDOUT_ENCODING_UNAVAILABLE: "
+            + json.dumps({"output": str(args.output)}, ensure_ascii=True),
+            file=sys.stderr,
+        )
     return 0
 
 
