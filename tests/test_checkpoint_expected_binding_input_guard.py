@@ -114,3 +114,107 @@ def test_empty_expected_identity_rejected_before_checkpoint_io(
             **{field: ""},
         )
     assert attempts == []
+
+@pytest.mark.parametrize(
+    "field", ["expected_step", "expected_tokens_seen"],
+)
+@pytest.mark.parametrize(
+    "invalid", [True, 1.0, -1, "1"],
+    ids=["bool-as-int", "float-as-int", "negative", "string"],
+)
+def test_invalid_expected_progress_rejected_before_checkpoint_io(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: Any,
+) -> None:
+    attempts: list[str] = []
+
+    def forbidden_read(*_args: Any, **_kwargs: Any) -> None:
+        attempts.append("checkpoint-open")
+        raise AssertionError("invalid expected progress must reject before checkpoint I/O")
+
+    monkeypatch.setattr(progress_trainer, "prepare_checkpoint_load", forbidden_read)
+    with pytest.raises(CheckpointCompatibilityError, match=field):
+        progress_trainer.load_trainer_checkpoint(
+            tmp_path / "not-a-checkpoint",
+            model=object(),
+            trainer=_PassiveTrainer(),
+            **{field: invalid},
+        )
+    assert attempts == []
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "expected_ledger_identity_sha256",
+        "expected_materialization_identity_sha256",
+        "expected_packing_identity_sha256",
+        "expected_exposure_plan_identity_sha256",
+        "expected_ordered_next_exposure_identity_sha256",
+    ],
+)
+@pytest.mark.parametrize(
+    "invalid", ["not-sha256", "A" * 64, True],
+    ids=["malformed", "uppercase", "boolean"],
+)
+def test_invalid_expected_d04_sha_rejected_before_checkpoint_io(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: Any,
+) -> None:
+    attempts: list[str] = []
+
+    def forbidden_read(*_args: Any, **_kwargs: Any) -> None:
+        attempts.append("checkpoint-open")
+        raise AssertionError("invalid expected D04 hash must reject before checkpoint I/O")
+
+    monkeypatch.setattr(progress_trainer, "prepare_checkpoint_load", forbidden_read)
+    with pytest.raises(CheckpointCompatibilityError, match=field):
+        progress_trainer.load_trainer_checkpoint(
+            tmp_path / "not-a-checkpoint",
+            model=object(),
+            trainer=_PassiveTrainer(),
+            **{field: invalid},
+        )
+    assert attempts == []
+
+
+@pytest.mark.parametrize(
+    "field,valid",
+    [
+        ("expected_step", 0),
+        ("expected_tokens_seen", 0),
+        ("expected_ledger_identity_sha256", "a" * 64),
+        ("expected_materialization_identity_sha256", "b" * 64),
+        ("expected_packing_identity_sha256", "c" * 64),
+        ("expected_exposure_plan_identity_sha256", "d" * 64),
+        ("expected_ordered_next_exposure_identity_sha256", "e" * 64),
+    ],
+)
+def test_valid_progress_and_d04_expectations_reach_checkpoint_io(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    valid: Any,
+) -> None:
+    class ReachedCheckpointRead(Exception):
+        pass
+
+    attempts: list[str] = []
+
+    def reached_read(*_args: Any, **_kwargs: Any) -> None:
+        attempts.append("checkpoint-open")
+        raise ReachedCheckpointRead()
+
+    monkeypatch.setattr(progress_trainer, "prepare_checkpoint_load", reached_read)
+    with pytest.raises(ReachedCheckpointRead):
+        progress_trainer.load_trainer_checkpoint(
+            tmp_path / "not-a-checkpoint",
+            model=object(),
+            trainer=_PassiveTrainer(),
+            **{field: valid},
+        )
+    assert attempts == ["checkpoint-open"]
