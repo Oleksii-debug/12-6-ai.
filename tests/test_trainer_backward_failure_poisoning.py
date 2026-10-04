@@ -827,3 +827,61 @@ def test_primary_backward_exception_survives_both_gradient_cleanup_failures(
     assert "gradient cleanup failed: KeyboardInterrupt" in trainer._failure_reason
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.train_microbatch(_BATCH)
+
+
+class _TwoGroupModel(_TinyLogitModel):
+    def __init__(self) -> None:
+        super().__init__()
+        self.extra = torch.nn.Parameter(torch.tensor([0.03, 0.04, -0.02]))
+
+    def forward(self, input_ids):
+        return super().forward(input_ids) + self.extra
+
+
+@pytest.mark.parametrize(
+    "bad_rate", [float("nan"), float("inf"), float("-inf"), -0.01, True],
+)
+def test_secondary_optimizer_group_unsafe_lr_never_updates_either_group(bad_rate):
+    from twelve_six.training import NonFiniteTrainingError
+
+    model = _TwoGroupModel()
+    optimizer = torch.optim.AdamW(
+        [{"params": [model.weight], "lr": 1e-3},
+         {"params": [model.extra], "lr": 2e-3}],
+    )
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17), optimizer=optimizer)
+    original_weight = model.weight.detach().clone()
+    original_extra = model.extra.detach().clone()
+    optimizer.param_groups[1]["lr"] = bad_rate
+
+    with pytest.raises(NonFiniteTrainingError, match="learning rate must be finite"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+    assert model.weight.grad is None
+    assert model.extra.grad is None
+    torch.testing.assert_close(model.weight, original_weight, rtol=0, atol=0)
+    torch.testing.assert_close(model.extra, original_extra, rtol=0, atol=0)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_distinct_valid_optimizer_group_learning_rates_both_commit():
+    model = _TwoGroupModel()
+    optimizer = torch.optim.AdamW(
+        [{"params": [model.weight], "lr": 1e-3},
+         {"params": [model.extra], "lr": 2e-3}],
+    )
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17), optimizer=optimizer)
+    original_weight = model.weight.detach().clone()
+    original_extra = model.extra.detach().clone()
+
+    result = trainer.train_microbatch(_BATCH)
+
+    assert result.optimizer_stepped is True
+    assert result.learning_rate == 1e-3
+    assert trainer.optimizer_step == 1
+    assert not torch.equal(model.weight, original_weight)
+    assert not torch.equal(model.extra, original_extra)
+    assert trainer.state_dict().optimizer_step == 1
