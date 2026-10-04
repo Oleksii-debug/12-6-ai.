@@ -1455,3 +1455,50 @@ def test_checkpoint_export_refuses_nonfinite_weights_modified_after_valid_step()
     assert "checkpoint boundary has invalid optimizer" in trainer._failure_reason
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.state_dict()
+
+
+def test_direct_restore_rejects_nonfinite_adamw_moment_before_clean_status():
+    from copy import deepcopy
+    from dataclasses import replace
+
+    from twelve_six.training import NonFiniteTrainingError
+
+    config = TrainerConfig(max_steps=2, seed=17)
+    source = Trainer(_TinyLogitModel(), config)
+    source.train_microbatch(_BATCH)
+    snapshot = source.state_dict()
+    bad_optimizer = deepcopy(snapshot.optimizer)
+    first_state = next(iter(bad_optimizer["state"].values()))
+    first_state["exp_avg"].fill_(float("nan"))
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    with pytest.raises(NonFiniteTrainingError, match="non-finite state"):
+        receiver.load_state_dict(replace(snapshot, optimizer=bad_optimizer))
+
+    assert receiver._failure_reason.startswith("trainer state restore failed")
+    assert receiver._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        receiver.state_dict()
+    with pytest.raises(TrainingStateInvalidError, match="verified model"):
+        receiver.load_state_dict(snapshot)
+
+
+def test_direct_restore_rejects_nonfinite_optimizer_group_rate():
+    from copy import deepcopy
+    from dataclasses import replace
+
+    from twelve_six.training import NonFiniteTrainingError
+
+    config = TrainerConfig(max_steps=1, seed=17)
+    snapshot = Trainer(_TinyLogitModel(), config).state_dict()
+    bad_optimizer = deepcopy(snapshot.optimizer)
+    bad_optimizer["param_groups"][0]["lr"] = float("inf")
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    with pytest.raises(NonFiniteTrainingError, match="learning rate must be finite"):
+        receiver.load_state_dict(replace(snapshot, optimizer=bad_optimizer))
+
+    assert receiver._failure_reason.startswith("trainer state restore failed")
+    assert receiver._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        receiver.train_microbatch(_BATCH)
