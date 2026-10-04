@@ -5,6 +5,11 @@ Synthetic CPU acceptance cases only; not physical model-training evidence.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import subprocess
+import sys
+import textwrap
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -318,3 +323,75 @@ def test_nonzero_adamw_complete_resume_preserves_next_optimizer_update(
     ):
         torch.testing.assert_close(target_param, source_param, rtol=0, atol=0)
     target.assert_checkpoint_safe()
+
+
+def test_nonzero_d02_resume_in_fresh_process_matches_next_step(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+) -> None:
+    """A new Python process must reproduce the next synthetic Trainer update."""
+    checkpoint = tmp_path / "checkpoint з пробілами"
+    source_model, source, _ = _checkpoint_after_tiny_trainer_step(
+        checkpoint, checkpoint_identity, with_buffer=True,
+    )
+    metrics = source.train_microbatch(
+        {"input_ids": torch.tensor([[0, 1, 2, 0]], dtype=torch.long)},
+    )
+    assert metrics.optimizer_stepped and source.optimizer_step == 2
+    source_weight_sha = hashlib.sha256(
+        source_model.weight.detach().cpu().contiguous().numpy().tobytes(),
+    ).hexdigest()
+    source_moment_sha = hashlib.sha256(
+        source.optimizer.state[source_model.weight]["exp_avg"]
+        .detach().cpu().contiguous().numpy().tobytes(),
+    ).hexdigest()
+
+    script = textwrap.dedent("""
+        import hashlib
+        import json
+        import sys
+        import torch
+        from twelve_six.checkpoint import progress_trainer
+        from twelve_six.training import Trainer, TrainerConfig
+
+        model = torch.nn.Embedding(4, 3)
+        model.register_buffer("resume_scale", torch.tensor(-2.0))
+        trainer = Trainer(model, TrainerConfig(max_steps=3, seed=703), device="cpu")
+        progress_trainer.load_trainer_checkpoint(
+            sys.argv[1], model=model, trainer=trainer,
+            strict_model=False, restore_rng=True,
+            expected_step=1, expected_tokens_seen=3,
+        )
+        assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 3)
+        assert model.resume_scale.item() == 3.0
+        metrics = trainer.train_microbatch({
+            "input_ids": torch.tensor([[0, 1, 2, 0]], dtype=torch.long),
+        })
+        assert metrics.optimizer_stepped
+        assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (2, 2, 6)
+        trainer.assert_checkpoint_safe()
+        weight = model.weight.detach().cpu().contiguous().numpy().tobytes()
+        moment = (
+            trainer.optimizer.state[model.weight]["exp_avg"]
+            .detach().cpu().contiguous().numpy().tobytes()
+        )
+        print(json.dumps({
+            "weight_sha": hashlib.sha256(weight).hexdigest(),
+            "moment_sha": hashlib.sha256(moment).hexdigest(),
+            "step": trainer.optimizer_step,
+            "tokens_seen": trainer.tokens_seen,
+        }, sort_keys=True))
+    """)
+    process = subprocess.run(
+        [sys.executable, "-c", script, str(checkpoint)],
+        capture_output=True, text=True, encoding="utf-8",
+        check=False, timeout=120,
+    )
+    assert process.returncode == 0, process.stderr
+    restored = json.loads(process.stdout)
+    assert restored == {
+        "weight_sha": source_weight_sha,
+        "moment_sha": source_moment_sha,
+        "step": 2,
+        "tokens_seen": 6,
+    }
