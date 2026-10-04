@@ -104,14 +104,21 @@ def test_canonical_d02_non_strict_restore_must_not_accept_missing_buffer(
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
+@pytest.mark.parametrize("with_buffer", [False, True], ids=["parameters", "and-buffer"])
 def test_canonical_d02_non_strict_mode_remains_valid_for_complete_model(
     tmp_path: Path,
     checkpoint_identity: CheckpointIdentity,
     loader: Any,
+    with_buffer: bool,
 ) -> None:
     checkpoint = tmp_path / "sealed-complete"
-    config = _sealed_source(checkpoint, checkpoint_identity)
+    config = _sealed_source(
+        checkpoint, checkpoint_identity, source_has_buffer=with_buffer,
+    )
+    saved_weights, _ = core._decode_verified_state(core.prepare_checkpoint_load(checkpoint))
     target_model = torch.nn.Linear(3, 3)
+    if with_buffer:
+        target_model.register_buffer("resume_scale", torch.tensor(-2.0))
     target = Trainer(target_model, config, device="cpu")
     result = loader.load_trainer_checkpoint(
         checkpoint,
@@ -121,6 +128,11 @@ def test_canonical_d02_non_strict_mode_remains_valid_for_complete_model(
         restore_rng=False,
     )
     assert result.manifest["identity"]["step"] == 0
+    for name, saved in saved_weights.items():
+        torch.testing.assert_close(
+            target_model.state_dict()[name].detach().cpu(),
+            torch.from_numpy(saved), rtol=0, atol=0,
+        )
     assert target._failure_reason is None
     assert target._update_incomplete is False
 
