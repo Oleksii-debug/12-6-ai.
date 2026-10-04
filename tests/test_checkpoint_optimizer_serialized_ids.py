@@ -241,3 +241,99 @@ def test_id_preflight_never_reexports_an_effectful_live_optimizer(
     assert called == []
     for name, value in before.items():
         torch.testing.assert_close(target_model.state_dict()[name], value, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("separate_groups", [False, True], ids=["one", "two"])
+@pytest.mark.parametrize("alias", [False, 0.0], ids=["bool-zero", "float-zero"])
+def test_direct_d02_rejects_noncanonical_state_map_keys(
+    separate_groups: bool,
+    alias: Any,
+    preserve_ambient_state: Any,
+) -> None:
+    source_model = _TwoSameShapeParameters()
+    source = _trainer(source_model, separate_groups=separate_groups)
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    valid = asdict(source.state_dict())
+    invalid = copy.deepcopy(valid)
+    invalid["optimizer"]["state"][alias] = invalid["optimizer"]["state"].pop(0)
+    assert list(invalid["optimizer"]["state"]) != list(valid["optimizer"]["state"])
+    assert invalid["optimizer"]["param_groups"] == valid["optimizer"]["param_groups"]
+
+    target_model = _TwoSameShapeParameters()
+    target = _trainer(target_model, separate_groups=separate_groups)
+    with pytest.raises(ValueError, match="optimizer state parameter ID is noncanonical"):
+        target.load_state_dict(invalid)
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert not target.optimizer.state
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("separate_groups", [False, True], ids=["one", "two"])
+@pytest.mark.parametrize("alias", [False, 0.0], ids=["bool-zero", "float-zero"])
+def test_sealed_noncanonical_state_map_key_refused_without_model_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    separate_groups: bool,
+    alias: Any,
+    preserve_ambient_state: Any,
+) -> None:
+    source_model = _TwoSameShapeParameters()
+    source = _trainer(source_model, separate_groups=separate_groups)
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    correct = asdict(source.state_dict())
+    bad = copy.deepcopy(correct)
+    bad["optimizer"]["state"][alias] = bad["optimizer"]["state"].pop(0)
+    assert [type(key) for key in bad["optimizer"]["state"]] != [
+        type(key) for key in correct["optimizer"]["state"]
+    ]
+
+    invalid = tmp_path / "invalid-state-key-дані"
+    valid = tmp_path / "valid-state-key-дані"
+    for location, payload in ((invalid, bad), (valid, correct)):
+        core.save_checkpoint(
+            location, model=source_model, trainer_state=payload, identity=_identity(),
+        )
+        core.verify_checkpoint(location)
+
+    target_model = _TwoSameShapeParameters()
+    target = _trainer(target_model, separate_groups=separate_groups)
+    before = {name: value.clone() for name, value in target_model.state_dict().items()}
+    touched: list[bool] = []
+
+    def forbidden_apply(*args: Any, **kwargs: Any) -> None:
+        touched.append(True)
+        raise AssertionError("noncanonical optimizer ID reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbidden_apply)
+    extra = {"expected_step": 1, "expected_tokens_seen": 2} if (
+        loader is progress_trainer
+    ) else {}
+    with pytest.raises(
+        CheckpointCompatibilityError, match="optimizer parameter order/identity",
+    ):
+        loader.load_trainer_checkpoint(
+            invalid, model=target_model, trainer=target,
+            strict_model=False, restore_rng=False, **extra,
+        )
+    assert touched == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    for name, value in before.items():
+        torch.testing.assert_close(target_model.state_dict()[name], value, rtol=0, atol=0)
+
+    monkeypatch.undo()
+    loader.load_trainer_checkpoint(
+        valid, model=target_model, trainer=target,
+        strict_model=False, restore_rng=False, **extra,
+    )
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    for name in ("left", "right"):
+        src = getattr(source_model, name)
+        dst = getattr(target_model, name)
+        for key, value in source.optimizer.state[src].items():
+            torch.testing.assert_close(target.optimizer.state[dst][key], value, rtol=0, atol=0)
