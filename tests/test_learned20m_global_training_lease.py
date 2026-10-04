@@ -1134,3 +1134,115 @@ def test_deep_caller_mappings_fail_closed_before_remote_access(
     assert denied.committed is False
     assert denied.blockers == ("training_run_lease_snapshot_invalid",)
     _assert_no_authority_widening(denied)
+
+
+def test_remote_global_lease_fanout_tree_rejected_before_ls_tree_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A genuine Git descendant with many extra root entries is not captured."""
+    remote, writer, reader = git_pair
+    manifest, authority = _authorized_manifest()
+    acquired = acquire_global_training_run_lease(
+        writer, str(remote), manifest,
+        _authorized_lease(manifest, authority).as_dict(),
+        expected_terminal_authority_sha256=authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+    old_tip = acquired.written_remote_tip
+    ref = global_training_run_lease_ref(manifest)
+    path = global_lease_module.GLOBAL_LEASE_STATE_PATH
+    blob_sha = _git("rev-parse", f"{old_tip}:{path}", cwd=writer)
+    entries = f"100644 blob {blob_sha}\t{path}\n"
+    entries += "".join(
+        f"100644 blob {blob_sha}\tz-extra-{index:04d}.json\n"
+        for index in range(64)
+    )
+    tree = subprocess.run(
+        ["git", "mktree"], input=entries.encode("ascii"),
+        cwd=writer, capture_output=True, check=True,
+    ).stdout.decode("ascii").strip()
+    descendant = _git(
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree, "-p", old_tip,
+        "-m", "oversized global lease root tree",
+        cwd=writer,
+    )
+    _git("push", str(remote), f"{descendant}:{ref}", cwd=writer)
+    assert int(_git("cat-file", "-s", f"{descendant}^{{tree}}", cwd=writer)) > (
+        28 + len(path.encode("ascii"))
+    )
+
+    original_run_git = global_lease_module._run_git
+
+    def deny_ls_tree(repo_root, args, **kwargs):
+        if args and args[0] == "ls-tree":
+            raise AssertionError("fanout tree must be rejected before ls-tree")
+        return original_run_git(repo_root, args, **kwargs)
+
+    monkeypatch.setattr(global_lease_module, "_run_git", deny_ls_tree)
+    inspection = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.blockers == ("global_lease_tree_not_closed_world",)
+    assert inspection.optimizer_start_permitted_by_this_module is False
+    assert inspection.training_authority_granted_by_this_module is False
+    assert _git("ls-remote", str(remote), ref).split()[0] == descendant
+
+
+def test_many_parent_lease_commit_rejected_before_rev_list_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real Git octopus commit must not cause unbounded rev-list capture."""
+    remote, writer, reader = git_pair
+    manifest, authority = _authorized_manifest()
+    acquired = acquire_global_training_run_lease(
+        writer, str(remote), manifest,
+        _authorized_lease(manifest, authority).as_dict(),
+        expected_terminal_authority_sha256=authority, now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+    old_tip = acquired.written_remote_tip
+    tree = _git("rev-parse", f"{old_tip}^{{tree}}", cwd=writer)
+    author = (
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+    )
+    extras = [
+        _git(
+            *author, "commit-tree", tree, "-p", old_tip,
+            "-m", f"independent extra parent {index}", cwd=writer,
+        )
+        for index in range(96)
+    ]
+    parent_args = [
+        item for parent in (old_tip, *extras) for item in ("-p", parent)
+    ]
+    descendant = _git(
+        *author, "commit-tree", tree, *parent_args,
+        "-m", "oversized lease octopus", cwd=writer,
+    )
+    assert int(_git("cat-file", "-s", descendant, cwd=writer)) > (
+        global_lease_module.MAX_GLOBAL_LEASE_COMMIT_BYTES
+    )
+    ref = global_training_run_lease_ref(manifest)
+    _git("push", str(remote), f"{descendant}:{ref}", cwd=writer)
+
+    original_run_git = global_lease_module._run_git
+
+    def deny_rev_list(repo_root, args, **kwargs):
+        if args and args[0] == "rev-list":
+            raise AssertionError("oversized commit must be rejected before rev-list")
+        return original_run_git(repo_root, args, **kwargs)
+
+    monkeypatch.setattr(global_lease_module, "_run_git", deny_rev_list)
+    inspected = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert inspected.present is True
+    assert inspected.valid is False
+    assert inspected.blockers == ("global_lease_commit_exceeds_byte_limit",)
+    assert inspected.optimizer_start_permitted_by_this_module is False
+    assert inspected.training_authority_granted_by_this_module is False
+    assert _git("ls-remote", str(remote), ref).split()[0] == descendant

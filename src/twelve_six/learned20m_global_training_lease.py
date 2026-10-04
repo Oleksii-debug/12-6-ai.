@@ -39,6 +39,7 @@ CANONICAL_LOCK_DOMAIN = "github.com/Oleksii-debug/12-6-ai."
 GLOBAL_LEASE_REF_PREFIX = "refs/heads/ts6-training-run-lease-v1"
 GLOBAL_LEASE_STATE_PATH = "training-run-lease-v1.json"
 MAX_GLOBAL_LEASE_STATE_BYTES = 1_048_576
+MAX_GLOBAL_LEASE_COMMIT_BYTES = 4_096
 MECHANICS_SCOPE = "COOPERATIVE_GIT_REF_CAS_ON_SELECTED_TRANSPORT_ONLY"
 
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -400,6 +401,18 @@ def _fetch_remote_commit(
         if _remote_tip(repo_root, remote, ref) != expected_tip:
             raise _GlobalLeaseFailure("remote_tip_changed_during_read")
 
+        # Bound rev-list --parents capture for a hostile octopus commit.
+        # Canonical writer commits have at most one parent and short fixed text.
+        commit_size = _git_ascii(
+            repo_root,
+            ["cat-file", "-s", expected_tip],
+            blocker="global_lease_commit_size_read_failed",
+        ).strip()
+        if not commit_size.isascii() or not commit_size.isdecimal() or len(commit_size) > 20:
+            raise _GlobalLeaseFailure("global_lease_commit_size_invalid")
+        if int(commit_size) > MAX_GLOBAL_LEASE_COMMIT_BYTES:
+            raise _GlobalLeaseFailure("global_lease_commit_exceeds_byte_limit")
+
         parents_output = _git_ascii(
             repo_root,
             ["rev-list", "--parents", "-n", "1", expected_tip],
@@ -408,6 +421,18 @@ def _fetch_remote_commit(
         parent_parts = parents_output.split()
         if not parent_parts or parent_parts[0] != expected_tip or len(parent_parts) > 2:
             raise _GlobalLeaseFailure("global_lease_commit_parent_shape_invalid")
+
+        # Bound ls-tree stdout using the immutable root tree object size first.
+        # One 100644 entry is: mode + space + name + NUL + raw SHA-1 (20 B).
+        tree_size = _git_ascii(
+            repo_root,
+            ["cat-file", "-s", f"{expected_tip}^{{tree}}"],
+            blocker="global_lease_tree_size_read_failed",
+        ).strip()
+        if not tree_size.isascii() or not tree_size.isdecimal() or len(tree_size) > 20:
+            raise _GlobalLeaseFailure("global_lease_tree_size_invalid")
+        if int(tree_size) != 28 + len(GLOBAL_LEASE_STATE_PATH.encode("ascii")):
+            raise _GlobalLeaseFailure("global_lease_tree_not_closed_world")
 
         tree = _run_git(repo_root, ["ls-tree", "-z", "--full-tree", expected_tip])
         if tree.returncode != 0:

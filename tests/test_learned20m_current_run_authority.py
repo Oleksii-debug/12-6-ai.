@@ -1913,3 +1913,138 @@ def test_deep_current_run_caller_mappings_fail_closed_before_remote_access(
     assert refresh_denied.blockers[0].startswith("launch_manifest_snapshot_invalid:")
     assert refresh_denied.optimizer_start_permitted_by_this_module is False
     assert refresh_denied.training_authority_granted_by_this_module is False
+
+
+def test_remote_current_run_fanout_tree_rejected_before_ls_tree_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A genuine Git descendant with many extra root entries is not captured."""
+    remote, writer, reader = git_pair
+    manifest, identity, lease, authority = _authorized_run()
+    acquired = acquire_global_training_run_lease(
+        writer, str(remote), manifest, lease.as_dict(),
+        expected_terminal_authority_sha256=authority, now=NOW,
+    )
+    assert acquired.committed is True
+    activated = activate_current_run_authority(
+        writer, str(remote), manifest, identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert activated.committed is True
+    assert activated.written_remote_tip is not None
+    old_tip = activated.written_remote_tip
+    path = current_run.CURRENT_RUN_POINTER_PATH
+    blob_sha = _git("rev-parse", f"{old_tip}:{path}", cwd=writer)
+    entries = f"100644 blob {blob_sha}\t{path}\n"
+    entries += "".join(
+        f"100644 blob {blob_sha}\tz-extra-{index:04d}.json\n"
+        for index in range(64)
+    )
+    tree = subprocess.run(
+        ["git", "mktree"], input=entries.encode("ascii"),
+        cwd=writer, capture_output=True, check=True,
+    ).stdout.decode("ascii").strip()
+    descendant = _git(
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree, "-p", old_tip,
+        "-m", "oversized current-run root tree",
+        cwd=writer,
+    )
+    _git("push", str(remote), f"{descendant}:{CURRENT_RUN_POINTER_REF}", cwd=writer)
+    assert int(_git("cat-file", "-s", f"{descendant}^{{tree}}", cwd=writer)) > (
+        28 + len(path.encode("ascii"))
+    )
+
+    original_run_git = current_run._run_git
+
+    def deny_ls_tree(repo_root, args, **kwargs):
+        if args and args[0] == "ls-tree":
+            raise AssertionError("fanout tree must be rejected before ls-tree")
+        return original_run_git(repo_root, args, **kwargs)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("invalid pointer must not write or push")
+
+    monkeypatch.setattr(current_run, "_run_git", deny_ls_tree)
+    monkeypatch.setattr(current_run, "_write_pointer_commit", unexpected_write)
+    inspection = inspect_current_run_authority(
+        reader, str(remote), manifest=manifest, now=NOW,
+    )
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.active is False
+    assert inspection.blockers == ("current_run_pointer_tree_not_closed_world",)
+    assert inspection.optimizer_start_permitted_by_this_module is False
+    assert inspection.training_authority_granted_by_this_module is False
+    assert _git("ls-remote", str(remote), CURRENT_RUN_POINTER_REF).split()[0] == descendant
+
+
+def test_many_parent_current_run_commit_rejected_before_rev_list_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real Git octopus commit cannot force unbounded parent output capture."""
+    remote, writer, reader = git_pair
+    manifest, identity, lease, authority = _authorized_run()
+    acquired = acquire_global_training_run_lease(
+        writer, str(remote), manifest, lease.as_dict(),
+        expected_terminal_authority_sha256=authority, now=NOW,
+    )
+    assert acquired.committed is True
+    activated = activate_current_run_authority(
+        writer, str(remote), manifest, identity,
+        expected_pointer_tip=None,
+        expected_current_run_identity_sha256=identity["identity_sha256"],
+        now=NOW,
+    )
+    assert activated.committed is True
+    assert activated.written_remote_tip is not None
+    old_tip = activated.written_remote_tip
+    tree = _git("rev-parse", f"{old_tip}^{{tree}}", cwd=writer)
+    author = (
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+    )
+    extras = [
+        _git(
+            *author, "commit-tree", tree, "-p", old_tip,
+            "-m", f"independent extra parent {index}", cwd=writer,
+        )
+        for index in range(96)
+    ]
+    parent_args = [
+        item for parent in (old_tip, *extras) for item in ("-p", parent)
+    ]
+    descendant = _git(
+        *author, "commit-tree", tree, *parent_args,
+        "-m", "oversized current-run octopus", cwd=writer,
+    )
+    assert int(_git("cat-file", "-s", descendant, cwd=writer)) > (
+        current_run.MAX_CURRENT_RUN_COMMIT_BYTES
+    )
+    _git("push", str(remote), f"{descendant}:{CURRENT_RUN_POINTER_REF}", cwd=writer)
+
+    original_run_git = current_run._run_git
+
+    def deny_rev_list(repo_root, args, **kwargs):
+        if args and args[0] == "rev-list":
+            raise AssertionError("oversized commit must be rejected before rev-list")
+        return original_run_git(repo_root, args, **kwargs)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("invalid pointer must not write or push")
+
+    monkeypatch.setattr(current_run, "_run_git", deny_rev_list)
+    monkeypatch.setattr(current_run, "_write_pointer_commit", unexpected_write)
+    inspection = inspect_current_run_authority(
+        reader, str(remote), manifest=manifest, now=NOW,
+    )
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.active is False
+    assert inspection.blockers == ("current_run_pointer_commit_exceeds_byte_limit",)
+    assert inspection.optimizer_start_permitted_by_this_module is False
+    assert inspection.training_authority_granted_by_this_module is False
+    assert _git("ls-remote", str(remote), CURRENT_RUN_POINTER_REF).split()[0] == descendant
