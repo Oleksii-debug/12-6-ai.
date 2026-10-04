@@ -1243,3 +1243,76 @@ def test_normal_adamw_step_keeps_finite_weights_and_optimizer_state():
             if isinstance(value, torch.Tensor):
                 assert torch.isfinite(value).all().item() is True
     assert trainer.state_dict().optimizer_step == 1
+
+
+def test_scheduler_can_never_publish_nonfinite_next_step_rate(monkeypatch):
+    from twelve_six.training import NonFiniteTrainingError
+
+    config = TrainerConfig(max_steps=2, warmup_steps=1, scheduler="cosine", seed=17)
+    model = _TinyLogitModel()
+    trainer = Trainer(model, config)
+
+    def corrupt_scheduler():
+        trainer.optimizer.param_groups[0]["lr"] = float("nan")
+
+    monkeypatch.setattr(trainer.scheduler, "step", corrupt_scheduler)
+    with pytest.raises(NonFiniteTrainingError, match="learning rate must be finite"):
+        trainer.train_microbatch(_BATCH)
+
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 1  # The optimizer already committed.
+    assert trainer._update_incomplete is True
+    assert trainer._failure_reason.startswith("optimizer/scheduler update failed")
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_scaler_update_cannot_publish_nonfinite_scaling_state(monkeypatch):
+    from twelve_six.training import NonFiniteTrainingError
+
+    trainer = Trainer(_TinyLogitModel(), TrainerConfig(max_steps=1, seed=17))
+    updated = []
+
+    def corrupt_scaler():
+        updated.append(True)
+
+    monkeypatch.setattr(trainer.scaler, "update", corrupt_scaler)
+    monkeypatch.setattr(
+        trainer.scaler, "state_dict",
+        lambda: {"scale": float("inf")} if updated else {},
+    )
+    with pytest.raises(NonFiniteTrainingError, match="gradient scaler has non-finite"):
+        trainer.train_microbatch(_BATCH)
+
+    assert updated == [True]
+    assert trainer.optimizer_step == 1
+    assert trainer._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
+def test_optimizer_group_swap_after_step_with_cleared_model_gradients_poisoned(
+    monkeypatch,
+):
+    model = _TinyLogitModel()
+    trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
+    initial = model.weight.detach().clone()
+    original_step = trainer.optimizer.step
+    foreign = torch.nn.Parameter(torch.ones(3))
+
+    def swap_after_successful_step(*args, **kwargs):
+        result = original_step(*args, **kwargs)
+        model.zero_grad(set_to_none=True)
+        trainer.optimizer.param_groups[0]["params"] = [foreign]
+        return result
+
+    monkeypatch.setattr(trainer.optimizer, "step", swap_after_successful_step)
+    with pytest.raises(ValueError, match="not owned by the model"):
+        trainer.train_microbatch(_BATCH)
+
+    assert not torch.equal(model.weight, initial)  # Physical step committed.
+    assert trainer.optimizer_step == 1
+    assert trainer._update_incomplete is True
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
