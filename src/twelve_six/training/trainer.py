@@ -426,6 +426,9 @@ class Trainer:
         try:
             with self._autocast_context():
                 logits = _extract_logits(self.model(input_ids))
+                # A forward hook may change process-global torch policy.
+                # Refuse to compute loss or backpropagate under that drift.
+                self._require_deterministic_policy()
                 if aligned_targets:
                     loss = causal_pair_loss(logits, targets, loss_mask=loss_mask)
                 else:
@@ -511,8 +514,21 @@ class Trainer:
             loss_mask=loss_mask,
             aligned_targets=aligned_targets,
         )
+        # A loss callback can change torch's global policy after model.forward.
+        # Check before backward, before gradients can be accumulated.
         try:
-            self.scaler.scale(loss * tokens).backward()
+            self._require_deterministic_policy()
+        except BaseException:
+            self._mark_failed(
+                f"deterministic policy drift before backward at micro_step={self.micro_step + 1}"
+            )
+            raise
+        try:
+            scaled_loss = self.scaler.scale(loss * tokens)
+            # A scaler hook may drift global policy after the loss-side guard.
+            # Do not run backward on any tensor under a mismatched mode.
+            self._require_deterministic_policy()
+            scaled_loss.backward()
         except BaseException:
             # Autograd may raise non-RuntimeError exceptions or be interrupted after
             # partially accumulating gradients. A retry requires verified recovery.
