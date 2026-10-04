@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import pytest
-
-torch = pytest.importorskip("torch")
+import torch
 
 from twelve_six.training import Trainer, TrainerConfig, TrainingStateInvalidError
 
