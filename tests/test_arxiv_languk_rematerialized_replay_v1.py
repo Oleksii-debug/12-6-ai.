@@ -1658,3 +1658,39 @@ def test_uninspectable_outer_report_retains_stage_and_never_commits_receipt(
     )
     assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
     assert recovery["training_authorized"] is False
+
+
+def test_eexist_same_inode_cannot_authorize_removal_of_preexisting_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "existing-output.json"
+    original_link = REPLAY_RUNNER.os.link
+
+    def preexisting_alias_then_eexist(
+        stage: Path, final: Path, *, label: str,
+    ) -> None:
+        assert label == "test output"
+        original_link(stage, final)
+        raise REPLAY_RUNNER.RematerializationError(
+            "refusing to overwrite test output"
+        ) from FileExistsError("injected EEXIST")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(
+            REPLAY_RUNNER, "_link_staged_new_bytes", preexisting_alias_then_eexist,
+        )
+        with pytest.raises(
+            REPLAY_RUNNER.PublicationIndeterminate,
+            match="PUBLICATION_INDETERMINATE",
+        ):
+            REPLAY_RUNNER._write_new_bytes(
+                target, b"original", label="test output",
+            )
+
+    retained = list(tmp_path.glob(".existing-output.json.*.tmp"))
+    assert len(retained) == 1
+    assert target.read_bytes() == retained[0].read_bytes() == b"original"
+    retained[0].unlink()
+    target.unlink()
+    REPLAY_RUNNER._write_new_bytes(target, b"original", label="test output")
+    assert target.read_bytes() == b"original"
