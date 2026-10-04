@@ -10,6 +10,7 @@ from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import numpy as np
 import torch
 from torch import Tensor, nn
 from torch.optim import AdamW, Optimizer
@@ -171,6 +172,8 @@ class Trainer:
     @staticmethod
     def _configure_determinism(config: TrainerConfig) -> None:
         random.seed(config.seed)
+        # NumPy's legacy global RandomState accepts only 32-bit seeds.
+        np.random.seed(config.seed % (2 ** 32))
         torch.manual_seed(config.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(config.seed)
@@ -316,6 +319,19 @@ class Trainer:
         if cleanup_faults:
             self._failure_reason = f"{reason}; " + "; ".join(cleanup_faults)
 
+    def _require_deterministic_policy(self) -> None:
+        """Fail closed when another trainer or callback changed global torch mode."""
+        if (
+            torch.are_deterministic_algorithms_enabled()
+            != self.config.deterministic_algorithms
+            or torch.is_deterministic_algorithms_warn_only_enabled()
+            != self.config.deterministic_warn_only
+        ):
+            raise TrainingStateInvalidError(
+                "live PyTorch deterministic policy disagrees with trainer configuration; "
+                "restore a verified checkpoint before continuing"
+            )
+
     def _assert_trainable(self) -> None:
         if self._failure_reason is not None:
             raise TrainingStateInvalidError(
@@ -327,6 +343,7 @@ class Trainer:
                 "optimizer/scheduler update has ambiguous committed state; "
                 "construct a fresh trainer and restore a verified checkpoint"
             )
+        self._require_deterministic_policy()
 
     def _prepare_batch(
         self, batch: Batch
@@ -442,6 +459,8 @@ class Trainer:
 
         try:
             self.model.train()
+            # A custom train-mode hook may have changed process-global policy.
+            self._require_deterministic_policy()
         except BaseException:
             # Custom train-mode hooks can mutate buffers or consume RNG before
             # failing; prior accumulated gradients must not be replayed.
@@ -463,6 +482,8 @@ class Trainer:
             raise
 
         try:
+            # Backward hooks can switch global policy after the entry guard.
+            self._require_deterministic_policy()
             observed_loss = float(loss.detach().float().item())
             self.micro_step += 1
             self.tokens_seen += tokens
@@ -500,7 +521,9 @@ class Trainer:
                         error_if_nonfinite=True,
                     )
 
+                self._require_deterministic_policy()
                 self.scaler.step(self.optimizer)
+                self._require_deterministic_policy()
                 # A finite gradient and finite LR do not guarantee a finite
                 # AdamW update (e.g. weight-decay overflow). The update may
                 # already have mutated tensors, but must never earn step credit.
@@ -519,6 +542,7 @@ class Trainer:
                 # A custom optimizer may silently ignore zero_grad or swap
                 # groups inside step(). Never expose that as a clean boundary.
                 self._require_no_residual_model_gradients()
+                self._require_deterministic_policy()
             except BaseException:
                 self._mark_failed(
                     f"optimizer/scheduler update failed at micro_step={self.micro_step}"
@@ -679,6 +703,7 @@ class Trainer:
             self._require_finite_auxiliary_state()
             self._require_finite_committed_update()
             self._require_no_residual_model_gradients()
+            self._require_deterministic_policy()
         except BaseException:
             self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
             raise
@@ -769,6 +794,7 @@ class Trainer:
             self._require_finite_auxiliary_state()
             self._require_finite_committed_update()
             self._require_no_residual_model_gradients()
+            self._require_deterministic_policy()
         except BaseException:
             self._mark_failed("trainer state restore failed after possible partial apply")
             raise
