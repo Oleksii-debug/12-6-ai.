@@ -95,6 +95,8 @@ def load_trainer_checkpoint(
     trainer: Any,
     strict_model: bool = True,
     restore_rng: bool = True,
+    expected_checkpoint_id: str | None = None,
+    expected_manifest_sha256: str | None = None,
     expected_git_sha: str | None = None,
     expected_model_spec_hash: str | None = None,
     expected_init_spec_hash: str | None = None,
@@ -105,6 +107,7 @@ def load_trainer_checkpoint(
     expected_packing_hash: str | None = None,
     expected_packing_version: str | None = None,
     expected_run_manifest_hash: str | None = None,
+    expected_previous_run_id: str | None = None,
     expected_training_config_hash: str | None = None,
     expected_environment_lock_hash: str | None = None,
     expected_seed: int | None = None,
@@ -121,6 +124,18 @@ def load_trainer_checkpoint(
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
+    _require_expected_sha256(
+        expected_checkpoint_id,
+        field="expected_checkpoint_id",
+    )
+    _require_expected_sha256(
+        expected_manifest_sha256,
+        field="expected_manifest_sha256",
+    )
+    _require_expected_nonempty_string(
+        expected_previous_run_id,
+        field="expected_previous_run_id",
+    )
     _validate_expected_canonical_binding(
         expected_init_spec_hash=expected_init_spec_hash,
         expected_split_identity=expected_split_identity,
@@ -133,6 +148,30 @@ def load_trainer_checkpoint(
 
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
+    if (
+        expected_checkpoint_id is not None
+        and manifest.get("checkpoint_id") != expected_checkpoint_id
+    ):
+        raise _core.CheckpointCompatibilityError(
+            "checkpoint_id does not match the independently expected D05 identity"
+        )
+    if (
+        expected_manifest_sha256 is not None
+        and verified.manifest_sha256 != expected_manifest_sha256
+    ):
+        raise _core.CheckpointCompatibilityError(
+            "manifest SHA-256 does not match the independently expected D05 identity"
+        )
+    if expected_previous_run_id is not None:
+        identity = manifest.get("identity")
+        training_config = identity.get("training_config") if isinstance(identity, dict) else None
+        if (
+            not isinstance(training_config, dict)
+            or training_config.get("run_id") != expected_previous_run_id
+        ):
+            raise _core.CheckpointCompatibilityError(
+                "checkpoint previous run id does not match the independently expected identity"
+            )
     _assert_progress(
         _core,
         manifest,

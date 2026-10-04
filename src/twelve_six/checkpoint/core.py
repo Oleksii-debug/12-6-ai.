@@ -227,6 +227,11 @@ class VerifiedCheckpoint:
             invalid_message="manifest is not valid strict UTF-8 JSON",
         )
 
+    @property
+    def manifest_sha256(self) -> str:
+        """SHA-256 of exact verified manifest bytes held by this snapshot."""
+        return sha256_bytes(self._manifest_bytes)
+
 
 def canonical_json_bytes(value: Any) -> bytes:
     """Canonical JSON encoding used for all identity hashes."""
