@@ -295,6 +295,18 @@ def _preflight_trainer_target(trainer: Any) -> None:
             "checkpoint restore requires a fresh trainer with no pending gradients"
         )
 
+    # D02 validates optimizer/model parameter ownership during its actual load.
+    # Reject a predictably invalid target before checkpoint I/O and weight mutation.
+    # Older D02 implementations do not expose this method; retain their API.
+    coverage_check = getattr(trainer, "_require_optimizer_parameter_coverage", None)
+    if callable(coverage_check):
+        try:
+            coverage_check()
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint restore requires valid optimizer ownership of model parameters"
+            ) from exc
+
 
 def _preflight_trainer_state_without_rng_guard(
     trainer: Any,
