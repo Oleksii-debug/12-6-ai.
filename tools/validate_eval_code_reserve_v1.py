@@ -106,23 +106,37 @@ def _parse_finite_float(value: str) -> float:
 
 
 def _require_finite_json_value(
-    value: object, *, label: str, depth: int = 0
+    value: object, *, label: str, depth: int = 0,
+    _budget: list[int] | None = None, _is_key: bool = False,
 ) -> None:
-    # Authority documents are small.  Bound programmatic recursion (including
-    # cyclic objects) independently of the JSON decoder's own nesting limit.
+    # Apply the same parsed-value node budget to programmatic inputs as to
+    # file-backed JSON. Count repeated DAG references, not only unique objects;
+    # otherwise a tiny shared graph can require exponential traversal.
     _require(depth <= 64, f"{label} JSON nesting limit exceeded")
+    if _budget is None:
+        _budget = [0]
+    if not _is_key:
+        _budget[0] += 1
+        _require(_budget[0] <= MAX_JSON_NODES, f"{label} exceeds node limit")
     if isinstance(value, float):
         _require(math.isfinite(value), f"{label} contains non-finite float")
         return
     if type(value) is dict:
         for key, item in value.items():
             _require(type(key) is str, f"{label} has a non-string JSON key")
-            _require_finite_json_value(key, label=f"{label}.key", depth=depth + 1)
-            _require_finite_json_value(item, label=f"{label}.{key}", depth=depth + 1)
+            _require_finite_json_value(
+                key, label=f"{label}.key", depth=depth + 1,
+                _budget=_budget, _is_key=True,
+            )
+            _require_finite_json_value(
+                item, label=f"{label}.{key}", depth=depth + 1, _budget=_budget,
+            )
         return
     if type(value) is list:
         for index, item in enumerate(value):
-            _require_finite_json_value(item, label=f"{label}[{index}]", depth=depth + 1)
+            _require_finite_json_value(
+                item, label=f"{label}[{index}]", depth=depth + 1, _budget=_budget,
+            )
         return
     if type(value) is str:
         try:
@@ -327,7 +341,11 @@ def validate_materialization_evidence(doc: dict[str, Any], evidence: dict[str, A
             "repository", "revision", "source_family",
             "tokenizer_fit_allowed", "training_allowed",
         }, "evidence reserved object")
-        expected = expected_by_repo.get(row.get("repository"))
+        _require(
+            type(row.get("repository")) is str,
+            "evidence repository must be a string",
+        )
+        expected = expected_by_repo.get(row["repository"])
         _require(expected is not None, "unexpected evidence repository")
         _require(row["repository"] not in seen_repositories, "duplicate evidence repository")
         seen_repositories.add(row["repository"])
