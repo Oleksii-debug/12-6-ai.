@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "component": "LIGER_KERNEL",
+  "upstream_repository": "https://github.com/linkedin/Liger-Kernel",
+  "upstream_tag": "v0.8.2",
+  "upstream_commit": "000be60929938fd1358e03524c6ab398b6d421bd",
+  "primary_software_license": "BSD-2-Clause",
+  "license_blob_sha": "d2fcc2b1c4384d0bcd1424b7f83db8e48fa753f6",
+  "package_artifact": {
+    "name": "liger_kernel-0.8.2.tar.gz",
+    "sha256": "387673ed6bf64fc8150cc8315fed578d2fc717ec3450f53489f480880223c1b8"
+  },
+  "third_party_notice_status": "NOT_YET_ENUMERATED_FOR_INSTALLED_CLOSURE",
+  "dataset_rights": "NOT_APPLICABLE_TO_THIS_QUALIFICATION",
+  "model_weight_rights": "NOT_APPLICABLE_AND_NO_WEIGHTS_USED",
+  "canonical_base_dependency": false,
+  "promotion_rights": "SOFTWARE_LICENSE_ONLY; DOES_NOT_GRANT_DATA_MODEL_OR_TRAINING_AUTHORITY"
+}
