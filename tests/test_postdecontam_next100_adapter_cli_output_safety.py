@@ -459,7 +459,7 @@ def test_postcommit_stage_cleanup_failure_reports_committed_output(
     output = tmp_path / "verified result.json"
     vector.write_bytes(b"original family")
     authority.write_bytes(b"original dedup")
-    payload = b'{"terminal":true}\\n'.replace(b"\\n", b"\n")
+    payload = b'{"terminal":true}\n'
     original_unlink = Path.unlink
 
     def locked_stage_unlink(path: Path, *args: object, **kwargs: object) -> None:
