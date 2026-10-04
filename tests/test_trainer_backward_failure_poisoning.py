@@ -1004,3 +1004,40 @@ def test_valid_direct_restore_retains_exact_next_step_trajectory():
         original.model.weight, restored.model.weight, rtol=0, atol=0,
     )
     assert original.state_dict().optimizer_step == restored.state_dict().optimizer_step == 2
+
+
+def test_enabled_scaler_missing_state_rejected_before_optimizer_mutation(monkeypatch):
+    from dataclasses import replace
+
+    config = TrainerConfig(max_steps=1, seed=17)
+    state = Trainer(_TinyLogitModel(), config).state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+    calls = []
+
+    def forbidden_optimizer_load(value):
+        calls.append(True)
+        raise AssertionError("missing scaler state must fail before optimizer load")
+
+    monkeypatch.setattr(receiver.scaler, "is_enabled", lambda: True)
+    monkeypatch.setattr(receiver.optimizer, "load_state_dict", forbidden_optimizer_load)
+    with pytest.raises(ValueError, match="enabled gradient scaler checkpoint state missing"):
+        receiver.load_state_dict(replace(state, scaler=None))
+
+    assert calls == []
+    assert receiver._failure_reason is None
+    assert receiver._update_incomplete is False
+    monkeypatch.undo()
+    receiver.load_state_dict(state)
+    assert receiver.state_dict().optimizer_step == 0
+
+
+def test_disabled_scaler_legacy_none_state_remains_restoreable():
+    from dataclasses import replace
+
+    config = TrainerConfig(max_steps=1, seed=17)
+    state = Trainer(_TinyLogitModel(), config).state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+    assert receiver.scaler.is_enabled() is False
+    receiver.load_state_dict(replace(state, scaler=None))
+    assert receiver.train_microbatch(_BATCH).optimizer_stepped is True
+    assert receiver.state_dict().optimizer_step == 1
