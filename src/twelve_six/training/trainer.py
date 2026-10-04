@@ -311,10 +311,20 @@ class Trainer:
                 )
         for state in self.optimizer.state.values():
             for value in state.values():
-                if isinstance(value, Tensor) and not torch.isfinite(value).all().item():
-                    raise NonFiniteTrainingError(
-                        f"optimizer produced non-finite state at micro_step={self.micro_step}"
-                    )
+                if isinstance(value, Tensor):
+                    if not torch.isfinite(value).all().item():
+                        raise NonFiniteTrainingError(
+                            f"optimizer produced non-finite state at micro_step={self.micro_step}"
+                        )
+                else:
+                    # Non-Torch optimizer families can store NumPy or nested
+                    # numeric moments. They must not earn phantom step credit.
+                    try:
+                        self._require_finite_state_tree(value, "optimizer")
+                    except NonFiniteTrainingError as exc:
+                        raise NonFiniteTrainingError(
+                            f"optimizer produced non-finite state at micro_step={self.micro_step}"
+                        ) from exc
 
     def _require_safe_optimizer_hyperparameters(self) -> None:
         """Validate all group hyperparameters, not only the reported group LR."""
