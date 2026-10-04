@@ -14,6 +14,8 @@ import json
 import math
 import os
 import platform
+import re
+import secrets
 import shutil
 import stat
 import sys
@@ -23,19 +25,43 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from twelve_six.learned20m_current_run_authority import (
+    CurrentRunAuthorityInspection,
+    inspect_current_run_authority,
+)
 from twelve_six.portable_run_packet import validate_portable_run_contract
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "configs/research/r01_windows_local_free_operator_v1.json"
 DEFAULT_PACKET = ROOT / "configs/research/r01_portable_local_free_run_packet_v1.json"
 DEFAULT_STATE_DIR = ROOT / ".twelve-six-local"
+CANONICAL_CURRENT_RUN_REMOTE = "https://github.com/Oleksii-debug/12-6-ai..git"
 PROFILE_SCHEMA_VERSION = 1
 PROFILE_ID = "R01-WINDOWS-LOCAL-FREE-OPERATOR-V1"
 PACKET_SCHEMA_VERSION = 1
 PACKET_ID = "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1"
+SAFE_STOP_SCHEMA = "12-6.windows-local-free-safe-stop-request.v2"
 EXIT_OK = 0
 EXIT_BLOCKED = 2
 EXIT_ERROR = 3
+_SHA256_HEX = frozenset("0123456789abcdef")
+_UTC_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
+_SAFE_STOP_MARKER_KEYS = frozenset(
+    {
+        "schema",
+        "request",
+        "target",
+        "profile_sha256",
+        "portable_packet_sha256",
+        "run_id",
+        "run_manifest_sha256",
+        "requested_at_utc",
+        "consumer",
+        "checkpoint_or_training_success_claimed",
+        "truth_boundary",
+        "marker_sha256",
+    }
+)
 
 # Leaf-local facts only. Corpus/source provenance is deliberately not asserted
 # by this machine/operator preflight.
@@ -73,7 +99,27 @@ def _strict_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _strict_json_equal(observed: Any, expected: Any) -> bool:
+    """Compare JSON values without Python bool/int/float aliasing."""
+    if observed.__class__ is not expected.__class__:
+        return False
+    if isinstance(expected, dict):
+        if observed.keys() != expected.keys():
+            return False
+        return all(
+            _strict_json_equal(observed[key], value)
+            for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return len(observed) == len(expected) and all(
+            _strict_json_equal(left, right)
+            for left, right in zip(observed, expected)
+        )
+    return observed == expected
+
+
 def _canonical_sha256(value: Mapping[str, Any]) -> str:
+    """Hash canonical JSON exactly like checkpoint.core.hash_json."""
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -294,12 +340,19 @@ def validate_operator_profile(
         "content_authenticated",
         "idempotent",
         "does_not_claim_checkpoint_or_training_success",
+        "run_identity_required",
     ):
         _expect(errors, stop.get(key) is True, f"safe_stop_{key}_must_be_true")
+    _expect(
+        errors,
+        stop.get("run_manifest_hash_semantics")
+        == "CANONICAL_SORTED_COMPACT_UTF8_JSON_SHA256",
+        "safe_stop_run_manifest_hash_semantics_mismatch",
+    )
 
     _expect(
         errors,
-        profile.get("truth_boundary") == _TRUTH_BOUNDARY,
+        _strict_json_equal(profile.get("truth_boundary"), _TRUTH_BOUNDARY),
         "profile_truth_boundary_mismatch",
     )
     return sorted(set(errors))
@@ -515,19 +568,162 @@ def _ensure_state_dir(path: Path, *, create: bool) -> Path:
     return path
 
 
+def _run_identity_errors(run_id: Any, run_manifest_sha256: Any) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(run_id, str) or not run_id.strip():
+        errors.append("safe_stop_current_run_id_invalid")
+    if (
+        not isinstance(run_manifest_sha256, str)
+        or len(run_manifest_sha256) != 64
+        or run_manifest_sha256 != run_manifest_sha256.lower()
+        or any(char not in _SHA256_HEX for char in run_manifest_sha256)
+    ):
+        errors.append("safe_stop_current_run_manifest_sha256_invalid")
+    return errors
+
+
+def _run_manifest_contract_errors(run_manifest: Mapping[str, Any]) -> list[str]:
+    """Mirror RecoveryStore's canonical run-identity admission invariants."""
+    errors: list[str] = []
+    run_id = run_manifest.get("run_id")
+    if not isinstance(run_id, str) or not run_id.strip():
+        errors.append("safe_stop_current_run_id_invalid")
+
+    candidate = run_manifest.get("candidate")
+    if not isinstance(candidate, Mapping):
+        errors.append("safe_stop_run_manifest_candidate_invalid")
+    else:
+        git_sha = candidate.get("git_sha")
+        if (
+            not isinstance(git_sha, str)
+            or len(git_sha) not in {40, 64}
+            or git_sha != git_sha.lower()
+            or any(char not in _SHA256_HEX for char in git_sha)
+        ):
+            errors.append("safe_stop_run_manifest_candidate_git_sha_invalid")
+
+    recovery = run_manifest.get("recovery")
+    if not isinstance(recovery, Mapping):
+        errors.append("safe_stop_run_manifest_recovery_invalid")
+        return sorted(set(errors))
+    topology = recovery.get("topology")
+    if not isinstance(topology, Mapping) or not topology:
+        errors.append("safe_stop_run_manifest_topology_invalid")
+        return sorted(set(errors))
+    world_size = topology.get("world_size")
+    if not _strict_int(world_size) or world_size <= 0:
+        errors.append("safe_stop_run_manifest_world_size_invalid")
+    return sorted(set(errors))
+
+
+def _load_run_identity(run_manifest_path: Path) -> tuple[str, str]:
+    """Load a canonical RecoveryStore-compatible manifest and bind its identity."""
+    run_manifest, _raw_sha256 = _read_json_file(run_manifest_path)
+    run_id = run_manifest.get("run_id")
+    run_manifest_sha256 = _canonical_sha256(run_manifest)
+    errors = _run_manifest_contract_errors(run_manifest)
+    errors.extend(_run_identity_errors(run_id, run_manifest_sha256))
+    errors = sorted(set(errors))
+    if errors:
+        raise OperatorPreflightError("run_manifest_identity_invalid:" + ",".join(errors))
+    return run_id, run_manifest_sha256
+
+
+def _bind_candidate_to_current_run(
+    inspection: CurrentRunAuthorityInspection,
+    *,
+    candidate_run_id: str | None = None,
+    candidate_run_manifest_sha256: str | None = None,
+) -> tuple[str, str, str]:
+    """Bind candidate RecoveryStore bytes to the independently selected run."""
+    if not inspection.present or not inspection.valid or not inspection.active:
+        detail = ",".join(inspection.blockers) or "current_run_authority_not_active"
+        raise OperatorPreflightError(
+            "safe_stop_current_run_authority_not_active:" + detail
+        )
+    expected_run_id = inspection.run_id
+    expected_manifest_sha256 = inspection.recovery_run_manifest_sha256
+    expected_identity_sha256 = inspection.current_run_identity_sha256
+    identity_errors = _run_identity_errors(
+        expected_run_id,
+        expected_manifest_sha256,
+    )
+    if identity_errors:
+        raise OperatorPreflightError(
+            "safe_stop_current_run_authority_identity_invalid:"
+            + ",".join(identity_errors)
+        )
+    if (
+        not isinstance(expected_identity_sha256, str)
+        or len(expected_identity_sha256) != 64
+        or expected_identity_sha256 != expected_identity_sha256.lower()
+        or any(char not in _SHA256_HEX for char in expected_identity_sha256)
+    ):
+        raise OperatorPreflightError(
+            "safe_stop_current_run_authority_digest_invalid"
+        )
+    if candidate_run_id is not None and candidate_run_id != expected_run_id:
+        raise OperatorPreflightError("safe_stop_candidate_run_id_not_current")
+    if (
+        candidate_run_manifest_sha256 is not None
+        and candidate_run_manifest_sha256 != expected_manifest_sha256
+    ):
+        raise OperatorPreflightError(
+            "safe_stop_candidate_run_manifest_not_current"
+        )
+    return expected_run_id, expected_manifest_sha256, expected_identity_sha256
+
+
+def _resolve_current_run_identity(
+    *,
+    candidate_run_id: str | None = None,
+    candidate_run_manifest_sha256: str | None = None,
+) -> tuple[str, str, str]:
+    """Read fixed authority; candidate bytes never select its namespace."""
+    inspection = inspect_current_run_authority(
+        ROOT,
+        CANONICAL_CURRENT_RUN_REMOTE,
+    )
+    return _bind_candidate_to_current_run(
+        inspection,
+        candidate_run_id=candidate_run_id,
+        candidate_run_manifest_sha256=candidate_run_manifest_sha256,
+    )
+
+
+def _requested_at_utc_valid(value: Any) -> bool:
+    if not isinstance(value, str) or _UTC_TIMESTAMP.fullmatch(value) is None:
+        return False
+    pattern = "%Y-%m-%dT%H:%M:%S.%fZ" if "." in value else "%Y-%m-%dT%H:%M:%SZ"
+    try:
+        datetime.strptime(value, pattern).replace(tzinfo=UTC)
+    except ValueError:
+        return False
+    return True
+
+
 def _marker_payload(
     *,
     profile_sha256: str,
     packet_sha256: str,
     target: str,
+    run_id: str,
+    run_manifest_sha256: str,
     requested_at_utc: str,
 ) -> dict[str, Any]:
+    errors = _run_identity_errors(run_id, run_manifest_sha256)
+    if errors:
+        raise OperatorPreflightError("run_manifest_identity_invalid:" + ",".join(errors))
+    if not _requested_at_utc_valid(requested_at_utc):
+        raise OperatorPreflightError("safe_stop_requested_at_utc_invalid")
     payload: dict[str, Any] = {
-        "schema": "12-6.windows-local-free-safe-stop-request.v1",
+        "schema": SAFE_STOP_SCHEMA,
         "request": "SAFE_STOP_AT_NEXT_CHECKPOINT",
         "target": target,
         "profile_sha256": profile_sha256,
         "portable_packet_sha256": packet_sha256,
+        "run_id": run_id,
+        "run_manifest_sha256": run_manifest_sha256,
         "requested_at_utc": requested_at_utc,
         "consumer": "CANONICAL_TRAINER_ONLY",
         "checkpoint_or_training_success_claimed": False,
@@ -543,8 +739,15 @@ def _validate_existing_marker(
     profile_sha256: str,
     packet_sha256: str,
     target: str,
+    run_id: str | None = None,
+    run_manifest_sha256: str | None = None,
 ) -> list[str]:
     errors: list[str] = []
+    _expect(
+        errors,
+        frozenset(marker.keys()) == _SAFE_STOP_MARKER_KEYS,
+        "safe_stop_marker_keys_mismatch",
+    )
     unsigned = dict(marker)
     digest = unsigned.pop("marker_sha256", None)
     _expect(
@@ -553,7 +756,7 @@ def _validate_existing_marker(
         "safe_stop_marker_sha256_invalid",
     )
     expected = {
-        "schema": "12-6.windows-local-free-safe-stop-request.v1",
+        "schema": SAFE_STOP_SCHEMA,
         "request": "SAFE_STOP_AT_NEXT_CHECKPOINT",
         "target": target,
         "profile_sha256": profile_sha256,
@@ -563,7 +766,26 @@ def _validate_existing_marker(
         "truth_boundary": _TRUTH_BOUNDARY,
     }
     for key, value in expected.items():
-        _expect(errors, marker.get(key) == value, f"safe_stop_{key}_mismatch")
+        _expect(
+            errors,
+            _strict_json_equal(marker.get(key), value),
+            f"safe_stop_{key}_mismatch",
+        )
+    _expect(
+        errors,
+        _requested_at_utc_valid(marker.get("requested_at_utc")),
+        "safe_stop_requested_at_utc_invalid",
+    )
+
+    identity_errors = _run_identity_errors(run_id, run_manifest_sha256)
+    errors.extend(identity_errors)
+    if not identity_errors:
+        _expect(errors, marker.get("run_id") == run_id, "safe_stop_run_id_mismatch")
+        _expect(
+            errors,
+            marker.get("run_manifest_sha256") == run_manifest_sha256,
+            "safe_stop_run_manifest_sha256_mismatch",
+        )
     return sorted(set(errors))
 
 
@@ -573,6 +795,8 @@ def read_stop_status(
     profile_sha256: str,
     packet_sha256: str,
     target: str,
+    run_id: str | None = None,
+    run_manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
     state = _ensure_state_dir(state_dir, create=False)
     marker_path = state / "STOP_REQUEST.json"
@@ -604,6 +828,8 @@ def read_stop_status(
         profile_sha256=profile_sha256,
         packet_sha256=packet_sha256,
         target=target,
+        run_id=run_id,
+        run_manifest_sha256=run_manifest_sha256,
     )
     return {
         "status": "REQUESTED" if not errors else "INVALID",
@@ -612,36 +838,119 @@ def read_stop_status(
     }
 
 
+def _write_all(fd: int, raw: bytes) -> None:
+    view = memoryview(raw)
+    while view:
+        written = os.write(fd, view)
+        if written <= 0:
+            raise OperatorPreflightError("safe_stop_short_write")
+        view = view[written:]
+
+
+def _path_still_names_open_file(fd: int, path: Path) -> bool:
+    try:
+        opened = os.fstat(fd)
+        named = os.stat(path, follow_symlinks=False)
+    except OSError:
+        return False
+    return stat.S_ISREG(named.st_mode) and os.path.samestat(opened, named)
+
+
+def _publish_marker_no_overwrite(marker_path: Path, raw: bytes) -> bool:
+    """Publish fully-written bytes with no-overwrite and file-identity checks."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    temp_path: Path | None = None
+    fd: int | None = None
+    try:
+        for _attempt in range(4):
+            candidate = marker_path.with_name(
+                f".{marker_path.name}.{os.getpid()}.{secrets.token_hex(16)}.tmp"
+            )
+            try:
+                fd = os.open(candidate, flags, 0o600)
+            except FileExistsError:
+                continue
+            temp_path = candidate
+            break
+        if fd is None or temp_path is None:
+            raise OperatorPreflightError("safe_stop_temp_create_exhausted")
+
+        _write_all(fd, raw)
+        os.fsync(fd)
+        if not _path_still_names_open_file(fd, temp_path):
+            raise OperatorPreflightError("safe_stop_temp_identity_changed")
+
+        try:
+            os.link(temp_path, marker_path, follow_symlinks=False)
+        except FileExistsError:
+            return False
+        except OSError as exc:
+            raise OperatorPreflightError(
+                f"safe_stop_publish_failed:{exc}"
+            ) from exc
+
+        if not _path_still_names_open_file(fd, marker_path):
+            raise OperatorPreflightError("safe_stop_publish_identity_mismatch")
+        return True
+    except OperatorPreflightError:
+        raise
+    except OSError as exc:
+        raise OperatorPreflightError(f"safe_stop_publish_failed:{exc}") from exc
+    finally:
+        if (
+            fd is not None
+            and temp_path is not None
+            and _path_still_names_open_file(fd, temp_path)
+        ):
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
 def request_safe_stop(
     state_dir: Path,
     *,
     profile_sha256: str,
     packet_sha256: str,
     target: str,
+    run_id: str,
+    run_manifest_sha256: str,
     requested_at_utc: str | None = None,
 ) -> dict[str, Any]:
+    errors = _run_identity_errors(run_id, run_manifest_sha256)
+    if errors:
+        raise OperatorPreflightError("run_manifest_identity_invalid:" + ",".join(errors))
+    timestamp = requested_at_utc or datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    if not _requested_at_utc_valid(timestamp):
+        raise OperatorPreflightError("safe_stop_requested_at_utc_invalid")
     state = _ensure_state_dir(state_dir, create=True)
     marker_path = state / "STOP_REQUEST.json"
     payload = _marker_payload(
         profile_sha256=profile_sha256,
         packet_sha256=packet_sha256,
         target=target,
-        requested_at_utc=requested_at_utc
-        or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        run_id=run_id,
+        run_manifest_sha256=run_manifest_sha256,
+        requested_at_utc=timestamp,
     )
     raw = (
         json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False).encode()
         + b"\n"
     )
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
-    try:
-        fd = os.open(marker_path, flags, 0o600)
-    except FileExistsError:
+    created = _publish_marker_no_overwrite(marker_path, raw)
+    if not created:
         existing = read_stop_status(
             state,
             profile_sha256=profile_sha256,
             packet_sha256=packet_sha256,
             target=target,
+            run_id=run_id,
+            run_manifest_sha256=run_manifest_sha256,
         )
         if existing["status"] != "REQUESTED":
             raise OperatorPreflightError(
@@ -651,23 +960,15 @@ def request_safe_stop(
             "status": "ALREADY_REQUESTED",
             "marker_path": str(marker_path),
             "marker_sha256": existing["marker"]["marker_sha256"],
+            "run_id": run_id,
+            "run_manifest_sha256": run_manifest_sha256,
         }
-    except OSError as exc:
-        raise OperatorPreflightError(f"safe_stop_create_failed:{exc}") from exc
-    try:
-        view = memoryview(raw)
-        while view:
-            written = os.write(fd, view)
-            if written <= 0:
-                raise OperatorPreflightError("safe_stop_short_write")
-            view = view[written:]
-        os.fsync(fd)
-    finally:
-        os.close(fd)
     return {
         "status": "REQUESTED",
         "marker_path": str(marker_path),
         "marker_sha256": payload["marker_sha256"],
+        "run_id": run_id,
+        "run_manifest_sha256": run_manifest_sha256,
     }
 
 
@@ -705,6 +1006,9 @@ def _render_text(result: Mapping[str, Any]) -> str:
         lines.append(f"ERROR: {result['error']}")
     for key, label in (
         ("target", "TARGET"),
+        ("run_id", "RUN_ID"),
+        ("run_manifest_sha256", "RUN_MANIFEST_SHA256"),
+        ("current_run_identity_sha256", "CURRENT_RUN_IDENTITY_SHA256"),
         ("launch_authorized", "LAUNCH_AUTHORIZED"),
         ("training_authorized", "TRAINING_AUTHORIZED"),
     ):
@@ -753,6 +1057,16 @@ def main(argv: list[str] | None = None) -> int:
     for command in ("verify", "status", "request-stop"):
         sub = subs.add_parser(command)
         sub.add_argument("--target", choices=("20m", "100m"), default="20m")
+        if command in {"status", "request-stop"}:
+            sub.add_argument(
+                "--run-manifest",
+                type=Path,
+                required=command == "request-stop",
+                help=(
+                    "exact canonical run manifest; required for request-stop and for "
+                    "authenticating an existing marker in status"
+                ),
+            )
     args = parser.parse_args(argv)
 
     try:
@@ -760,15 +1074,29 @@ def main(argv: list[str] | None = None) -> int:
             args.profile, args.packet
         )
         if args.command == "request-stop":
+            candidate_run_id, candidate_manifest_sha256 = _load_run_identity(
+                args.run_manifest
+            )
+            (
+                run_id,
+                run_manifest_sha256,
+                current_run_identity_sha256,
+            ) = _resolve_current_run_identity(
+                candidate_run_id=candidate_run_id,
+                candidate_run_manifest_sha256=candidate_manifest_sha256,
+            )
             result = request_safe_stop(
                 args.state_dir,
                 profile_sha256=profile_sha,
                 packet_sha256=packet_sha,
                 target=args.target,
+                run_id=run_id,
+                run_manifest_sha256=run_manifest_sha256,
             )
             result.update(
                 {
                     "target": args.target,
+                    "current_run_identity_sha256": current_run_identity_sha256,
                     "launch_authorized": False,
                     "training_authorized": False,
                     "truth_boundary": dict(_TRUTH_BOUNDARY),
@@ -785,16 +1113,46 @@ def main(argv: list[str] | None = None) -> int:
             target=args.target,
         )
         if args.command == "status":
-            result["safe_stop"] = (
-                read_stop_status(
+            state_present = args.state_dir.exists() or args.state_dir.is_symlink()
+            marker_path = args.state_dir / "STOP_REQUEST.json"
+            marker_present = state_present and (
+                marker_path.exists() or marker_path.is_symlink()
+            )
+            if args.run_manifest is None and not marker_present:
+                result["safe_stop"] = (
+                    read_stop_status(
+                        args.state_dir,
+                        profile_sha256=profile_sha,
+                        packet_sha256=packet_sha,
+                        target=args.target,
+                    )
+                    if state_present
+                    else {"status": "NOT_REQUESTED", "marker": None, "errors": []}
+                )
+            else:
+                candidate_run_id: str | None = None
+                candidate_manifest_sha256: str | None = None
+                if args.run_manifest is not None:
+                    candidate_run_id, candidate_manifest_sha256 = _load_run_identity(
+                        args.run_manifest
+                    )
+                (
+                    run_id,
+                    run_manifest_sha256,
+                    current_run_identity_sha256,
+                ) = _resolve_current_run_identity(
+                    candidate_run_id=candidate_run_id,
+                    candidate_run_manifest_sha256=candidate_manifest_sha256,
+                )
+                result["current_run_identity_sha256"] = current_run_identity_sha256
+                result["safe_stop"] = read_stop_status(
                     args.state_dir,
                     profile_sha256=profile_sha,
                     packet_sha256=packet_sha,
                     target=args.target,
+                    run_id=run_id,
+                    run_manifest_sha256=run_manifest_sha256,
                 )
-                if args.state_dir.exists() or args.state_dir.is_symlink()
-                else {"status": "NOT_REQUESTED", "marker": None, "errors": []}
-            )
             if result["safe_stop"]["status"] == "INVALID":
                 result["status"] = "BLOCKED"
                 result["operator_preflight_passed"] = False
