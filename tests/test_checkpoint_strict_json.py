@@ -223,7 +223,6 @@ def test_checkpoint_payload_growth_after_stale_fstat_is_bounded(
     assert intercepted
 
 
-
 @pytest.mark.parametrize("name", ["manifest.json", "MANIFEST.sha256", "weights.safetensors"])
 def test_checkpoint_lstat_denial_is_typed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
@@ -272,8 +271,13 @@ def test_checkpoint_opened_fstat_denial_is_typed(
 
 @pytest.mark.parametrize(
     "name",
-    ["manifest.json", "MANIFEST.sha256", "weights.safetensors",
-     "state.safetensors", "state.json"],
+    [
+        "manifest.json",
+        "MANIFEST.sha256",
+        "weights.safetensors",
+        "state.safetensors",
+        "state.json",
+    ],
 )
 def test_checkpoint_read_denial_is_typed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
@@ -307,6 +311,33 @@ def test_checkpoint_read_denial_is_typed(
     ):
         verify_checkpoint(checkpoint)
     assert intercepted
+
+
+@pytest.mark.parametrize("name", ["manifest.json", "weights.safetensors"])
+def test_checkpoint_fdopen_denial_closes_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    checkpoint = tmp_path / "fdopen-denial"
+    _save(checkpoint)
+    target_stat = (checkpoint / name).stat()
+    original_fdopen = os.fdopen
+    rejected_fd: list[int] = []
+
+    def denied_fdopen(fd: int, *args: object, **kwargs: object) -> object:
+        actual = os.fstat(fd)
+        if (actual.st_dev, actual.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            rejected_fd.append(fd)
+            raise OSError("injected fdopen denial")
+        return original_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(checkpoint_core.os, "fdopen", denied_fdopen)
+    with pytest.raises(
+        CheckpointIntegrityError, match="cannot safely read checkpoint artifact"
+    ):
+        verify_checkpoint(checkpoint)
+    assert len(rejected_fd) == 1
+    with pytest.raises(OSError):
+        os.fstat(rejected_fd[0])
 
 
 def test_checkpoint_payload_shrink_after_stale_fstat_is_bounded(
