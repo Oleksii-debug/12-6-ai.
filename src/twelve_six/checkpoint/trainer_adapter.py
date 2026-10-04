@@ -472,8 +472,25 @@ def _restore_checkpoint_rng_preserving_warn_only(
     warn_only = None
     if torch_state:
         torch = importlib.import_module("torch")
+        enabled = torch.are_deterministic_algorithms_enabled()
         warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
-    restore(state)
+    try:
+        restore(state)
+    except BaseException as exc:
+        # Final replay can partially change process-global PyTorch execution
+        # mode before it fails. The target trainer is poisoned by the caller,
+        # but unrelated trainers must not inherit a half-applied mode.
+        if warn_only is not None:
+            try:
+                torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+            except BaseException as mode_exc:
+                # Never replace the primary interrupted/failed RNG restore.
+                if hasattr(exc, "add_note"):
+                    exc.add_note(
+                        "PyTorch deterministic-mode rollback also failed: "
+                        f"{mode_exc!r}"
+                    )
+        raise
     if warn_only is not None:
         torch.use_deterministic_algorithms(
             torch.are_deterministic_algorithms_enabled(), warn_only=warn_only,
