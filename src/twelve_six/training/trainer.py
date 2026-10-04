@@ -399,13 +399,14 @@ class Trainer:
                     if field not in group:
                         continue  # Other injected optimizer families may omit these fields.
                     value = group[field]
+                    label = "learning rate" if field == "lr" else field
                     if isinstance(value, bool) or not math.isfinite(float(value)):
                         raise NonFiniteTrainingError(
-                            f"optimizer {field} must be finite and valid"
+                            f"optimizer {label} must be finite and >= 0"
                         )
                     if float(value) < 0 or (field == "eps" and float(value) == 0):
                         raise NonFiniteTrainingError(
-                            f"optimizer {field} must be finite and valid"
+                            f"optimizer {label} must be finite and >= 0"
                         )
                 if "betas" in group:
                     betas = group["betas"]
