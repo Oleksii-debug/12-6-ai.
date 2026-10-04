@@ -438,13 +438,16 @@ def _preflight_trainer_state(
         # If it fails, the live RNG is ambiguous even though the model has not
         # been loaded. Refuse future work on a canonical D02 trainer.
         try:
-            _core.restore_rng_state(ambient)
-            # Preserve PyTorch's warn-only setting, absent from the RNG schema.
-            if warn_only is not None:
-                torch.use_deterministic_algorithms(
-                    bool(torch_state["deterministic_algorithms"]),
-                    warn_only=warn_only,
-                )
+            try:
+                _core.restore_rng_state(ambient)
+            finally:
+                # Attempt to restore warn-only even if RNG rollback itself
+                # raises: global PyTorch execution mode is shared by trainers.
+                if warn_only is not None:
+                    torch.use_deterministic_algorithms(
+                        bool(torch_state["deterministic_algorithms"]),
+                        warn_only=warn_only,
+                    )
         except BaseException:
             if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
                 if trainer._failure_reason is None:
