@@ -153,6 +153,7 @@ class Trainer:
 
         self._configure_determinism(config)
         self.optimizer = optimizer or build_optimizer(model, config)
+        self._require_optimizer_parameter_coverage()
         self.scheduler = (
             scheduler if scheduler is not None else build_scheduler(self.optimizer, config)
         )
@@ -177,6 +178,29 @@ class Trainer:
             config.deterministic_algorithms,
             warn_only=config.deterministic_warn_only,
         )
+
+    def _require_optimizer_parameter_coverage(self) -> None:
+        """Require the optimizer to own every trainable model parameter exactly once."""
+        model_parameters = tuple(self.model.parameters())
+        model_ids = {id(parameter) for parameter in model_parameters}
+        trainable_ids = {
+            id(parameter) for parameter in model_parameters if parameter.requires_grad
+        }
+        if not trainable_ids:
+            raise ValueError("model has no trainable parameters for optimizer")
+        optimizer_ids: list[int] = []
+        for group in self.optimizer.param_groups:
+            parameters = group.get("params")
+            if not isinstance(parameters, (list, tuple)):
+                raise ValueError("optimizer group must contain a concrete parameter sequence")
+            for parameter in parameters:
+                if not isinstance(parameter, Tensor) or id(parameter) not in model_ids:
+                    raise ValueError("optimizer contains a parameter not owned by the model")
+                optimizer_ids.append(id(parameter))
+        if len(optimizer_ids) != len(set(optimizer_ids)):
+            raise ValueError("optimizer contains duplicate parameter assignments")
+        if not trainable_ids.issubset(optimizer_ids):
+            raise ValueError("optimizer omits trainable model parameters")
 
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
@@ -310,6 +334,11 @@ class Trainer:
         self._assert_trainable()
         if self.optimizer_step >= self.config.max_steps:
             raise RuntimeError("configured max_steps already reached")
+        try:
+            self._require_optimizer_parameter_coverage()
+        except BaseException:
+            self._mark_failed("optimizer parameter coverage changed before microbatch")
+            raise
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
         try:
             tokens = _count_training_tokens(
@@ -369,6 +398,9 @@ class Trainer:
         if should_step:
             self._update_incomplete = True
             try:
+                # Forward/backward hooks may have modified external optimizer
+                # groups after entry preflight. Never count a phantom update.
+                self._require_optimizer_parameter_coverage()
                 self.scaler.unscale_(self.optimizer)
                 raw_grad_norm = self._normalize_gradients_and_norm(self._pending_tokens)
                 grad_norm_value = float(raw_grad_norm.item())
