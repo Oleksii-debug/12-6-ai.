@@ -715,3 +715,31 @@ def test_direct_evidence_validation_rejects_invalid_contract(
         document["materialization_evidence"]["identity_sha256"] = "0" * 64
     with pytest.raises(ValueError, match=error):
         validator.validate_materialization_evidence(document, _evidence())
+
+
+@pytest.mark.parametrize("target", ["contract", "evidence"])
+@pytest.mark.parametrize("shape", ["aggregate_strings", "escaped_string"])
+def test_programmatic_byte_limit_does_not_eagerly_canonicalize(
+    target: str, shape: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _manifest()
+    evidence = _evidence()
+    selected = document if target == "contract" else evidence
+    if shape == "aggregate_strings":
+        # Each string fits the limit, but their combined UTF-8 body does not.
+        size = validator.MAX_INPUT_BYTES // 2 + 1024
+        selected["worker_id"] = "x" * size
+        selected["purpose" if target == "contract" else "status"] = "y" * size
+    else:
+        # Escaping enlarges canonical JSON beyond the raw UTF-8 string budget.
+        selected["worker_id"] = "\\u0000" * 200_000
+
+    def eager_serialization_is_forbidden(_value: object) -> bytes:
+        raise AssertionError("oversized authority was serialized eagerly")
+
+    monkeypatch.setattr(validator, "_canonical_bytes", eager_serialization_is_forbidden)
+    with pytest.raises(ValueError, match="exceeds byte limit"):
+        if target == "contract":
+            validator.validate_document(document)
+        else:
+            validator.validate_materialization_evidence(document, evidence)
