@@ -284,6 +284,9 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
+    # Global deterministic mode is a pure target compatibility precondition.
+    # Reject drift before opening a model-scale checkpoint in either loader.
+    _assert_live_d02_determinism(trainer)
     # D02 refuses restoration to a trainer which has already consumed data,
     # has pending accumulation, or retains gradients. Check the same live
     # conditions before opening a checkpoint or changing model weights.
