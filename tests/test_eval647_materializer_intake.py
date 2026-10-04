@@ -232,3 +232,38 @@ def test_evidence_publication_is_atomic(
         assert json.loads(destination.read_text(encoding="utf-8")) == evidence
         assert json.loads(output.out)["selection_validation_records_authorized"] == 0
     assert list(destination.parent.glob(".*.tmp")) == []
+
+
+@pytest.mark.parametrize(
+    "protected", ["input_manifest", "canonical_manifest", "canonical_evidence"],
+)
+def test_cli_cannot_overwrite_pinned_authority(
+    protected: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest_file = tmp_path / "untrusted manifest.json"
+    manifest_file.write_bytes(MANIFEST.read_bytes())
+    destination = {
+        "input_manifest": manifest_file,
+        "canonical_manifest": MANIFEST,
+        "canonical_evidence": materializer._VALIDATOR.DEFAULT_EVIDENCE,
+    }[protected]
+    preserved = destination.read_bytes()
+    monkeypatch.setattr(
+        sys, "argv",
+        [str(SCRIPT), "--manifest", str(manifest_file), "--output", str(destination)],
+    )
+
+    def forbidden_network(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("protected path reached network")
+
+    monkeypatch.setattr(materializer.urllib.request, "urlopen", forbidden_network)
+    assert materializer.main() == 2
+    output = capsys.readouterr()
+    assert output.err == ""
+    result = json.loads(output.out)
+    assert result["status"] == "BLOCKED_INVALID_EVAL647_MATERIALIZATION"
+    assert result["selection_validation_records_authorized"] == 0
+    assert destination.read_bytes() == preserved
