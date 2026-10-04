@@ -35,10 +35,36 @@ _CODE_FIELDS = (
 _MAX_NODES = 10_000
 _MAX_DEPTH = 32
 _MAX_DIFFERENCES = 24
+_MAX_SCALAR_BYTES = 1_048_576
+_MAX_TOTAL_SCALAR_BYTES = 16_777_216
 
 
 def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _scalar_within_bound(value: Any) -> bool:
+    """Check scalar width before expensive marshal encoding or allocation."""
+    if type(value) in {str, bytes}:
+        return len(value) <= _MAX_SCALAR_BYTES
+    if type(value) is int:
+        return value.bit_length() <= 8 * _MAX_SCALAR_BYTES
+    return True
+
+
+def _scalar_width(value: Any) -> int:
+    """Conservative serialization cost; Unicode can take four UTF-8 bytes."""
+    if type(value) is str:
+        return 4 * len(value)
+    if type(value) is bytes:
+        return len(value)
+    if type(value) is int:
+        return (value.bit_length() + 7) // 8
+    if type(value) is float:
+        return 8
+    if type(value) is complex:
+        return 16
+    return 1
 
 
 def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
@@ -51,18 +77,25 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
     if type(live) is not CodeType or type(canonical) is not CodeType:
         raise TypeError("both attestation inputs must be exact Python code objects")
 
-    live_digest = _sha256(marshal.dumps(live))
-    canonical_digest = _sha256(marshal.dumps(canonical))
     differences: list[str] = []
     visited = 0
+    scanned_bytes = 0
     limited = False
 
     def visit(left: Any, right: Any, path: str, depth: int) -> None:
-        nonlocal visited, limited
+        nonlocal visited, scanned_bytes, limited
         if limited:
             return
         visited += 1
         if visited > _MAX_NODES or depth > _MAX_DEPTH:
+            limited = True
+            return
+        scalar = {type(None), type(Ellipsis), bool, int, float, complex, str, bytes}
+        if type(left) in scalar:
+            scanned_bytes += _scalar_width(left)
+        if type(right) in scalar:
+            scanned_bytes += _scalar_width(right)
+        if scanned_bytes > _MAX_TOTAL_SCALAR_BYTES:
             limited = True
             return
         if len(differences) >= _MAX_DIFFERENCES:
@@ -84,9 +117,31 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
                     if limited:
                         break
         elif type(left) is frozenset:
-            # Frozen Python constants contain only hashable scalar objects.
-            # Hash each separately so outer marshal alias/reference flags do
-            # not become the comparison criterion. No constant is printed.
+            # Frozen members are visited as a collection, not via recursive
+            # visit calls. Charge each member to the global three-pass budget.
+            visited += len(left) + len(right)
+            if visited > _MAX_NODES:
+                limited = True
+                return
+            # Nested frozensets and code objects can trigger expensive recursive
+            # hashing or marshal traversal beyond our depth/node budget.
+            # Diagnose only known scalar members, otherwise fail closed.
+            scalar = {type(None), type(Ellipsis), bool, int, float, complex, str, bytes}
+            if any(
+                type(item) not in scalar or not _scalar_within_bound(item)
+                for item in left | right
+            ):
+                limited = True
+                return
+            scanned_bytes += (
+                sum(_scalar_width(item) for item in left)
+                + sum(_scalar_width(item) for item in right)
+            )
+            if scanned_bytes > _MAX_TOTAL_SCALAR_BYTES:
+                limited = True
+                return
+            # Hash each scalar separately so outer marshal alias/reference flags
+            # do not become the comparison criterion. No constant is printed.
             try:
                 left_items = sorted((type(item).__name__, _sha256(marshal.dumps(item)))
                                     for item in left)
@@ -97,17 +152,40 @@ def compare_code_objects(live: CodeType, canonical: CodeType) -> dict[str, Any]:
             else:
                 if left_items != right_items:
                     differences.append(path)
-        elif type(left) in {type(None), type(Ellipsis), bool, int, float, complex, str, bytes}:
-            if left != right or (
-                type(left) is float and marshal.dumps(left) != marshal.dumps(right)
-            ):
+        elif type(left) in {float, complex}:
+            # Value equality misses signed zero; NaN is unequal even to itself.
+            # Match the actual encoded scalar without printing its contents.
+            if marshal.dumps(left) != marshal.dumps(right):
+                differences.append(path)
+        elif type(left) in {type(None), type(Ellipsis), bool, int, str, bytes}:
+            if not _scalar_within_bound(left) or not _scalar_within_bound(right):
+                limited = True
+                return
+            if left != right:
                 differences.append(path)
         else:
             # Unknown objects are NOT presumed equivalent.
             differences.append(f"{path}:unsupported-type")
 
+    # Enforce structural depth/node limits BEFORE serializing either code tree.
+    # Comparison short-circuits on unequal tuple lengths and differing types,
+    # so independently walk BOTH full operands, including unmatched children.
+    # Never let an unseen malicious subtree reach marshal through that shortcut.
     visit(live, canonical, "code", 0)
-    marshal_equal = live_digest == canonical_digest
+    if not limited:
+        visit(live, live, "live", 0)
+    if not limited:
+        visit(canonical, canonical, "canonical", 0)
+    live_digest: str | None = None
+    canonical_digest: str | None = None
+    if not limited:
+        try:
+            live_digest = _sha256(marshal.dumps(live))
+            canonical_digest = _sha256(marshal.dumps(canonical))
+        except (ValueError, RecursionError, OverflowError):
+            limited = True
+            live_digest = canonical_digest = None
+    marshal_equal = None if limited else live_digest == canonical_digest
     if limited:
         classification = "INCOMPLETE_DIAGNOSTIC"
     elif differences:

@@ -105,6 +105,70 @@ def test_adversarially_nested_code_is_bounded_and_untrusted() -> None:
     assert report["attestation_override_allowed"] is False
 
 
+def test_deep_code_is_bounded_before_marshal(monkeypatch: pytest.MonkeyPatch) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    nested = code
+    for _ in range(40):
+        nested = nested.replace(co_consts=(nested,))
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("over-depth code must not be marshalled")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(nested, nested)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+
+def test_same_nan_constant_is_not_false_structural_drift() -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    candidate = code.replace(co_consts=(float("nan"),))
+    report = compare_code_objects(candidate, candidate)
+    assert report["classification"] == "NO_CODE_MISMATCH_OBSERVED"
+    assert report["structural_fields_equal"] is True
+    assert report["marshal_equal"] is True
+    assert report["attestation_override_allowed"] is False
+
+
+def test_complex_signed_zero_is_real_structural_difference() -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    live = code.replace(co_consts=(complex(0.0, -0.0),))
+    canonical = code.replace(co_consts=(complex(0.0, 0.0),))
+    assert live.co_consts == canonical.co_consts
+    assert marshal.dumps(live) != marshal.dumps(canonical)
+    report = compare_code_objects(live, canonical)
+    assert report["classification"] == "STRUCTURAL_CODE_MISMATCH"
+    assert report["marshal_equal"] is False
+    assert report["attestation_override_allowed"] is False
+
+
+def test_partial_marshal_failure_discards_both_digest_claims(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    original = marshal.dumps
+    calls = 0
+
+    def fail_second(value: object) -> bytes:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ValueError("simulated marshal limit")
+        return original(value)
+
+    monkeypatch.setattr(marshal, "dumps", fail_second)
+    report = compare_code_objects(code, code)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+
 def test_exact_historical_v3_pyc_matches_recompilation_after_warmup(tmp_path: Path) -> None:
     """Isolate pinned V3 bytecode from Caselaw transport and physical data."""
     root = Path(__file__).resolve().parents[1]
@@ -165,3 +229,128 @@ def test_exact_historical_v3_pyc_matches_recompilation_after_warmup(tmp_path: Pa
     }
     assert report["attestation_override_allowed"] is False
     assert report["canonical_corpus_credit"] == 0
+
+
+def test_nested_frozenset_is_limited_before_marshal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    nested = frozenset({frozenset({1})})
+    live = code.replace(co_consts=(nested,))
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("nested frozen constants must not be marshalled")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(live, live)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+
+def test_simple_scalar_frozenset_remains_comparable() -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    frozen = frozenset({1, 2, 3})
+    left = code.replace(co_consts=(frozen,))
+    right = code.replace(co_consts=(frozenset({3, 2, 1}),))
+    report = compare_code_objects(left, right)
+    assert report["classification"] == "NO_CODE_MISMATCH_OBSERVED"
+    assert report["marshal_equal"] is True
+    assert report["attestation_override_allowed"] is False
+
+@pytest.mark.parametrize("difference", ["tuple-length", "element-type"])
+def test_mismatched_code_subtree_is_bounded_before_marshal(
+    difference: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    deeply_nested = code
+    for _ in range(40):
+        deeply_nested = deeply_nested.replace(co_consts=(deeply_nested,))
+    left = code.replace(co_consts=(0,))
+    right_consts = (
+        (0, deeply_nested) if difference == "tuple-length" else (deeply_nested,)
+    )
+    right = code.replace(co_consts=right_consts)
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("unexamined code subtree must not be marshalled")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(left, right)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+
+def test_ordinary_tuple_length_mismatch_still_reports_structural_change() -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    left = code.replace(co_consts=(1,))
+    right = code.replace(co_consts=(1, 2))
+    report = compare_code_objects(left, right)
+    assert report["classification"] == "STRUCTURAL_CODE_MISMATCH"
+    assert any(path.endswith(":length") for path in report["different_field_paths"])
+    assert report["diagnostic_limited"] is False
+    assert report["attestation_override_allowed"] is False
+
+@pytest.mark.parametrize(
+    "constant",
+    [
+        frozenset(range(6_000)),
+        b"x" * 1_048_577,
+        "x" * 1_048_577,
+        frozenset({b"x" * 1_048_577}),
+        1 << (8 * 1_048_576 + 1),
+    ],
+    ids=["frozen-node-budget", "bytes-width", "string-width",
+         "frozen-scalar-width", "integer-bit-width"],
+)
+def test_oversized_scalar_or_frozen_set_never_reaches_marshal(
+    constant: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    oversized = code.replace(co_consts=(constant,))
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("over-budget constants must not be marshalled")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(oversized, oversized)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["live_marshal_sha256"] is None
+    assert report["canonical_marshal_sha256"] is None
+    assert report["attestation_override_allowed"] is False
+
+@pytest.mark.parametrize("frozen", [False, True], ids=["tuple", "frozenset"])
+def test_aggregate_scalar_budget_prevents_large_marshal(
+    frozen: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    values = tuple(bytes([index]) + b"x" * 899_999 for index in range(20))
+    constant = frozenset(values) if frozen else values
+    oversized = code.replace(co_consts=(constant,))
+
+    def forbidden_marshal(_value: object) -> bytes:
+        raise AssertionError("large aggregate constants must not reach marshal")
+
+    monkeypatch.setattr(marshal, "dumps", forbidden_marshal)
+    report = compare_code_objects(oversized, oversized)
+    assert report["classification"] == "INCOMPLETE_DIAGNOSTIC"
+    assert report["diagnostic_limited"] is True
+    assert report["marshal_equal"] is None
+    assert report["attestation_override_allowed"] is False
+
+
+def test_moderate_scalar_constant_still_compares_normally() -> None:
+    code, _ = _function("def candidate():\n    return 1\n")
+    moderate = code.replace(co_consts=(b"x" * 200_000,))
+    report = compare_code_objects(moderate, moderate)
+    assert report["classification"] == "NO_CODE_MISMATCH_OBSERVED"
+    assert report["marshal_equal"] is True
