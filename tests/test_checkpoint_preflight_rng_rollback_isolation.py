@@ -24,10 +24,12 @@ class _FreshCanonicalTarget:
 
 @pytest.mark.parametrize("failed_family", ["python", "numpy"])
 @pytest.mark.parametrize("probe_rejects", [False, True])
+@pytest.mark.parametrize("persistent_failure", [False, True])
 def test_failed_preflight_rollback_recovers_other_rng_families(
     monkeypatch: pytest.MonkeyPatch,
     failed_family: str,
     probe_rejects: bool,
+    persistent_failure: bool,
 ) -> None:
     """A failed RNG setter must not strand otherwise recoverable streams."""
 
@@ -53,7 +55,7 @@ def test_failed_preflight_rollback_recovers_other_rng_families(
         def one_shot_failure(state: Any) -> None:
             nonlocal setter_calls
             setter_calls += 1
-            if setter_calls == 1:
+            if setter_calls == 1 or persistent_failure:
                 raise original_error
             original_setter(state)
 
@@ -89,10 +91,23 @@ def test_failed_preflight_rollback_recovers_other_rng_families(
         assert torch.are_deterministic_algorithms_enabled() == initial_enabled
         assert torch.is_deterministic_algorithms_warn_only_enabled() == initial_warn_only
         actual = (random.random(), np.random.random_sample(), torch.rand(()).item())
-        assert actual == expected, (
-            "preflight rollback must independently restore Python, NumPy and "
-            "torch CPU streams even when one setter initially fails"
-        )
+        if persistent_failure:
+            # The permanently broken setter cannot restore its own stream.
+            # It must not prevent *other* families from recovering exactly.
+            if failed_family == "python":
+                assert actual[1:] == expected[1:]
+            else:
+                assert actual[0] == expected[0]
+                assert actual[2] == expected[2]
+            assert any(
+                "rollback" in note.lower()
+                for note in getattr(raised.value, "__notes__", ())
+            )
+        else:
+            assert actual == expected, (
+                "preflight rollback must independently restore all three "
+                "streams when the initial setter fault is transient"
+            )
     finally:
         core.restore_rng_state(initial)
         torch.use_deterministic_algorithms(
