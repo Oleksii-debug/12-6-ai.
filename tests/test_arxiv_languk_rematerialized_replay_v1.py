@@ -1231,12 +1231,15 @@ def test_failed_owned_rollback_is_reported_for_manual_reconciliation(
     monkeypatch.setattr(REPLAY_RUNNER, "_link_staged_new_bytes", corrupt_after_link)
     monkeypatch.setattr(Path, "unlink", fail_final_unlink)
     with pytest.raises(
-        REPLAY_RUNNER.RematerializationError,
-        match="rollback failed; manual reconciliation required",
+        REPLAY_RUNNER.PublicationIndeterminate, match="ROLLBACK_INCOMPLETE",
     ):
         REPLAY_RUNNER._write_new_bytes(final, b"expected", label="outer report")
     assert final.read_bytes() == b"corrupt-but-owned"
-    assert not list(tmp_path.glob(".outer-report.json.*.tmp"))
+    staged = list(tmp_path.glob(".outer-report.json.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == b"corrupt-but-owned"
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    staged[0].unlink()
+    final.unlink()
 
 
 def test_verified_single_output_cleanup_error_is_not_a_publication_failure(
@@ -1491,6 +1494,162 @@ def test_outer_staging_and_prior_cleanup_dual_faults_report_both_paths(
 
     for path in blocked:
         path.unlink()
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovery["training_authorized"] is False
+
+
+def test_create_then_raise_rolls_back_only_owned_single_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "Український результат.json"
+    payload = b"authenticated result"
+    original_link = REPLAY_RUNNER.os.link
+
+    def create_then_raise(stage: Path, final: Path) -> None:
+        original_link(stage, final)
+        raise OSError("injected post-create EIO")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "link", create_then_raise)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError, match="cannot publish",
+        ):
+            REPLAY_RUNNER._write_new_bytes(target, payload, label="test output")
+
+    assert not target.exists()
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+    REPLAY_RUNNER._write_new_bytes(target, payload, label="test output")
+    assert target.read_bytes() == payload
+
+
+@pytest.mark.parametrize(
+    ("label", "prior"),
+    [
+        ("outer report", ()),
+        ("outer survivors", ("outer report",)),
+        ("outer receipt", ("outer report", "outer survivors")),
+    ],
+)
+def test_create_then_raise_cannot_commit_outer_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    label: str, prior: tuple[str, ...],
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    targets = {
+        "outer report": args.output_report,
+        "outer survivors": args.output_survivors,
+        "outer receipt": args.output_receipt,
+    }
+    original_link = REPLAY_RUNNER.os.link
+
+    def create_then_raise(stage: Path, final: Path) -> None:
+        original_link(stage, final)
+        if final == targets[label]:
+            raise OSError("injected post-create EIO")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "link", create_then_raise)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError, match="partial outer publication",
+        ):
+            REPLAY_RUNNER._publish_verified_outputs(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+
+    for name, target in targets.items():
+        assert target.exists() is (name in prior)
+    assert not args.output_receipt.exists()
+    assert not list(tmp_path.glob(".outer-*.tmp"))
+    for target in targets.values():
+        target.unlink(missing_ok=True)
+    (pass_root / "outer-publication-intent.json").unlink()
+    REPLAY_RUNNER._publish_verified_outputs(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    recovery = REPLAY_RUNNER.inspect_outer_publication_recovery(
+        args, pass_root=pass_root, pass_result=result, receipt=receipt,
+    )
+    assert recovery["status"] == "COMMITTED_ZERO_CREDIT"
+    assert recovery["training_authorized"] is False
+
+
+@pytest.mark.parametrize("link_raises", [False, True])
+def test_uninspectable_final_keeps_original_stage_for_manual_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link_raises: bool,
+) -> None:
+    target = tmp_path / "uninspectable-result.json"
+    payload = b"exact original bytes"
+    original_link = REPLAY_RUNNER.os.link
+    original_stat = Path.stat
+
+    def maybe_raise_after_link(stage: Path, final: Path) -> None:
+        original_link(stage, final)
+        if link_raises and final == target:
+            raise OSError("injected post-create EIO")
+
+    def deny_final_stat(path: Path, *args: object, **kwargs: object):
+        if path == target and kwargs.get("follow_symlinks") is False:
+            raise PermissionError("injected NTFS sharing denial")
+        return original_stat(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "link", maybe_raise_after_link)
+        fault.setattr(Path, "stat", deny_final_stat)
+        with pytest.raises(
+            REPLAY_RUNNER.PublicationIndeterminate,
+            match="PUBLICATION_INDETERMINATE",
+        ) as caught:
+            REPLAY_RUNNER._write_new_bytes(target, payload, label="test output")
+
+    staged = list(tmp_path.glob(f".{target.name}.*.tmp"))
+    assert len(staged) == 1
+    assert staged[0] == caught.value.staged
+    assert str(staged[0]) in str(caught.value)
+    assert str(target) in str(caught.value)
+    assert target.read_bytes() == staged[0].read_bytes() == payload
+    target.unlink()
+    staged[0].unlink()
+    REPLAY_RUNNER._write_new_bytes(target, payload, label="test output")
+    assert target.read_bytes() == payload
+
+
+def test_uninspectable_outer_report_retains_stage_and_never_commits_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_stat = Path.stat
+
+    def deny_report_stat(path: Path, *args: object, **kwargs: object):
+        if path == args.output_report and kwargs.get("follow_symlinks") is False:
+            raise PermissionError("injected final inode inspection denial")
+        return original_stat(path, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(Path, "stat", deny_report_stat)
+        with pytest.raises(
+            REPLAY_RUNNER.RematerializationError,
+            match="PUBLICATION_INDETERMINATE",
+        ):
+            REPLAY_RUNNER._publish_verified_outputs(
+                args, pass_root=pass_root, pass_result=result, receipt=receipt,
+            )
+
+    retained = list(
+        args.output_report.parent.glob(f".{args.output_report.name}.*.tmp")
+    )
+    assert len(retained) == 1
+    assert retained[0].read_bytes() == args.output_report.read_bytes()
+    assert not args.output_survivors.exists()
+    assert not args.output_receipt.exists()
+    retained[0].unlink()
+    args.output_report.unlink()
+    (pass_root / "outer-publication-intent.json").unlink()
     REPLAY_RUNNER._publish_verified_outputs(
         args, pass_root=pass_root, pass_result=result, receipt=receipt,
     )
