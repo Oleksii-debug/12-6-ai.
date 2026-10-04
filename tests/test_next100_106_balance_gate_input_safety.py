@@ -437,3 +437,121 @@ def test_canonical_policy_is_externally_pinned() -> None:
     policy = gate.load_json(POLICY)
     assert policy["policy_identity_sha256"] == gate.EXPECTED_POLICY_IDENTITY_SHA256
     gate.validate_policy(policy)
+
+def test_stage_short_write_is_detected() -> None:
+    class ShortWriter:
+        def write(self, payload: bytes) -> int:
+            return len(payload) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("must not flush a short write")
+
+        def fileno(self) -> int:
+            raise AssertionError("must not fsync a short write")
+
+    with pytest.raises(OSError, match="incomplete staged balance output"):
+        _gate()._write_staged_bytes(ShortWriter(), b"expected bytes")
+
+
+@pytest.mark.parametrize("fault", ["partial", "fsync"])
+def test_stage_failure_never_leaves_a_final_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str,
+) -> None:
+    gate = _gate()
+    source = tmp_path / "original vector.json"
+    source.write_bytes(b"original vector")
+    result = tmp_path / "balance-result.json"
+    if fault == "partial":
+        def partial(destination: object, payload: bytes) -> None:
+            destination.write(payload[:3])
+            raise OSError("injected disk full")
+        monkeypatch.setattr(gate, "_write_staged_bytes", partial)
+    else:
+        def bad_fsync(_fd: int) -> None:
+            raise OSError("injected fsync failure")
+        monkeypatch.setattr(gate.os, "fsync", bad_fsync)
+    with pytest.raises(OSError, match="injected"):
+        gate._write_new_output(result, b"complete payload", input_path=source)
+    assert not result.exists()
+    assert not list(tmp_path.glob(f".{result.name}.*.tmp"))
+    assert source.read_bytes() == b"original vector"
+
+
+def test_atomic_create_preserves_late_competing_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"original")
+    output = tmp_path / "result.json"
+    real_link = gate.os.link
+
+    def raced_link(stage: Path, final: Path) -> None:
+        final.write_bytes(b"competitor verified result")
+        real_link(stage, final)
+
+    monkeypatch.setattr(gate.os, "link", raced_link)
+    with pytest.raises(gate.GateError, match="refusing to overwrite"):
+        gate._write_new_output(output, b"candidate", input_path=source)
+    assert output.read_bytes() == b"competitor verified result"
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert source.read_bytes() == b"original"
+
+
+def test_stage_mutation_after_sync_rolls_back_own_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"original")
+    output = tmp_path / "result.json"
+    real_link = gate.os.link
+
+    def tamper_link(stage: Path, final: Path) -> None:
+        stage.write_bytes(b"wrong output")
+        real_link(stage, final)
+
+    monkeypatch.setattr(gate.os, "link", tamper_link)
+    with pytest.raises(gate.GateError, match="failed byte/path verification"):
+        gate._write_new_output(output, b"expected payload", input_path=source)
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert source.read_bytes() == b"original"
+
+
+def test_valid_output_is_one_shot_and_preserves_input(tmp_path: Path) -> None:
+    gate = _gate()
+    source = tmp_path / "дані з пробілами.json"
+    source.write_bytes(b"original")
+    output = tmp_path / "результат.json"
+    payload = '{"text":"Україна"}\n'.encode("utf-8")
+    gate._write_new_output(output, payload, input_path=source)
+    assert output.read_bytes() == payload
+    with pytest.raises(gate.GateError, match="refusing to overwrite"):
+        gate._write_new_output(output, b"different bytes", input_path=source)
+    assert output.read_bytes() == payload
+    assert source.read_bytes() == b"original"
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), object(), "\ud800"])
+def test_invalid_adapter_result_does_not_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    bad: object,
+) -> None:
+    from types import SimpleNamespace
+
+    gate = _gate()
+    source = tmp_path / "source.json"
+    source.write_bytes(b"source")
+    output = tmp_path / "blocked.json"
+    monkeypatch.setattr(
+        gate, "parse_args",
+        lambda: SimpleNamespace(command="evaluate", input=source, output=output),
+    )
+    monkeypatch.setattr(gate, "load_json", lambda _path: {})
+    monkeypatch.setattr(gate, "validate_policy", lambda _policy: None)
+    monkeypatch.setattr(gate, "evaluate", lambda _policy, _vector: {"bad": bad})
+    assert gate.main() == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "BLOCKED_INVALID_INPUT"
+    assert not output.exists()
+    assert source.read_bytes() == b"source"

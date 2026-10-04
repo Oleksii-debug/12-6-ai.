@@ -7,9 +7,11 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "configs/data/next100_106_balance_gate_policy_v1.json"
@@ -518,22 +520,88 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _write_staged_bytes(destination: BinaryIO, payload: bytes) -> None:
+    if destination.write(payload) != len(payload):
+        raise OSError("incomplete staged balance output write")
+    destination.flush()
+    os.fsync(destination.fileno())
+
+
+def _same_inode(path: Path, identity: tuple[int, int]) -> bool:
+    try:
+        info = path.stat(follow_symlinks=False)
+    except OSError:
+        return False
+    return (info.st_dev, info.st_ino) == identity
+
+
+def _payload_matches(path: Path, identity: tuple[int, int], payload: bytes) -> bool:
+    if not _same_inode(path, identity):
+        return False
+    try:
+        with path.open("rb") as source:
+            info = os.fstat(source.fileno())
+            return (
+                (info.st_dev, info.st_ino) == identity
+                and source.read(len(payload) + 1) == payload
+            )
+    except OSError:
+        return False
+
+
 def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
-    """Create a result once, never replacing policy, source evidence or old output."""
+    """Publish complete bytes once; require a trusted and stable parent directory.
+
+    Portable checks cannot protect against hostile simultaneous same-user writers
+    or ancestor renames. Native Windows/NTFS validation remains outstanding.
+    """
     if path.exists() or path.is_symlink():
         raise GateError(f"refusing to overwrite existing balance output: {path}")
     try:
-        resolved = path.resolve()
+        parent = path.parent.absolute()
+        if parent != parent.resolve(strict=True):
+            raise GateError("balance output parent must have no symlink aliases")
+        final = parent / path.name
         protected = {POLICY_PATH.resolve(), input_path.resolve()}
-    except RuntimeError as exc:
-        raise GateError("balance output path has a symlink loop") from exc
-    if resolved in protected:
-        raise GateError("balance output must not alias policy or input")
+        if final in protected:
+            raise GateError("balance output must not alias policy or input")
+    except (OSError, RuntimeError) as exc:
+        raise GateError("balance output path cannot be resolved safely") from exc
+
+    staged_path: Path | None = None
+    identity: tuple[int, int] | None = None
+    linked = False
+    verified = False
     try:
-        with path.open("xb") as destination:
-            destination.write(payload)
+        with tempfile.NamedTemporaryFile(
+            mode="w+b", prefix=f".{path.name}.", suffix=".tmp",
+            dir=parent, delete=False,
+        ) as destination:
+            staged_path = Path(destination.name)
+            stat = os.fstat(destination.fileno())
+            identity = (stat.st_dev, stat.st_ino)
+            if not identity[1]:
+                raise OSError("filesystem has no stable staged file identity")
+            _write_staged_bytes(destination, payload)
+        if not _payload_matches(staged_path, identity, payload):
+            raise GateError("staged balance output failed byte verification")
+        os.link(staged_path, final)  # Create-only; never replace a concurrent result.
+        linked = True
+        if (
+            not _payload_matches(final, identity, payload)
+            or not _payload_matches(staged_path, identity, payload)
+            or parent != path.parent.absolute()
+            or parent != path.parent.resolve(strict=True)
+        ):
+            raise GateError("published balance output failed byte/path verification")
+        verified = True
     except FileExistsError as exc:
         raise GateError(f"refusing to overwrite existing balance output: {path}") from exc
+    finally:
+        if linked and not verified and identity is not None and _same_inode(final, identity):
+            final.unlink()
+        if staged_path is not None and identity is not None and _same_inode(staged_path, identity):
+            staged_path.unlink()
 
 
 def main() -> int:
@@ -551,7 +619,7 @@ def main() -> int:
 
         vector = load_json(args.input)
         result = evaluate(policy, vector)
-        payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n"
         if args.output:
             _write_new_output(
                 args.output, payload.encode("utf-8"), input_path=args.input
@@ -559,7 +627,7 @@ def main() -> int:
         else:
             print(payload, end="")
         return 0
-    except (OSError, ValueError, UnicodeError, RecursionError, OverflowError) as exc:
+    except (OSError, ValueError, TypeError, UnicodeError, RecursionError, OverflowError) as exc:
         print(json.dumps({"status": "BLOCKED_INVALID_INPUT", "error": str(exc)}, sort_keys=True))
         return 2
 
