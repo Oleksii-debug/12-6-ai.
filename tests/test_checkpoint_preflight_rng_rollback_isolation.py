@@ -22,7 +22,7 @@ class _FreshCanonicalTarget:
     _update_incomplete: bool = False
 
 
-@pytest.mark.parametrize("failed_family", ["python", "numpy"])
+@pytest.mark.parametrize("failed_family", ["python", "numpy", "torch_cpu"])
 @pytest.mark.parametrize("probe_rejects", [False, True])
 @pytest.mark.parametrize("persistent_failure", [False, True])
 @pytest.mark.parametrize("interruption", [OSError, KeyboardInterrupt, SystemExit])
@@ -77,9 +77,12 @@ def test_failed_preflight_rollback_recovers_other_rng_families(
             if failed_family == "python":
                 original_setter = random.setstate
                 patch.setattr(random, "setstate", one_shot_failure)
-            else:
+            elif failed_family == "numpy":
                 original_setter = np.random.set_state
                 patch.setattr(np.random, "set_state", one_shot_failure)
+            else:
+                original_setter = torch.set_rng_state
+                patch.setattr(torch, "set_rng_state", one_shot_failure)
             with pytest.raises(interruption, match="injected .* RNG setter failure") as raised:
                 trainer_adapter._preflight_trainer_state(target, {"probe": True})
 
@@ -98,9 +101,11 @@ def test_failed_preflight_rollback_recovers_other_rng_families(
             # It must not prevent *other* families from recovering exactly.
             if failed_family == "python":
                 assert actual[1:] == expected[1:]
-            else:
+            elif failed_family == "numpy":
                 assert actual[0] == expected[0]
                 assert actual[2] == expected[2]
+            else:
+                assert actual[:2] == expected[:2]
             assert any(
                 "rollback" in note.lower()
                 for note in getattr(raised.value, "__notes__", ())
