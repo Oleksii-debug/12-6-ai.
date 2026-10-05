@@ -537,3 +537,91 @@ def test_recipe_cli_depth_rejection_is_scoped_to_untrusted_json(
     label = "trusted-authorities" if bad_role == "trusted" else bad_role
     assert f"invalid {label} JSON" in result["error"]
     assert "JSON nesting exceeds decoder limit" in result["error"]
+
+
+def test_recipe_cli_semantic_policy_failure_is_machine_readable(tmp_path: Path) -> None:
+    policy = load_policy()
+    policy["schema"] = "invalid-recipe-schema"
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), "--policy", str(path)],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid policy authority" in response["error"]
+    assert "schema mismatch" in response["error"]
+
+
+@pytest.mark.parametrize("invalid_field", ["unhashable_decision", "insufficient_capacity"])
+def test_recipe_cli_semantic_bindings_failure_is_machine_readable(
+    tmp_path: Path, invalid_field: str,
+) -> None:
+    data = bindings()
+    if invalid_field == "unhashable_decision":
+        data["tokenizer"]["decision"] = []
+    else:
+        data["d04"]["unique_nonignored_causal_loss_positions"] = 1
+    trusted = trusted_authorities(data)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(data), encoding="utf-8")
+    trusted_path.write_text(json.dumps(trusted), encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable, str(TOOL_PATH),
+            "--bindings", str(bindings_path),
+            "--trusted-authorities", str(trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(trusted),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid terminal authority bindings" in response["error"]
+
+
+def test_recipe_cli_semantic_trusted_authority_failure_is_machine_readable(
+    tmp_path: Path,
+) -> None:
+    data = bindings()
+    trusted = trusted_authorities(data)
+    trusted["tokenizer"]["terminal"] = False
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(data), encoding="utf-8")
+    trusted_path.write_text(json.dumps(trusted), encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable, str(TOOL_PATH),
+            "--bindings", str(bindings_path),
+            "--trusted-authorities", str(trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(trusted),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid terminal authority bindings" in response["error"]
+    assert "terminal must be true" in response["error"]
