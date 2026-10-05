@@ -1305,14 +1305,16 @@ def test_receipt_commit_with_cleanup_error_is_recoverable(
     pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
     original_unlink = Path.unlink
 
-    def deny_report_stage(path: Path, *args: object, **kwargs: object) -> None:
+    def deny_report_stage(
+        path: Path, *unlink_args: object, **kwargs: object,
+    ) -> None:
         if (
             path.parent == args.output_report.parent
             and path.name.startswith(f".{args.output_report.name}.")
             and path.suffix == ".tmp"
         ):
             raise OSError("injected outer cleanup failure")
-        original_unlink(path, *args, **kwargs)
+        original_unlink(path, *unlink_args, **kwargs)
 
     monkeypatch.setattr(Path, "unlink", deny_report_stage)
     with pytest.raises(
@@ -1396,14 +1398,16 @@ def test_outer_staging_dual_fault_cleans_prior_stages_without_receipt(
             raise OSError("injected ENOSPC on survivors stage")
         original_fsync(descriptor)
 
-    def lock_survivors_stage(path: Path, *args: object, **kwargs: object) -> None:
+    def lock_survivors_stage(
+        path: Path, *unlink_args: object, **kwargs: object,
+    ) -> None:
         if (
             path.name.startswith(f".{args.output_survivors.name}.")
             and path.suffix == ".tmp"
         ):
             blocked.append(path)
             raise PermissionError("injected survivors sharing violation")
-        original_unlink(path, *args, **kwargs)
+        original_unlink(path, *unlink_args, **kwargs)
 
     with monkeypatch.context() as fault:
         fault.setattr(REPLAY_RUNNER.os, "fsync", fail_second_fsync)
@@ -1590,16 +1594,24 @@ def test_uninspectable_final_keeps_original_stage_for_manual_recovery(
     payload = b"exact original bytes"
     original_link = REPLAY_RUNNER.os.link
     original_stat = Path.stat
+    linked = False
 
     def maybe_raise_after_link(stage: Path, final: Path) -> None:
+        nonlocal linked
         original_link(stage, final)
+        if final == target:
+            linked = True
         if link_raises and final == target:
             raise OSError("injected post-create EIO")
 
-    def deny_final_stat(path: Path, *args: object, **kwargs: object):
-        if path == target and kwargs.get("follow_symlinks") is False:
+    def deny_final_stat(path: Path, *stat_args: object, **kwargs: object):
+        if (
+            linked
+            and path == target
+            and kwargs.get("follow_symlinks") is False
+        ):
             raise PermissionError("injected NTFS sharing denial")
-        return original_stat(path, *args, **kwargs)
+        return original_stat(path, *stat_args, **kwargs)
 
     with monkeypatch.context() as fault:
         fault.setattr(REPLAY_RUNNER.os, "link", maybe_raise_after_link)
@@ -1626,14 +1638,27 @@ def test_uninspectable_outer_report_retains_stage_and_never_commits_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pass_root, args, result, receipt = _publication_case(tmp_path, monkeypatch)
+    original_link = REPLAY_RUNNER.os.link
     original_stat = Path.stat
+    report_linked = False
 
-    def deny_report_stat(path: Path, *args: object, **kwargs: object):
-        if path == args.output_report and kwargs.get("follow_symlinks") is False:
+    def mark_report_link(stage: Path, final: Path) -> None:
+        nonlocal report_linked
+        original_link(stage, final)
+        if final == args.output_report:
+            report_linked = True
+
+    def deny_report_stat(path: Path, *stat_args: object, **kwargs: object):
+        if (
+            report_linked
+            and path == args.output_report
+            and kwargs.get("follow_symlinks") is False
+        ):
             raise PermissionError("injected final inode inspection denial")
-        return original_stat(path, *args, **kwargs)
+        return original_stat(path, *stat_args, **kwargs)
 
     with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "link", mark_report_link)
         fault.setattr(Path, "stat", deny_report_stat)
         with pytest.raises(
             REPLAY_RUNNER.RematerializationError,
@@ -1766,14 +1791,27 @@ def test_interrupt_during_postlink_stat_retains_original_stage(
 ) -> None:
     target = tmp_path / "interrupted-inspection.json"
     raw = b"verified source"
+    original_link = REPLAY_RUNNER.os.link
     original_stat = Path.stat
+    linked = False
 
-    def interrupt_final_stat(path: Path, *args: object, **kwargs: object):
-        if path == target and kwargs.get("follow_symlinks") is False:
+    def mark_link(stage: Path, final: Path) -> None:
+        nonlocal linked
+        original_link(stage, final)
+        if final == target:
+            linked = True
+
+    def interrupt_final_stat(path: Path, *stat_args: object, **kwargs: object):
+        if (
+            linked
+            and path == target
+            and kwargs.get("follow_symlinks") is False
+        ):
             raise interruption("injected interruption during inode inspection")
-        return original_stat(path, *args, **kwargs)
+        return original_stat(path, *stat_args, **kwargs)
 
     with monkeypatch.context() as fault:
+        fault.setattr(REPLAY_RUNNER.os, "link", mark_link)
         fault.setattr(Path, "stat", interrupt_final_stat)
         with pytest.raises(
             REPLAY_RUNNER.PublicationIndeterminate,
