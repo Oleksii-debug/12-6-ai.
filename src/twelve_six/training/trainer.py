@@ -1253,14 +1253,19 @@ class Trainer:
         # Freeze mutable scheduler lists: an export hook may change them in place.
         return copy.deepcopy(snapshot)
 
-    def _require_exported_model_matches_live(
-        self,
-        exported: Mapping[str, np.ndarray],
-    ) -> None:
-        """Require staged checkpoint weights to equal raw live module state exactly."""
+    def _canonical_persistent_model_state(self) -> dict[str, Tensor]:
+        """Return persistent model state from raw Module registries only."""
 
-        if not isinstance(exported, Mapping):
-            raise TrainingStateInvalidError("checkpoint model export is not a mapping")
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        model = trainer_attrs.get("model")
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is not a torch module"
+            )
 
         expected: dict[str, Tensor] = {}
         active_modules: set[int] = set()
@@ -1273,12 +1278,11 @@ class Trainer:
                 )
             active_modules.add(module_id)
             try:
-                attrs = Trainer._raw_instance_dict(module, nn.Module, label="model module")
-            except (AttributeError, TypeError) as exc:
-                raise TrainingStateInvalidError(
-                    "checkpoint model module state is unavailable"
-                ) from exc
-            try:
+                attrs = Trainer._raw_instance_dict(
+                    module,
+                    nn.Module,
+                    label="model module",
+                )
                 parameters = attrs.get("_parameters")
                 buffers = attrs.get("_buffers")
                 modules = attrs.get("_modules")
@@ -1304,7 +1308,12 @@ class Trainer:
                         raise TrainingStateInvalidError(
                             "checkpoint model parameter binding is not canonical"
                         )
-                    expected[f"{prefix}{name}"] = value
+                    key = f"{prefix}{name}"
+                    if key in expected:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model state key is duplicated"
+                        )
+                    expected[key] = value
 
                 for name, value in buffers.items():
                     if type(name) is not str:
@@ -1317,7 +1326,12 @@ class Trainer:
                         raise TrainingStateInvalidError(
                             "checkpoint model buffer binding is not canonical"
                         )
-                    expected[f"{prefix}{name}"] = value
+                    key = f"{prefix}{name}"
+                    if key in expected:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model state key is duplicated"
+                        )
+                    expected[key] = value
 
                 for name, child in modules.items():
                     if type(name) is not str:
@@ -1334,18 +1348,97 @@ class Trainer:
             finally:
                 active_modules.remove(module_id)
 
-        try:
-            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
-            model = trainer_attrs["model"]
-        except (AttributeError, KeyError, TypeError) as exc:
-            raise TrainingStateInvalidError(
-                "checkpoint trainer model binding is unavailable"
-            ) from exc
-        if not isinstance(model, nn.Module):
-            raise TrainingStateInvalidError(
-                "checkpoint trainer model binding is not a torch module"
-            )
         collect(model, "")
+        return expected
+
+    def _model_state_value_fingerprint(
+        self,
+        state: Mapping[str, Any],
+    ) -> str:
+        """Hash named tensor values without retaining a second model-scale copy."""
+
+        if type(state) is not dict:
+            raise TrainingStateInvalidError(
+                "checkpoint materialized model state must be a dictionary"
+            )
+        digest = hashlib.sha256()
+
+        def update_tensor(value: Tensor) -> None:
+            if type(value) not in {Tensor, nn.Parameter}:
+                raise TrainingStateInvalidError(
+                    "checkpoint materialized model state must use canonical tensors"
+                )
+            if value.layout != torch.strided:
+                raise TrainingStateInvalidError(
+                    "checkpoint materialized model state must be strided"
+                )
+            detached = value.detach()
+            if detached.is_contiguous():
+                flat = detached.reshape(-1)
+                for index in range(0, flat.numel(), 262_144):
+                    block = (
+                        flat[index:index + 262_144]
+                        .to(device="cpu")
+                        .contiguous()
+                    )
+                    if str(block.dtype) == "torch.bfloat16":
+                        block = block.view(torch.uint16)
+                    digest.update(block.view(torch.uint8).numpy().tobytes())
+                return
+            if detached.numel() <= 262_144:
+                block = detached.to(device="cpu").contiguous().reshape(-1)
+                if str(block.dtype) == "torch.bfloat16":
+                    block = block.view(torch.uint16)
+                digest.update(block.view(torch.uint8).numpy().tobytes())
+                return
+            if detached.ndim == 0:
+                block = detached.to(device="cpu").contiguous().reshape(-1)
+                if str(block.dtype) == "torch.bfloat16":
+                    block = block.view(torch.uint16)
+                digest.update(block.view(torch.uint8).numpy().tobytes())
+                return
+            for child in detached.unbind(0):
+                update_tensor(child)
+
+        for name in sorted(state):
+            if type(name) is not str:
+                raise TrainingStateInvalidError(
+                    "checkpoint model state key is not canonical"
+                )
+            value = state[name]
+            if type(value) not in {Tensor, nn.Parameter}:
+                raise TrainingStateInvalidError(
+                    "checkpoint materialized model state contains a non-tensor"
+                )
+            digest.update(name.encode("utf-8") + b"\0")
+            digest.update(
+                repr(
+                    (
+                        str(value.dtype),
+                        str(value.device),
+                        tuple(value.shape),
+                    )
+                ).encode("utf-8")
+            )
+            update_tensor(value)
+        return digest.hexdigest()
+
+    def _live_model_state_value_fingerprint(self) -> str:
+        """Hash live persistent model values using raw canonical registries."""
+
+        state = Trainer._canonical_persistent_model_state(self)
+        return Trainer._model_state_value_fingerprint(self, state)
+
+    def _require_exported_model_matches_live(
+        self,
+        exported: Mapping[str, np.ndarray],
+    ) -> None:
+        """Require staged checkpoint weights to equal raw live module state exactly."""
+
+        if not isinstance(exported, Mapping):
+            raise TrainingStateInvalidError("checkpoint model export is not a mapping")
+
+        expected = Trainer._canonical_persistent_model_state(self)
 
         if set(exported) != set(expected):
             raise TrainingStateInvalidError(
