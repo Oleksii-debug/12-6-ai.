@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "evidence_id": "INSPECT-AI-BOOTSTRAP-STRESS-V1-SWARM-784",
+  "worker": "SWARM-784",
+  "branch_base": "5020afd671a3885c1b738c8b4eafe7525f630546",
+  "upstream": {
+    "repository": "https://github.com/UKGovernmentBEIS/inspect_ai",
+    "package": "inspect-ai",
+    "version": "0.3.260",
+    "tag_commit": "3f294e61b823d6bad5fc16706fc5825ea980c8ee",
+    "license": "MIT",
+    "license_blob_sha": "72fc87742ef8a944fab4f28fe6231696c62f2fa4",
+    "wheel_sha256": "3da1dd4e4cbaec248b507799beb71eb9917eee1062eab1d9aeb6a8b5a03a386a",
+    "sdist_sha256": "5f6fbd7bc1fae0a770dc04e208daa9275de71f6d6b85b5fb68c162a1c4e0496f"
+  },
+  "bootstrap": {
+    "python": "3.13.5",
+    "os": "Debian GNU/Linux 13.3 (trixie)",
+    "arch": "x86_64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "visible_cpus": 5,
+    "gpu": "NOT_PRESENT_OR_NOT_VISIBLE",
+    "package_managers": ["python", "pip", "pip3", "uv", "git"],
+    "missing_package_managers": ["poetry", "pdm", "conda"],
+    "cache": "NO_MATCHING_INSPECT_AI_ARTIFACT_FOUND",
+    "network_pypi": "DNS_FAILURE",
+    "network_git": "DNS_FAILURE",
+    "exact_version_preinstalled": false,
+    "isolated_env_created": true,
+    "isolated_env": "/tmp/inspect-bootstrap-env",
+    "install_command": "python -m pip install --disable-pip-version-check --no-input --no-cache-dir inspect-ai==0.3.260",
+    "install_exit_code": 1,
+    "install_result": "FAILED_EXACT_ARTIFACT_UNAVAILABLE",
+    "global_python_modified": false
+  },
+  "tests": {
+    "offline_focused_adversarial": "PASS",
+    "test_count": 4,
+    "py_compile": "PASS",
+    "runtime": "NOT_EXECUTED",
+    "benchmark": "NOT_EXECUTED",
+    "parity": "NOT_EXECUTED"
+  },
+  "rights": {
+    "code_license": "MIT",
+    "software_rights_verified_from_exact_upstream_LICENSE": true,
+    "data_rights_assumed_from_code_license": false,
+    "fixture_rights": "project_authored_synthetic",
+    "foreign_model_or_weights": false,
+    "external_provider_call": false
+  },
+  "promotion": {
+    "verdict": "RETEST_RUNTIME_REQUIRED",
+    "adoptable": false,
+    "reason": "Exact runtime dependency unavailable in LOCAL_FREE environment; no real upstream execution, benchmark or parity evidence can be claimed."
+  },
+  "next_action": "Preseed or obtain the recorded wheel, verify SHA-256, install exact 0.3.260 in isolation, execute runner twice, preserve both result records, then refresh live ownership and authority before promotion."
+}
