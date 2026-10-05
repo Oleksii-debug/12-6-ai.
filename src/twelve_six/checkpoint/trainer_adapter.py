@@ -20,7 +20,6 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
-    capture_rng_state,
     _apply_model_weights,
     _decode_verified_state,
     _preflight_optimizer_state,
@@ -28,6 +27,7 @@ from .core import (
     _prepare_model_weights,
     _semantic_stateful_probe,
     assert_identity,
+    capture_rng_state,
     prepare_checkpoint_load,
     restore_rng_state,
     save_checkpoint,
@@ -456,7 +456,7 @@ def _preflight_trainer_state(
         try:
             try:
                 _core.restore_rng_state(ambient)
-            except BaseException as rng_exc:
+            except BaseException as rng_exc:  # noqa: BLE001 - rollback must preserve interruption state
                 _restore_ambient_rng_after_failed_apply(ambient, rng_exc)
                 # A secondary policy rollback fault must not hide the primary
                 # failed/interrupted RNG rollback or its preflight context.
@@ -466,7 +466,7 @@ def _preflight_trainer_state(
                             bool(torch_state["deterministic_algorithms"]),
                             warn_only=warn_only,
                         )
-                    except BaseException as mode_exc:
+                    except BaseException as mode_exc:  # noqa: BLE001 - rollback must preserve interruption state
                         rng_exc.add_note(
                             "PyTorch preflight-mode rollback also failed: "
                             f"{mode_exc!r}"
@@ -623,7 +623,7 @@ def _restore_ambient_rng_after_failed_apply(
     if "python" in ambient:
         try:
             _core.random.setstate(ambient["python"])
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001 - rollback must preserve interruption state
             exc.add_note(f"Python RNG rollback also failed: {rollback_exc!r}")
     if "numpy" in ambient:
         try:
