@@ -76,6 +76,17 @@ _DELTA_AUTHORITY_KEYS = {
     "source_ids_sha256",
     "source_authority",
 }
+_REJECTION_KEYS = {
+    "data232_excluded_records",
+    "g05_reject_documents",
+    "g05_partial_documents",
+    "g05_rejected_units",
+    "g05_rejected_utf8_bytes",
+    "g06_redacted_records",
+    "g06_quarantine_records",
+    "g06_exclude_records",
+    "g06_dropped_utf8_bytes",
+}
 _GATE_KEYS = {
     "data232_report_sha256",
     "decontamination_execution_identity_sha256",
@@ -452,12 +463,45 @@ def _verify_delta_evidence(
         survivor_bytes + loss == EXPECTED_DELTA_PRE_GATE_BYTES,
         "delta later-gate byte accounting drift",
     )
-    for field in ("rejection_counts", "privacy_detector_counts"):
-        values = gate.get(field)
-        _require(isinstance(values, Mapping), f"delta gate.{field} missing")
-        for key, value in values.items():
-            _require(isinstance(key, str) and bool(key), f"delta gate.{field} key invalid")
-            _nonnegative(value, f"delta gate.{field}.{key}")
+    rejection_counts = gate.get("rejection_counts")
+    _require(
+        isinstance(rejection_counts, Mapping)
+        and set(rejection_counts) == _REJECTION_KEYS,
+        "delta gate rejection-count schema drift",
+    )
+    for key, value in rejection_counts.items():
+        _nonnegative(value, f"delta gate.rejection_counts.{key}")
+    _require(
+        input_records - post_decontam
+        == rejection_counts["data232_excluded_records"],
+        "delta DATA-232 rejection/count accounting drift",
+    )
+    _require(
+        rejection_counts["g05_partial_documents"] == 0,
+        "delta G05 partial materialization authority widened",
+    )
+    _require(
+        post_decontam - post_quality
+        == rejection_counts["g05_reject_documents"],
+        "delta G05 rejection/count accounting drift",
+    )
+    _require(
+        post_quality - survivors
+        == (
+            rejection_counts["g06_quarantine_records"]
+            + rejection_counts["g06_exclude_records"]
+        ),
+        "delta G06 drop/count accounting drift",
+    )
+
+    detector_counts = gate.get("privacy_detector_counts")
+    _require(isinstance(detector_counts, Mapping), "delta gate.privacy_detector_counts missing")
+    for key, value in detector_counts.items():
+        _require(
+            isinstance(key, str) and bool(key),
+            "delta gate.privacy_detector_counts key invalid",
+        )
+        _nonnegative(value, f"delta gate.privacy_detector_counts.{key}")
 
     inventory = evidence.get("survivor_inventory")
     _require(isinstance(inventory, Mapping), "delta survivor inventory missing")
