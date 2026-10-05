@@ -23,7 +23,7 @@ from .core import (
     prepare_checkpoint_load,
     restore_rng_state,
 )
-from .d04_resume_binding import assert_d04_resume_binding, _require_sha256
+from .d04_resume_binding import _require_sha256, assert_d04_resume_binding
 from .expected_binding import (
     _require_expected_nonempty_string,
     _require_expected_sha256,
@@ -57,6 +57,7 @@ from .trainer_adapter import (
     _snapshot_torch_policy,
     _snapshot_trainer_restore_bindings,
 )
+
 
 def load_trainer_checkpoint(
     directory: str | Path,
@@ -99,7 +100,7 @@ def load_trainer_checkpoint(
         model_fingerprint = _bind_native_model_export_fingerprint(trainer)
         auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -167,7 +168,7 @@ def load_trainer_checkpoint(
         # potentially model-scale checkpoint; post-decode preflight repeats this
         # guard before mutation in case the target state changed meanwhile.
         _preflight_trainer_target(trainer)
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -285,7 +286,7 @@ def load_trainer_checkpoint(
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -370,7 +371,7 @@ def load_trainer_checkpoint(
             sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             phase="final checkpoint restore seal",
         )
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
