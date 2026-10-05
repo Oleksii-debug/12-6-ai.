@@ -600,3 +600,292 @@ jobs:
             ${{ runner.temp }}/rada-probe-b.json
           if-no-files-found: warn
           retention-days: 30
+
+  # TEMPORARY PR1491 execution carrier. Remove after retaining compact terminal evidence.
+  d03-rada-v9-indexed-physical:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number == 1491 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'swarm-1485/expanded-v9-real-execution-20260912'
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      D03_V9_EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      V7_HEAD_SHA: d3333ec1b4a508df232a5aefccd6686adda745fb
+      RADA_ARCHIVE_SHA256: 737fa5df061c55555a8c761023559a206cbcabf0299ae52d1ccae387f685803e
+      RADA_CANDIDATE_SHA256: 778be40135facef3b86168643673cb1df819e81a376679ac8418130f3104f59a
+      RADA_UPSTREAM_REPORT_SHA256: 83b2cc636aa4cf9a754cd55534035c44782722d2b457755c00f6780112ebfffa
+      RADA_QP_REPORT_SHA256: 06bc8127d5d6ad9d8712870e3942b6cce5082a43b27bd8513a01dd93fc27ab3e
+      RADA_SURVIVOR_SHA256: 9c76085e47b514ab0a49ba8ccf0b51f692859b60360275b4dd0eb5e9d78305a8
+      RADA_LAUNCHER_BLOB: 5f6688cc45a0fea5fe2c2690252a2a2db756af57
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact Product carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$D03_V9_EXECUTION_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          test "$(git hash-object tools/run_d03_rada_trees_quality_windows_isolated.py)" = "$RADA_LAUNCHER_BLOB"
+          python -m py_compile             src/twelve_six/data/expanded_global_dedup_v9.py             tools/run_d03_expanded_global_dedup_v9.py             tests/test_expanded_global_dedup_v9.py             tests/test_run_d03_expanded_global_dedup_v9.py
+
+      - name: Checkout exact sealed V7 authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.V7_HEAD_SHA }}
+          path: _terminal_v7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install data-only deterministic extractors
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends p7zip-full poppler-utils
+          7z | head -n 3 || true
+          pdftotext -v
+
+      - name: Acquire exact immutable Rada_Trees archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-all-errors             --output "$RUNNER_TEMP/rada_xtag_texts.7z"             "https://huggingface.co/datasets/uacorpus/Rada_Trees/resolve/1b994a5804dcda122721e8d33a03fd172cf8d867/rada_xtag_texts.7z?download=true"
+          test "$(stat -c %s "$RUNNER_TEMP/rada_xtag_texts.7z")" = "697768591"
+          echo "$RADA_ARCHIVE_SHA256  $RUNNER_TEMP/rada_xtag_texts.7z" | sha256sum -c -
+
+      - name: Rematerialize exact rights-scoped Rada candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/materialize_d03_rada_trees_rights_scoped_handoff.py             --archive "$RUNNER_TEMP/rada_xtag_texts.7z"             --candidate-jsonl "$RUNNER_TEMP/rada-candidate.jsonl"             --report "$RUNNER_TEMP/rada-handoff-report.json"
+          test "$(wc -l < "$RUNNER_TEMP/rada-candidate.jsonl")" = "4384"
+          echo "$RADA_CANDIDATE_SHA256  $RUNNER_TEMP/rada-candidate.jsonl" | sha256sum -c -
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "rada-handoff-report.json"
+          report = json.loads(path.read_text(encoding="utf-8"))
+          core = dict(report)
+          claimed = core.pop("report_sha256")
+          raw = (
+              json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+              + "\n"
+          ).encode("utf-8")
+          assert hashlib.sha256(raw).hexdigest() == claimed
+          assert claimed == os.environ["RADA_UPSTREAM_REPORT_SHA256"]
+          assert (
+              report["materialization"]["candidate_jsonl_sha256"]
+              == os.environ["RADA_CANDIDATE_SHA256"]
+          )
+          assert report["materialization"]["candidate_records"] == 4384
+          PY
+
+      - name: Rebuild two independent authenticated Rada quality/privacy survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          for RUN in a b; do
+            mkdir -p "$RUNNER_TEMP/rada-$RUN"
+            python tools/run_d03_rada_trees_quality_windows_isolated.py               --candidate-jsonl "$RUNNER_TEMP/rada-candidate.jsonl"               --upstream-handoff-report "$RUNNER_TEMP/rada-handoff-report.json"               --output-jsonl "$RUNNER_TEMP/rada-$RUN/survivors.jsonl"               --report "$RUNNER_TEMP/rada-$RUN/report.json"               --closure-receipt "$RUNNER_TEMP/rada-$RUN/source-closure.json"               --expected-launcher-git-blob-sha "$RADA_LAUNCHER_BLOB"
+          done
+          cmp "$RUNNER_TEMP/rada-a/survivors.jsonl" "$RUNNER_TEMP/rada-b/survivors.jsonl"
+          cmp "$RUNNER_TEMP/rada-a/report.json" "$RUNNER_TEMP/rada-b/report.json"
+          cmp "$RUNNER_TEMP/rada-a/source-closure.json" "$RUNNER_TEMP/rada-b/source-closure.json"
+          echo "$RADA_SURVIVOR_SHA256  $RUNNER_TEMP/rada-a/survivors.jsonl" | sha256sum -c -
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          report = json.loads((root / "rada-a/report.json").read_text(encoding="utf-8"))
+          closure = json.loads(
+              (root / "rada-a/source-closure.json").read_text(encoding="utf-8")
+          )
+          assert report["report_sha256"] == os.environ["RADA_QP_REPORT_SHA256"]
+          assert report["output_jsonl_sha256"] == os.environ["RADA_SURVIVOR_SHA256"]
+          claim = report["claim_boundary"]
+          assert claim["training_authorized_bytes"] == 0
+          assert claim["unique_causal_loss_positions_authorized"] == 0
+          assert claim["tokenizer_fit_authorized"] is False
+          assert claim["optimizer_updates"] == 0
+          assert claim["model_training_executed"] is False
+          assert claim["final_test_payload_accessed"] is False
+          assert claim["paid_compute_used"] is False
+          truth = closure["truth_boundary"]
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["unique_causal_loss_positions_authorized"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates_executed_on_real_targets"] == 0
+          assert truth["training_executed"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          PY
+
+      - name: Execute indexed expanded V9 twice from independently rebuilt Rada survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          for RUN in a b; do
+            python tools/run_d03_expanded_global_dedup_v9.py               --v7-root "$GITHUB_WORKSPACE/_terminal_v7"               --bulk-workspace "$RUNNER_TEMP/v9-bulk-$RUN"               --rematerialize-v8-authority               --v8-authority-workspace "$RUNNER_TEMP/v8-authority-$RUN"               --rada-quality-privacy-jsonl "$RUNNER_TEMP/rada-$RUN/survivors.jsonl"               --rada-quality-privacy-report "$RUNNER_TEMP/rada-$RUN/report.json"               --expected-rada-report-sha256 "$RADA_QP_REPORT_SHA256"               --matcher-execution-backend incumbent_indexed_v1               --output-report "$RUNNER_TEMP/v9-$RUN/report.json"               --output-survivors "$RUNNER_TEMP/v9-$RUN/survivors.json"
+          done
+          cmp "$RUNNER_TEMP/v9-a/report.json" "$RUNNER_TEMP/v9-b/report.json"
+          cmp "$RUNNER_TEMP/v9-a/survivors.json" "$RUNNER_TEMP/v9-b/survivors.json"
+
+      - name: Verify indexed V9 repeatability and emit text-free proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v9-proof"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          report_path = root / "v9-a/report.json"
+          survivor_path = root / "v9-a/survivors.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          survivor = json.loads(survivor_path.read_text(encoding="utf-8"))
+
+          report_core = dict(report)
+          report_claimed = report_core.pop("report_sha256")
+          report_raw = json.dumps(
+              report_core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          assert hashlib.sha256(report_raw).hexdigest() == report_claimed
+
+          survivor_core = dict(survivor)
+          survivor_claimed = survivor_core.pop("survivor_authority_sha256")
+          survivor_raw = json.dumps(
+              survivor_core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          assert hashlib.sha256(survivor_raw).hexdigest() == survivor_claimed
+
+          authority = report["matcher_execution_authority"]
+          backend = authority["execution_backend"]
+          assert backend["name"] == "incumbent_indexed_v1"
+          assert backend["semantic_authority"] == "terminal_pr824_v3_canonical_callbacks"
+          assert backend["canonical_v8_preflight_redirected"] is False
+          assert backend["canonical_report_verifier_required"] is True
+          assert authority["authenticated_rada_rows_only"] is True
+          assert authority["sealed_v8_semantic_preflight_required"] is True
+
+          claim = report["claim_boundary"]
+          assert claim["expanded_global_dedup_complete"] is True
+          assert claim["training_authorized_bytes"] == 0
+          assert claim["unique_causal_loss_positions_authorized"] == 0
+          assert claim["tokenizer_fit_authorized"] is False
+          assert claim["optimizer_updates"] == 0
+          assert claim["model_training_executed"] is False
+          assert claim["final_test_payload_accessed"] is False
+          assert claim["paid_compute_used"] is False
+
+          truth = survivor["truth_boundary"]
+          assert truth["global_dedup_execution_complete"] is True
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["unique_causal_loss_positions_authorized"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates"] == 0
+          assert truth["model_training_executed"] is False
+          assert truth["final_test_payload_accessed"] is False
+          assert truth["paid_compute_used"] is False
+
+          proof_core = {
+              "schema_version": "12-6.d03-expanded-v9-indexed-physical-proof.v1",
+              "classification": "PHYSICAL_REPEATABLE_INDEXED_EXECUTION_ZERO_CREDIT",
+              "execution_profile": "LOCAL_FREE",
+              "pr": 1491,
+              "execution_head_sha": os.environ["D03_V9_EXECUTION_SHA"],
+              "v7_head_sha": os.environ["V7_HEAD_SHA"],
+              "rada_quality_privacy_report_sha256": os.environ["RADA_QP_REPORT_SHA256"],
+              "rada_survivor_jsonl_sha256": os.environ["RADA_SURVIVOR_SHA256"],
+              "expanded_v9_report_sha256": report_claimed,
+              "expanded_v9_survivor_authority_sha256": survivor_claimed,
+              "pre_dedup_source_object_count": report["source_vector"][
+                  "pre_dedup_source_object_count"
+              ],
+              "pre_dedup_declared_capacity_bytes": report["source_vector"][
+                  "pre_dedup_declared_capacity_bytes"
+              ],
+              "post_dedup_conservative_unique_bytes": report["source_vector"][
+                  "post_dedup_conservative_unique_bytes"
+              ],
+              "duplicate_discount_bytes": report["source_vector"][
+                  "duplicate_discount_bytes"
+              ],
+              "duplicate_cluster_count": report["source_vector"][
+                  "duplicate_cluster_count"
+              ],
+              "matcher_execution_backend": backend["name"],
+              "canonical_v8_preflight_redirected": False,
+              "canonical_report_verifier_required": True,
+              "two_fresh_rada_quality_privacy_rebuilds_byte_identical": True,
+              "two_fresh_expanded_v9_executions_byte_identical": True,
+              "retained_inventory_freeze_complete": False,
+              "reserved_evaluation_decontamination_complete": False,
+              "tokenizer_fit_authorized": False,
+              "training_authorized_bytes": 0,
+              "unique_causal_loss_positions_authorized": 0,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights": False,
+          }
+          proof_raw = json.dumps(
+              proof_core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          proof = {
+              **proof_core,
+              "proof_identity_sha256": hashlib.sha256(proof_raw).hexdigest(),
+          }
+          (root / "v9-proof/proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+          cp "$RUNNER_TEMP/v9-a/report.json" "$RUNNER_TEMP/v9-proof/report.json"
+          cp "$RUNNER_TEMP/v9-a/survivors.json" "$RUNNER_TEMP/v9-proof/survivors.json"
+          cp "$RUNNER_TEMP/rada-a/report.json" "$RUNNER_TEMP/v9-proof/rada-quality-privacy-report.json"
+          cp "$RUNNER_TEMP/rada-a/source-closure.json" "$RUNNER_TEMP/v9-proof/rada-source-closure.json"
+          cp "$RUNNER_TEMP/rada-handoff-report.json" "$RUNNER_TEMP/v9-proof/rada-handoff-report.json"
+
+      - name: Upload compact physical V9 evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-v9-indexed-physical-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/v9-proof
+          if-no-files-found: error
+          retention-days: 90
+
