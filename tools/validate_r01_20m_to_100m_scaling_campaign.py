@@ -284,7 +284,7 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
                     ),
                     "R01-E10 tokenizer grid drift",
                 )
-            if experiment_id in {"R01-E20", "R01-E30"}:
+            if type(experiment_id) is str and experiment_id in {"R01-E20", "R01-E30"}:
                 _expect(
                     errors,
                     _same_json_value(
