@@ -65,6 +65,10 @@ def test_canonical_current_rada_replay_authority_binds_physical_result() -> None
         "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7"
     )
     assert binding.exact_duplicate_payload_hashes_observed_not_removed == 765
+    assert binding.rights_scope == "ARTIFACT_RETENTION_AND_REPRODUCIBILITY_ONLY"
+    assert binding.bulk_corpus_admission_granted is False
+    assert binding.training_authority_granted is False
+    assert binding.rights_recheck_for_training_required is True
     assert binding.workflow_run_id == 37367953460
 
 
@@ -82,6 +86,13 @@ def test_current_product_normalizer_bytes_match_authority() -> None:
         (("quality_privacy", "accepted_jsonl_sha256"), "0" * 64),
         (("consumer_gate", "production_qp_authority_established"), True),
         (("consumer_gate", "current_source_global_dedup_executed"), True),
+        (("source", "bulk_corpus_admission_granted"), True),
+        (("source", "training_authority_granted"), True),
+        (
+            ("source", "downstream_rights_and_provenance_recheck_required"),
+            False,
+        ),
+        (("source", "rights_policy_git_blob_sha1"), "0" * 40),
         (("truth_boundary", "canonical_capacity_credited"), False),
         (("truth_boundary", "training_authorized_bytes"), 1),
     ],
@@ -201,6 +212,7 @@ def test_binding_does_not_widen_scientific_authority() -> None:
         "production_qp_authority_established": False,
         "current_source_global_dedup_executed": False,
         "current_source_eval_decontamination_executed": False,
+        "current_source_rights_recheck_for_training_executed": False,
     }
     assert value["truth_boundary"] == {
         "canonical_capacity_credited": 0,
