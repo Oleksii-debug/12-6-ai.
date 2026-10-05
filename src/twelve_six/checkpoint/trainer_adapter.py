@@ -1835,6 +1835,23 @@ def _assert_d02_checkpoint_rng_policy(
             "canonical trainer configuration"
         )
 
+    config = _trainer_instance_attrs(trainer).get("config")
+    if _is_native_d02(trainer):
+        configured_warn_only = _snapshot_native_d02_config(config).get(
+            "deterministic_warn_only"
+        )
+    else:
+        configured_warn_only = getattr(config, "deterministic_warn_only", None)
+    checkpoint_warn_only = torch_state.get("deterministic_warn_only")
+    if checkpoint_warn_only is not None and (
+        type(checkpoint_warn_only) is not bool
+        or checkpoint_warn_only != configured_warn_only
+    ):
+        raise CheckpointCompatibilityError(
+            "checkpoint torch deterministic_warn_only disagrees with "
+            "canonical trainer configuration"
+        )
+
     # A sealed V1 artifact can be valid while omitting one or more streams.
     # Replaying only the available streams silently changes the next batch.
     missing = sorted({"python", "numpy"} - rng_state.keys())
@@ -1981,11 +1998,11 @@ def _restore_checkpoint_rng_preserving_warn_only(
     restore: Any,
     initial_policy: tuple[bool, bool] | None = None,
 ) -> None:
-    """Do not erase the live PyTorch warn-only policy on checkpoint RNG replay.
+    """Preserve the validated live PyTorch policy across RNG replay.
 
-    The V1 RNG snapshot records deterministic enablement, but not warn_only.
-    A canonical D02 Trainer has already configured its validated policy; the
-    core RNG restore defaults warn_only to False even when it was True.
+    Legacy V1 RNG snapshots can omit warn-only mode. A canonical D02 Trainer
+    has already configured its validated policy, so preserve that policy after
+    replay; newer snapshots are preflight-checked against it before apply.
     """
 
     policy = initial_policy
