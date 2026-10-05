@@ -252,6 +252,62 @@ def test_optimizer_hyperparameters_ignore_forged_param_groups_view() -> None:
     assert raw["view_reads"] == []
 
 
+def test_scaler_export_ignores_shadowed_live_getters() -> None:
+    model = _TwoParameters()
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    calls: list[str] = []
+    scaler = trainer.scaler
+    scaler.is_enabled = lambda: calls.append("is_enabled") or True
+    scaler.get_scale = lambda: calls.append("get_scale") or 65536.0
+    scaler.get_growth_factor = lambda: calls.append("growth") or 2.0
+    scaler.get_backoff_factor = lambda: calls.append("backoff") or 0.5
+    scaler.get_growth_interval = lambda: calls.append("interval") or 2000
+    scaler._get_growth_tracker = lambda: calls.append("tracker") or 0
+    forged = {
+        "scale": 65536.0,
+        "growth_factor": 2.0,
+        "backoff_factor": 0.5,
+        "growth_interval": 2000,
+        "_growth_tracker": 0,
+    }
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="gradient scaler export differs from live state",
+    ):
+        trainer._require_exported_scaler_matches_live(forged)
+
+    with pytest.raises(ValueError, match="disabled gradient scaler checkpoint state"):
+        trainer._require_checkpoint_scaler_state(forged)
+
+    assert calls == []
+
+
+def test_checkpoint_rejects_grad_scaler_subclass_binding() -> None:
+    amp_type = torch.amp.GradScaler
+
+    class SubclassScaler(amp_type):
+        pass
+
+    model = _TwoParameters()
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    trainer.scaler = SubclassScaler("cuda", enabled=False)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="gradient scaler binding is not canonical",
+    ):
+        trainer._canonical_scaler_storage()
+
+
 def test_exported_scheduler_validation_ignores_forged_dict_view() -> None:
     _ArmedSchedulerDictLambdaLR.armed = False
     _ArmedSchedulerDictLambdaLR.fake_dict = {}

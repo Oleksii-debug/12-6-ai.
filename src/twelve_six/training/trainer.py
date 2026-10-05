@@ -423,6 +423,89 @@ class Trainer:
             label="scheduler",
         )
 
+    def _canonical_scaler_storage(self) -> dict[str, Any]:
+        """Read the trainer-owned GradScaler without subclass method dispatch."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        scaler = trainer_attrs.get("scaler")
+        amp = getattr(torch, "amp", None)
+        amp_type = getattr(amp, "GradScaler", None)
+        cuda_amp = getattr(getattr(torch, "cuda", None), "amp", None)
+        cuda_type = getattr(cuda_amp, "GradScaler", None)
+        allowed = tuple(
+            candidate
+            for candidate in (amp_type, cuda_type)
+            if isinstance(candidate, type)
+        )
+        if not allowed or type(scaler) not in allowed:
+            raise TrainingStateInvalidError(
+                "gradient scaler binding is not canonical"
+            )
+        base_type = (
+            amp_type
+            if isinstance(amp_type, type) and isinstance(scaler, amp_type)
+            else cuda_type
+        )
+        if not isinstance(base_type, type):
+            raise TrainingStateInvalidError(
+                "gradient scaler dictionary authority is unavailable"
+            )
+        return Trainer._raw_instance_dict(
+            scaler,
+            base_type,
+            label="gradient scaler",
+        )
+
+    def _canonical_scaler_live_state(self) -> dict[str, Any]:
+        """Derive GradScaler checkpoint fields from raw trainer-owned storage."""
+
+        attrs = self._canonical_scaler_storage()
+        enabled = attrs.get("_enabled")
+        if type(enabled) is not bool:
+            raise TrainingStateInvalidError(
+                "gradient scaler enabled flag is not canonical"
+            )
+        if not enabled:
+            return {}
+
+        scale_tensor = attrs.get("_scale")
+        tracker_tensor = attrs.get("_growth_tracker")
+        init_scale = attrs.get("_init_scale")
+        init_tracker = attrs.get("_init_growth_tracker")
+        growth = attrs.get("_growth_factor")
+        backoff = attrs.get("_backoff_factor")
+        interval = attrs.get("_growth_interval")
+
+        if scale_tensor is None:
+            scale = init_scale
+        else:
+            if type(scale_tensor) is not Tensor or scale_tensor.numel() != 1:
+                raise TrainingStateInvalidError(
+                    "gradient scaler live scale tensor is not canonical"
+                )
+            scale = float(scale_tensor.detach().item())
+
+        if tracker_tensor is None:
+            tracker = init_tracker
+        else:
+            if type(tracker_tensor) is not Tensor or tracker_tensor.numel() != 1:
+                raise TrainingStateInvalidError(
+                    "gradient scaler growth tracker is not canonical"
+                )
+            tracker = int(tracker_tensor.detach().item())
+
+        return {
+            "scale": scale,
+            "growth_factor": growth,
+            "backoff_factor": backoff,
+            "growth_interval": interval,
+            "_growth_tracker": tracker,
+        }
+
     def _require_optimizer_parameter_coverage(self) -> None:
         """Require the optimizer to own every trainable model parameter exactly once."""
         named_parameters, _ = self._canonical_model_members()
@@ -1882,10 +1965,7 @@ class Trainer:
             digest.update(b"none\0")
         else:
             try:
-                scaler_attrs = Trainer._raw_instance_dict(
-                    scaler,
-                    label="gradient scaler",
-                )
+                scaler_attrs = self._canonical_scaler_storage()
             except TrainingStateInvalidError as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint scaler storage is unavailable"
@@ -2024,9 +2104,13 @@ class Trainer:
         schema matching and a detached native load probe are not sufficient.
         This check must run before either loader touches model or optimizer.
         """
-        if self.scaler.is_enabled() and not scaler_state:
+        scaler_attrs = self._canonical_scaler_storage()
+        enabled = scaler_attrs.get("_enabled")
+        if type(enabled) is not bool:
+            raise ValueError("gradient scaler enabled flag is invalid")
+        if enabled and not scaler_state:
             raise ValueError("enabled gradient scaler checkpoint state missing")
-        if self.scaler.is_enabled():
+        if enabled:
             expected_fields = {
                 "scale", "growth_factor", "backoff_factor",
                 "growth_interval", "_growth_tracker",
@@ -2082,7 +2166,7 @@ class Trainer:
                     "enabled gradient scaler checkpoint statistics invalid in float32"
                 )
         if (
-            not self.scaler.is_enabled()
+            not enabled
             and scaler_state is not None
             and (not isinstance(scaler_state, Mapping) or bool(scaler_state))
         ):
@@ -2302,25 +2386,9 @@ class Trainer:
 
     def _require_exported_scaler_matches_live(self, exported: Any) -> None:
         """Refuse finite, detached GradScaler statistics that cannot replay."""
-        scaler = self.scaler
-        if scaler is None:
-            if exported is not None:
-                raise TrainingStateInvalidError("gradient scaler export is not canonical")
-            return
         if not isinstance(exported, Mapping):
             raise TrainingStateInvalidError("gradient scaler export is not canonical")
-        if not scaler.is_enabled():
-            expected: dict[str, Any] = {}
-        else:
-            # Match GradScaler's own five-field state_dict schema using live
-            # getters, never a second potentially effectful state_dict call.
-            expected = {
-                "scale": scaler.get_scale(),
-                "growth_factor": scaler.get_growth_factor(),
-                "backoff_factor": scaler.get_backoff_factor(),
-                "growth_interval": scaler.get_growth_interval(),
-                "_growth_tracker": scaler._get_growth_tracker(),
-            }
+        expected = self._canonical_scaler_live_state()
         if not Trainer._exact_export_leaf_equal(exported, expected):
             raise TrainingStateInvalidError(
                 "gradient scaler export differs from live state"
