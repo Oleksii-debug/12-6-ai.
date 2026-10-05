@@ -473,6 +473,7 @@ def test_resealed_default_adamw_finite_decay_forgery_rejected_before_model_apply
         ("_growth_tracker", -1),
         ("_growth_tracker", 2000),
         ("scale", 1e-300),
+        ("scale", 1e-40),  # float32-positive scale with overflowing reciprocal
         ("scale", 1e300),
         ("growth_factor", 1.000000000000001),
         ("growth_factor", 1e300),
@@ -557,6 +558,7 @@ def test_resealed_invalid_scaler_statistics_fail_before_model_and_rng(
 @pytest.mark.parametrize(
     ("field", "bad_value"), [
         ("scale", 1e-300),
+        ("scale", 1e-40),  # float32-positive scale with overflowing reciprocal
         ("scale", 1e300),
         ("growth_factor", 1.000000000000001),
         ("growth_factor", 1e300),
