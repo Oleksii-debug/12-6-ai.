@@ -1003,6 +1003,17 @@ class Trainer:
 
         def walk(module: nn.Module, prefix: str) -> None:
             module_id = id(module)
+            digest.update(
+                repr(
+                    (
+                        "module",
+                        prefix,
+                        module_id,
+                        type(module).__module__,
+                        type(module).__qualname__,
+                    )
+                ).encode("utf-8")
+            )
             if module_id in seen_modules:
                 return
             seen_modules.add(module_id)
@@ -1012,6 +1023,12 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "checkpoint model module state is unavailable"
                 ) from exc
+            training = attrs.get("training")
+            if type(training) is not bool:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module training mode is unavailable"
+                )
+            digest.update(repr(("training", training)).encode("utf-8"))
             parameters = attrs.get("_parameters")
             buffers = attrs.get("_buffers")
             modules = attrs.get("_modules")
