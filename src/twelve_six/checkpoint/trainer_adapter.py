@@ -270,14 +270,12 @@ def _is_canonical_d02(trainer: Any) -> bool:
 
 
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
-    """Refuse mismatched D02 model/optimizer owners before saving or restoring."""
+    """Refuse mismatched D02 model owners without executing custom descriptors."""
 
-    if (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-        and hasattr(trainer, "model")
-        and trainer.model is not model
-    ):
+    if not _is_canonical_d02(trainer):
+        return
+    attrs = vars(trainer)
+    if "model" in attrs and attrs["model"] is not model:
         raise CheckpointCompatibilityError(
             "canonical trainer owns a different model than the checkpoint target"
         )
@@ -319,11 +317,12 @@ def _preflight_trainer_target(trainer: Any) -> None:
 
     if not _is_canonical_d02(trainer):
         return
-    if trainer._failure_reason is not None:
+    initial_attrs = vars(trainer)
+    if initial_attrs.get("_failure_reason") is not None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer is poisoned"
         )
-    if trainer._update_incomplete:
+    if initial_attrs.get("_update_incomplete"):
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
