@@ -205,12 +205,19 @@ def test_detached_corrupt_snapshot_poisoned_even_when_live_state_stays_finite(
         trainer.state_dict()
 
 @pytest.mark.parametrize(
-    "attack", ["finite-moment", "finite-hyperparam", "finite-live-lr", "alias-state-id"],
+    ("attack", "expected_message"),
+    [
+        ("finite-moment", "optimizer export"),
+        ("finite-hyperparam", "optimizer export"),
+        ("finite-live-lr", "default constant optimizer rate"),
+        ("alias-state-id", "optimizer export"),
+    ],
 )
 def test_finite_detached_optimizer_export_must_match_live_committed_state(
     monkeypatch: pytest.MonkeyPatch,
     preserve_process_state: Any,
     attack: str,
+    expected_message: str,
 ) -> None:
     import copy
 
@@ -235,7 +242,7 @@ def test_finite_detached_optimizer_export_must_match_live_committed_state(
         return data
 
     monkeypatch.setattr(trainer.optimizer, "state_dict", divergent_export)
-    with pytest.raises(TrainingStateInvalidError, match="optimizer export"):
+    with pytest.raises(TrainingStateInvalidError, match=expected_message):
         trainer.state_dict()
     assert trainer._failure_reason is not None
     assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2)
