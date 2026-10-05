@@ -269,17 +269,6 @@ def _is_canonical_d02(trainer: Any) -> bool:
     return "_failure_reason" in attrs and "_update_incomplete" in attrs
 
 
-def _poison_canonical_d02(trainer: Any, reason: str) -> None:
-    """Record fail-closed recovery state without invoking custom descriptors."""
-
-    if not _is_canonical_d02(trainer):
-        return
-    attrs = vars(trainer)
-    if attrs.get("_failure_reason") is None:
-        attrs["_failure_reason"] = reason
-    attrs["_update_incomplete"] = True
-
-
 def _poison_canonical_restore_failure(
     trainer: Any,
     *,
@@ -1205,6 +1194,7 @@ def load_trainer_checkpoint(
             preio_policy,
             trainer,
         )
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
     _assert_bound_metadata(
@@ -1283,6 +1273,7 @@ def load_trainer_checkpoint(
             preapply_policy,
             trainer,
         )
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
 
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = capture_rng_state()
