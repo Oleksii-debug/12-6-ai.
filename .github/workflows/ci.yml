@@ -611,6 +611,7 @@ jobs:
       MODEL341_SHA: f151c77a8ef8721f0f568509147b1a5f961ae6c7
       MODEL341_CANDIDATE_BLOB: 69e3cbd5f5c83c9d3d529a2a6376db3055979c40
       EXPECTED_D05_RUNTIME_SHA: ${{ github.event.pull_request.base.sha }}
+      QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
 
     steps:
       - name: Checkout exact qualification candidate
@@ -645,6 +646,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          QUALIFICATION_RUNNER_BLOB="$(git hash-object tools/run_checkpoint346_model341_current_d05_recovery_v8.py)"
+          test "${#QUALIFICATION_RUNNER_BLOB}" -eq 40
+          case "$QUALIFICATION_RUNNER_BLOB" in
+            *[!0-9a-f]*) exit 1 ;;
+          esac
+          echo "QUALIFICATION_RUNNER_BLOB=$QUALIFICATION_RUNNER_BLOB" >> "$GITHUB_ENV"
           D05_RUNTIME_SHA="$(git -C d05-runtime rev-parse HEAD)"
           test "${#D05_RUNTIME_SHA}" -eq 40
           case "$D05_RUNTIME_SHA" in
@@ -708,6 +716,12 @@ jobs:
           )
           assert report["baseline_step2"] == report["resumed_step2"]
           assert report["runtime"]["git_sha"] == os.environ["D05_RUNTIME_SHA"]
+          assert report["runtime"]["qualification_git_sha"] == os.environ[
+              "QUALIFICATION_CARRIER_SHA"
+          ]
+          assert report["runtime"]["qualification_runner_blob_sha"] == os.environ[
+              "QUALIFICATION_RUNNER_BLOB"
+          ]
 
           collision_vectors = [
               ([[], []], [[[]]]),
