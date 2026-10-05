@@ -9,8 +9,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from twelve_six.checkpoint import CheckpointCompatibilityError, CheckpointIdentity
-from twelve_six.checkpoint import core, progress_trainer, trainer_adapter
+from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
+    CheckpointIdentity,
+    core,
+    progress_trainer,
+    trainer_adapter,
+)
 
 
 class Model:
