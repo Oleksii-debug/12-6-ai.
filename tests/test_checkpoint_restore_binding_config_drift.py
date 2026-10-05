@@ -1106,6 +1106,23 @@ def test_native_checkpoint_save_rejects_subclass_export_auxiliary_mutation(
         "_require_exported_scaler_matches_live",
         "_require_exported_optimizer_matches_live",
         "_exact_export_leaf_equal",
+        "assert_checkpoint_safe",
+        "_assert_trainable",
+        "_require_finite_auxiliary_state",
+        "_require_finite_committed_update",
+        "_require_no_residual_model_gradients",
+        "_require_deterministic_policy",
+        "_require_optimizer_parameter_coverage",
+        "_require_safe_optimizer_hyperparameters",
+        "_require_default_optimizer_options",
+        "_require_constant_default_rate",
+        "_require_finite_state_tree",
+        "_require_checkpoint_scaler_state",
+        "_require_default_schedule_rates",
+        "_require_checkpoint_scheduler_chronology",
+        "_require_optimizer_state_parameter_order",
+        "_optimizer_parameter_name_groups",
+        "_mark_failed",
     ],
 )
 def test_native_checkpoint_save_rejects_subclass_safety_authority_override(
@@ -1150,6 +1167,40 @@ def test_native_checkpoint_save_rejects_subclass_safety_authority_override(
     assert not checkpoint.exists()
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+def test_native_checkpoint_save_rechecks_safety_after_temporary_subclass_bypass(
+    tmp_path: Path,
+) -> None:
+    class TemporarySafetyBypassTrainer(Trainer):
+        def state_dict(self) -> Any:
+            vars(self)["_require_finite_committed_update"] = lambda: None
+            try:
+                return super().state_dict()
+            finally:
+                del vars(self)["_require_finite_committed_update"]
+
+    target = TemporarySafetyBypassTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    with torch.no_grad():
+        target.model.weight.fill_(float("nan"))
+    checkpoint = tmp_path / "temporary-safety-bypass-must-not-exist"
+
+    with pytest.raises(Exception, match="non-finite model weights"):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert "_require_finite_committed_update" not in vars(target)
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
 
 
 @pytest.mark.parametrize(
@@ -1231,6 +1282,23 @@ def test_native_checkpoint_save_rejects_auxiliary_drift_from_model_export(
         "_require_exported_scaler_matches_live",
         "_require_exported_optimizer_matches_live",
         "_exact_export_leaf_equal",
+        "assert_checkpoint_safe",
+        "_assert_trainable",
+        "_require_finite_auxiliary_state",
+        "_require_finite_committed_update",
+        "_require_no_residual_model_gradients",
+        "_require_deterministic_policy",
+        "_require_optimizer_parameter_coverage",
+        "_require_safe_optimizer_hyperparameters",
+        "_require_default_optimizer_options",
+        "_require_constant_default_rate",
+        "_require_finite_state_tree",
+        "_require_checkpoint_scaler_state",
+        "_require_default_schedule_rates",
+        "_require_checkpoint_scheduler_chronology",
+        "_require_optimizer_state_parameter_order",
+        "_optimizer_parameter_name_groups",
+        "_mark_failed",
     ],
 )
 def test_native_checkpoint_load_rejects_subclass_safety_authority_before_io(
