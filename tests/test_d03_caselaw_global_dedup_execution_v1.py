@@ -1472,9 +1472,9 @@ from types import SimpleNamespace
 
 # Only literal 1.0 is retained by the result: no code, data, or runtime swap.
 source = (
-    "def lineage(rows, edges):\n"
+    "def lineage(rows, edges):\\n"
     "    return [{'match_type': 'lineage_same_origin_alias', "
-    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\n"
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
 )
 live_namespace = {}
 canonical_namespace = {}
@@ -1502,9 +1502,9 @@ def test_v3_warmup_releases_synthetic_result_before_strict_second_attest() -> No
 from types import SimpleNamespace
 
 source = (
-    "def lineage(rows, edges):\n"
+    "def lineage(rows, edges):\\n"
     "    return [{'match_type': 'lineage_same_origin_alias', "
-    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\n"
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
 )
 live_ns, canonical_ns = {}, {}
 exec(compile(source, "v3-result-lifetime.py", "exec"), live_ns)
@@ -1534,9 +1534,9 @@ def test_v3_reference_sample_releases_verified_report_before_strict_attest() -> 
 from types import SimpleNamespace
 
 source = (
-    "def lineage(rows, edges):\n"
+    "def lineage(rows, edges):\\n"
     "    return [{'match_type': 'lineage_same_origin_alias', "
-    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\n"
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
 )
 live_ns, canonical_ns = {}, {}
 exec(compile(source, "v3-reference-sample.py", "exec"), live_ns)
@@ -1577,9 +1577,9 @@ def test_v3_verified_reference_can_be_frozen_without_losing_byte_comparison() ->
 import json
 
 source = (
-    "def lineage(rows, edges):\n"
+    "def lineage(rows, edges):\\n"
     "    return [{'match_type': 'lineage_same_origin_alias', "
-    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\n"
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
 )
 live_ns, canonical_ns = {}, {}
 exec(compile(source, "v3-reference-full.py", "exec"), live_ns)
