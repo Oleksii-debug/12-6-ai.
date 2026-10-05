@@ -411,6 +411,15 @@ def test_capacity_report_read_redacts_missing_path(tmp_path: Path) -> None:
     assert err.value.__suppress_context__ is True
 
 
+def test_capacity_report_read_redacts_embedded_nul_path() -> None:
+    private_path = "PRIVATE-SOURCE-IDENTITY-998877\x00.json"
+    with pytest.raises(CapacityReportError, match="cannot read capacity report") as failure:
+        load_and_validate(private_path)
+    assert "PRIVATE-SOURCE-IDENTITY" not in str(failure.value)
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
+
+
 def test_capacity_report_symlink_to_regular_report(tmp_path: Path) -> None:
     if os.name == "nt":
         pytest.skip("Windows symlink creation may require additional privileges")
@@ -503,6 +512,34 @@ def test_capacity_report_rejects_regular_file_swap_before_open(
 
     monkeypatch.setattr(os, "open", swapping_open)
     with pytest.raises(CapacityReportError, match="changed between check and open"):
+        load_and_validate(target)
+
+
+def test_capacity_report_rejects_stamp_change_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "capacity.json"
+    target.write_bytes(REPORT.read_bytes())
+    real_stat = os.stat
+    changed = False
+
+    def changing_stat(path: str | os.PathLike[str]) -> os.stat_result | SimpleNamespace:
+        nonlocal changed
+        info = real_stat(path)
+        if not changed and Path(path) == target:
+            changed = True
+            return SimpleNamespace(
+                st_mode=info.st_mode,
+                st_dev=info.st_dev,
+                st_ino=info.st_ino,
+                st_size=info.st_size,
+                st_mtime_ns=info.st_mtime_ns + 1,
+                st_ctime_ns=info.st_ctime_ns,
+            )
+        return info
+
+    monkeypatch.setattr(os, "stat", changing_stat)
+    with pytest.raises(CapacityReportError, match="changed before open"):
         load_and_validate(target)
 
 
