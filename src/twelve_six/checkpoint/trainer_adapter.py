@@ -673,11 +673,15 @@ def _assert_native_d02_model_training_mode(model: Any, trainer: Any) -> None:
     if not _is_native_d02(trainer):
         return
     try:
-        training = vars(model).get("training")
-    except TypeError as exc:
+        model_attrs = _CanonicalTrainer._raw_instance_dict(
+            model,
+            label="checkpoint model",
+        )
+    except (AttributeError, RuntimeError, TypeError) as exc:
         raise CheckpointCompatibilityError(
             "native D02 checkpoint model does not expose training mode"
         ) from exc
+    training = model_attrs.get("training")
     if training is not True:
         raise CheckpointCompatibilityError(
             "native D02 checkpoint restore requires model training mode"
