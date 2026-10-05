@@ -106,6 +106,8 @@ jobs:
           if spec is None or spec.loader is None:
               raise SystemExit("cannot load NBU discovery authority")
           nbu = importlib.util.module_from_spec(spec)
+          import sys
+          sys.modules[spec.name] = nbu
           spec.loader.exec_module(nbu)
 
           config = nbu.load_config()
