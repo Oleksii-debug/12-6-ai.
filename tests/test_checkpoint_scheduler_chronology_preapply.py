@@ -1253,6 +1253,58 @@ def test_preflight_rng_rollback_marker_loss_still_poisons_canonical_target(
     ids=["adapter", "progress"],
 )
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_native_instance_callable_loader_shadow_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "instance-loader-shadow-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    native_loader = target.load_state_dict
+    model_applied: list[bool] = []
+
+    def instance_shadow(state: Any) -> None:
+        native_loader(state)
+
+    target.load_state_dict = instance_shadow  # type: ignore[method-assign]
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("instance loader shadow reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="load_state_dict must remain class-bound",
+    ):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert target._failure_reason is None and not target._update_incomplete
+    assert not target.optimizer.state
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
 def test_late_noncallable_trainer_loader_fails_before_model_apply(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     loader: Any, restore_rng: bool,
