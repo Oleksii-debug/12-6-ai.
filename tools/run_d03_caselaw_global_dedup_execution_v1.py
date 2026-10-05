@@ -14,6 +14,7 @@ import hashlib
 import importlib
 import json
 import os
+import ssl
 try:
     import resource
 except ImportError:  # pragma: no cover - Windows/local fallback
@@ -24,6 +25,8 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ROOT / "tools"
@@ -221,6 +224,46 @@ def _declared_capacity_bytes(
     return total
 
 
+def _capture_terminal_v7_with_fetch_context(
+    v7_root: Path, config: Mapping[str, Any],
+) -> tuple[Any, dict[str, Any], dict[str, Any], dict[str, bytes]]:
+    """Retry only transient TLS EOF while preserving exact historical source authority."""
+    historical_v7 = v8._load_v7(v7_root)
+    fetch_module = historical_v7.v6.v5.v1
+    original_fetch = fetch_module.fetch_exact_source
+
+    def contextual_fetch(url: str) -> bytes:
+        for attempt in range(1, 4):
+            try:
+                return original_fetch(url)
+            except OSError as exc:
+                if (
+                    isinstance(exc, URLError)
+                    and isinstance(exc.reason, ssl.SSLEOFError)
+                    and attempt < 3
+                ):
+                    time.sleep(0.25 * attempt)
+                    continue
+                try:
+                    host = urlsplit(url).hostname or "unknown"
+                except ValueError:
+                    host = "invalid-url"
+                url_sha256 = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                exc.add_note(
+                    "historical V7 source fetch failed: "
+                    f"host={host}; acquisition_url_sha256={url_sha256}; "
+                    f"attempts={attempt}"
+                )
+                raise
+        raise AssertionError("unreachable historical fetch attempt state")
+
+    fetch_module.fetch_exact_source = contextual_fetch
+    try:
+        return v8._capture_terminal_v7(v7_root, config)
+    finally:
+        fetch_module.fetch_exact_source = original_fetch
+
+
 def _reconstruct_clean_source_inputs(
     *,
     v7_root: Path,
@@ -232,7 +275,7 @@ def _reconstruct_clean_source_inputs(
     quarantine_authority = json.loads(
         (ROOT / clean_successor.QUARANTINE_CONFIG_PATH).read_text(encoding="utf-8")
     )
-    v7, _, historical_inventory, historical_payloads = v8._capture_terminal_v7(
+    v7, _, historical_inventory, historical_payloads = _capture_terminal_v7_with_fetch_context(
         v7_root, config
     )
     clean_inventory, clean_payloads, removal = clean_successor.deauthorize_exact_nomis(
@@ -386,6 +429,9 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
                      and match.get("capacity_collapsing") is True
                      for match in matches),
                  "terminal V3 lineage warmup authority drift")
+    # V3's returned match dictionaries retain literal score=1.0 references.
+    # Release the synthetic result before the unchanged strict second attestation.
+    del matches
     indexed.attest_incumbent_runtime(matcher)
 
 
@@ -420,6 +466,8 @@ def _preflight_attested_reference_sample(
     sample_payloads = {row["source_id"]: payloads[row["source_id"]] for row in selected}
     sample_report = matcher.audit_payloads(sample_inventory, sample_payloads)
     matcher.verify_report(sample_report)
+    # Do not retain float-bearing V3 report objects across strict code attestation.
+    del sample_report
     indexed.attest_incumbent_runtime(matcher)
 
 
@@ -1161,6 +1209,11 @@ def execute(
     reference = matcher.audit_payloads(inventory, payloads)
     reference_seconds = time.perf_counter() - reference_started
     matcher.verify_report(reference)
+    # Freeze verified evidence before releasing match objects whose shared literal
+    # references can perturb CPython marshal-v4 code-object representation.
+    reference_hash = reference["report_sha256"]
+    reference_bytes = matcher.v1._canonical_bytes(reference)
+    del reference
 
     indexed_started = time.perf_counter()
     indexed_report = indexed.audit_payloads_indexed(
@@ -1174,7 +1227,6 @@ def execute(
     indexed_seconds = time.perf_counter() - indexed_started
     matcher.verify_report(indexed_report)
 
-    reference_bytes = matcher.v1._canonical_bytes(reference)
     indexed_bytes = matcher.v1._canonical_bytes(indexed_report)
     _require(reference_bytes == indexed_bytes, "indexed report differs from incumbent all-pairs report")
 
@@ -1245,7 +1297,7 @@ def execute(
             "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
             "declared_capacity_bytes": EXPECTED_COMBINED_BYTES,
             "comparison_payload_bytes": combined_comparison_payload_bytes,
-            "reference_report_sha256": reference["report_sha256"],
+            "reference_report_sha256": reference_hash,
             "indexed_report_sha256": indexed_report["report_sha256"],
             "reports_byte_identical": True,
             "post_dedup_conservative_unique_bytes": terminal.get(
