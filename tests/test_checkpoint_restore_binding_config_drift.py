@@ -478,3 +478,55 @@ def test_native_trainer_method_binding_does_not_execute_class_descriptor(
     np.testing.assert_array_equal(np_after[1], np_before[1])
     assert np_after[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+
+def test_checkpoint_save_refuses_effectful_config_slot_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    original_slot = TrainerConfig.__dict__["max_steps"]
+    descriptor_calls: list[bool] = []
+    save_calls: list[bool] = []
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+
+    class EffectfulSlot:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            descriptor_calls.append(True)
+            random.random()
+            np.random.random()
+            torch.rand(1)
+            return original_slot.__get__(instance, owner)
+
+    def forbid_save(*args: Any, **kwargs: Any) -> Any:
+        save_calls.append(True)
+        raise AssertionError("effectful config descriptor reached checkpoint publication")
+
+    monkeypatch.setattr(TrainerConfig, "max_steps", EffectfulSlot())
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_save)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="config fields must remain inert slots",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / "must-not-write",
+            model=target.model,
+            trainer=target,
+            identity=_identity(),
+        )
+
+    assert descriptor_calls == []
+    assert save_calls == []
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
