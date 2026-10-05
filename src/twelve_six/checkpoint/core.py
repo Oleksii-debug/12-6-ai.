@@ -825,13 +825,19 @@ def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> 
     _semantic_stateful_probe(component, state, label=label)
 
 
-def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
-    """Apply model state exactly once, even if a loader raises TypeError.
+def _bind_model_state_loader(
+    model: Any,
+    materialized: Mapping[str, Any],
+    strict: bool,
+) -> Any:
+    """Bind one exact model-state application without a later attribute lookup.
 
-    A TypeError raised *inside* load_state_dict may follow a partial weight
-    update or a side effect. Discover keyword support before calling instead
-    of retrying a possibly mutated model with a different calling convention.
+    Descriptor/proxy lookup and signature inspection may execute user code. D05
+    can bind this callable before its final ownership/freshness checks, then apply
+    the already-bound operation after those checks without reopening a TOCTOU
+    window immediately before the first live model mutation.
     """
+
     loader = getattr(model, "load_state_dict", None)
     if not callable(loader):
         raise TypeError("model must provide load_state_dict()")
@@ -856,15 +862,33 @@ def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bo
             raise CheckpointCompatibilityError(
                 "model load_state_dict cannot safely bind positional strict"
             )
-        loader(materialized, strict)
-    elif strict_parameter is not None or any(
+
+        def apply() -> Any:
+            return loader(materialized, strict)
+
+        return apply
+
+    if strict_parameter is not None or any(
         parameter.kind == inspect.Parameter.VAR_KEYWORD
         for parameter in signature.parameters.values()
     ):
-        loader(materialized, strict=strict)
-    else:
-        # Generic legacy adapters accept only load_state_dict(state).
-        loader(materialized)
+
+        def apply() -> Any:
+            return loader(materialized, strict=strict)
+
+        return apply
+
+    # Generic legacy adapters accept only load_state_dict(state).
+    def apply() -> Any:
+        return loader(materialized)
+
+    return apply
+
+
+def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
+    """Apply model state exactly once, with no retry after a partial mutation."""
+
+    _bind_model_state_loader(model, materialized, strict)()
 
 
 def _state_dict_or_none(obj: Any | None) -> Any | None:
