@@ -849,3 +849,117 @@ def test_native_checkpoint_save_rejects_progress_identity_mismatch_before_io(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("seed", 920),
+        ("precision", "bf16"),
+    ],
+)
+def test_native_checkpoint_save_rejects_config_identity_mismatch_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    bad_value: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    identity = replace(_fresh_identity(), **{field: bad_value})
+    save_calls: list[bool] = []
+
+    def forbid_save(*args: Any, **kwargs: Any) -> Any:
+        save_calls.append(True)
+        raise AssertionError("mismatched config identity reached checkpoint I/O")
+
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_save)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="checkpoint native config identity mismatch",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / f"bad-config-{field}",
+            model=target.model,
+            trainer=target,
+            identity=identity,
+        )
+
+    assert save_calls == []
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "restore_rng",
+    [False, True],
+    ids=["opt-out", "exact-rng"],
+)
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("seed", 920),
+        ("precision", "bf16"),
+    ],
+)
+def test_native_checkpoint_load_rejects_internal_config_identity_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    restore_rng: bool,
+    field: str,
+    bad_value: Any,
+) -> None:
+    source = _source()
+    checkpoint = tmp_path / f"bad-{field}-identity"
+    core.save_checkpoint(
+        checkpoint,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=replace(_identity(), **{field: bad_value}),
+    )
+    core.verify_checkpoint(checkpoint)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weight = target.model.weight.detach().clone()
+    model_bind_calls: list[bool] = []
+    original_bind = loader._bind_model_state_loader
+
+    def track_model_bind(model: Any, strict: bool) -> Any:
+        model_bind_calls.append(True)
+        return original_bind(model, strict)
+
+    monkeypatch.setattr(loader, "_bind_model_state_loader", track_model_bind)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="checkpoint native config identity mismatch",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    assert model_bind_calls == []
+    torch.testing.assert_close(target.model.weight, initial_weight, rtol=0, atol=0)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
