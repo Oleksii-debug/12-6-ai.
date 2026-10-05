@@ -1496,16 +1496,39 @@ class Trainer:
             parameters = attrs.get("_parameters")
             buffers = attrs.get("_buffers")
             modules = attrs.get("_modules")
-            if not all(type(value) is dict for value in (parameters, buffers, modules)):
+            non_persistent = attrs.get("_non_persistent_buffers_set")
+            if (
+                not all(type(value) is dict for value in (parameters, buffers, modules))
+                or type(non_persistent) is not set
+                or any(type(name) is not str for name in non_persistent)
+            ):
                 raise TrainingStateInvalidError(
-                    "checkpoint model module registries must remain canonical dicts"
+                    "checkpoint model module registries must remain canonical"
                 )
+            digest.update(
+                repr(
+                    (
+                        "non-persistent-buffers",
+                        prefix,
+                        tuple(sorted(non_persistent)),
+                    )
+                ).encode("utf-8")
+            )
 
             for name, value in parameters.items():
                 if type(name) is not str:
                     raise TrainingStateInvalidError(
                         "checkpoint model parameter name is not canonical"
                     )
+                digest.update(
+                    repr(
+                        (
+                            "parameter-binding",
+                            f"{prefix}{name}",
+                            None if value is None else id(value),
+                        )
+                    ).encode("utf-8")
+                )
                 if value is None or id(value) in seen_parameters:
                     continue
                 if not isinstance(value, Tensor):
@@ -1524,6 +1547,15 @@ class Trainer:
                     raise TrainingStateInvalidError(
                         "checkpoint model buffer name is not canonical"
                     )
+                digest.update(
+                    repr(
+                        (
+                            "buffer-binding",
+                            f"{prefix}{name}",
+                            None if value is None else id(value),
+                        )
+                    ).encode("utf-8")
+                )
                 if value is None or id(value) in seen_buffers:
                     continue
                 if not isinstance(value, Tensor):
@@ -1538,6 +1570,15 @@ class Trainer:
                     raise TrainingStateInvalidError(
                         "checkpoint model child-module name is not canonical"
                     )
+                digest.update(
+                    repr(
+                        (
+                            "module-binding",
+                            f"{prefix}{name}",
+                            None if child is None else id(child),
+                        )
+                    ).encode("utf-8")
+                )
                 if child is None:
                     continue
                 if not isinstance(child, nn.Module):
