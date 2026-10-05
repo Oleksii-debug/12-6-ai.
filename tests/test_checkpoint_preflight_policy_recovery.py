@@ -297,3 +297,37 @@ def test_preflight_marker_loss_then_raise_preserves_primary_and_poison(
         for note in getattr(got.value, "__notes__", ())
     )
 
+def test_preapply_rollback_uses_entry_canonical_after_marker_loss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ambient = core.capture_rng_state()
+    policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    target = _FreshTarget()
+    del vars(target)["_failure_reason"]
+
+    def fail_restore(_state: Any) -> None:
+        raise RuntimeError("synthetic rollback failure after marker loss")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            trainer_adapter._core,
+            "restore_rng_state",
+            fail_restore,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="synthetic rollback failure after marker loss",
+        ):
+            trainer_adapter._restore_preapply_process_state(
+                ambient,
+                policy,
+                target,
+                expected_canonical=True,
+            )
+
+    assert vars(target)["_failure_reason"] == "checkpoint_preapply_rng_rollback_failed"
+    assert vars(target)["_update_incomplete"] is True
+
