@@ -700,21 +700,37 @@ class PublicationWriteCleanupError(CaselawGlobalDedupError):
 
 def _write_create_only_durable(path: Path, payload: bytes) -> None:
     created = False
+    created_identity: tuple[int, int] | None = None
     try:
         with path.open("xb") as handle:
             created = True
+            info = os.fstat(handle.fileno())
+            _require(
+                stat.S_ISREG(info.st_mode),
+                f"created output is not a regular file: {path}",
+            )
+            created_identity = (info.st_dev, info.st_ino)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
     except FileExistsError as exc:
         raise CaselawGlobalDedupError(f"refusing to overwrite: {path}") from exc
     except OSError as exc:
+        if created and created_identity is None:
+            raise PublicationWriteCleanupError(
+                f"cannot write output and ownership is unavailable: {path}"
+            ) from exc
         cleanup_error: Exception | None = None
-        if created:
+        if created_identity is not None:
             try:
-                path.unlink(missing_ok=True)
+                _unlink_owned_path(
+                    path,
+                    created_identity,
+                    label="failed durable create",
+                    missing_ok=True,
+                )
                 _fsync_directory(path.parent)
-            except (OSError, CaselawGlobalDedupError) as cleanup_exc:
+            except CaselawGlobalDedupError as cleanup_exc:
                 cleanup_error = cleanup_exc
         if cleanup_error is not None:
             raise PublicationWriteCleanupError(
