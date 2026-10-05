@@ -1384,7 +1384,8 @@ class Trainer:
                     type(exported_value) not in {Tensor, nn.Parameter}
                     or exported_value.dtype != live.dtype
                     or exported_value.shape != live.shape
-                    or exported_value.layout != live.layout != torch.strided
+                    or exported_value.layout != live.layout
+                    or live.layout != torch.strided
                 ):
                     raise TrainingStateInvalidError(
                         f"checkpoint model export tensor {name!r} metadata differs"
