@@ -424,22 +424,27 @@ def _snapshot_trainer_restore_bindings(
     native_d02 = _is_native_d02(trainer)
     if native_d02 and "device" in attrs:
         bindings["device"] = attrs["device"]
-    policies = (
-        {
+    policy_fields = (
+        "_canonical_default_schedule",
+        "_canonical_unscheduled_default_optimizer",
+        "_canonical_default_optimizer_options",
+    )
+    if native_d02:
+        missing_policies = [field for field in policy_fields if field not in attrs]
+        if missing_policies:
+            raise CheckpointCompatibilityError(
+                "native D02 trainer is missing restore policy fields: "
+                f"{missing_policies}"
+            )
+        policies = {
             field: _snapshot_restore_contract_value(
                 attrs[field],
                 path=f"native D02 {field}",
             )
-            for field in (
-                "_canonical_default_schedule",
-                "_canonical_unscheduled_default_optimizer",
-                "_canonical_default_optimizer_options",
-            )
-            if field in attrs
+            for field in policy_fields
         }
-        if native_d02
-        else {}
-    )
+    else:
+        policies = {}
     config = (
         _snapshot_native_d02_config(bindings["config"])
         if native_d02 and "config" in bindings
