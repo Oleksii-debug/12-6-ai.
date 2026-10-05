@@ -138,3 +138,106 @@ def test_cli_rejects_ambiguous_lease_without_traceback(
     assert payload["contract_valid"] is False
     assert "duplicate object member" in payload["error"]
     assert captured.err == ""
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "api_token_sk_live_123456",
+        "Authorization: Bearer private-value",
+        "password=hunter2",
+    ],
+)
+def test_duplicate_member_error_does_not_echo_untrusted_key(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    secret_key: str,
+) -> None:
+    cli = _load_cli()
+    raw = json.dumps({secret_key: 1})[:-1] + "," + json.dumps(secret_key) + ":2}"
+    manifest = _write(tmp_path / "manifest.json", raw)
+    assert cli.main(["assess_learned20m_training_lease.py", str(manifest)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload == {
+        "contract_valid": False,
+        "error": "duplicate object member",
+    }
+    assert secret_key not in captured.out
+
+
+@pytest.mark.parametrize("target", ["manifest", "lease"])
+def test_cli_rejects_oversized_json_before_decode(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    target: str,
+) -> None:
+    cli = _load_cli()
+    manifest = tmp_path / "manifest.json"
+    lease = tmp_path / "lease.json"
+    manifest.write_text("{}", encoding="utf-8")
+    lease.write_text("{}", encoding="utf-8")
+    oversized = b" " * (cli.MAX_INPUT_BYTES + 1)
+    (manifest if target == "manifest" else lease).write_bytes(oversized)
+    argv = ["assess_learned20m_training_lease.py", str(manifest)]
+    if target == "lease":
+        argv.append(str(lease))
+
+    assert cli.main(argv) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "contract_valid": False,
+        "error": "training lease input exceeds byte limit",
+    }
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["assess_learned20m_training_lease.py"],
+        ["assess_learned20m_training_lease.py", "manifest", "lease", "--bad", "value"],
+        ["assess_learned20m_training_lease.py", "manifest", "lease", "--now"],
+    ],
+)
+def test_invalid_argument_shapes_are_machine_readable(
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+) -> None:
+    cli = _load_cli()
+    assert cli.main(argv) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["contract_valid"] is False
+    assert payload["error"].startswith("invalid arguments:")
+
+
+def test_invalid_now_timestamp_is_redacted(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    manifest = _write(tmp_path / "manifest.json", "{}")
+    lease = _write(tmp_path / "lease.json", "{}")
+    secret = "Bearer-private-timestamp-value"
+    assert (
+        cli.main(
+            [
+                "assess_learned20m_training_lease.py",
+                str(manifest),
+                str(lease),
+                "--now",
+                secret,
+            ]
+        )
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "contract_valid": False,
+        "error": "invalid --now timestamp; expected YYYY-MM-DDTHH:MM:SSZ",
+    }
+    assert secret not in captured.out
