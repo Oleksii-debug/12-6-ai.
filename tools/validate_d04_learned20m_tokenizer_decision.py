@@ -8,6 +8,7 @@ import json
 import math
 import os
 import stat
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -275,7 +276,7 @@ def _emit_input_error(exc: Exception) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--balanced-selection", type=Path, required=True)
     parser.add_argument("--split-application", type=Path, required=True)
     parser.add_argument("--expected-selection-identity-sha256", required=True)
@@ -287,6 +288,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-balance-result-identity-sha256", required=True)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--verify-report", type=Path)
+
+    known_options = {
+        option
+        for action in parser._actions
+        for option in action.option_strings
+        if option.startswith("--")
+    }
+    seen: set[str] = set()
+    for raw in sys.argv[1:]:
+        option = raw.split("=", 1)[0]
+        if option not in known_options:
+            continue
+        if option in seen:
+            parser.error(f"argument {option}: may not be repeated")
+        seen.add(option)
     return parser.parse_args()
 
 
