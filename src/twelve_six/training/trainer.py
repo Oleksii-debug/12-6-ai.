@@ -1123,9 +1123,16 @@ class Trainer:
         self._require_constant_default_rate(groups)
         if self._canonical_default_schedule:
             # Read live LambdaLR attributes; do not re-enter state_dict hooks.
-            self._require_checkpoint_scheduler_chronology(
-                vars(self.scheduler), self.optimizer_step, groups,
-            )
+            # The direct checkpoint preflight uses ValueError for an invalid
+            # saved payload. During training this is an invalid live state.
+            try:
+                self._require_checkpoint_scheduler_chronology(
+                    vars(self.scheduler), self.optimizer_step, groups,
+                )
+            except ValueError as exc:
+                raise TrainingStateInvalidError(
+                    "live default scheduler chronology or rate is invalid"
+                ) from exc
 
     def _require_constant_default_rate(self, optimizer_state: Any) -> None:
         """Reject forged finite LR on the default AdamW path without a scheduler.
