@@ -1095,6 +1095,54 @@ def test_same_size_staged_mutation_during_link_is_not_reported_committed(
     staged[0].unlink()
 
 
+def test_postverify_same_inode_mutation_preserves_stage_and_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    actual_match = cli._final_bytes_match
+    calls = [0]
+    mutated: list[bytes] = []
+
+    def verify_then_mutate(
+        path: Path,
+        *,
+        identity: tuple[int, int],
+        payload: bytes,
+    ) -> bool:
+        matched = actual_match(path, identity=identity, payload=payload)
+        calls[0] += 1
+        if calls[0] == 1 and matched:
+            replacement = b"X" * len(payload)
+            Path(path).write_bytes(replacement)
+            mutated.append(replacement)
+        return matched
+
+    monkeypatch.setattr(cli, "_final_bytes_match", verify_then_mutate)
+    with pytest.raises(
+        cli.PublicationIndeterminate,
+        match="changed after exact-byte verification",
+    ) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+
+    assert calls == [2]
+    assert len(mutated) == 1
+    staged = caught.value.staged
+    assert staged.exists()
+    assert output.read_bytes() == mutated[0]
+    assert staged.read_bytes() == mutated[0]
+    assert (
+        output.stat().st_dev,
+        output.stat().st_ino,
+    ) == (
+        staged.stat().st_dev,
+        staged.stat().st_ino,
+    )
+    output.unlink()
+    staged.unlink()
+
+
 def test_final_path_swap_after_open_is_not_reported_committed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
