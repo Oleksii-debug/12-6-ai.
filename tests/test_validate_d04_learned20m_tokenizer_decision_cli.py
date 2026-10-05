@@ -653,9 +653,14 @@ def test_final_path_swap_after_open_is_not_reported_committed(
         captured_stage[:] = [stage]
         actual_link(stage, final)
 
-    def open_then_swap(path: Path, flags: int) -> int:
-        descriptor = actual_open(path, flags)
-        if path == output and captured_stage:
+    def open_then_swap(
+        path: str | bytes | Path,
+        flags: int,
+        *args: object,
+        **kwargs: object,
+    ) -> int:
+        descriptor = actual_open(path, flags, *args, **kwargs)
+        if Path(path) == output and captured_stage:
             output.unlink()
             try:
                 output.symlink_to(captured_stage[0])
