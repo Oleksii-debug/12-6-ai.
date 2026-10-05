@@ -13,7 +13,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: d03-rada-current-snapshot-qp-replay-\${{ github.event.pull_request.number }}
+  group: d03-rada-current-snapshot-qp-replay-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 30
     env:
       PARENT_HEAD: "019944d5fe12334791f05f1232d13de4a12e37d3"
-      EXECUTION_HEAD: \${{ github.event.pull_request.head.sha }}
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
       RETAINED_ARTIFACT_ID: "11281540677"
       OUTER_SHA256: "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb"
@@ -35,7 +35,7 @@ jobs:
       - name: Checkout exact execution head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: \${{ env.EXECUTION_HEAD }}
+          ref: ${{ env.EXECUTION_HEAD }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -65,7 +65,7 @@ jobs:
       - name: Checkout frozen historical QP mechanics
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: \${{ env.HISTORICAL_QP_REF }}
+          ref: ${{ env.HISTORICAL_QP_REF }}
           path: _historical_qp
           fetch-depth: 1
           persist-credentials: false
@@ -88,7 +88,7 @@ jobs:
       - name: Download exact retained source artifact
         shell: bash
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/rada
@@ -397,7 +397,7 @@ jobs:
       - name: Publish text-free replay evidence only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: d03-rada-current-snapshot-zero-credit-replay-\${{ github.event.pull_request.head.sha }}
+          name: d03-rada-current-snapshot-zero-credit-replay-${{ github.event.pull_request.head.sha }}
           path: |
             /tmp/replay-a.json
             /tmp/replay-b.json
