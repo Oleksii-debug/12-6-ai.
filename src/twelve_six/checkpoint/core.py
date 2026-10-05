@@ -811,7 +811,10 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
 def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
     """Validate scheduler-like state before model/optimizer mutation."""
 
-    if not hasattr(component, "state_dict") or not hasattr(component, "load_state_dict"):
+    if (
+        not callable(getattr(component, "state_dict", None))
+        or not callable(getattr(component, "load_state_dict", None))
+    ):
         raise CheckpointCompatibilityError(
             f"{label} must provide state_dict/load_state_dict"
         )
