@@ -178,7 +178,11 @@ def test_sealed_id_alias_or_permutation_refused_before_model_apply_and_retryable
         touched.append(True)
         raise AssertionError("unbound serialized parameter ID reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", reject_model_apply)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: reject_model_apply,
+    )
     extra = {"expected_step": 1, "expected_tokens_seen": 2} if (
         loader is progress_trainer
     ) else {}
@@ -308,7 +312,11 @@ def test_sealed_noncanonical_state_map_key_refused_without_model_apply(
         touched.append(True)
         raise AssertionError("noncanonical optimizer ID reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbidden_apply)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbidden_apply,
+    )
     extra = {"expected_step": 1, "expected_tokens_seen": 2} if (
         loader is progress_trainer
     ) else {}
