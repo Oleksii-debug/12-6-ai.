@@ -10,7 +10,6 @@ import os
 import random
 import shutil
 import sys
-from dataclasses import asdict
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
