@@ -265,7 +265,7 @@ class Trainer:
     def _require_optimizer_state_parameter_order(self, state: Any) -> None:
         """Refuse positional state remapping even between same-shaped parameters."""
         if not isinstance(state, Mapping):
-            raise ValueError("checkpoint optimizer state must be a mapping")
+            raise TypeError("checkpoint optimizer state must be a mapping")
         source_groups = state.get("param_groups")
         expected = self._optimizer_parameter_name_groups()
         if not isinstance(source_groups, list) or len(source_groups) != len(expected):
