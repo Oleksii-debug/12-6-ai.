@@ -487,3 +487,53 @@ def test_recipe_cli_reports_malformed_authority_json_without_traceback(
     expected_label = bad_role if bad_role != "trusted" else "trusted-authorities"
     assert f"invalid {expected_label}" in response["error"]
     assert "duplicate object member" in response["error"]
+
+
+@pytest.mark.parametrize("kind", ["array", "object"])
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted"])
+def test_recipe_cli_depth_rejection_is_scoped_to_untrusted_json(
+    tmp_path: Path, kind: str, bad_role: str,
+) -> None:
+    tool = _load_tool()
+    depth = 10_000
+    raw = (
+        "[" * depth + "0" + "]" * depth
+        if kind == "array"
+        else '{"item":' * depth + "0" + "}" * depth
+    )
+    path = _write_json(tmp_path, raw)
+    with pytest.raises(ValueError, match="JSON nesting exceeds decoder limit"):
+        tool._load_json(path)
+
+    valid_empty = tmp_path / "empty.json"
+    valid_empty.write_text("{}", encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(path)]
+    elif bad_role == "bindings":
+        command += [
+            "--bindings", str(path),
+            "--trusted-authorities", str(valid_empty),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    else:
+        command += [
+            "--bindings", str(valid_empty),
+            "--trusted-authorities", str(path),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    result = json.loads(completed.stdout)
+    assert result["status"] == "FAIL"
+    label = "trusted-authorities" if bad_role == "trusted" else bad_role
+    assert f"invalid {label} JSON" in result["error"]
+    assert "JSON nesting exceeds decoder limit" in result["error"]
