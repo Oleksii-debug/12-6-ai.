@@ -438,3 +438,53 @@ def test_bind_rejects_semantically_equivalent_runtime_method_replacement(
             application,
             **SHA,
         )
+
+
+@pytest.mark.parametrize(
+    ("method_name", "attribute", "replacement"),
+    [
+        ("encode", "__kwdefaults__", {"add_bos": True, "add_eos": False}),
+        (
+            "decode",
+            "__kwdefaults__",
+            {"skip_special_tokens": True, "errors": "ignore"},
+        ),
+        (
+            "decode",
+            "__kwdefaults__",
+            {"skip_special_tokens": 1, "errors": "strict"},
+        ),
+        ("fertility", "__defaults__", (0,)),
+    ],
+)
+def test_bind_rejects_runtime_method_default_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    method_name: str,
+    attribute: str,
+    replacement: object,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    method = vars(authority.ByteTokenizer)[method_name]
+    assert type(method) is type(lambda: None)
+    monkeypatch.setattr(method, attribute, replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime implementation drift: {method_name} defaults",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
