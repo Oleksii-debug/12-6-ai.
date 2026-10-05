@@ -348,6 +348,9 @@ def _preflight_trainer_target(trainer: Any) -> None:
     model = getattr(trainer, "model", None)
     parameters = getattr(model, "parameters", None)
     optimizer = getattr(trainer, "optimizer", None)
+    config = getattr(trainer, "config", None)
+    scheduler = getattr(trainer, "scheduler", None)
+    scaler = getattr(trainer, "scaler", None)
     zero_grad = getattr(optimizer, "zero_grad", None) if optimizer is not None else None
     if optimizer is not None and not callable(zero_grad):
         raise CheckpointCompatibilityError(
@@ -397,14 +400,21 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer with no consumed exposure"
         )
-    if getattr(trainer, "model", None) is not model:
-        raise CheckpointCompatibilityError(
-            "checkpoint restore target model changed during preflight"
-        )
-    if getattr(trainer, "optimizer", None) is not optimizer:
-        raise CheckpointCompatibilityError(
-            "checkpoint restore target optimizer changed during preflight"
-        )
+    # Canonical D02 stores these restore components as instance attributes.
+    # Inspect the instance dictionary directly so this final identity snapshot
+    # cannot itself execute another custom descriptor after the checks above.
+    live_attrs = vars(trainer)
+    for name, expected in (
+        ("model", model),
+        ("optimizer", optimizer),
+        ("config", config),
+        ("scheduler", scheduler),
+        ("scaler", scaler),
+    ):
+        if live_attrs.get(name) is not expected:
+            raise CheckpointCompatibilityError(
+                f"checkpoint restore target {name} changed during preflight"
+            )
     if pending_gradient:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer with no pending gradients"
