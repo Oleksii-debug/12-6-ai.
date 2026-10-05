@@ -924,6 +924,27 @@ class Trainer:
         if any(type(k) is not int for k in saved_state) or set(saved_state) != present:
             raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
 
+    def _require_checkpoint_scheduler_chronology(
+        self, scheduler_state: Any, optimizer_step: int,
+    ) -> None:
+        """Validate canonical LambdaLR progress before checkpoint state applies.
+
+        D05 calls this D02-owned check before model weights, optimizer moments
+        or RNG are restored. Native PyTorch accepts boolean and floating epoch
+        aliases; exact optimizer-step authority must not depend on that loader.
+        """
+        if not isinstance(self.scheduler, LambdaLR):
+            return
+        if (
+            not isinstance(scheduler_state, Mapping)
+            or type(optimizer_step) is not int
+            or type(scheduler_state.get("last_epoch")) is not int
+            or scheduler_state["last_epoch"] != optimizer_step
+        ):
+            raise ValueError(
+                "checkpoint scheduler chronology differs from optimizer step"
+            )
+
     def _require_exported_scaler_matches_live(self, exported: Any) -> None:
         """Refuse finite, detached GradScaler statistics that cannot replay."""
         scaler = self.scaler
@@ -1092,6 +1113,9 @@ class Trainer:
         # Reject known contract mismatches before touching optimizer state.
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
+        self._require_checkpoint_scheduler_chronology(
+            state.scheduler, state.optimizer_step,
+        )
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
         if (
