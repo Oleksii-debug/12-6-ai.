@@ -250,6 +250,16 @@ def test_resume_scheduler_chronology_preflight_is_retryable(
     assert target.scheduler.last_epoch == 1
     assert target._failure_reason is None and not target._update_incomplete
     assert target.optimizer.param_groups[0]["lr"] == source.optimizer.param_groups[0]["lr"]
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert target.optimizer_step == source.optimizer_step == 2
+    assert target.scheduler is not None and source.scheduler is not None
+    assert target.scheduler.last_epoch == source.scheduler.last_epoch == 2
+    assert target.scheduler._step_count == source.scheduler._step_count == 3
+    assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
+    torch.testing.assert_close(
+        target.model.weight, source.model.weight, rtol=0, atol=0,
+    )
 
 
 @pytest.mark.parametrize("attack", ["finite-rate", "wrong-length", "non-list"])
@@ -296,6 +306,16 @@ def test_resume_rejects_incoherent_scheduler_last_lr_before_optimizer_apply(
     assert target.scheduler is not None
     assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
     assert target._failure_reason is None and not target._update_incomplete
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert target.optimizer_step == source.optimizer_step == 2
+    assert target.scheduler is not None and source.scheduler is not None
+    assert target.scheduler.last_epoch == source.scheduler.last_epoch == 2
+    assert target.scheduler._step_count == source.scheduler._step_count == 3
+    assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
+    torch.testing.assert_close(
+        target.model.weight, source.model.weight, rtol=0, atol=0,
+    )
 
 @pytest.mark.parametrize("forged_count", [0, 1, 3, False, 2.0])
 def test_live_lambda_internal_step_count_cannot_be_saved(
@@ -352,3 +372,13 @@ def test_resume_lambda_internal_step_count_preflight_is_retryable(
     assert target.optimizer_step == 1
     assert target.scheduler is not None and target.scheduler._step_count == 2
     assert target._failure_reason is None and not target._update_incomplete
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert target.optimizer_step == source.optimizer_step == 2
+    assert target.scheduler is not None and source.scheduler is not None
+    assert target.scheduler.last_epoch == source.scheduler.last_epoch == 2
+    assert target.scheduler._step_count == source.scheduler._step_count == 3
+    assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
+    torch.testing.assert_close(
+        target.model.weight, source.model.weight, rtol=0, atol=0,
+    )
