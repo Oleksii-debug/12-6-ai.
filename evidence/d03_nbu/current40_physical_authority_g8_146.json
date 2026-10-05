@@ -1,0 +1,65 @@
+{
+  "schema": "12-6.d03-nbu-current40-physical-authority.v1",
+  "status": "PHYSICAL_MATERIALIZATION_VERIFIED_ZERO_CREDIT",
+  "execution": {
+    "pr": 2804,
+    "head_sha": "1695c16ab038960d74da5a9911643e9426bb9ad4",
+    "workflow_run_id": 37380838424,
+    "workflow_job_id": 112002100700
+  },
+  "source_parent_head_sha": "13be2b000804b410aed7ba759a663408429f60f6",
+  "artifact": {
+    "id": 11374275477,
+    "name": "d03-nbu-pdftotext-real-execution-1695c16ab038960d74da5a9911643e9426bb9ad4",
+    "zip_sha256": "ba7d7148a2fb4a389ad16396690bdcc72ccbf9077e5007b74d6cdca51cc24697",
+    "expires_at": "2026-10-19T22:15:27Z"
+  },
+  "cohort": {
+    "selection_policy": "RECENT_5_AUTHORITY_PLUS_CANONICAL_FIRST_35",
+    "candidate_documents": 80,
+    "selected_documents": 40,
+    "recent_five_exact_pdf_pins_continuity_verified": true
+  },
+  "physical": {
+    "discovered_documents": 40,
+    "discovery_evidence_identity_sha256": "359946424db1a597b5db520696ef56781371553e3883c01ec22f351c98bff6ec",
+    "pinned_pdfs": 40,
+    "observed_pdf_bytes": 6969440,
+    "pdf_pin_evidence_identity_sha256": "3124d3e87fb63b5be7bb8f192856fa918de55a0c0c0cd7007e4d101c1f9638ba",
+    "materialized_records": 40,
+    "observed_text_bytes": 891494,
+    "text_artifact_bytes": 929435,
+    "text_artifact_sha256": "c1dbff49a6fb62c0ab07305aa9f5c9870e0bccdfd754d3644e4d7d6a6b033eaf",
+    "text_evidence_identity_sha256": "3bd13beb2d737162cff9f93270570acc7c69034df35fd9550bb4b8300fb3f71f",
+    "two_full_materializations_byte_identical": true,
+    "extractor": {
+      "backend": "poppler-pdftotext",
+      "version": "25.06.0",
+      "source_sha256": "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+    }
+  },
+  "body_free_files": {
+    "pdftotext-version.txt": "1dc6fdc750ee8de7d1d3f2e149b6c8ff0348280d918fe7c37d9938378224c886",
+    "nbu-catalog-pages.json": "aeb0f2ba0c2a54464f0aaaf24afb2efa89752029855e484dcaab41d873924950",
+    "nbu-discovery-evidence.json": "7e965d8f514a87ff127da2cb8f6a65dbf48ed9327467b85b1d497a0735f39662",
+    "nbu-pdf-pin-evidence.json": "4361af3b4b6d6c27af0f283a49af9c1204d8facec0a0e66c632138e7ad86b2ad",
+    "nbu-text-evidence-a.json": "6799c6f0de3797e54b3c8dbee3fdb0aa4825207f4f68e7a82c0b80ea8695c747",
+    "nbu-text-evidence-b.json": "6799c6f0de3797e54b3c8dbee3fdb0aa4825207f4f68e7a82c0b80ea8695c747",
+    "nbu-real-execution-summary.json": "b97ff4ca325465015d9c4e7ce50847b69c9b5afe56fc8f5dbfc3ad310e4f7482"
+  },
+  "summary_identity_sha256": "88cdd3be588d52ac5472a009625d0508163a447eb101416dc4fab88582f36b90",
+  "truth_boundary": {
+    "canonical_capacity_credit_bytes": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "global_dedup_executed": false,
+    "reserved_evaluation_decontamination_executed": false,
+    "optimizer_updates": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false
+  }
+}
