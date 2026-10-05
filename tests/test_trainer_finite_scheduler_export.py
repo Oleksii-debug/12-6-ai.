@@ -250,3 +250,49 @@ def test_resume_scheduler_chronology_preflight_is_retryable(
     assert target.scheduler.last_epoch == 1
     assert target._failure_reason is None and not target._update_incomplete
     assert target.optimizer.param_groups[0]["lr"] == source.optimizer.param_groups[0]["lr"]
+
+
+@pytest.mark.parametrize("attack", ["finite-rate", "wrong-length", "non-list"])
+def test_resume_rejects_incoherent_scheduler_last_lr_before_optimizer_apply(
+    preserve_state: Any, attack: str,
+) -> None:
+    source = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    saved = source.state_dict()
+    assert saved.scheduler is not None
+    assert saved.scheduler["_last_lr"] == [
+        group["lr"] for group in saved.optimizer["param_groups"]
+    ]
+    bad_scheduler = copy.deepcopy(saved.scheduler)
+    if attack == "finite-rate":
+        bad_scheduler["_last_lr"][0] += 0.01
+    elif attack == "wrong-length":
+        bad_scheduler["_last_lr"] = []
+    else:
+        bad_scheduler["_last_lr"] = 0.01
+    corrupt = replace(saved, scheduler=bad_scheduler)
+
+    target = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    with pytest.raises(
+        ValueError, match="checkpoint scheduler last LR differs from checkpoint optimizer",
+    ):
+        target.load_state_dict(corrupt)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (
+        0, 0, 0,
+    )
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+
+    # A failed preflight must leave the fresh target reusable.
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert target.optimizer_step == 1
+    assert target.scheduler is not None
+    assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
+    assert target._failure_reason is None and not target._update_incomplete
