@@ -296,3 +296,59 @@ def test_resume_rejects_incoherent_scheduler_last_lr_before_optimizer_apply(
     assert target.scheduler is not None
     assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
     assert target._failure_reason is None and not target._update_incomplete
+
+@pytest.mark.parametrize("forged_count", [0, 1, 3, False, 2.0])
+def test_live_lambda_internal_step_count_cannot_be_saved(
+    preserve_state: Any, forged_count: Any,
+) -> None:
+    trainer = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    assert trainer.scheduler is not None and trainer.scheduler._step_count == 2
+    trainer.scheduler._step_count = forged_count
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="scheduler chronology differs from committed optimizer step",
+    ):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (
+        1, 1, 2,
+    )
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+@pytest.mark.parametrize("forged_count", [0, 1, 3, False, 2.0])
+def test_resume_lambda_internal_step_count_preflight_is_retryable(
+    preserve_state: Any, forged_count: Any,
+) -> None:
+    source = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    saved = source.state_dict()
+    assert saved.scheduler is not None and saved.scheduler["_step_count"] == 2
+    forged_scheduler = copy.deepcopy(saved.scheduler)
+    forged_scheduler["_step_count"] = forged_count
+    target = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    with pytest.raises(
+        ValueError, match="checkpoint scheduler step count differs from committed optimizer step",
+    ):
+        target.load_state_dict(replace(saved, scheduler=forged_scheduler))
+    assert not target.optimizer.state
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (
+        0, 0, 0,
+    )
+    assert target._failure_reason is None and not target._update_incomplete
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert target.optimizer_step == 1
+    assert target.scheduler is not None and target.scheduler._step_count == 2
+    assert target._failure_reason is None and not target._update_incomplete
