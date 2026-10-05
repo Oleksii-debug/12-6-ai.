@@ -349,9 +349,20 @@ class Trainer:
                             f"optimizer produced non-finite state at micro_step={self.micro_step}"
                         ) from exc
 
-    def _require_safe_optimizer_hyperparameters(self) -> None:
-        """Validate all group hyperparameters, not only the reported group LR."""
-        for group in self.optimizer.param_groups:
+    def _require_safe_optimizer_hyperparameters(
+        self, optimizer_state: Any | None = None,
+    ) -> None:
+        """Validate live or checkpoint group hyperparameters before use."""
+        groups = self.optimizer.param_groups
+        if optimizer_state is not None:
+            if not isinstance(optimizer_state, Mapping):
+                raise NonFiniteTrainingError("optimizer parameter groups must be valid")
+            groups = optimizer_state.get("param_groups")
+            if not isinstance(groups, list):
+                raise NonFiniteTrainingError("optimizer parameter groups must be valid")
+        for group in groups:
+            if not isinstance(group, Mapping):
+                raise NonFiniteTrainingError("optimizer parameter groups must be valid")
             for field in ("lr", "weight_decay", "eps"):
                 if field not in group:
                     continue  # Other injected optimizer families may omit these fields.
@@ -1711,6 +1722,7 @@ class Trainer:
         # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
         # parameter identity. Reject missing/reordered names before mutation.
         self._require_optimizer_state_parameter_order(state.optimizer)
+        self._require_safe_optimizer_hyperparameters(state.optimizer)
         self._require_checkpoint_scheduler_chronology(
             state.scheduler, state.optimizer_step, state.optimizer,
         )
