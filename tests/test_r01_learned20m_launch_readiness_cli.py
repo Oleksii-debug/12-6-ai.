@@ -220,3 +220,107 @@ def test_real_cli_keeps_canonical_unready_state() -> None:
     assert completed.returncode == 1
     assert completed.stderr == ""
     assert json.loads(completed.stdout)["material_training_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "api_token_sk_live_123456",
+        "Authorization: Bearer private-value",
+        "password=hunter2",
+    ],
+)
+def test_duplicate_member_refusal_does_not_echo_untrusted_key(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    secret_key: str,
+) -> None:
+    tool = _load_tool()
+    raw = json.dumps({secret_key: 1})[:-1] + "," + json.dumps(secret_key) + ":2}"
+    path = _write(tmp_path, raw)
+    assert tool.main(["assess", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    response = json.loads(captured.out)
+    assert response["error"].endswith("duplicate object member")
+    assert secret_key not in captured.out
+
+
+def test_duplicate_member_loader_error_is_generic(tmp_path: Path) -> None:
+    tool = _load_tool()
+    secret_key = "private-secret-field"
+    raw = '{"' + secret_key + '":1,"' + secret_key + '":2}'
+    with pytest.raises(ValueError, match=r"^duplicate object member$") as exc:
+        tool._load_packet(_write(tmp_path, raw))
+    assert secret_key not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "extra_args",
+    [
+        ["second-packet.json"],
+        ["--unknown"],
+        ["second-packet.json", "--unknown"],
+    ],
+)
+def test_main_rejects_extra_arguments_without_reading_inputs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    extra_args: list[str],
+) -> None:
+    tool = _load_tool()
+    first = tmp_path / "must-not-be-read.json"
+    first.write_text('{"schema_version":1}', encoding="utf-8")
+    assert tool.main(["assess", str(first), *extra_args]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    response = json.loads(captured.out)
+    assert response == {
+        "error": "invalid arguments: expected at most one packet path"
+    }
+
+
+def test_real_cli_rejects_extra_argument_without_traceback(tmp_path: Path) -> None:
+    first = tmp_path / "packet.json"
+    first.write_text('{"schema_version":1}', encoding="utf-8")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(first), "unexpected"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout) == {
+        "error": "invalid arguments: expected at most one packet path"
+    }
+
+
+def test_default_packet_path_is_bound_to_repository_root() -> None:
+    tool = _load_tool()
+    assert tool.DEFAULT_PATH == (
+        ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
+    )
+
+
+def test_real_cli_default_packet_works_outside_repository_cwd(tmp_path: Path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 1
+    assert completed.stderr == ""
+    result = json.loads(completed.stdout)
+    assert result["material_training_authorized"] is False

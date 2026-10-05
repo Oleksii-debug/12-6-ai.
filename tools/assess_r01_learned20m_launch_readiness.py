@@ -11,7 +11,8 @@ from typing import Any
 
 from twelve_six.learned20m_readiness import assess_learned20m_readiness
 
-DEFAULT_PATH = Path("configs/research/r01_learned20m_launch_readiness_v1.json")
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PATH = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
 MAX_INPUT_BYTES = 1_048_576
 MAX_JSON_DEPTH = 64
 MAX_JSON_NODES = 10_000
@@ -21,7 +22,8 @@ def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate object member: {key}")
+            # Never echo an untrusted member name into automation/log output.
+            raise ValueError("duplicate object member")
         result[key] = value
     return result
 
@@ -75,6 +77,14 @@ def _load_packet(path: Path) -> dict[str, Any]:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) > 2:
+        print(
+            json.dumps(
+                {"error": "invalid arguments: expected at most one packet path"},
+                sort_keys=True,
+            )
+        )
+        return 2
     path = Path(argv[1]) if len(argv) > 1 else DEFAULT_PATH
     try:
         payload = _load_packet(path)
