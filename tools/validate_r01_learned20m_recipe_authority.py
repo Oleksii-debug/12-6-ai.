@@ -55,13 +55,19 @@ def _load_json(path: Path) -> Any:
         # A local authority file is untrusted until its identity and schema pass.
         # Bound the raw read before JSON parsing to avoid memory exhaustion.
         # A FIFO or special device could block before the byte limit is checked.
-        # Precheck the path, then recheck the opened descriptor to reject swaps.
-        if not stat.S_ISREG(path.stat().st_mode):
+        # Precheck the path, then recheck descriptor type AND identity after open.
+        before = path.stat()
+        if not stat.S_ISREG(before.st_mode):
             raise ValueError("authority input must be a regular file")
         flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
         with os.fdopen(os.open(path, flags), "rb") as source:
-            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+            opened = os.fstat(source.fileno())
+            if not stat.S_ISREG(opened.st_mode):
                 raise ValueError("authority input must be a regular file")
+            # Type checks alone cannot detect a different regular file opened
+            # after a pathname swap; pin the actual prechecked file identity.
+            if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+                raise ValueError("authority input changed between check and open")
             raw = source.read(MAX_AUTHORITY_JSON_BYTES + 1)
         if len(raw) > MAX_AUTHORITY_JSON_BYTES:
             raise ValueError("authority JSON exceeds 8 MiB input limit")

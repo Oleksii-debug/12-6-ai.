@@ -1124,3 +1124,42 @@ def test_recipe_cli_rechecks_open_descriptor_after_path_swap(
     monkeypatch.setattr(tool.os, "open", swapped_open)
     with pytest.raises(ValueError, match="authority input must be a regular file"):
         tool._load_json(regular)
+
+
+@pytest.mark.parametrize("role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_refuses_regular_file_swap_after_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str,
+) -> None:
+    tool = _load_tool()
+    selected = tmp_path / (role + "-selected.json")
+    selected.write_text("{}", encoding="utf-8")
+    replacement = tmp_path / (role + "-replacement.json")
+    replacement.write_text('{"attacker":"different regular file"}', encoding="utf-8")
+    assert selected.stat().st_ino != replacement.stat().st_ino
+    original_open = os.open
+
+    def swapped_open(path, flags):
+        if os.fspath(path) == os.fspath(selected):
+            return original_open(replacement, flags)
+        return original_open(path, flags)
+
+    monkeypatch.setattr(tool.os, "open", swapped_open)
+    with pytest.raises(ValueError, match="authority input changed between check and open"):
+        tool._load_json(selected)
+
+
+def test_recipe_cli_accepts_unchanged_regular_file_identity(tmp_path: Path) -> None:
+    tool = _load_tool()
+    selected = tmp_path / "authority.json"
+    selected.write_text('{"ok":true}', encoding="utf-8")
+    assert tool._load_json(selected) == {"ok": True}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation may require Windows privilege")
+def test_recipe_cli_preserves_regular_file_symlink_input(tmp_path: Path) -> None:
+    tool = _load_tool()
+    selected = tmp_path / "authority.json"
+    selected.write_text('{"ok":true}', encoding="utf-8")
+    alias = tmp_path / "authority-alias.json"
+    alias.symlink_to(selected)
+    assert tool._load_json(alias) == {"ok": True}
