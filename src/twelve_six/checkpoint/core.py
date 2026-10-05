@@ -975,7 +975,7 @@ def _build_identity(identity: CheckpointIdentity, environment: Mapping[str, Any]
 
 
 def _checkpoint_save_warn_only(state: Mapping[str, Any]) -> bool | None:
-    """Capture torch warn-only policy omitted from checkpoint-v1 RNG payloads."""
+    """Capture live torch warn-only policy for transactional save rollback."""
 
     if not state.get("torch"):
         return None
