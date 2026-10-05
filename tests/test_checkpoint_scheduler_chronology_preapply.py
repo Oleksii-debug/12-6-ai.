@@ -2199,6 +2199,7 @@ def test_model_loader_replacement_during_materialization_is_not_reopened(
         ("config-rebind", "target config changed during preflight"),
         ("scheduler-rebind", "target scheduler changed during preflight"),
         ("scaler-rebind", "target scaler changed during preflight"),
+        ("failure-marker", "safety classification changed"),
     ],
 )
 @pytest.mark.parametrize(
@@ -2290,7 +2291,11 @@ def test_zero_grad_descriptor_side_effect_fails_before_checkpoint_apply(
 
     assert checkpoint_reads == []
     assert not original_optimizer.state
-    assert target._failure_reason is None and not target._update_incomplete
+    if descriptor_effect == "failure-marker":
+        assert vars(target)["_failure_reason"] == "checkpoint_restore_target_drift"
+        assert vars(target)["_update_incomplete"] is True
+    else:
+        assert target._failure_reason is None and not target._update_incomplete
     torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
     assert random.getstate() == py_before
     np_after = np.random.get_state()
@@ -2455,6 +2460,8 @@ def test_authority_descriptor_rebind_fails_before_checkpoint_io(
                     )
                 elif descriptor_effect == "scaler-rebind":
                     target.scaler = object()
+                elif descriptor_effect == "failure-marker":
+                    del vars(target)["_failure_reason"]
                 else:
                     raise AssertionError(
                         f"unknown descriptor effect: {descriptor_effect}"
@@ -2486,6 +2493,9 @@ def test_authority_descriptor_rebind_fails_before_checkpoint_io(
         )
 
     assert checkpoint_reads == []
+    if descriptor_effect == "failure-marker":
+        assert vars(target)["_failure_reason"] == "checkpoint_restore_target_drift"
+        assert vars(target)["_update_incomplete"] is True
 
 @pytest.mark.parametrize(
     ("attack", "error"),
@@ -2559,7 +2569,12 @@ def test_model_apply_drift_is_poisoned_before_trainer_state_restore(
         )
 
     assert trainer_state_calls == []
-    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
+    expected_reason = (
+        "checkpoint_restore_target_drift"
+        if attack == "failure-marker"
+        else "checkpoint_restore_apply_failed"
+    )
+    assert vars(target)["_failure_reason"] == expected_reason
     assert vars(target)["_update_incomplete"] is True
     torch.testing.assert_close(
         original_model.weight,
@@ -2624,7 +2639,12 @@ def test_trainer_apply_marker_loss_restores_poison(
             **extra,
         )
 
-    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
+    expected_reason = (
+        "checkpoint_restore_apply_failed"
+        if outcome == "raise"
+        else "checkpoint_restore_target_drift"
+    )
+    assert vars(target)["_failure_reason"] == expected_reason
     assert vars(target)["_update_incomplete"] is True
     torch.testing.assert_close(
         target.model.weight,
