@@ -355,7 +355,7 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
         except (TypeError, ValueError) as exc:
             raise CheckpointCompatibilityError("checkpoint NumPy RNG state is invalid") from exc
     torch_state = state.get("torch")
-    if not torch_state:
+    if torch_state is None:
         return
     if not isinstance(torch_state, Mapping) or "cpu" not in torch_state:
         raise CheckpointCompatibilityError("checkpoint torch RNG state is invalid")
@@ -382,6 +382,10 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
     except (AttributeError, RuntimeError, TypeError) as exc:
         raise CheckpointCompatibilityError("checkpoint torch CPU RNG state is invalid") from exc
     cuda_states = torch_state.get("cuda", [])
+    if not isinstance(cuda_states, list):
+        raise CheckpointCompatibilityError(
+            "checkpoint torch CUDA RNG states must be a list"
+        )
     if cuda_states:
         if not torch.cuda.is_available():
             raise CheckpointCompatibilityError(
