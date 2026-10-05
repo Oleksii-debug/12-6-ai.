@@ -283,19 +283,11 @@ def _write(path: Path, value: dict[str, Any]) -> None:
             and final.st_size == len(payload)
         ):
             if isinstance(link_error, (KeyboardInterrupt, SystemExit)):
-                # An operator/process interrupt is not a successful CLI return.
-                # Because final is proven to be our own hard link, roll back only
-                # that owned name while retaining the staged inode for retry.
-                try:
-                    _unlink_owned_path(path, identity)
-                except (OSError, KeyboardInterrupt, SystemExit) as rollback_error:
-                    indeterminate = True
-                    raise PublicationIndeterminate(
-                        "ROLLBACK_INDETERMINATE: tokenizer output was created by "
-                        f"this operation but could not be removed; retained stage "
-                        f"{temporary}",
-                        staged=temporary,
-                    ) from rollback_error
+                # An interrupt is not a successful CLI return. Preserve both names
+                # for recovery instead of attempting a check-then-unlink rollback:
+                # another process could replace the pathname after any identity
+                # check but before unlink removes it.
+                indeterminate = True
                 raise link_error
             try:
                 exact_payload = _final_bytes_match(
