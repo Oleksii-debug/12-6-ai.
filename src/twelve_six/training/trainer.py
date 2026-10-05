@@ -991,6 +991,26 @@ class Trainer:
                 or type(tracker) is not int or not 0 <= tracker < interval
             ):
                 raise ValueError("enabled gradient scaler checkpoint statistics invalid")
+            # GradScaler materializes these statistics in float32. A finite
+            # Python float may underflow to zero or overflow on first use.
+            # Reject before either D05 loader can apply model/RNG state.
+            try:
+                scale32, growth32, backoff32 = (
+                    struct.unpack("!f", struct.pack("!f", value))[0]
+                    for value in (scale, growth, backoff)
+                )
+            except (OverflowError, struct.error) as exc:
+                raise ValueError(
+                    "enabled gradient scaler checkpoint statistics invalid in float32"
+                ) from exc
+            if (
+                not math.isfinite(scale32) or scale32 <= 0.0
+                or not math.isfinite(growth32) or growth32 <= 1.0
+                or not math.isfinite(backoff32) or not 0.0 < backoff32 < 1.0
+            ):
+                raise ValueError(
+                    "enabled gradient scaler checkpoint statistics invalid in float32"
+                )
         if (
             not self.scaler.is_enabled()
             and scaler_state is not None
