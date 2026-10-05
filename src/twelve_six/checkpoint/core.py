@@ -1156,6 +1156,95 @@ def _parse_manifest_bytes(manifest_bytes: bytes, checksum_bytes: bytes) -> dict[
     return manifest
 
 
+def _bound_training_metadata(value: Any, *, field: str) -> Mapping[str, Any] | None:
+    """Normalize run-binding optimizer/scheduler metadata without loose aliases."""
+
+    if value is None:
+        return None
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        return {"name": value}
+    raise CheckpointIntegrityError(
+        f"identity.training.{field} is not canonical metadata"
+    )
+
+
+def _validate_bound_training_identity(identity: Mapping[str, Any]) -> None:
+    """Cross-check duplicated canonical run-binding provenance fields."""
+
+    training_config = identity["training_config"]
+    run_manifest_sha = training_config.get("run_manifest_sha256")
+    if run_manifest_sha is None:
+        return
+    if run_manifest_sha != identity.get("run_manifest_hash"):
+        raise CheckpointIntegrityError(
+            "identity.training_config run manifest hash disagrees with identity"
+        )
+
+    training = training_config.get("training")
+    data = training_config.get("data")
+    environment = training_config.get("environment")
+    if not isinstance(training, Mapping):
+        raise CheckpointIntegrityError(
+            "identity.training_config.training must be a mapping"
+        )
+    if not isinstance(data, Mapping):
+        raise CheckpointIntegrityError(
+            "identity.training_config.data must be a mapping"
+        )
+    if not isinstance(environment, Mapping):
+        raise CheckpointIntegrityError(
+            "identity.training_config.environment must be a mapping"
+        )
+
+    if (
+        type(training.get("seed")) is not int
+        or training.get("seed") != identity.get("seed")
+    ):
+        raise CheckpointIntegrityError(
+            "identity.training seed disagrees with top-level seed"
+        )
+    if (
+        type(training.get("precision")) is not str
+        or training.get("precision") != identity.get("precision")
+    ):
+        raise CheckpointIntegrityError(
+            "identity.training precision disagrees with top-level precision"
+        )
+
+    nested_optimizer = _bound_training_metadata(
+        training.get("optimizer"),
+        field="optimizer",
+    )
+    nested_scheduler = _bound_training_metadata(
+        training.get("scheduler"),
+        field="scheduler",
+    )
+    if hash_json(nested_optimizer) != hash_json(identity.get("optimizer")):
+        raise CheckpointIntegrityError(
+            "identity.training optimizer disagrees with top-level optimizer"
+        )
+    if hash_json(nested_scheduler) != hash_json(identity.get("scheduler")):
+        raise CheckpointIntegrityError(
+            "identity.training scheduler disagrees with top-level scheduler"
+        )
+
+    for nested_field, identity_field in (
+        ("dataset_manifest_sha256", "dataset_manifest_hash"),
+        ("tokenizer_sha256", "tokenizer_hash"),
+        ("tokenizer_vocab_sha256", "tokenizer_vocab_hash"),
+    ):
+        if data.get(nested_field) != identity.get(identity_field):
+            raise CheckpointIntegrityError(
+                f"identity.training_config.data.{nested_field} disagrees with identity"
+            )
+    if environment.get("lock_sha256") != identity.get("environment_lock_hash"):
+        raise CheckpointIntegrityError(
+            "identity.training_config environment lock disagrees with identity"
+        )
+
+
 def _validate_manifest_identity(identity: Any) -> None:
     if not isinstance(identity, Mapping):
         raise CheckpointIntegrityError("manifest identity must be a mapping")
@@ -1225,6 +1314,8 @@ def _validate_manifest_identity(identity: Any) -> None:
     for payload_key, hash_key in hash_pairs:
         if hash_json(identity.get(payload_key)) != identity.get(hash_key):
             raise CheckpointIntegrityError(f"{hash_key} does not match {payload_key}")
+
+    _validate_bound_training_identity(identity)
 
 
 def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
