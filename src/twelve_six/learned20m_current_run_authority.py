@@ -30,6 +30,7 @@ from twelve_six.learned20m_global_training_lease import (
     _run_git,
     _validate_transport,
     build_global_lease_state,
+    decode_global_lease_state,
     global_training_run_lease_ref,
     inspect_global_training_run_lease,
 )
@@ -44,6 +45,8 @@ CURRENT_RUN_IDENTITY_SCHEMA = "R01-LEARNED20M-CURRENT-RUN-IDENTITY-V1"
 CURRENT_RUN_POINTER_SCHEMA = "R01-LEARNED20M-CURRENT-RUN-POINTER-V1"
 CURRENT_RUN_POINTER_REF = "refs/heads/ts6-current-training-run-v1"
 CURRENT_RUN_POINTER_PATH = "current-training-run-v1.json"
+MAX_CURRENT_RUN_POINTER_BYTES = 1_048_576
+MAX_CURRENT_RUN_COMMIT_BYTES = 4_096
 MECHANICS_SCOPE = "FIXED_REPOSITORY_REF_CURRENT_RUN_SELECTION_ONLY"
 
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -398,10 +401,12 @@ def validate_current_run_pointer_state(state: Mapping[str, Any]) -> tuple[str, .
 
 
 def decode_current_run_pointer_state(raw: bytes) -> dict[str, Any]:
+    if len(raw) > MAX_CURRENT_RUN_POINTER_BYTES:
+        raise ValueError("current_run_pointer_exceeds_byte_limit")
     try:
         text = raw.decode("utf-8")
         parsed = json.loads(text)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise ValueError("current_run_pointer_json_invalid") from exc
     if not isinstance(parsed, Mapping):
         raise TypeError("current_run_pointer_not_object")
@@ -436,12 +441,41 @@ def _fetch_pointer_bytes(
             raise CurrentRunAuthorityError("current_run_pointer_fetch_failed")
         if _remote_tip(repo_root, remote, CURRENT_RUN_POINTER_REF) != expected_tip:
             raise CurrentRunAuthorityError("current_run_pointer_changed_during_read")
+        # Cap immutable commit size before rev-list captures its parent list.
+        commit_size_result = _run_git(repo_root, ["cat-file", "-s", expected_tip])
+        if commit_size_result.returncode != 0:
+            raise CurrentRunAuthorityError("current_run_pointer_commit_size_read_failed")
+        try:
+            commit_size = commit_size_result.stdout.decode("ascii").strip()
+        except UnicodeDecodeError as exc:
+            raise CurrentRunAuthorityError("current_run_pointer_commit_size_invalid") from exc
+        if not commit_size.isascii() or not commit_size.isdecimal() or len(commit_size) > 20:
+            raise CurrentRunAuthorityError("current_run_pointer_commit_size_invalid")
+        if int(commit_size) > MAX_CURRENT_RUN_COMMIT_BYTES:
+            raise CurrentRunAuthorityError("current_run_pointer_commit_exceeds_byte_limit")
+
         parents = _run_git(repo_root, ["rev-list", "--parents", "-n", "1", expected_tip])
         if parents.returncode != 0:
             raise CurrentRunAuthorityError("current_run_pointer_parent_read_failed")
         parts = parents.stdout.decode("ascii").strip().split()
         if not parts or parts[0] != expected_tip or len(parts) > 2:
             raise CurrentRunAuthorityError("current_run_pointer_parent_shape_invalid")
+        # Reject large/fan-out trees before ls-tree can capture their stdout.
+        # The required 100644 root entry has 28 fixed bytes plus its filename.
+        tree_size_result = _run_git(
+            repo_root, ["cat-file", "-s", f"{expected_tip}^{{tree}}"]
+        )
+        if tree_size_result.returncode != 0:
+            raise CurrentRunAuthorityError("current_run_pointer_tree_size_read_failed")
+        try:
+            tree_size = tree_size_result.stdout.decode("ascii").strip()
+        except UnicodeDecodeError as exc:
+            raise CurrentRunAuthorityError("current_run_pointer_tree_size_invalid") from exc
+        if not tree_size.isascii() or not tree_size.isdecimal() or len(tree_size) > 20:
+            raise CurrentRunAuthorityError("current_run_pointer_tree_size_invalid")
+        if int(tree_size) != 28 + len(CURRENT_RUN_POINTER_PATH.encode("ascii")):
+            raise CurrentRunAuthorityError("current_run_pointer_tree_not_closed_world")
+
         tree = _run_git(repo_root, ["ls-tree", "-z", "--full-tree", expected_tip])
         if tree.returncode != 0:
             raise CurrentRunAuthorityError("current_run_pointer_tree_read_failed")
@@ -453,6 +487,22 @@ def _fetch_pointer_bytes(
             or not entries[0].endswith(expected_suffix)
         ):
             raise CurrentRunAuthorityError("current_run_pointer_tree_not_closed_world")
+        # The pointer JSON size limit must apply before subprocess captures
+        # blob stdout; commit:path identifies an immutable Git object.
+        size_result = _run_git(
+            repo_root,
+            ["cat-file", "-s", f"{expected_tip}:{CURRENT_RUN_POINTER_PATH}"],
+        )
+        if size_result.returncode != 0:
+            raise CurrentRunAuthorityError("current_run_pointer_blob_size_read_failed")
+        try:
+            object_size = size_result.stdout.decode("ascii").strip()
+        except UnicodeDecodeError as exc:
+            raise CurrentRunAuthorityError("current_run_pointer_blob_size_invalid") from exc
+        if not object_size.isascii() or not object_size.isdecimal() or len(object_size) > 20:
+            raise CurrentRunAuthorityError("current_run_pointer_blob_size_invalid")
+        if int(object_size) > MAX_CURRENT_RUN_POINTER_BYTES:
+            raise CurrentRunAuthorityError("current_run_pointer_exceeds_byte_limit")
         blob = _run_git(
             repo_root,
             ["cat-file", "blob", f"{expected_tip}:{CURRENT_RUN_POINTER_PATH}"],
@@ -481,6 +531,7 @@ def _global_lease_binding_blockers(
     repo_root: str | Path,
     remote: str,
     state: Mapping[str, Any],
+    manifest: Mapping[str, Any],
 ) -> tuple[str, ...]:
     ref = str(state["global_lease_ref"])
     tip = str(state["global_lease_remote_tip"])
@@ -493,35 +544,21 @@ def _global_lease_binding_blockers(
     if hashlib.sha256(raw).hexdigest() != state["global_lease_state_sha256"]:
         return ("current_run_global_lease_state_sha256_mismatch",)
     try:
-        parsed = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return ("current_run_global_lease_state_json_invalid",)
-    if not isinstance(parsed, Mapping):
-        return ("current_run_global_lease_state_not_canonical",)
-    try:
-        canonical = canonical_json_bytes(parsed)
-    except (TypeError, ValueError):
-        return ("current_run_global_lease_state_not_canonical",)
-    if canonical != raw:
-        return ("current_run_global_lease_state_not_canonical",)
+        parsed = decode_global_lease_state(raw, manifest)
+    except (TypeError, ValueError) as exc:
+        return (f"current_run_global_lease_contract_invalid:{exc}",)
+
     blockers: list[str] = []
-    if parsed.get("repository") != CANONICAL_REPOSITORY:
-        blockers.append("current_run_global_lease_repository_mismatch")
-    if parsed.get("lock_domain") != CANONICAL_LOCK_DOMAIN:
-        blockers.append("current_run_global_lease_lock_domain_mismatch")
-    if parsed.get("launch_manifest_sha256") != state["launch_manifest_sha256"]:
+    if parsed["launch_manifest_sha256"] != state["launch_manifest_sha256"]:
         blockers.append("current_run_global_lease_manifest_mismatch")
-    lease = parsed.get("lease")
+    lease = parsed["lease"]
     identity = state["current_run_identity"]
-    if not isinstance(lease, Mapping):
-        blockers.append("current_run_global_lease_payload_missing")
-    else:
-        if lease.get("run_id") != identity["run_id"]:
-            blockers.append("current_run_global_lease_run_id_mismatch")
-        if lease.get("status") != "RUNNING":
-            blockers.append("current_run_global_lease_not_running")
-        if lease.get("expires_at_utc") != state["global_lease_expires_at_utc"]:
-            blockers.append("current_run_global_lease_expiry_mismatch")
+    if lease["run_id"] != identity["run_id"]:
+        blockers.append("current_run_global_lease_run_id_mismatch")
+    if lease["status"] != "RUNNING":
+        blockers.append("current_run_global_lease_not_running")
+    if lease["expires_at_utc"] != state["global_lease_expires_at_utc"]:
+        blockers.append("current_run_global_lease_expiry_mismatch")
     return tuple(blockers)
 
 
@@ -529,6 +566,7 @@ def inspect_current_run_authority(
     repo_root: str | Path,
     remote: str,
     *,
+    manifest: Mapping[str, Any] | None = None,
     now: datetime | None = None,
 ) -> CurrentRunAuthorityInspection:
     _validate_transport(remote)
@@ -577,23 +615,49 @@ def inspect_current_run_authority(
     active = state["status"] == "ACTIVE"
     blockers: list[str] = []
     if active:
-        try:
-            observed_global_tip = _remote_tip(
-                repo_root,
-                remote,
-                str(state["global_lease_ref"]),
-            )
-        except _GlobalLeaseFailure as exc:
-            blockers.append(
-                f"current_run_global_lease_tip_read_failed:{exc.blocker}"
-            )
+        manifest_snapshot: dict[str, Any] | None = None
+        if manifest is None:
+            blockers.append("current_run_trusted_launch_manifest_required")
         else:
-            if observed_global_tip != state["global_lease_remote_tip"]:
-                blockers.append("current_run_global_lease_tip_changed")
+            try:
+                manifest_snapshot = json.loads(canonical_json_bytes(manifest))
+            except (TypeError, ValueError, RecursionError) as exc:
+                blockers.append(f"current_run_trusted_launch_manifest_invalid:{exc}")
             else:
-                blockers.extend(
-                    _global_lease_binding_blockers(repo_root, remote, state)
+                manifest_errors = validate_launch_manifest(manifest_snapshot)
+                if manifest_errors:
+                    blockers.append(
+                        "current_run_trusted_launch_manifest_invalid:"
+                        + ";".join(manifest_errors)
+                    )
+                elif (
+                    launch_manifest_sha256(manifest_snapshot)
+                    != state["launch_manifest_sha256"]
+                ):
+                    blockers.append("current_run_trusted_launch_manifest_mismatch")
+        if manifest_snapshot is not None and not blockers:
+            try:
+                observed_global_tip = _remote_tip(
+                    repo_root,
+                    remote,
+                    str(state["global_lease_ref"]),
                 )
+            except _GlobalLeaseFailure as exc:
+                blockers.append(
+                    f"current_run_global_lease_tip_read_failed:{exc.blocker}"
+                )
+            else:
+                if observed_global_tip != state["global_lease_remote_tip"]:
+                    blockers.append("current_run_global_lease_tip_changed")
+                else:
+                    blockers.extend(
+                        _global_lease_binding_blockers(
+                            repo_root,
+                            remote,
+                            state,
+                            manifest_snapshot,
+                        )
+                    )
         expiry = _parse_utc_second(state["global_lease_expires_at_utc"])
         current = _normalized_now(now)
         if expiry is None or current >= expiry:
@@ -786,14 +850,14 @@ def activate_current_run_authority(
         )
     try:
         manifest_snapshot = json.loads(canonical_json_bytes(manifest))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         return _operation_failure(
             "ACTIVATE",
             blocker=f"launch_manifest_snapshot_invalid:{exc}",
         )
     try:
         identity_snapshot = json.loads(canonical_json_bytes(current_run_identity))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         return _operation_failure(
             "ACTIVATE",
             blocker=f"current_run_identity_snapshot_invalid:{exc}",
@@ -900,6 +964,7 @@ def activate_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
@@ -948,7 +1013,12 @@ def activate_current_run_authority(
             run_id=str(identity_snapshot["run_id"]),
             identity_sha256=str(identity_snapshot["identity_sha256"]),
         )
-    reread = inspect_current_run_authority(repo_root, remote, now=now)
+    reread = inspect_current_run_authority(
+        repo_root,
+        remote,
+        manifest=manifest_snapshot,
+        now=now,
+    )
     verified = (
         reread.valid
         and reread.active
@@ -993,7 +1063,7 @@ def refresh_current_run_authority(
 
     try:
         manifest_snapshot = json.loads(canonical_json_bytes(manifest))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         return _operation_failure(
             "REFRESH",
             blocker=f"launch_manifest_snapshot_invalid:{exc}",
@@ -1145,6 +1215,7 @@ def refresh_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",
@@ -1194,7 +1265,12 @@ def refresh_current_run_authority(
             identity_sha256=identity_sha256,
         )
 
-    reread = inspect_current_run_authority(repo_root, remote, now=now)
+    reread = inspect_current_run_authority(
+        repo_root,
+        remote,
+        manifest=manifest_snapshot,
+        now=now,
+    )
     verified = (
         reread.valid
         and reread.active
@@ -1284,6 +1360,7 @@ def retire_current_run_authority(
         [
             "push",
             "--porcelain",
+            f"--force-with-lease={CURRENT_RUN_POINTER_REF}:{expected_pointer_tip or ''}",
             "--",
             remote,
             f"{candidate_tip}:{CURRENT_RUN_POINTER_REF}",

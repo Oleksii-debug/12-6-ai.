@@ -21,6 +21,7 @@ from typing import Any
 
 from twelve_six.learned20m_training_lease import (
     TrainingLease,
+    assess_terminal_launch_authority,
     assess_training_run_lease,
     canonical_json_bytes,
     launch_manifest_sha256,
@@ -37,6 +38,8 @@ CANONICAL_REPOSITORY = "Oleksii-debug/12-6-ai."
 CANONICAL_LOCK_DOMAIN = "github.com/Oleksii-debug/12-6-ai."
 GLOBAL_LEASE_REF_PREFIX = "refs/heads/ts6-training-run-lease-v1"
 GLOBAL_LEASE_STATE_PATH = "training-run-lease-v1.json"
+MAX_GLOBAL_LEASE_STATE_BYTES = 1_048_576
+MAX_GLOBAL_LEASE_COMMIT_BYTES = 4_096
 MECHANICS_SCOPE = "COOPERATIVE_GIT_REF_CAS_ON_SELECTED_TRANSPORT_ONLY"
 
 _GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -274,6 +277,8 @@ def _reject_json_constant(value: str) -> None:
 def decode_global_lease_state(
     raw: bytes, manifest: Mapping[str, Any]
 ) -> dict[str, Any]:
+    if len(raw) > MAX_GLOBAL_LEASE_STATE_BYTES:
+        raise ValueError("global_lease_state_exceeds_byte_limit")
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -286,7 +291,7 @@ def decode_global_lease_state(
         )
     except _DuplicateKey:
         raise
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError("global_lease_state_json_invalid") from exc
     if not isinstance(parsed, Mapping):
         raise TypeError("global_lease_state_not_object")
@@ -310,7 +315,7 @@ def _snapshot_mapping(value: Mapping[str, Any], *, field: str) -> dict[str, Any]
             object_pairs_hook=_pairs_without_duplicates,
             parse_constant=_reject_json_constant,
         )
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
         raise ValueError(f"{field}_snapshot_invalid") from exc
     if not isinstance(parsed, Mapping):
         raise TypeError(f"{field}_not_object")
@@ -396,6 +401,18 @@ def _fetch_remote_commit(
         if _remote_tip(repo_root, remote, ref) != expected_tip:
             raise _GlobalLeaseFailure("remote_tip_changed_during_read")
 
+        # Bound rev-list --parents capture for a hostile octopus commit.
+        # Canonical writer commits have at most one parent and short fixed text.
+        commit_size = _git_ascii(
+            repo_root,
+            ["cat-file", "-s", expected_tip],
+            blocker="global_lease_commit_size_read_failed",
+        ).strip()
+        if not commit_size.isascii() or not commit_size.isdecimal() or len(commit_size) > 20:
+            raise _GlobalLeaseFailure("global_lease_commit_size_invalid")
+        if int(commit_size) > MAX_GLOBAL_LEASE_COMMIT_BYTES:
+            raise _GlobalLeaseFailure("global_lease_commit_exceeds_byte_limit")
+
         parents_output = _git_ascii(
             repo_root,
             ["rev-list", "--parents", "-n", "1", expected_tip],
@@ -404,6 +421,18 @@ def _fetch_remote_commit(
         parent_parts = parents_output.split()
         if not parent_parts or parent_parts[0] != expected_tip or len(parent_parts) > 2:
             raise _GlobalLeaseFailure("global_lease_commit_parent_shape_invalid")
+
+        # Bound ls-tree stdout using the immutable root tree object size first.
+        # One 100644 entry is: mode + space + name + NUL + raw SHA-1 (20 B).
+        tree_size = _git_ascii(
+            repo_root,
+            ["cat-file", "-s", f"{expected_tip}^{{tree}}"],
+            blocker="global_lease_tree_size_read_failed",
+        ).strip()
+        if not tree_size.isascii() or not tree_size.isdecimal() or len(tree_size) > 20:
+            raise _GlobalLeaseFailure("global_lease_tree_size_invalid")
+        if int(tree_size) != 28 + len(GLOBAL_LEASE_STATE_PATH.encode("ascii")):
+            raise _GlobalLeaseFailure("global_lease_tree_not_closed_world")
 
         tree = _run_git(repo_root, ["ls-tree", "-z", "--full-tree", expected_tip])
         if tree.returncode != 0:
@@ -416,12 +445,28 @@ def _fetch_remote_commit(
         if not entries[0].startswith(prefix) or not entries[0].endswith(suffix):
             raise _GlobalLeaseFailure("global_lease_tree_not_closed_world")
 
+        # Check immutable Git object size before subprocess captures blob stdout.
+        # The JSON decoder's limit alone is too late for oversized remote blobs.
+        object_size = _git_ascii(
+            repo_root,
+            ["cat-file", "-s", f"{expected_tip}:{GLOBAL_LEASE_STATE_PATH}"],
+            blocker="global_lease_blob_size_read_failed",
+        ).strip()
+        if not object_size.isascii() or not object_size.isdecimal() or len(object_size) > 20:
+            raise _GlobalLeaseFailure("global_lease_blob_size_invalid")
+        if int(object_size) > MAX_GLOBAL_LEASE_STATE_BYTES:
+            raise _GlobalLeaseFailure("global_lease_remote_state_invalid")
+
         blob = _run_git(
             repo_root,
             ["cat-file", "blob", f"{expected_tip}:{GLOBAL_LEASE_STATE_PATH}"],
         )
         if blob.returncode != 0:
             raise _GlobalLeaseFailure("global_lease_state_blob_missing")
+        # A remote ref may advance while its immutable blob is being read.
+        # Never return a snapshot that was stale before this read completed.
+        if _remote_tip(repo_root, remote, ref) != expected_tip:
+            raise _GlobalLeaseFailure("remote_tip_changed_during_read")
         return blob.stdout
     finally:
         _delete_local_ref(repo_root, temporary_ref)
@@ -439,7 +484,7 @@ def _read_snapshot(
     raw = _fetch_remote_commit(repo_root, remote, ref, tip)
     try:
         state = decode_global_lease_state(raw, manifest)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise _GlobalLeaseFailure("global_lease_remote_state_invalid") from exc
     return GlobalLeaseSnapshot(
         ref=ref,
@@ -502,10 +547,15 @@ def _push_candidate(
     remote: str,
     candidate_tip: str,
     ref: str,
+    *,
+    expected_remote_tip: str | None,
 ) -> bool:
+    if expected_remote_tip is not None and _GIT_SHA.fullmatch(expected_remote_tip) is None:
+        raise _GlobalLeaseFailure("expected_remote_tip_invalid")
+    lease = f"--force-with-lease={ref}:{expected_remote_tip or ''}"
     pushed = _run_git(
         repo_root,
-        ["push", "--porcelain", "--", remote, f"{candidate_tip}:{ref}"],
+        ["push", "--porcelain", lease, "--", remote, f"{candidate_tip}:{ref}"],
     )
     return pushed.returncode == 0
 
@@ -656,9 +706,10 @@ def acquire_global_training_run_lease(
     manifest: Mapping[str, Any],
     lease: Mapping[str, Any],
     *,
+    expected_terminal_authority_sha256: str,
     now: datetime | None = None,
 ) -> GlobalLeaseOperation:
-    """Atomically create the manifest-derived remote ref once, never overwrite it."""
+    """Create one global lease only from an independently authenticated terminal manifest."""
     _validate_transport(remote)
     try:
         manifest_snapshot = _snapshot_mapping(manifest, field="launch_manifest")
@@ -670,6 +721,35 @@ def acquire_global_training_run_lease(
 
     run_id = str(lease_snapshot.get("run_id", ""))
     status = str(lease_snapshot.get("status", ""))
+    terminal_assessment = assess_terminal_launch_authority(
+        manifest_snapshot,
+        expected_terminal_authority_sha256=expected_terminal_authority_sha256,
+    )
+    terminal_blockers = tuple(
+        dict.fromkeys(
+            (
+                *terminal_assessment.contract_errors,
+                *terminal_assessment.blockers,
+            )
+        )
+    )
+    if (
+        not terminal_assessment.ready_for_training_run_lease
+        or terminal_assessment.manifest_sha256 != digest
+    ):
+        blocker = (
+            terminal_blockers[0]
+            if terminal_blockers
+            else "terminal_launch_authority_not_authenticated"
+        )
+        return _operation_failure(
+            "ACQUIRE",
+            ref,
+            digest,
+            blocker=blocker,
+            run_id=run_id,
+            lease_status=status,
+        )
     assessment = assess_training_run_lease(
         manifest_snapshot,
         lease_snapshot,
@@ -713,7 +793,13 @@ def acquire_global_training_run_lease(
         candidate_tip = _write_state_commit(
             repo_root, state, parent_tip=None, operation="acquire"
         )
-        pushed = _push_candidate(repo_root, remote, candidate_tip, ref)
+        pushed = _push_candidate(
+            repo_root,
+            remote,
+            candidate_tip,
+            ref,
+            expected_remote_tip=None,
+        )
         if not pushed:
             try:
                 observed_push = _remote_tip(repo_root, remote, ref)
@@ -908,7 +994,13 @@ def _transition_global_training_run_lease(
             parent_tip=snapshot.remote_tip,
             operation=operation.lower(),
         )
-        pushed = _push_candidate(repo_root, remote, candidate_tip, ref)
+        pushed = _push_candidate(
+            repo_root,
+            remote,
+            candidate_tip,
+            ref,
+            expected_remote_tip=snapshot.remote_tip,
+        )
         if not pushed:
             try:
                 observed_push = _remote_tip(repo_root, remote, ref)
