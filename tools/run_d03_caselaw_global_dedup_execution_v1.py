@@ -1322,6 +1322,8 @@ def _recover_committed_publication_residue(
         manifest_path,
         manifest_identity,
         stage_identities,
+        prepared,
+        final_identities,
     )
     return True
 
@@ -1409,11 +1411,13 @@ def _cleanup_committed_publication_residue(
     manifest_path: Path,
     manifest_identity: tuple[int, int],
     stages: list[tuple[Path, tuple[int, int]]],
+    prepared: tuple[tuple[Path, bytes], ...],
+    linked_finals: list[tuple[Path, tuple[int, int]]],
 ) -> None:
     # Publication is already terminal once the marker removal is durably synced.
-    # Cleanup must never delete a substituted pathname and must not turn a
-    # committed terminal set into a false failure. Any retained canonical
-    # residue is verified and removed by the next invocation.
+    # Cleanup must never delete a substituted pathname. Rebind terminal finals
+    # before any residue deletion and again before discarding the manifest,
+    # which is the last durable recovery record on a committed restart.
     try:
         for stage_path, identity in stages:
             _require(
@@ -1433,6 +1437,8 @@ def _cleanup_committed_publication_residue(
     except CaselawGlobalDedupError:
         return
 
+    _verify_committed_finals_before_cleanup(prepared, linked_finals)
+
     touched_dirs: set[Path] = set()
     for stage_path, identity in stages:
         try:
@@ -1444,6 +1450,10 @@ def _cleanup_committed_publication_residue(
         except CaselawGlobalDedupError:
             return
         touched_dirs.add(stage_path.parent)
+
+    # Stages are optional committed residue. The manifest is the final recovery
+    # evidence, so bind finals once more after stage cleanup before removing it.
+    _verify_committed_finals_before_cleanup(prepared, linked_finals)
     try:
         _unlink_owned_path(
             manifest_path,
@@ -1670,6 +1680,8 @@ def _publish_json_outputs(
         manifest_path,
         manifest_identity,
         created_stages,
+        prepared,
+        linked_finals,
     )
 
 
