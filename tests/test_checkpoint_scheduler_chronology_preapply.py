@@ -522,6 +522,10 @@ def test_noncallable_trainer_loader_fails_before_model_and_rng(
         ("_require_finite_state_tree", "numeric-state authority unavailable"),
         ("_require_checkpoint_scheduler_chronology", "scheduler authority unavailable"),
         ("_require_optimizer_state_parameter_order", "optimizer-order authority unavailable"),
+        ("_require_finite_auxiliary_state", "auxiliary-state authority unavailable"),
+        ("_require_finite_committed_update", "committed-update authority unavailable"),
+        ("_require_no_residual_model_gradients", "gradient-cleanliness authority unavailable"),
+        ("_require_deterministic_policy", "deterministic-policy authority unavailable"),
     ],
 )
 @pytest.mark.parametrize(
