@@ -1,0 +1,344 @@
+name: D03 PEP LoC post-QP canonical balance
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  execute-pep-loc-postqp-balance:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXECUTION_BASE: 019944d5fe12334791f05f1232d13de4a12e37d3
+      PARENT_RUN_ID: "37341878894"
+      PARENT_ARTIFACT_ID: "11359730581"
+      PARENT_ARTIFACT_NAME: d03-pep-loc-post-qp-0aeddc6c32917dee110a669ffea55d55a399c1c9
+      PARENT_ARTIFACT_SHA256: aabb3b4e167c7bad739e39c64b29af7e9a56c1bfb72e88016f05b02ccb0fcd67
+      PARENT_EXECUTION_HEAD: 0aeddc6c32917dee110a669ffea55d55a399c1c9
+      PARENT_EVIDENCE_FILE_SHA256: e535ef7525abd591dd27fd4397ce2fd160569797daba4759eeddaa3b7d3102be
+      PARENT_EVIDENCE_IDENTITY_SHA256: cc09b251fe1c63ff577e9d6ee52bf4005975135211d259f3ec07f7877382b3c1
+      PARENT_PROOF_FILE_SHA256: e6dad3687fbb566bff4d8864abfb85ed343213ba3600d4c43ed6d221d2f8e7f5
+      PARENT_PROOF_IDENTITY_SHA256: 53348e0f124575bdbfb659ffb33c8255ed27dd868f282d24f4f71a4f6eedd811
+      POLICY_IDENTITY_SHA256: 9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7
+      BALANCE_GATE_BLOB: ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5
+      BALANCE_POLICY_BLOB: b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f
+      FAMILY_AUTHORITY_V1_BLOB: 9382332d2d0d5c09aa5582e6f949b1630c459cbb
+      PEP_CONFIG_BLOB: 0fe71942aa1f61c870a290f23a4d9b2bbb405d70
+      LOC_CONFIG_BLOB: 958339654703f3aab4ea9cc3686e4e4fd44a7e09
+      PEP_INTAKE_BLOB: d51e997059ed6a93667107062f4952e748a4dfa6
+      LOC_INTAKE_BLOB: f7fe4166628dd18f8b18e5e2a412319f27170ff4
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 16
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git hash-object tools/next100_106_balance_gate.py)" = "$BALANCE_GATE_BLOB"
+          test "$(git hash-object configs/data/next100_106_balance_gate_policy_v1.json)" = "$BALANCE_POLICY_BLOB"
+          test "$(git hash-object src/twelve_six/data/trusted_family_authority_v1.py)" = "$FAMILY_AUTHORITY_V1_BLOB"
+          test "$(git hash-object configs/data/d03_pep_public_domain_intake_v1.json)" = "$PEP_CONFIG_BLOB"
+          test "$(git hash-object configs/data/d03_common_pile_loc_intake_v1.json)" = "$LOC_CONFIG_BLOB"
+          test "$(git hash-object src/twelve_six/data/pep_intake.py)" = "$PEP_INTAKE_BLOB"
+          test "$(git hash-object src/twelve_six/data/common_pile_loc_intake.py)" = "$LOC_INTAKE_BLOB"
+          python -m py_compile             tools/run_d03_pep_loc_postqp_balance_v1.py             tools/next100_106_balance_gate.py src/twelve_six/data/trusted_family_authority_v1.py             src/twelve_six/data/pep_intake.py             src/twelve_six/data/common_pile_loc_intake.py
+          PYTHONPATH=src:. python tools/next100_106_balance_gate.py validate-policy
+          PYTHONPATH=src:. python - <<'PY'
+          import json
+          from pathlib import Path
+          from twelve_six.data import common_pile_loc_intake, pep_intake
+          from twelve_six.data.trusted_family_authority_v1 import trusted_family_projection
+
+          pep = json.loads(Path("configs/data/d03_pep_public_domain_intake_v1.json").read_text())
+          loc = json.loads(Path("configs/data/d03_common_pile_loc_intake_v1.json").read_text())
+          pep_intake.validate_config(pep)
+          common_pile_loc_intake.validate_config(loc)
+          trusted_family_projection(
+              {
+                  "ua.kmu.portal.secretariat-news",
+                  "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv",
+                  "en.mdn.webdocs.prose",
+                  "en.project-gutenberg.public-domain-books",
+                  "en.usgov.nist.technical-series",
+                  "python.cpython.documentation",
+                  "github:Kludex/starlette",
+                  "github:agronholm/anyio",
+                  "github:django/django",
+                  "github:encode/httpx",
+                  "github:numpy/numpy",
+                  "github:pallets/click",
+                  "github:pallets/flask",
+                  "github:pallets/jinja",
+                  "github:pallets/werkzeug",
+                  "github:psf/requests",
+                  "github:pytest-dev/pytest",
+                  "github:python-attrs/attrs",
+              }
+          )
+          PY
+
+      - name: Enforce execution-only diff boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$EXECUTION_BASE"
+          git merge-base --is-ancestor "$EXECUTION_BASE" "$EXECUTION_HEAD"
+          mapfile -t changed < <(git diff --name-only "$EXECUTION_BASE...$EXECUTION_HEAD" | sort)
+          expected=(
+            ".github/workflows/d03_pep_loc_postqp_balance.yml"
+            "tools/run_d03_pep_loc_postqp_balance_v1.py"
+          )
+          if [ "${changed[*]}" != "${expected[*]}" ]; then
+            printf 'unexpected diff paths:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+
+      - name: Download and authenticate qualified parent artifact
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-all-errors             -H "Authorization: Bearer $GITHUB_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PARENT_ARTIFACT_ID}"             -o /tmp/parent-artifact.json
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metadata = json.loads(Path("/tmp/parent-artifact.json").read_text(encoding="utf-8"))
+          if metadata.get("id") != int(os.environ["PARENT_ARTIFACT_ID"]):
+              raise SystemExit("parent artifact id drift")
+          if metadata.get("name") != os.environ["PARENT_ARTIFACT_NAME"]:
+              raise SystemExit("parent artifact name drift")
+          if metadata.get("expired") is not False:
+              raise SystemExit("parent artifact expired")
+          if metadata.get("digest") != "sha256:" + os.environ["PARENT_ARTIFACT_SHA256"]:
+              raise SystemExit("parent artifact server digest drift")
+          workflow = metadata.get("workflow_run")
+          if not isinstance(workflow, dict):
+              raise SystemExit("parent workflow metadata missing")
+          if workflow.get("id") != int(os.environ["PARENT_RUN_ID"]):
+              raise SystemExit("parent workflow run drift")
+          if workflow.get("head_sha") != os.environ["PARENT_EXECUTION_HEAD"]:
+              raise SystemExit("parent execution head drift")
+          PY
+
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GITHUB_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PARENT_ARTIFACT_ID}/zip"             -o /tmp/parent.zip
+          test "$(sha256sum /tmp/parent.zip | cut -d' ' -f1)" = "$PARENT_ARTIFACT_SHA256"
+
+      - name: Extract only authenticated text-free parent evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/parent-input
+          mkdir -p /tmp/parent-input
+          python - <<'PY'
+          import hashlib
+          import os
+          import stat
+          import zipfile
+          from pathlib import Path
+
+          exact_names = {
+              "output-a/evidence.json",
+              "pep-loc-post-qp-two-clean-proof.json",
+          }
+          with zipfile.ZipFile("/tmp/parent.zip") as bundle:
+              infos = bundle.infolist()
+              names = [info.filename for info in infos]
+              if len(names) != len(set(names)) or set(names) != exact_names:
+                  raise SystemExit(f"parent artifact member drift: {sorted(names)}")
+              payloads = {}
+              for info in infos:
+                  mode = (info.external_attr >> 16) & 0o170000
+                  if (
+                      info.is_dir()
+                      or "\\" in info.filename
+                      or info.filename.startswith("/")
+                      or ".." in Path(info.filename).parts
+                      or mode == stat.S_IFLNK
+                  ):
+                      raise SystemExit(f"unsafe parent artifact member: {info.filename}")
+                  payloads[info.filename] = bundle.read(info)
+
+          evidence = payloads["output-a/evidence.json"]
+          proof = payloads["pep-loc-post-qp-two-clean-proof.json"]
+          if hashlib.sha256(evidence).hexdigest() != os.environ["PARENT_EVIDENCE_FILE_SHA256"]:
+              raise SystemExit("parent evidence raw SHA-256 drift")
+          if hashlib.sha256(proof).hexdigest() != os.environ["PARENT_PROOF_FILE_SHA256"]:
+              raise SystemExit("parent proof raw SHA-256 drift")
+          Path("/tmp/parent-input/evidence.json").write_bytes(evidence)
+          Path("/tmp/parent-input/proof.json").write_bytes(proof)
+          PY
+
+      - name: Execute canonical balance twice in fresh processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/balance-a /tmp/balance-b
+          for out in /tmp/balance-a /tmp/balance-b; do
+            PYTHONPATH=src:. python tools/run_d03_pep_loc_postqp_balance_v1.py               --evidence-json /tmp/parent-input/evidence.json               --proof-json /tmp/parent-input/proof.json               --source-git-sha "$EXECUTION_HEAD"               --output-dir "$out"
+          done
+
+          for name in family-authority next100-input balance-result execution-receipt; do
+            cmp "/tmp/balance-a/${name}.json" "/tmp/balance-b/${name}.json"
+          done
+
+      - name: Qualify deterministic zero-credit balance evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src:. python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import tools.next100_106_balance_gate as gate
+
+          root = Path("/tmp/balance-a")
+          expected_names = {
+              "family-authority.json",
+              "next100-input.json",
+              "balance-result.json",
+              "execution-receipt.json",
+          }
+          names = {path.name for path in root.iterdir()}
+          if names != expected_names:
+              raise SystemExit(f"derived artifact member drift: {sorted(names)}")
+          values = {
+              path.stem: json.loads(path.read_text(encoding="utf-8"))
+              for path in root.glob("*.json")
+          }
+          family = values["family-authority"]
+          vector = values["next100-input"]
+          balance = values["balance-result"]
+          receipt = values["execution-receipt"]
+
+          gate.validate_vector(vector)
+          policy = gate.load_json(gate.POLICY_PATH)
+          gate.validate_policy(policy)
+          recomputed = gate.evaluate(policy, vector)
+          if recomputed != balance:
+              raise SystemExit("canonical balance replay mismatch")
+          if balance["result_identity_sha256"] != receipt["balance_result_identity_sha256"]:
+              raise SystemExit("balance result identity cross-bind drift")
+          if receipt["execution_head_sha"] != os.environ["EXECUTION_HEAD"]:
+              raise SystemExit("receipt execution-head drift")
+          if receipt["parent_execution_head_sha"] != os.environ["PARENT_EXECUTION_HEAD"]:
+              raise SystemExit("receipt parent-head drift")
+          if receipt["parent_evidence_identity_sha256"] != os.environ["PARENT_EVIDENCE_IDENTITY_SHA256"]:
+              raise SystemExit("receipt parent evidence identity drift")
+          if receipt["parent_proof_identity_sha256"] != os.environ["PARENT_PROOF_IDENTITY_SHA256"]:
+              raise SystemExit("receipt parent proof identity drift")
+          if receipt["balance_policy_identity_sha256"] != os.environ["POLICY_IDENTITY_SHA256"]:
+              raise SystemExit("balance policy identity drift")
+          if receipt["survivor_record_count"] != 432:
+              raise SystemExit("survivor record count drift")
+          if receipt["survivor_source_object_count"] != 364:
+              raise SystemExit("survivor source count drift")
+          if receipt["survivor_total_payload_bytes"] != 14505468:
+              raise SystemExit("survivor byte count drift")
+          if balance["raw_capacity_by_stratum"] != {
+              "ua": 10632,
+              "en": 10830589,
+              "code": 3664247,
+          }:
+              raise SystemExit("raw stratum capacity drift")
+          if balance["family_minimum"]["observed"] != {
+              "ua": 2,
+              "en": 6,
+              "code": 12,
+          }:
+              raise SystemExit("family count drift")
+
+          exact_zero = {
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          for field, expected in exact_zero.items():
+              observed = receipt[field]
+              if type(observed) is not type(expected) or observed != expected:
+                  raise SystemExit(f"receipt truth widened: {field}")
+
+          def self_hash(document, field):
+              body = dict(document)
+              body.pop(field, None)
+              raw = json.dumps(
+                  body,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("utf-8")
+              return hashlib.sha256(raw).hexdigest()
+
+          if self_hash(receipt, "receipt_identity_sha256") != receipt["receipt_identity_sha256"]:
+              raise SystemExit("receipt self-hash mismatch")
+          if self_hash(family, "family_authority_identity_sha256") != family["family_authority_identity_sha256"]:
+              raise SystemExit("family authority self-hash mismatch")
+
+          forbidden = {
+              "normalized_payload",
+              "raw_payload",
+              "source_text",
+              "document_text",
+              "text",
+          }
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      if key in forbidden:
+                          raise SystemExit(f"raw-text key persisted: {key}")
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(values)
+
+          print("D03_PEP_LOC_POSTQP_BALANCE_QUALIFIED")
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+
+      - name: Remove parent inputs before publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/parent-input /tmp/parent.zip /tmp/parent-artifact.json
+
+      - name: Upload text-free balance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-pep-loc-postqp-balance-${{ env.EXECUTION_HEAD }}
+          path: /tmp/balance-a
+          if-no-files-found: error
+          retention-days: 90
