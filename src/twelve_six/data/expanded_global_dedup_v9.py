@@ -658,15 +658,35 @@ def _verify_indexed_execution_backend(
         )
 
     reference_core = _load_reference_module(_indexed_core, label="indexed_core")
-    core_closure = _runtime_function_dependency_closure(
-        _indexed_core,
-        (indexed_audit,),
+    reference_audit = getattr(reference_core, "audit_payloads_indexed", None)
+    _require(
+        isinstance(reference_audit, FunctionType),
+        "indexed execution reference callback missing",
+    )
+    core_closure = tuple(
+        name
+        for name in _runtime_function_dependency_closure(
+            reference_core,
+            (reference_audit,),
+        )
+        if name != "attest_incumbent_runtime"
     )
     _verify_runtime_functions(
         _indexed_core,
         reference_core,
         core_closure,
         label="indexed execution core",
+    )
+    core_runtime_attest = getattr(_indexed, "_CORE_RUNTIME_ATTEST", None)
+    reference_core_attest = getattr(reference_core, "attest_incumbent_runtime", None)
+    _require(
+        isinstance(core_runtime_attest, FunctionType)
+        and isinstance(reference_core_attest, FunctionType)
+        and core_runtime_attest.__globals__ is _indexed_core.__dict__
+        and core_runtime_attest.__module__ == _indexed_core.__name__
+        and _runtime_code_identity(core_runtime_attest)
+        == _runtime_code_identity(reference_core_attest),
+        "indexed execution core runtime attester drift",
     )
 
     module_name = getattr(matcher_audit, "__module__", None)
