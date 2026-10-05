@@ -988,6 +988,7 @@ def _recover_incomplete_publication(
         expected_sha = row["sha256"]
         final_exists = _path_entry_exists(final_path)
         stage_exists = _path_entry_exists(stage_path)
+        stage_owned_identity: tuple[int, int] | None = None
 
         if final_exists:
             _require(
@@ -1014,13 +1015,13 @@ def _recover_incomplete_publication(
                 raise CaselawGlobalDedupError(
                     f"cannot verify incomplete publication ownership: {final_path}"
                 ) from exc
-            stage_identity = _regular_file_identity(
+            stage_owned_identity = _regular_file_identity(
                 stage_path, label="incomplete publication stage"
             )
             _require(
                 same_file
-                and final_identity == stage_identity
-                and stage_identity_before == stage_identity,
+                and final_identity == stage_owned_identity
+                and stage_identity_before == stage_owned_identity,
                 f"incomplete publication final is not linked to its stable stage: {final_path}",
             )
             _require(
@@ -1035,12 +1036,13 @@ def _recover_incomplete_publication(
             touched_dirs.add(final_path.parent)
 
         if stage_exists:
-            stage_identity = _regular_file_identity(
-                stage_path, label="incomplete publication stage"
-            )
+            if stage_owned_identity is None:
+                stage_owned_identity = _regular_file_identity(
+                    stage_path, label="incomplete publication stage"
+                )
             _unlink_owned_path(
                 stage_path,
-                stage_identity,
+                stage_owned_identity,
                 label="incomplete publication stage",
             )
             touched_dirs.add(stage_path.parent)
@@ -1165,19 +1167,11 @@ def _recover_committed_publication_residue(
         "committed publication residue targets do not match requested outputs",
     )
 
-    for stage_path, identity in stage_identities:
-        _unlink_owned_path(
-            stage_path,
-            identity,
-            label="committed publication stage",
-        )
-        _fsync_directory(stage_path.parent)
-    _unlink_owned_path(
+    _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
-        label="committed publication manifest",
+        stage_identities,
     )
-    _fsync_directory(manifest_path.parent)
     return True
 
 
