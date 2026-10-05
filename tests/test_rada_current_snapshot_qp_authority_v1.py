@@ -147,6 +147,33 @@ def test_authority_transport_hash_is_external_binding(tmp_path: Path) -> None:
         )
 
 
+def test_default_loader_rejects_semantically_equivalent_reserialization(
+    tmp_path: Path,
+) -> None:
+    value = json.loads(AUTHORITY_PATH.read_text(encoding="utf-8"))
+    compact = (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    assert hashlib.sha256(compact).hexdigest() != (
+        authority.CANONICAL_AUTHORITY_FILE_SHA256
+    )
+    candidate = tmp_path / "authority.json"
+    candidate.write_bytes(compact)
+
+    with pytest.raises(
+        authority.RadaCurrentSnapshotAuthorityError,
+        match="raw SHA-256 drift",
+    ):
+        authority.load_current_rada_replay_authority(candidate)
+
+
 def test_current_product_mechanic_substitution_fails_closed(tmp_path: Path) -> None:
     value = authority.load_current_rada_replay_authority(AUTHORITY_PATH)
     mechanics = value["mechanics"]
