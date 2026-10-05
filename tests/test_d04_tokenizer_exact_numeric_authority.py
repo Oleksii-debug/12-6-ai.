@@ -749,3 +749,86 @@ def test_bind_rejects_added_instance_lookup_hook(
             application,
             **SHA,
         )
+
+
+@pytest.mark.parametrize("module_name", ["json", "hashlib"])
+def test_bind_rejects_semantically_equivalent_module_dependency_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+    module_name: str,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original = getattr(byte_module, module_name)
+
+    class Proxy:
+        def __getattr__(self, name):
+            return getattr(original, name)
+
+    monkeypatch.setattr(byte_module, module_name, Proxy())
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime module drift: {module_name}",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("schema_version", True),
+        ("byte_offset", False),
+        ("byte_values", 256.0),
+        ("vocab_size", 256.0),
+    ],
+)
+def test_bind_rejects_runtime_config_numeric_type_alias_with_hash_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    monkeypatch.setitem(byte_module._CONFIG, field, replacement)
+    monkeypatch.setattr(
+        byte_module,
+        "tokenizer_config_hash",
+        lambda: authority._EXPECTED_TOKENIZER_RUNTIME_IDENTITY["config_sha256"],
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime module drift: _CONFIG",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
