@@ -27,6 +27,12 @@ CONFIGS = {
     "typer": Path("configs/data/next100_052_typer_source_authority_v2.json"),
     "scipy": Path("configs/data/scipy_v118_source_authority_v1.json"),
 }
+EXPECTED_CONFIG_BLOBS = {
+    "pydantic": "504ef934145ed0711743f781dc9f47b07ad7accd",
+    "pandas": "a97ccc1fcf097970abc84218e0fbd8088fa32887",
+    "typer": "fc9168f2752d46fae76092999f449f0897fe0ca7",
+    "scipy": "8bd1b020e324d33fdbcdda8619fbae7e73224d7e",
+}
 
 SECRET_PATTERNS = (
     re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -121,9 +127,14 @@ def strict_json(raw: bytes, label: str) -> dict[str, Any]:
 def load_config(root: Path, name: str) -> dict[str, Any]:
     path = root / CONFIGS[name]
     try:
-        return strict_json(path.read_bytes(), CONFIGS[name].as_posix())
+        raw = path.read_bytes()
     except OSError as exc:
         raise MaterializationError(f"{name}: cannot read authority config") from exc
+    require(
+        git_blob_sha1(raw) == EXPECTED_CONFIG_BLOBS[name],
+        f"{name}: current-main authority config blob drift",
+    )
+    return strict_json(raw, CONFIGS[name].as_posix())
 
 
 def headers(url: str) -> dict[str, str]:
