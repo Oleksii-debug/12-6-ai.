@@ -505,7 +505,7 @@ def _preflight_trainer_state_without_rng_guard(
 
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
-        if not hasattr(trainer, "load_state_dict"):
+        if not callable(getattr(trainer, "load_state_dict", None)):
             raise CheckpointCompatibilityError("trainer must provide load_state_dict")
         try:
             probe = copy.deepcopy(trainer)
@@ -858,7 +858,7 @@ def load_trainer_checkpoint(
     No checkpoint artifact is reopened or decoded a second time before mutation.
     """
 
-    if not hasattr(trainer, "load_state_dict"):
+    if not callable(getattr(trainer, "load_state_dict", None)):
         raise TypeError("trainer must provide load_state_dict()")
 
     _validate_expected_core_identity(
