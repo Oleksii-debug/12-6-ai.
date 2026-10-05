@@ -1086,6 +1086,58 @@ if hasattr(os, "mkfifo"):
     )
 
 
+def test_marker_only_recovery_rejects_in_place_marker_mutation() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+
+    foreign_marker = b"FOREIGN_MARKER_MUTATION"
+    actual_validate = mod._validate_publication_marker
+    validate_calls = [0]
+
+    def validate_then_mutate(path, expected_pathset):
+        identity = actual_validate(path, expected_pathset)
+        validate_calls[0] += 1
+        if validate_calls[0] == 1:
+            Path(path).write_bytes(foreign_marker)
+        return identity
+
+    mod._validate_publication_marker = validate_then_mutate
+    try:
+        try:
+            mod._recover_incomplete_publication(
+                marker,
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError:
+            pass
+        else:
+            raise AssertionError("marker-only in-place mutation was accepted")
+    finally:
+        mod._validate_publication_marker = actual_validate
+
+    assert validate_calls == [1]
+    assert marker.read_bytes() == foreign_marker
+    assert not manifest.exists()
+    assert not final.exists()
+    assert not stages[0].exists()
+"""
+    )
+
+
 def test_publication_manifest_rejects_extra_root_and_target_keys() -> None:
     _run_isolated(
         """
@@ -1465,16 +1517,20 @@ with TemporaryDirectory() as raw:
         (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
     )
     _, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
-    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    manifest_value, manifest_payload = mod._publication_manifest(
+        prepared, stages, pathset_id
+    )
     mod._write_create_only_durable(manifest, manifest_payload)
     manifest_identity = mod._regular_file_identity(manifest, label="test manifest")
 
     stage_rows = []
-    for (_, payload), stage in zip(prepared, stages, strict=True):
+    final_rows = []
+    for (final, payload), stage in zip(prepared, stages, strict=True):
         mod._write_create_only_durable(stage, payload)
-        stage_rows.append(
-            (stage, mod._regular_file_identity(stage, label="test stage"))
-        )
+        identity = mod._regular_file_identity(stage, label="test stage")
+        stage_rows.append((stage, identity))
+        mod._link_staged_output(stage, final)
+        final_rows.append((final, identity))
 
     owned_stage = root / "owned-stage-moved-aside"
     stages[0].rename(owned_stage)
@@ -1486,7 +1542,10 @@ with TemporaryDirectory() as raw:
     mod._cleanup_committed_publication_residue(
         manifest,
         manifest_identity,
+        manifest_value,
         stage_rows,
+        prepared,
+        final_rows,
     )
     assert stages[0].read_bytes() == unrelated
     assert owned_stage.read_bytes() == prepared[0][1]
@@ -1823,6 +1882,64 @@ assert fetch_module.fetch_exact_source is original_fetch
     )
 
 
+def test_incomplete_recovery_rejects_manifest_mutation_before_payload_effects() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest_path, stages, pathset_id = mod._publication_control_paths(
+        prepared
+    )
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    mod._write_create_only_durable(manifest_path, manifest_payload)
+    mod._write_create_only_durable(stages[0], payload)
+    mod._link_staged_output(stages[0], final)
+
+    foreign_manifest = b"FOREIGN_MANIFEST_MUTATION"
+    actual_load = mod._load_publication_manifest
+    load_calls = [0]
+
+    def load_then_mutate(path):
+        value = actual_load(path)
+        load_calls[0] += 1
+        if load_calls[0] == 1:
+            Path(path).write_bytes(foreign_manifest)
+        return value
+
+    mod._load_publication_manifest = load_then_mutate
+    try:
+        try:
+            mod._recover_incomplete_publication(
+                marker,
+                manifest_path,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError:
+            pass
+        else:
+            raise AssertionError("in-place manifest mutation was accepted")
+    finally:
+        mod._load_publication_manifest = actual_load
+
+    assert load_calls == [1]
+    assert final.read_bytes() == payload
+    assert stages[0].read_bytes() == payload
+    assert manifest_path.read_bytes() == foreign_manifest
+    assert marker.exists()
+"""
+    )
+
+
 def test_incomplete_recovery_rejects_foreign_stage_without_final() -> None:
     _run_isolated(
         """
@@ -2120,6 +2237,77 @@ with TemporaryDirectory() as raw:
     )
 
 
+def test_committed_recovery_validates_all_targets_before_first_payload_read() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    first_final = root / "first.json"
+    second_final = root / "second.json"
+    first_payload = b'{"kind":"first"}\\n'
+    second_payload = b'{"kind":"second"}\\n'
+    prepared = (
+        (first_final, first_payload),
+        (second_final, second_payload),
+    )
+    _, manifest_path, stages, pathset_id = mod._publication_control_paths(
+        prepared
+    )
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(first_final, first_payload)
+    mod._write_create_only_durable(second_final, second_payload)
+
+    foreign_final = root / "foreign-second-final"
+    foreign_stage = root / "foreign-second-stage"
+    manifest["targets"][1]["path"] = str(foreign_final.resolve())
+    manifest["targets"][1]["stage_path"] = str(foreign_stage.resolve())
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    mod._write_create_only_durable(
+        manifest_path,
+        mod._canonical(manifest) + b"\\n",
+    )
+
+    actual_read = mod._read_bounded_regular_file_with_identity
+    payload_paths = {first_final, second_final, stages[0], stages[1]}
+    payload_reads = []
+
+    def tracked_read(path, max_bytes, *, label):
+        candidate = Path(path)
+        if candidate in payload_paths:
+            payload_reads.append(candidate)
+        return actual_read(path, max_bytes, label=label)
+
+    mod._read_bounded_regular_file_with_identity = tracked_read
+    try:
+        try:
+            mod._recover_committed_publication_residue(
+                manifest_path,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "target paths do not match requested outputs" in str(exc)
+        else:
+            raise AssertionError("late forged committed target was accepted")
+    finally:
+        mod._read_bounded_regular_file_with_identity = actual_read
+
+    assert payload_reads == []
+    assert first_final.read_bytes() == first_payload
+    assert second_final.read_bytes() == second_payload
+    assert manifest_path.exists()
+"""
+    )
+
+
 def test_postcommit_final_swap_preserves_recovery_residue() -> None:
     _run_isolated(
         """
@@ -2213,6 +2401,196 @@ with TemporaryDirectory() as raw:
     assert not manifest.exists()
     assert not any(stage.exists() for stage in stages)
     assert not any(path.exists() for path, _ in values)
+"""
+    )
+
+
+def test_committed_cleanup_preserves_late_stage_before_manifest_removal() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    mod._write_create_only_durable(final, payload)
+    mod._unlink_owned_path(marker, marker_identity, label="test marker")
+    assert not stages[0].exists()
+
+    late_stage = b"FOREIGN_LATE_COMMITTED_STAGE"
+    actual_snapshot = mod._require_publication_manifest_snapshot
+    snapshot_calls = [0]
+
+    def snapshot_then_stage(
+        manifest_path,
+        manifest_identity,
+        expected_manifest,
+        *,
+        label,
+    ):
+        actual_snapshot(
+            manifest_path,
+            manifest_identity,
+            expected_manifest,
+            label=label,
+        )
+        snapshot_calls[0] += 1
+        if snapshot_calls[0] == 2:
+            stages[0].write_bytes(late_stage)
+
+    mod._require_publication_manifest_snapshot = snapshot_then_stage
+    try:
+        try:
+            mod._recover_committed_publication_residue(
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "stage appeared before manifest cleanup" in str(exc)
+        else:
+            raise AssertionError("late committed stage orphaning was accepted")
+    finally:
+        mod._require_publication_manifest_snapshot = actual_snapshot
+
+    assert snapshot_calls == [2]
+    assert final.read_bytes() == payload
+    assert stages[0].read_bytes() == late_stage
+    assert manifest.exists()
+"""
+    )
+
+
+def test_committed_cleanup_rejects_in_place_manifest_mutation() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    mod._write_create_only_durable(stages[0], payload)
+    mod._link_staged_output(stages[0], final)
+    mod._unlink_owned_path(marker, marker_identity, label="test marker")
+
+    foreign_manifest = b"FOREIGN_COMMITTED_MANIFEST"
+    actual_cleanup = mod._cleanup_committed_publication_residue
+
+    def mutate_then_cleanup(
+        manifest_path,
+        manifest_identity,
+        expected_manifest,
+        stage_rows,
+        prepared_arg,
+        linked_finals,
+    ):
+        Path(manifest_path).write_bytes(foreign_manifest)
+        return actual_cleanup(
+            manifest_path,
+            manifest_identity,
+            expected_manifest,
+            stage_rows,
+            prepared_arg,
+            linked_finals,
+        )
+
+    mod._cleanup_committed_publication_residue = mutate_then_cleanup
+    try:
+        try:
+            mod._recover_committed_publication_residue(
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError:
+            pass
+        else:
+            raise AssertionError("committed manifest mutation was accepted")
+    finally:
+        mod._cleanup_committed_publication_residue = actual_cleanup
+
+    assert final.read_bytes() == payload
+    assert stages[0].read_bytes() == payload
+    assert manifest.read_bytes() == foreign_manifest
+"""
+    )
+
+
+def test_committed_cleanup_rebinds_finals_before_discarding_manifest() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    mod._write_create_only_durable(stages[0], payload)
+    mod._link_staged_output(stages[0], final)
+    mod._unlink_owned_path(marker, marker_identity, label="test marker")
+
+    moved = root / "owned-final-before-cleanup"
+    foreign = b"FOREIGN_FINAL_BEFORE_RESIDUE_CLEANUP"
+    actual_verify = mod._verify_committed_finals_before_cleanup
+    verify_calls = [0]
+
+    def verify_then_swap(prepared_arg, linked_finals):
+        actual_verify(prepared_arg, linked_finals)
+        verify_calls[0] += 1
+        if verify_calls[0] == 1:
+            final.rename(moved)
+            final.write_bytes(foreign)
+
+    mod._verify_committed_finals_before_cleanup = verify_then_swap
+    try:
+        try:
+            mod._recover_committed_publication_residue(
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "COMMITTED" in str(exc)
+            assert "recovery residue retained" in str(exc)
+        else:
+            raise AssertionError("late committed-final cleanup swap was accepted")
+    finally:
+        mod._verify_committed_finals_before_cleanup = actual_verify
+
+    assert verify_calls == [1]
+    assert final.read_bytes() == foreign
+    assert moved.read_bytes() == payload
+    assert stages[0].read_bytes() == payload
+    assert manifest.exists()
 """
     )
 

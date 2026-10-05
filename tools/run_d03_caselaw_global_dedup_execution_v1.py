@@ -1026,14 +1026,41 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
     return value
 
 
+def _require_publication_manifest_snapshot(
+    manifest_path: Path,
+    manifest_identity: tuple[int, int],
+    expected_manifest: Mapping[str, Any],
+    *,
+    label: str,
+) -> None:
+    observed = _load_publication_manifest(manifest_path)
+    _require(
+        observed == expected_manifest,
+        f"{label} contents changed after validation",
+    )
+    _require(
+        _regular_file_identity(manifest_path, label=label) == manifest_identity,
+        f"{label} identity changed after validation",
+    )
+
+
 def _remove_control_without_payload(
     marker_path: Path,
     manifest_path: Path,
     marker_identity: tuple[int, int],
+    pathset_id: str,
 ) -> None:
     _require(
         not _path_entry_exists(manifest_path),
         "publication manifest appeared during marker-only recovery",
+    )
+    _require(
+        _validate_publication_marker(marker_path, pathset_id) == marker_identity,
+        "incomplete publication marker changed before marker-only cleanup",
+    )
+    _require(
+        not _path_entry_exists(manifest_path),
+        "publication manifest appeared during marker-only cleanup",
     )
     _unlink_owned_path(
         marker_path,
@@ -1064,6 +1091,7 @@ def _recover_incomplete_publication(
             marker_path,
             manifest_path,
             marker_identity,
+            pathset_id,
         )
         return
 
@@ -1132,6 +1160,16 @@ def _recover_incomplete_publication(
         and marker_stage_paths == expected_stage_paths,
         "incomplete publication manifest targets do not match requested outputs",
     )
+    _require_publication_manifest_snapshot(
+        manifest_path,
+        manifest_identity,
+        manifest,
+        label="incomplete publication manifest",
+    )
+    _require(
+        _validate_publication_marker(marker_path, pathset_id) == marker_identity,
+        "incomplete publication marker changed after validation",
+    )
 
     # Complete manifest validation precedes every recovery read or unlink. This
     # prevents a later forged row from causing effects on earlier valid rows.
@@ -1199,12 +1237,26 @@ def _recover_incomplete_publication(
 
     for directory in sorted(touched_dirs, key=str):
         _fsync_directory(directory)
+    _require_publication_manifest_snapshot(
+        manifest_path,
+        manifest_identity,
+        manifest,
+        label="incomplete publication manifest",
+    )
+    _require(
+        _validate_publication_marker(marker_path, pathset_id) == marker_identity,
+        "incomplete publication marker changed before control cleanup",
+    )
     _unlink_owned_path(
         manifest_path,
         manifest_identity,
         label="incomplete publication manifest",
     )
     _fsync_directory(manifest_path.parent)
+    _require(
+        _validate_publication_marker(marker_path, pathset_id) == marker_identity,
+        "incomplete publication marker changed before marker cleanup",
+    )
     _unlink_owned_path(
         marker_path,
         marker_identity,
@@ -1247,8 +1299,7 @@ def _recover_committed_publication_residue(
 
     marker_final_paths: list[str] = []
     marker_stage_paths: list[str] = []
-    final_identities: list[tuple[Path, tuple[int, int]]] = []
-    stage_identities: list[tuple[Path, tuple[int, int]]] = []
+    validated_targets: list[tuple[Path, Path, bytes]] = []
     for row, (final_path, payload), stage_path in zip(
         targets, prepared, stages, strict=True
     ):
@@ -1262,16 +1313,39 @@ def _recover_committed_publication_residue(
         expected_sha = row.get("sha256")
         _require(
             type(final_value) is str
+            and final_value
             and type(stage_value) is str
+            and stage_value
             and _is_sha256_hex(expected_sha),
             "committed publication residue target semantics invalid",
         )
         marker_final_paths.append(final_value)
         marker_stage_paths.append(stage_value)
+        expected_final_value = str(final_path.resolve(strict=False))
+        expected_stage_value = str(stage_path.resolve(strict=False))
+        _require(
+            final_value == expected_final_value
+            and stage_value == expected_stage_value,
+            "committed publication residue target paths do not match requested outputs",
+        )
         _require(
             expected_sha == _sha256(payload),
             f"committed publication residue intended digest mismatch: {final_path}",
         )
+        validated_targets.append((final_path, stage_path, payload))
+
+    _require(
+        marker_final_paths == expected_final_paths
+        and marker_stage_paths == expected_stage_paths,
+        "committed publication residue targets do not match requested outputs",
+    )
+
+    # Validate the complete committed-residue control record before reading any
+    # terminal payload. A later forged row must not cause earlier valid outputs
+    # to be inspected before the manifest is rejected.
+    final_identities: list[tuple[Path, tuple[int, int]]] = []
+    stage_identities: list[tuple[Path, tuple[int, int]]] = []
+    for final_path, stage_path, payload in validated_targets:
         observed, final_identity_after = _read_bounded_regular_file_with_identity(
             final_path,
             len(payload),
@@ -1290,26 +1364,21 @@ def _recover_committed_publication_residue(
                 label="committed publication stage",
             )
             _require(
-                stage_identity_after == final_identity_after
-                and staged == payload,
+                stage_identity_after == final_identity_after and staged == payload,
                 f"committed publication stage ownership drift: {stage_path}",
             )
             stage_identities.append((stage_path, stage_identity_after))
-
-    _require(
-        marker_final_paths == expected_final_paths
-        and marker_stage_paths == expected_stage_paths,
-        "committed publication residue targets do not match requested outputs",
-    )
 
     _verify_committed_finals_before_cleanup(prepared, final_identities)
     _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
+        manifest,
         stage_identities,
+        prepared,
+        final_identities,
     )
     return True
-
 
 def _rollback_current_publication(
     *,
@@ -1394,12 +1463,15 @@ def _link_staged_output(stage_path: Path, final_path: Path) -> None:
 def _cleanup_committed_publication_residue(
     manifest_path: Path,
     manifest_identity: tuple[int, int],
+    expected_manifest: Mapping[str, Any],
     stages: list[tuple[Path, tuple[int, int]]],
+    prepared: tuple[tuple[Path, bytes], ...],
+    linked_finals: list[tuple[Path, tuple[int, int]]],
 ) -> None:
     # Publication is already terminal once the marker removal is durably synced.
-    # Cleanup must never delete a substituted pathname and must not turn a
-    # committed terminal set into a false failure. Any retained canonical
-    # residue is verified and removed by the next invocation.
+    # Cleanup must never delete a substituted pathname. Rebind terminal finals
+    # before any residue deletion and again before discarding the manifest,
+    # which is the last durable recovery record on a committed restart.
     try:
         for stage_path, identity in stages:
             _require(
@@ -1419,6 +1491,27 @@ def _cleanup_committed_publication_residue(
     except CaselawGlobalDedupError:
         return
 
+    _require_publication_manifest_snapshot(
+        manifest_path,
+        manifest_identity,
+        expected_manifest,
+        label="committed publication manifest",
+    )
+    expected_stage_paths = tuple(
+        Path(row["stage_path"]) for row in expected_manifest["targets"]
+    )
+    known_stage_paths = {
+        path.resolve(strict=False) for path, _ in stages
+    }
+    for expected_stage_path in expected_stage_paths:
+        if _path_entry_exists(expected_stage_path):
+            _require(
+                expected_stage_path.resolve(strict=False) in known_stage_paths,
+                "committed publication stage appeared after validation: "
+                f"{expected_stage_path}",
+            )
+    _verify_committed_finals_before_cleanup(prepared, linked_finals)
+
     touched_dirs: set[Path] = set()
     for stage_path, identity in stages:
         try:
@@ -1430,6 +1523,21 @@ def _cleanup_committed_publication_residue(
         except CaselawGlobalDedupError:
             return
         touched_dirs.add(stage_path.parent)
+
+    # Stages are optional committed residue. The manifest is the final recovery
+    # evidence, so rebind both manifest and finals after stage cleanup before
+    # removing the last durable recovery record.
+    _require_publication_manifest_snapshot(
+        manifest_path,
+        manifest_identity,
+        expected_manifest,
+        label="committed publication manifest",
+    )
+    _verify_committed_finals_before_cleanup(prepared, linked_finals)
+    _require(
+        not any(_path_entry_exists(path) for path in expected_stage_paths),
+        "committed publication stage appeared before manifest cleanup",
+    )
     try:
         _unlink_owned_path(
             manifest_path,
@@ -1655,7 +1763,10 @@ def _publish_json_outputs(
     _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
+        manifest,
         created_stages,
+        prepared,
+        linked_finals,
     )
 
 
