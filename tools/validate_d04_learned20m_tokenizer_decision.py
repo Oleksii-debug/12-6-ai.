@@ -155,6 +155,40 @@ def _lstat_or_none(path: Path) -> os.stat_result | None:
         return None
 
 
+def _final_bytes_match(
+    path: Path,
+    *,
+    identity: tuple[int, int],
+    payload: bytes,
+) -> bool:
+    """Read the published inode through a fresh descriptor and bind exact bytes."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    with os.fdopen(os.open(path, flags), "rb") as handle:
+        before = os.fstat(handle.fileno())
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or (before.st_dev, before.st_ino) != identity
+            or before.st_size != len(payload)
+        ):
+            return False
+        observed = handle.read(len(payload) + 1)
+        after = os.fstat(handle.fileno())
+    final_after = _lstat_or_none(path)
+    return (
+        (after.st_dev, after.st_ino) == identity
+        and after.st_size == len(payload)
+        and observed == payload
+        and final_after is not None
+        and stat.S_ISREG(final_after.st_mode)
+        and (final_after.st_dev, final_after.st_ino) == identity
+        and final_after.st_size == len(payload)
+    )
+
+
 def _write(path: Path, value: dict[str, Any]) -> None:
     """Create one exact report or preserve enough state for deterministic recovery."""
     if path.exists() or path.is_symlink():
@@ -221,7 +255,28 @@ def _write(path: Path, value: dict[str, Any]) -> None:
                         staged=temporary,
                     ) from rollback_error
                 raise link_error
-            # Ordinary post-create OSError is reconciled as committed.
+            try:
+                exact_payload = _final_bytes_match(
+                    path,
+                    identity=identity,
+                    payload=payload,
+                )
+            except (OSError, KeyboardInterrupt, SystemExit) as verify_error:
+                indeterminate = True
+                raise PublicationIndeterminate(
+                    "PUBLICATION_INDETERMINATE: cannot verify exact tokenizer "
+                    f"authority bytes; retained stage {temporary}",
+                    staged=temporary,
+                ) from verify_error
+            if not exact_payload:
+                indeterminate = True
+                raise PublicationIndeterminate(
+                    "PUBLICATION_INDETERMINATE: tokenizer output bytes differ "
+                    f"from intended authority; retained stage {temporary}",
+                    staged=temporary,
+                ) from link_error
+            # Ordinary post-create OSError is reconciled as committed only after
+            # descriptor-bound exact-byte verification.
             committed = True
         elif link_error is not None and final is None:
             raise link_error
