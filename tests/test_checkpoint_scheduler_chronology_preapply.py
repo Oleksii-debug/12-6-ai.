@@ -660,7 +660,7 @@ def test_late_trainer_model_rebind_fails_before_model_apply(
 
     with pytest.raises(
         core.CheckpointCompatibilityError,
-        match="owns a different model",
+        match="model binding changed",
     ):
         loader.load_trainer_checkpoint(
             path, model=original_model, trainer=target,
@@ -678,9 +678,9 @@ def test_late_trainer_model_rebind_fails_before_model_apply(
 @pytest.mark.parametrize(
     ("drift", "error"),
     [
-        ("config", "trainer config mismatch"),
+        ("config", "config binding changed"),
         ("optimizer-loader", "optimizer must provide state_dict/load_state_dict"),
-        ("scheduler", "scheduler state/config mismatch"),
+        ("scheduler", "scheduler binding changed"),
     ],
 )
 @pytest.mark.parametrize(
@@ -832,7 +832,7 @@ def test_late_target_freshness_drift_fails_before_model_and_rng(
 @pytest.mark.parametrize(
     ("hook_effect", "error"),
     [
-        ("model-rebind", "owns a different model"),
+        ("model-rebind", "model binding changed"),
         ("micro-step", "fresh trainer with no consumed exposure"),
     ],
 )
@@ -1637,9 +1637,9 @@ def test_trainer_loader_replacement_during_materialization_is_not_reopened(
 @pytest.mark.parametrize(
     ("descriptor_effect", "error"),
     [
-        ("model-rebind", "owns a different model"),
+        ("model-rebind", "model binding changed"),
         ("micro-step", "fresh trainer with no consumed exposure"),
-        ("config-rebind", "trainer config mismatch"),
+        ("config-rebind", "config binding changed"),
     ],
 )
 @pytest.mark.parametrize(
