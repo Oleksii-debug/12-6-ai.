@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -635,6 +636,35 @@ def test_two_clean_workflow_uses_exact_numeric_and_stable_identity_checks() -> N
         '"execution_head_sha"',
     ):
         assert field in workflow
+
+
+def test_two_clean_workflow_nomis_family_tracks_canonical_authority() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    authority_source = (
+        ROOT / "tools" / "run_d03_nomis_free_clean_successor_v1.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(authority_source)
+
+    blocked_family = None
+    for statement in tree.body:
+        if not isinstance(statement, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == "BLOCKED_FAMILY"
+            for target in statement.targets
+        ):
+            continue
+        assert isinstance(statement.value, ast.Constant)
+        assert isinstance(statement.value.value, str)
+        blocked_family = statement.value.value
+        break
+
+    assert blocked_family is not None
+    assert (
+        f'assert removal["blocked_family"] == "{blocked_family}"'
+        in workflow
+    )
+    assert 'assert removal["blocked_family"] == "en.nomis1864"' not in workflow
 
 
 def test_source_admission_provenance_scope_is_explicit_and_fail_closed() -> None:
