@@ -959,3 +959,52 @@ def test_recipe_cli_redacts_unknown_json_member_names_in_semantic_errors(
     assert f"invalid {label}" in response["error"]
     assert "keys mismatch" in response["error"]
     assert secret not in completed.stdout
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("orphan_trusted", "--trusted-authorities requires --bindings"),
+        ("orphan_identity", "--expected-trusted-authorities-identity-sha256 requires --bindings"),
+        ("missing_trusted", "--trusted-authorities is required with --bindings"),
+        (
+            "missing_identity",
+            "--expected-trusted-authorities-identity-sha256 is required with --bindings",
+        ),
+    ],
+)
+def test_recipe_cli_argument_dependencies_checked_before_any_file_read(
+    tmp_path: Path, case: str, expected: str,
+) -> None:
+    secret = "NEVER_READ_OR_ECHO_AUTHORITY_PATH_864"
+    missing = tmp_path / f"{secret}.json"
+    args = {
+        "orphan_trusted": ["--trusted-authorities", str(missing)],
+        "orphan_identity": [
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ],
+        "missing_trusted": [
+            "--bindings", str(missing),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ],
+        "missing_identity": [
+            "--bindings", str(missing),
+            "--trusted-authorities", str(missing),
+        ],
+    }
+    completed = subprocess.run(
+        [
+            sys.executable, str(TOOL_PATH), "--policy", str(missing),
+            *args[case],
+        ],
+        cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+    assert expected in response["error"]
+    assert "invalid policy JSON" not in response["error"]
+    assert secret not in completed.stdout
