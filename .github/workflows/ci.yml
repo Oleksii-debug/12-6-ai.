@@ -600,3 +600,178 @@ jobs:
             ${{ runner.temp }}/rada-probe-b.json
           if-no-files-found: warn
           retention-days: 30
+
+  four-source-code-materialization:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2727-four-source-materializer-g8-124-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact four-source execution checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile tools/materialize_d03_code_capacity_four_sources.py
+
+      - name: Materialize two fresh bounded source passes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pass_id in 1 2; do
+            run_root="$RUNNER_TEMP/four-source-pass-$pass_id"
+            mkdir -p "$run_root"
+            python tools/materialize_d03_code_capacity_four_sources.py \
+              --repo-root . \
+              --expected-execution-head "$EXECUTION_SHA" \
+              --candidate-out "$run_root/candidate.jsonl" \
+              --receipt-out "$run_root/receipt.json"
+            test -s "$run_root/candidate.jsonl"
+            test -s "$run_root/receipt.json"
+          done
+
+      - name: Require deterministic zero-credit materialization and erase raw candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          pass1="$RUNNER_TEMP/four-source-pass-1"
+          pass2="$RUNNER_TEMP/four-source-pass-2"
+          cmp "$pass1/candidate.jsonl" "$pass2/candidate.jsonl"
+          cmp "$pass1/receipt.json" "$pass2/receipt.json"
+
+          python - "$pass1" "$pass2" "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          first = Path(sys.argv[1])
+          second = Path(sys.argv[2])
+          head = sys.argv[3]
+
+          candidates = [
+              (root / "candidate.jsonl").read_bytes()
+              for root in (first, second)
+          ]
+          receipts = [
+              json.loads((root / "receipt.json").read_text(encoding="utf-8"))
+              for root in (first, second)
+          ]
+
+          assert candidates[0] == candidates[1]
+          candidate_sha = hashlib.sha256(candidates[0]).hexdigest()
+          assert len(candidates[0].splitlines()) == 8
+
+          def has_raw_text_key(value):
+              if isinstance(value, dict):
+                  if "text" in value:
+                      return True
+                  return any(has_raw_text_key(child) for child in value.values())
+              if isinstance(value, list):
+                  return any(has_raw_text_key(child) for child in value)
+              return False
+
+          for receipt in receipts:
+              assert receipt["schema_version"] == (
+                  "12-6.d03-code-capacity-four-source-materialization-receipt.v1"
+              )
+              assert receipt["execution_profile"] == "LOCAL_FREE"
+              assert receipt["execution_head_sha"] == head
+              assert receipt["materialized_object_count"] == 8
+              assert receipt["materialized_raw_bytes"] == 336947
+              assert receipt["candidate_sha256"] == candidate_sha
+              assert receipt["content_boundary"] == {
+                  "candidate_contains_raw_source_text": True,
+                  "candidate_must_remain_ephemeral_until_downstream_authority": True,
+                  "receipt_contains_raw_source_text": False,
+              }
+              assert has_raw_text_key(receipt) is False
+              truth = receipt["truth_boundary"]
+              assert truth["canonical_capacity_credit_bytes"] == 0
+              assert truth["authorized_unique_loss_positions"] == 0
+              assert truth["authorized_optimized_target_exposure"] == 0
+              assert truth["tokenizer_fit_authorized"] is False
+              assert truth["optimizer_updates_executed_on_real_targets"] == 0
+              assert truth["training_executed"] is False
+              assert truth["learned_weights_created"] is False
+              assert truth["final_test_outcomes_read"] is False
+              assert truth["paid_compute_used"] is False
+              assert truth["foreign_pretrained_weights_used"] is False
+
+          assert receipts[0] == receipts[1]
+          core = {
+              "schema_version": (
+                  "12-6.d03-code-capacity-four-source-two-pass-proof.v1"
+              ),
+              "execution_head_sha": head,
+              "candidate_sha256": candidate_sha,
+              "receipt_identity_sha256": receipts[0]["receipt_identity_sha256"],
+              "materialized_object_count": 8,
+              "materialized_raw_bytes": 336947,
+              "two_fresh_materializations_byte_identical": True,
+              "raw_candidate_artifact_retained": False,
+              "canonical_capacity_credit_bytes": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          proof = {
+              **core,
+              "proof_identity_sha256": hashlib.sha256(raw).hexdigest(),
+          }
+          Path("four-source-two-pass-proof.json").write_text(
+              json.dumps(
+                  proof,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+          rm -f "$pass1/candidate.jsonl" "$pass2/candidate.jsonl"
+          test ! -e "$pass1/candidate.jsonl"
+          test ! -e "$pass2/candidate.jsonl"
+
+      - name: Upload text-free four-source materialization evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: four-source-code-materialization-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/four-source-pass-1/receipt.json
+            ${{ runner.temp }}/four-source-pass-2/receipt.json
+            four-source-two-pass-proof.json
+          if-no-files-found: error
+          retention-days: 90
+
