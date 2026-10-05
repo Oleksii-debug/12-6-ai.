@@ -1057,3 +1057,49 @@ def test_recipe_cli_refuses_huge_integer_for_every_authority_role(
     assert response["status"] == "FAIL"
     assert f"invalid {bad_role} JSON" in response["error"]
     assert "JSON integer exceeds 64 digits" in response["error"]
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO unsupported on this OS")
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_refuses_fifo_inputs_without_hanging(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    tool = _load_tool()
+    fifo = tmp_path / "authority.fifo"
+    os.mkfifo(fifo)
+    with pytest.raises(ValueError, match="authority input must be a regular file"):
+        tool._load_json(fifo)
+
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_text(json.dumps(load_policy()), encoding="utf-8")
+    empty = tmp_path / "empty.json"
+    empty.write_text("{}", encoding="utf-8")
+    args = [sys.executable, str(TOOL_PATH), "--policy", str(
+        fifo if bad_role == "policy" else policy_path
+    )]
+    if bad_role != "policy":
+        args += [
+            "--bindings", str(fifo if bad_role == "bindings" else empty),
+            "--trusted-authorities", str(
+                fifo if bad_role == "trusted-authorities" else empty
+            ),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    completed = subprocess.run(
+        args, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8", timeout=5,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert f"invalid {bad_role} JSON" in response["error"]
+    assert "authority input must be a regular file" in response["error"]
+
+
+def test_recipe_cli_refuses_directory_instead_of_authority_file(
+    tmp_path: Path,
+) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="authority input must be a regular file"):
+        tool._load_json(tmp_path)

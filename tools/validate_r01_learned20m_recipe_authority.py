@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +54,14 @@ def _load_json(path: Path) -> Any:
     try:
         # A local authority file is untrusted until its identity and schema pass.
         # Bound the raw read before JSON parsing to avoid memory exhaustion.
-        with path.open("rb") as source:
+        # A FIFO or special device could block before the byte limit is checked.
+        # Precheck the path, then recheck the opened descriptor to reject swaps.
+        if not stat.S_ISREG(path.stat().st_mode):
+            raise ValueError("authority input must be a regular file")
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        with os.fdopen(os.open(path, flags), "rb") as source:
+            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                raise ValueError("authority input must be a regular file")
             raw = source.read(MAX_AUTHORITY_JSON_BYTES + 1)
         if len(raw) > MAX_AUTHORITY_JSON_BYTES:
             raise ValueError("authority JSON exceeds 8 MiB input limit")
