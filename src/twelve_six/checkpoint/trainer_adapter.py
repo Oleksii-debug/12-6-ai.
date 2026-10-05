@@ -535,6 +535,7 @@ def _snapshot_trainer_restore_bindings(
         else None
     )
     return True, {
+        "native_d02": native_d02,
         "bindings": bindings,
         "policies": policies,
         "config": config,
@@ -562,7 +563,19 @@ def _assert_trainer_restore_bindings(
         raise exc
     if not expected_canonical:
         return
-    if _is_native_d02(trainer):
+    current_native = _is_native_d02(trainer)
+    if current_native != snapshot_state["native_d02"]:
+        exc = CheckpointCompatibilityError(
+            "trainer native D02 classification changed during checkpoint restore"
+        )
+        _poison_canonical_restore_failure(
+            trainer,
+            expected_canonical=expected_canonical,
+            reason="checkpoint_restore_target_drift",
+            exc=exc,
+        )
+        raise exc
+    if current_native:
         _assert_native_d02_checkpoint_safety_lineage(trainer)
     try:
         attrs = vars(trainer)
