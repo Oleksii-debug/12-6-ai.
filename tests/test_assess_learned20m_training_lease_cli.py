@@ -197,7 +197,13 @@ def test_cli_rejects_oversized_json_before_decode(
     "argv",
     [
         ["assess_learned20m_training_lease.py"],
-        ["assess_learned20m_training_lease.py", "manifest", "lease", "--bad", "value"],
+        [
+            "assess_learned20m_training_lease.py",
+            "manifest",
+            "lease",
+            "--bad",
+            "value",
+        ],
         ["assess_learned20m_training_lease.py", "manifest", "lease", "--now"],
     ],
 )
