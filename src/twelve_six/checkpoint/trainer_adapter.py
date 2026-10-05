@@ -1007,11 +1007,16 @@ def _preflight_trainer_state_without_rng_guard(
             identity=identity,
         )
 
-    live_config = getattr(trainer, "config", None)
-    if is_dataclass(live_config) and not isinstance(live_config, type):
-        live_config = asdict(live_config)
-    elif hasattr(live_config, "model_dump"):
-        live_config = live_config.model_dump(mode="python")
+    if native_d02:
+        live_attrs = vars(trainer)
+        live_config = _snapshot_native_d02_config(live_attrs["config"])
+    else:
+        live_attrs = None
+        live_config = getattr(trainer, "config", None)
+        if is_dataclass(live_config) and not isinstance(live_config, type):
+            live_config = asdict(live_config)
+        elif hasattr(live_config, "model_dump"):
+            live_config = live_config.model_dump(mode="python")
 
     checkpoint_config = state.get("config")
     if live_config is not None:
@@ -1071,10 +1076,10 @@ def _preflight_trainer_state_without_rng_guard(
 
     # A finite optimizer group can still encode an invalid update contract
     # (for example negative decay/LR, zero eps or beta outside [0, 1)).
-    safe_optimizer_check = getattr(
-        trainer, "_require_safe_optimizer_hyperparameters", None
-    )
     if native_d02:
+        safe_optimizer_check = getattr(
+            trainer, "_require_safe_optimizer_hyperparameters", None
+        )
         if not callable(safe_optimizer_check):
             raise CheckpointCompatibilityError(
                 "canonical trainer optimizer-hyperparameter authority unavailable"
@@ -1089,8 +1094,12 @@ def _preflight_trainer_state_without_rng_guard(
     # Shared D02 authority must reject finite but forged scheduler state
     # BEFORE either D05 public loader can apply model weights or restore RNG.
     # Generic third-party trainer adapters retain their original semantics.
-    chronology_check = getattr(trainer, "_require_checkpoint_scheduler_chronology", None)
     if native_d02:
+        chronology_check = getattr(
+            trainer,
+            "_require_checkpoint_scheduler_chronology",
+            None,
+        )
         if not callable(chronology_check):
             raise CheckpointCompatibilityError(
                 "canonical trainer scheduler authority unavailable"
@@ -1119,7 +1128,11 @@ def _preflight_trainer_state_without_rng_guard(
                 "checkpoint trainer scaler statistics invalid"
             ) from exc
 
-    optimizer = getattr(trainer, "optimizer", None)
+    optimizer = (
+        live_attrs["optimizer"]
+        if native_d02 and live_attrs is not None
+        else getattr(trainer, "optimizer", None)
+    )
     if optimizer is None:
         if not callable(getattr(trainer, "load_state_dict", None)):
             raise CheckpointCompatibilityError("trainer must provide load_state_dict")
@@ -1147,13 +1160,23 @@ def _preflight_trainer_state_without_rng_guard(
                 "checkpoint optimizer parameter order/identity mismatch"
             ) from exc
     _preflight_optimizer_state(optimizer, state.get("optimizer"))
+    scheduler = (
+        live_attrs["scheduler"]
+        if native_d02 and live_attrs is not None
+        else getattr(trainer, "scheduler", None)
+    )
+    scaler = (
+        live_attrs["scaler"]
+        if native_d02 and live_attrs is not None
+        else getattr(trainer, "scaler", None)
+    )
     _preflight_stateful_component(
-        getattr(trainer, "scheduler", None),
+        scheduler,
         state.get("scheduler"),
         label="scheduler",
     )
     _preflight_stateful_component(
-        getattr(trainer, "scaler", None),
+        scaler,
         state.get("scaler"),
         label="scaler",
     )
