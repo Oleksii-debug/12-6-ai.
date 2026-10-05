@@ -327,6 +327,9 @@ def capture_rng_state() -> dict[str, Any]:
         "cpu": torch.get_rng_state(),
         "cuda": [],
         "deterministic_algorithms": bool(torch.are_deterministic_algorithms_enabled()),
+        "deterministic_warn_only": bool(
+            torch.is_deterministic_algorithms_warn_only_enabled()
+        ),
     }
     if torch.cuda.is_available():
         torch_state["cuda"] = torch.cuda.get_rng_state_all()
@@ -352,10 +355,21 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
         except (TypeError, ValueError) as exc:
             raise CheckpointCompatibilityError("checkpoint NumPy RNG state is invalid") from exc
     torch_state = state.get("torch")
-    if not torch_state:
+    if torch_state is None:
         return
     if not isinstance(torch_state, Mapping) or "cpu" not in torch_state:
         raise CheckpointCompatibilityError("checkpoint torch RNG state is invalid")
+    deterministic_algorithms = torch_state.get("deterministic_algorithms", False)
+    if type(deterministic_algorithms) is not bool:
+        raise CheckpointCompatibilityError(
+            "checkpoint torch deterministic_algorithms must be a boolean"
+        )
+    if "deterministic_warn_only" in torch_state:
+        deterministic_warn_only = torch_state["deterministic_warn_only"]
+        if type(deterministic_warn_only) is not bool:
+            raise CheckpointCompatibilityError(
+                "checkpoint torch deterministic_warn_only must be a boolean"
+            )
     try:
         torch = importlib.import_module("torch")
     except ModuleNotFoundError as exc:
@@ -368,6 +382,10 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
     except (AttributeError, RuntimeError, TypeError) as exc:
         raise CheckpointCompatibilityError("checkpoint torch CPU RNG state is invalid") from exc
     cuda_states = torch_state.get("cuda", [])
+    if not isinstance(cuda_states, list):
+        raise CheckpointCompatibilityError(
+            "checkpoint torch CUDA RNG states must be a list"
+        )
     if cuda_states:
         if not torch.cuda.is_available():
             raise CheckpointCompatibilityError(
@@ -378,6 +396,14 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
             raise CheckpointCompatibilityError(
                 "CUDA device count differs from the checkpoint; load with restore_rng=False"
             )
+        for index, cuda_state in enumerate(cuda_states):
+            try:
+                probe = torch.Generator(device=f"cuda:{index}")
+                probe.set_state(cuda_state.cpu())
+            except (AttributeError, RuntimeError, TypeError) as exc:
+                raise CheckpointCompatibilityError(
+                    f"checkpoint CUDA RNG state for device {index} is invalid"
+                ) from exc
 
 
 def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
@@ -400,7 +426,19 @@ def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
         if cuda_states:
             torch.cuda.set_rng_state_all([item.cpu() for item in cuda_states])
             scope["torch_cuda_devices"] = len(cuda_states)
-        torch.use_deterministic_algorithms(bool(torch_state.get("deterministic_algorithms", False)))
+        if "deterministic_warn_only" in torch_state:
+            deterministic_warn_only = torch_state["deterministic_warn_only"]
+        else:
+            # Checkpoint-v1 snapshots written before this field existed cannot
+            # prove the saved warning mode. Preserve the live mode instead of
+            # silently forcing legacy warn_only=False.
+            deterministic_warn_only = (
+                torch.is_deterministic_algorithms_warn_only_enabled()
+            )
+        torch.use_deterministic_algorithms(
+            torch_state.get("deterministic_algorithms", False),
+            warn_only=deterministic_warn_only,
+        )
     return scope
 
 
@@ -530,12 +568,6 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
 
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint optimizer state must be a mapping")
-    if (
-        not callable(getattr(optimizer, "load_state_dict", None))
-        or not callable(getattr(optimizer, "state_dict", None))
-    ):
-        raise CheckpointCompatibilityError("optimizer must provide state_dict/load_state_dict")
-
     optimizer_module = optimizer.__class__.__module__
     if not optimizer_module.startswith("torch.optim"):
         try:
@@ -801,7 +833,24 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
             f"{label} cannot be isolated for semantic compatibility preflight"
         ) from exc
     try:
+        probe_state = probe.state_dict()
+    except (AttributeError, TypeError) as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        ) from exc
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} state failed isolated compatibility inspection"
+        ) from exc
+    if not isinstance(probe_state, Mapping):
+        raise CheckpointCompatibilityError(f"isolated {label} state must be a mapping")
+    _validate_state_schema(probe_state, state, path=f"{label} state")
+    try:
         probe.load_state_dict(copy.deepcopy(state))
+    except (AttributeError, TypeError) as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        ) from exc
     except Exception as exc:
         raise CheckpointCompatibilityError(
             f"checkpoint {label} state failed isolated semantic compatibility preflight"
@@ -809,20 +858,31 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
 
 
 def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
-    """Validate scheduler-like state before model/optimizer mutation."""
+    """Validate scheduler-like state without invoking live state hooks."""
 
-    if (
-        not callable(getattr(component, "state_dict", None))
-        or not callable(getattr(component, "load_state_dict", None))
-    ):
+    _semantic_stateful_probe(component, state, label=label)
+
+
+def _bind_state_loader(component: Any, *, label: str) -> Any:
+    """Bind a one-argument state loader once before the checkpoint apply region."""
+
+    loader = getattr(component, "load_state_dict", None)
+    if not callable(loader):
         raise CheckpointCompatibilityError(
             f"{label} must provide state_dict/load_state_dict"
         )
-    live_state = component.state_dict()
-    if not isinstance(live_state, Mapping):
-        raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
-    _validate_state_schema(live_state, state, path=f"{label} state")
-    _semantic_stateful_probe(component, state, label=label)
+    try:
+        signature = inspect.signature(loader)
+        signature.bind({})
+    except (TypeError, ValueError) as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} load_state_dict cannot safely bind checkpoint state"
+        ) from exc
+
+    def apply(state: Any) -> Any:
+        return loader(state)
+
+    return apply
 
 
 def _bind_model_state_loader(model: Any, strict: bool) -> Any:
@@ -951,7 +1011,7 @@ def _build_identity(identity: CheckpointIdentity, environment: Mapping[str, Any]
 
 
 def _checkpoint_save_warn_only(state: Mapping[str, Any]) -> bool | None:
-    """Capture torch warn-only policy omitted from checkpoint-v1 RNG payloads."""
+    """Capture live torch warn-only policy for transactional save rollback."""
 
     if not state.get("torch"):
         return None
@@ -1057,6 +1117,11 @@ def save_checkpoint(
         (temp_dir / MANIFEST_CHECKSUM_NAME).write_text(
             f"{manifest_sha}  {MANIFEST_NAME}\n", encoding="ascii"
         )
+        manifest_bytes = _read_regular_bytes(temp_dir, MANIFEST_NAME)
+        manifest_checksum_bytes = _read_regular_bytes(
+            temp_dir,
+            MANIFEST_CHECKSUM_NAME,
+        )
         verify_checkpoint(temp_dir)
         if prepublish_validator is not None:
             if not callable(prepublish_validator):
@@ -1079,6 +1144,35 @@ def save_checkpoint(
                     "post_rng_prepublish_validator must be callable or None"
                 )
             post_rng_prepublish_validator()
+            # Final validation is allowed to execute arbitrary caller code.
+            # Keep successful checkpoint publication observational even when
+            # that callback itself consumes RNG or changes torch policy.
+            try:
+                _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
+            except BaseException as exc:  # noqa: BLE001
+                raise CheckpointError(
+                    "checkpoint save could not restore entry RNG state "
+                    "after final validation"
+                ) from exc
+        # Validators are arbitrary caller code and may reach the staging tree
+        # through a closure or filesystem scan. Re-verify the exact staged bytes
+        # after the final validator/RNG rollback and before atomic visibility.
+        # A callback might even reseal a modified payload into a self-consistent
+        # checkpoint, so the reverified manifest must still equal the manifest
+        # constructed by this save transaction.
+        reverified_manifest = verify_checkpoint(temp_dir)
+        if reverified_manifest != manifest:
+            raise CheckpointIntegrityError(
+                "checkpoint staging manifest changed after validation"
+            )
+        if (
+            _read_regular_bytes(temp_dir, MANIFEST_NAME) != manifest_bytes
+            or _read_regular_bytes(temp_dir, MANIFEST_CHECKSUM_NAME)
+            != manifest_checksum_bytes
+        ):
+            raise CheckpointIntegrityError(
+                "checkpoint staging metadata bytes changed after validation"
+            )
         rng_restored = True
 
         os.replace(temp_dir, destination)
@@ -1513,17 +1607,35 @@ def load_verified_checkpoint(
         run_manifest_hash=expected_run_manifest_hash,
     )
     arrays, combined_state = _decode_verified_state(verified)
-    materialized = _prepare_model_weights(model, arrays, strict_model)
+    # Reject absent requested state before any target loader lookup. A custom
+    # descriptor/proxy may execute user code during getattr/signature binding.
     if optimizer is not None and combined_state.get("optimizer") is None:
         raise CheckpointCompatibilityError(
             "optimizer was requested but checkpoint has no optimizer state"
         )
-    if optimizer is not None:
-        _preflight_optimizer_state(optimizer, combined_state["optimizer"])
     if scheduler is not None and combined_state.get("scheduler") is None:
         raise CheckpointCompatibilityError(
             "scheduler was requested but checkpoint has no scheduler state"
         )
+
+    # Bind live loader lookup/signature semantics once before target
+    # materialization/preflight. Descriptor/proxy lookup can execute user code;
+    # all later compatibility snapshots must observe any resulting target state,
+    # and the apply region must never perform a second mutable lookup.
+    model_apply = _bind_model_state_loader(model, strict_model)
+    optimizer_apply = (
+        _bind_state_loader(optimizer, label="optimizer")
+        if optimizer is not None
+        else None
+    )
+    scheduler_apply = (
+        _bind_state_loader(scheduler, label="scheduler")
+        if scheduler is not None
+        else None
+    )
+    materialized = _prepare_model_weights(model, arrays, strict_model)
+    if optimizer is not None:
+        _preflight_optimizer_state(optimizer, combined_state["optimizer"])
     if scheduler is not None:
         _preflight_stateful_component(
             scheduler,
@@ -1536,11 +1648,11 @@ def load_verified_checkpoint(
     # No checkpoint byte is reopened after this point. All integrity, identity,
     # payload decoding, model/optimizer/scheduler compatibility and supported RNG
     # checks completed before the first mutation.
-    _apply_model_weights(model, materialized, strict_model)
-    if optimizer is not None:
-        optimizer.load_state_dict(combined_state["optimizer"])
-    if scheduler is not None:
-        scheduler.load_state_dict(combined_state["scheduler"])
+    model_apply(materialized)
+    if optimizer_apply is not None:
+        optimizer_apply(combined_state["optimizer"])
+    if scheduler_apply is not None:
+        scheduler_apply(combined_state["scheduler"])
     if restore_rng:
         restore_rng_state(combined_state["rng"])
     return LoadResult(

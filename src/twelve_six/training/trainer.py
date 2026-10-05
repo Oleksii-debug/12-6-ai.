@@ -1378,7 +1378,38 @@ class Trainer:
                 yield from iter_tensor_bytes(child)
 
         for name, live in expected.items():
-            array = exported[name]
+            exported_value = exported[name]
+            if isinstance(exported_value, Tensor):
+                if (
+                    type(exported_value) not in {Tensor, nn.Parameter}
+                    or exported_value.dtype != live.dtype
+                    or exported_value.shape != live.shape
+                    or exported_value.layout != live.layout
+                    or live.layout != torch.strided
+                ):
+                    raise TrainingStateInvalidError(
+                        f"checkpoint model export tensor {name!r} metadata differs"
+                    )
+                exported_digest = hashlib.sha256()
+                live_digest = hashlib.sha256()
+                exported_bytes = 0
+                live_bytes = 0
+                for block in iter_tensor_bytes(exported_value):
+                    exported_digest.update(block)
+                    exported_bytes += len(block)
+                for block in iter_tensor_bytes(live):
+                    live_digest.update(block)
+                    live_bytes += len(block)
+                if (
+                    exported_bytes != live_bytes
+                    or exported_digest.digest() != live_digest.digest()
+                ):
+                    raise TrainingStateInvalidError(
+                        f"checkpoint model export tensor {name!r} differs from live state"
+                    )
+                continue
+
+            array = exported_value
             if type(array) is not np.ndarray or array.dtype.hasobject:
                 raise TrainingStateInvalidError(
                     f"checkpoint model export tensor {name!r} is not canonical"
@@ -1405,11 +1436,11 @@ class Trainer:
                     f"checkpoint model export tensor {name!r} dtype differs"
                 )
 
-            exported_bytes = memoryview(array).cast("B")
+            exported_bytes_view = memoryview(array).cast("B")
             offset = 0
             for block in iter_tensor_bytes(live):
                 block_size = len(block)
-                if bytes(exported_bytes[offset:offset + block_size]) != block:
+                if bytes(exported_bytes_view[offset:offset + block_size]) != block:
                     raise TrainingStateInvalidError(
                         f"checkpoint model export tensor {name!r} differs from live state"
                     )
@@ -2514,34 +2545,65 @@ class Trainer:
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        # Preserve the authoritative recovery contract before deep observation.
+        # A poisoned/ambiguous trainer may already contain malformed model or
+        # optimizer state, so fingerprint traversal must not mask the required
+        # fresh-trainer + verified-checkpoint diagnostic.
+        Trainer._assert_trainable(self)
+        # A normal incomplete accumulation is retryable. Reject it before
+        # fingerprinting legitimate pending gradients or other transient state.
+        Trainer.assert_accumulation_boundary(self)
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
-        model_before = self._model_export_fingerprint()
-        optimizer_before = self._optimizer_live_fingerprint()
-        scheduler_before = self._canonical_lambda_lr_live_state()
-        self.assert_checkpoint_safe()
-        if not _typed_state_equal(
-            committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
-        ):
-            self._mark_failed("checkpoint preflight changed committed counters")
-            raise TrainingStateInvalidError("checkpoint export changed committed counters")
-        if self._model_export_fingerprint() != model_before:
-            self._mark_failed("checkpoint preflight changed model weights or buffers")
-            raise TrainingStateInvalidError(
-                "checkpoint export changed model weights or buffers"
+        try:
+            model_before = self._model_export_fingerprint()
+            optimizer_before = self._optimizer_live_fingerprint()
+            scheduler_before = self._canonical_lambda_lr_live_state()
+        except BaseException:  # noqa: BLE001
+            # At a committed boundary, a failed canonical observation makes the
+            # checkpoint boundary ambiguous and therefore requires recovery.
+            Trainer._mark_failed(
+                self,
+                "checkpoint boundary has invalid optimizer or residual gradients",
             )
-        if (
-            optimizer_before is not None
-            and self._optimizer_live_fingerprint() != optimizer_before
-        ):
-            self._mark_failed("checkpoint preflight changed live optimizer state")
-            raise TrainingStateInvalidError(
-                "checkpoint preflight changed optimizer state"
+            raise
+        try:
+            self.assert_checkpoint_safe()
+            if not _typed_state_equal(
+                committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+            ):
+                self._mark_failed("checkpoint preflight changed committed counters")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed committed counters"
+                )
+            if self._model_export_fingerprint() != model_before:
+                self._mark_failed("checkpoint preflight changed model weights or buffers")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed model weights or buffers"
+                )
+            if (
+                optimizer_before is not None
+                and self._optimizer_live_fingerprint() != optimizer_before
+            ):
+                self._mark_failed("checkpoint preflight changed live optimizer state")
+                raise TrainingStateInvalidError(
+                    "checkpoint preflight changed optimizer state"
+                )
+            if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
+                scheduler_before, self._canonical_lambda_lr_live_state()
+            ):
+                self._mark_failed("checkpoint preflight changed live scheduler")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed live scheduler"
+                )
+        except BaseException:  # noqa: BLE001
+            # Mid-accumulation was rejected above as the one retryable export
+            # refusal. Any failure after committed-boundary observation means
+            # the checkpoint boundary can no longer be trusted in-place.
+            Trainer._mark_failed(
+                self,
+                "checkpoint preflight failed after committed boundary",
             )
-        if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
-            scheduler_before, self._canonical_lambda_lr_live_state()
-        ):
-            self._mark_failed("checkpoint preflight changed live scheduler")
-            raise TrainingStateInvalidError("checkpoint export changed live scheduler")
+            raise
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")

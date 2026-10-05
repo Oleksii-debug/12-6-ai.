@@ -61,6 +61,9 @@ def _seal_checkpoint(
     if missing == "cuda":
         deliberately_incomplete["torch"] = dict(captured["torch"])
         deliberately_incomplete["torch"].pop("cuda")
+    elif missing == "warn_only":
+        deliberately_incomplete["torch"] = dict(captured["torch"])
+        deliberately_incomplete["torch"].pop("deterministic_warn_only")
     elif missing is not None:
         deliberately_incomplete.pop(missing)
     # Produce a completely re-signed checkpoint through the production writer.
@@ -74,6 +77,8 @@ def _seal_checkpoint(
     _, decoded = core._decode_verified_state(core.prepare_checkpoint_load(path))
     if missing == "cuda":
         assert "cuda" not in decoded["rng"]["torch"]
+    elif missing == "warn_only":
+        assert "deterministic_warn_only" not in decoded["rng"]["torch"]
     elif missing is not None:
         assert missing not in decoded["rng"]
     return captured, config
@@ -172,3 +177,86 @@ def test_complete_verified_checkpoint_replays_python_numpy_and_torch_cpu(
     finally:
         core.restore_rng_state(ambient)
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+def _seal_warn_only_mismatch(
+    path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    identity: CheckpointIdentity,
+) -> TrainerConfig:
+    config = TrainerConfig(max_steps=10, seed=703)
+    source_model = torch.nn.Linear(3, 3)
+    source = Trainer(source_model, config)
+    captured = core.capture_rng_state()
+    mismatched = dict(captured)
+    mismatched["torch"] = dict(captured["torch"])
+    mismatched["torch"]["deterministic_warn_only"] = (
+        not config.deterministic_warn_only
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(core, "capture_rng_state", lambda: mismatched)
+        trainer_adapter.save_trainer_checkpoint(
+            path, model=source_model, trainer=source, identity=identity,
+        )
+    core.verify_checkpoint(path)
+    return config
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+def test_warn_only_mismatch_rejected_before_model_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+) -> None:
+    checkpoint = tmp_path / "sealed-warn-only-mismatch"
+    config = _seal_warn_only_mismatch(checkpoint, monkeypatch, checkpoint_identity)
+    model = torch.nn.Linear(3, 3)
+    trainer = Trainer(model, config)
+    before = [parameter.detach().clone() for parameter in model.parameters()]
+
+    def forbidden_materialization(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError(
+            "warn-only mismatch must reject before model materialization"
+        )
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", forbidden_materialization)
+    with pytest.raises(
+        CheckpointCompatibilityError, match="deterministic_warn_only",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint, model=model, trainer=trainer, restore_rng=True,
+        )
+
+    for current, initial in zip(model.parameters(), before, strict=True):
+        torch.testing.assert_close(current.detach(), initial, rtol=0, atol=0)
+    assert trainer.optimizer_step == 0
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+def test_legacy_warn_only_omission_remains_canonical_compatible(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+) -> None:
+    checkpoint = tmp_path / "sealed-legacy-warn-only"
+    _, config = _seal_checkpoint(
+        checkpoint, monkeypatch, checkpoint_identity, "warn_only",
+    )
+    model = torch.nn.Linear(3, 3)
+    trainer = Trainer(model, config)
+
+    result = loader.load_trainer_checkpoint(
+        checkpoint, model=model, trainer=trainer, restore_rng=True,
+    )
+
+    assert result.manifest["identity"]["step"] == 0
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
