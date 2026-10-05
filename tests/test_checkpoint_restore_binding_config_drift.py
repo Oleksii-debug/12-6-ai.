@@ -331,3 +331,100 @@ def test_native_checkpoint_save_rejects_instance_state_export_shadow(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+def test_native_checkpoint_save_restores_export_process_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class EffectfulExportTrainer(Trainer):
+        def state_dict(self) -> Any:
+            state = super().state_dict()
+            random.random()
+            np.random.random()
+            torch.rand(1)
+            torch.use_deterministic_algorithms(
+                torch.are_deterministic_algorithms_enabled(),
+                warn_only=not torch.is_deterministic_algorithms_warn_only_enabled(),
+            )
+            return state
+
+    target = EffectfulExportTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    save_calls: list[bool] = []
+
+    def observe_save(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        save_calls.append(True)
+        assert random.getstate() == py_before
+        np_now = np.random.get_state()
+        assert np_now[0] == np_before[0]
+        np.testing.assert_array_equal(np_now[1], np_before[1])
+        assert np_now[2:] == np_before[2:]
+        torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+        assert (
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        ) == policy_before
+        return {"sealed": True}
+
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", observe_save)
+
+    result = trainer_adapter.save_trainer_checkpoint(
+        tmp_path / "observed-only",
+        model=target.model,
+        trainer=target,
+        identity=_identity(),
+    )
+
+    assert result == {"sealed": True}
+    assert save_calls == [True]
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+def test_native_checkpoint_save_rejects_export_counter_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CounterDriftExportTrainer(Trainer):
+        def state_dict(self) -> Any:
+            state = super().state_dict()
+            self.tokens_seen += 1
+            return state
+
+    target = CounterDriftExportTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    save_calls: list[bool] = []
+
+    def forbid_save(*args: Any, **kwargs: Any) -> Any:
+        save_calls.append(True)
+        raise AssertionError("drifted native export reached checkpoint publication")
+
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_save)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="post-load tokens_seen disagrees with checkpoint",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / "must-not-write",
+            model=target.model,
+            trainer=target,
+            identity=_identity(),
+        )
+
+    assert save_calls == []
+    assert target.tokens_seen == 1
