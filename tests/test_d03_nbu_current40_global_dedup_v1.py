@@ -39,7 +39,7 @@ def test_carrier_uses_incumbent_indexed_executor_not_new_matcher() -> None:
     source = MODULE.read_text(encoding="utf-8")
     assert "indexed.attest_incumbent_runtime(matcher)" in source
     assert "indexed.audit_payloads_indexed(" in source
-    assert "matcher.verify_report(indexed_report)" in source
+    assert "matcher.verify_report(report)" in source
     assert "from twelve_six.data import incumbent_dedup_indexed_execution as indexed" in source
 
 
@@ -72,13 +72,12 @@ def test_work_budgets_require_exact_positive_ints(bad: object) -> None:
         mod._validate_work_budgets(bad, 1, 1)
 
 
-def test_source_admission_receipt_remains_zero_credit() -> None:
-    mod = _load()
-    receipt = {
-        "truth_boundary": {
-            "whole_corpus_external_llm_cleanliness_claimed": False,
-        }
-    }
-    scope = mod._source_admission_provenance_scope(receipt)
-    assert scope["current_corpus_external_llm_free_claimed_by_this_carrier"] is False
-    assert scope["source_local_negative_promoted_as_corpus_global_truth"] is False
+def test_two_clean_authority_remains_zero_credit() -> None:
+    source = MODULE.read_text(encoding="utf-8")
+    assert '"canonical_capacity_credited": 0' in source
+    assert '"training_authorized_bytes": 0' in source
+    assert '"authorized_unique_loss_positions": 0' in source
+    assert '"authorized_optimized_target_exposure": 0' in source
+    assert '"tokenizer_fit_authorized": False' in source
+    assert '"whole_corpus_external_llm_cleanliness_claimed": False' in source
+    assert "PASS_TWO_CLEAN_DEDUP_OVER_EXACT_AUDITED_NBU_COPIES_ZERO_CREDIT" in source
