@@ -225,7 +225,11 @@ def test_sealed_numpy_scheduler_nan_rejected_by_both_public_d05_loaders(
         reached_apply.append(True)
         raise AssertionError("non-finite NumPy scheduler reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", reject_model_apply)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: reject_model_apply,
+    )
     extra = {"expected_step": 0, "expected_tokens_seen": 0} if (
         loader is progress_trainer
     ) else {}
