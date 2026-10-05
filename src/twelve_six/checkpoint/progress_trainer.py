@@ -225,7 +225,7 @@ def load_trainer_checkpoint(
     # Revalidate ownership and the live target after decoding/materialization,
     # then bind the actual loader immediately before the first live mutation.
     _assert_trainer_model_binding(model, trainer)
-    _preflight_trainer_target(trainer)
+    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
     load_trainer_state = _bind_trainer_state_loader(trainer)
 
     # Preflight prevents known incompatibilities, but an application-time
