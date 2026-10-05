@@ -798,12 +798,17 @@ class Trainer:
                     block = flat[index:index + 262_144]
                     raw = block.to(device="cpu").contiguous().view(torch.uint8)
                     digest.update(raw.numpy().tobytes())
-            elif detached.ndim:
-                # Recurse into strided views; never flatten/copy a whole large tensor.
+            elif detached.numel() <= 262_144:
+                # An individual bounded strided window may be copied safely.
+                bounded = detached.to(device="cpu").contiguous().reshape(-1)
+                digest.update(bounded.view(torch.uint8).numpy().tobytes())
+            elif detached.ndim == 1:
+                for index in range(0, detached.numel(), 262_144):
+                    hash_tensor(detached[index:index + 262_144])
+            else:
+                # Split a larger strided view until each copy is bounded.
                 for child in detached.unbind(0):
                     hash_tensor(child)
-            elif detached.numel():
-                raise TrainingStateInvalidError("checkpoint model layout cannot be hashed")
 
         for label, members in (
             ("parameter", self.model.named_parameters()),
