@@ -65,6 +65,8 @@ def load_strict_json_object(raw: str) -> dict[str, Any]:
         )
     except json.JSONDecodeError as exc:
         raise WikisourceIntakeError(f"invalid control contract JSON: {exc.msg}") from exc
+    except RecursionError as exc:
+        raise WikisourceIntakeError("control contract JSON nesting limit exceeded") from exc
     if not isinstance(value, dict):
         raise WikisourceIntakeError("control contract must be a JSON object")
     return value
@@ -195,14 +197,17 @@ def _write_create_only_durable(path: Path, payload: bytes) -> tuple[int, int]:
 
 
 def _prepare_output_pair(candidate: Path, report: Path) -> tuple[Path, Path]:
-    candidate = candidate.resolve(strict=False)
-    report = report.resolve(strict=False)
-    if candidate == report:
+    candidate = Path(os.path.abspath(os.fspath(candidate)))
+    report = Path(os.path.abspath(os.fspath(report)))
+    for output in (candidate, report):
+        if os.path.lexists(output):
+            raise FileExistsError(f"refusing to overwrite existing output: {output}")
+    candidate_identity = os.path.normcase(str(candidate.resolve(strict=False)))
+    report_identity = os.path.normcase(str(report.resolve(strict=False)))
+    if candidate_identity == report_identity:
         raise WikisourceIntakeError("candidate and report outputs must be distinct")
     for output in (candidate, report):
         output.parent.mkdir(parents=True, exist_ok=True)
-        if os.path.lexists(output):
-            raise FileExistsError(f"refusing to overwrite existing output: {output}")
     return candidate, report
 
 
