@@ -661,6 +661,67 @@ def test_noncallable_optimizer_zero_grad_fails_before_model_and_rng(
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
 
 
+@pytest.mark.parametrize("component_name", ["scheduler", "scaler"])
+@pytest.mark.parametrize("component_method", ["state_dict", "load_state_dict"])
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_noncallable_stateful_component_interface_fails_before_model_and_rng(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    component_name: str, component_method: str,
+    loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "noncallable-stateful-interface-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    component = getattr(target, component_name)
+    assert component is not None
+    setattr(component, component_method, None)
+    initial_weights = target.model.weight.detach().clone()
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    model_applied: list[bool] = []
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("non-callable stateful interface reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match=rf"{component_name} must provide state_dict/load_state_dict",
+    ):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("optimizer_method", ["load_state_dict", "state_dict"])
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer],
