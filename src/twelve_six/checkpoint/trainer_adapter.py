@@ -771,6 +771,7 @@ def _postflight_trainer_state(trainer: Any, state: Any) -> None:
         # returning success. Never report a clean resume after such drift.
         _assert_native_d02_postload_snapshot(trainer, state)
 
+
 def _preflight_trainer_state_without_rng_guard(
     trainer: Any,
     state: Any,
