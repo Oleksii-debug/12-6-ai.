@@ -81,6 +81,70 @@ def test_strict_policy_loader_rejects_ambiguous_and_nonfinite_json(
             raise AssertionError(f"{name} unexpectedly passed strict JSON loading")
 
 
+@pytest.mark.parametrize("literal", ["1e-9999", "-1e-9999", "5.4e-9999"])
+def test_policy_loader_rejects_nonzero_float_underflow(
+    tmp_path: Path,
+    literal: str,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "underflow.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    with pytest.raises(ValueError, match="underflowed to zero"):
+        cli._load_policy(path)
+
+    result = _run_cli(path)
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert json.loads(result.stdout) == {
+        "error": "nonzero JSON number underflowed to zero",
+        "status": "FAIL",
+    }
+
+
+@pytest.mark.parametrize("literal", ["0e-9999", "-0.000e-9999", "0.0", "2.5"])
+def test_policy_loader_preserves_real_zero_and_finite_float(
+    tmp_path: Path,
+    literal: str,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "finite-number.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    assert cli._load_policy(path) == {"value": float(literal)}
+
+
+@pytest.mark.parametrize("sign", ["", "-"])
+def test_policy_loader_accepts_64_digit_integer_at_parse_boundary(
+    tmp_path: Path,
+    sign: str,
+) -> None:
+    cli = _load_cli()
+    literal = sign + "9" * 64
+    path = tmp_path / "int-boundary.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    assert cli._load_policy(path) == {"value": int(literal)}
+
+
+def test_policy_loader_bounds_integer_before_python_conversion(tmp_path: Path) -> None:
+    cli = _load_cli()
+    path = tmp_path / "huge-int.json"
+    path.write_text('{"value":' + "9" * 100_000 + "}", encoding="utf-8")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            cli._load_policy(path)
+    finally:
+        sys.set_int_max_str_digits(before)
+
+    result = _run_cli(path)
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert json.loads(result.stdout) == {
+        "error": "JSON integer exceeds 64 digits",
+        "status": "FAIL",
+    }
+
+
 def test_strict_policy_loader_preserves_valid_finite_json(tmp_path: Path) -> None:
     cli = _load_cli()
     path = tmp_path / "finite.json"
