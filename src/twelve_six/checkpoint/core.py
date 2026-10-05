@@ -1057,6 +1057,11 @@ def save_checkpoint(
         (temp_dir / MANIFEST_CHECKSUM_NAME).write_text(
             f"{manifest_sha}  {MANIFEST_NAME}\n", encoding="ascii"
         )
+        manifest_bytes = _read_regular_bytes(temp_dir, MANIFEST_NAME)
+        manifest_checksum_bytes = _read_regular_bytes(
+            temp_dir,
+            MANIFEST_CHECKSUM_NAME,
+        )
         verify_checkpoint(temp_dir)
         if prepublish_validator is not None:
             if not callable(prepublish_validator):
@@ -1099,6 +1104,14 @@ def save_checkpoint(
         if reverified_manifest != manifest:
             raise CheckpointIntegrityError(
                 "checkpoint staging manifest changed after validation"
+            )
+        if (
+            _read_regular_bytes(temp_dir, MANIFEST_NAME) != manifest_bytes
+            or _read_regular_bytes(temp_dir, MANIFEST_CHECKSUM_NAME)
+            != manifest_checksum_bytes
+        ):
+            raise CheckpointIntegrityError(
+                "checkpoint staging metadata bytes changed after validation"
             )
         rng_restored = True
 
