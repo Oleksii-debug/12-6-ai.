@@ -2662,3 +2662,63 @@ def test_trainer_apply_marker_loss_restores_poison(
         atol=0,
     )
 
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_preio_descriptor_marker_loss_then_raise_keeps_primary_and_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=703, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    checkpoint_reads: list[bool] = []
+
+    class MarkerDeletingAuthority:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            if instance is target:
+                del vars(target)["_failure_reason"]
+                raise RuntimeError("synthetic authority descriptor failure")
+            return Trainer.__dict__[
+                "_require_optimizer_parameter_coverage"
+            ].__get__(instance, owner)
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("raising authority descriptor reached checkpoint I/O")
+
+    monkeypatch.setattr(
+        Trainer,
+        "_require_optimizer_parameter_coverage",
+        MarkerDeletingAuthority(),
+    )
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 0, "expected_tokens_seen": 0}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="synthetic authority descriptor failure",
+    ) as got:
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert checkpoint_reads == []
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_target_drift"
+    assert vars(target)["_update_incomplete"] is True
+    assert any(
+        "trainer restore target drift also detected" in note
+        for note in getattr(got.value, "__notes__", ())
+    )
+
