@@ -389,10 +389,6 @@ jobs:
           inventory = evidence["survivor_inventory"]
           if inventory["schema_version"] != "12-6.data526-record-inventory.v1":
               raise RuntimeError("survivor inventory schema drift")
-          if inventory["record_count"] != survivor:
-              # This line is intentionally corrected below: record_count is a count,
-              # not a byte total. Keeping the checks separate prevents unit confusion.
-              pass
           records = inventory["records"]
           if inventory["record_count"] != len(records):
               raise RuntimeError("survivor inventory record count drift")
@@ -416,10 +412,26 @@ jobs:
               "payload_sha256",
               "payload_bytes",
           }
-          if any(set(row) != required_record_fields for row in records):
+          if any(
+              not isinstance(row, dict) or set(row) != required_record_fields
+              for row in records
+          ):
               raise RuntimeError("survivor inventory record schema drift")
           if any(row["modality"] != "code" for row in records):
               raise RuntimeError("non-code record crossed code-delta survivor inventory")
+          if any(
+              type(row["payload_bytes"]) is not int or row["payload_bytes"] <= 0
+              for row in records
+          ):
+              raise RuntimeError("survivor inventory payload byte value invalid")
+          hex_chars = set("0123456789abcdef")
+          if any(
+              not isinstance(row["payload_sha256"], str)
+              or len(row["payload_sha256"]) != 64
+              or not set(row["payload_sha256"]) <= hex_chars
+              for row in records
+          ):
+              raise RuntimeError("survivor inventory payload hash invalid")
           if sum(row["payload_bytes"] for row in records) != survivor:
               raise RuntimeError("survivor inventory byte arithmetic drift")
           if len({row["source_id"] for row in records}) != gate["survivor_source_objects"]:
