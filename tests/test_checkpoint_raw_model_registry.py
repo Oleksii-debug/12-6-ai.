@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -9,7 +10,12 @@ import pytest
 import torch
 
 from twelve_six.checkpoint import CheckpointCompatibilityError, trainer_adapter
-from twelve_six.training import NonFiniteTrainingError, Trainer, TrainerConfig
+from twelve_six.training import (
+    NonFiniteTrainingError,
+    Trainer,
+    TrainerConfig,
+    TrainingStateInvalidError,
+)
 
 
 class _TwoParameters(torch.nn.Module):
@@ -94,6 +100,27 @@ class _TypeIdentityMeta(type):
 
 class _MetaclassAdamW(torch.optim.AdamW, metaclass=_TypeIdentityMeta):
     pass
+
+
+class _ArmedSchedulerDictLambdaLR(torch.optim.lr_scheduler.LambdaLR):
+    dict_reads: list[str] = []
+
+    def __init__(self, optimizer: torch.optim.Optimizer) -> None:
+        super().__init__(optimizer, lr_lambda=lambda _: 1.0)
+        raw = torch.optim.lr_scheduler.LRScheduler.__dict__["__dict__"].__get__(
+            self,
+            type(self),
+        )
+        raw["_dict_spoof_armed"] = False
+
+    @property
+    def __dict__(self) -> dict[str, Any]:
+        descriptor = torch.optim.lr_scheduler.LRScheduler.__dict__["__dict__"]
+        real = descriptor.__get__(self, type(self))
+        if not real.get("_dict_spoof_armed", False):
+            return real
+        type(self).dict_reads.append("__dict__")
+        return real["_fake_dict"]
 
 
 class _ArmedOptimizerViewAdamW(torch.optim.AdamW):
@@ -229,6 +256,39 @@ def test_optimizer_hyperparameters_ignore_forged_param_groups_view() -> None:
         trainer._require_safe_optimizer_hyperparameters()
 
     assert raw["view_reads"] == []
+
+
+def test_exported_scheduler_validation_ignores_forged_dict_view() -> None:
+    _ArmedSchedulerDictLambdaLR.dict_reads.clear()
+    model = _TwoParameters()
+    optimizer = torch.optim.AdamW(
+        [model.left, model.right],
+        lr=1e-3,
+    )
+    scheduler = _ArmedSchedulerDictLambdaLR(optimizer)
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        optimizer=optimizer,
+        scheduler=scheduler,
+        device="cpu",
+    )
+    exported = copy.deepcopy(scheduler.state_dict())
+    raw = torch.optim.lr_scheduler.LRScheduler.__dict__["__dict__"].__get__(
+        scheduler,
+        type(scheduler),
+    )
+    raw["_fake_dict"] = dict(raw)
+    raw["last_epoch"] = int(raw["last_epoch"]) + 1
+    raw["_dict_spoof_armed"] = True
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="scheduler export differs from live state",
+    ):
+        trainer._require_exported_scheduler_matches_live(exported)
+
+    assert _ArmedSchedulerDictLambdaLR.dict_reads == []
 
 
 def test_auxiliary_fingerprint_ignores_optimizer_dict_descriptor() -> None:
