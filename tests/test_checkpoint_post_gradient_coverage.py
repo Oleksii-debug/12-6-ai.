@@ -355,7 +355,7 @@ def test_restore_policy_snapshot_rejects_exotic_objects_without_running_hooks(
 
     with pytest.raises(
         core.CheckpointCompatibilityError,
-        match="unsupported restore-policy data",
+        match="unsupported restore-contract data",
     ):
         loader.load_trainer_checkpoint(
             tmp_path / "must-not-open",
@@ -373,4 +373,116 @@ def test_restore_policy_snapshot_rejects_exotic_objects_without_running_hooks(
     np.testing.assert_array_equal(np_after[1], np_before[1])
     assert np_after[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "restore_rng",
+    [False, True],
+    ids=["opt-out", "exact-rng"],
+)
+def test_final_authority_lookup_cannot_mutate_config_in_place_before_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    source = _source()
+    checkpoint = tmp_path / "config-in-place-drift-дані з пробілами"
+    core.save_checkpoint(
+        checkpoint,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(checkpoint)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    initial_max_steps = target.config.max_steps
+
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    original_preflight = loader._preflight_trainer_state
+    original_bind = loader._bind_model_state_loader
+    original_coverage = Trainer.__dict__["_require_optimizer_parameter_coverage"]
+    preflight_calls = 0
+    model_applications: list[bool] = []
+
+    class EffectfulCoverage:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            if instance is target:
+                object.__setattr__(
+                    target.config,
+                    "max_steps",
+                    target.config.max_steps + 1,
+                )
+            return original_coverage.__get__(instance, owner)
+
+    def bind_tracked_model_loader(model: Any, strict: bool):
+        apply = original_bind(model, strict)
+
+        def tracked_apply(materialized: Any) -> Any:
+            model_applications.append(True)
+            return apply(materialized)
+
+        return tracked_apply
+
+    def preflight_then_arm(*args: Any, **kwargs: Any) -> Any:
+        nonlocal preflight_calls
+        result = original_preflight(*args, **kwargs)
+        preflight_calls += 1
+        if preflight_calls == 3:
+            monkeypatch.setattr(
+                Trainer,
+                "_require_optimizer_parameter_coverage",
+                EffectfulCoverage(),
+            )
+        return result
+
+    monkeypatch.setattr(loader, "_bind_model_state_loader", bind_tracked_model_loader)
+    monkeypatch.setattr(loader, "_preflight_trainer_state", preflight_then_arm)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="target config changed during preflight",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    assert preflight_calls == 3
+    assert model_applications == []
+    assert target.config.max_steps == initial_max_steps + 1
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    ) == policy_before
 
