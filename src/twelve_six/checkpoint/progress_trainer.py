@@ -41,6 +41,7 @@ from .trainer_adapter import (
     _effective_strict_model,
     _preflight_trainer_state,
     _preflight_trainer_target,
+    _poison_canonical_restore_failure,
     _restore_ambient_rng_after_failed_apply,
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
@@ -249,6 +250,7 @@ def load_trainer_checkpoint(
     try:
         _apply_model_weights(model, materialized, strict_model)
         load_trainer_state(trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
         # torch RNG even on success. Restore the checkpoint streams last so
         # the first resumed batch sees the exact captured next draws.
@@ -265,12 +267,15 @@ def load_trainer_checkpoint(
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
             _restore_initial_torch_policy(rollback_policy, exc)
-        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
-            # D02 may already have recorded a more specific partial-load error
-            # (including a second gradient-cleanup failure). Preserve it.
-            if trainer._failure_reason is None:
-                trainer._failure_reason = "checkpoint_restore_apply_failed"
-            trainer._update_incomplete = True
+        # D02 may already have recorded a more specific partial-load error
+        # (including a second gradient-cleanup failure). Preserve it, but use
+        # entry classification so a hostile loader cannot erase poison markers.
+        _poison_canonical_restore_failure(
+            trainer,
+            expected_canonical=restore_bindings[0],
+            reason="checkpoint_restore_apply_failed",
+            exc=exc,
+        )
         raise
     return LoadResult(
         manifest=copy.deepcopy(manifest),
