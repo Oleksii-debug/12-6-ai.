@@ -1375,6 +1375,8 @@ def save_trainer_checkpoint(
     export_trainer_state = _bind_trainer_state_exporter(trainer)
     _assert_trainer_model_binding(model, trainer)
     _assert_native_d02_model_training_mode(model, trainer)
+    # Reject a pre-existing process-policy mismatch before any effectful export.
+    _assert_live_d02_determinism(trainer)
 
     if save_bindings[0]:
         export_ambient = capture_rng_state()
@@ -1391,16 +1393,23 @@ def save_trainer_checkpoint(
                 trainer,
                 expected_canonical=save_bindings[0],
             )
-        _assert_trainer_restore_bindings(trainer, save_bindings)
-        _assert_trainer_model_binding(model, trainer)
-        _assert_native_d02_model_training_mode(model, trainer)
-        _assert_native_d02_postload_snapshot(trainer, state)
+        try:
+            _assert_trainer_restore_bindings(trainer, save_bindings)
+            _assert_trainer_model_binding(model, trainer)
+            _assert_native_d02_model_training_mode(model, trainer)
+            _assert_native_d02_postload_snapshot(trainer, state)
+            _assert_live_d02_determinism(trainer)
+        except BaseException as exc:
+            _poison_canonical_restore_failure(
+                trainer,
+                expected_canonical=save_bindings[0],
+                reason="checkpoint_export_state_drift",
+                exc=exc,
+            )
+            raise
     else:
         state = _trainer_state_as_mapping(export_trainer_state())
 
-    # A canonical D02 checkpoint should never be produced under a different
-    # ambient PyTorch policy than the validated trainer configuration.
-    _assert_live_d02_determinism(trainer)
     _assert_trainer_restore_bindings(trainer, save_bindings)
     return save_checkpoint(
         directory,
