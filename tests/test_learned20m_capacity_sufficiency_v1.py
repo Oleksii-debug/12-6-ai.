@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -391,6 +393,53 @@ def test_rejects_huge_json_integer_with_python_digit_limit_disabled(
             load_and_validate(path)
     finally:
         sys.set_int_max_str_digits(before)
+
+
+def test_capacity_report_read_refuses_directory(tmp_path: Path) -> None:
+    with pytest.raises(CapacityReportError, match="must be a regular file"):
+        load_and_validate(tmp_path)
+
+
+def test_capacity_report_read_redacts_missing_path(tmp_path: Path) -> None:
+    private_path = tmp_path / "PRIVATE-SOURCE-IDENTITY-998877.json"
+    with pytest.raises(CapacityReportError, match="cannot read capacity report") as err:
+        load_and_validate(private_path)
+    assert "PRIVATE-SOURCE-IDENTITY" not in str(err.value)
+    assert err.value.__cause__ is None
+    assert err.value.__suppress_context__ is True
+
+
+def test_capacity_report_symlink_to_regular_report(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    linked = tmp_path / "safe-linked-report.json"
+    linked.symlink_to(REPORT)
+    assert load_and_validate(linked, expected_main_sha=MAIN_SHA) == _report()
+
+
+def test_capacity_report_fifo_with_no_writer_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "source FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    # A subprocess timeout makes the test itself finite if the reader regresses.
+    program = (
+        "import sys; "
+        "from twelve_six.learned20m_capacity_sufficiency_v1 import "
+        "CapacityReportError, load_and_validate; "
+        "p=sys.argv[1]; "
+        "exec('try:\\n load_and_validate(p)\\nexcept CapacityReportError as e:\\n "
+        "assert str(e) == \\"capacity report must be a regular file\\"\\nelse:\\n "
+        "raise AssertionError(\\"FIFO accepted\\")')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program, str(fifo)],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_rejects_unknown_top_level_key() -> None:
