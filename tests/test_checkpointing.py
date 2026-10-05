@@ -526,3 +526,57 @@ def test_checkpoint_save_restores_torch_rng_and_warn_only_policy(
             original_policy[0],
             warn_only=original_policy[1],
         )
+
+
+
+@pytest.mark.parametrize(
+    "fail",
+    [False, True],
+    ids=["success", "failure"],
+)
+def test_checkpoint_prepublish_validator_is_rng_neutral(
+    tmp_path: Path,
+    fail: bool,
+) -> None:
+    random.seed(1704)
+    np.random.seed(1704)
+    model = NumpyModel(np.array([0.1, -0.2, 0.3]))
+    python_before = copy.deepcopy(random.getstate())
+    numpy_before = copy.deepcopy(np.random.get_state())
+    checkpoint = tmp_path / f"prepublish-validator-{fail}"
+    validator_calls: list[bool] = []
+
+    def validator() -> None:
+        validator_calls.append(True)
+        random.random()
+        np.random.random()
+        if fail:
+            raise RuntimeError("injected prepublish rejection")
+
+    if fail:
+        with pytest.raises(RuntimeError, match="injected prepublish rejection"):
+            save_checkpoint(
+                checkpoint,
+                model=model,
+                trainer_state={},
+                identity=identity(step=0, tokens_seen=0),
+                prepublish_validator=validator,
+            )
+        assert not checkpoint.exists()
+    else:
+        save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=identity(step=0, tokens_seen=0),
+            prepublish_validator=validator,
+        )
+        assert checkpoint.is_dir()
+        verify_checkpoint(checkpoint)
+
+    assert validator_calls == [True]
+    assert random.getstate() == python_before
+    numpy_after = np.random.get_state()
+    assert numpy_after[0] == numpy_before[0]
+    np.testing.assert_array_equal(numpy_after[1], numpy_before[1])
+    assert numpy_after[2:] == numpy_before[2:]
