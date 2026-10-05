@@ -1,0 +1,261 @@
+name: D05 PR2790 native-lineage exact qualification
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d05_2790_native_lineage_fresh_replay.yml"
+      - "tools/execute_d05_2790_native_lineage_fresh_replay.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d05-2790-native-lineage-\${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-and-replay:
+    name: exact Product qualification and fresh-process replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PRODUCT_HEAD: eb9ff412bd219dff50890531e2971092cf1bf64d
+      EVIDENCE_ROOT: /tmp/d05-2790-fresh-process
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: \${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+          cache: pip
+
+      - name: Bind exact Product parent and execution-only closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$PRODUCT_HEAD^{commit}"
+          test "$(git merge-base "$PRODUCT_HEAD" HEAD)" = "$PRODUCT_HEAD"
+          expected=$'.github/workflows/d05_2790_native_lineage_fresh_replay.yml\ntools/execute_d05_2790_native_lineage_fresh_replay.py'
+          observed="$(git diff --name-only "$PRODUCT_HEAD"..HEAD)"
+          test "$observed" = "$expected"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+
+      - name: Install exact-head development environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Exact-head static and repository qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/execute_d05_2790_native_lineage_fresh_replay.py
+          ruff check src tests
+          pytest -q
+
+      - name: Focus native-lineage regression explicitly
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_checkpoint_restore_binding_config_drift.py \
+            -k 'native_trainer_lineage_drift_rejected_before_model_apply'
+
+      - name: Produce checkpoint and uninterrupted step-two baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$EVIDENCE_ROOT"
+          mkdir -p "$EVIDENCE_ROOT"
+          python tools/execute_d05_2790_native_lineage_fresh_replay.py produce \
+            --checkpoint "$EVIDENCE_ROOT/checkpoint з пробілами" \
+            --baseline "$EVIDENCE_ROOT/baseline.json" \
+            --metadata "$EVIDENCE_ROOT/metadata.json" \
+            --product-head "$PRODUCT_HEAD"
+
+      - name: Fresh adapter process resumes exact next step
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/execute_d05_2790_native_lineage_fresh_replay.py resume \
+            --loader adapter \
+            --checkpoint "$EVIDENCE_ROOT/checkpoint з пробілами" \
+            --output "$EVIDENCE_ROOT/adapter.json" \
+            --product-head "$PRODUCT_HEAD"
+
+      - name: Fresh progress process resumes exact next step
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/execute_d05_2790_native_lineage_fresh_replay.py resume \
+            --loader progress \
+            --checkpoint "$EVIDENCE_ROOT/checkpoint з пробілами" \
+            --output "$EVIDENCE_ROOT/progress.json" \
+            --product-head "$PRODUCT_HEAD"
+
+      - name: Build checksum-corrupt independent copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/execute_d05_2790_native_lineage_fresh_replay.py corrupt-copy \
+            --source "$EVIDENCE_ROOT/checkpoint з пробілами" \
+            --destination "$EVIDENCE_ROOT/checkpoint corrupt"
+
+      - name: Fresh adapter process rejects corruption without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/execute_d05_2790_native_lineage_fresh_replay.py reject-corrupt \
+            --loader adapter \
+            --checkpoint "$EVIDENCE_ROOT/checkpoint corrupt" \
+            --output "$EVIDENCE_ROOT/adapter-reject.json" \
+            --product-head "$PRODUCT_HEAD"
+
+      - name: Fresh progress process rejects corruption without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/execute_d05_2790_native_lineage_fresh_replay.py reject-corrupt \
+            --loader progress \
+            --checkpoint "$EVIDENCE_ROOT/checkpoint corrupt" \
+            --output "$EVIDENCE_ROOT/progress-reject.json" \
+            --product-head "$PRODUCT_HEAD"
+
+      - name: Require exact replay and build text-free evidence
+        shell: bash
+        env:
+          EXECUTION_HEAD: \${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["EVIDENCE_ROOT"])
+          baseline = json.loads(root.joinpath("baseline.json").read_text(encoding="utf-8"))
+
+          def mismatch_paths(left, right, path=""):
+              if type(left) is not type(right):
+                  return [path or "/"]
+              if isinstance(left, dict):
+                  paths = []
+                  for key in sorted(set(left) | set(right)):
+                      child = f"{path}/{key}"
+                      if key not in left or key not in right:
+                          paths.append(child)
+                      else:
+                          paths.extend(mismatch_paths(left[key], right[key], child))
+                  return paths
+              if isinstance(left, list):
+                  if len(left) != len(right):
+                      return [f"{path}/length"]
+                  paths = []
+                  for index, (a, b) in enumerate(zip(left, right, strict=True)):
+                      paths.extend(mismatch_paths(a, b, f"{path}/{index}"))
+                  return paths
+              return [] if left == right else [path or "/"]
+
+          for name in ("adapter", "progress"):
+              replay = json.loads(
+                  root.joinpath(f"{name}.json").read_text(encoding="utf-8")
+              )
+              paths = mismatch_paths(baseline, replay)
+              if paths:
+                  raise RuntimeError(
+                      f"{name} fresh-process replay mismatch at {paths[:32]}"
+                  )
+
+          metadata_raw = root.joinpath("metadata.json").read_bytes()
+          metadata = json.loads(metadata_raw.decode("utf-8"))
+          adapter_reject = json.loads(
+              root.joinpath("adapter-reject.json").read_text(encoding="utf-8")
+          )
+          progress_reject = json.loads(
+              root.joinpath("progress-reject.json").read_text(encoding="utf-8")
+          )
+          if metadata["product_head"] != os.environ["PRODUCT_HEAD"]:
+              raise RuntimeError("Product head evidence drift")
+          if metadata["product_pr"] != 2790:
+              raise RuntimeError("Product PR evidence drift")
+          for result in (adapter_reject, progress_reject):
+              if result["rejected"] is not True or result["unchanged"] is not True:
+                  raise RuntimeError("corrupt checkpoint refusal boundary failed")
+
+          truth = metadata["truth_boundary"]
+          expected_false = (
+              "real_learned20m_checkpoint",
+              "training_executed_on_admitted_targets",
+              "learned_weights_created",
+              "final_test_outcomes_read",
+              "paid_compute_used",
+          )
+          for key in expected_false:
+              if truth[key] is not False:
+                  raise RuntimeError(f"scientific truth widened: {key}")
+          if truth["synthetic_physical_resume_only"] is not True:
+              raise RuntimeError("synthetic-only boundary erased")
+          if truth["authorized_optimized_target_exposure"] != 0:
+              raise RuntimeError("optimized-target exposure widened")
+
+          baseline_raw = root.joinpath("baseline.json").read_bytes()
+          evidence = {
+              "schema_version": "12-6.d05-pr2790-fresh-replay.v1",
+              "status": "PHYSICAL_SYNTHETIC_REPLAY_PASS",
+              "product_pr": 2790,
+              "product_head": metadata["product_head"],
+              "execution_head": os.environ["EXECUTION_HEAD"],
+              "checkpoint_id": metadata["checkpoint_id"],
+              "manifest_sha256": metadata["manifest_sha256"],
+              "baseline_state_sha256": hashlib.sha256(baseline_raw).hexdigest(),
+              "metadata_sha256": hashlib.sha256(metadata_raw).hexdigest(),
+              "environment": metadata["environment"],
+              "adapter_fresh_process_exact": True,
+              "progress_fresh_process_exact": True,
+              "adapter_corrupt_refused_unchanged": True,
+              "progress_corrupt_refused_unchanged": True,
+              "adapter_corrupt_exception": adapter_reject["exception_type"],
+              "progress_corrupt_exception": progress_reject["exception_type"],
+              "real_learned20m_checkpoint": False,
+              "synthetic_physical_resume_only": True,
+              "authorized_optimized_target_exposure": 0,
+              "training_executed_on_admitted_targets": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              evidence,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          evidence["evidence_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          root.joinpath("evidence.json").write_text(
+              json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(evidence, sort_keys=True))
+          PY
+
+      - name: Ensure execution left repository clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload text-free exact-head evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d05-pr2790-native-lineage-\${{ github.event.pull_request.head.sha }}
+          path: /tmp/d05-2790-fresh-process/evidence.json
+          if-no-files-found: error
+          retention-days: 90
