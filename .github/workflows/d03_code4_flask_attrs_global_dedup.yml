@@ -1,0 +1,377 @@
+name: D03 code4 plus Flask plus attrs incumbent global dedup
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_code4_flask_attrs_global_dedup.yml"
+      - "tools/run_d03_code4_flask_attrs_global_dedup_v1.py"
+      - "tools/run_d03_code4_flask_global_dedup_v1.py"
+      - "tools/run_d03_four_code_sources_global_dedup_v1.py"
+      - "tools/execute_d03_four_code_sources_materialization.py"
+      - "tools/validate_next100_053_attrs_code_source.py"
+      - "configs/data/next100_053_attrs_code_source_v1.json"
+      - "src/twelve_six/next100_043_flask_admission.py"
+      - "configs/data/next100_043_flask_code_rights_v1.json"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d03-code4-flask-attrs-global-dedup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-code4-flask-attrs-global-dedup-g6-112-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pass_id: [1, 2]
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Install historical V7 PDF extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+
+      - name: Bind exact head and executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile             tools/execute_d03_four_code_sources_materialization.py             tools/run_d03_four_code_sources_global_dedup_v1.py             tools/run_d03_code4_flask_global_dedup_v1.py             tools/run_d03_code4_flask_attrs_global_dedup_v1.py             tools/validate_next100_053_attrs_code_source.py             src/twelve_six/next100_043_flask_admission.py
+          git cat-file -e "$V7_HEAD^{commit}"
+
+      - name: Reconstruct exact V7 and execute six-family incumbent global dedup
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/code4-flask-attrs-global-dedup-$PASS_ID"
+          mkdir -p "$run_root"
+
+          success=false
+          for attempt in 1 2 3; do
+            attempt_root="$run_root/attempt-$attempt"
+            v7_root="$attempt_root/v7"
+            mkdir -p "$attempt_root"
+            git worktree add --detach "$v7_root" "$V7_HEAD"
+            test "$(git -C "$v7_root" rev-parse HEAD)" = "$V7_HEAD"
+            test -z "$(git -C "$v7_root" status --porcelain=v1 --untracked-files=all)"
+
+            set +e
+            python tools/run_d03_code4_flask_attrs_global_dedup_v1.py               --v7-root "$v7_root"               --bulk-workspace "$attempt_root/bulk"               --expected-execution-head "$EXECUTION_SHA"               --output-base-report "$attempt_root/base-global-dedup-report.json"               --output-combined-report "$attempt_root/combined-global-dedup-report.json"               --output-survivors "$attempt_root/survivors.json"               --output-evidence "$attempt_root/evidence.json"
+            status=$?
+            set -e
+
+            git worktree remove --force "$v7_root"
+            if [ "$status" -eq 0 ]; then
+              cp "$attempt_root/base-global-dedup-report.json" "$run_root/base-global-dedup-report.json"
+              cp "$attempt_root/combined-global-dedup-report.json" "$run_root/combined-global-dedup-report.json"
+              cp "$attempt_root/survivors.json" "$run_root/survivors.json"
+              cp "$attempt_root/evidence.json" "$run_root/evidence.json"
+              success=true
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit "$status"
+            fi
+            sleep "$((attempt * 5))"
+          done
+          test "$success" = true
+
+      - name: Verify six-family zero-credit text-free evidence
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/code4-flask-attrs-global-dedup-$PASS_ID"
+          python - "$run_root" "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+          base = json.loads((root / "base-global-dedup-report.json").read_text())
+          combined = json.loads((root / "combined-global-dedup-report.json").read_text())
+          survivors = json.loads((root / "survivors.json").read_text())
+          evidence = json.loads((root / "evidence.json").read_text())
+
+          assert evidence["schema_version"] == (
+              "12-6.d03-code4-flask-attrs-global-dedup-execution.v1"
+          )
+          assert evidence["execution_head_sha"] == head
+          assert evidence["parent_code4_flask_execution_head_sha"] == (
+              "245f7afc4860d10da677bedb5e84f9fe50e0ba49"
+          )
+          assert evidence["candidate_bundle"] == {
+              "source_family_count": 6,
+              "source_object_count": 20,
+              "candidate_raw_bytes": 690470,
+              "components": {
+                  "code4_raw_bytes": 336947,
+                  "flask_raw_bytes": 183088,
+                  "attrs_raw_bytes": 170435,
+              },
+          }
+
+          attrs_auth = evidence["attrs_physical_source_authority"]
+          assert attrs_auth["historical_physical_run_id"] == 33006080831
+          assert attrs_auth["historical_authority_sha256"] == (
+              "151e593c3b67ae4c7686323983e6c45306a870b732573ee4820c0c017b65a7d4"
+          )
+          assert attrs_auth["fresh_replay_authority_sha256"] == (
+              "151e593c3b67ae4c7686323983e6c45306a870b732573ee4820c0c017b65a7d4"
+          )
+          assert attrs_auth["historical_artifact_id"] == 9621650719
+          assert attrs_auth["candidate_raw_bytes"] == 170435
+          assert attrs_auth["object_count"] == 4
+          assert attrs_auth["source_family_count"] == 1
+          assert attrs_auth["training_purpose_decision"] == "ALLOWED"
+          assert attrs_auth["evaluation_authorized"] is False
+
+          flask_auth = evidence["flask_physical_source_authority"]
+          assert flask_auth["dedicated_run_id"] == 37277236307
+          assert flask_auth["candidate_raw_bytes"] == 183088
+          assert flask_auth["evaluation_authorized"] is False
+
+          assert evidence["incumbent_base"]["source_object_count"] == 263
+          assert evidence["incumbent_base"]["declared_capacity_bytes"] == 6093965
+          assert evidence["combined"]["source_object_count"] == 283
+          assert evidence["combined"]["declared_capacity_bytes"] == 6784435
+          assert evidence["combined"]["matcher_report_sha256"] == combined["report_sha256"]
+          assert evidence["incumbent_base"]["matcher_report_sha256"] == base["report_sha256"]
+          assert evidence["combined"]["survivor_authority_sha256"] == (
+              survivors["survivor_authority_sha256"]
+          )
+
+          delta = evidence["code4_plus_flask_attrs_delta"]
+          marginal = delta["marginal_global_unique_capacity_bytes"]
+          assert type(marginal) is int
+          assert 0 <= marginal <= 690470
+          assert delta["pre_dedup_candidate_bytes"] == 690470
+          assert delta["global_dedup_loss_vs_raw_candidate_bytes"] == 690470 - marginal
+          assert delta["minimum_marginal_bytes_needed_before_later_gates"] == 335753
+          if delta["global_dedup_preserves_enough_to_keep_target_possible"]:
+              assert marginal >= 335753
+              assert delta["later_gate_loss_budget_if_target_still_possible"] == (
+                  marginal - 335753
+              )
+          else:
+              assert marginal < 335753
+              assert delta["later_gate_loss_budget_if_target_still_possible"] == 0
+
+          truth = evidence["truth_boundary"]
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_unique_loss_positions"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates_executed_on_real_targets"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+
+          forbidden = {"text", "raw_text", "source_text", "normalized_payload"}
+          def walk(value):
+              if isinstance(value, dict):
+                  assert not forbidden.intersection(value)
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+
+          walk(base)
+          walk(combined)
+          walk(survivors)
+          walk(evidence)
+          print(
+              "D03_CODE4_FLASK_ATTRS_GLOBAL_DEDUP_TEXT_FREE "
+              f"marginal={marginal} "
+              f"later_budget={delta['later_gate_loss_budget_if_target_still_possible']}"
+          )
+          PY
+
+      - name: Upload text-free pass evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code4-flask-attrs-global-dedup-pass-${{ matrix.pass_id }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/code4-flask-attrs-global-dedup-${{ matrix.pass_id }}/base-global-dedup-report.json
+            ${{ runner.temp }}/code4-flask-attrs-global-dedup-${{ matrix.pass_id }}/combined-global-dedup-report.json
+            ${{ runner.temp }}/code4-flask-attrs-global-dedup-${{ matrix.pass_id }}/survivors.json
+            ${{ runner.temp }}/code4-flask-attrs-global-dedup-${{ matrix.pass_id }}/evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+  compare-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-code4-flask-attrs-global-dedup-g6-112-20261005'
+    needs: execute
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Download pass 1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-code4-flask-attrs-global-dedup-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-code4-flask-attrs-global-dedup-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require deterministic six-family matcher and survivor authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp artifacts/pass-1/base-global-dedup-report.json               artifacts/pass-2/base-global-dedup-report.json
+          cmp artifacts/pass-1/combined-global-dedup-report.json               artifacts/pass-2/combined-global-dedup-report.json
+          cmp artifacts/pass-1/survivors.json artifacts/pass-2/survivors.json
+
+          python - "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          head = sys.argv[1]
+          roots = [Path("artifacts/pass-1"), Path("artifacts/pass-2")]
+          evidences = [
+              json.loads((root / "evidence.json").read_text())
+              for root in roots
+          ]
+          base_reports = [
+              json.loads((root / "base-global-dedup-report.json").read_text())
+              for root in roots
+          ]
+          combined_reports = [
+              json.loads((root / "combined-global-dedup-report.json").read_text())
+              for root in roots
+          ]
+          survivors = [
+              json.loads((root / "survivors.json").read_text())
+              for root in roots
+          ]
+
+          base_ids = [item["report_sha256"] for item in base_reports]
+          combined_ids = [item["report_sha256"] for item in combined_reports]
+          survivor_ids = [item["survivor_authority_sha256"] for item in survivors]
+          assert len(set(base_ids)) == 1
+          assert len(set(combined_ids)) == 1
+          assert len(set(survivor_ids)) == 1
+          assert (
+              evidences[0]["code4_plus_flask_attrs_delta"]
+              == evidences[1]["code4_plus_flask_attrs_delta"]
+          )
+
+          for evidence, base_id, combined_id, survivor_id in zip(
+              evidences, base_ids, combined_ids, survivor_ids, strict=True
+          ):
+              assert evidence["execution_head_sha"] == head
+              assert evidence["incumbent_base"]["matcher_report_sha256"] == base_id
+              assert evidence["combined"]["matcher_report_sha256"] == combined_id
+              assert evidence["combined"]["survivor_authority_sha256"] == survivor_id
+              assert evidence["truth_boundary"]["canonical_capacity_credited"] == 0
+              assert evidence["truth_boundary"]["training_executed"] is False
+
+          delta = evidences[0]["code4_plus_flask_attrs_delta"]
+          proof = {
+              "schema_version": (
+                  "12-6.d03-code4-flask-attrs-global-dedup-two-clean.v1"
+              ),
+              "execution_head_sha": head,
+              "code4_physical_run_id": 37269452704,
+              "flask_physical_run_id": 37277236307,
+              "attrs_historical_physical_run_id": 33006080831,
+              "attrs_fresh_replay_authority_sha256": (
+                  evidences[0]["attrs_physical_source_authority"][
+                      "fresh_replay_authority_sha256"
+                  ]
+              ),
+              "candidate_raw_bytes": 690470,
+              "base_matcher_report_sha256": base_ids[0],
+              "combined_matcher_report_sha256": combined_ids[0],
+              "survivor_authority_sha256": survivor_ids[0],
+              "marginal_global_unique_capacity_bytes": (
+                  delta["marginal_global_unique_capacity_bytes"]
+              ),
+              "global_dedup_loss_vs_raw_candidate_bytes": (
+                  delta["global_dedup_loss_vs_raw_candidate_bytes"]
+              ),
+              "minimum_marginal_bytes_needed_before_later_gates": 335753,
+              "later_gate_loss_budget_if_target_still_possible": (
+                  delta["later_gate_loss_budget_if_target_still_possible"]
+              ),
+              "global_dedup_preserves_enough_to_keep_target_possible": (
+                  delta["global_dedup_preserves_enough_to_keep_target_possible"]
+              ),
+              "two_fresh_executions_converged": True,
+              "raw_source_bytes_retained": False,
+              "canonical_capacity_credited": 0,
+              "tokenizer_fit_authorized": False,
+              "authorized_optimized_target_exposure": 0,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              proof, sort_keys=True, separators=(",", ":")
+          ).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          Path("d03-code4-flask-attrs-global-dedup-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n"
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload two-clean proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code4-flask-attrs-global-dedup-two-clean-${{ github.event.pull_request.head.sha }}
+          path: d03-code4-flask-attrs-global-dedup-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
