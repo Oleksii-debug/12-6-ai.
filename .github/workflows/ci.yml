@@ -608,7 +608,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      D05_RUNTIME_SHA: 3e62f28addbfbc25708742801c14d2eb226baea1
+      D05_RUNTIME_SHA: c0cb107c731e6e0a245eec8a626e3790af24b1f3
       MODEL341_SHA: f151c77a8ef8721f0f568509147b1a5f961ae6c7
       MODEL341_CANDIDATE_BLOB: 69e3cbd5f5c83c9d3d529a2a6376db3055979c40
 
@@ -651,7 +651,7 @@ jobs:
           test "$(git -C d05-runtime hash-object src/twelve_six/model.py)" = "c3879fe0ba9193d5a8176c284e1942f058ef7885"
           test "$(git -C d05-runtime hash-object src/twelve_six/training/trainer.py)" = "cf726f3b0dfd27a767c20c2badbfcf274113cc9c"
           test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/core.py)" = "914c84cb0366c89d6187d7924a23963fadec86d9"
-          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/trainer_adapter.py)" = "4616e131388230acb405fb6291c753c3f42fd50d"
+          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/trainer_adapter.py)" = "6c8537ddf628e9c3ede4e967bd99c9b870d8b559"
           test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/progress_trainer.py)" = "81f19519f7a3a82bd1f8bfcd6bbf570794b12e82"
           test "$(git -C d05-runtime hash-object src/twelve_six/training/config.py)" = "adc8579f59a167850a084975f799daedeab2e895"
           test "$(git -C d05-runtime hash-object pyproject.toml)" = "5fabd477e49aff807b1553502e80308a13e7b3b3"
@@ -691,7 +691,7 @@ jobs:
           assert report["verdict"] == "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS"
           assert report["runtime"]["product_pr"] == 2778
           assert report["runtime"]["git_sha"] == (
-              "3e62f28addbfbc25708742801c14d2eb226baea1"
+              "c0cb107c731e6e0a245eec8a626e3790af24b1f3"
           )
           assert report["runtime"]["public_save_api"] == "save_trainer_checkpoint"
           assert report["runtime"]["public_restore_api"] == "load_trainer_checkpoint"
