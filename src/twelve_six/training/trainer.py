@@ -941,6 +941,53 @@ class Trainer:
         if any(type(k) is not int for k in saved_state) or set(saved_state) != present:
             raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
 
+    def _require_checkpoint_scheduler_chronology(
+        self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
+    ) -> None:
+        """Pure D02 chronology and configured-rate authority for direct/D05 preflight."""
+            if type(self.scheduler) is LambdaLR and (
+                not isinstance(scheduler_state, Mapping)
+                or type(scheduler_state.get("last_epoch")) is not int
+                or scheduler_state["last_epoch"] != optimizer_step
+            ):
+                # Refuse a known impossible committed history before optimizer or
+                # scheduler load. A fresh target can retry a verified checkpoint.
+                raise ValueError(
+                    "checkpoint scheduler chronology differs from committed optimizer step"
+                )
+            if type(self.scheduler) is LambdaLR and (
+                type(scheduler_state.get("_step_count")) is not int
+                or scheduler_state["_step_count"] != optimizer_step + 1
+            ):
+                # PyTorch LambdaLR starts at internal scheduler step 1 and moves
+                # exactly once per successful optimizer update.
+                raise ValueError(
+                    "checkpoint scheduler step count differs from committed optimizer step"
+                )
+            if type(self.scheduler) is LambdaLR:
+                saved_groups = (
+                    optimizer_state.get("param_groups")
+                    if isinstance(optimizer_state, Mapping) else None
+                )
+                last_rates = scheduler_state.get("_last_lr")
+                if (
+                    not isinstance(saved_groups, list)
+                    or not isinstance(last_rates, list)
+                    or len(saved_groups) != len(last_rates)
+                    or any(
+                        not isinstance(group, Mapping)
+                        or "lr" not in group
+                        or not self._exact_export_leaf_equal(rate, group["lr"])
+                        for rate, group in zip(last_rates, saved_groups, strict=True)
+                    )
+                ):
+                    raise ValueError(
+                        "checkpoint scheduler last LR differs from checkpoint optimizer"
+                    )
+        self._require_default_schedule_rates(
+            scheduler_state, optimizer_step, optimizer_state,
+        )
+
     def _require_default_schedule_rates(
         self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
     ) -> None:
@@ -972,11 +1019,15 @@ class Trainer:
         rate = base * _lr_lambda(self.config)(optimizer_step)
 
         def bits_equal(actual: Any, expected: Any) -> bool:
+            if type(actual) not in (int, float):
+                return False
+            try:
+                observed = float(actual)
+            except (OverflowError, ValueError):
+                return False
             return (
-                isinstance(actual, (int, float))
-                and not isinstance(actual, bool)
-                and math.isfinite(actual)
-                and struct.pack("!d", float(actual)) == struct.pack("!d", float(expected))
+                math.isfinite(observed)
+                and struct.pack("!d", observed) == struct.pack("!d", float(expected))
             )
 
         for group, base_rate, last_rate in zip(
@@ -1162,45 +1213,6 @@ class Trainer:
         # Reject known contract mismatches before touching optimizer state.
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
-        if type(self.scheduler) is LambdaLR and (
-            not isinstance(state.scheduler, Mapping)
-            or type(state.scheduler.get("last_epoch")) is not int
-            or state.scheduler["last_epoch"] != state.optimizer_step
-        ):
-            # Refuse a known impossible committed history before optimizer or
-            # scheduler load. A fresh target can retry a verified checkpoint.
-            raise ValueError(
-                "checkpoint scheduler chronology differs from committed optimizer step"
-            )
-        if type(self.scheduler) is LambdaLR and (
-            type(state.scheduler.get("_step_count")) is not int
-            or state.scheduler["_step_count"] != state.optimizer_step + 1
-        ):
-            # PyTorch LambdaLR starts at internal scheduler step 1 and moves
-            # exactly once per successful optimizer update.
-            raise ValueError(
-                "checkpoint scheduler step count differs from committed optimizer step"
-            )
-        if type(self.scheduler) is LambdaLR:
-            saved_groups = (
-                state.optimizer.get("param_groups")
-                if isinstance(state.optimizer, Mapping) else None
-            )
-            last_rates = state.scheduler.get("_last_lr")
-            if (
-                not isinstance(saved_groups, list)
-                or not isinstance(last_rates, list)
-                or len(saved_groups) != len(last_rates)
-                or any(
-                    not isinstance(group, Mapping)
-                    or "lr" not in group
-                    or not self._exact_export_leaf_equal(rate, group["lr"])
-                    for rate, group in zip(last_rates, saved_groups, strict=True)
-                )
-            ):
-                raise ValueError(
-                    "checkpoint scheduler last LR differs from checkpoint optimizer"
-                )
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
         if self.scaler.is_enabled():
@@ -1236,7 +1248,7 @@ class Trainer:
         # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
         # parameter identity. Reject missing/reordered names before mutation.
         self._require_optimizer_state_parameter_order(state.optimizer)
-        self._require_default_schedule_rates(
+        self._require_checkpoint_scheduler_chronology(
             state.scheduler, state.optimizer_step, state.optimizer,
         )
 
