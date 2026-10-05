@@ -980,6 +980,9 @@ class Trainer:
                             str(value.device),
                             tuple(value.shape),
                             tuple(value.stride()),
+                            value.storage_offset(),
+                            value.data_ptr(),
+                            value.requires_grad,
                         )
                     ).encode("utf-8")
                 )
