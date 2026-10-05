@@ -1607,6 +1607,17 @@ def load_verified_checkpoint(
         run_manifest_hash=expected_run_manifest_hash,
     )
     arrays, combined_state = _decode_verified_state(verified)
+    # Reject absent requested state before any target loader lookup. A custom
+    # descriptor/proxy may execute user code during getattr/signature binding.
+    if optimizer is not None and combined_state.get("optimizer") is None:
+        raise CheckpointCompatibilityError(
+            "optimizer was requested but checkpoint has no optimizer state"
+        )
+    if scheduler is not None and combined_state.get("scheduler") is None:
+        raise CheckpointCompatibilityError(
+            "scheduler was requested but checkpoint has no scheduler state"
+        )
+
     # Bind live loader lookup/signature semantics once before target
     # materialization/preflight. Descriptor/proxy lookup can execute user code;
     # all later compatibility snapshots must observe any resulting target state,
@@ -1623,16 +1634,8 @@ def load_verified_checkpoint(
         else None
     )
     materialized = _prepare_model_weights(model, arrays, strict_model)
-    if optimizer is not None and combined_state.get("optimizer") is None:
-        raise CheckpointCompatibilityError(
-            "optimizer was requested but checkpoint has no optimizer state"
-        )
     if optimizer is not None:
         _preflight_optimizer_state(optimizer, combined_state["optimizer"])
-    if scheduler is not None and combined_state.get("scheduler") is None:
-        raise CheckpointCompatibilityError(
-            "scheduler was requested but checkpoint has no scheduler state"
-        )
     if scheduler is not None:
         _preflight_stateful_component(
             scheduler,
