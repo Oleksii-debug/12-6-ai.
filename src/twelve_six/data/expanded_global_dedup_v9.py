@@ -221,10 +221,47 @@ def _verify_runtime_functions(
         )
 
 
-_INDEXED_FACADE_RUNTIME_CODE_IDENTITIES = {
-    name: _runtime_code_identity(getattr(_indexed, name))
-    for name in _INDEXED_FACADE_RUNTIME_FUNCTIONS
-}
+def _source_runtime_code_identities(
+    module: ModuleType,
+    names: Sequence[str],
+    *,
+    label: str,
+) -> dict[str, str]:
+    """Derive expected top-level function code from exact source without executing it."""
+
+    source_path = getattr(module, "__file__", None)
+    _require(isinstance(source_path, str) and source_path, f"{label} module has no source")
+    path = Path(source_path)
+    _require(
+        path.is_file() and not path.is_symlink(),
+        f"{label} source is not a regular file",
+    )
+    try:
+        module_code = compile(
+            path.read_bytes(),
+            str(path),
+            "exec",
+            dont_inherit=True,
+        )
+    except (OSError, SyntaxError, UnicodeError) as exc:
+        raise ExpandedDedupError(
+            f"cannot compile exact {label} source for code authority: {exc}"
+        ) from exc
+
+    expected: dict[str, str] = {}
+    required = set(names)
+    for value in module_code.co_consts:
+        if isinstance(value, CodeType) and value.co_name in required:
+            _require(
+                value.co_name not in expected,
+                f"{label} source function duplicated: {value.co_name}",
+            )
+            expected[value.co_name] = hashlib.sha256(marshal.dumps(value)).hexdigest()
+    _require(
+        set(expected) == required,
+        f"{label} source runtime closure incomplete",
+    )
+    return {name: expected[name] for name in names}
 
 
 def _referenced_runtime_global_names(code: CodeType) -> set[str]:
@@ -647,7 +684,12 @@ def _verify_indexed_execution_backend(
         and indexed_attest.__module__ == _indexed.__name__,
         "indexed execution runtime attester identity drift",
     )
-    for name, expected_code in _INDEXED_FACADE_RUNTIME_CODE_IDENTITIES.items():
+    source_runtime_code_identities = _source_runtime_code_identities(
+        _indexed,
+        _INDEXED_FACADE_RUNTIME_FUNCTIONS,
+        label="indexed facade",
+    )
+    for name, expected_code in source_runtime_code_identities.items():
         current = getattr(_indexed, name, None)
         _require(
             isinstance(current, FunctionType)
