@@ -58,6 +58,7 @@ _NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES = (
     "_require_checkpoint_scheduler_chronology",
     "_require_optimizer_state_parameter_order",
     "_optimizer_parameter_name_groups",
+    "_require_exported_model_matches_live",
     "_mark_failed",
 )
 
@@ -714,6 +715,16 @@ def _bind_native_export_live_authorities(trainer: Any) -> dict[str, Any]:
         assert bound is not None
         authorities[name] = bound
     return authorities
+
+
+def _bind_native_model_export_validator(trainer: Any) -> Any | None:
+    """Bind exact D02 staged-model/live-state equality authority."""
+
+    return _bind_exact_native_d02_authority(
+        trainer,
+        "_require_exported_model_matches_live",
+        positional_args=1,
+    )
 
 
 def _bind_native_model_export_fingerprint(trainer: Any) -> Any | None:
@@ -1794,6 +1805,7 @@ def save_trainer_checkpoint(
 
     save_bindings = _snapshot_trainer_restore_bindings(trainer)
     export_trainer_state = _bind_trainer_state_exporter(trainer)
+    model_export_authority = _bind_native_model_export_validator(trainer)
     model_fingerprint = _bind_native_model_export_fingerprint(trainer)
     auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
     export_live_authorities = _bind_native_export_live_authorities(trainer)
@@ -1914,6 +1926,16 @@ def save_trainer_checkpoint(
             )
             raise
 
+    def model_export_validator(exported: Mapping[str, Any]) -> None:
+        if model_export_authority is None:
+            return
+        try:
+            model_export_authority(exported)
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint staged model export differs from live model state"
+            ) from exc
+
     def post_rng_prepublish_validator() -> None:
         if not save_bindings[0]:
             return
@@ -1945,6 +1967,7 @@ def save_trainer_checkpoint(
         trainer_state=state,
         identity=identity,
         overwrite=overwrite,
+        model_export_validator=model_export_validator,
         prepublish_validator=prepublish_validator,
         post_rng_prepublish_validator=post_rng_prepublish_validator,
     )
