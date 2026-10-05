@@ -587,6 +587,30 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
     return strict_model or _is_native_d02(trainer) or _is_canonical_d02(trainer)
 
 
+def _bind_native_model_export_fingerprint(trainer: Any) -> Any | None:
+    """Bind the native model fingerprint authority without descriptor dispatch."""
+
+    if not _is_native_d02(trainer):
+        return None
+    fingerprint = inspect.getattr_static(
+        type(trainer),
+        "_model_export_fingerprint",
+        None,
+    )
+    if not isinstance(fingerprint, FunctionType):
+        raise CheckpointCompatibilityError(
+            "native D02 model fingerprint authority must remain class-bound"
+        )
+    bound = fingerprint.__get__(trainer, type(trainer))
+    try:
+        inspect.signature(bound).bind()
+    except (TypeError, ValueError) as exc:
+        raise CheckpointCompatibilityError(
+            "native D02 model fingerprint authority cannot bind safely"
+        ) from exc
+    return bound
+
+
 def _bind_trainer_state_exporter(trainer: Any) -> Any:
     """Bind one checkpoint exporter without executing native instance lookup."""
 
@@ -1421,6 +1445,7 @@ def save_trainer_checkpoint(
 
     save_bindings = _snapshot_trainer_restore_bindings(trainer)
     export_trainer_state = _bind_trainer_state_exporter(trainer)
+    model_fingerprint = _bind_native_model_export_fingerprint(trainer)
     _assert_trainer_model_binding(model, trainer)
     _assert_native_d02_model_training_mode(model, trainer)
     # Reject a pre-existing process-policy mismatch before any effectful export.
@@ -1431,6 +1456,11 @@ def save_trainer_checkpoint(
         export_policy = _snapshot_torch_policy(export_ambient)
         try:
             state = _trainer_state_as_mapping(export_trainer_state())
+            sealed_model_fingerprint = (
+                model_fingerprint()
+                if model_fingerprint is not None
+                else None
+            )
         except BaseException as exc:
             _note_restore_binding_drift(trainer, save_bindings, exc)
             raise
@@ -1457,14 +1487,42 @@ def save_trainer_checkpoint(
             raise
     else:
         state = _trainer_state_as_mapping(export_trainer_state())
+        sealed_model_fingerprint = None
 
     _assert_trainer_restore_bindings(trainer, save_bindings)
+
+    def prepublish_validator() -> None:
+        if not save_bindings[0]:
+            return
+        try:
+            _assert_trainer_restore_bindings(trainer, save_bindings)
+            _assert_trainer_model_binding(model, trainer)
+            _assert_native_d02_model_training_mode(model, trainer)
+            _assert_native_d02_postload_snapshot(trainer, state)
+            _assert_live_d02_determinism(trainer)
+            if (
+                model_fingerprint is not None
+                and model_fingerprint() != sealed_model_fingerprint
+            ):
+                raise CheckpointCompatibilityError(
+                    "canonical trainer model changed during checkpoint publication"
+                )
+        except BaseException as exc:
+            _poison_canonical_restore_failure(
+                trainer,
+                expected_canonical=save_bindings[0],
+                reason="checkpoint_export_state_drift",
+                exc=exc,
+            )
+            raise
+
     return save_checkpoint(
         directory,
         model=model,
         trainer_state=state,
         identity=identity,
         overwrite=overwrite,
+        prepublish_validator=prepublish_validator,
     )
 
 
