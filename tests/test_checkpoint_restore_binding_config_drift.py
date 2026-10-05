@@ -1209,8 +1209,8 @@ def test_native_checkpoint_save_rejects_forged_model_state_dict(
         )
 
     assert not checkpoint.exists()
-    assert target._failure_reason is None
-    assert target._update_incomplete is False
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
 
 
 def test_native_checkpoint_save_rechecks_safety_after_temporary_subclass_bypass(
