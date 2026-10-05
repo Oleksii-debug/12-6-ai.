@@ -331,6 +331,67 @@ def test_final_effectful_resume_callout_cannot_hide_committed_state_drift(
     [trainer_adapter, progress_trainer],
     ids=["adapter", "progress"],
 )
+def test_post_rng_exact_seal_does_not_reenter_effectful_tensor_comparator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    source = _source()
+    checkpoint = tmp_path / "post-rng-inert-seal-дані з пробілами"
+    core.save_checkpoint(
+        checkpoint,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(checkpoint)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_replay = loader._restore_checkpoint_rng_preserving_warn_only
+    original_equal = torch.equal
+    replay_complete = False
+    post_replay_equal_calls = 0
+
+    def replay_then_mark(*args: Any, **kwargs: Any) -> None:
+        nonlocal replay_complete
+        original_replay(*args, **kwargs)
+        replay_complete = True
+
+    def track_equal(left: Any, right: Any) -> bool:
+        nonlocal post_replay_equal_calls
+        if replay_complete:
+            post_replay_equal_calls += 1
+        return original_equal(left, right)
+
+    monkeypatch.setattr(
+        loader,
+        "_restore_checkpoint_rng_preserving_warn_only",
+        replay_then_mark,
+    )
+    monkeypatch.setattr(torch, "equal", track_equal)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    loader.load_trainer_checkpoint(
+        checkpoint,
+        model=target.model,
+        trainer=target,
+        strict_model=False,
+        restore_rng=True,
+        **extra,
+    )
+
+    assert replay_complete is True
+    assert post_replay_equal_calls == 0
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
 @pytest.mark.parametrize(
     "final_phase",
     ["rng-replay", "opt-out-policy"],
