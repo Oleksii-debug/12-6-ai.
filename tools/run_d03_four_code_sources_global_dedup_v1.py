@@ -506,6 +506,23 @@ def execute(
         expected_bytes=EXPECTED_BASE_BYTES,
         label="base",
     )
+    base_report_identity = base_report["report_sha256"]
+    base_report_bytes = canonical(base_report)
+    base_report_publication = json.loads(base_report_bytes.decode("utf-8"))
+    require(
+        canonical(base_report_publication) == base_report_bytes,
+        "base report canonical round-trip drift",
+    )
+    # V3 lineage matches contain literal score=1.0 references shared with the
+    # matcher code object. Do not retain the executed report across the next
+    # strict marshal-v4 attestation; publish only the detached JSON round-trip.
+    del base_report
+    try:
+        indexed.attest_incumbent_runtime(matcher)
+    except indexed.IndexedExecutionError as exc:
+        raise FourCodeGlobalDedupError(
+            "post_base_release_attestation: " + str(exc)
+        ) from exc
 
     combined_started = time.perf_counter()
     try:
@@ -576,7 +593,7 @@ def execute(
             "v7_head_sha": verified_v7_head,
             "source_object_count": EXPECTED_BASE_OBJECTS,
             "declared_capacity_bytes": EXPECTED_BASE_BYTES,
-            "matcher_report_sha256": base_report["report_sha256"],
+            "matcher_report_sha256": base_report_identity,
             "post_dedup_conservative_unique_bytes": base_unique,
             "duplicate_discount_bytes": base_terminal["duplicate_discount_bytes"],
             "nomis1864_deauthorization": removal,
@@ -660,7 +677,7 @@ def execute(
 
     incumbent._publish_json_outputs(
         (
-            (output_base_report, base_report),
+            (output_base_report, base_report_publication),
             (output_combined_report, combined_report),
             (output_survivors, survivor_projection),
             (output_evidence, evidence),
