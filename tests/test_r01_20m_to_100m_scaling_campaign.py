@@ -114,6 +114,75 @@ def test_strict_loader_rejects_float_overflow(tmp_path: Path, number: str) -> No
         validator._load_campaign(path)
 
 
+@pytest.mark.parametrize("literal", ["1e-9999", "-1e-9999", "5.4e-9999"])
+def test_scaling_loader_rejects_nonzero_float_underflow(
+    tmp_path: Path,
+    literal: str,
+) -> None:
+    path = tmp_path / "campaign.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    with pytest.raises(ValueError, match="underflowed to zero"):
+        validator._load_campaign(path)
+    assert validator.main(["validate", str(path)]) == 2
+
+
+@pytest.mark.parametrize("literal", ["0e-9999", "-0.000e-9999", "0.0", "2.5"])
+def test_scaling_loader_preserves_real_zero_and_finite_float(
+    tmp_path: Path,
+    literal: str,
+) -> None:
+    path = tmp_path / "campaign.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    assert validator._load_campaign(path) == {"value": float(literal)}
+
+
+@pytest.mark.parametrize("sign", ["", "-"])
+def test_scaling_loader_accepts_64_digit_integer_at_parse_boundary(
+    tmp_path: Path,
+    sign: str,
+) -> None:
+    literal = sign + "9" * 64
+    path = tmp_path / "campaign.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    assert validator._load_campaign(path) == {"value": int(literal)}
+
+
+def test_scaling_loader_bounds_integer_before_python_conversion(tmp_path: Path) -> None:
+    path = tmp_path / "campaign.json"
+    path.write_text('{"value":' + "9" * 100_000 + "}", encoding="utf-8")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            validator._load_campaign(path)
+    finally:
+        sys.set_int_max_str_digits(before)
+
+
+def test_scaling_loader_rejects_descriptor_stamp_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "campaign.json"
+    path.write_text('{"value":1}', encoding="utf-8")
+    real_fstat = validator.os.fstat
+    calls = 0
+
+    def drifting_fstat(fd: int):
+        nonlocal calls
+        info = real_fstat(fd)
+        calls += 1
+        if calls >= 2:
+            values = list(info)
+            values[6] = info.st_size + 1
+            return os.stat_result(values)
+        return info
+
+    monkeypatch.setattr(validator.os, "fstat", drifting_fstat)
+    with pytest.raises(ValueError, match="changed during read"):
+        validator._load_campaign(path)
+
+
 def test_validator_rejects_oversized_campaign_before_decode(tmp_path: Path) -> None:
     path = tmp_path / "campaign.json"
     path.write_bytes(b" " * (validator.MAX_INPUT_BYTES + 1))
