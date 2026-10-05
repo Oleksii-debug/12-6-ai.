@@ -987,6 +987,7 @@ def save_checkpoint(
     scheduler: Any | None = None,
     trainer_state: Mapping[str, Any] | None = None,
     overwrite: bool = False,
+    model_export_validator: Callable[[Mapping[str, np.ndarray]], None] | None = None,
     prepublish_validator: Callable[[], None] | None = None,
     post_rng_prepublish_validator: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
@@ -1013,7 +1014,12 @@ def save_checkpoint(
     rng_restored = False
     temp_dir = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
     try:
-        save_safetensors(_model_state_to_numpy(model), str(temp_dir / WEIGHTS_NAME))
+        model_state = _model_state_to_numpy(model)
+        if model_export_validator is not None:
+            if not callable(model_export_validator):
+                raise TypeError("model_export_validator must be callable or None")
+            model_export_validator(model_state)
+        save_safetensors(model_state, str(temp_dir / WEIGHTS_NAME))
         combined_state = {
             "optimizer": _state_dict_or_none(optimizer),
             "scheduler": _state_dict_or_none(scheduler),
