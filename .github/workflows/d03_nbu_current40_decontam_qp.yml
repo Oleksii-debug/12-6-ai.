@@ -1,0 +1,610 @@
+name: D03 NBU current-40 decontam G05 G06 two-clean
+
+on:
+  pull_request:
+    branches:
+      - execution/nbu-current40-global-dedup-g8-146-20261005
+    paths:
+      - ".github/workflows/d03_nbu_current40_decontam_qp.yml"
+      - "tools/run_d03_nbu_current40_decontam_qp_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-nbu-current40-decontam-qp-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2809-nbu-current40-postqp-g8-147-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      D03_EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      PARENT_SHA: "b5235cfd83852854e345dea6c2e89cfbcd1cef79"
+      PARENT_ARTIFACT_ID: "11375922011"
+      PARENT_ARTIFACT_ZIP_SHA256: "8a5b5624d75caa57734d3efa86fb0a89f537a7e978bdd6edc4118be1d27ce744"
+      NBU_PHYSICAL_SHA: "1695c16ab038960d74da5a9911643e9426bb9ad4"
+      NBU_PHYSICAL_BRANCH: "execution/nbu-current-40-pdftotext-g8-143-20261005"
+      NBU_PARENT_HEAD: "13be2b000804b410aed7ba759a663408429f60f6"
+      NBU_PHYSICAL_ARTIFACT_ID: "11374275477"
+      NBU_PHYSICAL_ARTIFACT_ZIP_SHA256: "ba7d7148a2fb4a389ad16396690bdcc72ccbf9077e5007b74d6cdca51cc24697"
+      EXPECTED_CANDIDATE_SHA256: "c1dbff49a6fb62c0ab07305aa9f5c9870e0bccdfd754d3644e4d7d6a6b033eaf"
+      EXPECTED_TEXT_EVIDENCE_ID: "3bd13beb2d737162cff9f93270570acc7c69034df35fd9550bb4b8300fb3f71f"
+      EXPECTED_SELECTION_ID: "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd"
+      EXPECTED_FINAL_ID: "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116"
+      EXPECTED_EVAL647_EVIDENCE_ID: "3401db10bad35fd1c6fac2839413fc6afffac58fa5f2135d2202b944bc2fda82"
+      EXPECTED_EVAL647_OBJECT_SET_ID: "0557410622403b411ac9d6d8fb01a57ef461617c19d06f112aa61dd57f670048"
+      EVAL290_HEAD_SHA: "029514654829cebc149cff6fc1fea2a8ba4fa566"
+      EVAL290_DATA_SHA256: "5400e37b8e8ddfdb9516a8b6eaa6fc01a8c5ec41811385d9f6907e6ef6d9614f"
+      EVAL290_MANIFEST_SHA256: "d0f8cf208724c80bda7b92aed54e10bea1492fa5bb3511a7e0fd828fc881e14a"
+      EVAL291_HEAD_SHA: "fb268061300127b62cc2a262664b30c614559dac"
+      EVAL291_DATA_SHA256: "df20e3d3ec75208399039a283487c3b8958c80ec3f119cee278fcc09948c6bfb"
+      EVAL291_AUTHORITY_SHA256: "493be56b8189325d122868ca778733676cc2143d24d121fb63f6b1b62a977177"
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact current-NBU executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$D03_EXECUTION_SHA"
+          test "$(git merge-base "$PARENT_SHA" HEAD)" = "$PARENT_SHA"
+          mapfile -t changed < <(git diff --name-only "$PARENT_SHA"..HEAD | sort)
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = ".github/workflows/d03_nbu_current40_decontam_qp.yml"
+          test "${changed[1]}" = "tools/run_d03_nbu_current40_decontam_qp_v1.py"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile             tools/run_d03_nbu_current40_decontam_qp_v1.py             src/twelve_six/data/nbu_current40_dedup_intake.py             src/twelve_six/data/current_clean_execution_v1.py             src/twelve_six/data/current_reserved_decontamination_v1.py             src/twelve_six/data/quality_execution_authority.py             src/twelve_six/data/privacy_execution_authority.py
+
+      - name: Fetch exact current-NBU global-dedup parent artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          parent="$RUNNER_TEMP/parent-global"
+          mkdir -p "$parent/extracted"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$parent/parent.zip"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$PARENT_ARTIFACT_ID/zip"
+          echo "$PARENT_ARTIFACT_ZIP_SHA256  $parent/parent.zip" | sha256sum --check --strict
+          unzip -q "$parent/parent.zip" -d "$parent/extracted"
+          root="$parent/extracted/nbu-current40-global-dedup"
+          test -f "$root/two-clean/clean-a/survivor-authority.json"
+          test -f "$root/two-clean/clean-a/execution-evidence.json"
+          test -f "$root/two-clean/two-clean-authority.json"
+          test -f "$root/current40-global-dedup-summary.json"
+          test "$(sha256sum "$root/two-clean/clean-a/survivor-authority.json" | cut -d' ' -f1)" = "e95f2af8c8ee2c1d8264b2e9cffa3f7147101640b74a8842e4968b49854934ab"
+          test "$(sha256sum "$root/two-clean/clean-a/execution-evidence.json" | cut -d' ' -f1)" = "8e74e1f1229d06c09a6838e0a21fcad87a562079e6ef147067fdf6860c604ba7"
+          test "$(sha256sum "$root/two-clean/two-clean-authority.json" | cut -d' ' -f1)" = "8cef03ad210da947fe1cbab8a66b4c2e58b3b99cb75857d3fef5aa89af862549"
+          test "$(sha256sum "$root/current40-global-dedup-summary.json" | cut -d' ' -f1)" = "bf9e9df0651355e1c507b215f6f3f8cba824bce15e998d993be4aae7e4b008de"
+
+      - name: Fetch exact body-free NBU physical authority
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          physical="$RUNNER_TEMP/nbu-physical-artifact"
+          mkdir -p "$physical"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$RUNNER_TEMP/nbu-physical.zip"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$NBU_PHYSICAL_ARTIFACT_ID/zip"
+          echo "$NBU_PHYSICAL_ARTIFACT_ZIP_SHA256  $RUNNER_TEMP/nbu-physical.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/nbu-physical.zip" -d "$physical"
+          test -f "$physical/nbu-discovery-evidence.json"
+          test -f "$physical/nbu-pdf-pin-evidence.json"
+          test -f "$physical/nbu-text-evidence-a.json"
+          test -f "$physical/nbu-real-execution-summary.json"
+          test ! -e "$physical/nbu-text-a.jsonl"
+          test ! -e "$physical/nbu-text-b.jsonl"
+
+      - name: Prepare exact NBU physical authority and pdftotext
+        shell: bash
+        run: |
+          set -euo pipefail
+          nbu_src="$RUNNER_TEMP/nbu-physical-src"
+          git fetch --no-tags origin "$NBU_PHYSICAL_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$NBU_PHYSICAL_SHA"
+          git worktree add --detach "$nbu_src" "$NBU_PHYSICAL_SHA"
+          test "$(git -C "$nbu_src" rev-parse HEAD)" = "$NBU_PHYSICAL_SHA"
+          test "$(git -C "$nbu_src" merge-base "$NBU_PARENT_HEAD" HEAD)" = "$NBU_PARENT_HEAD"
+          git -C "$nbu_src" diff --quiet HEAD --
+          git -C "$nbu_src" diff --cached --quiet HEAD --
+          PYTHONPATH="$nbu_src/src" python -m py_compile             "$nbu_src/tools/materialize_d03_ua_nbu_pdftotext_v1.py"
+
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y             --no-install-recommends             build-essential ca-certificates cmake curl libfontconfig1-dev             libfreetype6-dev libharfbuzz-dev libjpeg-dev liblcms2-dev             libopenjp2-7-dev libpng-dev libtiff-dev ninja-build pkg-config             unzip zlib1g-dev
+          curl --fail --location --retry 3 --retry-delay 2             "https://poppler.freedesktop.org/poppler-$POPPLER_VERSION.tar.xz"             --output /tmp/poppler-current40-postqp.tar.xz
+          echo "$POPPLER_TARBALL_SHA256  /tmp/poppler-current40-postqp.tar.xz" |             sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler-current40-postqp.tar.xz
+          cmake -S "/tmp/poppler-$POPPLER_VERSION"             -B /tmp/poppler-current40-postqp-build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_INSTALL_PREFIX=/usr/local             -DENABLE_UTILS=ON -DENABLE_CPP=OFF -DENABLE_GLIB=OFF             -DENABLE_QT5=OFF -DENABLE_QT6=OFF -DENABLE_BOOST=OFF             -DENABLE_LIBCURL=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF             -DBUILD_GTK_TESTS=OFF -DBUILD_QT5_TESTS=OFF             -DBUILD_QT6_TESTS=OFF -DBUILD_CPP_TESTS=OFF             -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-current40-postqp-build --parallel 2
+          sudo cmake --install /tmp/poppler-current40-postqp-build
+          sudo ldconfig
+          pdftotext -v 2>&1 | tee "$RUNNER_TEMP/pdftotext-current40-postqp-version.txt"
+          grep -F "pdftotext version $POPPLER_VERSION" "$RUNNER_TEMP/pdftotext-current40-postqp-version.txt"
+
+      - name: Reconstruct immutable selection-validation payloads from exact heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval290_src="$RUNNER_TEMP/eval290-src"
+          eval290_out_a="$RUNNER_TEMP/eval290-out-a"
+          eval290_out_b="$RUNNER_TEMP/eval290-out-b"
+          eval290_lock="$RUNNER_TEMP/eval290-extra.lock.txt"
+          eval290_venv="$RUNNER_TEMP/eval290-venv"
+          eval290_environment="$RUNNER_TEMP/eval290-environment.json"
+          eval291_src="$RUNNER_TEMP/eval291-src"
+          eval291_venv="$RUNNER_TEMP/eval291-venv"
+          eval291_environment="$RUNNER_TEMP/eval291-environment.json"
+          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src" "$eval290_venv" "$eval291_venv"
+          rm -f "$eval290_environment" "$eval291_environment"
+
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL290_HEAD_SHA"
+          git worktree add --detach "$eval290_src" "$EVAL290_HEAD_SHA"
+          test "$(git -C "$eval290_src" rev-parse HEAD)" = "$EVAL290_HEAD_SHA"
+          git -C "$eval290_src" diff --quiet HEAD --
+          git -C "$eval290_src" diff --cached --quiet HEAD --
+
+          python "$eval290_src/tools/execution_bootstrap.py" bootstrap             --repo-root "$eval290_src"             --capabilities "runtime,tests"             --venv "$eval290_venv"             --manifest "$eval290_environment"             --command "python -m pytest -q tests/test_eval290_ua_selection.py"
+
+          git -C "$eval290_src" show             "$EVAL290_HEAD_SHA:requirements/locks/linux-x86_64/eval290-extra.lock.txt"             > "$eval290_lock"
+          "$eval290_venv/bin/python" -m pip install             --disable-pip-version-check             --require-hashes             --no-deps             -r "$eval290_lock"
+          "$eval290_venv/bin/python" -c 'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+          for out in "$eval290_out_a" "$eval290_out_b"; do
+            PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python"               -m twelve_six.eval290_ua_selection               build --repo-root "$eval290_src" --output-dir "$out"
+          done
+          diff -ru "$eval290_out_a" "$eval290_out_b"
+          PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python"             -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out_a"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
+
+          git fetch --no-tags origin refs/pull/395/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL291_HEAD_SHA"
+          git worktree add --detach "$eval291_src" "$EVAL291_HEAD_SHA"
+          test "$(git -C "$eval291_src" rev-parse HEAD)" = "$EVAL291_HEAD_SHA"
+          git -C "$eval291_src" diff --quiet HEAD --
+          git -C "$eval291_src" diff --cached --quiet HEAD --
+
+          python "$eval291_src/tools/execution_bootstrap.py" bootstrap             --repo-root "$eval291_src"             --capabilities "runtime,tests"             --venv "$eval291_venv"             --manifest "$eval291_environment"             --command "python -m pytest -q tests/test_eval291_en_selection_validation.py"
+
+          cp "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"             "$RUNNER_TEMP/eval291-en.jsonl"
+          cp "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"             "$RUNNER_TEMP/eval291-authority.json"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-en.jsonl" | cut -d' ' -f1)" = "$EVAL291_DATA_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-authority.json" | cut -d' ' -f1)" = "$EVAL291_AUTHORITY_SHA256"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python"             -m twelve_six.eval291_en_selection_validation             build --repo-root "$eval291_src"
+          cmp "$RUNNER_TEMP/eval291-en.jsonl"             "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"
+          cmp "$RUNNER_TEMP/eval291-authority.json"             "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python"             -m twelve_six.eval291_en_selection_validation             verify --repo-root "$eval291_src"
+
+      - name: Build complete ephemeral reserved-evaluation universe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.data.current_reserved_decontamination_v1 import (
+              build_reserved_payload_binding,
+          )
+          from twelve_six.data.eval233_final_test_resolver_v1 import (
+              DATA232_FINAL_TEST_ID,
+              resolve_eval233_final_test,
+          )
+          from twelve_six.data.eval303_selection_payload_resolver_v1 import (
+              EVAL303_SELECTION_ID,
+              resolve_eval303_selection_payloads_from_reconstructed,
+          )
+          from twelve_six.data.eval647_future_training_exclusion_v1 import (
+              build_eval647_auxiliary_reserved_set,
+              compose_eval647_future_training_exclusion,
+          )
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          tmp = Path(os.environ["RUNNER_TEMP"])
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("utf-8")
+
+          def write_json(path, value):
+              Path(path).write_bytes(canonical(value) + b"\n")
+
+          def write_jsonl(path, rows):
+              Path(path).write_bytes(
+                  b"".join(canonical(row) + b"\n" for row in rows)
+              )
+
+          selection_rows, selection_set, selection_evidence = (
+              resolve_eval303_selection_payloads_from_reconstructed(
+                  eval290_data_jsonl=(
+                      tmp
+                      / "eval290-out-a/eval290_ua_selection_validation_v1.jsonl"
+                  ),
+                  eval290_manifest_json=(
+                      tmp
+                      / "eval290-out-a/eval290_ua_selection_validation_manifest_v1.json"
+                  ),
+                  eval291_data_jsonl=tmp / "eval291-en.jsonl",
+                  eval291_authority_json=tmp / "eval291-authority.json",
+                  eval303_membership_jsonl=(
+                      root
+                      / "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
+                  ),
+              )
+          )
+          resolver_identity = selection_evidence.get("resolver_identity_sha256")
+          if not isinstance(resolver_identity, str) or len(resolver_identity) != 64:
+              raise RuntimeError("EVAL-303 resolver identity malformed")
+
+          final_rows, final_set, _ = resolve_eval233_final_test(root)
+          if EVAL303_SELECTION_ID != os.environ["EXPECTED_SELECTION_ID"]:
+              raise RuntimeError("selection identity drift")
+          if DATA232_FINAL_TEST_ID != os.environ["EXPECTED_FINAL_ID"]:
+              raise RuntimeError("final-test identity drift")
+
+          manifest = json.loads(
+              (root / "configs/evaluation/eval_code_reserve_v1.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          evidence = json.loads(
+              (
+                  root
+                  / "evidence/eval647/code_selection_source_materialization_v1.json"
+              ).read_text(encoding="utf-8")
+          )
+          if (
+              evidence["evidence_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_EVIDENCE_ID"]
+          ):
+              raise RuntimeError("EVAL-647 evidence identity drift")
+          if (
+              evidence["object_set_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_OBJECT_SET_ID"]
+          ):
+              raise RuntimeError("EVAL-647 object-set identity drift")
+
+          spec = importlib.util.spec_from_file_location(
+              "eval647_source_materializer",
+              root / "tools/materialize_eval_code_reserve_v1.py",
+          )
+          if spec is None or spec.loader is None:
+              raise RuntimeError("cannot load EVAL-647 materializer")
+          materializer = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(materializer)
+          observed = materializer.materialize(manifest, timeout=60)
+          if (
+              observed["object_set_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_OBJECT_SET_ID"]
+          ):
+              raise RuntimeError("fresh EVAL-647 materialization membership drift")
+
+          auxiliary = build_eval647_auxiliary_reserved_set(manifest, evidence)
+          member_by_source = {
+              member["source_id"]: member for member in auxiliary["members"]
+          }
+          eval647_rows = []
+          for obj in manifest["objects"]:
+              payload = materializer._fetch(materializer._raw_url(obj), 60)
+              if len(payload) != obj["expected_raw_bytes"]:
+                  raise RuntimeError("EVAL-647 raw byte count drift")
+              if hashlib.sha256(payload).hexdigest() != obj["raw_sha256"]:
+                  raise RuntimeError("EVAL-647 raw SHA drift")
+              source_id = f"{obj['repository']}@{obj['revision']}:{obj['path']}"
+              member = member_by_source[source_id]
+              if member["content_sha256"] != obj["raw_sha256"]:
+                  raise RuntimeError("EVAL-647 member/content binding drift")
+              eval647_rows.append(
+                  {
+                      "record_id": member["record_id"],
+                      "source_id": member["source_id"],
+                      "source_family": member["source_family"],
+                      "modality": "code",
+                      "text": payload.decode("utf-8", errors="strict"),
+                  }
+              )
+
+          base_binding = build_reserved_payload_binding([selection_set, final_set])
+          composed, _ = compose_eval647_future_training_exclusion(
+              base_binding,
+              manifest,
+              evidence,
+          )
+          expected_members = sum(
+              len(item["members"]) for item in composed["reserved_sets"]
+          )
+          evaluation_rows = [*selection_rows, *final_rows, *eval647_rows]
+          if len(evaluation_rows) != expected_members:
+              raise RuntimeError("reserved evaluation payload coverage drift")
+
+          write_json(tmp / "base_reserved_binding.json", base_binding)
+          write_jsonl(tmp / "evaluation_records.jsonl", evaluation_rows)
+          with (tmp / "execution.env").open("w", encoding="utf-8") as out:
+              values = {
+                  "BASE_BINDING_ID": base_binding["binding_identity_sha256"],
+                  "COMPOSED_BINDING_ID": composed["binding_identity_sha256"],
+              }
+              for key, value in values.items():
+                  if not isinstance(value, str) or len(value) != 64:
+                      raise RuntimeError(f"invalid derived identity: {key}")
+                  out.write(f"{key}={value}\n")
+
+          print(
+              json.dumps(
+                  {
+                      "base_binding_identity_sha256": (
+                          base_binding["binding_identity_sha256"]
+                      ),
+                      "composed_binding_identity_sha256": (
+                          composed["binding_identity_sha256"]
+                      ),
+                      "evaluation_records": len(evaluation_rows),
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+          cat "$RUNNER_TEMP/execution.env" >> "$GITHUB_ENV"
+
+      - name: Execute exact NBU survivors twice in fresh processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$RUNNER_TEMP/parent-global/extracted/nbu-current40-global-dedup"
+          physical="$RUNNER_TEMP/nbu-physical-artifact"
+          nbu_src="$RUNNER_TEMP/nbu-physical-src"
+          run_once() {
+            label="$1"
+            source_out="$RUNNER_TEMP/nbu-source-$label"
+            out="$RUNNER_TEMP/output-$label"
+            rm -rf "$source_out" "$out"
+            mkdir -p "$source_out" "$out"
+            (
+              cd "$nbu_src"
+              PYTHONPATH="$nbu_src/src" python tools/materialize_d03_ua_nbu_pdftotext_v1.py                 "$physical/nbu-discovery-evidence.json"                 "$physical/nbu-pdf-pin-evidence.json"                 --text-output "$source_out/candidate.jsonl"                 --evidence-output "$source_out/materialization-evidence.json"
+            )
+            test "$(sha256sum "$source_out/candidate.jsonl" | cut -d' ' -f1)" = "$EXPECTED_CANDIDATE_SHA256"
+            python -I - "$source_out/materialization-evidence.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          value=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert value["evidence_identity_sha256"] == os.environ["EXPECTED_TEXT_EVIDENCE_ID"]
+          assert value["materialized_records"] == 40
+          assert value["observed_text_bytes"] == 891494
+          assert value["text_artifact_sha256"] == os.environ["EXPECTED_CANDIDATE_SHA256"]
+          PY
+
+            python tools/run_d03_nbu_current40_decontam_qp_v1.py               --expected-execution-head "$D03_EXECUTION_SHA"               --parent-survivors-json "$parent/two-clean/clean-a/survivor-authority.json"               --parent-evidence-json "$parent/two-clean/clean-a/execution-evidence.json"               --parent-two-clean-json "$parent/two-clean/two-clean-authority.json"               --parent-summary-json "$parent/current40-global-dedup-summary.json"               --candidate-jsonl "$source_out/candidate.jsonl"               --materialization-evidence-json "$source_out/materialization-evidence.json"               --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl"               --base-reserved-binding-json "$RUNNER_TEMP/base_reserved_binding.json"               --eval647-manifest-json configs/evaluation/eval_code_reserve_v1.json               --eval647-materialization-evidence-json evidence/eval647/code_selection_source_materialization_v1.json               --expected-base-reserved-binding-identity-sha256 "$BASE_BINDING_ID"               --expected-composed-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID"               --expected-eval647-materialization-evidence-identity-sha256 "$EXPECTED_EVAL647_EVIDENCE_ID"               --expected-eval647-object-set-identity-sha256 "$EXPECTED_EVAL647_OBJECT_SET_ID"               --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID"               --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID"               --output-evidence "$out/evidence.json"
+            rm -f "$source_out/candidate.jsonl"
+          }
+          run_once a
+          run_once b
+          cmp "$RUNNER_TEMP/output-a/evidence.json" "$RUNNER_TEMP/output-b/evidence.json"
+
+      - name: Qualify text-free NBU post-QP result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          raw_a = (tmp / "output-a/evidence.json").read_bytes()
+          raw_b = (tmp / "output-b/evidence.json").read_bytes()
+          if raw_a != raw_b:
+              raise RuntimeError("two fresh NBU post-QP executions diverged")
+          evidence = json.loads(raw_a)
+          expected_fields = {
+              "schema_version",
+              "execution_profile",
+              "execution_head_sha",
+              "parent",
+              "nbu_authority",
+              "gate_execution",
+              "survivor_inventory",
+              "authority_blobs",
+              "content_boundary",
+              "truth_boundary",
+              "evidence_identity_sha256",
+          }
+          if set(evidence) != expected_fields:
+              raise RuntimeError("NBU evidence fields are not closed-world")
+          if evidence["schema_version"] != "12-6.d03-nbu-current40-decontam-g05-g06-execution.v1":
+              raise RuntimeError("NBU evidence schema drift")
+          if evidence["execution_profile"] != "LOCAL_FREE":
+              raise RuntimeError("NBU execution profile drift")
+          if evidence["execution_head_sha"] != os.environ["D03_EXECUTION_SHA"]:
+              raise RuntimeError("NBU execution head drift")
+          core = dict(evidence)
+          claimed = core.pop("evidence_identity_sha256")
+          core_raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          if hashlib.sha256(core_raw).hexdigest() != claimed:
+              raise RuntimeError("NBU evidence self-hash mismatch")
+
+          parent = evidence["parent"]
+          if parent != {
+              "execution_head_sha": "b5235cfd83852854e345dea6c2e89cfbcd1cef79",
+              "workflow_run_id": 37382526670,
+              "artifact_id": 11375922011,
+              "artifact_zip_sha256": "8a5b5624d75caa57734d3efa86fb0a89f537a7e978bdd6edc4118be1d27ce744",
+              "matcher_report_sha256": "b38afd2597a627379b9f6e0eee3cfc2a7feea17572e8c6e85c8365e656578819",
+              "survivor_authority_sha256": "7f65a0f8b1a813d6f21145020eb4acd621290cb14a3d23fffa0913c1fb91b685",
+              "two_clean_authority_sha256": "7bd8591659d7be1fd94559621baeed2ba6558cc82603c157c99a40feacfef827",
+              "source_objects": 40,
+              "payload_bytes": 891494,
+          }:
+              raise RuntimeError("NBU parent authority drift")
+
+          nbu = evidence["nbu_authority"]
+          if nbu["source_family"] != "ua.nbu.official-resolutions":
+              raise RuntimeError("NBU family drift")
+          if nbu["source_object_count"] != 40 or nbu["pre_gate_payload_bytes"] != 891494:
+              raise RuntimeError("NBU source arithmetic drift")
+          gate = evidence["gate_execution"]
+          if gate["input_records"] != 40:
+              raise RuntimeError("NBU gate input count drift")
+          survivor = gate["survivor_payload_bytes"]
+          if type(survivor) is not int or not (0 <= survivor <= 891494):
+              raise RuntimeError("NBU survivor bytes invalid")
+          if gate["later_gate_loss_bytes"] != 891494 - survivor:
+              raise RuntimeError("NBU gate loss arithmetic drift")
+
+          inventory = evidence["survivor_inventory"]
+          if inventory["schema_version"] != "12-6.data526-record-inventory.v1":
+              raise RuntimeError("NBU survivor inventory schema drift")
+          rows = inventory["records"]
+          if inventory["record_count"] != len(rows) or len(rows) != gate["survivor_records"]:
+              raise RuntimeError("NBU survivor count drift")
+          if inventory["total_payload_bytes"] != survivor:
+              raise RuntimeError("NBU survivor byte drift")
+          required = {
+              "record_id",
+              "source_id",
+              "family",
+              "modality",
+              "payload_sha256",
+              "payload_bytes",
+          }
+          if any(not isinstance(row, dict) or set(row) != required for row in rows):
+              raise RuntimeError("NBU survivor row schema drift")
+          ids = [row["record_id"] for row in rows]
+          if ids != sorted(ids) or len(ids) != len(set(ids)):
+              raise RuntimeError("NBU survivor record identity drift")
+          if any(row["family"] != "ua.nbu.official-resolutions" for row in rows):
+              raise RuntimeError("foreign family crossed NBU inventory")
+          if any(row["modality"] not in {"uk", "ua"} for row in rows):
+              raise RuntimeError("foreign modality crossed NBU inventory")
+          if sum(row["payload_bytes"] for row in rows) != survivor:
+              raise RuntimeError("NBU survivor byte sum drift")
+
+          expected_truth = {
+              "global_cross_source_dedup_complete_for_nbu_parent": True,
+              "reserved_evaluation_decontamination_complete_for_nbu": True,
+              "canonical_quality_privacy_complete_for_nbu": True,
+              "cross_lineage_rededup_after_post_qp_complete": False,
+              "balance_diversity_retest_complete": False,
+              "family_caps_complete": False,
+              "cluster_safe_split_complete": False,
+              "deterministic_pack_two_clean_complete": False,
+              "positive_exact_unique_loss_ledger": False,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+              "scale_promotion_authorized": False,
+          }
+          if evidence["truth_boundary"] != expected_truth:
+              raise RuntimeError("NBU truth boundary drift")
+          if evidence["content_boundary"] != {
+              "raw_training_text_persisted": False,
+              "raw_evaluation_text_persisted": False,
+              "raw_survivor_text_persisted": False,
+              "durable_output_text_free": True,
+          }:
+              raise RuntimeError("NBU content boundary drift")
+          forbidden = {"text", "raw_text", "source_text", "normalized_payload", "payload_text"}
+          def walk(value):
+              if isinstance(value, dict):
+                  if forbidden.intersection(value):
+                      raise RuntimeError("durable NBU evidence contains raw-text key")
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(evidence)
+
+          proof_core = {
+              "schema_version": "12-6.d03-nbu-current40-postqp-two-clean-proof.v1",
+              "execution_head_sha": evidence["execution_head_sha"],
+              "fresh_process_count": 2,
+              "evidence_identity_sha256": claimed,
+              "survivor_records": gate["survivor_records"],
+              "survivor_source_objects": gate["survivor_source_objects"],
+              "survivor_payload_bytes": survivor,
+              "later_gate_loss_bytes": gate["later_gate_loss_bytes"],
+              "two_fresh_executions_byte_identical": True,
+              "raw_text_persisted": False,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          proof_raw = json.dumps(
+              proof_core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          proof = {
+              **proof_core,
+              "proof_identity_sha256": hashlib.sha256(proof_raw).hexdigest(),
+          }
+          (tmp / "nbu-current40-postqp-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+          rm -f "$RUNNER_TEMP/evaluation_records.jsonl"
+          rm -rf "$RUNNER_TEMP/nbu-source-a" "$RUNNER_TEMP/nbu-source-b"
+
+      - name: Upload text-free NBU post-QP evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-nbu-current40-decontam-qp-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/output-a/evidence.json
+            ${{ runner.temp }}/nbu-current40-postqp-two-clean-proof.json
+            ${{ runner.temp }}/pdftotext-current40-postqp-version.txt
+          if-no-files-found: error
+          retention-days: 90
