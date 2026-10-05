@@ -600,3 +600,420 @@ jobs:
             ${{ runner.temp }}/rada-probe-b.json
           if-no-files-found: warn
           retention-days: 30
+
+  caselaw-global-dedup:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 2259 && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        pass: [1, 2]
+    env:
+      CASELAW_HEAD: "deaf0730fe04a12e9abb8f3cecb14d6ad2cc7a4d"
+      CASELAW_BRANCH: "d03/1342-caselaw-source-admission-real-replay"
+      PRODUCT_COMMIT: "e63f2fd4eddbd348b57a42e1fb41cb658d0c3a82"
+      PRODUCT_BRANCH: "d03/common-pile-caselaw-zero-credit-20260907"
+      PRODUCT_BRANCH_HEAD: "263598aa49f71d89ec71a2bdd3083a8044decccc"
+      PRODUCT_TOOL_BLOB: "a7fcaeee0302c46c43e5a6ae43da16363810f14a"
+      PRODUCT_CONFIG_BLOB: "e8b7e29ce2ab4e634c5f8c056eecb6b0c2579467"
+      V7_BRANCH: "next100-065c/crosssource-dedup-v5-20260826"
+      V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+      PASS_ID: ${{ matrix.pass }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout exact execution carrier head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install local-free pinned Poppler build prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl libfontconfig1-dev libfreetype6-dev \
+            libharfbuzz-dev libjpeg-dev liblcms2-dev libopenjp2-7-dev libpng-dev \
+            libtiff-dev ninja-build pkg-config zlib1g-dev
+
+      - name: Build exact Poppler pdftotext from pinned upstream source
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
+            --output /tmp/poppler-caselaw.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler-caselaw.tar.xz" | sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler-caselaw.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" -B /tmp/poppler-caselaw-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DENABLE_UTILS=ON -DENABLE_CPP=OFF -DENABLE_GLIB=OFF \
+            -DENABLE_QT5=OFF -DENABLE_QT6=OFF -DENABLE_BOOST=OFF \
+            -DENABLE_LIBCURL=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF \
+            -DBUILD_GTK_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF \
+            -DBUILD_CPP_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-caselaw-build --parallel 2
+          sudo cmake --install /tmp/poppler-caselaw-build
+          sudo ldconfig
+          command -v pdftotext
+          pdftotext -v 2>&1 | tee /tmp/pdftotext-version.txt
+          grep -F "pdftotext version ${POPPLER_VERSION}" /tmp/pdftotext-version.txt
+
+      - name: Prepare exact historical authority worktrees
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git fetch --no-tags origin "$CASELAW_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$CASELAW_HEAD"
+          PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
+          git worktree add --detach "$PR1347" "$CASELAW_HEAD"
+          test -z "$(git -C "$PR1347" status --porcelain=v1 --untracked-files=all)"
+          git fetch --no-tags origin "$PRODUCT_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$PRODUCT_BRANCH_HEAD"
+          git merge-base --is-ancestor "$PRODUCT_COMMIT" FETCH_HEAD
+          git -C "$PR1347" cat-file -e "$PRODUCT_COMMIT^{commit}"
+          git fetch --no-tags origin "$V7_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$V7_HEAD"
+          git worktree add --detach "$RUNNER_TEMP/v7-$PASS_ID" "$V7_HEAD"
+          test "$(git -C "$RUNNER_TEMP/v7-$PASS_ID" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$RUNNER_TEMP/v7-$PASS_ID" status --porcelain=v1 --untracked-files=all)"
+
+      - name: Independently reproduce exact source-admitted Caselaw candidate
+        run: |
+          set -euxo pipefail
+          RUN_DIR="$RUNNER_TEMP/caselaw-pass-$PASS_ID"
+          PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
+          PRODUCT_ROOT="$RUN_DIR/historical-product"
+          mkdir -p "$RUN_DIR" "$PRODUCT_ROOT/tools" "$PRODUCT_ROOT/configs/data"
+          git -C "$PR1347" show "$PRODUCT_COMMIT:tools/materialize_d03_common_pile_caselaw.py" > \
+            "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py"
+          git -C "$PR1347" show "$PRODUCT_COMMIT:configs/data/d03_common_pile_caselaw_zero_credit_v1.json" > \
+            "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json"
+          test "$(git hash-object "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py")" = \
+            "$PRODUCT_TOOL_BLOB"
+          test "$(git hash-object "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json")" = \
+            "$PRODUCT_CONFIG_BLOB"
+          (
+            cd "$PR1347"
+            python tools/run_d03_caselaw_source_admission_replay_v1.py \
+              --product-tool "$PRODUCT_ROOT/tools/materialize_d03_common_pile_caselaw.py" \
+              --product-config "$PRODUCT_ROOT/configs/data/d03_common_pile_caselaw_zero_credit_v1.json" \
+              --admission-tool "$PR1347/tools/verify_d03_common_pile_caselaw_source_admission.py" \
+              --admission-policy "$PR1347/configs/data/d03_common_pile_caselaw_source_admission_v1.json" \
+              --source-gzip "$RUN_DIR/cap_00044.jsonl.gz" \
+              --source-gzip "$RUN_DIR/cap_00043.jsonl.gz" \
+              --candidate-jsonl "$RUN_DIR/candidate.jsonl" \
+              --admitted-candidate-jsonl "$RUN_DIR/admitted.jsonl" \
+              --materializer-report "$RUN_DIR/materializer.json" \
+              --report "$RUN_DIR/source-admission.json" \
+              --download
+          )
+          test "$(sha256sum "$RUN_DIR/admitted.jsonl" | cut -d' ' -f1)" = \
+            "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273"
+
+      - name: Execute incumbent reference plus indexed global dedup
+        run: |
+          set -euxo pipefail
+          RUN_DIR="$RUNNER_TEMP/caselaw-pass-$PASS_ID"
+          PR1347="$RUNNER_TEMP/caselaw-pr1347-$PASS_ID"
+          python tools/run_d03_caselaw_global_dedup_execution_v1.py             --v7-root "$RUNNER_TEMP/v7-$PASS_ID"             --bulk-workspace "$RUN_DIR/bulk-workspace"             --candidate-jsonl "$RUN_DIR/admitted.jsonl"             --execution-evidence-json "$PR1347/evidence/d03-caselaw-source-admission-real-execution-v1.json"             --output-report "$RUN_DIR/global-dedup-report.json"             --output-survivors "$RUN_DIR/survivors.json"             --output-evidence "$RUN_DIR/execution-evidence.json"             --max-candidate-pairs 17532081             --max-index-postings 100000000             --max-pair-expansions 100000000
+
+      - name: Upload text-free pass evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: caselaw-global-dedup-pass-${{ matrix.pass }}-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/materializer.json
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/source-admission.json
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/global-dedup-report.json
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/survivors.json
+            ${{ runner.temp }}/caselaw-pass-${{ matrix.pass }}/execution-evidence.json
+
+  caselaw-two-clean-compare:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 2259 && github.head_ref == 'd03/2257-caselaw-global-dedup-execution-v1' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: caselaw-global-dedup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download pass 1
+        uses: actions/download-artifact@v4
+        with:
+          name: caselaw-global-dedup-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@v4
+        with:
+          name: caselaw-global-dedup-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require two clean byte-identical authorities
+        run: |
+          set -euxo pipefail
+          cmp artifacts/pass-1/materializer.json artifacts/pass-2/materializer.json
+          cmp artifacts/pass-1/source-admission.json artifacts/pass-2/source-admission.json
+          cmp artifacts/pass-1/global-dedup-report.json artifacts/pass-2/global-dedup-report.json
+          cmp artifacts/pass-1/survivors.json artifacts/pass-2/survivors.json
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import math
+          import os
+          from pathlib import Path
+
+          def reject_pairs(pairs: list[tuple[str, object]]) -> dict:
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  result[key] = value
+              return result
+
+          def reject_constant(value: str) -> object:
+              raise ValueError(f"non-finite JSON constant: {value}")
+
+          def finite_float(value: str) -> float:
+              parsed = float(value)
+              if not math.isfinite(parsed):
+                  raise ValueError(f"non-finite JSON number: {value}")
+              return parsed
+
+          def load(path: str) -> dict:
+              raw = Path(path).read_bytes()
+              value = json.loads(
+                  raw.decode("utf-8", errors="strict"),
+                  object_pairs_hook=reject_pairs,
+                  parse_constant=reject_constant,
+                  parse_float=finite_float,
+              )
+              assert type(value) is dict, path
+              return value
+
+          def canonical(
+              value: dict,
+              *,
+              ascii_only: bool = False,
+              newline: bool = False,
+          ) -> bytes:
+              raw = json.dumps(
+                  value,
+                  ensure_ascii=ascii_only,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  allow_nan=False,
+              ).encode("utf-8")
+              return raw + (b"\n" if newline else b"")
+
+          def sha(path: str) -> str:
+              return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+          def require_exact_int(value: object, expected: int, field: str) -> None:
+              assert type(value) is int and value == expected, field
+
+          def verify_self_hash(
+              value: dict,
+              field: str,
+              *,
+              ascii_only: bool = False,
+              newline: bool = False,
+          ) -> None:
+              identity = value.get(field)
+              assert type(identity) is str and len(identity) == 64, field
+              core = {key: item for key, item in value.items() if key != field}
+              observed = hashlib.sha256(
+                  canonical(core, ascii_only=ascii_only, newline=newline)
+              ).hexdigest()
+              assert observed == identity, field
+
+          materializers = [
+              load("artifacts/pass-1/materializer.json"),
+              load("artifacts/pass-2/materializer.json"),
+          ]
+          source_admissions = [
+              load("artifacts/pass-1/source-admission.json"),
+              load("artifacts/pass-2/source-admission.json"),
+          ]
+          for value in (*materializers, *source_admissions):
+              verify_self_hash(value, "report_identity_sha256", newline=True)
+
+          candidate_sha256 = "45043f528ee83cb87a94f42ca9164c16463502308bf849a6736498d3b8caa273"
+          for materializer in materializers:
+              require_exact_int(materializer["retained_records"], 5_658, "retained_records")
+              require_exact_int(materializer["retained_normalized_utf8_bytes"], 5_962_147, "retained_normalized_utf8_bytes")
+              assert materializer["candidate_jsonl_sha256"] == candidate_sha256
+              assert materializer["canonical_capacity_credited"] == 0
+              assert materializer["tokenizer_fit_authorized"] is False
+              assert materializer["model_training_executed"] is False
+          for admission in source_admissions:
+              assert admission["historical_product_replay_reproduced"] is True
+              require_exact_int(admission["input_records"], 5_658, "input_records")
+              require_exact_int(admission["input_normalized_utf8_bytes"], 5_962_147, "input_normalized_utf8_bytes")
+              assert admission["input_candidate_sha256"] == candidate_sha256
+              require_exact_int(admission["source_admitted_records"], 5_658, "source_admitted_records")
+              require_exact_int(admission["source_admitted_normalized_utf8_bytes"], 5_962_147, "source_admitted_normalized_utf8_bytes")
+              assert admission["source_admitted_candidate_sha256"] == candidate_sha256
+              assert admission["global_dedup_completed"] is False
+              assert admission["canonical_capacity_credited"] == 0
+              assert admission["tokenizer_fit_authorized"] is False
+              assert admission["model_training_executed"] is False
+
+          report = load("artifacts/pass-1/global-dedup-report.json")
+          survivors = load("artifacts/pass-1/survivors.json")
+          verify_self_hash(report, "report_sha256", ascii_only=True, newline=True)
+          verify_self_hash(survivors, "survivor_authority_sha256")
+
+          a = load("artifacts/pass-1/execution-evidence.json")
+          b = load("artifacts/pass-2/execution-evidence.json")
+          for evidence in (a, b):
+              verify_self_hash(evidence, "evidence_identity_sha256")
+              assert evidence["schema_version"] == "12-6.d03-caselaw-global-dedup-execution.v1"
+              assert evidence["execution_profile"] == "GITHUB_HOSTED_FREE_LOCAL_FREE"
+              require_exact_int(evidence["execution_claim_issue"], 2257, "execution_claim_issue")
+              require_exact_int(evidence["execution_pr"], 2259, "execution_pr")
+              assert evidence["execution_head_sha"] == os.environ["HEAD_SHA"]
+              assert evidence["pinned_main_sha"] == "bd2d445dfd8fbd7ec6759c1398bb913f4e0c0093"
+              assert evidence["caselaw"]["candidate_sha256"] == candidate_sha256
+              provenance_scope = evidence["caselaw"]["source_admission_provenance_scope"]
+              assert type(provenance_scope) is dict
+              assert provenance_scope["upstream_source_evidence_external_llm_or_api_used"] is False
+              assert provenance_scope["current_corpus_external_llm_free_claimed_by_this_adapter"] is False
+              assert provenance_scope["historical_source_admission_report_promoted_as_corpus_global_truth"] is False
+              baseline = evidence["baseline_v8"]
+              require_exact_int(baseline["source_object_count"], 263, "baseline_v8.source_object_count")
+              require_exact_int(baseline["payload_bytes"], 6_093_965, "baseline_v8.payload_bytes")
+              assert baseline["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              require_exact_int(
+                  baseline["declared_capacity_bytes"],
+                  6_093_965,
+                  "baseline_v8.declared_capacity_bytes",
+              )
+              assert type(baseline["comparison_payload_bytes"]) is int
+              assert baseline["comparison_payload_bytes"] > 0
+              removal = baseline["nomis1864_deauthorization"]
+              assert removal["blocked_family"] == "ua.verba.public-domain.nomis1864"
+              require_exact_int(removal["blocked_payload_bytes"], 1_659, "nomis.blocked_payload_bytes")
+              require_exact_int(removal["pre_source_object_count"], 35, "nomis.pre_source_object_count")
+              require_exact_int(removal["post_source_object_count"], 34, "nomis.post_source_object_count")
+              assert removal["removed_before_new_global_dedup"] is True
+
+              require_exact_int(evidence["caselaw"]["source_object_count"], 5_658, "caselaw.source_object_count")
+              require_exact_int(evidence["caselaw"]["payload_bytes"], 5_962_147, "caselaw.payload_bytes")
+              assert evidence["caselaw"]["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              require_exact_int(
+                  evidence["caselaw"]["declared_capacity_bytes"],
+                  5_962_147,
+                  "caselaw.declared_capacity_bytes",
+              )
+              require_exact_int(
+                  evidence["caselaw"]["comparison_payload_bytes"],
+                  5_962_147,
+                  "caselaw.comparison_payload_bytes",
+              )
+
+              combined = evidence["combined"]
+              require_exact_int(combined["source_object_count"], 5_921, "combined.source_object_count")
+              require_exact_int(combined["payload_bytes"], 12_056_112, "combined.payload_bytes")
+              assert combined["payload_bytes_semantics"] == "DECLARED_CAPACITY_BYTES"
+              require_exact_int(
+                  combined["declared_capacity_bytes"],
+                  12_056_112,
+                  "combined.declared_capacity_bytes",
+              )
+              assert type(combined["comparison_payload_bytes"]) is int
+              assert (
+                  combined["comparison_payload_bytes"]
+                  == baseline["comparison_payload_bytes"]
+                  + evidence["caselaw"]["comparison_payload_bytes"]
+              )
+              assert evidence["combined"]["reports_byte_identical"] is True
+              execution = evidence["indexed_execution"]
+              assert type(execution["process_max_rss_kib"]) is int
+              assert execution["process_max_rss_kib"] > 0
+              for field in ("reference_wall_clock_seconds", "indexed_wall_clock_seconds"):
+                  value = execution[field]
+                  assert type(value) in (int, float) and not isinstance(value, bool)
+                  assert math.isfinite(value) and value >= 0
+              assert evidence["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+              assert evidence["truth_boundary"]["tokenizer_fit_authorized"] is False
+              assert evidence["truth_boundary"]["training_executed"] is False
+              assert evidence["truth_boundary"]["paid_compute_used"] is False
+              assert evidence["truth_boundary"]["whole_corpus_external_llm_cleanliness_claimed"] is False
+              assert "external_llm_or_api_used_for_data_or_intelligence" not in evidence["truth_boundary"]
+              assert report["report_sha256"] == evidence["combined"]["indexed_report_sha256"]
+              assert survivors["survivor_authority_sha256"] == evidence["survivor_authority_sha256"]
+
+          stable_fields = (
+              "schema_version", "execution_profile", "execution_claim_issue", "execution_pr",
+              "execution_head_sha", "pinned_main_sha", "authority_path_blobs", "baseline_v8",
+              "caselaw", "combined", "survivor_authority_sha256", "content_boundary", "truth_boundary",
+          )
+          for key in stable_fields:
+              assert a[key] == b[key], key
+          assert (
+              a["baseline_v8"]["comparison_payload_bytes"]
+              == b["baseline_v8"]["comparison_payload_bytes"]
+          )
+          assert (
+              a["combined"]["comparison_payload_bytes"]
+              == b["combined"]["comparison_payload_bytes"]
+          )
+
+          summary_core = {
+              "schema_version": "12-6.d03-caselaw-global-dedup-two-clean.v1",
+              "execution_profile": "GITHUB_HOSTED_FREE_LOCAL_FREE",
+              "execution_head_sha": os.environ["HEAD_SHA"],
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "two_independent_source_replays": True,
+              "two_independent_global_dedup_executions": True,
+              "materializer_reports_byte_identical": True,
+              "source_admission_reports_byte_identical": True,
+              "global_dedup_reports_byte_identical": True,
+              "survivor_authorities_byte_identical": True,
+              "source_admitted_candidate_sha256": candidate_sha256,
+              "source_admission_provenance_scope": a["caselaw"]["source_admission_provenance_scope"],
+              "materializer_report_identity_sha256": materializers[0]["report_identity_sha256"],
+              "source_admission_report_identity_sha256": source_admissions[0]["report_identity_sha256"],
+              "materializer_report_file_sha256": sha("artifacts/pass-1/materializer.json"),
+              "source_admission_report_file_sha256": sha("artifacts/pass-1/source-admission.json"),
+              "global_dedup_report_file_sha256": sha("artifacts/pass-1/global-dedup-report.json"),
+              "survivor_authority_file_sha256": sha("artifacts/pass-1/survivors.json"),
+              "matcher_report_sha256": a["combined"]["indexed_report_sha256"],
+              "survivor_authority_sha256": a["survivor_authority_sha256"],
+              "pass_evidence_identity_sha256": [a["evidence_identity_sha256"], b["evidence_identity_sha256"]],
+              "indexed_execution_passes": [a["indexed_execution"], b["indexed_execution"]],
+              "truth_boundary": a["truth_boundary"],
+          }
+          canonical = json.dumps(summary_core, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          summary = {**summary_core, "summary_identity_sha256": hashlib.sha256(canonical).hexdigest()}
+          Path("artifacts/two-clean-summary.json").write_text(
+              json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload two-clean convergence evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: caselaw-global-dedup-two-clean-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: artifacts/two-clean-summary.json
