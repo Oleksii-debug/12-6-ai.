@@ -2037,7 +2037,7 @@ class Trainer:
             digest.update(b"none\0")
         else:
             try:
-                scaler_attrs = self._canonical_scaler_storage()
+                scaler_attrs = Trainer._canonical_scaler_storage(self)
             except TrainingStateInvalidError as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint scaler storage is unavailable"
@@ -2762,14 +2762,29 @@ class Trainer:
 
         # Bind every effectful component interface before the first live restore
         # mutation. A stateful descriptor/proxy must not get a second lookup
-        # opportunity after checkpoint preflight or silently redirect state to a
-        # different optimizer/scheduler/scaler.
+        # opportunity after checkpoint preflight or silently redirect/mutate the
+        # target while its loader is being resolved.
         restore_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
         expected_model = restore_attrs.get("model")
         expected_optimizer = restore_attrs.get("optimizer")
         expected_scheduler = restore_attrs.get("scheduler")
         expected_scaler = restore_attrs.get("scaler")
         expected_config = restore_attrs.get("config")
+        expected_preapply_state = {
+            name: copy.deepcopy(restore_attrs.get(name))
+            for name in (
+                "_failure_reason",
+                "_update_incomplete",
+                "micro_step",
+                "optimizer_step",
+                "tokens_seen",
+                "_pending_tokens",
+                "_pending_loss_sum",
+            )
+        }
+        expected_config_state = asdict(expected_config)
+        expected_model_fingerprint = Trainer._model_export_fingerprint(self)
+        expected_auxiliary_fingerprint = Trainer._checkpoint_auxiliary_fingerprint(self)
 
         def _restore_component_bindings_changed() -> bool:
             current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
@@ -2783,6 +2798,30 @@ class Trainer:
                     ("config", expected_config),
                 )
             )
+
+        def _restore_preapply_drift_reason() -> str | None:
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            if _restore_component_bindings_changed():
+                return "trainer restore component binding changed during loader lookup"
+            if any(
+                not _typed_state_equal(current.get(name), expected)
+                for name, expected in expected_preapply_state.items()
+            ):
+                return "trainer restore state changed during loader lookup"
+            try:
+                if not _typed_state_equal(asdict(expected_config), expected_config_state):
+                    return "trainer restore config changed during loader lookup"
+                Trainer._require_no_residual_model_gradients(self)
+                if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
+                    return "trainer model changed during loader lookup"
+                if (
+                    Trainer._checkpoint_auxiliary_fingerprint(self)
+                    != expected_auxiliary_fingerprint
+                ):
+                    return "trainer auxiliary state changed during loader lookup"
+            except BaseException:
+                return "trainer restore state became unobservable during loader lookup"
+            return None
 
         def _require_restore_component_bindings() -> None:
             if _restore_component_bindings_changed():
@@ -2804,11 +2843,9 @@ class Trainer:
                 else getattr(expected_scaler, "load_state_dict", None)
             )
         except BaseException:
-            if _restore_component_bindings_changed():
-                Trainer._mark_failed(
-                    self,
-                    "trainer restore component binding changed during loader lookup",
-                )
+            drift_reason = _restore_preapply_drift_reason()
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
             raise
 
         if not callable(optimizer_loader):
@@ -2827,14 +2864,10 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "trainer gradient scaler must provide load_state_dict()"
             )
-        if _restore_component_bindings_changed():
-            Trainer._mark_failed(
-                self,
-                "trainer restore component binding changed during loader lookup",
-            )
-            raise TrainingStateInvalidError(
-                "trainer restore component binding changed during loader lookup"
-            )
+        drift_reason = _restore_preapply_drift_reason()
+        if drift_reason is not None:
+            Trainer._mark_failed(self, drift_reason)
+            raise TrainingStateInvalidError(drift_reason)
 
         self._update_incomplete = True
         try:
