@@ -375,19 +375,14 @@ def test_parse_args_rejects_duplicate_authority_options(
         "--verify-report",
         str(report),
     ]
-    duplicate = (
-        f"{option}={tmp_path / extra_value}"
-        if use_equals and option in {"--output", "--verify-report", "--balanced-selection"}
-        else f"{option}={extra_value}"
-        if use_equals
-        else option
+    path_options = {"--balanced-selection", "--output", "--verify-report"}
+    duplicate_value = (
+        str(tmp_path / extra_value) if option in path_options else extra_value
     )
     if use_equals:
-        argv.append(duplicate)
+        argv.append(f"{option}={duplicate_value}")
     else:
-        argv.extend([option, str(tmp_path / extra_value) if option in {
-            "--balanced-selection", "--output", "--verify-report"
-        } else extra_value])
+        argv.extend([option, duplicate_value])
     monkeypatch.setattr(sys, "argv", argv)
     with pytest.raises(SystemExit) as caught:
         cli.parse_args()
