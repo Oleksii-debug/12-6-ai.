@@ -732,11 +732,7 @@ def _assert_native_d02_postload_snapshot(trainer: Any, state: Any) -> None:
             "canonical trainer retained pending accumulation after checkpoint restore"
         )
 
-    live_config = attrs.get("config")
-    if is_dataclass(live_config) and not isinstance(live_config, type):
-        live_config = asdict(live_config)
-    elif hasattr(live_config, "model_dump"):
-        live_config = live_config.model_dump(mode="python")
+    live_config = _snapshot_native_d02_config(attrs.get("config"))
     if not _typed_config_equal(state.get("config"), live_config):
         raise CheckpointCompatibilityError(
             "canonical trainer post-load config disagrees with checkpoint"
