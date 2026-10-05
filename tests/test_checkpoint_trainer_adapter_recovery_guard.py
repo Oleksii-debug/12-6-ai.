@@ -53,25 +53,7 @@ class PlainTrainer:
         self.state = dict(state)
 
 
-class CanonicalTarget(PlainTrainer):
-    def __init__(self, model: Model) -> None:
-        super().__init__()
-        self.model = model
-        self._failure_reason: str | None = None
-        self._update_incomplete = False
-        self.micro_step = 0
-        self.optimizer_step = 0
-        self.tokens_seen = 0
-        self._pending_tokens = 0
-        self._pending_loss_sum = 0.0
-
-    def load_state_dict(self, state: dict[str, object]) -> None:
-        super().load_state_dict(state)
-        self.micro_step = int(state["micro_step"])
-        self.optimizer_step = int(state["optimizer_step"])
-        self.tokens_seen = int(state["tokens_seen"])
-
-
+class _CanonicalAuthorityProtocol:
     def _require_finite_auxiliary_state(self) -> None:
         return None
 
@@ -100,6 +82,25 @@ class CanonicalTarget(PlainTrainer):
 
     def _require_checkpoint_scaler_state(self, _state: object) -> None:
         return None
+
+
+class CanonicalTarget(_CanonicalAuthorityProtocol, PlainTrainer):
+    def __init__(self, model: Model) -> None:
+        super().__init__()
+        self.model = model
+        self._failure_reason: str | None = None
+        self._update_incomplete = False
+        self.micro_step = 0
+        self.optimizer_step = 0
+        self.tokens_seen = 0
+        self._pending_tokens = 0
+        self._pending_loss_sum = 0.0
+
+    def load_state_dict(self, state: dict[str, object]) -> None:
+        super().load_state_dict(state)
+        self.micro_step = int(state["micro_step"])
+        self.optimizer_step = int(state["optimizer_step"])
+        self.tokens_seen = int(state["tokens_seen"])
 
 
 def identity() -> CheckpointIdentity:
