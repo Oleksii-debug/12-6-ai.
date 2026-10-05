@@ -396,6 +396,14 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
             raise CheckpointCompatibilityError(
                 "CUDA device count differs from the checkpoint; load with restore_rng=False"
             )
+        for index, cuda_state in enumerate(cuda_states):
+            try:
+                probe = torch.Generator(device=f"cuda:{index}")
+                probe.set_state(cuda_state.cpu())
+            except (AttributeError, RuntimeError, TypeError) as exc:
+                raise CheckpointCompatibilityError(
+                    f"checkpoint CUDA RNG state for device {index} is invalid"
+                ) from exc
 
 
 def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
