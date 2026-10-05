@@ -96,6 +96,26 @@ class _MetaclassAdamW(torch.optim.AdamW, metaclass=_TypeIdentityMeta):
     pass
 
 
+class _ArmedOptimizerViewAdamW(torch.optim.AdamW):
+    def __init__(self, params: Any, **kwargs: Any) -> None:
+        super().__init__(params, **kwargs)
+        raw = torch.optim.Optimizer.__dict__["__dict__"].__get__(self, type(self))
+        raw["_view_spoof_armed"] = False
+        raw["view_reads"] = []
+        raw["_fake_param_groups"] = []
+        raw["_fake_state"] = {}
+
+    def __getattribute__(self, name: str) -> Any:
+        if name in {"param_groups", "state"}:
+            descriptor = torch.optim.Optimizer.__dict__["__dict__"]
+            raw = descriptor.__get__(self, type(self))
+            if raw.get("_view_spoof_armed", False):
+                raw["view_reads"].append(name)
+                fake_name = "_fake_param_groups" if name == "param_groups" else "_fake_state"
+                return raw[fake_name]
+        return super().__getattribute__(name)
+
+
 def _raw_module_dict(module: torch.nn.Module) -> dict[str, Any]:
     descriptor = torch.nn.Module.__dict__["__dict__"]
     attrs = descriptor.__get__(module, type(module))
@@ -143,6 +163,72 @@ def test_model_fingerprint_ignores_armed_dict_descriptor() -> None:
 
     assert before != after
     assert raw["dict_reads"] == []
+
+
+def test_optimizer_coverage_ignores_forged_param_groups_view() -> None:
+    model = _TwoParameters()
+    optimizer = _ArmedOptimizerViewAdamW(
+        [model.left, model.right],
+        lr=1e-3,
+    )
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        optimizer=optimizer,
+        device="cpu",
+    )
+    raw = torch.optim.Optimizer.__dict__["__dict__"].__get__(
+        optimizer,
+        type(optimizer),
+    )
+    raw["_fake_param_groups"] = [
+        {
+            **group,
+            "params": list(group["params"]),
+        }
+        for group in raw["param_groups"]
+    ]
+    raw["_fake_state"] = dict(raw["state"])
+    raw["param_groups"][0]["params"].pop()
+    raw["_view_spoof_armed"] = True
+
+    with pytest.raises(ValueError, match="optimizer omits trainable model parameters"):
+        trainer._require_optimizer_parameter_coverage()
+
+    assert raw["view_reads"] == []
+
+
+def test_optimizer_hyperparameters_ignore_forged_param_groups_view() -> None:
+    model = _TwoParameters()
+    optimizer = _ArmedOptimizerViewAdamW(
+        [model.left, model.right],
+        lr=1e-3,
+    )
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        optimizer=optimizer,
+        device="cpu",
+    )
+    raw = torch.optim.Optimizer.__dict__["__dict__"].__get__(
+        optimizer,
+        type(optimizer),
+    )
+    raw["_fake_param_groups"] = [
+        {
+            **group,
+            "params": list(group["params"]),
+        }
+        for group in raw["param_groups"]
+    ]
+    raw["_fake_state"] = dict(raw["state"])
+    raw["param_groups"][0]["lr"] = float("nan")
+    raw["_view_spoof_armed"] = True
+
+    with pytest.raises(Exception, match="optimizer"):
+        trainer._require_safe_optimizer_hyperparameters()
+
+    assert raw["view_reads"] == []
 
 
 def test_auxiliary_fingerprint_ignores_optimizer_dict_descriptor() -> None:
