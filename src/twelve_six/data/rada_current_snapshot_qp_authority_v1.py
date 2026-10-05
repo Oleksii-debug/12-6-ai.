@@ -319,24 +319,23 @@ def _read_regular_bytes(path: Path, *, label: str) -> bytes:
 def load_current_rada_replay_authority(
     path: Path,
     *,
-    expected_raw_sha256: str | None = None,
+    expected_raw_sha256: str = CANONICAL_AUTHORITY_FILE_SHA256,
 ) -> dict[str, Any]:
-    """Load one regular authority file, optionally binding its exact transport bytes."""
+    """Load authority bytes only when their exact transport identity is pinned."""
 
     raw = _read_regular_bytes(path, label="Rada replay authority")
     if len(raw) > MAX_AUTHORITY_BYTES:
         raise RadaCurrentSnapshotAuthorityError("authority file exceeds byte limit")
-    if expected_raw_sha256 is not None:
-        if (
-            type(expected_raw_sha256) is not str
-            or len(expected_raw_sha256) != 64
-            or any(char not in "0123456789abcdef" for char in expected_raw_sha256)
-        ):
-            raise RadaCurrentSnapshotAuthorityError(
-                "expected raw SHA-256 is malformed"
-            )
-        if _sha256(raw) != expected_raw_sha256:
-            raise RadaCurrentSnapshotAuthorityError("authority raw SHA-256 drift")
+    if (
+        type(expected_raw_sha256) is not str
+        or len(expected_raw_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in expected_raw_sha256)
+    ):
+        raise RadaCurrentSnapshotAuthorityError(
+            "expected raw SHA-256 is malformed"
+        )
+    if _sha256(raw) != expected_raw_sha256:
+        raise RadaCurrentSnapshotAuthorityError("authority raw SHA-256 drift")
     return validate_current_rada_replay_authority(_strict_json_bytes(raw))
 
 
