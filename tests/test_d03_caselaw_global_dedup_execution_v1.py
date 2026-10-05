@@ -1463,3 +1463,66 @@ else:
 assert len(lineage_calls) == 10 and len(attest_calls) == 2
 """
     )
+
+
+def test_v3_literal_score_result_changes_default_marshal_but_not_code() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+# Only literal 1.0 is retained by the result: no code, data, or runtime swap.
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_namespace = {}
+canonical_namespace = {}
+exec(compile(source, "v3-warmup-reference.py", "exec"), live_namespace)
+exec(compile(source, "v3-warmup-reference.py", "exec"), canonical_namespace)
+live = live_namespace["lineage"]
+canonical = canonical_namespace["lineage"]
+original_bytes = live.__code__.co_code
+strict = mod.indexed._code_digest
+original_digest = strict(canonical.__code__)
+assert strict(live.__code__) == original_digest
+held = live(list(range(16)), ())
+assert len(held) == 8
+assert strict(live.__code__) != original_digest
+assert live.__code__.co_code == original_bytes
+del held
+assert strict(live.__code__) == original_digest
+"""
+    )
+
+
+def test_v3_warmup_releases_synthetic_result_before_strict_second_attest() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-result-lifetime.py", "exec"), live_ns)
+exec(compile(source, "v3-result-lifetime.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+canonical = canonical_ns["lineage"]
+expected_digest = mod.indexed._code_digest(canonical.__code__)
+checks = []
+def unchanged_strict_attest(matcher):
+    checks.append(True)
+    if mod.indexed._code_digest(matcher._lineage_matches.__code__) != expected_digest:
+        raise mod.indexed.IndexedExecutionError(
+            "V3 callable code drift: _lineage_matches"
+        )
+mod.indexed.attest_incumbent_runtime = unchanged_strict_attest
+matcher = SimpleNamespace(_lineage_matches=live)
+mod._preflight_attested_lineage_warmup(matcher)
+assert len(checks) == 2
+assert mod.indexed._code_digest(live.__code__) == expected_digest
+"""
+    )
