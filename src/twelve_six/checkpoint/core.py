@@ -1590,6 +1590,10 @@ def load_verified_checkpoint(
         run_manifest_hash=expected_run_manifest_hash,
     )
     arrays, combined_state = _decode_verified_state(verified)
+    # Bind loader lookup/signature semantics before target materialization.
+    # A descriptor-backed loader can change model structure when inspected; the
+    # compatibility snapshot below must observe that change before any apply.
+    model_apply = _bind_model_state_loader(model, strict_model)
     materialized = _prepare_model_weights(model, arrays, strict_model)
     if optimizer is not None and combined_state.get("optimizer") is None:
         raise CheckpointCompatibilityError(
@@ -1613,7 +1617,7 @@ def load_verified_checkpoint(
     # No checkpoint byte is reopened after this point. All integrity, identity,
     # payload decoding, model/optimizer/scheduler compatibility and supported RNG
     # checks completed before the first mutation.
-    _apply_model_weights(model, materialized, strict_model)
+    model_apply(materialized)
     if optimizer is not None:
         optimizer.load_state_dict(combined_state["optimizer"])
     if scheduler is not None:
