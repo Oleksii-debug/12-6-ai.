@@ -2311,24 +2311,31 @@ class Trainer:
         # live PyTorch optimizer: uninterrupted training does not carry this key,
         # and retaining it would make a resumed raw optimizer state differ from
         # the exact uninterrupted state despite identical numerical dynamics.
-        optimizer_state = dict(state.optimizer)
+        # Treat the decoded/caller-provided payload as external ownership.
+        # PyTorch optimizers may retain tensor objects from load_state_dict(), and
+        # schedulers may retain mutable list objects. Without defensive copies,
+        # mutating a successful LoadResult (or a direct caller's input mapping)
+        # could silently change the already-accepted live resume state.
+        optimizer_state = copy.deepcopy(dict(state.optimizer))
         optimizer_state["param_groups"] = [
             {
                 key: value
                 for key, value in group.items()
                 if key != "param_names"
             }
-            for group in state.optimizer["param_groups"]
+            for group in optimizer_state["param_groups"]
         ]
+        scheduler_state = copy.deepcopy(state.scheduler)
+        scaler_state = copy.deepcopy(state.scaler)
 
         self._update_incomplete = True
         try:
             self.optimizer.load_state_dict(optimizer_state)
             self._require_optimizer_parameter_coverage()
-            if self.scheduler is not None and state.scheduler is not None:
-                self.scheduler.load_state_dict(state.scheduler)
-            if state.scaler is not None:
-                self.scaler.load_state_dict(state.scaler)
+            if self.scheduler is not None and scheduler_state is not None:
+                self.scheduler.load_state_dict(scheduler_state)
+            if scaler_state is not None:
+                self.scaler.load_state_dict(scaler_state)
 
             self.micro_step = state.micro_step
             self.optimizer_step = state.optimizer_step
