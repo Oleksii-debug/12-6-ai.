@@ -31,7 +31,7 @@ def _transactional_restore(
                     "RNG rollback of the prior process state also failed: "
                     f"{rollback_exc!r}"
                 )
-                raise
+                raise exc from rollback_exc
             raise core.CheckpointError(
                 "RNG restore failed and rollback of the prior RNG state also failed"
             ) from rollback_exc
