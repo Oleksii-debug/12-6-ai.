@@ -550,9 +550,7 @@ def acquire_ubuntu_survivors(
         "candidate_sha256": ubuntu.CANDIDATE_SHA256,
         "candidate_records": ubuntu.CANDIDATE_RECORDS,
         "candidate_normalized_utf8_bytes": ubuntu.CANDIDATE_NORMALIZED_BYTES,
-        "intake_receipt_identity_sha256": intake_receipt[
-            "receipt_identity_sha256"
-        ],
+        "intake_receipt_sha256": sha256(canonical(intake_receipt)),
         "post_global_dedup_survivor_ids_sha256": sha256(
             canonical(sorted(payloads))
         ),
