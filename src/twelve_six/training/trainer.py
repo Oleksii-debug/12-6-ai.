@@ -1092,6 +1092,16 @@ class Trainer:
         # Reject known contract mismatches before touching optimizer state.
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
+        if type(self.scheduler) is LambdaLR and (
+            not isinstance(state.scheduler, Mapping)
+            or type(state.scheduler.get("last_epoch")) is not int
+            or state.scheduler["last_epoch"] != state.optimizer_step
+        ):
+            # Refuse a known impossible committed history before optimizer or
+            # scheduler load. A fresh target can retry a verified checkpoint.
+            raise ValueError(
+                "checkpoint scheduler chronology differs from committed optimizer step"
+            )
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
         if (
