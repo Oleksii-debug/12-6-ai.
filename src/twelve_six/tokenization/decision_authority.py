@@ -18,6 +18,8 @@ from twelve_six.data.balanced_split_application_v1 import (
     verify_balanced_selection,
 )
 
+from . import byte as byte_module
+from .base import TokenizerIdentity as _CanonicalTokenizerIdentity
 from .byte import ByteTokenizer
 
 SCHEMA = "12-6.d04-learned20m-tokenizer-decision.v1"
@@ -109,6 +111,22 @@ _EXPECTED_TOKENIZER_METHOD_KWDEFAULTS = {
     "decode": {"skip_special_tokens": True, "errors": "strict"},
     "oov_count": None,
     "fertility": None,
+}
+_EXPECTED_BYTE_MODULE_CONSTANTS = {
+    "BYTE_TOKENIZER_VERSION": "s0-byte-v1",
+    "BYTE_TOKENIZER_HASH": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "BYTE_VOCAB_HASH": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
+}
+_EXPECTED_BYTE_MODULE_CONFIG = {
+    "schema_version": 1,
+    "tokenizer_version": "s0-byte-v1",
+    "type": "utf8-byte",
+    "normalization": "none",
+    "encoding": "utf-8",
+    "special_tokens": {},
+    "byte_offset": 0,
+    "byte_values": 256,
+    "vocab_size": 256,
 }
 
 
@@ -222,6 +240,104 @@ def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
     return methods
 
 
+def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
+    """Compile the pinned source and return behavior-bearing module helper code."""
+
+    try:
+        payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
+    except OSError as exc:
+        raise TokenizerDecisionError(
+            "cannot read canonical byte tokenizer implementation"
+        ) from exc
+    if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer implementation identity drift"
+        )
+    try:
+        module_code = compile(
+            payload,
+            str(_BYTE_TOKENIZER_SOURCE_PATH),
+            "exec",
+            dont_inherit=True,
+        )
+    except (SyntaxError, ValueError, TypeError) as exc:
+        raise TokenizerDecisionError(
+            "cannot compile canonical byte tokenizer implementation"
+        ) from exc
+    expected_names = {
+        "canonical_config_json",
+        "tokenizer_config_hash",
+        "canonical_vocab_json",
+        "vocab_hash",
+    }
+    helpers = {
+        value.co_name: value
+        for value in module_code.co_consts
+        if isinstance(value, CodeType) and value.co_name in expected_names
+    }
+    if set(helpers) != expected_names:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer helper code identity unavailable"
+        )
+    return helpers
+
+
+def _verify_runtime_byte_tokenizer_module_state() -> None:
+    """Bind mutable module state used by the source-pinned tokenizer runtime."""
+
+    module_state = vars(byte_module)
+    if module_state.get("ByteTokenizer") is not ByteTokenizer:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime module drift: ByteTokenizer"
+        )
+    if module_state.get("TokenizerIdentity") is not _CanonicalTokenizerIdentity:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime module drift: TokenizerIdentity"
+        )
+    if module_state.get("hashlib") is not hashlib:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime module drift: hashlib"
+        )
+    if module_state.get("json") is not json:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime module drift: json"
+        )
+
+    for field, expected in _EXPECTED_BYTE_MODULE_CONSTANTS.items():
+        observed = module_state.get(field)
+        if type(observed) is not type(expected) or observed != expected:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime module drift: {field}"
+            )
+
+    observed_config = module_state.get("_CONFIG")
+    if type(observed_config) is not dict or set(observed_config) != set(
+        _EXPECTED_BYTE_MODULE_CONFIG
+    ):
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime module drift: _CONFIG"
+        )
+    for field, expected in _EXPECTED_BYTE_MODULE_CONFIG.items():
+        observed = observed_config[field]
+        if type(observed) is not type(expected) or observed != expected:
+            raise TokenizerDecisionError(
+                "canonical byte tokenizer runtime module drift: _CONFIG"
+            )
+
+    expected_helpers = _verified_canonical_byte_tokenizer_helper_codes()
+    for name, expected_code in expected_helpers.items():
+        function = module_state.get(name)
+        if (
+            type(function) is not FunctionType
+            or function.__code__ != expected_code
+            or function.__defaults__ is not None
+            or function.__kwdefaults__ is not None
+        ):
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime module drift: {name}"
+            )
+
+
 def _runtime_byte_tokenizer_method(
     class_state: Mapping[str, Any],
     name: str,
@@ -288,6 +404,7 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
     """Bind the loaded runtime identity to the source-pinned byte baseline."""
 
     implementation = _verify_canonical_byte_tokenizer_implementation()
+    _verify_runtime_byte_tokenizer_module_state()
 
     # TokenizerIdentity intentionally omits several class-level protocol fields.
     # Inspect the class dictionary directly so a derived/spoofed identity cannot
