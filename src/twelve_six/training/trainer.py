@@ -818,7 +818,7 @@ class Trainer:
                 order="C",
                 buffersize=262_144,
             ):
-                if left.view(np.uint8).tobytes() != right.view(np.uint8).tobytes():
+                if left.tobytes(order="C") != right.tobytes(order="C"):
                     return False
             return True
         if isinstance(saved, np.generic) or isinstance(live, np.generic):
