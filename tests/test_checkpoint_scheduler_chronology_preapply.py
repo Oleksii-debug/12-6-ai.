@@ -791,6 +791,7 @@ def test_late_target_freshness_drift_fails_before_model_and_rng(
         ("micro-step", "fresh trainer with no consumed exposure"),
         ("scheduler-rebind", "scheduler binding changed"),
         ("config-rebind", "config binding changed"),
+        ("native-class", "native D02 classification changed"),
     ],
 )
 @pytest.mark.parametrize(
@@ -831,6 +832,14 @@ def test_late_stateful_preflight_hook_drift_is_rechecked_before_model_apply(
                 target.scheduler = None
             elif hook_effect == "config-rebind":
                 target.config = replace(target.config)
+            elif hook_effect == "native-class":
+                class MarkerOnlyTrainer:
+                    def load_state_dict(self, state: Any) -> None:
+                        self.micro_step = state["micro_step"]
+                        self.optimizer_step = state["optimizer_step"]
+                        self.tokens_seen = state["tokens_seen"]
+
+                target.__class__ = MarkerOnlyTrainer
             else:
                 raise AssertionError(f"unknown hook effect: {hook_effect}")
             return state
