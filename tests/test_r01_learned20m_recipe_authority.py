@@ -1240,7 +1240,11 @@ def test_recipe_cli_rejects_inplace_mutation_during_read(
             return self.source.fileno()
 
         def read(self, bound):
+            # A two-second mtime offset avoids filesystem timestamp granularity
+            # flakes when an in-place replacement has exactly the same byte size.
+            before = selected.stat()
             selected.write_text('{"modified":true}', encoding="utf-8")
+            os.utime(selected, ns=(before.st_atime_ns, before.st_mtime_ns + 2_000_000_000))
             assert selected.stat().st_ino == original_inode
             return self.source.read(bound)
 
