@@ -1426,8 +1426,7 @@ class Trainer:
         digest = hashlib.sha256()
 
         def update(value: Any) -> None:
-            kind = f"{type(value).__module__}.{type(value).__qualname__}"
-            digest.update(kind.encode("utf-8") + b"\0")
+            digest.update(Trainer._type_identity(value).encode("utf-8") + b"\0")
             if isinstance(value, Tensor):
                 if value.layout != torch.strided:
                     raise TrainingStateInvalidError(
@@ -1641,12 +1640,13 @@ class Trainer:
                 return
             if isinstance(value, Enum):
                 digest.update(
-                    f"{type(value).__module__}.{type(value).__qualname__}:{value.name}".encode(
-                        "utf-8"
-                    )
+                    f"{Trainer._type_identity(value)}:{value.name}".encode("utf-8")
                 )
                 return
-            if type(value).__module__ == "torch" and type(value).__name__ in {
+            value_type = type(value)
+            value_module = type.__getattribute__(value_type, "__module__")
+            value_name = type.__getattribute__(value_type, "__name__")
+            if value_module == "torch" and value_name in {
                 "device",
                 "dtype",
                 "layout",
