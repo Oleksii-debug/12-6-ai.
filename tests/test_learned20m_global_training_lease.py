@@ -24,9 +24,14 @@ from twelve_six.learned20m_global_training_lease import (
     terminate_global_training_run_lease,
 )
 from twelve_six.learned20m_training_lease import (
+    TERMINAL_AUTHORITY_SCHEMA,
+    base_launch_manifest_sha256,
+    build_authorized_training_run_lease,
     build_training_run_lease,
     canonical_json_bytes,
+    finalize_launch_manifest,
     launch_manifest_sha256,
+    terminal_authority_sha256,
 )
 
 NOW = datetime(2026, 9, 14, 12, 0, tzinfo=UTC)
@@ -83,6 +88,63 @@ def _manifest() -> dict:
     }
 
 
+def _terminal_authority(manifest: dict, *, exposure: int) -> dict:
+    identities = manifest["identities"]
+    authority = {
+        "schema": TERMINAL_AUTHORITY_SCHEMA,
+        "authority_identity_sha256": "0" * 64,
+        "base_manifest_sha256": base_launch_manifest_sha256(manifest),
+        "source_git_sha": identities["source_git_sha"],
+        "carrier_authority_sha256": "0" * 64,
+        "modelspec_sha256": identities["modelspec_sha256"],
+        "initspec_sha256": identities["initspec_sha256"],
+        "random_init": True,
+        "foreign_pretrained_weights_used": False,
+        "launch_input_authority_sha256": "1" * 64,
+        "corpus_manifest_sha256": identities["corpus_manifest_sha256"],
+        "split_sha256": identities["split_sha256"],
+        "tokenizer_decision_sha256": "2" * 64,
+        "tokenizer_sha256": identities["tokenizer_sha256"],
+        "packing_sha256": identities["packing_sha256"],
+        "loss_bearing_manifest_sha256": "3" * 64,
+        "unique_loss_ledger_sha256": identities["unique_loss_ledger_sha256"],
+        "exposure_plan_sha256": "4" * 64,
+        "portable_run_packet_sha256": identities["portable_run_packet_sha256"],
+        "portable_run_binding_sha256": identities["portable_run_binding_sha256"],
+        "recipe_authority_sha256": "5" * 64,
+        "training_config_sha256": identities["training_config_sha256"],
+        "seed_vector_sha256": "6" * 64,
+        "target_unique_loss_positions": manifest["recipe"]["target_unique_loss_positions"],
+        "maximum_total_exposures": manifest["recipe"]["maximum_total_exposures"],
+        "replay_cap": 4_000_000,
+        "recovery_run_id": "learned20m-run-001",
+        "recovery_run_manifest_sha256": "7" * 64,
+        "recovery_attempt_authority_sha256": "8" * 64,
+        "checkpoint_contract_sha256": manifest["checkpoint"]["checkpoint_contract_sha256"],
+        "checkpoint_cadence_sha256": "9" * 64,
+        "resume_rules_sha256": "a" * 64,
+        "safe_stop_current_run_sha256": "b" * 64,
+        "evaluation_schedule_sha256": "c" * 64,
+        "evaluation_firewall_sha256": manifest["evaluation"]["firewall_sha256"],
+        "poison_stop_semantics_sha256": "d" * 64,
+        "resource_evidence_sha256": "e" * 64,
+        "execution_target_sha256": "f" * 64,
+        "measured_resource_envelope_sha256": "0" * 64,
+        "resource_class": manifest["resource"]["resource_class"],
+        "maximum_cost_usd": 0,
+        "materially_paid": False,
+        "final_test_payload_access": False,
+        "training_authority_ref": manifest["authorities"]["training"]["reference"],
+        "training_authority_sha256": manifest["authorities"]["training"]["evidence_sha256"],
+        "compute_authority_ref": manifest["authorities"]["compute"]["reference"],
+        "compute_authority_sha256": manifest["authorities"]["compute"]["evidence_sha256"],
+        "execution_backend": manifest["execution_backend"],
+        "authorized_optimized_target_exposure": exposure,
+    }
+    authority["authority_identity_sha256"] = terminal_authority_sha256(authority)
+    return authority
+
+
 def _lease(manifest: dict, *, run_id: str = "run-a"):
     return build_training_run_lease(
         manifest,
@@ -90,6 +152,34 @@ def _lease(manifest: dict, *, run_id: str = "run-a"):
         holder_id="runner-a",
         ttl_seconds=3600,
         now=NOW,
+    )
+
+
+def _authorized_manifest() -> tuple[dict, str]:
+    base = _manifest()
+    authority = _terminal_authority(base, exposure=1_000)
+    return (
+        finalize_launch_manifest(base, authority),
+        authority["authority_identity_sha256"],
+    )
+
+
+def _authorized_lease(
+    manifest: dict,
+    expected_terminal_authority_sha256: str,
+    *,
+    run_id: str = "run-a",
+    holder_id: str = "runner-a",
+    ttl_seconds: int = 3600,
+    now: datetime = NOW,
+):
+    return build_authorized_training_run_lease(
+        manifest,
+        expected_terminal_authority_sha256=expected_terminal_authority_sha256,
+        run_id=run_id,
+        holder_id=holder_id,
+        ttl_seconds=ttl_seconds,
+        now=now,
     )
 
 
@@ -128,6 +218,50 @@ def _assert_no_authority_widening(result: GlobalLeaseOperation) -> None:
     assert result.scientific_truth_changed is False
 
 
+def test_terminal_authority_lease_composes_with_global_cas_without_authority_widening(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    base = _manifest()
+    authority = _terminal_authority(base, exposure=1_000)
+    manifest = finalize_launch_manifest(base, authority)
+    expected_authority = authority["authority_identity_sha256"]
+
+    lease = build_authorized_training_run_lease(
+        manifest,
+        expected_terminal_authority_sha256=expected_authority,
+        run_id="run-terminal-authority",
+        holder_id="runner-terminal-authority",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+
+    expected_manifest = launch_manifest_sha256(manifest)
+    assert lease.manifest_sha256 == expected_manifest
+    assert global_training_run_lease_ref(manifest).endswith(f"/{expected_manifest}")
+
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.post_write_reread_verified is True
+    assert acquired.launch_manifest_sha256 == expected_manifest
+    assert acquired.run_id == lease.run_id
+    _assert_no_authority_widening(acquired)
+
+    inspection = inspect_global_training_run_lease(writer_b, str(remote), manifest)
+    assert inspection.present is True
+    assert inspection.valid is True
+    assert inspection.launch_manifest_sha256 == expected_manifest
+    assert inspection.run_id == lease.run_id
+    assert inspection.optimizer_start_permitted_by_this_module is False
+
+
 def test_ref_and_state_bind_fixed_repository_lock_domain_and_manifest() -> None:
     manifest = _manifest()
     lease = _lease(manifest)
@@ -142,8 +276,11 @@ def test_ref_and_state_bind_fixed_repository_lock_domain_and_manifest() -> None:
 
 
 def test_raw_state_decoder_rejects_duplicate_nonfinite_and_noncanonical_json() -> None:
-    manifest = _manifest()
-    state = build_global_lease_state(manifest, _lease(manifest).as_dict())
+    manifest, expected_authority = _authorized_manifest()
+    state = build_global_lease_state(
+        manifest,
+        _authorized_lease(manifest, expected_authority).as_dict(),
+    )
 
     with pytest.raises(ValueError, match="duplicate_json_key"):
         decode_global_lease_state(b'{"schema_version":1,"schema_version":1}', manifest)
@@ -155,8 +292,11 @@ def test_raw_state_decoder_rejects_duplicate_nonfinite_and_noncanonical_json() -
 
 
 def test_raw_state_decoder_rejects_lock_domain_substitution_and_extra_fields() -> None:
-    manifest = _manifest()
-    state = build_global_lease_state(manifest, _lease(manifest).as_dict())
+    manifest, expected_authority = _authorized_manifest()
+    state = build_global_lease_state(
+        manifest,
+        _authorized_lease(manifest, expected_authority).as_dict(),
+    )
 
     substituted = deepcopy(state)
     substituted["lock_domain"] = "github.com/attacker/repository"
@@ -169,25 +309,200 @@ def test_raw_state_decoder_rejects_lock_domain_substitution_and_extra_fields() -
         decode_global_lease_state(canonical_json_bytes(extra), manifest)
 
 
+
+@pytest.mark.parametrize("payload", [b"[]", b"null", b'"text"', b"7"])
+def test_non_object_remote_lease_blocks_inspect_and_renew(
+    monkeypatch: pytest.MonkeyPatch, payload: bytes
+) -> None:
+    manifest, _ = _authorized_manifest()
+    expected_tip = "a" * 40
+
+    with pytest.raises(TypeError, match="global_lease_state_not_object"):
+        decode_global_lease_state(payload, manifest)
+
+    monkeypatch.setattr(global_lease_module, "_remote_tip", lambda *_: expected_tip)
+    monkeypatch.setattr(global_lease_module, "_fetch_remote_commit", lambda *_: payload)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("invalid remote state must not write or push")
+
+    monkeypatch.setattr(global_lease_module, "_write_state_commit", unexpected_write)
+    monkeypatch.setattr(global_lease_module, "_push_candidate", unexpected_write)
+
+    inspected = inspect_global_training_run_lease(".", "origin", manifest)
+    assert inspected.present is True
+    assert inspected.valid is False
+    assert inspected.blockers == ("global_lease_remote_state_invalid",)
+
+    renewed = renew_global_training_run_lease(
+        ".",
+        "origin",
+        manifest,
+        expected_remote_tip=expected_tip,
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    assert renewed.committed is False
+    assert renewed.blockers == ("global_lease_remote_state_invalid",)
+    _assert_no_authority_widening(renewed)
+
+
+def test_non_object_remote_lease_via_real_git_ref_is_fail_closed(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer, reader = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
+    acquired = acquire_global_training_run_lease(
+        writer,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.post_write_reread_verified is True
+    assert acquired.written_remote_tip is not None
+
+    def write_git_object(data: bytes, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=writer, input=data, capture_output=True, check=True
+        )
+        return result.stdout.decode("ascii").strip()
+
+    blob = write_git_object(b"[]", "hash-object", "-w", "--stdin")
+    tree = write_git_object(
+        f"100644 blob {blob}\t{global_lease_module.GLOBAL_LEASE_STATE_PATH}\n".encode(
+            "ascii"
+        ),
+        "mktree",
+    )
+    corrupt_tip = write_git_object(
+        b"malformed remote lease object\n",
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree, "-p", acquired.written_remote_tip,
+    )
+    ref = global_training_run_lease_ref(manifest)
+    _git("push", str(remote), f"{corrupt_tip}:{ref}", cwd=writer)
+
+    inspected = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert inspected.present is True
+    assert inspected.valid is False
+    assert inspected.blockers == ("global_lease_remote_state_invalid",)
+
+    renewed = renew_global_training_run_lease(
+        reader, str(remote), manifest,
+        expected_remote_tip=corrupt_tip, ttl_seconds=3600, now=NOW,
+    )
+    assert renewed.committed is False
+    assert renewed.blockers == ("global_lease_remote_state_invalid",)
+    _assert_no_authority_widening(renewed)
+    assert _git("ls-remote", str(remote), ref).split()[0] == corrupt_tip
+
+
+def test_oversized_remote_lease_rejected_before_git_blob_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    remote, writer, reader = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
+    acquired = acquire_global_training_run_lease(
+        writer,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+
+    def write_object(data: bytes, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=writer, input=data, capture_output=True, check=True
+        )
+        return result.stdout.decode("ascii").strip()
+
+    oversized = b"x" * (global_lease_module.MAX_GLOBAL_LEASE_STATE_BYTES + 1)
+    blob_sha = write_object(oversized, "hash-object", "-w", "--stdin")
+    tree_sha = write_object(
+        f"100644 blob {blob_sha}\t{global_lease_module.GLOBAL_LEASE_STATE_PATH}\n"
+        .encode("ascii"),
+        "mktree",
+    )
+    corrupt_tip = write_object(
+        b"oversized lease payload\n",
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree_sha, "-p", acquired.written_remote_tip,
+    )
+    ref = global_training_run_lease_ref(manifest)
+    _git("push", str(remote), f"{corrupt_tip}:{ref}", cwd=writer)
+
+    original_run_git = global_lease_module._run_git
+
+    def reject_blob_capture(repo_root, args, **kwargs):
+        if args[:2] == ["cat-file", "blob"]:
+            raise AssertionError("oversized blob must not be captured")
+        return original_run_git(repo_root, args, **kwargs)
+
+    monkeypatch.setattr(global_lease_module, "_run_git", reject_blob_capture)
+    inspection = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.blockers == ("global_lease_remote_state_invalid",)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("oversized remote state must not write or push")
+
+    monkeypatch.setattr(global_lease_module, "_write_state_commit", unexpected_write)
+    monkeypatch.setattr(global_lease_module, "_push_candidate", unexpected_write)
+    renewed = renew_global_training_run_lease(
+        reader,
+        str(remote),
+        manifest,
+        expected_remote_tip=corrupt_tip,
+        ttl_seconds=3600,
+        now=NOW,
+    )
+    assert renewed.committed is False
+    assert renewed.blockers == ("global_lease_remote_state_invalid",)
+    _assert_no_authority_widening(renewed)
+    assert _git("ls-remote", str(remote), ref).split()[0] == corrupt_tip
+
+
 def test_acquire_is_single_winner_and_reread_verified(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    first_lease = _lease(manifest, run_id="run-a")
-    second_lease = build_training_run_lease(
+    manifest, expected_authority = _authorized_manifest()
+    first_lease = _authorized_lease(
+        manifest, expected_authority, run_id="run-a"
+    )
+    second_lease = _authorized_lease(
         manifest,
+        expected_authority,
         run_id="run-b",
         holder_id="runner-b",
-        ttl_seconds=3600,
-        now=NOW,
     )
 
     first = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, first_lease.as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        first_lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     second = acquire_global_training_run_lease(
-        writer_b, str(remote), manifest, second_lease.as_dict(), now=NOW
+        writer_b,
+        str(remote),
+        manifest,
+        second_lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
 
     assert first.committed is True
@@ -208,14 +523,76 @@ def test_acquire_is_single_winner_and_reread_verified(
     assert inspection.optimizer_start_permitted_by_this_module is False
 
 
+def test_acquire_does_not_overwrite_ref_created_after_empty_read(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, _ = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
+    state = build_global_lease_state(manifest, lease.as_dict())
+    ref = global_training_run_lease_ref(manifest)
+    real_push = global_lease_module._push_candidate
+    competing_tip: str | None = None
+
+    def install_competitor_before_push(
+        repo_root,
+        remote_arg,
+        candidate_tip,
+        ref_arg,
+        *,
+        expected_remote_tip,
+    ):
+        nonlocal competing_tip
+        assert ref_arg == ref
+        assert expected_remote_tip is None
+        competing_tip = global_lease_module._write_state_commit(
+            repo_root,
+            state,
+            parent_tip=None,
+            operation="competing-acquire",
+        )
+        _git("push", str(remote), f"{competing_tip}:{ref}", cwd=writer_a)
+        return real_push(
+            repo_root,
+            remote_arg,
+            candidate_tip,
+            ref_arg,
+            expected_remote_tip=expected_remote_tip,
+        )
+
+    monkeypatch.setattr(
+        global_lease_module,
+        "_push_candidate",
+        install_competitor_before_push,
+    )
+    denied = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+
+    assert competing_tip is not None
+    assert denied.committed is False
+    assert denied.post_write_reread_verified is False
+    assert denied.remote_write_outcome_unknown is False
+    assert denied.written_remote_tip is None
+    assert denied.blockers == ("global_lease_ref_create_rejected",)
+    assert denied.observed_remote_tip == competing_tip
+    assert _git("--git-dir", str(remote), "rev-parse", ref) == competing_tip
+
+
 def test_acquire_freezes_manifest_and_lease_before_assessment(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
+    manifest, expected_authority = _authorized_manifest()
     original_manifest = deepcopy(manifest)
-    lease = _lease(manifest).as_dict()
+    lease = _authorized_lease(manifest, expected_authority).as_dict()
     original_lease = deepcopy(lease)
     real_assess = global_lease_module.assess_training_run_lease
 
@@ -236,6 +613,7 @@ def test_acquire_freezes_manifest_and_lease_before_assessment(
         str(remote),
         manifest,
         lease,
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
 
@@ -258,11 +636,27 @@ def test_acquire_recovers_when_push_reports_failure_after_remote_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
+    manifest, expected_authority = _authorized_manifest()
     real_push = global_lease_module._push_candidate
 
-    def push_then_report_failure(repo_root, remote_arg, candidate_tip, ref):
-        assert real_push(repo_root, remote_arg, candidate_tip, ref) is True
+    def push_then_report_failure(
+        repo_root,
+        remote_arg,
+        candidate_tip,
+        ref,
+        *,
+        expected_remote_tip,
+    ):
+        assert (
+            real_push(
+                repo_root,
+                remote_arg,
+                candidate_tip,
+                ref,
+                expected_remote_tip=expected_remote_tip,
+            )
+            is True
+        )
         return False
 
     monkeypatch.setattr(global_lease_module, "_push_candidate", push_then_report_failure)
@@ -270,7 +664,8 @@ def test_acquire_recovers_when_push_reports_failure_after_remote_commit(
         writer_a,
         str(remote),
         manifest,
-        _lease(manifest).as_dict(),
+        _authorized_lease(manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
 
@@ -289,7 +684,7 @@ def test_acquire_reports_committed_unverified_after_post_write_transport_failure
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
+    manifest, expected_authority = _authorized_manifest()
     real_remote_tip = global_lease_module._remote_tip
     calls = 0
 
@@ -305,7 +700,8 @@ def test_acquire_reports_committed_unverified_after_post_write_transport_failure
         writer_a,
         str(remote),
         manifest,
-        _lease(manifest).as_dict(),
+        _authorized_lease(manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
 
@@ -320,17 +716,54 @@ def test_acquire_reports_committed_unverified_after_post_write_transport_failure
     )
 
 
+def test_global_acquire_rejects_self_consistent_manifest_under_wrong_expected_root(
+    git_pair: tuple[Path, Path, Path],
+) -> None:
+    remote, writer_a, _ = git_pair
+    base_a = _manifest()
+    authority_a = _terminal_authority(base_a, exposure=1_000)
+    expected_authority_a = authority_a["authority_identity_sha256"]
+
+    base_b = deepcopy(base_a)
+    base_b["recipe"]["seed"] += 1
+    authority_b = _terminal_authority(base_b, exposure=1_000)
+    manifest_b = finalize_launch_manifest(base_b, authority_b)
+    ordinary_lease_b = build_training_run_lease(
+        manifest_b,
+        run_id="bypass-run",
+        holder_id="bypass-holder",
+        ttl_seconds=3600,
+        now=NOW,
+    )
+
+    denied = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest_b,
+        ordinary_lease_b.as_dict(),
+        expected_terminal_authority_sha256=expected_authority_a,
+        now=NOW,
+    )
+
+    assert denied.committed is False
+    assert "terminal_authority_not_independently_expected" in denied.blockers
+    assert denied.written_remote_tip is None
+    assert denied.training_authority_granted_by_this_module is False
+    assert denied.optimizer_start_permitted_by_this_module is False
+
+
 def test_renew_freezes_manifest_before_post_write_reread(
     git_pair: tuple[Path, Path, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    original_manifest = _manifest()
+    original_manifest, expected_authority = _authorized_manifest()
     acquired = acquire_global_training_run_lease(
         writer_a,
         str(remote),
         original_manifest,
-        _lease(original_manifest).as_dict(),
+        _authorized_lease(original_manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW,
     )
     assert acquired.written_remote_tip is not None
@@ -338,8 +771,21 @@ def test_renew_freezes_manifest_before_post_write_reread(
     mutable_manifest = deepcopy(original_manifest)
     real_push = global_lease_module._push_candidate
 
-    def push_then_mutate(repo_root, remote_arg, candidate_tip, ref):
-        pushed = real_push(repo_root, remote_arg, candidate_tip, ref)
+    def push_then_mutate(
+        repo_root,
+        remote_arg,
+        candidate_tip,
+        ref,
+        *,
+        expected_remote_tip,
+    ):
+        pushed = real_push(
+            repo_root,
+            remote_arg,
+            candidate_tip,
+            ref,
+            expected_remote_tip=expected_remote_tip,
+        )
         mutable_manifest["recipe"]["seed"] = 424242
         return pushed
 
@@ -365,13 +811,87 @@ def test_renew_freezes_manifest_before_post_write_reread(
     assert inspection.renewal_sequence == 1
 
 
+def test_transition_does_not_recreate_ref_deleted_after_authenticated_read(
+    git_pair: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, writer_a, writer_b = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    acquired = acquire_global_training_run_lease(
+        writer_a,
+        str(remote),
+        manifest,
+        _authorized_lease(manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.written_remote_tip is not None
+
+    ref = global_training_run_lease_ref(manifest)
+    real_push = global_lease_module._push_candidate
+
+    def delete_ref_before_push(
+        repo_root,
+        remote_arg,
+        candidate_tip,
+        ref_arg,
+        *,
+        expected_remote_tip,
+    ):
+        assert ref_arg == ref
+        assert expected_remote_tip == acquired.written_remote_tip
+        _git("--git-dir", str(remote), "update-ref", "-d", ref)
+        return real_push(
+            repo_root,
+            remote_arg,
+            candidate_tip,
+            ref_arg,
+            expected_remote_tip=expected_remote_tip,
+        )
+
+    monkeypatch.setattr(
+        global_lease_module,
+        "_push_candidate",
+        delete_ref_before_push,
+    )
+    renewed = renew_global_training_run_lease(
+        writer_b,
+        str(remote),
+        manifest,
+        expected_remote_tip=acquired.written_remote_tip,
+        ttl_seconds=3600,
+        now=NOW + timedelta(minutes=10),
+    )
+
+    assert renewed.committed is False
+    assert renewed.post_write_reread_verified is False
+    assert renewed.remote_write_outcome_unknown is False
+    assert renewed.written_remote_tip is None
+    assert renewed.blockers == ("global_lease_transition_push_rejected",)
+    assert (
+        _git(
+            "--git-dir",
+            str(remote),
+            "for-each-ref",
+            "--format=%(refname)",
+            ref,
+        )
+        == ""
+    )
+
+
 def test_renew_is_fast_forward_and_stale_tip_cannot_retry_itself_into_authority(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
+    manifest, expected_authority = _authorized_manifest()
     acquired = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, _lease(manifest).as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        _authorized_lease(manifest, expected_authority).as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     assert acquired.written_remote_tip is not None
 
@@ -416,10 +936,15 @@ def test_terminal_lineage_remains_immutable_and_cannot_be_freshly_reacquired(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, writer_b = git_pair
-    manifest = _manifest()
-    lease = _lease(manifest)
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
     acquired = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, lease.as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     assert acquired.written_remote_tip is not None
 
@@ -435,11 +960,11 @@ def test_terminal_lineage_remains_immutable_and_cannot_be_freshly_reacquired(
     assert terminal.lease_status == "ABORTED"
     _assert_no_authority_widening(terminal)
 
-    replacement = build_training_run_lease(
+    replacement = _authorized_lease(
         manifest,
+        expected_authority,
         run_id="replacement",
         holder_id="runner-new",
-        ttl_seconds=3600,
         now=NOW + timedelta(minutes=20),
     )
     denied = acquire_global_training_run_lease(
@@ -447,6 +972,7 @@ def test_terminal_lineage_remains_immutable_and_cannot_be_freshly_reacquired(
         str(remote),
         manifest,
         replacement.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
         now=NOW + timedelta(minutes=20),
     )
     assert denied.committed is False
@@ -458,16 +984,20 @@ def test_expired_running_lease_cannot_be_renewed_by_backdated_retry(
     git_pair: tuple[Path, Path, Path],
 ) -> None:
     remote, writer_a, _ = git_pair
-    manifest = _manifest()
-    short = build_training_run_lease(
+    manifest, expected_authority = _authorized_manifest()
+    short = _authorized_lease(
         manifest,
+        expected_authority,
         run_id="short",
-        holder_id="runner-a",
         ttl_seconds=60,
-        now=NOW,
     )
     acquired = acquire_global_training_run_lease(
-        writer_a, str(remote), manifest, short.as_dict(), now=NOW
+        writer_a,
+        str(remote),
+        manifest,
+        short.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
     )
     assert acquired.written_remote_tip is not None
 
@@ -482,3 +1012,237 @@ def test_expired_running_lease_cannot_be_renewed_by_backdated_retry(
     assert denied.committed is False
     assert denied.blockers
     assert denied.blockers[0].startswith("global_lease_transition_invalid:expired_lease")
+
+
+def test_remote_global_lease_decoder_bounds_size_and_nesting() -> None:
+    manifest, _ = _authorized_manifest()
+    oversized = b'{"padding":"' + b"a" * global_lease_module.MAX_GLOBAL_LEASE_STATE_BYTES
+    with pytest.raises(ValueError, match="global_lease_state_exceeds_byte_limit"):
+        decode_global_lease_state(oversized, manifest)
+
+    deeply_nested = b'{"nested":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}"
+    with pytest.raises(ValueError, match="global_lease_state_json_invalid"):
+        decode_global_lease_state(deeply_nested, manifest)
+
+
+@pytest.mark.parametrize("race_action", ("advance", "delete"))
+@pytest.mark.parametrize("operation", ("INSPECT", "RENEW", "TERMINATE"))
+def test_remote_lease_tip_change_after_blob_read_is_fail_closed(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
+    race_action: str, operation: str,
+) -> None:
+    """Reject a remote advance or deletion between blob read and return."""
+    remote, writer, reader = git_pair
+    manifest, expected_authority = _authorized_manifest()
+    lease = _authorized_lease(manifest, expected_authority)
+    acquired = acquire_global_training_run_lease(
+        writer,
+        str(remote),
+        manifest,
+        lease.as_dict(),
+        expected_terminal_authority_sha256=expected_authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+    old_tip = acquired.written_remote_tip
+    ref = global_training_run_lease_ref(manifest)
+    tree_sha = _git("rev-parse", f"{old_tip}^{{tree}}", cwd=writer)
+    descendant = _git(
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree_sha, "-p", old_tip,
+        "-m", "remote lease advanced during blob read",
+        cwd=writer,
+    )
+    original_run_git = global_lease_module._run_git
+    switched = False
+
+    def advance_after_blob(repo_root, args, **kwargs):
+        nonlocal switched
+        result = original_run_git(repo_root, args, **kwargs)
+        if args[:2] == ["cat-file", "blob"] and not switched:
+            assert result.returncode == 0
+            switched = True
+            if race_action == "advance":
+                _git("push", str(remote), f"{descendant}:{ref}", cwd=writer)
+            else:
+                _git("push", str(remote), f":{ref}", cwd=writer)
+        return result
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("stale remote state must not be published")
+
+    monkeypatch.setattr(global_lease_module, "_run_git", advance_after_blob)
+    monkeypatch.setattr(global_lease_module, "_write_state_commit", unexpected_write)
+    monkeypatch.setattr(global_lease_module, "_push_candidate", unexpected_write)
+    if operation == "INSPECT":
+        inspected = inspect_global_training_run_lease(reader, str(remote), manifest)
+        assert inspected.present is True
+        assert inspected.valid is False
+        assert inspected.blockers == ("remote_tip_changed_during_read",)
+        assert inspected.optimizer_start_permitted_by_this_module is False
+        assert inspected.training_authority_granted_by_this_module is False
+    else:
+        if operation == "RENEW":
+            rejected = renew_global_training_run_lease(
+                reader, str(remote), manifest, expected_remote_tip=old_tip,
+                ttl_seconds=3600, now=NOW,
+            )
+        else:
+            rejected = terminate_global_training_run_lease(
+                reader, str(remote), manifest, expected_remote_tip=old_tip,
+                status="COMPLETED", now=NOW,
+            )
+        assert rejected.committed is False
+        assert rejected.blockers == ("remote_tip_changed_during_read",)
+        _assert_no_authority_widening(rejected)
+    assert switched is True
+    remote_tip = _git("ls-remote", str(remote), ref)
+    if race_action == "advance":
+        assert remote_tip.split()[0] == descendant
+    else:
+        assert remote_tip == ""
+
+
+def test_deep_caller_mappings_fail_closed_before_remote_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public lease entry points must not leak a recursive input exception."""
+    nested: dict = {}
+    current = nested
+    for _ in range(3_000):
+        child: dict = {}
+        current["nested"] = child
+        current = child
+
+    def unexpected_git(*_args, **_kwargs):
+        raise AssertionError("invalid caller mapping must not access the remote")
+
+    monkeypatch.setattr(global_lease_module, "_run_git", unexpected_git)
+    inspection = inspect_global_training_run_lease(".", "origin", nested)
+    assert inspection.present is False
+    assert inspection.valid is False
+    assert inspection.blockers == ("launch_manifest_snapshot_invalid",)
+
+    manifest, authority = _authorized_manifest()
+    denied = acquire_global_training_run_lease(
+        ".", "origin", manifest, nested,
+        expected_terminal_authority_sha256=authority,
+        now=NOW,
+    )
+    assert denied.committed is False
+    assert denied.blockers == ("training_run_lease_snapshot_invalid",)
+    _assert_no_authority_widening(denied)
+
+
+def test_remote_global_lease_fanout_tree_rejected_before_ls_tree_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A genuine Git descendant with many extra root entries is not captured."""
+    remote, writer, reader = git_pair
+    manifest, authority = _authorized_manifest()
+    acquired = acquire_global_training_run_lease(
+        writer, str(remote), manifest,
+        _authorized_lease(manifest, authority).as_dict(),
+        expected_terminal_authority_sha256=authority,
+        now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+    old_tip = acquired.written_remote_tip
+    ref = global_training_run_lease_ref(manifest)
+    path = global_lease_module.GLOBAL_LEASE_STATE_PATH
+    blob_sha = _git("rev-parse", f"{old_tip}:{path}", cwd=writer)
+    entries = f"100644 blob {blob_sha}\t{path}\n"
+    entries += "".join(
+        f"100644 blob {blob_sha}\tz-extra-{index:04d}.json\n"
+        for index in range(64)
+    )
+    tree = subprocess.run(
+        ["git", "mktree"], input=entries.encode("ascii"),
+        cwd=writer, capture_output=True, check=True,
+    ).stdout.decode("ascii").strip()
+    descendant = _git(
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+        "commit-tree", tree, "-p", old_tip,
+        "-m", "oversized global lease root tree",
+        cwd=writer,
+    )
+    _git("push", str(remote), f"{descendant}:{ref}", cwd=writer)
+    assert int(_git("cat-file", "-s", f"{descendant}^{{tree}}", cwd=writer)) > (
+        28 + len(path.encode("ascii"))
+    )
+
+    original_run_git = global_lease_module._run_git
+
+    def deny_ls_tree(repo_root, args, **kwargs):
+        if args and args[0] == "ls-tree":
+            raise AssertionError("fanout tree must be rejected before ls-tree")
+        return original_run_git(repo_root, args, **kwargs)
+
+    monkeypatch.setattr(global_lease_module, "_run_git", deny_ls_tree)
+    inspection = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert inspection.present is True
+    assert inspection.valid is False
+    assert inspection.blockers == ("global_lease_tree_not_closed_world",)
+    assert inspection.optimizer_start_permitted_by_this_module is False
+    assert inspection.training_authority_granted_by_this_module is False
+    assert _git("ls-remote", str(remote), ref).split()[0] == descendant
+
+
+def test_many_parent_lease_commit_rejected_before_rev_list_capture(
+    git_pair: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real Git octopus commit must not cause unbounded rev-list capture."""
+    remote, writer, reader = git_pair
+    manifest, authority = _authorized_manifest()
+    acquired = acquire_global_training_run_lease(
+        writer, str(remote), manifest,
+        _authorized_lease(manifest, authority).as_dict(),
+        expected_terminal_authority_sha256=authority, now=NOW,
+    )
+    assert acquired.committed is True
+    assert acquired.written_remote_tip is not None
+    old_tip = acquired.written_remote_tip
+    tree = _git("rev-parse", f"{old_tip}^{{tree}}", cwd=writer)
+    author = (
+        "-c", "user.name=R01 test",
+        "-c", "user.email=r01-test@example.invalid",
+    )
+    extras = [
+        _git(
+            *author, "commit-tree", tree, "-p", old_tip,
+            "-m", f"independent extra parent {index}", cwd=writer,
+        )
+        for index in range(96)
+    ]
+    parent_args = [
+        item for parent in (old_tip, *extras) for item in ("-p", parent)
+    ]
+    descendant = _git(
+        *author, "commit-tree", tree, *parent_args,
+        "-m", "oversized lease octopus", cwd=writer,
+    )
+    assert int(_git("cat-file", "-s", descendant, cwd=writer)) > (
+        global_lease_module.MAX_GLOBAL_LEASE_COMMIT_BYTES
+    )
+    ref = global_training_run_lease_ref(manifest)
+    _git("push", str(remote), f"{descendant}:{ref}", cwd=writer)
+
+    original_run_git = global_lease_module._run_git
+
+    def deny_rev_list(repo_root, args, **kwargs):
+        if args and args[0] == "rev-list":
+            raise AssertionError("oversized commit must be rejected before rev-list")
+        return original_run_git(repo_root, args, **kwargs)
+
+    monkeypatch.setattr(global_lease_module, "_run_git", deny_rev_list)
+    inspected = inspect_global_training_run_lease(reader, str(remote), manifest)
+    assert inspected.present is True
+    assert inspected.valid is False
+    assert inspected.blockers == ("global_lease_commit_exceeds_byte_limit",)
+    assert inspected.optimizer_start_permitted_by_this_module is False
+    assert inspected.training_authority_granted_by_this_module is False
+    assert _git("ls-remote", str(remote), ref).split()[0] == descendant

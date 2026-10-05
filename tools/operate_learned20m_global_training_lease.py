@@ -16,7 +16,10 @@ from twelve_six.learned20m_global_training_lease import (
     renew_global_training_run_lease,
     terminate_global_training_run_lease,
 )
-from twelve_six.learned20m_training_lease import build_training_run_lease
+from twelve_six.learned20m_training_lease import build_authorized_training_run_lease
+
+
+MAX_MANIFEST_BYTES = 1_048_576
 
 
 class _DuplicateKey(ValueError):
@@ -44,13 +47,24 @@ def _parse_finite_float(value: str) -> float:
 
 
 def _load_mapping(path: Path) -> Mapping[str, Any]:
-    raw = path.read_text(encoding="utf-8")
-    value = json.loads(
-        raw,
-        object_pairs_hook=_pairs_without_duplicates,
-        parse_constant=_reject_constant,
-        parse_float=_parse_finite_float,
-    )
+    # Bound attacker-controlled input before allocation or JSON decoding.
+    with path.open("rb") as handle:
+        raw = handle.read(MAX_MANIFEST_BYTES + 1)
+    if len(raw) > MAX_MANIFEST_BYTES:
+        raise ValueError("manifest_exceeds_byte_limit")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("manifest_utf8_invalid") from exc
+    try:
+        value = json.loads(
+            text,
+            object_pairs_hook=_pairs_without_duplicates,
+            parse_constant=_reject_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        raise ValueError("manifest_json_invalid") from exc
     if not isinstance(value, Mapping):
         raise ValueError("manifest_not_object")
     return value
@@ -73,6 +87,7 @@ def _parser() -> argparse.ArgumentParser:
     acquire.add_argument("--run-id", required=True)
     acquire.add_argument("--holder-id", required=True)
     acquire.add_argument("--ttl-seconds", type=int, required=True)
+    acquire.add_argument("--expected-terminal-authority-sha256", required=True)
 
     renew = subparsers.add_parser("renew")
     renew.add_argument("--expected-remote-tip", required=True)
@@ -99,14 +114,23 @@ def main() -> int:
             _emit(result.as_dict())
             return 0 if result.present and result.valid else 3
         if args.operation == "acquire":
-            lease = build_training_run_lease(
+            lease = build_authorized_training_run_lease(
                 manifest,
+                expected_terminal_authority_sha256=(
+                    args.expected_terminal_authority_sha256
+                ),
                 run_id=args.run_id,
                 holder_id=args.holder_id,
                 ttl_seconds=args.ttl_seconds,
             )
             result = acquire_global_training_run_lease(
-                args.repo_root, args.remote, manifest, lease.as_dict()
+                args.repo_root,
+                args.remote,
+                manifest,
+                lease.as_dict(),
+                expected_terminal_authority_sha256=(
+                    args.expected_terminal_authority_sha256
+                ),
             )
         elif args.operation == "renew":
             result = renew_global_training_run_lease(
