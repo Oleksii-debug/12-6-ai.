@@ -276,3 +276,17 @@ def test_entry_config_snapshot_requires_exact_native_config_type(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+def test_native_d02_detection_requires_exact_trainer_lineage() -> None:
+    FakeTrainer = type(
+        "Trainer",
+        (),
+        {"__module__": "twelve_six.training.trainer"},
+    )
+    target = FakeTrainer()
+    target._failure_reason = None
+    target._update_incomplete = False
+
+    assert trainer_adapter._is_canonical_d02(target)
+    assert not trainer_adapter._is_native_d02(target)
