@@ -964,6 +964,15 @@ def load_trainer_checkpoint(
     else:
         _assert_live_d02_determinism(trainer)
     strict_model = _effective_strict_model(trainer, strict_model)
+    # Loader lookup/signature inspection can execute descriptors or proxies.
+    # Bind both effectful restore interfaces before model materialization, then
+    # revalidate the canonical target. No loader attribute is reopened later.
+    load_trainer_state = _bind_trainer_state_loader(trainer)
+    model_apply = _bind_model_state_loader(model, strict_model)
+    _assert_trainer_model_binding(model, trainer)
+    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+    _assert_trainer_model_binding(model, trainer)
+    _preflight_trainer_target(trainer)
     materialized = _prepare_model_weights(model, arrays, strict_model)
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = capture_rng_state()
@@ -985,15 +994,9 @@ def load_trainer_checkpoint(
     # materialized; never apply weights to a model the trainer no longer owns.
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
-    # Binding can itself execute a descriptor/proxy on a custom adapter. Do it
-    # before the final checks so lookup side effects cannot cross into apply.
-    load_trainer_state = _bind_trainer_state_loader(trainer)
-    model_apply = _bind_model_state_loader(model, materialized, strict_model)
-    # Both late bindings above may execute descriptor/proxy code. Repeat the
-    # complete checkpoint-vs-live preflight after binding, then close with the
-    # cheap ownership/freshness guards before the first live model mutation.
-    _assert_trainer_model_binding(model, trainer)
-    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+    # Materialization can execute model.state_dict() and custom tensor/device
+    # conversion hooks. Recheck the live target once more, but never reopen the
+    # already-bound trainer/model loader interfaces.
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_target(trainer)
 
@@ -1001,7 +1004,7 @@ def load_trainer_checkpoint(
     # Failed application may leave a mixed model/optimizer state, so canonical
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
-        model_apply()
+        model_apply(materialized)
         load_trainer_state(trainer_state)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
