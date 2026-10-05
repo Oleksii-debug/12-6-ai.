@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import math
 import random
 import struct
@@ -781,6 +782,42 @@ class Trainer:
             self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
             raise
 
+    def _model_export_fingerprint(self) -> str:
+        """Hash weights and buffers in bounded chunks across effectful export hooks."""
+        digest = hashlib.sha256()
+
+        def hash_tensor(value: Tensor) -> None:
+            if value.layout != torch.strided:
+                raise TrainingStateInvalidError(
+                    "checkpoint model contains unsupported non-strided state"
+                )
+            detached = value.detach()
+            if detached.is_contiguous():
+                flat = detached.reshape(-1)
+                for index in range(0, flat.numel(), 262_144):
+                    block = flat[index:index + 262_144]
+                    raw = block.to(device="cpu").contiguous().view(torch.uint8)
+                    digest.update(raw.numpy().tobytes())
+            elif detached.ndim:
+                # Recurse into strided views; never flatten/copy a whole large tensor.
+                for child in detached.unbind(0):
+                    hash_tensor(child)
+            elif detached.numel():
+                raise TrainingStateInvalidError("checkpoint model layout cannot be hashed")
+
+        for label, members in (
+            ("parameter", self.model.named_parameters()),
+            ("buffer", self.model.named_buffers()),
+        ):
+            for name, value in members:
+                metadata = (
+                    label, name, id(value), str(value.dtype), str(value.device),
+                    tuple(value.shape), tuple(value.stride()), value.requires_grad,
+                )
+                digest.update(repr(metadata).encode("utf-8"))
+                hash_tensor(value)
+        return digest.hexdigest()
+
     @staticmethod
     def _exact_export_leaf_equal(saved: Any, live: Any) -> bool:
         """Compare exact stored bits; numerical equality loses signed-zero identity."""
@@ -897,12 +934,18 @@ class Trainer:
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
+        model_before = self._model_export_fingerprint()
         self.assert_checkpoint_safe()
         if not _typed_state_equal(
             committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
         ):
             self._mark_failed("checkpoint preflight changed committed counters")
             raise TrainingStateInvalidError("checkpoint export changed committed counters")
+        if self._model_export_fingerprint() != model_before:
+            self._mark_failed("checkpoint preflight changed model weights or buffers")
+            raise TrainingStateInvalidError(
+                "checkpoint export changed model weights or buffers"
+            )
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
@@ -944,6 +987,10 @@ class Trainer:
                 committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
             ):
                 raise TrainingStateInvalidError("checkpoint export changed committed counters")
+            if self._model_export_fingerprint() != model_before:
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed model weights or buffers"
+                )
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
