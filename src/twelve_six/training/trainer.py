@@ -416,7 +416,11 @@ class Trainer:
             {"param_groups": self.optimizer.param_groups},
         )
         self._require_constant_default_rate({"param_groups": self.optimizer.param_groups})
-        self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
+        scaler_state = self.scaler.state_dict()
+        self._require_finite_state_tree(scaler_state, "gradient scaler")
+        # Live scaler state must also be restorable: finite subnormal scales
+        # can yield an infinite float32 inverse on the next unscale_.
+        self._require_checkpoint_scaler_state(scaler_state)
         if self.scheduler is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
             # The canonical LambdaLR advances exactly once per committed
@@ -1016,6 +1020,19 @@ class Trainer:
                 or not math.isfinite(growth32) or growth32 <= 1.0
                 or not math.isfinite(backoff32) or not 0.0 < backoff32 < 1.0
             ):
+                raise ValueError(
+                    "enabled gradient scaler checkpoint statistics invalid in float32"
+                )
+            # GradScaler unscales with the float32 reciprocal. A subnormal,
+            # positive scale can be representable while its inverse becomes
+            # infinity, corrupting an otherwise finite optimizer update.
+            try:
+                inverse32 = struct.unpack("!f", struct.pack("!f", 1.0 / scale32))[0]
+            except (OverflowError, struct.error) as exc:
+                raise ValueError(
+                    "enabled gradient scaler checkpoint statistics invalid in float32"
+                ) from exc
+            if not math.isfinite(inverse32):
                 raise ValueError(
                     "enabled gradient scaler checkpoint statistics invalid in float32"
                 )

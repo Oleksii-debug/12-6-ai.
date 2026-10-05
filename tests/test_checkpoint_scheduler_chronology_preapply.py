@@ -473,6 +473,7 @@ def test_resealed_default_adamw_finite_decay_forgery_rejected_before_model_apply
         ("_growth_tracker", -1),
         ("_growth_tracker", 2000),
         ("scale", 1e-300),
+        ("scale", 1e-40),  # float32-positive scale with overflowing reciprocal
         ("scale", 1e300),
         ("growth_factor", 1.000000000000001),
         ("growth_factor", 1e300),
@@ -557,6 +558,7 @@ def test_resealed_invalid_scaler_statistics_fail_before_model_and_rng(
 @pytest.mark.parametrize(
     ("field", "bad_value"), [
         ("scale", 1e-300),
+        ("scale", 1e-40),  # float32-positive scale with overflowing reciprocal
         ("scale", 1e300),
         ("growth_factor", 1.000000000000001),
         ("growth_factor", 1e300),
@@ -591,3 +593,61 @@ def test_direct_d02_rejects_float32_invalid_scaler_before_optimizer_mutation(
     assert target.train_microbatch(_BATCH).optimizer_stepped
     assert source.optimizer_step == target.optimizer_step == 2
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+def test_direct_d02_accepts_small_scaler_with_finite_float32_inverse() -> None:
+    # The new bound is on the usable inverse, not an arbitrary large minimum.
+    # 1e-38 is float32-representable and its reciprocal is still finite.
+    source = _source()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    state = asdict(source.state_dict())
+    state["scaler"]["scale"] = 1e-38
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    target.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(state)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert bool(torch.isfinite(target.model.weight).all())
+
+def test_live_scaler_with_overflowing_inverse_cannot_publish_checkpoint() -> None:
+    source = _source()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    invalid = source.scaler.state_dict()
+    invalid["scale"] = 1e-40
+    source.scaler.load_state_dict(invalid)
+
+    with pytest.raises(ValueError, match="scaler checkpoint statistics invalid in float32"):
+        source.assert_checkpoint_safe()
+    assert source._failure_reason is not None
+    with pytest.raises(RuntimeError, match="restore a verified checkpoint"):
+        source.train_microbatch(_BATCH)
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_d05_accepts_small_scaler_with_finite_float32_inverse(
+    tmp_path: Path, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    state = asdict(source.state_dict())
+    state["scaler"]["scale"] = 1e-38
+    path = tmp_path / "valid-low-scale-дані з пробілами"
+    core.save_checkpoint(path, model=source.model, trainer_state=state, identity=_identity())
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    target.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    loader.load_trainer_checkpoint(
+        path, model=target.model, trainer=target,
+        strict_model=False, restore_rng=restore_rng, **extra,
+    )
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert bool(torch.isfinite(target.model.weight).all())
