@@ -416,7 +416,39 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
     attestations use the unchanged incumbent verifier; this is a tripwire, not a
     bypass or a replacement of the terminal reference/indexed comparison.
     """
-    indexed.attest_incumbent_runtime(matcher)
+    try:
+        indexed.attest_incumbent_runtime(matcher)
+    except indexed.IndexedExecutionError as exc:
+        if str(exc) != "V3 callable code drift: _lineage_matches":
+            raise
+        # A real Caselaw physical pass failed at this FIRST attestation, before
+        # synthetic warmup. The existing post-warmup diagnostic never runs there.
+        # Collect bounded, text-free evidence, but retain the original refusal.
+        try:
+            from diagnose_d03_v3_code_drift import compare_code_objects
+
+            live = getattr(matcher, "_lineage_matches", None)
+            if not callable(live) or not hasattr(live, "__code__"):
+                raise TypeError("the live V3 callable is not inspectable")
+            canonical = indexed._canonical_namespace(matcher, "V3")["_lineage_matches"]
+            diagnostic = compare_code_objects(live.__code__, canonical.__code__)
+            allowed = (
+                "classification", "marshal_equal", "structural_fields_equal",
+                "different_field_paths", "diagnostic_limited",
+                "live_marshal_sha256", "canonical_marshal_sha256",
+                "attestation_override_allowed",
+            )
+            exc.add_note(
+                "bounded V3 pre-warmup diagnostic: "
+                + json.dumps({key: diagnostic[key] for key in allowed}, sort_keys=True)
+            )
+        except Exception as diagnostic_error:
+            # Diagnostic failure can never replace the incumbent attester error.
+            exc.add_note(
+                "bounded V3 pre-warmup diagnostic unavailable: "
+                + type(diagnostic_error).__name__
+            )
+        raise
     lineage = getattr(matcher, "_lineage_matches", None)
     _require(callable(lineage), "terminal V3 lineage function missing")
     # The first incumbent attestation already established executable authority.
