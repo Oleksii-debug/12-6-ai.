@@ -877,6 +877,10 @@ def test_late_stateful_preflight_hook_drift_is_rechecked_before_model_apply(
 
         def effectful_state_dict() -> Any:
             state = actual_state_dict()
+            # Installing an instance hook adds a synthetic "state_dict" entry
+            # to LRScheduler.__dict__. Remove only that fixture artifact so the
+            # probe reaches the intended post-callout trainer drift check.
+            state.pop("state_dict", None)
             if hook_effect == "model-rebind":
                 target.model = _TinyLogits()
             elif hook_effect == "micro-step":
