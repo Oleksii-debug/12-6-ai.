@@ -700,6 +700,34 @@ def test_postcreate_interrupt_with_rollback_denial_retains_stage(
     actual_unlink(staged[0])
 
 
+def test_staging_identity_failure_closes_descriptor_and_preserves_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "identity-failure.json"
+    actual_fstat = cli.os.fstat
+
+    def fail_fstat(_fd: int):
+        raise OSError("injected staging fstat failure")
+
+    monkeypatch.setattr(cli.os, "fstat", fail_fstat)
+    with pytest.raises(
+        cli.PublicationIndeterminate,
+        match="STAGING_IDENTITY_INDETERMINATE",
+    ) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    monkeypatch.setattr(cli.os, "fstat", actual_fstat)
+
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and caught.value.staged == staged[0]
+    # The descriptor must already be closed, including on Windows sharing semantics.
+    with staged[0].open("ab") as handle:
+        handle.write(b"recovery-visible")
+    assert staged[0].read_bytes() == b"recovery-visible"
+    staged[0].unlink()
+
+
 def test_failed_link_cleanup_preserves_substituted_stage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
