@@ -341,3 +341,43 @@ def test_reloaded_authority_does_not_trust_mutated_byte_module_baseline(
                 )
     finally:
         importlib.reload(authority)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("pad_id", 0),
+        ("bos_id", 1),
+        ("eos_id", 2),
+        ("byte_offset", 1),
+        ("special_tokens", {}),
+    ],
+)
+def test_bind_rejects_byte_class_semantics_missing_from_tokenizer_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    monkeypatch.setattr(authority.ByteTokenizer, field, replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime identity drift: {field}",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
