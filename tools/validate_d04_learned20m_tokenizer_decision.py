@@ -313,6 +313,11 @@ def _write(path: Path, value: dict[str, Any]) -> None:
             # descriptor-bound exact-byte verification.
             committed = True
         elif link_error is not None and final is None:
+            if isinstance(link_error, (KeyboardInterrupt, SystemExit)):
+                # Preserve the staged inode on process interruption even when no
+                # final name was created; interrupted execution never performs
+                # destructive pathname cleanup.
+                indeterminate = True
             raise link_error
         elif final is not None:
             indeterminate = True
