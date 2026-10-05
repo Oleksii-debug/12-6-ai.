@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -318,16 +320,16 @@ def _check_bounded_json_tree(value: Any) -> None:
                     fail("capacity report JSON keys must be strings")
                 try:
                     key.encode("utf-8")
-                except UnicodeError as exc:
-                    raise CapacityReportError("capacity report contains invalid Unicode") from exc
+                except UnicodeError:
+                    raise CapacityReportError("capacity report contains invalid Unicode") from None
                 pending.append((child, depth + 1))
         elif isinstance(current, list):
             pending.extend((child, depth + 1) for child in current)
         elif isinstance(current, str):
             try:
                 current.encode("utf-8")
-            except UnicodeError as exc:
-                raise CapacityReportError("capacity report contains invalid Unicode") from exc
+            except UnicodeError:
+                raise CapacityReportError("capacity report contains invalid Unicode") from None
         elif isinstance(current, int) and not isinstance(current, bool):
             if current.bit_length() > 4096:
                 fail("capacity report integer exceeds limit")
@@ -557,6 +559,9 @@ def _float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         fail("nonfinite JSON number")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        fail("nonzero JSON number underflowed to zero")
     return parsed
 
 
@@ -568,12 +573,42 @@ def _int(value: str) -> int:
     return int(value)
 
 
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    # Atime can legitimately change during the read; size/mtime/ctime may not.
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
 def load_and_validate(path: str | Path, *, expected_main_sha: str | None = None) -> dict[str, Any]:
+    # Precheck the path, then bind the read to the same regular-file identity.
+    # O_NONBLOCK prevents a swapped POSIX FIFO from hanging before fstat.
+    descriptor = None
     try:
-        with Path(path).open("rb") as source:
+        before = os.stat(path)
+        if not stat.S_ISREG(before.st_mode):
+            fail("capacity report must be a regular file")
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            fail("capacity report must be a regular file")
+        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+            fail("capacity report changed between check and open")
+        if _file_stamp(before) != _file_stamp(opened):
+            fail("capacity report changed before open")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
             raw = source.read(MAX_REPORT_BYTES + 1)
-    except OSError as exc:
-        fail(f"cannot read capacity report: {exc}")
+            if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
+                fail("capacity report changed during read")
+    except CapacityReportError:
+        raise
+    except (OSError, ValueError):
+        # Do not expose a caller-supplied path, provider error or private name,
+        # including malformed path details through a chained traceback.
+        raise CapacityReportError("cannot read capacity report") from None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     if len(raw) > MAX_REPORT_BYTES:
         fail("capacity report exceeds byte limit")
     try:

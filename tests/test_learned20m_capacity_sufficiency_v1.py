@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -393,6 +396,178 @@ def test_rejects_huge_json_integer_with_python_digit_limit_disabled(
         sys.set_int_max_str_digits(before)
 
 
+def test_capacity_report_read_refuses_directory(tmp_path: Path) -> None:
+    message = "cannot read capacity report" if os.name == "nt" else "must be a regular file"
+    with pytest.raises(CapacityReportError, match=message):
+        load_and_validate(tmp_path)
+
+
+def test_capacity_report_read_redacts_missing_path(tmp_path: Path) -> None:
+    private_path = tmp_path / "PRIVATE-SOURCE-IDENTITY-998877.json"
+    with pytest.raises(CapacityReportError, match="cannot read capacity report") as err:
+        load_and_validate(private_path)
+    assert "PRIVATE-SOURCE-IDENTITY" not in str(err.value)
+    assert err.value.__cause__ is None
+    assert err.value.__suppress_context__ is True
+
+
+def test_capacity_report_read_redacts_embedded_nul_path() -> None:
+    private_path = "PRIVATE-SOURCE-IDENTITY-998877\x00.json"
+    with pytest.raises(CapacityReportError, match="cannot read capacity report") as failure:
+        load_and_validate(private_path)
+    assert "PRIVATE-SOURCE-IDENTITY" not in str(failure.value)
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
+
+
+def test_capacity_report_symlink_to_regular_report(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    linked = tmp_path / "safe-linked-report.json"
+    linked.symlink_to(REPORT.resolve())
+    assert load_and_validate(linked, expected_main_sha=MAIN_SHA) == _report()
+
+
+def test_capacity_report_fifo_with_no_writer_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "source FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    # A subprocess timeout makes the test itself finite if the reader regresses.
+    program = (
+        "import sys\n"
+        "from twelve_six.learned20m_capacity_sufficiency_v1 import "
+        "CapacityReportError, load_and_validate\n"
+        "try:\n"
+        "    load_and_validate(sys.argv[1])\n"
+        "except CapacityReportError as exc:\n"
+        "    assert str(exc) == 'capacity report must be a regular file'\n"
+        "else:\n"
+        "    raise AssertionError('FIFO unexpectedly accepted')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program, str(fifo)],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_capacity_report_regular_path_swap_to_fifo_never_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    target = tmp_path / "capacity.json"
+    fifo = tmp_path / "replacement.pipe"
+    target.write_bytes(REPORT.read_bytes())
+    os.mkfifo(fifo)
+    real_open = os.open
+    swapped = False
+
+    def swapping_open(path: str | os.PathLike[str], flags: int) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == target:
+            assert flags & os.O_NONBLOCK
+            target.unlink()
+            fifo.replace(target)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swapping_open)
+    with pytest.raises(CapacityReportError, match="must be a regular file"):
+        load_and_validate(target)
+
+
+def test_rejects_nonzero_float_underflow_without_disclosing_literal(
+    tmp_path: Path,
+) -> None:
+    secret = "99887766554433221100"
+    path = tmp_path / "private-underflow.json"
+    path.write_text('{"claim_issue":1e-' + secret + "}", encoding="utf-8")
+    with pytest.raises(CapacityReportError, match="underflowed to zero") as failure:
+        load_and_validate(path)
+    assert secret not in str(failure.value)
+
+
+def test_capacity_report_rejects_regular_file_swap_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "capacity.json"
+    replacement = tmp_path / "replacement.json"
+    target.write_bytes(REPORT.read_bytes())
+    replacement.write_bytes(REPORT.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swapping_open(path: str | os.PathLike[str], flags: int) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == target:
+            target.unlink()
+            replacement.replace(target)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swapping_open)
+    with pytest.raises(CapacityReportError, match="changed between check and open"):
+        load_and_validate(target)
+
+
+def test_capacity_report_rejects_stamp_change_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "capacity.json"
+    target.write_bytes(REPORT.read_bytes())
+    real_stat = os.stat
+    changed = False
+
+    def changing_stat(path: str | os.PathLike[str]) -> os.stat_result | SimpleNamespace:
+        nonlocal changed
+        info = real_stat(path)
+        if not changed and Path(path) == target:
+            changed = True
+            return SimpleNamespace(
+                st_mode=info.st_mode,
+                st_dev=info.st_dev,
+                st_ino=info.st_ino,
+                st_size=info.st_size,
+                st_mtime_ns=info.st_mtime_ns + 1,
+                st_ctime_ns=info.st_ctime_ns,
+            )
+        return info
+
+    monkeypatch.setattr(os, "stat", changing_stat)
+    with pytest.raises(CapacityReportError, match="changed before open"):
+        load_and_validate(target)
+
+
+def test_capacity_report_rejects_descriptor_stamp_change_after_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "capacity.json"
+    target.write_bytes(REPORT.read_bytes())
+    real_fstat = os.fstat
+    calls = 0
+
+    def changing_fstat(fd: int) -> os.stat_result | SimpleNamespace:
+        nonlocal calls
+        info = real_fstat(fd)
+        calls += 1
+        if calls == 2:
+            return SimpleNamespace(
+                st_size=info.st_size,
+                st_mtime_ns=info.st_mtime_ns + 1,
+                st_ctime_ns=info.st_ctime_ns,
+            )
+        return info
+
+    monkeypatch.setattr(os, "fstat", changing_fstat)
+    with pytest.raises(CapacityReportError, match="changed during read"):
+        load_and_validate(target)
+
+
 def test_rejects_unknown_top_level_key() -> None:
     document = _report()
     document["future_credit"] = 1
@@ -577,9 +752,24 @@ def test_rejects_nonfinite_direct_report_values(value: float) -> None:
 @pytest.mark.parametrize("surrogate", [0xD800, 0xDFFF])
 def test_rejects_unpaired_unicode_direct_report(surrogate: int) -> None:
     document = _report()
-    document["decision"]["untrusted_metadata"] = chr(surrogate)
-    with pytest.raises(CapacityReportError, match="invalid Unicode"):
+    secret = "PRIVATE-UNICODE-VALUE-998877" + chr(surrogate) + "-TAIL"
+    document["decision"]["untrusted_metadata"] = secret
+    with pytest.raises(CapacityReportError, match="invalid Unicode") as failure:
         validate_report(document)
+    assert "PRIVATE-UNICODE-VALUE" not in str(failure.value)
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
+
+
+def test_rejects_unpaired_unicode_key_without_retaining_private_cause() -> None:
+    document = _report()
+    secret = "PRIVATE-UNICODE-KEY-998877" + chr(0xD800) + "-TAIL"
+    document["decision"][secret] = 1
+    with pytest.raises(CapacityReportError, match="invalid Unicode") as failure:
+        validate_report(document)
+    assert "PRIVATE-UNICODE-KEY" not in str(failure.value)
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
 
 
 def test_rejects_escaped_unpaired_unicode_in_file(tmp_path: Path) -> None:
@@ -589,8 +779,10 @@ def test_rejects_escaped_unpaired_unicode_in_file(tmp_path: Path) -> None:
     path = tmp_path / "surrogate.json"
     replacement = '"claim_issue": ' + json.dumps(chr(0xD800))
     path.write_text(raw.replace(marker, replacement, 1), encoding="utf-8")
-    with pytest.raises(CapacityReportError, match="invalid Unicode"):
+    with pytest.raises(CapacityReportError, match="invalid Unicode") as failure:
         load_and_validate(path)
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
 
 
 def test_rejects_overlong_integer_literal_without_traceback(tmp_path: Path) -> None:
@@ -601,7 +793,7 @@ def test_rejects_overlong_integer_literal_without_traceback(tmp_path: Path) -> N
     path = tmp_path / "overlong-integer.json"
     path.write_text(raw.replace(marker, replacement, 1), encoding="utf-8")
     with pytest.raises(
-        CapacityReportError, match="integer exceeds limit|invalid capacity report JSON"
+        CapacityReportError, match="integer token exceeds bounded limit"
     ):
         load_and_validate(path)
 
