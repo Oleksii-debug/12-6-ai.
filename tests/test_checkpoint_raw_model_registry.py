@@ -186,6 +186,27 @@ def test_model_fingerprint_ignores_armed_dict_descriptor() -> None:
     assert raw["dict_reads"] == []
 
 
+def test_training_mode_check_ignores_armed_model_dict_descriptor() -> None:
+    model = _ArmedDictModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    model.eval()
+    raw = _raw_module_dict(model)
+    raw["_dict_spoof_armed"] = True
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="requires model training mode",
+    ):
+        trainer_adapter._assert_native_d02_model_training_mode(model, trainer)
+
+    assert raw["training"] is False
+    assert raw["dict_reads"] == []
+
+
 def test_optimizer_coverage_ignores_forged_param_groups_view() -> None:
     model = _TwoParameters()
     optimizer = _ArmedOptimizerViewAdamW(
