@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -78,6 +79,70 @@ def test_strict_policy_loader_rejects_ambiguous_and_nonfinite_json(
             assert expected in str(exc)
         else:
             raise AssertionError(f"{name} unexpectedly passed strict JSON loading")
+
+
+@pytest.mark.parametrize("literal", ["1e-9999", "-1e-9999", "5.4e-9999"])
+def test_policy_loader_rejects_nonzero_float_underflow(
+    tmp_path: Path,
+    literal: str,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "underflow.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    with pytest.raises(ValueError, match="underflowed to zero"):
+        cli._load_policy(path)
+
+    result = _run_cli(path)
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert json.loads(result.stdout) == {
+        "error": "nonzero JSON number underflowed to zero",
+        "status": "FAIL",
+    }
+
+
+@pytest.mark.parametrize("literal", ["0e-9999", "-0.000e-9999", "0.0", "2.5"])
+def test_policy_loader_preserves_real_zero_and_finite_float(
+    tmp_path: Path,
+    literal: str,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "finite-number.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    assert cli._load_policy(path) == {"value": float(literal)}
+
+
+@pytest.mark.parametrize("sign", ["", "-"])
+def test_policy_loader_accepts_64_digit_integer_at_parse_boundary(
+    tmp_path: Path,
+    sign: str,
+) -> None:
+    cli = _load_cli()
+    literal = sign + "9" * 64
+    path = tmp_path / "int-boundary.json"
+    path.write_text('{"value":' + literal + "}", encoding="utf-8")
+    assert cli._load_policy(path) == {"value": int(literal)}
+
+
+def test_policy_loader_bounds_integer_before_python_conversion(tmp_path: Path) -> None:
+    cli = _load_cli()
+    path = tmp_path / "huge-int.json"
+    path.write_text('{"value":' + "9" * 100_000 + "}", encoding="utf-8")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            cli._load_policy(path)
+    finally:
+        sys.set_int_max_str_digits(before)
+
+    result = _run_cli(path)
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert json.loads(result.stdout) == {
+        "error": "JSON integer exceeds 64 digits",
+        "status": "FAIL",
+    }
 
 
 def test_strict_policy_loader_preserves_valid_finite_json(tmp_path: Path) -> None:
@@ -221,3 +286,172 @@ def test_unexpected_product_recursion_remains_visible(
     )
     with pytest.raises(RecursionError, match="unexpected programmer recursion"):
         cli.main()
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "api_token_sk_live_123456",
+        "Authorization: Bearer private-value",
+        "password=hunter2",
+    ],
+)
+def test_cli_duplicate_member_refusal_does_not_echo_untrusted_key(
+    tmp_path: Path,
+    secret_key: str,
+) -> None:
+    raw = json.dumps({secret_key: 1})[:-1] + "," + json.dumps(secret_key) + ":2}"
+    path = tmp_path / "duplicate-secret.json"
+    path.write_text(raw, encoding="utf-8")
+    result = _run_cli(path)
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "FAIL"
+    assert payload["error"] == "duplicate object member"
+    assert secret_key not in result.stdout
+
+
+def test_policy_loader_rejects_oversized_input_before_json_decode(
+    tmp_path: Path,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "oversized-policy.json"
+    path.write_bytes(b" " * (cli.MAX_INPUT_BYTES + 1))
+    with pytest.raises(ValueError, match="input byte limit"):
+        cli._load_policy(path)
+
+    result = _run_cli(path)
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "error": "evaluation firewall policy exceeds input byte limit",
+        "status": "FAIL",
+    }
+
+
+def test_policy_loader_missing_path_redacts_secret(
+    tmp_path: Path,
+) -> None:
+    secret = "PRIVATE-FINAL-TEST-PATH-998877"
+    result = _run_cli(tmp_path / f"{secret}.json")
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "error": "cannot read evaluation firewall policy",
+        "status": "FAIL",
+    }
+    assert secret not in result.stdout
+
+
+def test_policy_loader_rejects_directory_without_path_echo(tmp_path: Path) -> None:
+    result = _run_cli(tmp_path)
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    expected = (
+        "cannot read evaluation firewall policy"
+        if os.name == "nt"
+        else "evaluation firewall policy must be a regular file"
+    )
+    assert payload == {"error": expected, "status": "FAIL"}
+
+
+def test_policy_loader_fifo_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "evaluation FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    result = subprocess.run(
+        [sys.executable, str(TOOL), "--policy", str(fifo)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert json.loads(result.stdout) == {
+        "error": "evaluation firewall policy must be a regular file",
+        "status": "FAIL",
+    }
+
+
+def test_policy_loader_rejects_regular_file_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    requested = tmp_path / "requested.json"
+    substitute = tmp_path / "substitute.json"
+    requested.write_bytes(POLICY.read_bytes())
+    substitute.write_bytes(POLICY.read_bytes())
+    real_open = cli.os.open
+
+    def open_substitute(_path: Path, flags: int) -> int:
+        return real_open(substitute, flags)
+
+    monkeypatch.setattr(cli.os, "open", open_substitute)
+    with pytest.raises(ValueError, match="changed between check and open"):
+        cli._load_policy(requested)
+
+
+def test_policy_loader_valid_regular_symlink_still_works(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    linked = tmp_path / "evaluation policy link.json"
+    linked.symlink_to(POLICY.resolve())
+    cli = _load_cli()
+    assert cli._load_policy(linked) == json.loads(POLICY.read_text(encoding="utf-8"))
+
+
+def test_default_policy_works_outside_repository_cwd(tmp_path: Path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(
+        [sys.executable, str(TOOL)],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "PASS"
+
+
+def test_relative_policy_still_respects_explicit_repo_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "alternate-root"
+    relative = Path("nested") / "policy.json"
+    path = repo_root / relative
+    path.parent.mkdir(parents=True)
+    path.write_bytes(POLICY.read_bytes())
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(TOOL),
+            "--repo-root",
+            str(repo_root),
+            "--policy",
+            str(relative),
+        ],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert json.loads(result.stdout)["status"] == "PASS"
