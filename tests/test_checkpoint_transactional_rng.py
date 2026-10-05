@@ -142,6 +142,7 @@ def test_transactional_rng_rollback_failure_preserves_primary_interrupt(
         for note in getattr(raised.value, "__notes__", ())
     )
 
+
 def test_transactional_rng_restore_rolls_back_torch_warn_only_policy() -> None:
     torch = pytest.importorskip("torch")
     ambient = capture_rng_state()
@@ -182,6 +183,7 @@ def test_transactional_rng_restore_rolls_back_torch_warn_only_policy() -> None:
             old_policy[0],
             warn_only=old_policy[1],
         )
+
 
 def test_rng_state_roundtrip_restores_torch_warn_only_policy() -> None:
     torch = pytest.importorskip("torch")
