@@ -1,0 +1,307 @@
+name: D03 PEP LoC V10 two-clean physical execution
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_pep_loc_v10_two_clean.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d03-pep-loc-v10-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-pep-loc-v10-two-clean-g8-138-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pass_id: [1, 2]
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      CLEAN_ARTIFACT_ID: "10820342689"
+      CLEAN_ARTIFACT_ZIP_SHA256: "99069ce2183abbbc374749cca5c538efa259df0c64658a9b88cc96b25c0fbba0"
+      LOC_SHARD_SHA256: "a6a6023d9cae067b5531ba84537877c180ab3ff1579f99aeac446d65d465ae0f"
+      LOC_SHARD_BYTES: "358594502"
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind merged Product and immutable authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git cat-file -e "$V7_HEAD^{commit}"
+          python -m py_compile             tools/prepare_data232_ephemeral_handoff_v1.py             tools/materialize_d03_peps.py             tools/materialize_d03_common_pile_loc.py             tools/run_d03_expanded_global_dedup_v10_pep_loc.py             src/twelve_six/data/expanded_global_dedup_v10.py
+          test "$(git hash-object src/twelve_six/data/expanded_global_dedup_v10.py)" =             "3d4f14f75cada51805afaa84080a0092fcf3bb92"
+          test "$(git hash-object tools/run_d03_expanded_global_dedup_v10_pep_loc.py)" =             "fae47765ca165abd7226cedf99f3da3bd6107394"
+
+      - name: Reconstruct exact clean retained handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pep-loc-${{ matrix.pass_id }}"
+          mkdir -p "$root/clean-artifact"
+          curl --fail --location --silent --show-error             --retry 3 --retry-all-errors             -H "Authorization: Bearer $GITHUB_TOKEN"             -H "Accept: application/vnd.github+json"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$CLEAN_ARTIFACT_ID/zip"             -o "$root/clean.zip"
+          test "$(sha256sum "$root/clean.zip" | cut -d' ' -f1)" =             "$CLEAN_ARTIFACT_ZIP_SHA256"
+          unzip -q "$root/clean.zip" -d "$root/clean-artifact"
+          test -f "$root/clean-artifact/records.jsonl"
+          test -f "$root/clean-artifact/inventory.json"
+          test -f "$root/clean-artifact/evidence.json"
+          python tools/prepare_data232_ephemeral_handoff_v1.py             --repo-root .             --records-jsonl "$root/clean-artifact/records.jsonl"             --record-inventory-json "$root/clean-artifact/inventory.json"             --materialization-evidence-json "$root/clean-artifact/evidence.json"             --output-dir "$root/clean-handoff"             --expected-carrier-git-sha "$EXECUTION_SHA"
+          test "$(sha256sum "$root/clean-handoff/training_records.jsonl" | cut -d' ' -f1)" =             "3458afe0380ea45d328ad3f004b21845a188ca69f2f7a83c24999e9e53268e53"
+          test "$(sha256sum "$root/clean-handoff/training_handoff.json" | cut -d' ' -f1)" =             "80bcf2dd28f0d13795ceea01b358c7149b636f55f17b29575d14313b5cee99ee"
+
+      - name: Reacquire exact pinned PEP candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pep-loc-${{ matrix.pass_id }}"
+          python tools/materialize_d03_peps.py             --repo-root .             --output-dir "$root/pep"
+          test "$(wc -c < "$root/pep/pep-candidate.jsonl" | tr -d ' ')" = "5152269"
+          test "$(sha256sum "$root/pep/pep-candidate.jsonl" | cut -d' ' -f1)" =             "65d1cf23354efc5a66d7132b67602a7af1715e18a0fb77e729595866c25d33c3"
+          test "$(wc -c < "$root/pep/pep-report.json" | tr -d ' ')" = "1270"
+          test "$(sha256sum "$root/pep/pep-report.json" | cut -d' ' -f1)" =             "bc217b3b795bfe5001b8ef266270eee10089c88bc148e8a8f0fa540c2451edcb"
+
+      - name: Reacquire exact pinned LoC full shard and candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pep-loc-${{ matrix.pass_id }}"
+          loc_url="https://huggingface.co/datasets/common-pile/library_of_congress/resolve/d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/data/00000_loc_books.jsonl.gz"
+          curl --fail --location --silent --show-error             --retry 3 --retry-all-errors             "$loc_url" -o "$root/loc-shard.jsonl.gz"
+          test "$(wc -c < "$root/loc-shard.jsonl.gz" | tr -d ' ')" = "$LOC_SHARD_BYTES"
+          test "$(sha256sum "$root/loc-shard.jsonl.gz" | cut -d' ' -f1)" =             "$LOC_SHARD_SHA256"
+          python tools/materialize_d03_common_pile_loc.py             --repo-root .             --shard "$root/loc-shard.jsonl.gz"             --output-dir "$root/loc"
+          test "$(wc -c < "$root/loc/loc-candidate.jsonl" | tr -d ' ')" = "4680968"
+          test "$(sha256sum "$root/loc/loc-candidate.jsonl" | cut -d' ' -f1)" =             "f87201d71eb8c3f2510cdf2c9b3ce1a32b83d1a11198e8a1ff0ad67d0a3fec20"
+          test "$(wc -c < "$root/loc/loc-report.json" | tr -d ' ')" = "1538"
+          test "$(sha256sum "$root/loc/loc-report.json" | cut -d' ' -f1)" =             "ae8de852ffeea6d2f697641b2f941eeb044e3377565d0bc1b3b7ba8b6cf3133a"
+
+      - name: Execute merged V10 through canonical indexed incumbent
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pep-loc-${{ matrix.pass_id }}"
+          git worktree add --detach "$root/v7" "$V7_HEAD"
+          test "$(git -C "$root/v7" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$root/v7" status --porcelain=v1 --untracked-files=all)"
+          python tools/run_d03_expanded_global_dedup_v10_pep_loc.py             --v7-root "$root/v7"             --clean-training-records "$root/clean-handoff/training_records.jsonl"             --clean-training-handoff "$root/clean-handoff/training_handoff.json"             --pep-candidate "$root/pep/pep-candidate.jsonl"             --pep-report "$root/pep/pep-report.json"             --loc-candidate "$root/loc/loc-candidate.jsonl"             --loc-report "$root/loc/loc-report.json"             --output-report "$root/expanded-v10-report.json"             --output-survivors "$root/expanded-v10-survivors.json"
+          git worktree remove --force "$root/v7"
+
+      - name: Emit text-free pass evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pep-loc-${{ matrix.pass_id }}"
+          python - "$root" "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+          report_raw = (root / "expanded-v10-report.json").read_bytes()
+          survivor_raw = (root / "expanded-v10-survivors.json").read_bytes()
+          report = json.loads(report_raw)
+          survivors = json.loads(survivor_raw)
+
+          vector = report["source_vector"]
+          assert vector["pre_dedup_source_object_count"] == 371
+          assert vector["pre_dedup_declared_capacity_bytes"] == 15_089_399
+          assert report["claim_boundary"]["expanded_global_dedup_complete"] is True
+          assert report["claim_boundary"]["reserved_evaluation_decontamination_complete"] is False
+          assert report["claim_boundary"]["canonical_quality_privacy_complete"] is False
+          assert report["claim_boundary"]["training_authorized_bytes"] == 0
+          assert report["claim_boundary"]["tokenizer_fit_authorized"] is False
+          assert report["claim_boundary"]["optimizer_updates"] == 0
+          assert report["claim_boundary"]["model_training_executed"] is False
+          assert report["claim_boundary"]["final_test_payload_accessed"] is False
+          assert report["claim_boundary"]["paid_compute_used"] is False
+          assert survivors["truth_boundary"]["training_authorized_bytes"] == 0
+          assert survivors["truth_boundary"]["tokenizer_fit_authorized"] is False
+          assert survivors["truth_boundary"]["optimizer_updates"] == 0
+          assert survivors["truth_boundary"]["model_training_executed"] is False
+
+          evidence = {
+              "schema_version": "12-6.d03-pep-loc-v10-physical-pass.v1",
+              "execution_head_sha": head,
+              "clean_artifact_id": 10820342689,
+              "clean_training_records_sha256": (
+                  "3458afe0380ea45d328ad3f004b21845a188ca69f2f7a83c24999e9e53268e53"
+              ),
+              "pep_candidate_sha256": (
+                  "65d1cf23354efc5a66d7132b67602a7af1715e18a0fb77e729595866c25d33c3"
+              ),
+              "loc_candidate_sha256": (
+                  "f87201d71eb8c3f2510cdf2c9b3ce1a32b83d1a11198e8a1ff0ad67d0a3fec20"
+              ),
+              "pre_dedup_source_objects": vector["pre_dedup_source_object_count"],
+              "pre_dedup_payload_bytes": vector["pre_dedup_declared_capacity_bytes"],
+              "post_dedup_source_objects": vector["post_dedup_survivor_source_object_count"],
+              "post_dedup_unique_bytes": vector["post_dedup_conservative_unique_bytes"],
+              "duplicate_discount_bytes": vector["duplicate_discount_bytes"],
+              "matcher_report_sha256": report["report_sha256"],
+              "survivor_authority_sha256": survivors["survivor_authority_sha256"],
+              "report_file_sha256": hashlib.sha256(report_raw).hexdigest(),
+              "survivor_file_sha256": hashlib.sha256(survivor_raw).hexdigest(),
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "raw_candidate_payloads_retained": False,
+          }
+          canonical = json.dumps(
+              evidence, sort_keys=True, separators=(",", ":"), allow_nan=False
+          ).encode("utf-8")
+          evidence["evidence_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
+          (root / "evidence.json").write_text(
+              json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(evidence, sort_keys=True))
+          PY
+
+      - name: Remove raw payloads before evidence upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pep-loc-${{ matrix.pass_id }}"
+          rm -rf             "$root/clean.zip"             "$root/clean-artifact"             "$root/clean-handoff"             "$root/pep"             "$root/loc"             "$root/loc-shard.jsonl.gz"
+          test ! -e "$root/loc-shard.jsonl.gz"
+
+      - name: Upload text-free pass evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-pep-loc-v10-pass-${{ matrix.pass_id }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/pep-loc-${{ matrix.pass_id }}/expanded-v10-report.json
+            ${{ runner.temp }}/pep-loc-${{ matrix.pass_id }}/expanded-v10-survivors.json
+            ${{ runner.temp }}/pep-loc-${{ matrix.pass_id }}/evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+  compare-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-pep-loc-v10-two-clean-g8-138-20261005'
+    needs: execute
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Download pass 1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-pep-loc-v10-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-pep-loc-v10-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require two-clean byte convergence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp artifacts/pass-1/expanded-v10-report.json artifacts/pass-2/expanded-v10-report.json
+          cmp artifacts/pass-1/expanded-v10-survivors.json artifacts/pass-2/expanded-v10-survivors.json
+          python - "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          head = sys.argv[1]
+          a = json.loads(Path("artifacts/pass-1/evidence.json").read_text())
+          b = json.loads(Path("artifacts/pass-2/evidence.json").read_text())
+          for item in (a, b):
+              assert item["execution_head_sha"] == head
+              assert item["canonical_capacity_credited"] == 0
+              assert item["authorized_optimized_target_exposure"] == 0
+              assert item["tokenizer_fit_authorized"] is False
+              assert item["training_executed"] is False
+          stable_fields = {
+              key: value
+              for key, value in a.items()
+              if key not in {"evidence_identity_sha256"}
+          }
+          assert stable_fields == {
+              key: value
+              for key, value in b.items()
+              if key not in {"evidence_identity_sha256"}
+          }
+
+          proof = {
+              "schema_version": "12-6.d03-pep-loc-v10-two-clean.v1",
+              "execution_head_sha": head,
+              "pre_dedup_source_objects": a["pre_dedup_source_objects"],
+              "pre_dedup_payload_bytes": a["pre_dedup_payload_bytes"],
+              "post_dedup_source_objects": a["post_dedup_source_objects"],
+              "post_dedup_unique_bytes": a["post_dedup_unique_bytes"],
+              "duplicate_discount_bytes": a["duplicate_discount_bytes"],
+              "matcher_report_sha256": a["matcher_report_sha256"],
+              "survivor_authority_sha256": a["survivor_authority_sha256"],
+              "two_fresh_physical_executions_converged": True,
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "raw_candidate_payloads_retained": False,
+          }
+          canonical = json.dumps(
+              proof, sort_keys=True, separators=(",", ":"), allow_nan=False
+          ).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
+          Path("d03-pep-loc-v10-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload two-clean proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-pep-loc-v10-two-clean-${{ github.event.pull_request.head.sha }}
+          path: d03-pep-loc-v10-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
