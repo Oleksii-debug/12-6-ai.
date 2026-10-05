@@ -44,7 +44,7 @@ main = _OPERATOR["main"]
             "json_integer_exceeds_64_digits",
         ),
         (b"\xff", "manifest_utf8_invalid"),
-        (b'{"a":1,"a":2}', "duplicate_json_key:a"),
+        (b'{"a":1,"a":2}', "duplicate_json_key"),
         (b'{"n":NaN}', "non_finite_json_constant:NaN"),
     ],
 )
@@ -138,6 +138,86 @@ def test_small_valid_manifest_json_remains_readable(tmp_path: Path) -> None:
     path = tmp_path / "valid.json"
     path.write_bytes(b'{"ok":true}')
     assert _load_mapping(path) == {"ok": True}
+
+
+def test_duplicate_secret_member_is_redacted_from_loader_error(
+    tmp_path: Path,
+) -> None:
+    secret = "PRIVATE_GLOBAL_LEASE_TOKEN_998877"
+    path = tmp_path / "secret-duplicate.json"
+    path.write_text(
+        '{"' + secret + '":1,"' + secret + '":2}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=r"^duplicate_json_key$") as caught:
+        _load_mapping(path)
+    assert secret not in str(caught.value)
+
+
+def test_operator_rejects_abbreviated_manifest_option_before_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "operate_learned20m_global_training_lease.py",
+            "--mani",
+            "manifest.json",
+            "inspect",
+        ],
+    )
+    with pytest.raises(SystemExit) as caught:
+        main()
+    assert caught.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("operation", "tail"),
+    [
+        ("inspect", []),
+        (
+            "acquire",
+            [
+                "--run-id", "run",
+                "--holder-id", "holder",
+                "--ttl-seconds", "60",
+                "--expected-terminal-authority-sha256", "0" * 64,
+            ],
+        ),
+        (
+            "renew",
+            ["--expected-remote-tip", "0" * 40, "--ttl-seconds", "60"],
+        ),
+        (
+            "terminate",
+            ["--expected-remote-tip", "0" * 40, "--status", "ABORTED"],
+        ),
+    ],
+)
+def test_operator_rejects_repeated_global_control_option(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    tail: list[str],
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "operate_learned20m_global_training_lease.py",
+            "--manifest", str(manifest),
+            "--remote", "origin",
+            "--remote", "other",
+            operation,
+            *tail,
+        ],
+    )
+    with pytest.raises(SystemExit) as caught:
+        main()
+    assert caught.value.code == 2
 
 
 @pytest.mark.parametrize(
