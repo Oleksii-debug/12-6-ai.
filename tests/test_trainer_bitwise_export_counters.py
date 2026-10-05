@@ -57,7 +57,7 @@ def preserve_ambient_state():
         (torch.tensor(0.0), torch.tensor(-0.0)),
         (torch.tensor([0.0], dtype=torch.bfloat16),
          torch.tensor([-0.0], dtype=torch.bfloat16)),
-        (torch.tensor([0.0 + 0.0j]), torch.tensor([-0.0 + 0.0j])),
+        (torch.tensor([complex(0.0, 0.0)]), torch.tensor([complex(-0.0, 0.0)])),
         (np.array([0.0], dtype=np.float32), np.array([-0.0], dtype=np.float32)),
         (np.array([1.0, 0.0, 2.0])[::-1],
          np.array([1.0, -0.0, 2.0])[::-1]),
