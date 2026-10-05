@@ -19,7 +19,7 @@ from twelve_six.checkpoint import (
     progress_trainer,
     trainer_adapter,
 )
-from twelve_six.training import Trainer, TrainerConfig
+from twelve_six.training import Trainer, TrainerConfig, TrainingStateInvalidError
 
 
 class _TinyLogits(torch.nn.Module):
@@ -1158,12 +1158,25 @@ def test_native_checkpoint_save_rejects_subclass_export_model_mutation(
 
 
 @pytest.mark.parametrize(
-    "mutation",
-    ["optimizer", "scheduler"],
+    ("mutation", "expected_error", "expected_message"),
+    [
+        (
+            "optimizer",
+            core.CheckpointCompatibilityError,
+            "auxiliary state changed during checkpoint export",
+        ),
+        (
+            "scheduler",
+            TrainingStateInvalidError,
+            "scheduler chronology differs from committed optimizer step",
+        ),
+    ],
 )
 def test_native_checkpoint_save_rejects_subclass_export_auxiliary_mutation(
     tmp_path: Path,
     mutation: str,
+    expected_error: type[BaseException],
+    expected_message: str,
 ) -> None:
     class MutatingExporter(Trainer):
         def state_dict(self) -> Any:
@@ -1184,10 +1197,7 @@ def test_native_checkpoint_save_rejects_subclass_export_auxiliary_mutation(
     assert target.train_microbatch(_BATCH).optimizer_stepped
     checkpoint = tmp_path / f"subclass-export-{mutation}-drift-must-not-exist"
 
-    with pytest.raises(
-        core.CheckpointCompatibilityError,
-        match="auxiliary state changed during checkpoint export",
-    ):
+    with pytest.raises(expected_error, match=expected_message):
         trainer_adapter.save_trainer_checkpoint(
             checkpoint,
             model=target.model,
@@ -1304,7 +1314,7 @@ def test_native_checkpoint_save_rejects_forged_model_state_dict(
         ValueError if forgery == "missing" else core.CheckpointCompatibilityError
     )
     expected_message = (
-        "model.state_dict\(\) must be a non-empty mapping"
+        r"model\.state_dict\(\) must be a non-empty mapping"
         if forgery == "missing"
         else "staged model export differs from live model state"
     )
