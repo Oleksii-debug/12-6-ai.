@@ -2045,3 +2045,79 @@ with TemporaryDirectory() as raw:
     assert manifest_path.exists()
 """
     )
+
+
+
+def test_incomplete_recovery_validates_all_targets_before_first_effect() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    first_final = root / "first.json"
+    second_final = root / "second.json"
+    first_payload = b'{"kind":"first"}\\n'
+    second_payload = b'{"kind":"second"}\\n'
+    prepared = (
+        (first_final, first_payload),
+        (second_final, second_payload),
+    )
+    marker, manifest_path, stages, pathset_id = mod._publication_control_paths(
+        prepared
+    )
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+
+    mod._write_create_only_durable(stages[0], first_payload)
+    mod._link_staged_output(stages[0], first_final)
+    first_identity = mod._regular_file_identity(
+        first_final, label="test first final"
+    )
+
+    foreign_final = root / "foreign-second-final"
+    foreign_stage = root / "foreign-second-stage"
+    foreign_final.write_bytes(second_payload)
+    foreign_stage.write_bytes(second_payload)
+    manifest["targets"][1]["path"] = str(foreign_final.resolve())
+    manifest["targets"][1]["stage_path"] = str(foreign_stage.resolve())
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    mod._write_create_only_durable(
+        manifest_path,
+        mod._canonical(manifest) + b"\\n",
+    )
+
+    try:
+        mod._recover_incomplete_publication(
+            marker,
+            manifest_path,
+            prepared,
+            stages,
+            pathset_id,
+        )
+    except mod.CaselawGlobalDedupError as exc:
+        assert "target paths do not match requested outputs" in str(exc)
+    else:
+        raise AssertionError("late forged target was accepted")
+
+    assert first_final.read_bytes() == first_payload
+    assert stages[0].read_bytes() == first_payload
+    assert mod._regular_file_identity(
+        first_final, label="retained first final"
+    ) == first_identity
+    assert mod._regular_file_identity(
+        stages[0], label="retained first stage"
+    ) == first_identity
+    assert foreign_final.read_bytes() == second_payload
+    assert foreign_stage.read_bytes() == second_payload
+    assert marker.exists()
+    assert manifest_path.exists()
+"""
+    )
