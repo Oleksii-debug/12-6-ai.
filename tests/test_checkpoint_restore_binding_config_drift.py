@@ -428,3 +428,5 @@ def test_native_checkpoint_save_rejects_export_counter_drift(
 
     assert save_calls == []
     assert target.tokens_seen == 1
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
