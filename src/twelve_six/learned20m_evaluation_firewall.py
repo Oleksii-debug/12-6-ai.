@@ -149,7 +149,7 @@ def _require(condition: bool, message: str) -> None:
 def _require_exact_keys(value: Any, expected: set[str], label: str) -> dict[str, Any]:
     _require(isinstance(value, dict), f"{label} must be an object")
     keys = set(value)
-    _require(keys == expected, f"{label} keys drift: {sorted(keys ^ expected)}")
+    _require(keys == expected, f"{label} keys drift")
     return value
 
 
