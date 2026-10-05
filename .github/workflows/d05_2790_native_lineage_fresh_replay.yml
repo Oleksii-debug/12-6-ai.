@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: d05-2790-native-lineage-\${{ github.event.pull_request.number }}
+  group: d05-2790-native-lineage-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: \${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -131,7 +131,7 @@ jobs:
       - name: Require exact replay and build text-free evidence
         shell: bash
         env:
-          EXECUTION_HEAD: \${{ github.event.pull_request.head.sha }}
+          EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -255,7 +255,7 @@ jobs:
       - name: Upload text-free exact-head evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: d05-pr2790-native-lineage-\${{ github.event.pull_request.head.sha }}
+          name: d05-pr2790-native-lineage-${{ github.event.pull_request.head.sha }}
           path: /tmp/d05-2790-fresh-process/evidence.json
           if-no-files-found: error
           retention-days: 90
