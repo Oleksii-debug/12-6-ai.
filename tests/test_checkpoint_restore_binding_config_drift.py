@@ -1102,6 +1102,7 @@ def test_native_checkpoint_save_rejects_subclass_export_auxiliary_mutation(
     [
         "_model_export_fingerprint",
         "_checkpoint_auxiliary_fingerprint",
+        "_require_exported_model_matches_live",
         "_require_exported_scheduler_matches_live",
         "_require_exported_scaler_matches_live",
         "_require_exported_optimizer_matches_live",
@@ -1160,6 +1161,49 @@ def test_native_checkpoint_save_rejects_subclass_safety_authority_override(
         trainer_adapter.save_trainer_checkpoint(
             checkpoint,
             model=target.model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    "forgery",
+    ["value", "missing", "extra"],
+)
+def test_native_checkpoint_save_rejects_forged_model_state_dict(
+    tmp_path: Path,
+    forgery: str,
+) -> None:
+    class ForgedStateModel(_TinyLogits):
+        def state_dict(self, *args: Any, **kwargs: Any) -> Any:
+            state = super().state_dict(*args, **kwargs)
+            if forgery == "value":
+                state["weight"] = state["weight"].detach().clone() + 0.25
+            elif forgery == "missing":
+                del state["weight"]
+            else:
+                state["forged_extra"] = torch.zeros(1)
+            return state
+
+    model = ForgedStateModel()
+    target = Trainer(
+        model,
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    checkpoint = tmp_path / f"forged-model-export-{forgery}"
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="staged model export differs from live model state",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=model,
             trainer=target,
             identity=_fresh_identity(),
         )
@@ -1278,6 +1322,7 @@ def test_native_checkpoint_save_rejects_auxiliary_drift_from_model_export(
     [
         "_model_export_fingerprint",
         "_checkpoint_auxiliary_fingerprint",
+        "_require_exported_model_matches_live",
         "_require_exported_scheduler_matches_live",
         "_require_exported_scaler_matches_live",
         "_require_exported_optimizer_matches_live",
