@@ -1228,6 +1228,46 @@ def test_torch_rng_explicit_scope_shapes_fail_closed(
         core._preflight_rng_state(state)
 
 
+def test_direct_scheduler_preflight_does_not_call_live_state_dict(
+    tmp_path: Path,
+) -> None:
+    class EffectfulScheduler:
+        def __init__(self, value: int) -> None:
+            self.value = value
+            self.state_reads = 0
+
+        def state_dict(self) -> dict[str, int]:
+            self.state_reads += 1
+            return {"value": self.value}
+
+        def load_state_dict(self, state: dict[str, int]) -> None:
+            self.value = state["value"]
+
+    source = NumpyModel(np.array([0.1, -0.2, 0.3]))
+    source_scheduler = EffectfulScheduler(7)
+    checkpoint = tmp_path / "isolated-scheduler-preflight"
+    save_checkpoint(
+        checkpoint,
+        model=source,
+        scheduler=source_scheduler,
+        trainer_state={},
+        identity=identity(step=0, tokens_seen=0),
+    )
+    assert source_scheduler.state_reads == 1
+
+    target = NumpyModel(np.array([9.0, 8.0, 7.0]))
+    target_scheduler = EffectfulScheduler(99)
+    load_checkpoint(
+        checkpoint,
+        model=target,
+        scheduler=target_scheduler,
+        restore_rng=False,
+    )
+
+    assert target_scheduler.state_reads == 0
+    assert target_scheduler.value == 7
+
+
 def test_torch_rng_preflight_rejects_invalid_per_device_cuda_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
