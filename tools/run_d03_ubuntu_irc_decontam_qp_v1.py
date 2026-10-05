@@ -701,6 +701,793 @@ def _restore_clean_release(original: Mapping[str, Any]) -> None:
         setattr(clean, key, value)
 
 
+UBUNTU_CLEAN_PARTIAL_SCHEMA = (
+    "12-6.d03-ubuntu-irc-current-clean-partial-materialization.v1"
+)
+
+
+def _materialize_quality_survivors_with_partial(
+    inputs: list[dict[str, str]],
+    metadata: Mapping[str, Mapping[str, str]],
+    quality: Mapping[str, Any],
+) -> tuple[
+    list[dict[str, str]],
+    dict[str, int],
+    dict[str, Any],
+]:
+    """Materialize authoritative G05 accepted units, including partial windows.
+
+    This is the exact seam proven by the terminal Rada quality-window lineage:
+    a RETAIN_PARTIAL natural-language document emits each accepted authoritative
+    quality window independently; rejected siblings are not allowed to evict
+    accepted siblings. The current G05 authority remains the sole source of
+    spans, decisions, hashes, and byte counts.
+    """
+    raw_rows = quality.get("records")
+    require(isinstance(raw_rows, list), "G05 records missing")
+    by_id: dict[str, Mapping[str, Any]] = {}
+    for row in raw_rows:
+        require(isinstance(row, Mapping), "G05 record is not an object")
+        record_id = row.get("record_id")
+        require(
+            isinstance(record_id, str) and bool(record_id),
+            "G05 record_id missing",
+        )
+        require(record_id not in by_id, "duplicate G05 record_id")
+        by_id[record_id] = row
+    require(
+        set(by_id) == {row["id"] for row in inputs},
+        "G05/input record-set drift",
+    )
+
+    output: list[dict[str, str]] = []
+    seen_output_ids: set[str] = set()
+    partial_projection: list[dict[str, Any]] = []
+    stats = {
+        "g05_reject_documents": 0,
+        "g05_partial_documents": 0,
+        "g05_rejected_units": 0,
+        "g05_rejected_utf8_bytes": 0,
+    }
+    detail = {
+        "input_documents": len(inputs),
+        "retain_all_documents": 0,
+        "partial_documents": 0,
+        "reject_documents": 0,
+        "partial_emitted_units": 0,
+        "partial_rejected_units": 0,
+        "input_utf8_bytes": 0,
+        "retained_utf8_bytes": 0,
+        "rejected_utf8_bytes": 0,
+    }
+
+    for source in inputs:
+        record_id = source["id"]
+        text = source["text"]
+        mode = source["mode"]
+        row = by_id[record_id]
+        payload = text.encode("utf-8")
+        require(
+            row.get("payload_sha256") == sha256(payload)
+            and row.get("utf8_bytes") == len(payload)
+            and row.get("mode") == mode,
+            f"G05 payload binding drift: {record_id}",
+        )
+        status = row.get("status")
+        units = row.get("units")
+        authoritative_unit = row.get("authoritative_unit")
+        require(
+            status in {"RETAIN_ALL", "RETAIN_PARTIAL", "REJECT_DOCUMENT"},
+            f"G05 status drift: {record_id}",
+        )
+        require(
+            authoritative_unit
+            in {"DOCUMENT", "BOUNDED_NATURAL_LANGUAGE_WINDOW"},
+            f"G05 authoritative unit drift: {record_id}",
+        )
+        require(
+            isinstance(units, list) and bool(units),
+            f"G05 units missing: {record_id}",
+        )
+
+        detail["input_utf8_bytes"] += len(payload)
+        accepted_bytes = 0
+        rejected_bytes = 0
+        expected_start = 0
+        accepted_units: list[tuple[Mapping[str, Any], str]] = []
+        seen_unit_ids: set[str] = set()
+        for index, unit in enumerate(units):
+            require(isinstance(unit, Mapping), "G05 unit must be an object")
+            start = unit.get("start_char")
+            end = unit.get("end_char")
+            accepted = unit.get("accepted")
+            unit_id = unit.get("unit_id")
+            require(
+                type(start) is int
+                and type(end) is int
+                and start == expected_start
+                and start < end <= len(text),
+                f"G05 unit partition drift: {record_id}",
+            )
+            require(
+                type(accepted) is bool,
+                f"G05 unit accepted type drift: {record_id}",
+            )
+            require(
+                isinstance(unit_id, str)
+                and bool(unit_id)
+                and unit_id not in seen_unit_ids,
+                f"G05 unit_id drift: {record_id}",
+            )
+            seen_unit_ids.add(unit_id)
+            if authoritative_unit == "DOCUMENT":
+                require(
+                    len(units) == 1
+                    and index == 0
+                    and unit_id == record_id
+                    and start == 0
+                    and end == len(text),
+                    f"G05 document unit drift: {record_id}",
+                )
+            else:
+                require(
+                    unit_id
+                    == f"{record_id}#quality-window-{index:04d}",
+                    f"G05 quality-window identity drift: {record_id}",
+                )
+
+            piece = text[start:end]
+            piece_raw = piece.encode("utf-8")
+            piece_sha = sha256(piece_raw)
+            require(
+                unit.get("payload_sha256") == piece_sha
+                and unit.get("utf8_bytes") == len(piece_raw),
+                f"G05 unit payload drift: {unit_id}",
+            )
+            decision_sha = unit.get("decision_sha256")
+            require(
+                isinstance(decision_sha, str)
+                and _SHA64.fullmatch(decision_sha) is not None,
+                f"G05 decision identity drift: {unit_id}",
+            )
+            if accepted:
+                accepted_bytes += len(piece_raw)
+                accepted_units.append((unit, piece))
+            else:
+                rejected_bytes += len(piece_raw)
+                stats["g05_rejected_units"] += 1
+                stats["g05_rejected_utf8_bytes"] += len(piece_raw)
+            expected_start = end
+
+        require(
+            expected_start == len(text),
+            f"G05 units do not reconstruct document: {record_id}",
+        )
+        require(
+            accepted_bytes == row.get("retained_utf8_bytes")
+            and rejected_bytes == row.get("rejected_utf8_bytes"),
+            f"G05 retained/rejected byte accounting drift: {record_id}",
+        )
+        detail["retained_utf8_bytes"] += accepted_bytes
+        detail["rejected_utf8_bytes"] += rejected_bytes
+
+        meta = metadata[record_id]
+        if status == "RETAIN_ALL":
+            require(
+                accepted_bytes == len(payload)
+                and rejected_bytes == 0
+                and len(accepted_units) == len(units),
+                f"G05 RETAIN_ALL vector drift: {record_id}",
+            )
+            require(
+                record_id not in seen_output_ids,
+                f"G05 materialized record-id collision: {record_id}",
+            )
+            seen_output_ids.add(record_id)
+            output.append(
+                {
+                    "record_id": record_id,
+                    "source_id": meta["source_id"],
+                    "family": meta["family"],
+                    "modality": mode,
+                    "normalized_payload": text,
+                }
+            )
+            detail["retain_all_documents"] += 1
+            continue
+
+        if status == "REJECT_DOCUMENT":
+            require(
+                accepted_bytes == 0
+                and rejected_bytes == len(payload)
+                and not accepted_units,
+                f"G05 rejected record retained bytes: {record_id}",
+            )
+            stats["g05_reject_documents"] += 1
+            detail["reject_documents"] += 1
+            continue
+
+        require(
+            authoritative_unit == "BOUNDED_NATURAL_LANGUAGE_WINDOW",
+            f"G05 partial row is not authoritative windows: {record_id}",
+        )
+        require(
+            accepted_bytes > 0
+            and rejected_bytes > 0
+            and accepted_units
+            and len(accepted_units) < len(units),
+            f"G05 partial vector drift: {record_id}",
+        )
+        stats["g05_partial_documents"] += 1
+        detail["partial_documents"] += 1
+        rejected_unit_count = len(units) - len(accepted_units)
+        detail["partial_rejected_units"] += rejected_unit_count
+
+        for unit, piece in accepted_units:
+            piece_raw = piece.encode("utf-8")
+            piece_sha = sha256(piece_raw)
+            unit_id = str(unit["unit_id"])
+            derived_id = f"{unit_id}:{piece_sha}"
+            require(
+                derived_id not in seen_output_ids,
+                f"G05 derived record-id collision: {derived_id}",
+            )
+            seen_output_ids.add(derived_id)
+            output.append(
+                {
+                    "record_id": derived_id,
+                    "source_id": meta["source_id"],
+                    "family": meta["family"],
+                    "modality": mode,
+                    "normalized_payload": piece,
+                }
+            )
+            partial_projection.append(
+                {
+                    "parent_record_id": record_id,
+                    "record_id": derived_id,
+                    "source_id": meta["source_id"],
+                    "family": meta["family"],
+                    "modality": mode,
+                    "unit_id": unit_id,
+                    "start_char": unit["start_char"],
+                    "end_char": unit["end_char"],
+                    "payload_sha256": piece_sha,
+                    "utf8_bytes": len(piece_raw),
+                    "decision_sha256": unit["decision_sha256"],
+                }
+            )
+            detail["partial_emitted_units"] += 1
+
+    require(bool(output), "G05 removed every post-decontamination record")
+    require(
+        detail["input_utf8_bytes"]
+        == detail["retained_utf8_bytes"] + detail["rejected_utf8_bytes"],
+        "G05 byte conservation drift",
+    )
+    require(
+        detail["partial_documents"] == stats["g05_partial_documents"],
+        "G05 partial-document accounting drift",
+    )
+    require(
+        detail["reject_documents"] == stats["g05_reject_documents"],
+        "G05 rejected-document accounting drift",
+    )
+    require(
+        detail["partial_rejected_units"]
+        <= stats["g05_rejected_units"],
+        "G05 partial rejected-unit accounting drift",
+    )
+    require(
+        len(output)
+        == detail["retain_all_documents"] + detail["partial_emitted_units"],
+        "G05 materialized output-count drift",
+    )
+    output.sort(key=lambda row: row["record_id"])
+    detail["partial_unit_projection_sha256"] = sha256(
+        canonical(partial_projection)
+    )
+    detail["partial_unit_projection_count"] = len(partial_projection)
+    return output, stats, detail
+
+
+def _execute_ubuntu_clean_with_partial(
+    training_records: list[dict[str, str]],
+    evaluation_records: list[dict[str, Any]],
+    *,
+    training_handoff_evidence: Mapping[str, Any],
+    base_reserved_binding: Mapping[str, Any],
+    eval647_manifest: Mapping[str, Any],
+    eval647_materialization_evidence: Mapping[str, Any],
+    expected_base_reserved_binding_identity_sha256: str,
+    expected_composed_reserved_binding_identity_sha256: str,
+    expected_eval647_materialization_evidence_identity_sha256: str,
+    expected_eval647_object_set_identity_sha256: str,
+    expected_inventory_identity_sha256: str,
+    expected_survivor_authority_sha256: str,
+    expected_training_handoff_identity_sha256: str,
+    expected_selection_validation_identity_sha256: str,
+    expected_final_test_identity_sha256: str,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    list[dict[str, str]],
+    dict[str, Any],
+]:
+    """Run current clean authorities with proven partial-window materialization."""
+    dependency_blobs = clean.verify_dependency_blobs()
+    clean._verify_clean_release_binding(
+        training_records,
+        training_handoff_evidence,
+    )
+
+    report, decontam_evidence, eval647_receipt = (
+        clean.execute_eval647_reserved_decontamination(
+            training_records,
+            evaluation_records,
+            training_handoff_evidence=training_handoff_evidence,
+            base_reserved_binding=base_reserved_binding,
+            manifest=eval647_manifest,
+            materialization_evidence=eval647_materialization_evidence,
+            expected_base_reserved_binding_identity_sha256=(
+                expected_base_reserved_binding_identity_sha256
+            ),
+            expected_composed_reserved_binding_identity_sha256=(
+                expected_composed_reserved_binding_identity_sha256
+            ),
+            expected_eval647_materialization_evidence_identity_sha256=(
+                expected_eval647_materialization_evidence_identity_sha256
+            ),
+            expected_eval647_object_set_identity_sha256=(
+                expected_eval647_object_set_identity_sha256
+            ),
+            expected_inventory_identity_sha256=(
+                expected_inventory_identity_sha256
+            ),
+            expected_survivor_authority_sha256=(
+                expected_survivor_authority_sha256
+            ),
+            expected_training_handoff_identity_sha256=(
+                expected_training_handoff_identity_sha256
+            ),
+            expected_selection_validation_identity_sha256=(
+                expected_selection_validation_identity_sha256
+            ),
+            expected_final_test_identity_sha256=(
+                expected_final_test_identity_sha256
+            ),
+        )
+    )
+    clean.verify_eval647_reserved_decontamination_receipt(
+        eval647_receipt,
+        expected_composed_reserved_binding_identity_sha256=(
+            expected_composed_reserved_binding_identity_sha256
+        ),
+        expected_eval647_materialization_evidence_identity_sha256=(
+            expected_eval647_materialization_evidence_identity_sha256
+        ),
+        expected_eval647_object_set_identity_sha256=(
+            expected_eval647_object_set_identity_sha256
+        ),
+    )
+
+    quality_inputs, metadata, decontam_excluded = (
+        clean._post_decontamination_records(training_records, report)
+    )
+    decontam_projection = clean._input_projection(quality_inputs)
+    post_decontam_rows_sha256 = clean._sha256(
+        clean._cjson(decontam_projection)
+    )
+    decontam_identity = clean._require_sha256(
+        decontam_evidence.get("execution_identity_sha256"),
+        "decontamination execution identity",
+    )
+    quality = clean.build_quality_execution_authority(
+        quality_inputs,
+        input_manifest_sha256=decontam_identity,
+        expected_input_rows_sha256=post_decontam_rows_sha256,
+    )
+    quality_identity = clean._require_sha256(
+        quality.get("execution_identity_sha256"),
+        "quality execution identity",
+    )
+    clean.verify_quality_execution_authority(
+        quality,
+        quality_inputs,
+        expected_input_manifest_sha256=decontam_identity,
+        expected_input_rows_sha256=post_decontam_rows_sha256,
+        expected_execution_identity_sha256=quality_identity,
+    )
+
+    quality_survivors, quality_stats, partial_detail = (
+        _materialize_quality_survivors_with_partial(
+            quality_inputs,
+            metadata,
+            quality,
+        )
+    )
+    privacy_inputs = clean._quality_records_for_privacy(quality_survivors)
+    privacy_projection = clean._input_projection(privacy_inputs)
+    post_quality_rows_sha256 = clean._sha256(
+        clean._cjson(privacy_projection)
+    )
+    privacy = clean.build_privacy_execution_authority(
+        privacy_inputs,
+        expected_input_rows_sha256=post_quality_rows_sha256,
+    )
+    privacy_identity = clean._require_sha256(
+        privacy.get("execution_identity_sha256"),
+        "privacy execution identity",
+    )
+    clean.verify_privacy_execution_authority(
+        privacy,
+        privacy_inputs,
+        expected_input_rows_sha256=post_quality_rows_sha256,
+        expected_execution_identity_sha256=privacy_identity,
+    )
+
+    final_survivors, privacy_stats = clean._materialize_privacy_survivors(
+        quality_survivors,
+        privacy,
+    )
+    survivor_inventory = clean.materialize_record_inventory(final_survivors)
+    survivor_jsonl_sha256 = clean._sha256(
+        clean.canonical_record_bytes(final_survivors)
+    )
+    require(
+        survivor_inventory.get("record_count") == len(final_survivors),
+        "survivor inventory record count drift",
+    )
+    require(
+        survivor_inventory.get("total_payload_bytes")
+        == sum(
+            len(row["normalized_payload"].encode("utf-8"))
+            for row in final_survivors
+        ),
+        "survivor inventory byte count drift",
+    )
+
+    rejection_counts = {
+        "data232_excluded_records": decontam_excluded,
+        **quality_stats,
+        **privacy_stats,
+    }
+    require(
+        set(rejection_counts) == clean._REJECTION_KEYS,
+        "rejection-count schema drift",
+    )
+    detector_counts = privacy.get("detector_counts")
+    require(isinstance(detector_counts, Mapping), "G06 detector counts missing")
+    privacy_detector_counts: dict[str, int] = {}
+    for key, value in detector_counts.items():
+        require(
+            isinstance(key, str)
+            and bool(key)
+            and type(value) is int
+            and value >= 0,
+            "G06 detector count malformed",
+        )
+        privacy_detector_counts[key] = value
+
+    receipt_core: dict[str, Any] = {
+        "schema_version": UBUNTU_CLEAN_PARTIAL_SCHEMA,
+        "status": (
+            "UBUNTU_CLEAN_PARTIAL_SURVIVOR_MATERIALIZED_"
+            "PENDING_INDEPENDENT_QUALIFICATION"
+        ),
+        "clean_training_records_sha256": (
+            clean.PRODUCTION_TRAINING_RECORDS_SHA256
+        ),
+        "clean_training_handoff_sha256": (
+            clean.PRODUCTION_TRAINING_HANDOFF_SHA256
+        ),
+        "data232_report_sha256": clean._require_sha256(
+            report.get("report_sha256"),
+            "DATA-232 report identity",
+        ),
+        "decontamination_execution_identity_sha256": decontam_identity,
+        "eval647_execution_receipt_identity_sha256": clean._require_sha256(
+            eval647_receipt.get("receipt_identity_sha256"),
+            "EVAL-647 receipt identity",
+        ),
+        "quality_execution_identity_sha256": quality_identity,
+        "privacy_execution_identity_sha256": privacy_identity,
+        "post_decontamination_input_rows_sha256": (
+            post_decontam_rows_sha256
+        ),
+        "post_quality_input_rows_sha256": post_quality_rows_sha256,
+        "survivor_jsonl_sha256": survivor_jsonl_sha256,
+        "survivor_record_inventory_digest_sha256": clean._require_sha256(
+            survivor_inventory.get("record_inventory_digest_sha256"),
+            "survivor record inventory",
+        ),
+        "survivor_payload_inventory_digest_sha256": clean._require_sha256(
+            survivor_inventory.get("payload_inventory_digest_sha256"),
+            "survivor payload inventory",
+        ),
+        "input_training_records": len(training_records),
+        "post_decontamination_records": len(quality_inputs),
+        "post_quality_records": len(quality_survivors),
+        "survivor_records": len(final_survivors),
+        "survivor_payload_bytes": survivor_inventory["total_payload_bytes"],
+        "survivor_source_objects": len(
+            {row["source_id"] for row in final_survivors}
+        ),
+        "rejection_counts": rejection_counts,
+        "g05_partial_materialization": partial_detail,
+        "privacy_detector_counts": dict(
+            sorted(privacy_detector_counts.items())
+        ),
+        "dependency_git_blobs": dependency_blobs,
+        "durable_evidence_hash_only": True,
+        "terminal_post_g05_g06_authority": False,
+        "independent_qualification_required": True,
+        "current_corpus_launch_authority_promoted": False,
+        "authorized_optimized_target_exposure": 0,
+        "tokenizer_fit_authorized": False,
+        "optimizer_updates_executed_on_real_targets": 0,
+        "training_executed": False,
+        "learned_weights_created": False,
+        "final_test_outcomes_read": False,
+        "paid_compute_used": False,
+        "foreign_pretrained_weights": False,
+    }
+    receipt = {
+        **receipt_core,
+        "receipt_identity_sha256": clean._sha256(
+            clean._cjson(receipt_core)
+        ),
+    }
+    _verify_ubuntu_clean_partial_receipt(receipt)
+    return (
+        receipt,
+        report,
+        decontam_evidence,
+        eval647_receipt,
+        quality,
+        privacy,
+        final_survivors,
+        survivor_inventory,
+    )
+
+
+def _verify_ubuntu_clean_partial_receipt(
+    receipt: Mapping[str, Any],
+) -> None:
+    expected_keys = {
+        "schema_version",
+        "status",
+        "clean_training_records_sha256",
+        "clean_training_handoff_sha256",
+        "data232_report_sha256",
+        "decontamination_execution_identity_sha256",
+        "eval647_execution_receipt_identity_sha256",
+        "quality_execution_identity_sha256",
+        "privacy_execution_identity_sha256",
+        "post_decontamination_input_rows_sha256",
+        "post_quality_input_rows_sha256",
+        "survivor_jsonl_sha256",
+        "survivor_record_inventory_digest_sha256",
+        "survivor_payload_inventory_digest_sha256",
+        "input_training_records",
+        "post_decontamination_records",
+        "post_quality_records",
+        "survivor_records",
+        "survivor_payload_bytes",
+        "survivor_source_objects",
+        "rejection_counts",
+        "g05_partial_materialization",
+        "privacy_detector_counts",
+        "dependency_git_blobs",
+        "durable_evidence_hash_only",
+        "terminal_post_g05_g06_authority",
+        "independent_qualification_required",
+        "current_corpus_launch_authority_promoted",
+        "authorized_optimized_target_exposure",
+        "tokenizer_fit_authorized",
+        "optimizer_updates_executed_on_real_targets",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "foreign_pretrained_weights",
+        "receipt_identity_sha256",
+    }
+    require(
+        type(receipt) is dict and set(receipt) == expected_keys,
+        "Ubuntu clean partial receipt schema is not closed",
+    )
+    require(
+        receipt.get("schema_version") == UBUNTU_CLEAN_PARTIAL_SCHEMA,
+        "Ubuntu clean partial receipt schema drift",
+    )
+    body = dict(receipt)
+    claimed = body.pop("receipt_identity_sha256", None)
+    require(
+        isinstance(claimed, str)
+        and _SHA64.fullmatch(claimed) is not None
+        and clean._sha256(clean._cjson(body)) == claimed,
+        "Ubuntu clean partial receipt self-hash drift",
+    )
+    require(
+        receipt.get("clean_training_records_sha256")
+        == clean.PRODUCTION_TRAINING_RECORDS_SHA256
+        and receipt.get("clean_training_handoff_sha256")
+        == clean.PRODUCTION_TRAINING_HANDOFF_SHA256,
+        "Ubuntu clean release root drift",
+    )
+    require(
+        receipt.get("dependency_git_blobs")
+        == clean.EXPECTED_DEPENDENCY_BLOBS,
+        "Ubuntu clean dependency binding drift",
+    )
+    for key in (
+        "data232_report_sha256",
+        "decontamination_execution_identity_sha256",
+        "eval647_execution_receipt_identity_sha256",
+        "quality_execution_identity_sha256",
+        "privacy_execution_identity_sha256",
+        "post_decontamination_input_rows_sha256",
+        "post_quality_input_rows_sha256",
+        "survivor_jsonl_sha256",
+        "survivor_record_inventory_digest_sha256",
+        "survivor_payload_inventory_digest_sha256",
+    ):
+        value = receipt.get(key)
+        require(
+            isinstance(value, str) and _SHA64.fullmatch(value) is not None,
+            f"Ubuntu clean nested root malformed: {key}",
+        )
+
+    for key in (
+        "input_training_records",
+        "post_decontamination_records",
+        "post_quality_records",
+        "survivor_records",
+        "survivor_payload_bytes",
+        "survivor_source_objects",
+    ):
+        require(
+            type(receipt.get(key)) is int and receipt[key] > 0,
+            f"Ubuntu clean invalid positive count: {key}",
+        )
+    require(
+        receipt["input_training_records"]
+        == clean.PRODUCTION_INPUT_RECORD_COUNT,
+        "Ubuntu clean production input count drift",
+    )
+
+    rejection = receipt.get("rejection_counts")
+    require(
+        isinstance(rejection, Mapping)
+        and set(rejection) == clean._REJECTION_KEYS,
+        "Ubuntu clean rejection schema drift",
+    )
+    require(
+        all(type(value) is int and value >= 0 for value in rejection.values()),
+        "Ubuntu clean rejection value drift",
+    )
+    require(
+        receipt["input_training_records"]
+        - receipt["post_decontamination_records"]
+        == rejection["data232_excluded_records"],
+        "Ubuntu DATA-232 rejection/count drift",
+    )
+
+    detail = receipt.get("g05_partial_materialization")
+    require(isinstance(detail, Mapping), "Ubuntu G05 partial detail missing")
+    detail_keys = {
+        "input_documents",
+        "retain_all_documents",
+        "partial_documents",
+        "reject_documents",
+        "partial_emitted_units",
+        "partial_rejected_units",
+        "input_utf8_bytes",
+        "retained_utf8_bytes",
+        "rejected_utf8_bytes",
+        "partial_unit_projection_sha256",
+        "partial_unit_projection_count",
+    }
+    require(
+        set(detail) == detail_keys,
+        "Ubuntu G05 partial detail schema drift",
+    )
+    require(
+        all(
+            type(detail[key]) is int and detail[key] >= 0
+            for key in detail_keys
+            if key != "partial_unit_projection_sha256"
+        ),
+        "Ubuntu G05 partial detail integer drift",
+    )
+    require(
+        isinstance(detail["partial_unit_projection_sha256"], str)
+        and _SHA64.fullmatch(
+            detail["partial_unit_projection_sha256"]
+        )
+        is not None,
+        "Ubuntu G05 partial projection identity drift",
+    )
+    require(
+        detail["input_documents"]
+        == receipt["post_decontamination_records"],
+        "Ubuntu G05 input-document count drift",
+    )
+    require(
+        detail["input_documents"]
+        == (
+            detail["retain_all_documents"]
+            + detail["partial_documents"]
+            + detail["reject_documents"]
+        ),
+        "Ubuntu G05 document classification drift",
+    )
+    require(
+        detail["partial_documents"] == rejection["g05_partial_documents"]
+        and detail["reject_documents"] == rejection["g05_reject_documents"],
+        "Ubuntu G05 status accounting drift",
+    )
+    require(
+        detail["partial_unit_projection_count"]
+        == detail["partial_emitted_units"],
+        "Ubuntu G05 partial projection count drift",
+    )
+    require(
+        receipt["post_quality_records"]
+        == detail["retain_all_documents"] + detail["partial_emitted_units"],
+        "Ubuntu G05 physical output-count drift",
+    )
+    require(
+        detail["input_utf8_bytes"]
+        == detail["retained_utf8_bytes"] + detail["rejected_utf8_bytes"],
+        "Ubuntu G05 physical byte conservation drift",
+    )
+    require(
+        detail["rejected_utf8_bytes"]
+        == rejection["g05_rejected_utf8_bytes"],
+        "Ubuntu G05 rejected-byte accounting drift",
+    )
+    require(
+        receipt["post_quality_records"] - receipt["survivor_records"]
+        == (
+            rejection["g06_quarantine_records"]
+            + rejection["g06_exclude_records"]
+        ),
+        "Ubuntu G06 drop/count drift",
+    )
+    require(
+        0 < receipt["survivor_source_objects"]
+        <= receipt["survivor_records"],
+        "Ubuntu survivor source-object count drift",
+    )
+    require(receipt.get("durable_evidence_hash_only") is True, "raw evidence widened")
+    require(
+        receipt.get("terminal_post_g05_g06_authority") is False
+        and receipt.get("independent_qualification_required") is True
+        and receipt.get("current_corpus_launch_authority_promoted") is False,
+        "Ubuntu clean authority boundary widened",
+    )
+    require(
+        receipt.get("authorized_optimized_target_exposure") == 0
+        and receipt.get("optimizer_updates_executed_on_real_targets") == 0,
+        "Ubuntu clean optimized-target authority widened",
+    )
+    for key in (
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "foreign_pretrained_weights",
+    ):
+        require(receipt.get(key) is False, f"Ubuntu clean truth drift: {key}")
+
+
 def execute(
     *,
     expected_execution_head: str,
@@ -770,7 +1557,7 @@ def execute(
             _privacy,
             final_survivors,
             survivor_inventory,
-        ) = clean.execute_current_clean_composition(
+        ) = _execute_ubuntu_clean_with_partial(
             training_records,
             evaluation_records,
             training_handoff_evidence=handoff,
@@ -803,40 +1590,7 @@ def execute(
             ),
             expected_final_test_identity_sha256=expected_final_test_identity_sha256,
         )
-        clean.verify_current_clean_composition_receipt(
-            receipt,
-            expected_receipt_identity_sha256=receipt[
-                "receipt_identity_sha256"
-            ],
-            expected_data232_report_sha256=receipt["data232_report_sha256"],
-            expected_decontamination_execution_identity_sha256=receipt[
-                "decontamination_execution_identity_sha256"
-            ],
-            expected_eval647_execution_receipt_identity_sha256=receipt[
-                "eval647_execution_receipt_identity_sha256"
-            ],
-            expected_quality_execution_identity_sha256=receipt[
-                "quality_execution_identity_sha256"
-            ],
-            expected_privacy_execution_identity_sha256=receipt[
-                "privacy_execution_identity_sha256"
-            ],
-            expected_post_decontamination_input_rows_sha256=receipt[
-                "post_decontamination_input_rows_sha256"
-            ],
-            expected_post_quality_input_rows_sha256=receipt[
-                "post_quality_input_rows_sha256"
-            ],
-            expected_survivor_jsonl_sha256=receipt[
-                "survivor_jsonl_sha256"
-            ],
-            expected_survivor_record_inventory_digest_sha256=receipt[
-                "survivor_record_inventory_digest_sha256"
-            ],
-            expected_survivor_payload_inventory_digest_sha256=receipt[
-                "survivor_payload_inventory_digest_sha256"
-            ],
-        )
+        _verify_ubuntu_clean_partial_receipt(receipt)
     finally:
         _restore_clean_release(original)
 
@@ -917,6 +1671,9 @@ def execute(
                 "survivor_payload_inventory_digest_sha256"
             ],
             "rejection_counts": receipt["rejection_counts"],
+            "g05_partial_materialization": receipt[
+                "g05_partial_materialization"
+            ],
             "privacy_detector_counts": receipt["privacy_detector_counts"],
             "later_gate_loss_bytes": gate_loss_bytes,
         },
