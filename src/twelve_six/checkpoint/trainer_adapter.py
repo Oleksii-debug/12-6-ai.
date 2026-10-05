@@ -481,6 +481,18 @@ def _preflight_trainer_state_without_rng_guard(
                 "checkpoint trainer scheduler chronology mismatch"
             ) from exc
 
+    # Native GradScaler accepts finite but invalid statistics in a detached
+    # load probe. Mirror D02's single authority before model/RNG application.
+    if canonical_d02:
+        scaler_check = getattr(trainer, "_require_checkpoint_scaler_state", None)
+        if callable(scaler_check):
+            try:
+                scaler_check(state.get("scaler"))
+            except (ArithmeticError, ValueError, TypeError, RuntimeError) as exc:
+                raise CheckpointCompatibilityError(
+                    "checkpoint trainer scaler statistics invalid"
+                ) from exc
+
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
         if not hasattr(trainer, "load_state_dict"):
