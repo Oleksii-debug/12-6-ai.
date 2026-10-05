@@ -1089,6 +1089,10 @@ def save_checkpoint(
                     "checkpoint save could not restore entry RNG state "
                     "after final validation"
                 ) from exc
+        # Validators are arbitrary caller code and may reach the staging tree
+        # through a closure or filesystem scan. Re-verify the exact staged bytes
+        # after the final validator/RNG rollback and before atomic visibility.
+        verify_checkpoint(temp_dir)
         rng_restored = True
 
         os.replace(temp_dir, destination)
