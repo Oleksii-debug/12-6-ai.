@@ -9,6 +9,8 @@ import json
 import os
 import random
 import shutil
+import sys
+from importlib import metadata
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -64,7 +66,8 @@ def write_create_only(path: Path, value: Any) -> None:
 
 def tensor_record(value: torch.Tensor) -> dict[str, Any]:
     tensor = value.detach().cpu().contiguous()
-    raw = tensor.view(torch.uint8).numpy().tobytes()
+    require(str(tensor.dtype) != "torch.bfloat16", "unexpected bfloat16 execution tensor")
+    raw = tensor.numpy().tobytes()
     return {
         "kind": "torch_tensor",
         "dtype": str(tensor.dtype),
@@ -246,6 +249,12 @@ def produce(
         "checkpoint_step": manifest["identity"]["step"],
         "checkpoint_tokens_seen": manifest["identity"]["tokens_seen"],
         "baseline_state_sha256": sha256(canonical(baseline_value)),
+        "environment": {
+            "python": sys.version.split()[0],
+            "torch": torch.__version__,
+            "numpy": np.__version__,
+            "safetensors": metadata.version("safetensors"),
+        },
         "truth_boundary": {
             "real_learned20m_checkpoint": False,
             "synthetic_physical_resume_only": True,
