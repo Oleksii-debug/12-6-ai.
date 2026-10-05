@@ -1171,7 +1171,6 @@ with TemporaryDirectory() as raw:
 
 
 
-
 def test_durable_create_failure_never_unlinks_substituted_path() -> None:
     _run_isolated(
         """
@@ -1312,7 +1311,6 @@ with TemporaryDirectory() as raw:
         assert json.loads(path.read_text(encoding="utf-8")) == value
 """
     )
-
 
 
 def test_publication_recovers_after_partial_postcommit_stage_cleanup() -> None:
@@ -1498,7 +1496,6 @@ with TemporaryDirectory() as raw:
     assert manifest.exists()
 """
     )
-
 
 
 def test_incomplete_recovery_preserves_stage_replaced_after_final_unlink() -> None:
@@ -1990,7 +1987,6 @@ with TemporaryDirectory() as raw:
     assert manifest.exists()
 """
     )
-
 
 
 def test_incomplete_recovery_rejects_resealed_foreign_target_paths_before_effects() -> None:
