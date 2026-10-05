@@ -390,6 +390,17 @@ def execute(
     )
     matcher.verify_report(base_report)
     base_terminal = _terminal(base_report, EXPECTED_BASE_OBJECTS, EXPECTED_BASE_BYTES)
+    # V3 match rows retain the exact literal score=1.0 from _lineage_matches.
+    # CPython marshal v4 reference encoding is refcount-sensitive, so keeping the
+    # verified base report alive can make the unchanged strict attester report a
+    # false callable-code drift. Preserve only the durable facts needed below,
+    # then release the match-bearing report before the next unchanged attestation.
+    base_report_sha256 = base_report.get("report_sha256")
+    _require(
+        type(base_report_sha256) is str and len(base_report_sha256) == 64,
+        "base report identity invalid",
+    )
+    del base_report
 
     indexed.attest_incumbent_runtime(matcher)
     combined_report = indexed.audit_payloads_indexed(
@@ -436,7 +447,7 @@ def execute(
         "base": {
             "source_object_count": EXPECTED_BASE_OBJECTS,
             "declared_capacity_bytes": EXPECTED_BASE_BYTES,
-            "report_sha256": base_report.get("report_sha256"),
+            "report_sha256": base_report_sha256,
             "post_dedup_unique_bytes": base_terminal.get(
                 "conservative_unique_capacity_bytes_after"
             ),
