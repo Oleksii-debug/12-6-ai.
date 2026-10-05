@@ -1,0 +1,234 @@
+name: D03 EDRNPA selected act-card schema discovery
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover-selected-actcard-schema:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXECUTION_BASE: 019944d5fe12334791f05f1232d13de4a12e37d3
+      PROBE_BLOB: 09bdf8ba7f561ea66b60e2b17acffe4de361f701
+      POLICY_BLOB: 5f42cd3c20edad4b513857249f2c52d9efd4d82d
+      POLICY_VERIFIER_BLOB: 95b52b98421e3e7861216a4f1f50c840aaed310c
+      SOURCE_BYTES: "611865397"
+      SOURCE_MD5: 0ea96e1582e5584ced79be1027f0ae55
+      SOURCE_SHA256: a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 8
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact zero-credit executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git hash-object tools/probe_d03_edrnpa_open_data_v1.py)" = "$PROBE_BLOB"
+          test "$(git hash-object configs/data/d03_edrnpa_rights_provenance_source_policy_v1.json)" = "$POLICY_BLOB"
+          test "$(git hash-object tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py)" = "$POLICY_VERIFIER_BLOB"
+          python -m py_compile             tools/probe_d03_edrnpa_open_data_v1.py             tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py             tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py
+          PYTHONPATH=. python tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py
+
+      - name: Enforce execution-only diff boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$EXECUTION_BASE"
+          git merge-base --is-ancestor "$EXECUTION_BASE" "$EXECUTION_HEAD"
+          mapfile -t changed < <(git diff --name-only "$EXECUTION_BASE...$EXECUTION_HEAD" | sort)
+          expected=(
+            ".github/workflows/d03_edrnpa_selected_actcard_schema_discovery.yml"
+            "tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py"
+          )
+          if [ "${changed[*]}" != "${expected[*]}" ]; then
+            printf 'unexpected diff paths:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+
+      - name: Download exact pinned EDRNPA source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/edrnpa-source.zip
+          PYTHONPATH=. python - <<'PY'
+          from pathlib import Path
+          import tools.probe_d03_edrnpa_open_data_v1 as probe
+
+          result = probe.download_archive_to(
+              Path("/tmp/edrnpa-source.zip"),
+              timeout=600.0,
+          )
+          print(result)
+          PY
+          test "$(stat -c '%s' /tmp/edrnpa-source.zip)" = "$SOURCE_BYTES"
+          test "$(md5sum /tmp/edrnpa-source.zip | cut -d' ' -f1)" = "$SOURCE_MD5"
+          test "$(sha256sum /tmp/edrnpa-source.zip | cut -d' ' -f1)" = "$SOURCE_SHA256"
+
+      - name: Execute selected act-card schema discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/edrnpa-schema-output
+          PYTHONPATH=. python tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py             --source-zip /tmp/edrnpa-source.zip             --execution-head-sha "$EXECUTION_HEAD"             --output-dir /tmp/edrnpa-schema-output
+
+      - name: Qualify text-free zero-credit discovery output
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("/tmp/edrnpa-schema-output")
+          expected = {"selected-actcard-schema.json", "execution-receipt.json"}
+          if {path.name for path in root.iterdir()} != expected:
+              raise SystemExit("unexpected discovery output members")
+
+          discovery = json.loads(
+              (root / "selected-actcard-schema.json").read_text(encoding="utf-8")
+          )
+          receipt = json.loads(
+              (root / "execution-receipt.json").read_text(encoding="utf-8")
+          )
+
+          def identity(document, field):
+              body = dict(document)
+              body.pop(field, None)
+              raw = (
+                  json.dumps(
+                      body,
+                      ensure_ascii=False,
+                      sort_keys=True,
+                      separators=(",", ":"),
+                      allow_nan=False,
+                  )
+                  + "\n"
+              ).encode("utf-8")
+              return hashlib.sha256(raw).hexdigest()
+
+          if discovery["execution_head_sha"] != os.environ["EXECUTION_HEAD"]:
+              raise SystemExit("discovery execution head drift")
+          if discovery["source_binding"]["source_bytes"] != int(os.environ["SOURCE_BYTES"]):
+              raise SystemExit("source byte count drift")
+          if discovery["source_binding"]["source_md5"] != os.environ["SOURCE_MD5"]:
+              raise SystemExit("source MD5 drift")
+          if discovery["source_binding"]["source_sha256"] != os.environ["SOURCE_SHA256"]:
+              raise SystemExit("source SHA-256 drift")
+          if discovery["candidate_binding"]["selected_objects"] != 176:
+              raise SystemExit("selected object count drift")
+          if discovery["candidate_binding"]["selected_bytes"] != 4_000_000:
+              raise SystemExit("selected byte count drift")
+          if discovery["selected_act_card_structure"]["selected_documents_seen"] != 176:
+              raise SystemExit("selected document discovery count drift")
+          if not discovery["selected_act_card_structure"]["fields"]:
+              raise SystemExit("no selected act-card fields discovered")
+          if identity(discovery, "discovery_identity_sha256") != discovery["discovery_identity_sha256"]:
+              raise SystemExit("discovery self-hash mismatch")
+          if identity(receipt, "receipt_identity_sha256") != receipt["receipt_identity_sha256"]:
+              raise SystemExit("receipt self-hash mismatch")
+          if receipt["discovery_identity_sha256"] != discovery["discovery_identity_sha256"]:
+              raise SystemExit("receipt/discovery cross-bind drift")
+
+          forbidden_keys = {
+              "text",
+              "raw_text",
+              "legal_text",
+              "metadata_value",
+              "metadata_values",
+              "normalized_payload",
+              "raw_payload",
+          }
+
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      if key in forbidden_keys:
+                          raise SystemExit(f"forbidden raw-content key: {key}")
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+
+          walk(discovery)
+          walk(receipt)
+
+          truth = discovery["truth_boundary"]
+          exact_zero = {
+              "record_level_payload_provenance_executed": False,
+              "payload_source_admission_executed": False,
+              "admitted_payload_records": 0,
+              "admitted_payload_bytes": 0,
+              "canonical_capacity_credit_bytes": 0,
+              "family_count_credit_added": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_executed": False,
+              "learned_weights_created": False,
+              "final_test_accessed": False,
+              "paid_compute_used": False,
+          }
+          if truth != exact_zero:
+              raise SystemExit("zero-credit truth boundary drift")
+
+          print("EDRNPA_SELECTED_ACTCARD_SCHEMA_DISCOVERY_QUALIFIED")
+          print("DISCOVERY_IDENTITY_SHA256=" + discovery["discovery_identity_sha256"])
+          print("RECEIPT_IDENTITY_SHA256=" + receipt["receipt_identity_sha256"])
+          print(
+              "UNIQUE_ITEM_NAMES="
+              + str(discovery["selected_act_card_structure"]["unique_item_names"])
+          )
+          print(
+              "RICHTEXT_ITEM_NAMES="
+              + json.dumps(
+                  discovery["selected_act_card_structure"]["richtext_item_names"],
+                  ensure_ascii=False,
+                  sort_keys=True,
+              )
+          )
+          print(
+              "ITEM_NAMES="
+              + json.dumps(
+                  [row["item_name"] for row in discovery["selected_act_card_structure"]["fields"]],
+                  ensure_ascii=False,
+              )
+          )
+          PY
+
+      - name: Remove source before artifact publication
+        if: always()
+        shell: bash
+        run: |
+          rm -f /tmp/edrnpa-source.zip
+
+      - name: Upload text-free discovery evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-edrnpa-selected-actcard-schema-${{ env.EXECUTION_HEAD }}
+          path: /tmp/edrnpa-schema-output
+          if-no-files-found: error
+          retention-days: 90
