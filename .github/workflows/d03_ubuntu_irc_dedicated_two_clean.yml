@@ -138,8 +138,7 @@ jobs:
           ).encode("utf-8")
           proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
           Path("ubuntu-irc-two-clean-proof.json").write_text(
-              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "
-",
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\\n",
               encoding="utf-8",
           )
           print(json.dumps(proof, sort_keys=True))
