@@ -37,7 +37,6 @@ from .trainer_adapter import (
     _assert_live_d02_determinism,
     _assert_native_d02_exact_live_state,
     _assert_native_d02_model_training_mode,
-    _assert_native_d02_postload_snapshot,
     _assert_trainer_model_binding,
     _assert_trainer_restore_bindings,
     _bind_native_export_live_authorities,
