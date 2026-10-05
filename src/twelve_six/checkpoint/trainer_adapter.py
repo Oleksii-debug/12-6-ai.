@@ -1487,10 +1487,12 @@ def load_trainer_checkpoint(
         model_apply(materialized)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
+        _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_native_d02_model_training_mode(model, trainer)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
                 combined_state["rng"],
