@@ -334,7 +334,7 @@ def test_restore_policy_snapshot_rejects_exotic_objects_without_running_hooks(
             torch.rand(1)
             return self
 
-        def __eq__(self, other: Any) -> bool:
+        def __eq__(self, other: object) -> bool:
             del other
             hook_calls.append("eq")
             random.random()
