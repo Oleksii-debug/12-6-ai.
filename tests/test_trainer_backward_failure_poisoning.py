@@ -1493,6 +1493,105 @@ def test_checkpoint_export_refuses_nonfinite_weights_modified_after_valid_step()
         trainer.state_dict()
 
 
+@pytest.mark.parametrize(
+    ("surface", "error"),
+    [
+        ("optimizer-load", "optimizer restore interface unavailable"),
+        ("optimizer-zero-grad", "optimizer zero_grad interface unavailable"),
+        ("scheduler-load", "scheduler restore interface unavailable"),
+        ("scaler-load", "gradient scaler restore interface unavailable"),
+    ],
+)
+def test_direct_restore_binds_interfaces_before_mutation_and_allows_retry(
+    monkeypatch, surface, error,
+):
+    config = TrainerConfig(
+        max_steps=2,
+        scheduler="cosine",
+        warmup_steps=1,
+        seed=17,
+    )
+    source = Trainer(_TinyLogitModel(), config)
+    assert source.train_microbatch(_BATCH).optimizer_stepped is True
+    snapshot = source.state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+
+    if surface == "optimizer-load":
+        monkeypatch.setattr(receiver.optimizer, "load_state_dict", None)
+    elif surface == "optimizer-zero-grad":
+        monkeypatch.setattr(receiver.optimizer, "zero_grad", None)
+    elif surface == "scheduler-load":
+        assert receiver.scheduler is not None
+        monkeypatch.setattr(receiver.scheduler, "load_state_dict", None)
+    elif surface == "scaler-load":
+        assert receiver.scaler is not None
+        monkeypatch.setattr(receiver.scaler, "load_state_dict", None)
+    else:
+        raise AssertionError(f"unknown restore surface: {surface}")
+
+    with pytest.raises(TrainingStateInvalidError, match=error):
+        receiver.load_state_dict(snapshot)
+
+    assert receiver._failure_reason is None
+    assert receiver._update_incomplete is False
+    assert (receiver.micro_step, receiver.optimizer_step, receiver.tokens_seen) == (0, 0, 0)
+    assert not receiver.optimizer.state
+
+    monkeypatch.undo()
+    receiver.load_state_dict(snapshot)
+    assert (
+        receiver.micro_step,
+        receiver.optimizer_step,
+        receiver.tokens_seen,
+    ) == (
+        snapshot.micro_step,
+        snapshot.optimizer_step,
+        snapshot.tokens_seen,
+    )
+
+
+def test_direct_restore_detects_loader_descriptor_component_rebind_before_apply(
+    monkeypatch,
+):
+    config = TrainerConfig(
+        max_steps=2,
+        scheduler="cosine",
+        warmup_steps=1,
+        seed=17,
+    )
+    source = Trainer(_TinyLogitModel(), config)
+    assert source.train_microbatch(_BATCH).optimizer_stepped is True
+    snapshot = source.state_dict()
+    receiver = Trainer(_TinyLogitModel(), config)
+    original_scheduler = receiver.scheduler
+    optimizer_type = type(receiver.optimizer)
+    original_loader = optimizer_type.load_state_dict
+
+    class EffectfulLoader:
+        def __get__(self, instance, owner):
+            if instance is receiver:
+                receiver.scheduler = None
+            return original_loader.__get__(instance, owner)
+
+    monkeypatch.setattr(optimizer_type, "load_state_dict", EffectfulLoader())
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="trainer restore component binding changed during preflight",
+    ):
+        receiver.load_state_dict(snapshot)
+
+    assert receiver._failure_reason is None
+    assert receiver._update_incomplete is False
+    assert (receiver.micro_step, receiver.optimizer_step, receiver.tokens_seen) == (0, 0, 0)
+    assert not receiver.optimizer.state
+
+    monkeypatch.undo()
+    receiver.scheduler = original_scheduler
+    receiver.load_state_dict(snapshot)
+    assert receiver.optimizer_step == snapshot.optimizer_step
+
+
 def test_direct_restore_rejects_nonfinite_adamw_moment_before_clean_status():
     from copy import deepcopy
     from dataclasses import replace

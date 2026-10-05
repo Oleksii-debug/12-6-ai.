@@ -1771,21 +1771,81 @@ class Trainer:
             for group in state.optimizer["param_groups"]
         ]
 
+        # Bind every effectful restore interface before opening the mutation
+        # region. A custom optimizer/scheduler/scaler can expose these methods
+        # through descriptors or proxies; predictable interface failure must
+        # leave a fresh trainer retryable instead of poisoning it after apply
+        # has begun.
+        optimizer = self.optimizer
+        scheduler = self.scheduler
+        scaler = self.scaler
+        optimizer_loader = getattr(optimizer, "load_state_dict", None)
+        optimizer_zero_grad = getattr(optimizer, "zero_grad", None)
+        scheduler_loader = (
+            None if scheduler is None else getattr(scheduler, "load_state_dict", None)
+        )
+        scaler_loader = (
+            None if scaler is None else getattr(scaler, "load_state_dict", None)
+        )
+        if not callable(optimizer_loader):
+            raise TrainingStateInvalidError(
+                "optimizer restore interface unavailable"
+            )
+        if not callable(optimizer_zero_grad):
+            raise TrainingStateInvalidError(
+                "optimizer zero_grad interface unavailable"
+            )
+        if scheduler is not None and not callable(scheduler_loader):
+            raise TrainingStateInvalidError(
+                "scheduler restore interface unavailable"
+            )
+        if state.scaler is not None and not callable(scaler_loader):
+            raise TrainingStateInvalidError(
+                "gradient scaler restore interface unavailable"
+            )
+        # Binding a custom descriptor can itself mutate the trainer. Refuse that
+        # drift while no optimizer/model/counter state has been applied.
+        if (
+            self.optimizer is not optimizer
+            or self.scheduler is not scheduler
+            or self.scaler is not scaler
+        ):
+            raise TrainingStateInvalidError(
+                "trainer restore component binding changed during preflight"
+            )
+        if self._failure_reason is not None or self._update_incomplete:
+            raise TrainingStateInvalidError(
+                "trainer restore target changed during interface preflight"
+            )
+        if (
+            self.micro_step != 0
+            or self.optimizer_step != 0
+            or self.tokens_seen != 0
+            or self._pending_tokens != 0
+            or self._pending_loss_sum != 0.0
+            or any(parameter.grad is not None for parameter in self.model.parameters())
+        ):
+            raise TrainingStateInvalidError(
+                "trainer restore target changed during interface preflight"
+            )
+        if not _typed_state_equal(state.config, asdict(self.config)):
+            raise ValueError("trainer config changed during restore preflight")
+
         self._update_incomplete = True
         try:
-            self.optimizer.load_state_dict(optimizer_state)
+            optimizer_loader(optimizer_state)
             self._require_optimizer_parameter_coverage()
-            if self.scheduler is not None and state.scheduler is not None:
-                self.scheduler.load_state_dict(state.scheduler)
-            if state.scaler is not None:
-                self.scaler.load_state_dict(state.scaler)
+            if scheduler_loader is not None and state.scheduler is not None:
+                scheduler_loader(state.scheduler)
+            if scaler_loader is not None and state.scaler is not None:
+                scaler_loader(state.scaler)
 
             self.micro_step = state.micro_step
             self.optimizer_step = state.optimizer_step
             self.tokens_seen = state.tokens_seen
             self._pending_tokens = 0
             self._pending_loss_sum = 0.0
-            self.optimizer.zero_grad(set_to_none=True)
+            optimizer_zero_grad(set_to_none=True)
             # PyTorch's load_state_dict accepts NaN optimizer moments and
             # malformed-but-type-compatible group rates. A restore must not
             # return a supposedly checkpoint-safe trainer with those values.
