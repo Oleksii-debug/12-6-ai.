@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -221,3 +222,92 @@ def test_unexpected_product_recursion_remains_visible(
     )
     with pytest.raises(RecursionError, match="unexpected programmer recursion"):
         cli.main()
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "api_token_sk_live_123456",
+        "Authorization: Bearer private-value",
+        "password=hunter2",
+    ],
+)
+def test_cli_duplicate_member_refusal_does_not_echo_untrusted_key(
+    tmp_path: Path,
+    secret_key: str,
+) -> None:
+    raw = json.dumps({secret_key: 1})[:-1] + "," + json.dumps(secret_key) + ":2}"
+    path = tmp_path / "duplicate-secret.json"
+    path.write_text(raw, encoding="utf-8")
+    result = _run_cli(path)
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "FAIL"
+    assert payload["error"] == "duplicate object member"
+    assert secret_key not in result.stdout
+
+
+def test_policy_loader_rejects_oversized_input_before_json_decode(
+    tmp_path: Path,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "oversized-policy.json"
+    path.write_bytes(b" " * (cli.MAX_INPUT_BYTES + 1))
+    with pytest.raises(ValueError, match="input byte limit"):
+        cli._load_policy(path)
+
+    result = _run_cli(path)
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "error": "evaluation firewall policy exceeds input byte limit",
+        "status": "FAIL",
+    }
+
+
+def test_default_policy_works_outside_repository_cwd(tmp_path: Path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(
+        [sys.executable, str(TOOL)],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "PASS"
+
+
+def test_relative_policy_still_respects_explicit_repo_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "alternate-root"
+    relative = Path("nested") / "policy.json"
+    path = repo_root / relative
+    path.parent.mkdir(parents=True)
+    path.write_bytes(POLICY.read_bytes())
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(TOOL),
+            "--repo-root",
+            str(repo_root),
+            "--policy",
+            str(relative),
+        ],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert json.loads(result.stdout)["status"] == "PASS"
