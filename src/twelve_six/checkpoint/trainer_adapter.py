@@ -41,6 +41,26 @@ from .expected_binding import (
     _validate_expected_core_identity,
 )
 
+_NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES = (
+    "assert_checkpoint_safe",
+    "_assert_trainable",
+    "_require_finite_auxiliary_state",
+    "_require_finite_committed_update",
+    "_require_no_residual_model_gradients",
+    "_require_deterministic_policy",
+    "_require_optimizer_parameter_coverage",
+    "_require_safe_optimizer_hyperparameters",
+    "_require_default_optimizer_options",
+    "_require_constant_default_rate",
+    "_require_finite_state_tree",
+    "_require_checkpoint_scaler_state",
+    "_require_default_schedule_rates",
+    "_require_checkpoint_scheduler_chronology",
+    "_require_optimizer_state_parameter_order",
+    "_optimizer_parameter_name_groups",
+    "_mark_failed",
+)
+
 _CANONICAL_TRAINER_STATE_FIELDS = frozenset(
     {
         "micro_step",
@@ -289,6 +309,49 @@ def _require_canonical_d02_markers(trainer: Any) -> bool:
     return canonical_d02
 
 
+def _assert_native_d02_checkpoint_safety_lineage(trainer: Any) -> None:
+    """Reject subclass or instance replacement of first-party safety code."""
+
+    if not _is_native_d02(trainer):
+        return
+    try:
+        instance_attrs = vars(trainer)
+    except TypeError as exc:
+        raise CheckpointCompatibilityError(
+            "native D02 trainer does not expose checkpoint safety state"
+        ) from exc
+    for name in _NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES:
+        if name in instance_attrs:
+            raise CheckpointCompatibilityError(
+                f"native D02 safety authority must remain canonical: {name}"
+            )
+        canonical = inspect.getattr_static(_CanonicalTrainer, name, None)
+        resolved = inspect.getattr_static(type(trainer), name, None)
+        if canonical is None or resolved is not canonical:
+            raise CheckpointCompatibilityError(
+                f"native D02 safety authority must remain canonical: {name}"
+            )
+
+
+def _run_native_d02_checkpoint_safety(trainer: Any) -> None:
+    """Run canonical checkpoint-safe validation outside subclass export hooks."""
+
+    if not _is_native_d02(trainer):
+        return
+    _assert_native_d02_checkpoint_safety_lineage(trainer)
+    canonical = inspect.getattr_static(
+        _CanonicalTrainer,
+        "assert_checkpoint_safe",
+        None,
+    )
+    if not isinstance(canonical, FunctionType):
+        raise CheckpointCompatibilityError(
+            "native D02 checkpoint safety authority is unavailable"
+        )
+    canonical.__get__(trainer, type(trainer))()
+    _assert_native_d02_checkpoint_safety_lineage(trainer)
+
+
 def _poison_canonical_restore_failure(
     trainer: Any,
     *,
@@ -425,6 +488,8 @@ def _snapshot_trainer_restore_bindings(
     canonical_d02 = _require_canonical_d02_markers(trainer)
     if not canonical_d02:
         return False, {}
+    if native_d02:
+        _assert_native_d02_checkpoint_safety_lineage(trainer)
     attrs = vars(trainer)
     component_fields = ("model", "optimizer", "scheduler", "scaler", "config")
     if native_d02:
@@ -496,6 +561,8 @@ def _assert_trainer_restore_bindings(
         raise exc
     if not expected_canonical:
         return
+    if _is_native_d02(trainer):
+        _assert_native_d02_checkpoint_safety_lineage(trainer)
     try:
         attrs = vars(trainer)
     except TypeError as exc:
@@ -1740,6 +1807,7 @@ def save_trainer_checkpoint(
             )
             export_started = True
             state = _trainer_state_as_mapping(export_trainer_state())
+            _run_native_d02_checkpoint_safety(trainer)
             sealed_model_fingerprint = (
                 model_fingerprint()
                 if model_fingerprint is not None
