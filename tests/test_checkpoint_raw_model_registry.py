@@ -9,7 +9,7 @@ import pytest
 import torch
 
 from twelve_six.checkpoint import CheckpointCompatibilityError, trainer_adapter
-from twelve_six.training import Trainer, TrainerConfig
+from twelve_six.training import NonFiniteTrainingError, Trainer, TrainerConfig
 
 
 class _TwoParameters(torch.nn.Module):
@@ -225,7 +225,7 @@ def test_optimizer_hyperparameters_ignore_forged_param_groups_view() -> None:
     raw["param_groups"][0]["lr"] = float("nan")
     raw["_view_spoof_armed"] = True
 
-    with pytest.raises(Exception, match="optimizer"):
+    with pytest.raises(NonFiniteTrainingError, match="optimizer"):
         trainer._require_safe_optimizer_hyperparameters()
 
     assert raw["view_reads"] == []
