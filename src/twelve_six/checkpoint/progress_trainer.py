@@ -36,6 +36,7 @@ from .trainer_adapter import (
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
     _assert_trainer_model_binding,
+    _assert_trainer_restore_bindings,
     _bind_trainer_state_loader,
     _effective_strict_model,
     _preflight_trainer_state,
@@ -44,6 +45,7 @@ from .trainer_adapter import (
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
     _snapshot_torch_policy,
+    _snapshot_trainer_restore_bindings,
 )
 
 def load_trainer_checkpoint(
@@ -79,7 +81,9 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify/decode once and reject wrong progress/exposure before mutation."""
 
+    restore_bindings = _snapshot_trainer_restore_bindings(trainer)
     _bind_trainer_state_loader(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
 
     _require_expected_sha256(
         expected_checkpoint_id,
@@ -204,6 +208,7 @@ def load_trainer_checkpoint(
     del verified
     trainer_state = combined_state.get("trainer")
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
@@ -225,12 +230,17 @@ def load_trainer_checkpoint(
     # Revalidate ownership and the live target after decoding/materialization,
     # then bind the actual loader immediately before the first live mutation.
     _assert_trainer_model_binding(model, trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
-    # Stateful component preflight can execute hooks. Recheck pure target
-    # ownership/freshness after them and before the first live mutation.
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+    # Bind the exact trainer loader before the final target check. Attribute
+    # lookup itself is a potential user-code callout, so any drift it causes
+    # must be rejected before the model application region opens.
+    load_trainer_state = _bind_trainer_state_loader(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_target(trainer)
-    load_trainer_state = _bind_trainer_state_loader(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
 
     # Preflight prevents known incompatibilities, but an application-time
     # model/RNG/optimizer failure can leave a mixed, non-replayable state.
