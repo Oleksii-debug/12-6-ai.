@@ -223,17 +223,41 @@ class Trainer:
         )
 
     @staticmethod
+    def _type_identity(value: Any) -> str:
+        """Return class identity without instance or custom-metaclass dispatch."""
+
+        value_type = type(value)
+        module = type.__getattribute__(value_type, "__module__")
+        qualname = type.__getattribute__(value_type, "__qualname__")
+        if type(module) is not str or type(qualname) is not str:
+            raise TrainingStateInvalidError("runtime type identity is not canonical")
+        return f"{module}.{qualname}"
+
+    @staticmethod
     def _raw_instance_dict(
         value: Any,
-        base_type: type,
+        base_type: type | None = None,
         *,
         label: str,
     ) -> dict[str, Any]:
-        """Read one trusted base instance dictionary without subclass dispatch."""
+        """Read instance storage through a real getset descriptor, never a property."""
 
-        namespace = type.__getattribute__(base_type, "__dict__")
-        descriptor = namespace.get("__dict__")
-        if not isinstance(descriptor, GetSetDescriptorType):
+        descriptor = None
+        if base_type is not None:
+            namespace = type.__getattribute__(base_type, "__dict__")
+            candidate = namespace.get("__dict__")
+            if isinstance(candidate, GetSetDescriptorType):
+                descriptor = candidate
+        else:
+            value_type = type(value)
+            mro = type.__getattribute__(value_type, "__mro__")
+            for candidate_type in mro:
+                namespace = type.__getattribute__(candidate_type, "__dict__")
+                candidate = namespace.get("__dict__")
+                if isinstance(candidate, GetSetDescriptorType):
+                    descriptor = candidate
+                    break
+        if descriptor is None:
             raise TrainingStateInvalidError(
                 f"{label} instance dictionary authority is unavailable"
             )
@@ -1304,8 +1328,7 @@ class Trainer:
                         "module",
                         prefix,
                         module_id,
-                        type(module).__module__,
-                        type(module).__qualname__,
+                        Trainer._type_identity(module),
                     )
                 ).encode("utf-8")
             )
@@ -1393,7 +1416,9 @@ class Trainer:
 
     def _optimizer_live_fingerprint(self) -> str | None:
         """Bind first-party Torch optimizer groups and moments without export hooks."""
-        if not self.optimizer.__class__.__module__.startswith("torch.optim"):
+        optimizer_type = type(self.optimizer)
+        optimizer_module = type.__getattribute__(optimizer_type, "__module__")
+        if type(optimizer_module) is not str or not optimizer_module.startswith("torch.optim"):
             return None
         if not isinstance(self.optimizer.state, Mapping):
             raise TrainingStateInvalidError("optimizer live state is not a mapping")
@@ -1491,13 +1516,7 @@ class Trainer:
             )
 
         name_groups = self._optimizer_parameter_name_groups()
-        digest.update(
-            (
-                self.optimizer.__class__.__module__
-                + "."
-                + self.optimizer.__class__.__qualname__
-            ).encode("utf-8")
-        )
+        digest.update(Trainer._type_identity(self.optimizer).encode("utf-8"))
         live_parameter_ids: set[int] = set()
         for group_index, (group, names) in enumerate(
             zip(self.optimizer.param_groups, name_groups, strict=True)
@@ -1541,8 +1560,7 @@ class Trainer:
         active_objects: set[int] = set()
 
         def label(value: Any) -> None:
-            kind = f"{type(value).__module__}.{type(value).__qualname__}"
-            digest.update(kind.encode("utf-8") + b"\0")
+            digest.update(Trainer._type_identity(value).encode("utf-8") + b"\0")
 
         def update_tensor(value: Tensor) -> None:
             if type(value) not in {Tensor, nn.Parameter}:
@@ -1675,8 +1693,11 @@ class Trainer:
                     active_objects.remove(object_id)
                 return
             try:
-                raw_attrs = object.__getattribute__(value, "__dict__")
-            except (AttributeError, TypeError):
+                raw_attrs = Trainer._raw_instance_dict(
+                    value,
+                    label="checkpoint auxiliary object",
+                )
+            except TrainingStateInvalidError:
                 raw_attrs = None
             if type(raw_attrs) is dict:
                 object_id = id(value)
@@ -1700,7 +1721,11 @@ class Trainer:
             optimizer = trainer_attrs["optimizer"]
             scheduler = trainer_attrs["scheduler"]
             scaler = trainer_attrs["scaler"]
-            optimizer_attrs = object.__getattribute__(optimizer, "__dict__")
+            optimizer_attrs = Trainer._raw_instance_dict(
+                optimizer,
+                Optimizer,
+                label="optimizer",
+            )
         except (AttributeError, KeyError, TypeError) as exc:
             raise TrainingStateInvalidError(
                 "checkpoint auxiliary bindings are unavailable"
@@ -1719,9 +1744,7 @@ class Trainer:
         digest.update(b"optimizer\0")
         digest.update(
             (
-                type(optimizer).__module__
-                + "."
-                + type(optimizer).__qualname__
+                Trainer._type_identity(optimizer)
             ).encode("utf-8")
         )
         digest.update(str(len(groups)).encode("ascii") + b"\0")
@@ -1766,8 +1789,12 @@ class Trainer:
             digest.update(b"none\0")
         else:
             try:
-                scheduler_attrs = object.__getattribute__(scheduler, "__dict__")
-            except (AttributeError, TypeError) as exc:
+                scheduler_attrs = Trainer._raw_instance_dict(
+                    scheduler,
+                    LRScheduler,
+                    label="scheduler",
+                )
+            except TrainingStateInvalidError as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint scheduler storage is unavailable"
                 ) from exc
@@ -1777,9 +1804,7 @@ class Trainer:
                 )
             digest.update(
                 (
-                    type(scheduler).__module__
-                    + "."
-                    + type(scheduler).__qualname__
+                    Trainer._type_identity(scheduler)
                 ).encode("utf-8")
             )
             update(
@@ -1795,8 +1820,11 @@ class Trainer:
             digest.update(b"none\0")
         else:
             try:
-                scaler_attrs = object.__getattribute__(scaler, "__dict__")
-            except (AttributeError, TypeError) as exc:
+                scaler_attrs = Trainer._raw_instance_dict(
+                    scaler,
+                    label="gradient scaler",
+                )
+            except TrainingStateInvalidError as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint scaler storage is unavailable"
                 ) from exc
@@ -1806,9 +1834,7 @@ class Trainer:
                 )
             digest.update(
                 (
-                    type(scaler).__module__
-                    + "."
-                    + type(scaler).__qualname__
+                    Trainer._type_identity(scaler)
                 ).encode("utf-8")
             )
             update(scaler_attrs)
