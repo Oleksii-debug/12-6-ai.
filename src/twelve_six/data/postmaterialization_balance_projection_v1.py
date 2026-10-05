@@ -170,6 +170,12 @@ def load_strict_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
         raise ProjectionError(f"{label} is not strict JSON") from exc
     if not isinstance(value, dict):
         raise ProjectionError(f"{label} must contain a top-level JSON object")
+    # json.loads permits escaped lone surrogates. Reject them at intake rather
+    # than letting a later canonical UTF-8 serialization crash unexpectedly.
+    try:
+        _canonical_bytes(value)
+    except (UnicodeEncodeError, TypeError, ValueError, OverflowError, RecursionError) as exc:
+        raise ProjectionError(f"{label} contains invalid Unicode JSON") from exc
     return value
 
 
