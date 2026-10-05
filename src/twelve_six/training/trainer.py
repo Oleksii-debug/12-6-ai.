@@ -190,10 +190,11 @@ class Trainer:
         )
         # Freeze small constructor-owned AdamW options before external hooks
         # can change otherwise finite optimizer behavior at a resume boundary.
+        _, initial_optimizer_groups = self._canonical_optimizer_storage()
         self._canonical_default_optimizer_options = (
             {
                 key: copy.deepcopy(value)
-                for key, value in self.optimizer.param_groups[0].items()
+                for key, value in initial_optimizer_groups[0].items()
                 if key not in ("params", "lr", "initial_lr", "param_names")
             }
             if optimizer is None and scheduler is None else None
@@ -369,6 +370,38 @@ class Trainer:
         walk(model, "")
         return named_parameters, named_buffers
 
+    def _canonical_optimizer_storage(
+        self,
+    ) -> tuple[dict[Any, Any] | defaultdict[Any, Any], list[dict[str, Any]]]:
+        """Read live Optimizer storage without subclass attribute dispatch."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        optimizer = trainer_attrs.get("optimizer")
+        if not isinstance(optimizer, Optimizer):
+            raise TrainingStateInvalidError(
+                "trainer optimizer binding is not a torch Optimizer"
+            )
+        attrs = Trainer._raw_instance_dict(
+            optimizer,
+            Optimizer,
+            label="optimizer",
+        )
+        state = attrs.get("state")
+        groups = attrs.get("param_groups")
+        if type(state) not in {dict, defaultdict} or type(groups) is not list:
+            raise TrainingStateInvalidError(
+                "optimizer live storage is not canonical"
+            )
+        if any(type(group) is not dict for group in groups):
+            raise TrainingStateInvalidError(
+                "optimizer parameter groups are not canonical dictionaries"
+            )
+        return state, groups
+
     def _require_optimizer_parameter_coverage(self) -> None:
         """Require the optimizer to own every trainable model parameter exactly once."""
         named_parameters, _ = self._canonical_model_members()
@@ -379,8 +412,9 @@ class Trainer:
         }
         if not trainable_ids:
             raise ValueError("model has no trainable parameters for optimizer")
+        _, live_groups = self._canonical_optimizer_storage()
         optimizer_ids: list[int] = []
-        for group in self.optimizer.param_groups:
+        for group in live_groups:
             parameters = group.get("params")
             if not isinstance(parameters, (list, tuple)):
                 raise TypeError("optimizer group must contain a concrete parameter sequence")
@@ -398,8 +432,9 @@ class Trainer:
         self._require_optimizer_parameter_coverage()
         named_parameters, _ = self._canonical_model_members()
         by_id = {id(parameter): name for name, parameter in named_parameters}
+        _, live_groups = self._canonical_optimizer_storage()
         ordered: list[list[str]] = []
-        for group in self.optimizer.param_groups:
+        for group in live_groups:
             names: list[str] = []
             for parameter in group["params"]:
                 name = by_id.get(id(parameter))
@@ -485,7 +520,8 @@ class Trainer:
                 raise NonFiniteTrainingError(
                     f"model contains non-finite buffer at micro_step={self.micro_step}"
                 )
-        for state in self.optimizer.state.values():
+        optimizer_state, _ = self._canonical_optimizer_storage()
+        for state in optimizer_state.values():
             for value in state.values():
                 if isinstance(value, Tensor):
                     if not torch.isfinite(value).all().item():
@@ -506,7 +542,7 @@ class Trainer:
         self, optimizer_state: Any | None = None,
     ) -> None:
         """Validate live or checkpoint group hyperparameters before use."""
-        live_groups = self.optimizer.param_groups
+        _, live_groups = self._canonical_optimizer_storage()
         groups = live_groups
         compare_checkpoint_types = optimizer_state is not None
         if optimizer_state is not None:
@@ -603,10 +639,11 @@ class Trainer:
         # pre-backward check; a completed step must remain checkpoint-safe.
         self._require_optimizer_parameter_coverage()
         self._require_safe_optimizer_hyperparameters()
+        _, live_groups = self._canonical_optimizer_storage()
         self._require_default_optimizer_options(
-            {"param_groups": self.optimizer.param_groups},
+            {"param_groups": live_groups},
         )
-        self._require_constant_default_rate({"param_groups": self.optimizer.param_groups})
+        self._require_constant_default_rate({"param_groups": live_groups})
         scaler_state = self.scaler.state_dict()
         self._require_finite_state_tree(scaler_state, "gradient scaler")
         # Live scaler state must also be restorable: finite subnormal scales
@@ -636,7 +673,7 @@ class Trainer:
                 )
             self._require_default_schedule_rates(
                 vars(self.scheduler), self.optimizer_step,
-                {"param_groups": self.optimizer.param_groups},
+                {"param_groups": live_groups},
             )
 
     def _build_scaler(self):
@@ -867,7 +904,8 @@ class Trainer:
             update_loss: float | None = None
             # A custom optimizer can have distinct schedules per group. Never
             # validate only the first group while another can write NaN weights.
-            learning_rate = float(self.optimizer.param_groups[0]["lr"])
+            _, live_groups = self._canonical_optimizer_storage()
+            learning_rate = float(live_groups[0]["lr"])
             self._require_safe_optimizer_hyperparameters()
             # Forward/backward hooks may change otherwise finite AdamW options
             # or rates. Refuse before scaler/optimizer.step can mutate weights.
@@ -1420,8 +1458,7 @@ class Trainer:
         optimizer_module = type.__getattribute__(optimizer_type, "__module__")
         if type(optimizer_module) is not str or not optimizer_module.startswith("torch.optim"):
             return None
-        if not isinstance(self.optimizer.state, Mapping):
-            raise TrainingStateInvalidError("optimizer live state is not a mapping")
+        optimizer_state, live_groups = self._canonical_optimizer_storage()
 
         digest = hashlib.sha256()
 
@@ -1518,7 +1555,7 @@ class Trainer:
         digest.update(Trainer._type_identity(self.optimizer).encode("utf-8"))
         live_parameter_ids: set[int] = set()
         for group_index, (group, names) in enumerate(
-            zip(self.optimizer.param_groups, name_groups, strict=True)
+            zip(live_groups, name_groups, strict=True)
         ):
             if not isinstance(group, Mapping):
                 raise TrainingStateInvalidError(
@@ -1541,12 +1578,12 @@ class Trainer:
             for parameter, name in zip(parameters, names, strict=True):
                 live_parameter_ids.add(id(parameter))
                 update(name)
-                if parameter in self.optimizer.state:
+                if parameter in optimizer_state:
                     digest.update(b"state-present\0")
-                    update(self.optimizer.state[parameter])
+                    update(optimizer_state[parameter])
                 else:
                     digest.update(b"state-absent\0")
-        if any(id(parameter) not in live_parameter_ids for parameter in self.optimizer.state):
+        if any(id(parameter) not in live_parameter_ids for parameter in optimizer_state):
             raise TrainingStateInvalidError(
                 "optimizer live state contains foreign parameter state"
             )
@@ -1912,12 +1949,13 @@ class Trainer:
         saved_groups = exported.get("param_groups") if isinstance(exported, Mapping) else None
         if not isinstance(saved_state, Mapping) or not isinstance(saved_groups, list):
             raise TrainingStateInvalidError("optimizer export is not canonical")
-        if len(saved_groups) != len(self.optimizer.param_groups):
+        live_state, live_groups = self._canonical_optimizer_storage()
+        if len(saved_groups) != len(live_groups):
             raise TrainingStateInvalidError("optimizer export group count differs")
         present: set[int] = set()
         ordinal = 0
         for saved_group, live_group in zip(
-            saved_groups, self.optimizer.param_groups, strict=True,
+            saved_groups, live_groups, strict=True,
         ):
             live_params = live_group["params"]
             expected_ids = list(range(ordinal, ordinal + len(live_params)))
@@ -1939,7 +1977,7 @@ class Trainer:
             if not Trainer._exact_export_leaf_equal(saved_options, live_options):
                 raise TrainingStateInvalidError("optimizer export hyperparameters differ")
             for parameter in live_params:
-                live_slot = self.optimizer.state.get(parameter)
+                live_slot = live_state.get(parameter)
                 saved_slot = saved_state.get(ordinal)
                 if live_slot is None:
                     if ordinal in saved_state:
@@ -2179,7 +2217,8 @@ class Trainer:
 
     def _require_first_party_optimizer_contract(self) -> None:
         """Check the live first-party step contract without invoking state_dict hooks."""
-        groups = {"param_groups": self.optimizer.param_groups}
+        _, live_groups = self._canonical_optimizer_storage()
+        groups = {"param_groups": live_groups}
         self._require_default_optimizer_options(groups)
         self._require_constant_default_rate(groups)
         if self._canonical_default_schedule:
