@@ -1159,7 +1159,7 @@ class Trainer:
                 or growth <= 1.0
                 or not 0.0 < backoff < 1.0
                 or type(interval) is not int or interval < 1
-                or type(tracker) is not int or tracker < 0
+                or type(tracker) is not int or not 0 <= tracker < interval
             ):
                 raise ValueError("enabled gradient scaler checkpoint statistics invalid")
         if (
