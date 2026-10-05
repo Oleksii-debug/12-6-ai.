@@ -51,7 +51,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
           test "$(git merge-base "$PARENT_SHA" HEAD)" = "$PARENT_SHA"
           mapfile -t changed < <(git diff --name-only "$PARENT_SHA"..HEAD | sort)
-          test "@@BASH#changed[@]@@" -eq 2
+          test "${#changed[@]}" -eq 2
           test "${changed[0]}" = ".github/workflows/d03_ubuntu_irc_dedicated_two_clean.yml"
           test "${changed[1]}" = "tools/run_d03_ubuntu_irc_global_dedup_execution_v1.py"
           git diff --quiet HEAD --
