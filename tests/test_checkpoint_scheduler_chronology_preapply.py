@@ -1924,6 +1924,74 @@ def test_successful_optout_materialization_does_not_consume_preapply_rng(
     "loader", [trainer_adapter, progress_trainer],
     ids=["adapter", "progress"],
 )
+def test_initial_trainer_loader_descriptor_lookup_is_process_state_neutral(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=703, max_steps=3),
+        device="cpu",
+    )
+    original_loader = Trainer.__dict__["load_state_dict"]
+    descriptor_lookups: list[bool] = []
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    class EffectfulInitialLoader:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            descriptor_lookups.append(True)
+            random.random()
+            np.random.random()
+            torch.rand(1)
+            torch.use_deterministic_algorithms(
+                not policy_before[0],
+                warn_only=not policy_before[1],
+            )
+            return original_loader.__get__(instance, owner)
+
+    def stop_before_checkpoint(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("synthetic stop after guarded trainer-loader bind")
+
+    monkeypatch.setattr(Trainer, "load_state_dict", EffectfulInitialLoader())
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", stop_before_checkpoint)
+
+    with pytest.raises(
+        RuntimeError,
+        match="synthetic stop after guarded trainer-loader bind",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+        )
+
+    assert descriptor_lookups == [True]
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    ) == policy_before
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
 def test_incompatible_trainer_loader_signature_fails_before_mutation_and_retries(
     tmp_path: Path,
