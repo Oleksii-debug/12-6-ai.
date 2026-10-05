@@ -1,0 +1,330 @@
+name: D03 NBU current-40 global dedup two-clean
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_nbu_current40_global_dedup.yml"
+      - "src/twelve_six/data/nbu_current40_dedup_intake.py"
+      - "tests/test_nbu_current40_dedup_intake.py"
+      - "tests/test_d03_nbu_current40_global_dedup_v1.py"
+      - "tools/run_d03_nbu_current40_global_dedup_v1.py"
+      - "evidence/d03_nbu/current40_physical_authority_g8_146.json"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d03-nbu-current40-global-dedup-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  current40-global-dedup:
+    if: >-
+      github.event.pull_request.number == 2809 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/nbu-current40-global-dedup-g8-146-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      EXPECTED_MAIN: "019944d5fe12334791f05f1232d13de4a12e37d3"
+      NBU_PHYSICAL_HEAD: "1695c16ab038960d74da5a9911643e9426bb9ad4"
+      NBU_PHYSICAL_BRANCH: "execution/nbu-current-40-pdftotext-g8-143-20261005"
+      NBU_PARENT_HEAD: "13be2b000804b410aed7ba759a663408429f60f6"
+      V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
+      V7_BRANCH: "next100-065c/crosssource-dedup-v5-20260826"
+      PHYSICAL_RUN_ID: "37380838424"
+      PHYSICAL_JOB_ID: "112002100700"
+      PHYSICAL_ARTIFACT_ID: "11374275477"
+      PHYSICAL_ARTIFACT_ZIP_SHA256: "ba7d7148a2fb4a389ad16396690bdcc72ccbf9077e5007b74d6cdca51cc24697"
+      EXPECTED_DISCOVERY_IDENTITY: "359946424db1a597b5db520696ef56781371553e3883c01ec22f351c98bff6ec"
+      EXPECTED_PDF_PIN_IDENTITY: "3124d3e87fb63b5be7bb8f192856fa918de55a0c0c0cd7007e4d101c1f9638ba"
+      EXPECTED_TEXT_EVIDENCE_IDENTITY: "3bd13beb2d737162cff9f93270570acc7c69034df35fd9550bb4b8300fb3f71f"
+      EXPECTED_SUMMARY_IDENTITY: "88cdd3be588d52ac5472a009625d0508163a447eb101416dc4fab88582f36b90"
+      EXPECTED_CANDIDATE_SHA256: "c1dbff49a6fb62c0ab07305aa9f5c9870e0bccdfd754d3644e4d7d6a6b033eaf"
+      EXPECTED_TEXT_BYTES: "891494"
+      EXPECTED_TEXT_ARTIFACT_BYTES: "929435"
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+
+    steps:
+      - name: Checkout exact execution carrier head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+
+      - name: Bind exact current-main and product closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$EXPECTED_MAIN" HEAD)" = "$EXPECTED_MAIN"
+          test "$(git rev-parse "$EXPECTED_MAIN:src/twelve_six/data/incumbent_dedup_indexed_execution.py")" = "$(git hash-object src/twelve_six/data/incumbent_dedup_indexed_execution.py)"
+          test "$(git rev-parse "$EXPECTED_MAIN:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py")" = "$(git hash-object src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py)"
+          test "$(git rev-parse "$EXPECTED_MAIN:tools/run_next100_065f_global_dedup_v8.py")" = "$(git hash-object tools/run_next100_065f_global_dedup_v8.py)"
+          test "$(git rev-parse "$EXPECTED_MAIN:tools/run_d03_nomis_free_clean_successor_v1.py")" = "$(git hash-object tools/run_d03_nomis_free_clean_successor_v1.py)"
+          test -f evidence/d03_nbu/current40_physical_authority_g8_146.json
+          test -f src/twelve_six/data/nbu_current40_dedup_intake.py
+          test -f tools/run_d03_nbu_current40_global_dedup_v1.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install current local-free test and build prerequisites
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "pytest>=8" "ruff>=0.12"
+          ruff check             src/twelve_six/data/nbu_current40_dedup_intake.py             tests/test_nbu_current40_dedup_intake.py             tests/test_d03_nbu_current40_global_dedup_v1.py             tools/run_d03_nbu_current40_global_dedup_v1.py
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools"             pytest -q               tests/test_nbu_current40_dedup_intake.py               tests/test_d03_nbu_current40_global_dedup_v1.py
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             build-essential ca-certificates cmake curl libfontconfig1-dev libfreetype6-dev             libharfbuzz-dev libjpeg-dev liblcms2-dev libopenjp2-7-dev libpng-dev             libtiff-dev ninja-build pkg-config unzip zlib1g-dev
+
+      - name: Download exact body-free physical authority artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/nbu-current40-global-dedup"
+          mkdir -p "$RUN_DIR/physical-artifact"
+          curl --fail --location --retry 3 --retry-delay 2             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PHYSICAL_ARTIFACT_ID}/zip"             --output "$RUN_DIR/physical-artifact.zip"
+          echo "${PHYSICAL_ARTIFACT_ZIP_SHA256}  $RUN_DIR/physical-artifact.zip" | sha256sum --check --strict
+          unzip -q "$RUN_DIR/physical-artifact.zip" -d "$RUN_DIR/physical-artifact"
+          test -f "$RUN_DIR/physical-artifact/nbu-discovery-evidence.json"
+          test -f "$RUN_DIR/physical-artifact/nbu-pdf-pin-evidence.json"
+          test -f "$RUN_DIR/physical-artifact/nbu-text-evidence-a.json"
+          test -f "$RUN_DIR/physical-artifact/nbu-real-execution-summary.json"
+          test ! -e "$RUN_DIR/physical-artifact/nbu-text-a.jsonl"
+          test ! -e "$RUN_DIR/physical-artifact/nbu-text-b.jsonl"
+
+      - name: Verify exact body-free physical evidence identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/nbu-current40-global-dedup"
+          python -I - "$RUN_DIR/physical-artifact" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+
+          def load(name):
+              value = json.loads((root / name).read_text(encoding="utf-8"))
+              assert type(value) is dict
+              return value
+
+          def verify_self_hash(value, field):
+              claimed = value[field]
+              core = dict(value)
+              core.pop(field)
+              payload = (
+                  json.dumps(
+                      core,
+                      ensure_ascii=False,
+                      sort_keys=True,
+                      separators=(",", ":"),
+                      allow_nan=False,
+                  )
+                  + "\n"
+              ).encode("utf-8")
+              assert hashlib.sha256(payload).hexdigest() == claimed
+
+          discovery = load("nbu-discovery-evidence.json")
+          pins = load("nbu-pdf-pin-evidence.json")
+          text = load("nbu-text-evidence-a.json")
+          summary = load("nbu-real-execution-summary.json")
+          verify_self_hash(discovery, "evidence_identity_sha256")
+          verify_self_hash(pins, "evidence_identity_sha256")
+          verify_self_hash(text, "evidence_identity_sha256")
+          verify_self_hash(summary, "summary_identity_sha256")
+          assert discovery["evidence_identity_sha256"] == os.environ["EXPECTED_DISCOVERY_IDENTITY"]
+          assert pins["evidence_identity_sha256"] == os.environ["EXPECTED_PDF_PIN_IDENTITY"]
+          assert text["evidence_identity_sha256"] == os.environ["EXPECTED_TEXT_EVIDENCE_IDENTITY"]
+          assert summary["summary_identity_sha256"] == os.environ["EXPECTED_SUMMARY_IDENTITY"]
+          assert summary["git_sha"] == os.environ["NBU_PHYSICAL_HEAD"]
+          assert summary["parent_head_sha"] == os.environ["NBU_PARENT_HEAD"]
+          assert summary["text_artifact_sha256"] == os.environ["EXPECTED_CANDIDATE_SHA256"]
+          assert summary["observed_text_bytes"] == int(os.environ["EXPECTED_TEXT_BYTES"])
+          assert summary["text_artifact_bytes"] == int(os.environ["EXPECTED_TEXT_ARTIFACT_BYTES"])
+          assert summary["two_full_materializations_byte_identical"] is True
+          assert summary["recent_five_exact_pdf_pins_continuity_verified"] is True
+          assert summary["canonical_capacity_credit_bytes"] == 0
+          assert summary["training_authorized_bytes"] == 0
+          assert summary["authorized_unique_loss_positions"] == 0
+          assert summary["tokenizer_fit_authorized"] is False
+          PY
+
+      - name: Prepare exact NBU physical and V7 authority worktrees
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$NBU_PHYSICAL_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$NBU_PHYSICAL_HEAD"
+          NBU_ROOT="$RUNNER_TEMP/nbu-current40-physical"
+          git worktree add --detach "$NBU_ROOT" "$NBU_PHYSICAL_HEAD"
+          test "$(git -C "$NBU_ROOT" rev-parse HEAD)" = "$NBU_PHYSICAL_HEAD"
+          test "$(git -C "$NBU_ROOT" merge-base "$NBU_PARENT_HEAD" HEAD)" = "$NBU_PARENT_HEAD"
+
+          git fetch --no-tags origin "$V7_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$V7_HEAD"
+          V7_ROOT="$RUNNER_TEMP/v7-current40"
+          git worktree add --detach "$V7_ROOT" "$V7_HEAD"
+          test "$(git -C "$V7_ROOT" rev-parse HEAD)" = "$V7_HEAD"
+
+      - name: Build exact pinned Poppler pdftotext
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --retry-delay 2             "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz"             --output /tmp/poppler-current40.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler-current40.tar.xz" | sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler-current40.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" -B /tmp/poppler-current40-build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_INSTALL_PREFIX=/usr/local             -DENABLE_UTILS=ON -DENABLE_CPP=OFF -DENABLE_GLIB=OFF             -DENABLE_QT5=OFF -DENABLE_QT6=OFF -DENABLE_BOOST=OFF             -DENABLE_LIBCURL=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF             -DBUILD_GTK_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF             -DBUILD_CPP_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-current40-build --parallel 2
+          sudo cmake --install /tmp/poppler-current40-build
+          sudo ldconfig
+          pdftotext -v 2>&1 | tee "$RUNNER_TEMP/pdftotext-current40-version.txt"
+          grep -F "pdftotext version ${POPPLER_VERSION}" "$RUNNER_TEMP/pdftotext-current40-version.txt"
+
+      - name: Freshly materialize exact current-40 candidate twice
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/nbu-current40-global-dedup"
+          NBU_ROOT="$RUNNER_TEMP/nbu-current40-physical"
+          (
+            cd "$NBU_ROOT"
+            PYTHONPATH="$NBU_ROOT/src" python tools/materialize_d03_ua_nbu_pdftotext_v1.py               "$RUN_DIR/physical-artifact/nbu-discovery-evidence.json"               "$RUN_DIR/physical-artifact/nbu-pdf-pin-evidence.json"               --text-output "$RUN_DIR/nbu-text-a.jsonl"               --evidence-output "$RUN_DIR/nbu-text-evidence-a.json"
+            PYTHONPATH="$NBU_ROOT/src" python tools/materialize_d03_ua_nbu_pdftotext_v1.py               "$RUN_DIR/physical-artifact/nbu-discovery-evidence.json"               "$RUN_DIR/physical-artifact/nbu-pdf-pin-evidence.json"               --text-output "$RUN_DIR/nbu-text-b.jsonl"               --evidence-output "$RUN_DIR/nbu-text-evidence-b.json"
+          )
+          cmp "$RUN_DIR/nbu-text-a.jsonl" "$RUN_DIR/nbu-text-b.jsonl"
+          cmp "$RUN_DIR/nbu-text-evidence-a.json" "$RUN_DIR/nbu-text-evidence-b.json"
+          test "$(sha256sum "$RUN_DIR/nbu-text-a.jsonl" | cut -d' ' -f1)" = "$EXPECTED_CANDIDATE_SHA256"
+          python -I - "$RUN_DIR/nbu-text-evidence-a.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          value=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert value["evidence_identity_sha256"] == os.environ["EXPECTED_TEXT_EVIDENCE_IDENTITY"]
+          assert value["materialized_records"] == 40
+          assert value["observed_text_bytes"] == int(os.environ["EXPECTED_TEXT_BYTES"])
+          assert value["text_artifact_bytes"] == int(os.environ["EXPECTED_TEXT_ARTIFACT_BYTES"])
+          assert value["text_artifact_sha256"] == os.environ["EXPECTED_CANDIDATE_SHA256"]
+          PY
+
+      - name: Execute two fresh incumbent indexed global-dedup workers
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/nbu-current40-global-dedup"
+          V7_ROOT="$RUNNER_TEMP/v7-current40"
+          python tools/run_d03_nbu_current40_global_dedup_v1.py two-clean             --v7-root "$V7_ROOT"             --bulk-workspace "$RUN_DIR/two-clean-parent-bulk"             --candidate-jsonl-a "$RUN_DIR/nbu-text-a.jsonl"             --materialization-evidence-json-a "$RUN_DIR/nbu-text-evidence-a.json"             --candidate-jsonl-b "$RUN_DIR/nbu-text-b.jsonl"             --materialization-evidence-json-b "$RUN_DIR/nbu-text-evidence-b.json"             --output-root "$RUN_DIR/two-clean"             --expected-execution-head "$EXECUTION_HEAD"             --max-candidate-pairs 5000000             --max-index-postings 50000000             --max-pair-expansions 50000000
+          test -f "$RUN_DIR/two-clean/two-clean-authority.json"
+          test ! -e "$RUN_DIR/two-clean/incomplete.json"
+
+      - name: Write text-free current-40 global-dedup summary
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/nbu-current40-global-dedup"
+          python -I - "$RUN_DIR" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root=Path(sys.argv[1])
+          def load(rel):
+              value=json.loads((root/rel).read_text(encoding="utf-8"))
+              assert type(value) is dict
+              return value
+
+          authority=load("two-clean/two-clean-authority.json")
+          a=load("two-clean/clean-a/execution-evidence.json")
+          b=load("two-clean/clean-b/execution-evidence.json")
+          text_a=load("nbu-text-evidence-a.json")
+          text_b=load("nbu-text-evidence-b.json")
+          assert text_a == text_b
+          assert authority["execution_head_sha"] == os.environ["EXECUTION_HEAD"]
+          assert authority["dedup"]["fresh_process_count"] == 2
+          assert authority["dedup"]["run_evidence_identity_sha256"] == [
+              a["evidence_identity_sha256"], b["evidence_identity_sha256"]
+          ]
+          assert a["combined"]["indexed_report_sha256"] == b["combined"]["indexed_report_sha256"]
+          assert a["survivor_authority_sha256"] == b["survivor_authority_sha256"]
+          truth=authority["truth_boundary"]
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_unique_loss_positions"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["training_executed"] is False
+          core={
+              "schema":"12-6.d03-nbu-current40-global-dedup-summary.v1",
+              "status":"CURRENT40_TWO_CLEAN_GLOBAL_DEDUP_ZERO_CREDIT",
+              "execution_head_sha":os.environ["EXECUTION_HEAD"],
+              "pinned_main_sha":os.environ["EXPECTED_MAIN"],
+              "physical_authority":{
+                  "head_sha":os.environ["NBU_PHYSICAL_HEAD"],
+                  "workflow_run_id":int(os.environ["PHYSICAL_RUN_ID"]),
+                  "workflow_job_id":int(os.environ["PHYSICAL_JOB_ID"]),
+                  "artifact_id":int(os.environ["PHYSICAL_ARTIFACT_ID"]),
+                  "artifact_zip_sha256":os.environ["PHYSICAL_ARTIFACT_ZIP_SHA256"],
+                  "candidate_sha256":os.environ["EXPECTED_CANDIDATE_SHA256"],
+                  "text_evidence_identity_sha256":os.environ["EXPECTED_TEXT_EVIDENCE_IDENTITY"],
+              },
+              "candidate":{
+                  "records":40,
+                  "observed_text_bytes":int(os.environ["EXPECTED_TEXT_BYTES"]),
+                  "jsonl_sha256":text_a["text_artifact_sha256"],
+                  "two_fresh_materializations_byte_identical":True,
+              },
+              "dedup":{
+                  "fresh_process_count":authority["dedup"]["fresh_process_count"],
+                  "two_clean_authority_sha256":authority["two_clean_authority_sha256"],
+                  "matcher_report_sha256":authority["dedup"]["report_sha256"],
+                  "survivor_authority_sha256":authority["dedup"]["survivor_authority_sha256"],
+                  "run_evidence_identity_sha256":authority["dedup"]["run_evidence_identity_sha256"],
+              },
+              "truth_boundary":truth,
+              "raw_text_persisted_in_durable_evidence":False,
+          }
+          payload=json.dumps(core,ensure_ascii=False,sort_keys=True,separators=(",",":")).encode()
+          value={**core,"summary_identity_sha256":hashlib.sha256(payload).hexdigest()}
+          (root/"current40-global-dedup-summary.json").write_text(
+              json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(",",":"))+"\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(value,ensure_ascii=False,sort_keys=True))
+          PY
+
+      - name: Remove raw candidate text before artifact publication
+        if: always()
+        run: |
+          RUN_DIR="$RUNNER_TEMP/nbu-current40-global-dedup"
+          rm -f "$RUN_DIR/nbu-text-a.jsonl" "$RUN_DIR/nbu-text-b.jsonl"
+
+      - name: Upload body-free current-40 dedup evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-nbu-current40-global-dedup-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/pdftotext-current40-version.txt
+            ${{ runner.temp }}/nbu-current40-global-dedup/nbu-text-evidence-a.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/nbu-text-evidence-b.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/two-clean/two-clean-authority.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/two-clean/clean-a/dedup-report.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/two-clean/clean-a/survivor-authority.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/two-clean/clean-a/execution-evidence.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/two-clean/clean-b/dedup-report.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/two-clean/clean-b/survivor-authority.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/two-clean/clean-b/execution-evidence.json
+            ${{ runner.temp }}/nbu-current40-global-dedup/current40-global-dedup-summary.json
