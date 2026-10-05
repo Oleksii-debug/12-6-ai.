@@ -36,16 +36,18 @@ from .trainer_adapter import (
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
     _assert_trainer_model_binding,
+    _assert_trainer_restore_bindings,
     _bind_trainer_state_loader,
     _effective_strict_model,
+    _poison_canonical_restore_failure,
     _preflight_trainer_state,
     _preflight_trainer_target,
-    _poison_canonical_d02,
     _restore_ambient_rng_after_failed_apply,
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
     _restore_preapply_process_state,
     _snapshot_torch_policy,
+    _snapshot_trainer_restore_bindings,
 )
 
 def load_trainer_checkpoint(
@@ -81,6 +83,7 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify/decode once and reject wrong progress/exposure before mutation."""
 
+    restore_bindings = _snapshot_trainer_restore_bindings(trainer)
     prebind_ambient = _core.capture_rng_state()
     prebind_policy = _snapshot_torch_policy(prebind_ambient)
     try:
@@ -91,6 +94,7 @@ def load_trainer_checkpoint(
             prebind_policy,
             trainer,
         )
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
 
     _require_expected_sha256(
         expected_checkpoint_id,
@@ -224,6 +228,7 @@ def load_trainer_checkpoint(
     del verified
     trainer_state = combined_state.get("trainer")
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
@@ -240,11 +245,15 @@ def load_trainer_checkpoint(
         # before checkpoint I/O. Reuse it so stateful descriptors cannot execute
         # a second time between final target validation and application.
         model_apply = _bind_model_state_loader(model, strict_model)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         materialized = _prepare_model_weights(model, arrays, strict_model)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         del arrays
 
         # Materialization can execute model.state_dict() and custom tensor/device
@@ -252,8 +261,10 @@ def load_trainer_checkpoint(
         # already-bound restore interface.
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
     finally:
         _restore_preapply_process_state(
             preapply_ambient,
@@ -277,7 +288,10 @@ def load_trainer_checkpoint(
     # in-place retry; avoid copying model-scale weights to attempt rollback.
     try:
         model_apply(materialized)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_trainer_model_binding(model, trainer)
         load_trainer_state(trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
         # torch RNG even on success. Restore the checkpoint streams last so
         # the first resumed batch sees the exact captured next draws.
@@ -294,9 +308,11 @@ def load_trainer_checkpoint(
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
             _restore_initial_torch_policy(rollback_policy, exc)
-        _poison_canonical_d02(
+        _poison_canonical_restore_failure(
             trainer,
-            "checkpoint_restore_apply_failed",
+            expected_canonical=restore_bindings[0],
+            reason="checkpoint_restore_apply_failed",
+            exc=exc,
         )
         raise
     return LoadResult(
