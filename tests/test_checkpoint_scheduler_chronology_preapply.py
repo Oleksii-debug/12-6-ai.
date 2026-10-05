@@ -544,9 +544,13 @@ def test_noncallable_trainer_state_dict_refuses_save_before_publication(
     ("field", "bad_value"),
     [
         ("lr", -0.01),
+        ("lr", "0.01"),
         ("weight_decay", -0.1),
+        ("weight_decay", "0.1"),
         ("eps", 0.0),
+        ("eps", "1e-8"),
         ("betas", (1.0, 0.999)),
+        ("betas", ("0.9", "0.999")),
     ],
 )
 @pytest.mark.parametrize(
