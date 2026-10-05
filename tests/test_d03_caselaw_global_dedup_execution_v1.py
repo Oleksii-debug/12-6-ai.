@@ -1526,3 +1526,79 @@ assert len(checks) == 2
 assert mod.indexed._code_digest(live.__code__) == expected_digest
 """
     )
+
+
+def test_v3_reference_sample_releases_verified_report_before_strict_attest() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+source = (
+    "def lineage(rows, edges):\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-reference-sample.py", "exec"), live_ns)
+exec(compile(source, "v3-reference-sample.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+expected_digest = mod.indexed._code_digest(canonical_ns["lineage"].__code__)
+calls = []
+def audit(sample, raw):
+    calls.append("reference")
+    return {"matches": live(sample["sources"], ())}
+def verify(report):
+    calls.append("verify")
+    assert len(report["matches"]) == 8
+def strict_attest(_matcher):
+    calls.append("attest")
+    if mod.indexed._code_digest(live.__code__) != expected_digest:
+        raise mod.indexed.IndexedExecutionError(
+            "V3 callable code drift: _lineage_matches"
+        )
+mod.indexed.attest_incumbent_runtime = strict_attest
+matcher = SimpleNamespace(
+    audit_payloads=audit, verify_report=verify, _lineage_matches=live
+)
+rows = [{"source_id": f"source-{i}"} for i in range(16)]
+mod._preflight_attested_reference_sample(
+    matcher, {"sources": rows, "lineage_edges": []},
+    {row["source_id"]: b"x" for row in rows},
+)
+assert calls == ["reference", "verify", "attest"]
+assert mod.indexed._code_digest(live.__code__) == expected_digest
+"""
+    )
+
+
+def test_v3_verified_reference_can_be_frozen_without_losing_byte_comparison() -> None:
+    _run_isolated(
+        """
+import json
+
+source = (
+    "def lineage(rows, edges):\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-reference-full.py", "exec"), live_ns)
+exec(compile(source, "v3-reference-full.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+expected_digest = mod.indexed._code_digest(canonical_ns["lineage"].__code__)
+reference = {"report_sha256": "a" * 64, "matches": live(list(range(16)), ())}
+assert mod.indexed._code_digest(live.__code__) != expected_digest
+reference_hash = reference["report_sha256"]
+reference_bytes = json.dumps(
+    reference, sort_keys=True, separators=(",", ":")
+).encode()
+del reference
+assert mod.indexed._code_digest(live.__code__) == expected_digest
+indexed_report = {"report_sha256": reference_hash, "matches": live(list(range(16)), ())}
+indexed_bytes = json.dumps(
+    indexed_report, sort_keys=True, separators=(",", ":")
+).encode()
+assert reference_bytes == indexed_bytes
+assert indexed_report["report_sha256"] == reference_hash
+"""
+    )
