@@ -974,6 +974,11 @@ def _preflight_trainer_state_without_rng_guard(
             raise CheckpointCompatibilityError(
                 "trainer tokens_seen disagrees with checkpoint identity.tokens_seen"
             )
+        _assert_native_checkpoint_config_identity(
+            trainer,
+            state,
+            identity=identity,
+        )
 
     live_config = getattr(trainer, "config", None)
     if is_dataclass(live_config) and not isinstance(live_config, type):
@@ -1433,6 +1438,45 @@ def _restore_checkpoint_rng_preserving_warn_only(
         raise
 
 
+def _assert_native_checkpoint_config_identity(
+    trainer: Any,
+    state: Mapping[str, Any],
+    *,
+    identity: Mapping[str, Any] | CheckpointIdentity,
+) -> None:
+    """Bind native seed/precision identity to serialized TrainerConfig."""
+
+    if not _is_native_d02(trainer):
+        return
+    config = state.get("config")
+    if not isinstance(config, Mapping):
+        raise CheckpointCompatibilityError(
+            "native checkpoint trainer config identity is unavailable"
+        )
+    if isinstance(identity, Mapping):
+        identity_seed = identity.get("seed")
+        identity_precision = identity.get("precision")
+    else:
+        identity_seed = identity.seed
+        identity_precision = identity.precision
+    mismatches = {}
+    for field, expected, actual, expected_type in (
+        ("seed", identity_seed, config.get("seed"), int),
+        ("precision", identity_precision, config.get("precision"), str),
+    ):
+        typed = (
+            type(expected) is expected_type
+            and type(actual) is expected_type
+            and expected == actual
+        )
+        if not typed:
+            mismatches[field] = {"identity": expected, "trainer": actual}
+    if mismatches:
+        raise CheckpointCompatibilityError(
+            f"checkpoint native config identity mismatch: {mismatches}"
+        )
+
+
 def _assert_native_checkpoint_save_progress(
     trainer: Any,
     state: Mapping[str, Any],
@@ -1515,6 +1559,11 @@ def save_trainer_checkpoint(
 
     _assert_trainer_restore_bindings(trainer, save_bindings)
     _assert_native_checkpoint_save_progress(trainer, state, identity)
+    _assert_native_checkpoint_config_identity(
+        trainer,
+        state,
+        identity=identity,
+    )
 
     def prepublish_validator() -> None:
         if not save_bindings[0]:
