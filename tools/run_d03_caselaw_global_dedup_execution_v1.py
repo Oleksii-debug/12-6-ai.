@@ -1247,8 +1247,7 @@ def _recover_committed_publication_residue(
 
     marker_final_paths: list[str] = []
     marker_stage_paths: list[str] = []
-    final_identities: list[tuple[Path, tuple[int, int]]] = []
-    stage_identities: list[tuple[Path, tuple[int, int]]] = []
+    validated_targets: list[tuple[Path, Path, bytes]] = []
     for row, (final_path, payload), stage_path in zip(
         targets, prepared, stages, strict=True
     ):
@@ -1262,16 +1261,39 @@ def _recover_committed_publication_residue(
         expected_sha = row.get("sha256")
         _require(
             type(final_value) is str
+            and final_value
             and type(stage_value) is str
+            and stage_value
             and _is_sha256_hex(expected_sha),
             "committed publication residue target semantics invalid",
         )
         marker_final_paths.append(final_value)
         marker_stage_paths.append(stage_value)
+        expected_final_value = str(final_path.resolve(strict=False))
+        expected_stage_value = str(stage_path.resolve(strict=False))
+        _require(
+            final_value == expected_final_value
+            and stage_value == expected_stage_value,
+            "committed publication residue target paths do not match requested outputs",
+        )
         _require(
             expected_sha == _sha256(payload),
             f"committed publication residue intended digest mismatch: {final_path}",
         )
+        validated_targets.append((final_path, stage_path, payload))
+
+    _require(
+        marker_final_paths == expected_final_paths
+        and marker_stage_paths == expected_stage_paths,
+        "committed publication residue targets do not match requested outputs",
+    )
+
+    # Validate the complete committed-residue control record before reading any
+    # terminal payload. A later forged row must not cause earlier valid outputs
+    # to be inspected before the manifest is rejected.
+    final_identities: list[tuple[Path, tuple[int, int]]] = []
+    stage_identities: list[tuple[Path, tuple[int, int]]] = []
+    for final_path, stage_path, payload in validated_targets:
         observed, final_identity_after = _read_bounded_regular_file_with_identity(
             final_path,
             len(payload),
@@ -1290,17 +1312,10 @@ def _recover_committed_publication_residue(
                 label="committed publication stage",
             )
             _require(
-                stage_identity_after == final_identity_after
-                and staged == payload,
+                stage_identity_after == final_identity_after and staged == payload,
                 f"committed publication stage ownership drift: {stage_path}",
             )
             stage_identities.append((stage_path, stage_identity_after))
-
-    _require(
-        marker_final_paths == expected_final_paths
-        and marker_stage_paths == expected_stage_paths,
-        "committed publication residue targets do not match requested outputs",
-    )
 
     _verify_committed_finals_before_cleanup(prepared, final_identities)
     _cleanup_committed_publication_residue(
@@ -1309,7 +1324,6 @@ def _recover_committed_publication_residue(
         stage_identities,
     )
     return True
-
 
 def _rollback_current_publication(
     *,
