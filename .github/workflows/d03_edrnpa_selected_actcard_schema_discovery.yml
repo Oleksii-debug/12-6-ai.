@@ -43,6 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          git fetch --no-tags --depth=1 origin 53d7375a87fdd73c8035c2277f9d260b9a8095c6
           test "$(git hash-object tools/probe_d03_edrnpa_open_data_v1.py)" = "$PROBE_BLOB"
           test "$(git hash-object configs/data/d03_edrnpa_rights_provenance_source_policy_v1.json)" = "$POLICY_BLOB"
           test "$(git hash-object tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py)" = "$POLICY_VERIFIER_BLOB"
