@@ -881,3 +881,81 @@ def test_recipe_cli_rejects_unknown_abbreviated_and_positional_arguments(
     assert "invalid authority arguments" in response["error"]
     assert "unrecognized authority option or argument" in response["error"]
     assert "invalid policy JSON" not in response["error"]
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_redacts_unreadable_authority_file_paths(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    secret = "NEVER_LOG_SECRET_AUTHORITY_PATH_864"
+    missing = tmp_path / f"{secret}.json"
+    valid_bindings = bindings()
+    valid_trusted = trusted_authorities(valid_bindings)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(valid_bindings), encoding="utf-8")
+    trusted_path.write_text(json.dumps(valid_trusted), encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(missing)]
+    else:
+        command += [
+            "--bindings", str(missing if bad_role == "bindings" else bindings_path),
+            "--trusted-authorities",
+            str(missing if bad_role == "trusted-authorities" else trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(valid_trusted),
+        ]
+    completed = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert f"invalid {bad_role} JSON" in response["error"]
+    assert "authority input read failed (FileNotFoundError)" in response["error"]
+    assert secret not in completed.stdout
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_redacts_unknown_json_member_names_in_semantic_errors(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    secret = "NEVER_LOG_SECRET_AUTHORITY_KEY_864"
+    policy = load_policy()
+    valid_bindings = bindings()
+    valid_trusted = trusted_authorities(valid_bindings)
+    if bad_role == "policy":
+        policy[secret] = "secret value"
+    elif bad_role == "bindings":
+        valid_bindings[secret] = "secret value"
+    else:
+        valid_trusted[secret] = "secret value"
+    policy_path = tmp_path / "policy.json"
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    bindings_path.write_text(json.dumps(valid_bindings), encoding="utf-8")
+    trusted_path.write_text(json.dumps(valid_trusted), encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH), "--policy", str(policy_path)]
+    if bad_role != "policy":
+        command += [
+            "--bindings", str(bindings_path),
+            "--trusted-authorities", str(trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(valid_trusted),
+        ]
+    completed = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    label = "policy authority" if bad_role == "policy" else "terminal authority bindings"
+    assert f"invalid {label}" in response["error"]
+    assert "keys mismatch" in response["error"]
+    assert secret not in completed.stdout
