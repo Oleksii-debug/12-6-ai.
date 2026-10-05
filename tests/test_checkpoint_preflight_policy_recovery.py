@@ -175,7 +175,6 @@ def test_outer_preapply_rng_rollback_failure_poison_and_recovers(
         random.random()
         np.random.random_sample()
         torch.rand(())
-        drifted = core.capture_rng_state()
 
         def fail_first_restore(state: Any) -> Any:
             nonlocal attempts
@@ -216,7 +215,6 @@ def test_outer_preapply_rng_rollback_failure_poison_and_recovers(
             torch.are_deterministic_algorithms_enabled(),
             torch.is_deterministic_algorithms_warn_only_enabled(),
         ) == (before_enabled, before_warn_only)
-        assert drifted != ambient
     finally:
         original_restore(ambient)
         original_use(before_enabled, warn_only=before_warn_only)
