@@ -437,7 +437,7 @@ def test_final_save_rng_restore_cannot_hide_exact_state_drift(
             identity=_identity(),
         )
 
-    assert restore_calls == 1
+    assert restore_calls == 2
     assert not checkpoint.exists()
     assert vars(target)["_failure_reason"] == "checkpoint_export_state_drift"
     assert vars(target)["_update_incomplete"] is True
