@@ -16,6 +16,7 @@ import pytest
 import torch
 
 from twelve_six.training import (
+    NonFiniteTrainingError,
     Trainer,
     TrainerConfig,
     TrainingStateInvalidError,
