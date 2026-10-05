@@ -1160,7 +1160,8 @@ def _recover_incomplete_publication(
             )
             _require(
                 final_identity == stage_owned_identity,
-                f"incomplete publication final is not linked to its stable stage: {final_path}",
+                "incomplete publication final is not linked to its stable stage: "
+                f"{final_path}",
             )
             _require(
                 observed_final == payload
@@ -1442,6 +1443,40 @@ def _cleanup_committed_publication_residue(
             return
 
 
+def _verify_committed_finals_before_cleanup(
+    prepared: tuple[tuple[Path, bytes], ...],
+    linked_finals: list[tuple[Path, tuple[int, int]]],
+) -> None:
+    """Rebind committed finals before discarding the remaining recovery evidence."""
+    _require(
+        len(prepared) == len(linked_finals),
+        "committed publication final count drift before cleanup",
+    )
+    for (final_path, payload), (linked_path, expected_identity) in zip(
+        prepared, linked_finals, strict=True
+    ):
+        _require(
+            final_path == linked_path,
+            "committed publication final ordering drift before cleanup",
+        )
+        try:
+            observed, observed_identity = _read_bounded_regular_file_with_identity(
+                final_path,
+                len(payload),
+                label="committed publication final",
+            )
+        except CaselawGlobalDedupError as exc:
+            raise CaselawGlobalDedupError(
+                "publication is COMMITTED but terminal final cannot be verified; "
+                f"recovery residue retained: {final_path}"
+            ) from exc
+        _require(
+            observed_identity == expected_identity and observed == payload,
+            "publication is COMMITTED but terminal final bytes or ownership drifted; "
+            f"recovery residue retained: {final_path}",
+        )
+
+
 def _publish_json_outputs(
     outputs: tuple[tuple[Path, Mapping[str, Any]], ...],
 ) -> None:
@@ -1584,6 +1619,7 @@ def _publish_json_outputs(
         raise CaselawGlobalDedupError(
             "publication manifest identity missing after commit point"
         )
+    _verify_committed_finals_before_cleanup(prepared, linked_finals)
     _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
