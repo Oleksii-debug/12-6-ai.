@@ -182,6 +182,7 @@ def test_postflight_authority_cannot_hide_successful_state_mutation(
         assert target.tokens_seen == 2
         assert target._pending_tokens == 1
 
+
 @pytest.mark.parametrize(
     "loader",
     [trainer_adapter, progress_trainer],
