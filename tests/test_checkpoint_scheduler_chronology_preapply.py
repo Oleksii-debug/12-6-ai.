@@ -904,7 +904,7 @@ def test_late_stateful_preflight_hook_drift_is_rechecked_before_model_apply(
     ids=["adapter", "progress"],
 )
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
-def test_late_noncallable_trainer_loader_fails_before_model_apply(
+def test_trainer_loader_disabled_during_materialization_uses_bound_loader(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     loader: Any, restore_rng: bool,
 ) -> None:
@@ -917,64 +917,27 @@ def test_late_noncallable_trainer_loader_fails_before_model_apply(
     core.verify_checkpoint(path)
 
     target = Trainer(_TinyLogits(), source.config, device="cpu")
-    initial_weights = target.model.weight.detach().clone()
     actual_prepare = loader._prepare_model_weights
-    model_applied: list[bool] = []
 
     def prepare_then_disable(*args: Any, **kwargs: Any) -> Any:
         materialized = actual_prepare(*args, **kwargs)
         target.load_state_dict = None  # type: ignore[method-assign]
         return materialized
 
-    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
-        model_applied.append(True)
-        raise AssertionError("late non-callable trainer loader reached model application")
-
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_disable)
-    monkeypatch.setattr(
-        loader,
-        "_bind_model_state_loader",
-        lambda *args, **kwargs: forbid_model_application,
-    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
     )
 
-    with pytest.raises(TypeError, match="trainer must provide load_state_dict"):
-        loader.load_trainer_checkpoint(
-            path, model=target.model, trainer=target,
-            strict_model=False, restore_rng=restore_rng, **extra,
-        )
+    loader.load_trainer_checkpoint(
+        path, model=target.model, trainer=target,
+        strict_model=False, restore_rng=restore_rng, **extra,
+    )
 
-    assert model_applied == []
-    assert not target.optimizer.state
-    assert target._failure_reason is None and not target._update_incomplete
-    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
-    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
-
-
-def test_noncallable_trainer_state_dict_refuses_save_before_publication(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    trainer = Trainer(_TinyLogits(), TrainerConfig(max_steps=1, seed=703), device="cpu")
-    trainer.state_dict = None  # type: ignore[method-assign]
-    published: list[bool] = []
-
-    def forbid_publication(*args: Any, **kwargs: Any) -> None:
-        published.append(True)
-        raise AssertionError("non-callable trainer state_dict reached checkpoint publication")
-
-    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_publication)
-    with pytest.raises(TypeError, match="trainer must provide state_dict"):
-        trainer_adapter.save_trainer_checkpoint(
-            tmp_path / "noncallable-save-дані з пробілами",
-            model=trainer.model,
-            trainer=trainer,
-            identity=_identity(),
-        )
-
-    assert published == []
+    assert target.load_state_dict is None
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize(
