@@ -167,13 +167,18 @@ def test_adapter_partial_apply_poison_and_zero_read_retry(
 
     target = FailingTarget(model)
     if stage == "model":
-        original = trainer_adapter._apply_model_weights
+        original_bind = trainer_adapter._bind_model_state_loader
 
-        def fail_after_model(*args: object, **kwargs: object) -> None:
-            original(*args, **kwargs)
-            raise RuntimeError("injected model failure after apply")
+        def bind_then_fail(model: object, strict: bool):
+            apply = original_bind(model, strict)
 
-        monkeypatch.setattr(trainer_adapter, "_apply_model_weights", fail_after_model)
+            def fail_after_model(materialized: object) -> None:
+                apply(materialized)
+                raise RuntimeError("injected model failure after apply")
+
+            return fail_after_model
+
+        monkeypatch.setattr(trainer_adapter, "_bind_model_state_loader", bind_then_fail)
     elif stage == "rng":
         def fail_rng(_state: object) -> None:
             raise RuntimeError("injected rng failure after apply")
