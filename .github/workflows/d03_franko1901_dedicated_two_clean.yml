@@ -58,7 +58,8 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$FRANKO_EXECUTION_SHA"
           test "$(git merge-base "$PARENT_EXECUTION_SHA" HEAD)" = "$PARENT_EXECUTION_SHA"
-          test "$(git rev-list --count "$PARENT_EXECUTION_SHA"..HEAD)" = "1"
+          test "$(git diff --name-only "$PARENT_EXECUTION_SHA"..HEAD)" = \
+            ".github/workflows/d03_franko1901_dedicated_two_clean.yml"
           test "$(git hash-object tools/run_d03_franko1901_global_dedup_execution_v1.py)" = "$RUNNER_BLOB"
           git diff --quiet HEAD --
           git diff --cached --quiet HEAD --
