@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from twelve_six.data import expanded_global_dedup_v9 as expanded_v9
 from twelve_six.data.expanded_global_dedup_v9 import (
     DATA526_BYTES,
     DATA526_SOURCES,
@@ -315,3 +316,26 @@ def test_survivor_derivation_matches_incumbent_selection_rule() -> None:
     assert authority["survivor_source_ids"] == ["b", "c"]
     assert authority["post_dedup_declared_capacity_bytes"] == 40
     assert authority["truth_boundary"]["training_authorized_bytes"] == 0
+
+
+def test_indexed_backend_rejects_core_loader_attester_alias_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def bypass_loader_attestation() -> None:
+        return None
+
+    monkeypatch.setattr(
+        expanded_v9._indexed,
+        "_CORE_LOADER_ATTEST",
+        bypass_loader_attestation,
+    )
+
+    def matcher_must_not_execute(*_args: object, **_kwargs: object) -> dict[str, object]:
+        pytest.fail("matcher executed after indexed loader-attester drift")
+
+    with pytest.raises(
+        ExpandedDedupError,
+        match="indexed execution core loader attester drift",
+    ):
+        expanded_v9._verify_indexed_execution_backend(matcher_must_not_execute)
+

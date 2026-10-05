@@ -663,6 +663,25 @@ def _verify_indexed_execution_backend(
         isinstance(reference_audit, FunctionType),
         "indexed execution reference callback missing",
     )
+    core_loader_attest = getattr(_indexed, "_CORE_LOADER_ATTEST", None)
+    reference_core_loader_attest = getattr(
+        reference_core,
+        "_attest_loader_frozen_runtime_dependencies",
+        None,
+    )
+    _require(
+        isinstance(core_loader_attest, FunctionType)
+        and isinstance(reference_core_loader_attest, FunctionType)
+        and core_loader_attest.__globals__ is _indexed_core.__dict__
+        and core_loader_attest.__module__ == _indexed_core.__name__
+        and _runtime_code_identity(core_loader_attest)
+        == _runtime_code_identity(reference_core_loader_attest)
+        and core_loader_attest.__defaults__
+        == reference_core_loader_attest.__defaults__
+        and core_loader_attest.__kwdefaults__
+        == reference_core_loader_attest.__kwdefaults__,
+        "indexed execution core loader attester drift",
+    )
     core_closure = tuple(
         name
         for name in _runtime_function_dependency_closure(
@@ -685,7 +704,11 @@ def _verify_indexed_execution_backend(
         and core_runtime_attest.__globals__ is _indexed_core.__dict__
         and core_runtime_attest.__module__ == _indexed_core.__name__
         and _runtime_code_identity(core_runtime_attest)
-        == _runtime_code_identity(reference_core_attest),
+        == _runtime_code_identity(reference_core_attest)
+        and core_runtime_attest.__defaults__
+        == reference_core_attest.__defaults__
+        and core_runtime_attest.__kwdefaults__
+        == reference_core_attest.__kwdefaults__,
         "indexed execution core runtime attester drift",
     )
 
