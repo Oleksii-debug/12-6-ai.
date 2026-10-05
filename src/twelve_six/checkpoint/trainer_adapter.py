@@ -671,20 +671,62 @@ def _assert_native_d02_model_training_mode(model: Any, trainer: Any) -> None:
 
     if not _is_native_d02(trainer):
         return
-    try:
-        model_attrs = _CanonicalTrainer._raw_instance_dict(
-            model,
-            label="checkpoint model",
-        )
-    except (AttributeError, RuntimeError, TypeError) as exc:
+    torch = importlib.import_module("torch")
+    module_type = torch.nn.Module
+    if not isinstance(model, module_type):
         raise CheckpointCompatibilityError(
-            "native D02 checkpoint model does not expose training mode"
-        ) from exc
-    training = model_attrs.get("training")
-    if training is not True:
-        raise CheckpointCompatibilityError(
-            "native D02 checkpoint restore requires model training mode"
+            "native D02 checkpoint model is not a torch module"
         )
+
+    seen: set[int] = set()
+    active: set[int] = set()
+
+    def walk(module: Any, path: str) -> None:
+        module_id = id(module)
+        if module_id in active:
+            raise CheckpointCompatibilityError(
+                "native D02 checkpoint model module graph contains a cycle"
+            )
+        if module_id in seen:
+            return
+        active.add(module_id)
+        seen.add(module_id)
+        try:
+            try:
+                attrs = _CanonicalTrainer._raw_instance_dict(
+                    module,
+                    module_type,
+                    label="checkpoint model module",
+                )
+            except (AttributeError, RuntimeError, TypeError) as exc:
+                raise CheckpointCompatibilityError(
+                    "native D02 checkpoint model does not expose training mode"
+                ) from exc
+            if attrs.get("training") is not True:
+                raise CheckpointCompatibilityError(
+                    "native D02 checkpoint restore requires model training mode"
+                )
+            children = attrs.get("_modules")
+            if type(children) is not dict:
+                raise CheckpointCompatibilityError(
+                    "native D02 checkpoint model child registry is not canonical"
+                )
+            for name, child in children.items():
+                if type(name) is not str:
+                    raise CheckpointCompatibilityError(
+                        "native D02 checkpoint model child name is not canonical"
+                    )
+                if child is None:
+                    continue
+                if not isinstance(child, module_type):
+                    raise CheckpointCompatibilityError(
+                        "native D02 checkpoint model child is not a torch module"
+                    )
+                walk(child, f"{path}.{name}" if path else name)
+        finally:
+            active.remove(module_id)
+
+    walk(model, "")
 
 
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
