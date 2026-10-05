@@ -8,6 +8,7 @@ import random
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
+from types import FunctionType
 from typing import Any
 
 import numpy as np
@@ -910,6 +911,49 @@ class Trainer:
         if any(type(k) is not int for k in saved_state) or set(saved_state) != present:
             raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
 
+    def _require_exported_scheduler_matches_live(self, exported: Any) -> None:
+        """Bind finite scheduler snapshot to live epoch/rates without re-exporting.
+
+        LambdaLR stores callable descriptions separately from its live scalar
+        fields. Compare both parts directly; another state_dict() call could
+        itself be effectful, so it cannot be used as the reference.
+        """
+        scheduler = self.scheduler
+        if scheduler is None:
+            if exported is not None:
+                raise TrainingStateInvalidError("scheduler export is not canonical")
+            return
+        if not isinstance(exported, Mapping):
+            raise TrainingStateInvalidError("scheduler export is not canonical")
+        live = {
+            key: value for key, value in vars(scheduler).items()
+            if key != "optimizer"
+        }
+        if isinstance(scheduler, LambdaLR):
+            live.pop("lr_lambdas", None)
+            if set(exported) != set(live) | {"lr_lambdas"}:
+                raise TrainingStateInvalidError("scheduler export fields differ")
+            exported_lambdas = exported["lr_lambdas"]
+            if (
+                not isinstance(exported_lambdas, list)
+                or len(exported_lambdas) != len(scheduler.lr_lambdas)
+            ):
+                raise TrainingStateInvalidError("scheduler export lambda count differs")
+            for fn, saved in zip(
+                scheduler.lr_lambdas, exported_lambdas, strict=True,
+            ):
+                # Match PyTorch LambdaLR's own function-vs-callable-object
+                # serialization, but inspect the live object directly.
+                expected = None if isinstance(fn, FunctionType) else vars(fn)
+                if not self._exact_export_leaf_equal(saved, expected):
+                    raise TrainingStateInvalidError("scheduler export lambda differs")
+            exported = {
+                key: value for key, value in exported.items()
+                if key != "lr_lambdas"
+            }
+        if not self._exact_export_leaf_equal(exported, live):
+            raise TrainingStateInvalidError("scheduler export differs from live state")
+
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         self.assert_checkpoint_safe()
@@ -948,6 +992,7 @@ class Trainer:
             self._require_exported_optimizer_matches_live(snapshot.optimizer)
             if snapshot.scheduler is not None:
                 self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+                self._require_exported_scheduler_matches_live(snapshot.scheduler)
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
         except BaseException:
