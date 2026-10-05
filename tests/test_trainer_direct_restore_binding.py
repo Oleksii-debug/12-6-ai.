@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import torch
 from torch import nn
 from torch.optim import AdamW
 
@@ -29,6 +30,40 @@ class LookupMutatingAdamW(AdamW):
                 assert owner is not None
                 assert replacement is not None
                 owner.optimizer = replacement
+        return super().__getattribute__(name)
+
+
+class LookupStateMutatingAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.armed = False
+
+    def __getattribute__(self, name: str):
+        if name == "load_state_dict":
+            armed = object.__getattribute__(self, "armed")
+            if armed:
+                object.__setattr__(self, "armed", False)
+                owner = object.__getattribute__(self, "owner")
+                assert owner is not None
+                owner._failure_reason = "descriptor poisoned target"
+        return super().__getattribute__(name)
+
+
+class LookupModelMutatingAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.armed = False
+
+    def __getattribute__(self, name: str):
+        if name == "load_state_dict":
+            armed = object.__getattribute__(self, "armed")
+            if armed:
+                object.__setattr__(self, "armed", False)
+                owner = object.__getattribute__(self, "owner")
+                assert owner is not None
+                owner.model.weight = nn.Parameter(owner.model.weight.detach().clone() + 1.0)
         return super().__getattribute__(name)
 
 
@@ -115,4 +150,40 @@ def test_direct_restore_rejects_optimizer_rebind_during_loader_apply() -> None:
     assert trainer.optimizer is optimizer.replacement
     assert trainer._failure_reason is not None
     assert trainer._update_incomplete is True
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (0, 0, 0)
+
+
+def test_direct_restore_rejects_poison_marker_drift_during_loader_lookup() -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(LookupStateMutatingAdamW, config)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="restore state changed during loader lookup",
+    ):
+        trainer.load_state_dict(state)
+
+    assert trainer.optimizer is optimizer
+    assert trainer._failure_reason == "descriptor poisoned target"
+    assert trainer._update_incomplete is False
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (0, 0, 0)
+
+
+def test_direct_restore_rejects_model_drift_during_loader_lookup() -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(LookupModelMutatingAdamW, config)
+    before = trainer.model.weight.detach().clone()
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="model changed during loader lookup",
+    ):
+        trainer.load_state_dict(state)
+
+    assert trainer.optimizer is optimizer
+    assert not torch.equal(trainer.model.weight.detach(), before)
+    assert trainer._failure_reason is not None
+    assert trainer._update_incomplete is False
     assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (0, 0, 0)
