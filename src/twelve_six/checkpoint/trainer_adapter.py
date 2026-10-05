@@ -851,7 +851,7 @@ def save_trainer_checkpoint(
 ) -> dict[str, Any]:
     """Save model + trainer-owned optimizer/scheduler/scaler/counter state."""
 
-    if not hasattr(trainer, "state_dict"):
+    if not callable(getattr(trainer, "state_dict", None)):
         raise TypeError("trainer must provide state_dict()")
     _assert_trainer_model_binding(model, trainer)
     state = _trainer_state_as_mapping(trainer.state_dict())
