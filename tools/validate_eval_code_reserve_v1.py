@@ -190,7 +190,10 @@ def _load_mapping(path: Path) -> dict[str, Any]:
         )
     except RecursionError as exc:
         raise ValueError("JSON nesting exceeds decoder limit") from exc
-    _require(type(value) is dict, f"{path} must contain a JSON object")
+    _require(
+        type(value) is dict,
+        "EVAL647 authority must contain a JSON object",
+    )
 
     pending: list[Any] = [value]
     nodes = 0
