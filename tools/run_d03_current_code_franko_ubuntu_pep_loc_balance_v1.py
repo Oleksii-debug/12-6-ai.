@@ -351,6 +351,36 @@ def authenticate_new_family(meta: Mapping[str, str]) -> dict[str, Any]:
     document = json.loads(raw.decode("utf-8"))
     require(document.get("source_family") == meta["family"], f"family declaration drift: {meta['family']}")
     zero_truth(document, f"family authority {meta['family']}")
+    exact_source_boundary = {
+        "canonical_capacity_credit_bytes": 0,
+        "training_authorized_bytes": 0,
+        "authorized_unique_loss_positions": 0,
+        "corpus_admitted": False,
+        "tokenizer_fit_permitted": False,
+        "model_training_permitted": False,
+        "paid_compute_authorized": False,
+    }
+    for field, expected in exact_source_boundary.items():
+        observed = document.get(field)
+        require(
+            type(observed) is type(expected) and observed == expected,
+            f"family authority widened source boundary: {meta['family']}:{field}",
+        )
+    required_gates = document.get("required_downstream_gates")
+    require(
+        isinstance(required_gates, list)
+        and {
+            "privacy",
+            "quality",
+            "global_exact_near_fragment_lineage_dedup",
+            "reserved_evaluation_decontamination",
+            "balance_family_caps",
+            "cluster_safe_split",
+            "deterministic_pack_two_clean_builds",
+            "positive_unique_loss_ledger",
+        }.issubset(set(required_gates)),
+        f"family authority downstream gate set drift: {meta['family']}",
+    )
     identity = sha256(
         {
             "authority_git_blob_sha1": meta["blob_sha1"],
