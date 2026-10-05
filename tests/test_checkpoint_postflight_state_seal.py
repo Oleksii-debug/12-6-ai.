@@ -388,15 +388,6 @@ def test_post_rng_exact_seal_does_not_reenter_effectful_tensor_comparator(
 
 
 @pytest.mark.parametrize(
-    "loader",
-    [trainer_adapter, progress_trainer],
-    ids=["adapter", "progress"],
-)
-@pytest.mark.parametrize(
-    "final_phase",
-    ["rng-replay", "opt-out-policy"],
-)
-@pytest.mark.parametrize(
     "mutation",
     ["model", "optimizer", "gradient", "policy"],
 )
@@ -452,6 +443,15 @@ def test_final_save_rng_restore_cannot_hide_exact_state_drift(
     assert vars(target)["_update_incomplete"] is True
 
 
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "final_phase",
+    ["rng-replay", "opt-out-policy"],
+)
 @pytest.mark.parametrize(
     "mutation",
     ["model", "optimizer", "gradient", "policy"],
