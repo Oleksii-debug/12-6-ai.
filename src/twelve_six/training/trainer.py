@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from typing import Any
+from types import FunctionType
 
 import numpy as np
 import torch
@@ -782,6 +783,26 @@ class Trainer:
             self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
             raise
 
+    def _canonical_lambda_lr_live_state(self) -> dict[str, Any] | None:
+        """Obtain the canonical built-in scheduler's state without invoking hooks."""
+        if self.scheduler is None or type(self.scheduler) is not LambdaLR:
+            return None
+        live = vars(self.scheduler)
+        functions = live.get("lr_lambdas")
+        if not isinstance(functions, list) or any(
+            not isinstance(fn, FunctionType) for fn in functions
+        ):
+            raise TrainingStateInvalidError(
+                "LambdaLR callback state lacks a pure export authority"
+            )
+        snapshot = {
+            key: value for key, value in live.items()
+            if key not in ("optimizer", "lr_lambdas")
+        }
+        snapshot["lr_lambdas"] = [None] * len(functions)
+        # Freeze mutable scheduler lists: an export hook may change them in place.
+        return copy.deepcopy(snapshot)
+
     def _model_export_fingerprint(self) -> str:
         """Hash weights and buffers in bounded chunks across effectful export hooks."""
         digest = hashlib.sha256()
@@ -940,6 +961,7 @@ class Trainer:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
         model_before = self._model_export_fingerprint()
+        scheduler_before = self._canonical_lambda_lr_live_state()
         self.assert_checkpoint_safe()
         if not _typed_state_equal(
             committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
@@ -951,6 +973,11 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "checkpoint export changed model weights or buffers"
             )
+        if scheduler_before is not None and not self._exact_export_leaf_equal(
+            scheduler_before, self._canonical_lambda_lr_live_state()
+        ):
+            self._mark_failed("checkpoint preflight changed live scheduler")
+            raise TrainingStateInvalidError("checkpoint export changed live scheduler")
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
@@ -986,6 +1013,15 @@ class Trainer:
             self._require_exported_optimizer_matches_live(snapshot.optimizer)
             if snapshot.scheduler is not None:
                 self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+            if scheduler_before is not None and (
+                not self._exact_export_leaf_equal(snapshot.scheduler, scheduler_before)
+                or not self._exact_export_leaf_equal(
+                    scheduler_before, self._canonical_lambda_lr_live_state()
+                )
+            ):
+                raise TrainingStateInvalidError(
+                    "checkpoint scheduler export differs from live committed state"
+                )
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
             if not _typed_state_equal(
