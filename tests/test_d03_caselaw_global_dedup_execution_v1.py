@@ -2171,3 +2171,48 @@ with TemporaryDirectory() as raw:
     assert manifest.exists()
 """
     )
+
+
+
+def test_precommit_final_byte_drift_rolls_back_before_terminal_commit() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    actual_link = mod._link_staged_output
+    tampered = [False]
+
+    def link_then_mutate(stage_path, final_path):
+        actual_link(stage_path, final_path)
+        if not tampered[0]:
+            tampered[0] = True
+            final_path.write_bytes(b"TAMPERED_BEFORE_COMMIT")
+
+    mod._link_staged_output = link_then_mutate
+    try:
+        try:
+            mod._publish_json_outputs(values)
+        except mod.CaselawGlobalDedupError as exc:
+            assert "before commit" in str(exc)
+        else:
+            raise AssertionError("pre-commit final byte drift was committed")
+    finally:
+        mod._link_staged_output = actual_link
+
+    assert tampered == [True]
+    assert not marker.exists()
+    assert not manifest.exists()
+    assert not any(stage.exists() for stage in stages)
+    assert not any(path.exists() for path, _ in values)
+"""
+    )
