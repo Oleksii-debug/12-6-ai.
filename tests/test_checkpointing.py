@@ -1282,6 +1282,53 @@ def test_direct_model_loader_descriptor_drift_rejected_before_apply(
     np.testing.assert_array_equal(target.weights, before)
 
 
+@pytest.mark.parametrize(
+    ("component_name", "message"),
+    [
+        ("optimizer", "checkpoint has no optimizer state"),
+        ("scheduler", "checkpoint has no scheduler state"),
+    ],
+)
+def test_absent_requested_component_state_rejects_before_model_loader_lookup(
+    tmp_path: Path,
+    component_name: str,
+    message: str,
+) -> None:
+    source = NumpyModel(np.array([0.1, -0.2, 0.3]))
+    checkpoint = tmp_path / f"absent-{component_name}-state"
+    save_checkpoint(
+        checkpoint,
+        model=source,
+        trainer_state={},
+        identity=identity(step=0, tokens_seen=0),
+    )
+
+    class TrapModel(NumpyModel):
+        def __init__(self) -> None:
+            super().__init__(np.array([9.0, 8.0, 7.0]))
+            self.loader_lookups = 0
+
+        @property
+        def load_state_dict(self):
+            self.loader_lookups += 1
+            raise AssertionError("model loader lookup must not run")
+
+    target = TrapModel()
+    component = MomentumSGD(NumpyModel(np.array([4.0, 5.0, 6.0])))
+    kwargs = {component_name: component}
+
+    with pytest.raises(CheckpointCompatibilityError, match=message):
+        load_checkpoint(
+            checkpoint,
+            model=target,
+            restore_rng=False,
+            **kwargs,
+        )
+
+    assert target.loader_lookups == 0
+    np.testing.assert_array_equal(target.weights, np.array([9.0, 8.0, 7.0]))
+
+
 def test_direct_optimizer_loader_descriptor_is_bound_once_before_model_apply(
     tmp_path: Path,
 ) -> None:
