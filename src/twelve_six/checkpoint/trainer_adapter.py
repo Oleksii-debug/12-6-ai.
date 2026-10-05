@@ -303,6 +303,34 @@ def _assert_trainer_restore_bindings(
             )
 
 
+def _poison_canonical_restore_failure(
+    trainer: Any,
+    *,
+    expected_canonical: bool,
+    reason: str,
+    exc: BaseException,
+) -> None:
+    """Best-effort poison an entry-canonical target without masking failure."""
+
+    if not expected_canonical:
+        return
+    try:
+        if getattr(trainer, "_failure_reason", None) is None:
+            setattr(trainer, "_failure_reason", reason)
+    except BaseException as poison_exc:
+        exc.add_note(
+            "canonical trainer failure-marker restore also failed: "
+            f"{poison_exc!r}"
+        )
+    try:
+        setattr(trainer, "_update_incomplete", True)
+    except BaseException as poison_exc:
+        exc.add_note(
+            "canonical trainer incomplete-update marker restore also failed: "
+            f"{poison_exc!r}"
+        )
+
+
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
     """Refuse mismatched D02 model/optimizer owners before saving or restoring."""
 
@@ -680,6 +708,7 @@ def _preflight_trainer_state(
     The actual loader runs later in the guarded model -> trainer -> RNG region.
     """
 
+    expected_canonical = _is_canonical_d02_trainer(trainer)
     ambient = capture_rng_state()
     torch_state = ambient.get("torch")
     warn_only = None
@@ -730,11 +759,13 @@ def _preflight_trainer_state(
                             mode_exc,
                         )
                         raise
-        except BaseException:
-            if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
-                if trainer._failure_reason is None:
-                    trainer._failure_reason = "checkpoint_preflight_rng_rollback_failed"
-                trainer._update_incomplete = True
+        except BaseException as exc:
+            _poison_canonical_restore_failure(
+                trainer,
+                expected_canonical=expected_canonical,
+                reason="checkpoint_preflight_rng_rollback_failed",
+                exc=exc,
+            )
             raise
 
 
@@ -1076,6 +1107,7 @@ def load_trainer_checkpoint(
     try:
         _apply_model_weights(model, materialized, strict_model)
         load_trainer_state(trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
                 combined_state["rng"],
@@ -1089,10 +1121,12 @@ def load_trainer_checkpoint(
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
             _restore_initial_torch_policy(rollback_policy, exc)
-        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
-            if trainer._failure_reason is None:
-                trainer._failure_reason = "checkpoint_restore_apply_failed"
-            trainer._update_incomplete = True
+        _poison_canonical_restore_failure(
+            trainer,
+            expected_canonical=restore_bindings[0],
+            reason="checkpoint_restore_apply_failed",
+            exc=exc,
+        )
         raise
     return LoadResult(
         manifest=copy.deepcopy(manifest),
