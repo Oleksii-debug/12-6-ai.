@@ -203,6 +203,17 @@ def test_source_authority_blob_drift_fails_closed(
         trusted_family_projection([family])
 
 
+def test_source_authority_family_declaration_drift_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    family = "github:pydantic/pydantic"
+    altered = copy.deepcopy(SOURCE_AUTHORITY_FILES[family])
+    altered["family_field"] = "schema_version"
+    monkeypatch.setitem(SOURCE_AUTHORITY_FILES, family, altered)
+    with pytest.raises(ValueError, match="family declaration drift"):
+        trusted_family_projection([family])
+
+
 def test_unknown_family_still_fails_closed() -> None:
     with pytest.raises(ValueError, match="absent from trusted current authority"):
         trusted_family_projection(["github:example/not-authorized"])
