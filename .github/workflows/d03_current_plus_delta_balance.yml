@@ -211,10 +211,13 @@ jobs:
           )
           extract_one(
               "/tmp/delta.zip",
-              "evidence.json",
+              "output-a/evidence.json",
               "/tmp/physical-input/delta-evidence.json",
               os.environ["DELTA_EVIDENCE_FILE_SHA256"],
-              exact_names={"evidence.json"},
+              exact_names={
+                  "output-a/evidence.json",
+                  "two-clean-proof.json",
+              },
           )
           PY
 
