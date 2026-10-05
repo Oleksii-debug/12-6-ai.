@@ -708,6 +708,10 @@ def test_noncallable_optimizer_checkpoint_interface_fails_before_model_and_rng(
         ("_require_finite_committed_update", "committed-update authority unavailable"),
         ("_require_no_residual_model_gradients", "gradient-cleanliness authority unavailable"),
         ("_require_deterministic_policy", "deterministic-policy authority unavailable"),
+        (
+            "_require_optimizer_parameter_coverage",
+            "optimizer-coverage authority unavailable",
+        ),
     ],
 )
 @pytest.mark.parametrize(
