@@ -17,6 +17,7 @@ from twelve_six.learned20m_recipe import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_POLICY = ROOT / "configs/research/r01_learned20m_recipe_authority_v1.json"
+MAX_AUTHORITY_JSON_BYTES = 8 * 1024 * 1024
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -41,8 +42,14 @@ def _parse_finite_float(value: str) -> float:
 
 def _load_json(path: Path) -> Any:
     try:
+        # A local authority file is untrusted until its identity and schema pass.
+        # Bound the raw read before JSON parsing to avoid memory exhaustion.
+        with path.open("rb") as source:
+            raw = source.read(MAX_AUTHORITY_JSON_BYTES + 1)
+        if len(raw) > MAX_AUTHORITY_JSON_BYTES:
+            raise ValueError("authority JSON exceeds 8 MiB input limit")
         return json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_constant,
             parse_float=_parse_finite_float,
