@@ -23,7 +23,7 @@ from .core import (
     prepare_checkpoint_load,
     restore_rng_state,
 )
-from .d04_resume_binding import assert_d04_resume_binding, _require_sha256
+from .d04_resume_binding import _require_sha256, assert_d04_resume_binding
 from .expected_binding import (
     _require_expected_nonempty_string,
     _require_expected_sha256,
@@ -43,6 +43,7 @@ from .trainer_adapter import (
     _restore_initial_torch_policy,
     _snapshot_torch_policy,
 )
+
 
 def load_trainer_checkpoint(
     directory: str | Path,
