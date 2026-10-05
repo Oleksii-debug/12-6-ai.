@@ -394,6 +394,19 @@ class Trainer:
         self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
         if self.scheduler is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
+            # The canonical LambdaLR advances exactly once per committed
+            # optimizer step. Finite live corruption is not an exact-resume
+            # chronology, even if state_dict accurately exports that corruption.
+            if (
+                isinstance(self.scheduler, LambdaLR)
+                and (
+                    type(self.scheduler.last_epoch) is not int
+                    or self.scheduler.last_epoch != self.optimizer_step
+                )
+            ):
+                raise TrainingStateInvalidError(
+                    "scheduler chronology differs from committed optimizer step"
+                )
 
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
