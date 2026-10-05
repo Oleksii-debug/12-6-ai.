@@ -22,13 +22,23 @@ def _transactional_restore(
     before = core.capture_rng_state()
     try:
         return original_restore(state)
-    except Exception as exc:
+    except BaseException as exc:  # noqa: BLE001 - rollback must be interrupt-safe
         try:
             original_restore(before)
-        except Exception as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
+            if not isinstance(exc, Exception):
+                exc.add_note(
+                    "RNG rollback of the prior process state also failed: "
+                    f"{rollback_exc!r}"
+                )
+                raise
             raise core.CheckpointError(
                 "RNG restore failed and rollback of the prior RNG state also failed"
             ) from rollback_exc
+        if not isinstance(exc, Exception):
+            # Preserve KeyboardInterrupt/SystemExit/GeneratorExit identity after
+            # restoring the exact pre-call process state.
+            raise
         raise core.CheckpointCompatibilityError(
             "RNG restore failed; prior RNG state was restored transactionally"
         ) from exc
