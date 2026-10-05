@@ -93,6 +93,41 @@ def identity(step: int, tokens_seen: int) -> CheckpointIdentity:
     )
 
 
+def canonical_bound_identity() -> CheckpointIdentity:
+    run_hash = "e" * 64
+    return CheckpointIdentity(
+        git_sha="f" * 40,
+        model_spec={"kind": "canonical-bound-test", "width": 3},
+        parameter_count=3,
+        tokenizer_hash="a" * 64,
+        tokenizer_vocab_hash="d" * 64,
+        dataset_manifest_hash="b" * 64,
+        run_manifest_hash=run_hash,
+        training_config={
+            "run_manifest_sha256": run_hash,
+            "training": {
+                "seed": 17,
+                "precision": "float64-test",
+                "optimizer": "MomentumSGD",
+                "scheduler": "StepScheduler",
+            },
+            "data": {
+                "dataset_manifest_sha256": "b" * 64,
+                "tokenizer_sha256": "a" * 64,
+                "tokenizer_vocab_sha256": "d" * 64,
+            },
+            "environment": {"lock_sha256": "c" * 64},
+        },
+        seed=17,
+        precision="float64-test",
+        step=0,
+        tokens_seen=0,
+        optimizer={"name": "MomentumSGD"},
+        scheduler={"name": "StepScheduler"},
+        environment_lock_hash="c" * 64,
+    )
+
+
 def train_step(model, optimizer, scheduler):
     x = np.random.normal(size=3)
     target = random.uniform(-1.0, 1.0)
@@ -580,3 +615,59 @@ def test_checkpoint_prepublish_validator_is_rng_neutral(
     assert numpy_after[0] == numpy_before[0]
     np.testing.assert_array_equal(numpy_after[1], numpy_before[1])
     assert numpy_after[2:] == numpy_before[2:]
+
+
+
+def test_canonical_bound_identity_accepts_normalized_string_metadata(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "canonical-bound-positive"
+    manifest = save_checkpoint(
+        checkpoint,
+        model=NumpyModel(np.array([0.1, -0.2, 0.3])),
+        trainer_state={},
+        identity=canonical_bound_identity(),
+    )
+
+    assert checkpoint.is_dir()
+    assert verify_checkpoint(checkpoint)["checkpoint_id"] == manifest["checkpoint_id"]
+
+
+@pytest.mark.parametrize(
+    ("path", "bad_value"),
+    [
+        ("run_manifest_sha256", "9" * 64),
+        ("training.seed", 18),
+        ("training.precision", "bf16"),
+        ("training.optimizer", "OtherOptimizer"),
+        ("training.scheduler", "OtherScheduler"),
+        ("data.dataset_manifest_sha256", "8" * 64),
+        ("data.tokenizer_sha256", "7" * 64),
+        ("data.tokenizer_vocab_sha256", "6" * 64),
+        ("environment.lock_sha256", "5" * 64),
+    ],
+)
+def test_canonical_bound_identity_cross_field_contradiction_is_not_published(
+    tmp_path: Path,
+    path: str,
+    bad_value: object,
+) -> None:
+    identity_value = canonical_bound_identity()
+    training_config = copy.deepcopy(dict(identity_value.training_config))
+    parts = path.split(".")
+    target = training_config
+    for part in parts[:-1]:
+        target = target[part]
+    target[parts[-1]] = bad_value
+    bad_identity = replace(identity_value, training_config=training_config)
+    checkpoint = tmp_path / f"contradiction-{path.replace('.', '-')}"
+
+    with pytest.raises(CheckpointIntegrityError, match="disagrees"):
+        save_checkpoint(
+            checkpoint,
+            model=NumpyModel(np.array([0.1, -0.2, 0.3])),
+            trainer_state={},
+            identity=bad_identity,
+        )
+
+    assert not checkpoint.exists()
