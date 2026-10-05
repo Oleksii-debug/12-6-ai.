@@ -485,13 +485,16 @@ def _preflight_trainer_state_without_rng_guard(
     # load probe. Mirror D02's single authority before model/RNG application.
     if canonical_d02:
         scaler_check = getattr(trainer, "_require_checkpoint_scaler_state", None)
-        if callable(scaler_check):
-            try:
-                scaler_check(state.get("scaler"))
-            except (ArithmeticError, ValueError, TypeError, RuntimeError) as exc:
-                raise CheckpointCompatibilityError(
-                    "checkpoint trainer scaler statistics invalid"
-                ) from exc
+        if not callable(scaler_check):
+            raise CheckpointCompatibilityError(
+                "canonical trainer scaler authority unavailable"
+            )
+        try:
+            scaler_check(state.get("scaler"))
+        except (ArithmeticError, ValueError, TypeError, RuntimeError) as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint trainer scaler statistics invalid"
+            ) from exc
 
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
