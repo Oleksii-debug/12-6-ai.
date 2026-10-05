@@ -402,6 +402,13 @@ class Trainer:
                 and (
                     type(self.scheduler.last_epoch) is not int
                     or self.scheduler.last_epoch != self.optimizer_step
+                    or (
+                        type(self.scheduler) is LambdaLR
+                        and (
+                            type(self.scheduler._step_count) is not int
+                            or self.scheduler._step_count != self.optimizer_step + 1
+                        )
+                    )
                 )
             ):
                 raise TrainingStateInvalidError(
@@ -1101,6 +1108,15 @@ class Trainer:
             # scheduler load. A fresh target can retry a verified checkpoint.
             raise ValueError(
                 "checkpoint scheduler chronology differs from committed optimizer step"
+            )
+        if type(self.scheduler) is LambdaLR and (
+            type(state.scheduler.get("_step_count")) is not int
+            or state.scheduler["_step_count"] != state.optimizer_step + 1
+        ):
+            # PyTorch LambdaLR starts at internal scheduler step 1 and moves
+            # exactly once per successful optimizer update.
+            raise ValueError(
+                "checkpoint scheduler step count differs from committed optimizer step"
             )
         if type(self.scheduler) is LambdaLR:
             saved_groups = (
