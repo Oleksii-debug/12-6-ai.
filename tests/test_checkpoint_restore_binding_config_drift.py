@@ -1058,6 +1058,7 @@ def test_native_checkpoint_save_rejects_subclass_export_model_mutation(
     "authority",
     [
         "_model_export_fingerprint",
+        "_checkpoint_auxiliary_fingerprint",
         "_require_exported_scheduler_matches_live",
         "_require_exported_scaler_matches_live",
         "_require_exported_optimizer_matches_live",
@@ -1077,7 +1078,10 @@ def test_native_checkpoint_save_rejects_subclass_safety_authority_override(
             authority,
             staticmethod(lambda saved, live: True),
         )
-    elif authority == "_model_export_fingerprint":
+    elif authority in {
+        "_model_export_fingerprint",
+        "_checkpoint_auxiliary_fingerprint",
+    }:
         setattr(UnsafeAuthorityTrainer, authority, lambda self: "0" * 64)
     else:
         setattr(UnsafeAuthorityTrainer, authority, lambda self, exported: None)
@@ -1168,6 +1172,74 @@ def test_native_checkpoint_save_rejects_auxiliary_drift_from_model_export(
         assert target.scheduler is not None
         assert target.scheduler.last_epoch == original_epoch + 1
 
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "authority",
+    [
+        "_model_export_fingerprint",
+        "_checkpoint_auxiliary_fingerprint",
+        "_require_exported_scheduler_matches_live",
+        "_require_exported_scaler_matches_live",
+        "_require_exported_optimizer_matches_live",
+        "_exact_export_leaf_equal",
+    ],
+)
+def test_native_checkpoint_load_rejects_subclass_safety_authority_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    authority: str,
+) -> None:
+    class UnsafeAuthorityTrainer(Trainer):
+        pass
+
+    if authority == "_exact_export_leaf_equal":
+        setattr(
+            UnsafeAuthorityTrainer,
+            authority,
+            staticmethod(lambda saved, live: True),
+        )
+    elif authority in {
+        "_model_export_fingerprint",
+        "_checkpoint_auxiliary_fingerprint",
+    }:
+        setattr(UnsafeAuthorityTrainer, authority, lambda self: "0" * 64)
+    else:
+        setattr(UnsafeAuthorityTrainer, authority, lambda self, exported: None)
+
+    target = UnsafeAuthorityTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    checkpoint_reads: list[bool] = []
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("unsafe native authority reached checkpoint I/O")
+
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="safety authority must remain canonical",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+        )
+
+    assert checkpoint_reads == []
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
 
 
 def test_native_checkpoint_prepublish_closes_after_auxiliary_observer(
