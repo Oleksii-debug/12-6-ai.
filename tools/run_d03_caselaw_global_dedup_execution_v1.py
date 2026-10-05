@@ -1247,6 +1247,7 @@ def _recover_committed_publication_residue(
 
     marker_final_paths: list[str] = []
     marker_stage_paths: list[str] = []
+    final_identities: list[tuple[Path, tuple[int, int]]] = []
     stage_identities: list[tuple[Path, tuple[int, int]]] = []
     for row, (final_path, payload), stage_path in zip(
         targets, prepared, stages, strict=True
@@ -1280,6 +1281,7 @@ def _recover_committed_publication_residue(
             observed == payload,
             f"committed publication final bytes or identity drift: {final_path}",
         )
+        final_identities.append((final_path, final_identity_after))
 
         if _path_entry_exists(stage_path):
             staged, stage_identity_after = _read_bounded_regular_file_with_identity(
@@ -1300,6 +1302,7 @@ def _recover_committed_publication_residue(
         "committed publication residue targets do not match requested outputs",
     )
 
+    _verify_committed_finals_before_cleanup(prepared, final_identities)
     _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
