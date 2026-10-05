@@ -231,8 +231,8 @@ def load_trainer_checkpoint(
     )
     del arrays
 
-    # Revalidate ownership and the live target after decoding/materialization,
-    # then bind the actual loader immediately before the first live mutation.
+    # Revalidate ownership and the live target after decoding/materialization.
+    # Both restore loaders were already bound before materialization.
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
     # Materialization can execute model.state_dict() and custom tensor/device
