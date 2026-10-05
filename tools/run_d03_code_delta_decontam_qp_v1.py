@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
-import math
-import re
+import jsonimport re
 import subprocess
 import sys
 from collections.abc import Mapping
