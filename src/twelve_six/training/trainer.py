@@ -1124,6 +1124,28 @@ class Trainer:
                 )
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
+        if self.scaler.is_enabled():
+            expected_fields = {
+                "scale", "growth_factor", "backoff_factor",
+                "growth_interval", "_growth_tracker",
+            }
+            if not isinstance(state.scaler, Mapping) or set(state.scaler) != expected_fields:
+                raise ValueError("enabled gradient scaler checkpoint schema invalid")
+            scale = state.scaler["scale"]
+            growth = state.scaler["growth_factor"]
+            backoff = state.scaler["backoff_factor"]
+            interval = state.scaler["growth_interval"]
+            tracker = state.scaler["_growth_tracker"]
+            if (
+                any(type(value) is not float or not math.isfinite(value)
+                    for value in (scale, growth, backoff))
+                or scale <= 0.0
+                or growth <= 1.0
+                or not 0.0 < backoff < 1.0
+                or type(interval) is not int or interval < 1
+                or type(tracker) is not int or tracker < 0
+            ):
+                raise ValueError("enabled gradient scaler checkpoint statistics invalid")
         if (
             not self.scaler.is_enabled()
             and state.scaler is not None
