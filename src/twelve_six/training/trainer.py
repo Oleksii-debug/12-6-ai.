@@ -956,6 +956,149 @@ class Trainer:
                 hash_tensor(value)
         return digest.hexdigest()
 
+    def _optimizer_live_fingerprint(self) -> str | None:
+        """Bind first-party Torch optimizer groups and moments without export hooks."""
+        if not self.optimizer.__class__.__module__.startswith("torch.optim"):
+            return None
+        if not isinstance(self.optimizer.state, Mapping):
+            raise TrainingStateInvalidError("optimizer live state is not a mapping")
+
+        digest = hashlib.sha256()
+
+        def update(value: Any) -> None:
+            kind = f"{type(value).__module__}.{type(value).__qualname__}"
+            digest.update(kind.encode("utf-8") + b"\0")
+            if isinstance(value, Tensor):
+                if value.layout != torch.strided:
+                    raise TrainingStateInvalidError(
+                        "optimizer live state contains unsupported non-strided tensor"
+                    )
+                digest.update(
+                    repr(
+                        (
+                            str(value.dtype),
+                            str(value.device),
+                            tuple(value.shape),
+                            tuple(value.stride()),
+                            value.storage_offset(),
+                            value.data_ptr(),
+                            value.requires_grad,
+                        )
+                    ).encode("utf-8")
+                )
+                detached = value.detach()
+                if detached.is_contiguous():
+                    flat = detached.reshape(-1)
+                    for index in range(0, flat.numel(), 262_144):
+                        raw = (
+                            flat[index:index + 262_144]
+                            .to(device="cpu")
+                            .contiguous()
+                            .view(torch.uint8)
+                        )
+                        digest.update(raw.numpy().tobytes())
+                elif detached.numel() <= 262_144:
+                    raw = detached.to(device="cpu").contiguous().reshape(-1)
+                    digest.update(raw.view(torch.uint8).numpy().tobytes())
+                elif detached.ndim == 1:
+                    for index in range(0, detached.numel(), 262_144):
+                        update(detached[index:index + 262_144])
+                else:
+                    for child in detached.unbind(0):
+                        update(child)
+                return
+            if isinstance(value, np.ndarray):
+                if value.dtype.hasobject:
+                    raise TrainingStateInvalidError(
+                        "optimizer live state contains object NumPy array"
+                    )
+                digest.update(
+                    repr((value.dtype.str, value.shape, value.strides)).encode("utf-8")
+                )
+                for block in np.nditer(
+                    value,
+                    flags=["external_loop", "buffered", "zerosize_ok"],
+                    op_flags=[["readonly"]],
+                    order="C",
+                    buffersize=262_144,
+                ):
+                    digest.update(block.tobytes(order="C"))
+                return
+            if isinstance(value, np.generic):
+                digest.update(value.dtype.str.encode("ascii") + b"\0" + value.tobytes())
+                return
+            if type(value) is float:
+                digest.update(struct.pack("!d", value))
+                return
+            if type(value) is complex:
+                digest.update(struct.pack("!dd", value.real, value.imag))
+                return
+            if value is None or type(value) in {bool, int, str, bytes}:
+                digest.update(repr(value).encode("utf-8"))
+                return
+            if isinstance(value, Mapping):
+                digest.update(str(len(value)).encode("ascii") + b"\0")
+                for key, child in value.items():
+                    if type(key) not in {str, int}:
+                        raise TrainingStateInvalidError(
+                            "optimizer live state contains unsupported mapping key"
+                        )
+                    update(key)
+                    update(child)
+                return
+            if isinstance(value, (list, tuple)):
+                digest.update(str(len(value)).encode("ascii") + b"\0")
+                for child in value:
+                    update(child)
+                return
+            raise TrainingStateInvalidError(
+                "optimizer live state contains unsupported exact-resume value"
+            )
+
+        name_groups = self._optimizer_parameter_name_groups()
+        digest.update(
+            (
+                self.optimizer.__class__.__module__
+                + "."
+                + self.optimizer.__class__.__qualname__
+            ).encode("utf-8")
+        )
+        live_parameter_ids: set[int] = set()
+        for group_index, (group, names) in enumerate(
+            zip(self.optimizer.param_groups, name_groups, strict=True)
+        ):
+            if not isinstance(group, Mapping):
+                raise TrainingStateInvalidError(
+                    "optimizer live parameter group is not a mapping"
+                )
+            parameters = group.get("params")
+            if not isinstance(parameters, (list, tuple)):
+                raise TrainingStateInvalidError(
+                    "optimizer live parameter group params are not a sequence"
+                )
+            update(group_index)
+            update(names)
+            update(
+                {
+                    key: value
+                    for key, value in group.items()
+                    if key not in ("params", "param_names")
+                }
+            )
+            for parameter, name in zip(parameters, names, strict=True):
+                live_parameter_ids.add(id(parameter))
+                update(name)
+                if parameter in self.optimizer.state:
+                    digest.update(b"state-present\0")
+                    update(self.optimizer.state[parameter])
+                else:
+                    digest.update(b"state-absent\0")
+        if any(id(parameter) not in live_parameter_ids for parameter in self.optimizer.state):
+            raise TrainingStateInvalidError(
+                "optimizer live state contains foreign parameter state"
+            )
+        return digest.hexdigest()
+
     @staticmethod
     def _exact_export_leaf_equal(saved: Any, live: Any) -> bool:
         """Compare exact stored bits; numerical equality loses signed-zero identity."""
@@ -1419,6 +1562,7 @@ class Trainer:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
         model_before = self._model_export_fingerprint()
+        optimizer_before = self._optimizer_live_fingerprint()
         scheduler_before = self._canonical_lambda_lr_live_state()
         self.assert_checkpoint_safe()
         if not _typed_state_equal(
@@ -1430,6 +1574,14 @@ class Trainer:
             self._mark_failed("checkpoint preflight changed model weights or buffers")
             raise TrainingStateInvalidError(
                 "checkpoint export changed model weights or buffers"
+            )
+        if (
+            optimizer_before is not None
+            and self._optimizer_live_fingerprint() != optimizer_before
+        ):
+            self._mark_failed("checkpoint preflight changed live optimizer state")
+            raise TrainingStateInvalidError(
+                "checkpoint preflight changed optimizer state"
             )
         if scheduler_before is not None and not self._exact_export_leaf_equal(
             scheduler_before, self._canonical_lambda_lr_live_state()

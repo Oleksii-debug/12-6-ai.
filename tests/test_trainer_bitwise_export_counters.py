@@ -183,6 +183,58 @@ def test_model_fingerprint_hashes_strided_buffers_and_signed_zero() -> None:
     assert original != trainer._model_export_fingerprint()
 
 
+@pytest.mark.parametrize("attack", ["moment", "learning-rate"])
+def test_preflight_auxiliary_export_cannot_redefine_committed_optimizer_state(
+    monkeypatch: pytest.MonkeyPatch,
+    attack: str,
+) -> None:
+    model = _TinyLogits()
+    trainer = Trainer(model, TrainerConfig(seed=703, max_steps=3), device="cpu")
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    before_moment = trainer.optimizer.state[model.weight]["exp_avg"].detach().clone()
+    before_rate = trainer.optimizer.param_groups[0]["lr"]
+    before_fingerprint = trainer._optimizer_live_fingerprint()
+    assert before_fingerprint is not None
+    native_scaler_export = trainer.scaler.state_dict
+    calls: list[int] = []
+
+    def mutate_optimizer_during_preflight() -> dict[str, Any]:
+        calls.append(1)
+        snapshot = native_scaler_export()
+        if len(calls) == 1:
+            if attack == "moment":
+                trainer.optimizer.state[model.weight]["exp_avg"].add_(0.125)
+            else:
+                trainer.optimizer.param_groups[0]["lr"] *= 2.0
+        return snapshot
+
+    monkeypatch.setattr(trainer.scaler, "state_dict", mutate_optimizer_during_preflight)
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint preflight changed optimizer state",
+    ):
+        trainer.state_dict()
+    assert calls
+    assert trainer._failure_reason is not None
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2)
+    assert trainer._optimizer_live_fingerprint() != before_fingerprint
+    if attack == "moment":
+        assert not torch.equal(
+            trainer.optimizer.state[model.weight]["exp_avg"], before_moment
+        )
+        assert trainer.optimizer.param_groups[0]["lr"] == before_rate
+    else:
+        torch.testing.assert_close(
+            trainer.optimizer.state[model.weight]["exp_avg"],
+            before_moment,
+            rtol=0,
+            atol=0,
+        )
+        assert trainer.optimizer.param_groups[0]["lr"] != before_rate
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
 def test_canonical_lambda_lr_positive_export_matches_live_state() -> None:
     model = _TinyLogits()
     trainer = Trainer(
