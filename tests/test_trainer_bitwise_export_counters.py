@@ -173,7 +173,7 @@ def test_finite_live_model_export_mutation_cannot_publish(
 
 def test_model_fingerprint_hashes_strided_buffers_and_signed_zero() -> None:
     model = _TinyLogits()
-    model.register_buffer("view", torch.tensor([[1.0, 2.0], [3.0, 4.0]]).t())
+    model.register_buffer("view", torch.tensor([[0.0, 2.0], [3.0, 4.0]]).t())
     trainer = Trainer(model, TrainerConfig(seed=703, max_steps=2), device="cpu")
     assert not model.view.is_contiguous()
     original = trainer._model_export_fingerprint()
