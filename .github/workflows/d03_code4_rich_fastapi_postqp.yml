@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: d03-code4-rich-fastapi-postqp-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   preflight:
