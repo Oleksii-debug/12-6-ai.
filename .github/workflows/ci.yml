@@ -610,6 +610,7 @@ jobs:
     env:
       MODEL341_SHA: f151c77a8ef8721f0f568509147b1a5f961ae6c7
       MODEL341_CANDIDATE_BLOB: 69e3cbd5f5c83c9d3d529a2a6376db3055979c40
+      EXPECTED_D05_RUNTIME_SHA: ${{ github.event.pull_request.base.sha }}
 
     steps:
       - name: Checkout exact qualification candidate
@@ -623,7 +624,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: Oleksii-debug/12-6-ai.
-          ref: ${{ github.base_ref }}
+          ref: ${{ github.event.pull_request.base.sha }}
           path: d05-runtime
           persist-credentials: false
 
@@ -649,6 +650,7 @@ jobs:
           case "$D05_RUNTIME_SHA" in
             *[!0-9a-f]*) exit 1 ;;
           esac
+          test "$D05_RUNTIME_SHA" = "$EXPECTED_D05_RUNTIME_SHA"
           echo "D05_RUNTIME_SHA=$D05_RUNTIME_SHA" >> "$GITHUB_ENV"
           test "$(git -C model341-carrier rev-parse HEAD)" = "$MODEL341_SHA"
           test "$(git -C model341-carrier hash-object configs/candidates/model341_20m_candidate_a.json)" = "$MODEL341_CANDIDATE_BLOB"
@@ -689,7 +691,7 @@ jobs:
           report = json.loads(report_path.read_text(encoding="utf-8"))
 
           tool_path = Path("tools/run_checkpoint346_model341_current_d05_recovery_v8.py")
-          spec = importlib.util.spec_from_file_location("checkpoint346_v7", tool_path)
+          spec = importlib.util.spec_from_file_location("checkpoint346_v8", tool_path)
           assert spec is not None and spec.loader is not None
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
