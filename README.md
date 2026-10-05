@@ -4,7 +4,7 @@ From-scratch language-model research project with own ModelSpec, tokenizer/data 
 
 Operational model: AUTOPULSE. GitHub exact SHAs, PRs, CI and permanent lane issues are live truth. Google Drive stores canonical research/context/backups.
 
-Current stage: S0 — build and audit the ~10K-parameter end-to-end training factory.
+Current stage: **PRE-LEARNED-20M terminal qualification**. The ~20.6M-parameter random-init ModelSpec and data/training/checkpoint/evaluation mechanics exist, but a lawful launch-authoritative corpus, tokenizer-fit authorization, positive post-pack unique-loss budget, real learned-20M optimizer updates, learned weights and Windows release are **not yet qualified**. Historical ~10K/3M/10M experiments are laboratory evidence, not a trained 20M product. See [scientific control #548](https://github.com/Oleksii-debug/12-6-ai./issues/548) for exact live heads, physical-evidence status and next admissible scale gate.
 
 Important: infrastructure libraries are reused; foreign pretrained weights are not the canonical Base. Paid compute requires explicit authorization.
 

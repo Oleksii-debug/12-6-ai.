@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from twelve_six import windows_operator_cli
 from twelve_six.windows_operator_cli import build_delegate_argv, resolve_default_paths
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -242,6 +243,79 @@ def test_delegate_argv_resolves_only_missing_installed_asset(tmp_path: Path) -> 
     assert delegated[4:] == supplied
 
 
+def test_main_fails_closed_on_bootstrap_runtime_error_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_bootstrap(_argv: object) -> list[str]:
+        raise RuntimeError("broken\nmetadata")
+
+    monkeypatch.setattr(windows_operator_cli, "build_delegate_argv", fail_bootstrap)
+
+    result = windows_operator_cli.main(["verify"])
+    captured = capsys.readouterr()
+
+    assert result == windows_operator_cli.windows_operator_preflight.EXIT_ERROR
+    assert captured.err == ""
+    assert "Traceback" not in captured.out
+    assert captured.out.splitlines() == [
+        "OPERATOR_STATUS: ERROR",
+        r"ERROR: installed_operator_bootstrap_failed:broken\x0ametadata",
+        "LAUNCH_AUTHORIZED: false",
+        "TRAINING_AUTHORIZED: false",
+    ]
+
+
+def test_main_bootstrap_os_error_is_one_line_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_bootstrap(_argv: object) -> list[str]:
+        raise OSError("record\nread")
+
+    monkeypatch.setattr(windows_operator_cli, "build_delegate_argv", fail_bootstrap)
+
+    result = windows_operator_cli.main(["--json", "verify"])
+    captured = capsys.readouterr()
+
+    assert result == windows_operator_cli.windows_operator_preflight.EXIT_ERROR
+    assert captured.err == ""
+    assert captured.out.count("\n") == 1
+    assert "\\n" in captured.out
+    payload = json.loads(captured.out)
+    assert payload["error"] == "installed_operator_bootstrap_failed:record\nread"
+    assert payload["launch_authorized"] is False
+    assert payload["status"] == "ERROR"
+    assert payload["training_authorized"] is False
+    assert payload["truth_boundary"] == windows_operator_cli.windows_operator_preflight._TRUTH_BOUNDARY
+
+
+def test_main_preserves_successful_delegate_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    delegated = ["--state-dir", "state", "verify"]
+    observed: list[list[str]] = []
+
+    monkeypatch.setattr(
+        windows_operator_cli,
+        "build_delegate_argv",
+        lambda argv: delegated,
+    )
+
+    def fake_preflight_main(argv: list[str]) -> int:
+        observed.append(argv)
+        return 41
+
+    monkeypatch.setattr(
+        windows_operator_cli.windows_operator_preflight,
+        "main",
+        fake_preflight_main,
+    )
+
+    assert windows_operator_cli.main(["verify"]) == 41
+    assert observed == [delegated]
+
+
 def test_pyproject_packages_exact_canonical_assets_and_one_cli() -> None:
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert config["project"]["dependencies"] == [
@@ -373,3 +447,29 @@ def test_built_wheel_contains_exact_assets_and_noneditable_cli_uses_them(
     assert result["training_authorized"] is False
     assert result["truth_boundary"]["authorized_optimized_target_exposure"] == 0
     assert result["truth_boundary"]["training_executed"] is False
+
+    installed_paths = metadata_probe.stdout.splitlines()
+    assert len(installed_paths) == 2
+    installed_profile = Path(installed_paths[0])
+    assert installed_profile.is_file()
+    installed_profile.unlink()
+
+    missing_asset = subprocess.run(
+        [str(console), "--json", "verify", "--target", "20m"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert missing_asset.returncode == 3
+    assert missing_asset.stderr == ""
+    assert "Traceback" not in missing_asset.stdout
+    assert len(missing_asset.stdout.splitlines()) == 1
+    missing_result = json.loads(missing_asset.stdout)
+    assert missing_result["status"] == "ERROR"
+    assert missing_result["error"].startswith("installed_operator_bootstrap_failed:")
+    assert "installed canonical asset is missing or not a regular file:" in missing_result["error"]
+    assert missing_result["launch_authorized"] is False
+    assert missing_result["training_authorized"] is False
+    assert missing_result["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+    assert missing_result["truth_boundary"]["training_executed"] is False
