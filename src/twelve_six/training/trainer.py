@@ -600,8 +600,10 @@ class Trainer:
             raise RuntimeError("configured max_steps already reached")
         try:
             self._require_optimizer_parameter_coverage()
+            # Detect drift between committed steps before consuming another batch.
+            self._require_first_party_optimizer_contract()
         except BaseException:
-            self._mark_failed("optimizer parameter coverage changed before microbatch")
+            self._mark_failed("optimizer identity or configured update contract changed")
             raise
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
         try:
@@ -671,6 +673,9 @@ class Trainer:
             # validate only the first group while another can write NaN weights.
             learning_rate = float(self.optimizer.param_groups[0]["lr"])
             self._require_safe_optimizer_hyperparameters()
+            # Forward/backward hooks may change otherwise finite AdamW options
+            # or rates. Refuse before scaler/optimizer.step can mutate weights.
+            self._require_first_party_optimizer_contract()
         except BaseException:
             # Backward already ran; do not allow a partial accounting transition
             # or an interrupted device synchronization to reuse these gradients.
@@ -696,6 +701,9 @@ class Trainer:
                     )
 
                 self._require_deterministic_policy()
+                # unscale_/gradient clipping may invoke effectful callbacks.
+                # Recheck after them, immediately before the real update.
+                self._require_first_party_optimizer_contract()
                 self.scaler.step(self.optimizer)
                 self._require_deterministic_policy()
                 # A finite gradient and finite LR do not guarantee a finite
@@ -1110,6 +1118,24 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "default AdamW options differ from configured constructor"
             )
+
+    def _require_first_party_optimizer_contract(self) -> None:
+        """Check the live first-party step contract without invoking state_dict hooks."""
+        groups = {"param_groups": self.optimizer.param_groups}
+        self._require_default_optimizer_options(groups)
+        self._require_constant_default_rate(groups)
+        if self._canonical_default_schedule:
+            # Read live LambdaLR attributes; do not re-enter state_dict hooks.
+            # The direct checkpoint preflight uses ValueError for an invalid
+            # saved payload. During training this is an invalid live state.
+            try:
+                self._require_checkpoint_scheduler_chronology(
+                    vars(self.scheduler), self.optimizer_step, groups,
+                )
+            except ValueError as exc:
+                raise TrainingStateInvalidError(
+                    "live default scheduler chronology or rate is invalid"
+                ) from exc
 
     def _require_constant_default_rate(self, optimizer_state: Any) -> None:
         """Reject forged finite LR on the default AdamW path without a scheduler.
