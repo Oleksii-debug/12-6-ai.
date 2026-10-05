@@ -172,10 +172,16 @@ def _exact_record_subset(
         raise ProjectionError(f"allocation[{family}] must be positive")
 
     ordered = [dict(row) for row in sorted(rows, key=lambda item: str(item["record_id"]))]
-    total = sum(
+    # Validate EVERY weight before the target==total shortcut. Without this,
+    # an authenticated-looking zero-weight row can be returned as selected
+    # even though the dynamic-programming path correctly refuses that row.
+    weights = [
         _require_nonnegative_int(row.get("payload_bytes"), "payload_bytes")
         for row in ordered
-    )
+    ]
+    if any(weight == 0 for weight in weights):
+        raise ProjectionError("selected survivor payload_bytes must be positive")
+    total = sum(weights)
     if target > total:
         raise ProjectionError(f"allocation[{family}] exceeds authenticated family capacity")
     if target == total:
@@ -187,10 +193,7 @@ def _exact_record_subset(
     parent: dict[int, tuple[int, int] | None] = {0: None}
     reached_at = -1
     expansions = 0
-    for index, row in enumerate(ordered):
-        weight = _require_nonnegative_int(row.get("payload_bytes"), "payload_bytes")
-        if weight <= 0:
-            raise ProjectionError("selected survivor payload_bytes must be positive")
+    for index, weight in enumerate(weights):
         existing = tuple(parent)
         for current in existing:
             expansions += 1

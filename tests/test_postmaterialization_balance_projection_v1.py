@@ -3,6 +3,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -941,6 +945,62 @@ def test_strict_current_clean_json_rejects_nested_duplicate_keys() -> None:
         )
 
 
+@pytest.mark.parametrize("nested", [False, True])
+def test_strict_current_clean_json_duplicate_key_does_not_disclose_member_name(
+    nested: bool,
+) -> None:
+    secret = "NEVER_EXPOSE_SOURCE_JSON_KEY_789"
+    duplicate = f'{{"{secret}":1,"{secret}":2}}'
+    raw = (f'{{"wrapper":{duplicate}}}' if nested else duplicate).encode()
+    with pytest.raises(ProjectionError, match="duplicate JSON key") as failure:
+        load_strict_json_object(raw, label="adversarial")
+    assert secret not in str(failure.value)
+
+
+def test_strict_current_clean_json_nonfinite_error_does_not_echo_numeric_literal() -> None:
+    secret_digits = "99887766554433221100"
+    raw = ('{"value":1e' + secret_digits + "}").encode()
+    with pytest.raises(ProjectionError, match="nonfinite JSON number") as failure:
+        load_strict_json_object(raw, label="adversarial")
+    assert secret_digits not in str(failure.value)
+
+
+@pytest.mark.parametrize("sign", ["", "-"])
+def test_strict_current_clean_json_accepts_64_digit_integer(sign: str) -> None:
+    raw_number = sign + "9" * 64
+    assert load_strict_json_object(
+        ('{"count":' + raw_number + "}").encode(), label="valid"
+    ) == {"count": int(raw_number)}
+
+
+def test_strict_current_clean_json_integer_bound_when_python_limit_disabled() -> None:
+    root = Path(__file__).resolve().parents[1]
+    child = "\n".join(
+        [
+            "import json",
+            "from twelve_six.data.postmaterialization_balance_projection_v1 import "
+            "ProjectionError, load_strict_json_object",
+            "raw = b'{' + json.dumps('count').encode() + b':' + b'9' * 100_000 + b'}'",
+            "try:",
+            "    load_strict_json_object(raw, label='adversarial')",
+            "except ProjectionError as error:",
+            "    assert 'not strict JSON' in str(error)",
+            "else:",
+            "    raise AssertionError('oversized JSON integer was accepted')",
+        ]
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", child],
+        cwd=root, check=False, capture_output=True, text=True, timeout=10,
+        env={
+            **os.environ,
+            "PYTHONINTMAXSTRDIGITS": "0",
+            "PYTHONPATH": str(root / "src"),
+        },
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
 @pytest.mark.parametrize("container", ["array", "object"])
 def test_strict_current_clean_json_rejects_deeply_nested_input(container: str) -> None:
     opening, closing = (b"[", b"]") if container == "array" else (b'{"x":', b"}")
@@ -1785,6 +1845,47 @@ def test_exact_record_realization_rejects_unrepresentable_allocation() -> None:
     assert SELECTION_REALIZATION_POLICY == (
         "record-id-ascending-exact-family-byte-subset-v1"
     )
+
+
+
+@pytest.mark.parametrize(
+    ("weights", "target"),
+    [
+        ([0, 4], 4),
+        ([4, 0], 4),
+        ([0, 4, 2], 4),
+        ([4, 0, 2], 4),
+    ],
+)
+def test_exact_record_realization_rejects_zero_weight_before_shortcut(
+    weights: list[int], target: int,
+) -> None:
+    rows = [
+        {"record_id": f"record-{index}", "payload_bytes": weight}
+        for index, weight in enumerate(weights)
+    ]
+    with pytest.raises(ProjectionError, match="selected survivor payload_bytes must be positive"):
+        _exact_record_subset(rows, target_bytes=target, family="family")
+
+
+@pytest.mark.parametrize(
+    ("weights", "target", "expected_ids"),
+    [
+        ([4, 2], 6, ["a", "b"]),
+        ([4, 2], 4, ["a"]),
+        ([2, 4], 4, ["b"]),
+    ],
+)
+def test_exact_record_realization_preserves_positive_shortcut_and_subset(
+    weights: list[int], target: int, expected_ids: list[str],
+) -> None:
+    rows = [
+        {"record_id": label, "payload_bytes": weight}
+        for label, weight in zip(("a", "b"), weights, strict=True)
+    ]
+    chosen = _exact_record_subset(rows, target_bytes=target, family="family")
+    assert [row["record_id"] for row in chosen] == expected_ids
+    assert sum(row["payload_bytes"] for row in chosen) == target
 
 
 def test_exact_record_realization_fails_closed_on_state_budget() -> None:
