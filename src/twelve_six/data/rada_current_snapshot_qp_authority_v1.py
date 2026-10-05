@@ -19,10 +19,10 @@ from typing import Any, Mapping
 SCHEMA = "12-6.d03-rada-current-snapshot-replay-authority.v1"
 STATUS = "PASS_REPRODUCIBLE_MECHANICS_ZERO_CREDIT_READY_FOR_GLOBAL_DEDUP_CONSUMER"
 AUTHORITY_IDENTITY_SHA256 = (
-    "8e6e3a37b49dc26f3de3f863d5535f49ae6c457330c91bebd05bd2b7d51bbdc9"
+    "543f9cdd5a9aacaf2cc00b5d4057ad8b142aa685870545cff8bd518f8085055e"
 )
 CANONICAL_AUTHORITY_FILE_SHA256 = (
-    "862488ab49bffcfa0f1953a271021d079e478dc3627ae116f009571e28fdebab"
+    "7bf3af111eff6e5e8c137e5819c9752bf21c6b8ad3658afe87534bc59445214e"
 )
 MAX_AUTHORITY_BYTES = 65_536
 MAX_JSON_DEPTH = 32
@@ -53,6 +53,19 @@ _EXPECTED_CORE: dict[str, Any] = {
         "successor_pin_identity_sha256": (
             "dcda0321145c03160cef435bc3d1ef5ac668c3415bc013750ed38cd2d891561e"
         ),
+        "rights_policy_path": (
+            "configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json"
+        ),
+        "rights_policy_git_blob_sha1": (
+            "4a6cb0bd6b009ef36c9d2fb712967a4ae1cbfe0b"
+        ),
+        "rights_policy_identity_sha256": (
+            "47e43afc87e798a52be1745d4313f353a349bc957e809126369a3923ffb68d0f"
+        ),
+        "rights_scope": "ARTIFACT_RETENTION_AND_REPRODUCIBILITY_ONLY",
+        "bulk_corpus_admission_granted": False,
+        "training_authority_granted": False,
+        "downstream_rights_and_provenance_recheck_required": True,
     },
     "mechanics": {
         "product_parent_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
@@ -121,6 +134,7 @@ _EXPECTED_CORE: dict[str, Any] = {
         "production_qp_authority_established": False,
         "current_source_global_dedup_executed": False,
         "current_source_eval_decontamination_executed": False,
+        "current_source_rights_recheck_for_training_executed": False,
     },
     "truth_boundary": {
         "canonical_capacity_credited": 0,
@@ -146,6 +160,12 @@ class RadaAcceptedPayloadBinding:
     source_family: str
     source_archive_sha256: str
     source_archive_bytes: int
+    rights_policy_git_blob_sha1: str
+    rights_policy_identity_sha256: str
+    rights_scope: str
+    bulk_corpus_admission_granted: bool
+    training_authority_granted: bool
+    rights_recheck_for_training_required: bool
     product_parent_sha: str
     normalizer_git_blob_sha1: str
     normalization_config_git_blob_sha1: str
@@ -367,6 +387,17 @@ def verify_current_product_mechanics(
                 f"current Rada mechanic Git blob drift: {relative}"
             )
 
+    source = validated["source"]
+    rights_path = source["rights_policy_path"]
+    rights_payload = _read_regular_bytes(
+        repository_root / rights_path,
+        label=f"current Rada rights policy {rights_path}",
+    )
+    if _git_blob_sha1(rights_payload) != source["rights_policy_git_blob_sha1"]:
+        raise RadaCurrentSnapshotAuthorityError(
+            f"current Rada rights policy Git blob drift: {rights_path}"
+        )
+
 
 def accepted_payload_binding(
     authority: Mapping[str, Any],
@@ -382,6 +413,14 @@ def accepted_payload_binding(
         source_family=source["family"],
         source_archive_sha256=source["source_archive_sha256"],
         source_archive_bytes=source["source_archive_bytes"],
+        rights_policy_git_blob_sha1=source["rights_policy_git_blob_sha1"],
+        rights_policy_identity_sha256=source["rights_policy_identity_sha256"],
+        rights_scope=source["rights_scope"],
+        bulk_corpus_admission_granted=source["bulk_corpus_admission_granted"],
+        training_authority_granted=source["training_authority_granted"],
+        rights_recheck_for_training_required=source[
+            "downstream_rights_and_provenance_recheck_required"
+        ],
         product_parent_sha=mechanics["product_parent_sha"],
         normalizer_git_blob_sha1=mechanics["normalizer_git_blob_sha1"],
         normalization_config_git_blob_sha1=mechanics[
