@@ -671,6 +671,11 @@ def _read_bounded_regular_file(
             f"{label} opened object is not a regular file: {path}",
         )
         opened_identity = (info_before.st_dev, info_before.st_ino)
+        opened_stamp = (
+            info_before.st_size,
+            info_before.st_mtime_ns,
+            info_before.st_ctime_ns,
+        )
         _require(
             opened_identity == identity_before,
             f"{label} identity changed before read: {path}",
@@ -688,6 +693,15 @@ def _read_bounded_regular_file(
         _require(
             (info_after.st_dev, info_after.st_ino) == opened_identity,
             f"{label} descriptor identity changed while reading: {path}",
+        )
+        _require(
+            (
+                info_after.st_size,
+                info_after.st_mtime_ns,
+                info_after.st_ctime_ns,
+            )
+            == opened_stamp,
+            f"{label} changed while reading: {path}",
         )
     except OSError as exc:
         raise CaselawGlobalDedupError(f"cannot read {label}: {path}") from exc
