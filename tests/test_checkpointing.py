@@ -671,3 +671,42 @@ def test_canonical_bound_identity_cross_field_contradiction_is_not_published(
         )
 
     assert not checkpoint.exists()
+
+
+
+def test_resealed_canonical_bound_contradiction_is_rejected_on_load(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "resealed-canonical-contradiction"
+    save_checkpoint(
+        checkpoint,
+        model=NumpyModel(np.array([0.1, -0.2, 0.3])),
+        trainer_state={},
+        identity=canonical_bound_identity(),
+    )
+
+    manifest_path = checkpoint / "manifest.json"
+    manifest = __import__("json").loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["identity"]["training_config"]["training"]["seed"] = 18
+    manifest["identity"]["training_config_hash"] = hash_json(
+        manifest["identity"]["training_config"]
+    )
+    manifest_path.write_text(
+        __import__("json").dumps(
+            manifest,
+            sort_keys=True,
+            separators=(",", ":"),
+        ) + "\n",
+        encoding="utf-8",
+    )
+    manifest_sha = __import__("hashlib").sha256(manifest_path.read_bytes()).hexdigest()
+    (checkpoint / "MANIFEST.sha256").write_text(
+        f"{manifest_sha}  manifest.json\n",
+        encoding="ascii",
+    )
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="training seed disagrees with top-level seed",
+    ):
+        verify_checkpoint(checkpoint)
