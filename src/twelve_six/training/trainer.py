@@ -941,6 +941,45 @@ class Trainer:
         if any(type(k) is not int for k in saved_state) or set(saved_state) != present:
             raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
 
+    def _require_checkpoint_scaler_state(self, scaler_state: Any) -> None:
+        """Pure scaler authority shared by direct D02 and pre-model-apply D05.
+
+        Native GradScaler.load_state_dict accepts invalid finite statistics, so
+        schema matching and a detached native load probe are not sufficient.
+        This check must run before either loader touches model or optimizer.
+        """
+        if self.scaler.is_enabled() and not scaler_state:
+            raise ValueError("enabled gradient scaler checkpoint state missing")
+        if self.scaler.is_enabled():
+            expected_fields = {
+                "scale", "growth_factor", "backoff_factor",
+                "growth_interval", "_growth_tracker",
+            }
+            if not isinstance(scaler_state, Mapping) or set(scaler_state) != expected_fields:
+                raise ValueError("enabled gradient scaler checkpoint schema invalid")
+            scale = scaler_state["scale"]
+            growth = scaler_state["growth_factor"]
+            backoff = scaler_state["backoff_factor"]
+            interval = scaler_state["growth_interval"]
+            tracker = scaler_state["_growth_tracker"]
+            if (
+                any(type(value) is not float or not math.isfinite(value)
+                    for value in (scale, growth, backoff))
+                or scale <= 0.0
+                or growth <= 1.0
+                or not 0.0 < backoff < 1.0
+                or type(interval) is not int or interval < 1
+                or type(tracker) is not int or not 0 <= tracker < interval
+            ):
+                raise ValueError("enabled gradient scaler checkpoint statistics invalid")
+        if (
+            not self.scaler.is_enabled()
+            and scaler_state is not None
+            and (not isinstance(scaler_state, Mapping) or bool(scaler_state))
+        ):
+            # Disabled GradScaler.load_state_dict silently ignores a payload.
+            raise ValueError("disabled gradient scaler checkpoint state must be empty")
+
     def _require_checkpoint_scheduler_chronology(
         self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
     ) -> None:
@@ -1213,38 +1252,7 @@ class Trainer:
         # Reject known contract mismatches before touching optimizer state.
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
-        if self.scaler.is_enabled() and not state.scaler:
-            raise ValueError("enabled gradient scaler checkpoint state missing")
-        if self.scaler.is_enabled():
-            expected_fields = {
-                "scale", "growth_factor", "backoff_factor",
-                "growth_interval", "_growth_tracker",
-            }
-            if not isinstance(state.scaler, Mapping) or set(state.scaler) != expected_fields:
-                raise ValueError("enabled gradient scaler checkpoint schema invalid")
-            scale = state.scaler["scale"]
-            growth = state.scaler["growth_factor"]
-            backoff = state.scaler["backoff_factor"]
-            interval = state.scaler["growth_interval"]
-            tracker = state.scaler["_growth_tracker"]
-            if (
-                any(type(value) is not float or not math.isfinite(value)
-                    for value in (scale, growth, backoff))
-                or scale <= 0.0
-                or growth <= 1.0
-                or not 0.0 < backoff < 1.0
-                or type(interval) is not int or interval < 1
-                or type(tracker) is not int or not 0 <= tracker < interval
-            ):
-                raise ValueError("enabled gradient scaler checkpoint statistics invalid")
-        if (
-            not self.scaler.is_enabled()
-            and state.scaler is not None
-            and (not isinstance(state.scaler, Mapping) or bool(state.scaler))
-        ):
-            # Disabled GradScaler.load_state_dict silently ignores a payload.
-            # Reject it before optimizer mutation instead of losing state.
-            raise ValueError("disabled gradient scaler checkpoint state must be empty")
+        self._require_checkpoint_scaler_state(state.scaler)
         # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
         # parameter identity. Reject missing/reordered names before mutation.
         self._require_optimizer_state_parameter_order(state.optimizer)
