@@ -15,6 +15,7 @@ import importlib
 import json
 import os
 import ssl
+import stat
 try:
     import resource
 except ImportError:  # pragma: no cover - Windows/local fallback
@@ -587,7 +588,14 @@ def _max_rss_kib() -> int | None:
 
 
 PUBLICATION_SCHEMA = "12-6.d03-caselaw-output-publication.v1"
+PUBLICATION_MARKER_SCHEMA = "12-6.d03-caselaw-output-publication-marker.v1"
+PUBLICATION_MARKER_MAX_BYTES = 4 * 1024
 PUBLICATION_MANIFEST_MAX_BYTES = 64 * 1024
+_PUBLICATION_MARKER_KEYS = {
+    "schema_version",
+    "state",
+    "publication_pathset_sha256",
+}
 _PUBLICATION_MANIFEST_KEYS = {
     "schema_version",
     "state",
@@ -628,6 +636,38 @@ def _path_entry_exists(path: Path) -> bool:
     return os.path.lexists(path)
 
 
+def _regular_file_identity(path: Path, *, label: str) -> tuple[int, int]:
+    try:
+        info = os.lstat(path)
+    except OSError as exc:
+        raise CaselawGlobalDedupError(f"cannot inspect {label}: {path}") from exc
+    _require(stat.S_ISREG(info.st_mode), f"{label} is not a regular file: {path}")
+    return (info.st_dev, info.st_ino)
+
+
+def _unlink_owned_path(
+    path: Path,
+    identity: tuple[int, int],
+    *,
+    label: str,
+    missing_ok: bool = False,
+) -> None:
+    try:
+        observed = _regular_file_identity(path, label=label)
+    except CaselawGlobalDedupError:
+        if missing_ok and not _path_entry_exists(path):
+            return
+        raise
+    _require(
+        observed == identity,
+        f"{label} ownership changed before unlink: {path}",
+    )
+    try:
+        path.unlink()
+    except OSError as exc:
+        raise CaselawGlobalDedupError(f"cannot unlink {label}: {path}") from exc
+
+
 def _fsync_directory(path: Path) -> None:
     if os.name == "nt":
         # Every marker, manifest and staged payload is flushed with os.fsync().
@@ -658,11 +698,19 @@ class PublicationWriteCleanupError(CaselawGlobalDedupError):
     """A durable-create failure left residue that must remain recovery-visible."""
 
 
-def _write_create_only_durable(path: Path, payload: bytes) -> None:
-    created = False
+def _write_create_only_durable(
+    path: Path,
+    payload: bytes,
+) -> tuple[int, int]:
+    created_identity: tuple[int, int] | None = None
     try:
         with path.open("xb") as handle:
-            created = True
+            info = os.fstat(handle.fileno())
+            _require(
+                stat.S_ISREG(info.st_mode),
+                f"created output is not a regular file: {path}",
+            )
+            created_identity = (info.st_dev, info.st_ino)
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -670,17 +718,38 @@ def _write_create_only_durable(path: Path, payload: bytes) -> None:
         raise CaselawGlobalDedupError(f"refusing to overwrite: {path}") from exc
     except OSError as exc:
         cleanup_error: Exception | None = None
-        if created:
+        if created_identity is not None:
             try:
-                path.unlink(missing_ok=True)
+                _unlink_owned_path(
+                    path,
+                    created_identity,
+                    label="failed durable create",
+                    missing_ok=True,
+                )
                 _fsync_directory(path.parent)
-            except (OSError, CaselawGlobalDedupError) as cleanup_exc:
+            except CaselawGlobalDedupError as cleanup_exc:
                 cleanup_error = cleanup_exc
         if cleanup_error is not None:
             raise PublicationWriteCleanupError(
                 f"cannot write output and cleanup failed: {path}: {cleanup_error}"
             ) from exc
         raise CaselawGlobalDedupError(f"cannot write output: {path}") from exc
+
+    if created_identity is None:
+        raise CaselawGlobalDedupError(
+            f"durable create identity missing after successful write: {path}"
+        )
+    try:
+        observed = _regular_file_identity(path, label="durably created output")
+    except CaselawGlobalDedupError as exc:
+        raise PublicationWriteCleanupError(
+            f"durably created output pathname changed before ownership binding: {path}"
+        ) from exc
+    if observed != created_identity:
+        raise PublicationWriteCleanupError(
+            f"durably created output ownership changed before return: {path}"
+        )
+    return created_identity
 
 
 def _publication_control_paths(
@@ -702,6 +771,69 @@ def _publication_marker_path(
     prepared: tuple[tuple[Path, bytes], ...],
 ) -> Path:
     return _publication_control_paths(prepared)[0]
+
+
+def _publication_marker_payload(pathset_id: str) -> bytes:
+    marker = {
+        "schema_version": PUBLICATION_MARKER_SCHEMA,
+        "state": "INCOMPLETE_NOT_TERMINAL",
+        "publication_pathset_sha256": pathset_id,
+    }
+    return _canonical(marker) + b"\n"
+
+
+def _validate_publication_marker(
+    marker_path: Path,
+    pathset_id: str,
+) -> tuple[int, int]:
+    identity_before = _regular_file_identity(
+        marker_path, label="incomplete publication marker"
+    )
+    try:
+        with marker_path.open("rb") as handle:
+            raw = handle.read(PUBLICATION_MARKER_MAX_BYTES + 1)
+        if len(raw) > PUBLICATION_MARKER_MAX_BYTES:
+            raise ValueError("publication marker exceeds bounded size")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_manifest_pairs,
+            parse_constant=_reject_manifest_constant,
+            parse_float=_reject_manifest_float,
+        )
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise CaselawGlobalDedupError(
+            "incomplete publication marker is unreadable"
+        ) from exc
+    _require(type(value) is dict, "incomplete publication marker root invalid")
+    _require(
+        set(value) == _PUBLICATION_MARKER_KEYS,
+        "incomplete publication marker keys invalid",
+    )
+    _require(
+        raw == _canonical(value) + b"\n",
+        "incomplete publication marker is not canonical",
+    )
+    _require(
+        value.get("schema_version") == PUBLICATION_MARKER_SCHEMA
+        and value.get("state") == "INCOMPLETE_NOT_TERMINAL"
+        and value.get("publication_pathset_sha256") == pathset_id,
+        "incomplete publication marker semantics invalid",
+    )
+    identity_after = _regular_file_identity(
+        marker_path, label="incomplete publication marker"
+    )
+    _require(
+        identity_before == identity_after,
+        "incomplete publication marker identity changed while reading",
+    )
+    return identity_after
 
 
 def _publication_manifest(
@@ -796,11 +928,17 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
 def _remove_control_without_payload(
     marker_path: Path,
     manifest_path: Path,
+    marker_identity: tuple[int, int],
 ) -> None:
-    if _path_entry_exists(manifest_path):
-        manifest_path.unlink()
-        _fsync_directory(manifest_path.parent)
-    marker_path.unlink()
+    _require(
+        not _path_entry_exists(manifest_path),
+        "publication manifest appeared during marker-only recovery",
+    )
+    _unlink_owned_path(
+        marker_path,
+        marker_identity,
+        label="incomplete publication marker",
+    )
     _fsync_directory(marker_path.parent)
 
 
@@ -811,10 +949,7 @@ def _recover_incomplete_publication(
     stages: tuple[Path, ...],
     pathset_id: str,
 ) -> None:
-    _require(
-        not marker_path.is_symlink() and marker_path.is_file(),
-        "incomplete publication marker is not a regular file",
-    )
+    marker_identity = _validate_publication_marker(marker_path, pathset_id)
     expected_final_paths = [str(path.resolve(strict=False)) for path, _ in prepared]
     expected_stage_paths = [str(stage.resolve(strict=False)) for stage in stages]
 
@@ -824,19 +959,24 @@ def _recover_incomplete_publication(
             and not any(_path_entry_exists(stage) for stage in stages),
             "incomplete publication marker lacks manifest but payload paths exist",
         )
-        _remove_control_without_payload(marker_path, manifest_path)
+        _remove_control_without_payload(
+            marker_path,
+            manifest_path,
+            marker_identity,
+        )
         return
 
-    try:
-        manifest = _load_publication_manifest(manifest_path)
-    except CaselawGlobalDedupError:
-        _require(
-            not any(_path_entry_exists(path) for path, _ in prepared)
-            and not any(_path_entry_exists(stage) for stage in stages),
-            "invalid incomplete manifest coexists with payload paths",
-        )
-        _remove_control_without_payload(marker_path, manifest_path)
-        return
+    manifest_identity_before = _regular_file_identity(
+        manifest_path, label="incomplete publication manifest"
+    )
+    manifest = _load_publication_manifest(manifest_path)
+    manifest_identity = _regular_file_identity(
+        manifest_path, label="incomplete publication manifest"
+    )
+    _require(
+        manifest_identity_before == manifest_identity,
+        "incomplete publication manifest identity changed while reading",
+    )
 
     targets = manifest["targets"]
     _require(
@@ -877,6 +1017,7 @@ def _recover_incomplete_publication(
         expected_sha = row["sha256"]
         final_exists = _path_entry_exists(final_path)
         stage_exists = _path_entry_exists(stage_path)
+        stage_owned_identity: tuple[int, int] | None = None
 
         if final_exists:
             _require(
@@ -890,86 +1031,243 @@ def _recover_incomplete_publication(
                 and stage_path.is_file(),
                 "incomplete publication payload path is not regular",
             )
+            final_identity = _regular_file_identity(
+                final_path, label="incomplete publication final"
+            )
+            stage_identity_before = _regular_file_identity(
+                stage_path, label="incomplete publication stage"
+            )
             try:
                 same_file = os.path.samefile(final_path, stage_path)
+                observed = stage_path.read_bytes()
             except OSError as exc:
                 raise CaselawGlobalDedupError(
                     f"cannot verify incomplete publication ownership: {final_path}"
                 ) from exc
-            _require(
-                same_file,
-                f"incomplete publication final is not linked to its stage: {final_path}",
+            stage_owned_identity = _regular_file_identity(
+                stage_path, label="incomplete publication stage"
             )
-            try:
-                observed = stage_path.read_bytes()
-            except OSError as exc:
-                raise CaselawGlobalDedupError(
-                    f"cannot inspect incomplete publication stage: {stage_path}"
-                ) from exc
+            _require(
+                same_file
+                and final_identity == stage_owned_identity
+                and stage_identity_before == stage_owned_identity,
+                f"incomplete publication final is not linked to its stable stage: {final_path}",
+            )
             _require(
                 _sha256(observed) == expected_sha,
                 f"incomplete publication output digest mismatch: {final_path}",
             )
-            final_path.unlink()
+            _unlink_owned_path(
+                final_path,
+                final_identity,
+                label="incomplete publication final",
+            )
             touched_dirs.add(final_path.parent)
 
         if stage_exists:
-            _require(
-                not stage_path.is_symlink() and stage_path.is_file(),
-                f"incomplete publication stage is not regular: {stage_path}",
+            if stage_owned_identity is None:
+                stage_owned_identity = _regular_file_identity(
+                    stage_path, label="incomplete publication stage"
+                )
+            _unlink_owned_path(
+                stage_path,
+                stage_owned_identity,
+                label="incomplete publication stage",
             )
-            stage_path.unlink()
             touched_dirs.add(stage_path.parent)
 
     for directory in sorted(touched_dirs, key=str):
         _fsync_directory(directory)
-    manifest_path.unlink()
+    _unlink_owned_path(
+        manifest_path,
+        manifest_identity,
+        label="incomplete publication manifest",
+    )
     _fsync_directory(manifest_path.parent)
-    marker_path.unlink()
+    _unlink_owned_path(
+        marker_path,
+        marker_identity,
+        label="incomplete publication marker",
+    )
     _fsync_directory(marker_path.parent)
+
+
+def _recover_committed_publication_residue(
+    manifest_path: Path,
+    prepared: tuple[tuple[Path, bytes], ...],
+    stages: tuple[Path, ...],
+    pathset_id: str,
+) -> bool:
+    if not _path_entry_exists(manifest_path):
+        return False
+
+    manifest_identity_before = _regular_file_identity(
+        manifest_path, label="committed publication manifest"
+    )
+    manifest = _load_publication_manifest(manifest_path)
+    manifest_identity = _regular_file_identity(
+        manifest_path, label="committed publication manifest"
+    )
+    _require(
+        manifest_identity_before == manifest_identity,
+        "committed publication manifest identity changed while reading",
+    )
+    targets = manifest["targets"]
+    expected_final_paths = [str(path.resolve(strict=False)) for path, _ in prepared]
+    expected_stage_paths = [str(stage.resolve(strict=False)) for stage in stages]
+    _require(
+        manifest.get("publication_pathset_sha256") == pathset_id,
+        "committed publication residue path-set identity mismatch",
+    )
+    _require(
+        len(targets) == len(prepared) == len(stages),
+        "committed publication residue target count mismatch",
+    )
+
+    marker_final_paths: list[str] = []
+    marker_stage_paths: list[str] = []
+    stage_identities: list[tuple[Path, tuple[int, int]]] = []
+    for row, (final_path, payload), stage_path in zip(
+        targets, prepared, stages, strict=True
+    ):
+        _require(type(row) is dict, "committed publication residue target invalid")
+        _require(
+            set(row) == _PUBLICATION_TARGET_KEYS,
+            "committed publication residue target keys invalid",
+        )
+        final_value = row.get("path")
+        stage_value = row.get("stage_path")
+        expected_sha = row.get("sha256")
+        _require(
+            type(final_value) is str
+            and type(stage_value) is str
+            and _is_sha256_hex(expected_sha),
+            "committed publication residue target semantics invalid",
+        )
+        marker_final_paths.append(final_value)
+        marker_stage_paths.append(stage_value)
+        _require(
+            expected_sha == _sha256(payload),
+            f"committed publication residue intended digest mismatch: {final_path}",
+        )
+        final_identity_before = _regular_file_identity(
+            final_path, label="committed publication final"
+        )
+        try:
+            observed = final_path.read_bytes()
+        except OSError as exc:
+            raise CaselawGlobalDedupError(
+                f"cannot inspect committed publication final: {final_path}"
+            ) from exc
+        final_identity_after = _regular_file_identity(
+            final_path, label="committed publication final"
+        )
+        _require(
+            final_identity_before == final_identity_after and observed == payload,
+            f"committed publication final bytes or identity drift: {final_path}",
+        )
+
+        if _path_entry_exists(stage_path):
+            stage_identity_before = _regular_file_identity(
+                stage_path, label="committed publication stage"
+            )
+            try:
+                same_file = os.path.samefile(final_path, stage_path)
+                staged = stage_path.read_bytes()
+            except OSError as exc:
+                raise CaselawGlobalDedupError(
+                    f"cannot inspect committed publication stage: {stage_path}"
+                ) from exc
+            stage_identity_after = _regular_file_identity(
+                stage_path, label="committed publication stage"
+            )
+            _require(
+                same_file
+                and stage_identity_before == stage_identity_after
+                and stage_identity_after == final_identity_after
+                and staged == payload,
+                f"committed publication stage ownership drift: {stage_path}",
+            )
+            stage_identities.append((stage_path, stage_identity_after))
+
+    _require(
+        marker_final_paths == expected_final_paths
+        and marker_stage_paths == expected_stage_paths,
+        "committed publication residue targets do not match requested outputs",
+    )
+
+    _cleanup_committed_publication_residue(
+        manifest_path,
+        manifest_identity,
+        stage_identities,
+    )
+    return True
 
 
 def _rollback_current_publication(
     *,
     marker_path: Path,
     manifest_path: Path,
-    marker_created: bool,
-    manifest_created: bool,
-    linked_finals: list[Path],
-    created_stages: list[Path],
+    marker_identity: tuple[int, int] | None,
+    manifest_identity: tuple[int, int] | None,
+    linked_finals: list[tuple[Path, tuple[int, int]]],
+    created_stages: list[tuple[Path, tuple[int, int]]],
 ) -> list[str]:
     errors: list[str] = []
     touched_dirs: set[Path] = set()
-    for path in reversed(linked_finals):
+    for path, identity in reversed(linked_finals):
         try:
-            path.unlink(missing_ok=True)
+            _unlink_owned_path(
+                path,
+                identity,
+                label="rollback final",
+                missing_ok=True,
+            )
             touched_dirs.add(path.parent)
-        except OSError as exc:
-            errors.append(f"{path}: {exc}")
-    for path in reversed(created_stages):
+        except CaselawGlobalDedupError as exc:
+            errors.append(str(exc))
+    if errors:
+        return errors
+
+    for path, identity in reversed(created_stages):
         try:
-            path.unlink(missing_ok=True)
+            _unlink_owned_path(
+                path,
+                identity,
+                label="rollback stage",
+                missing_ok=True,
+            )
             touched_dirs.add(path.parent)
-        except OSError as exc:
-            errors.append(f"{path}: {exc}")
+        except CaselawGlobalDedupError as exc:
+            errors.append(str(exc))
     if not errors:
         for directory in sorted(touched_dirs, key=str):
             try:
                 _fsync_directory(directory)
             except CaselawGlobalDedupError as exc:
                 errors.append(str(exc))
-    if not errors and manifest_created:
+    if not errors and manifest_identity is not None:
         try:
-            manifest_path.unlink(missing_ok=True)
+            _unlink_owned_path(
+                manifest_path,
+                manifest_identity,
+                label="rollback manifest",
+                missing_ok=True,
+            )
             _fsync_directory(manifest_path.parent)
-        except (OSError, CaselawGlobalDedupError) as exc:
-            errors.append(f"{manifest_path}: {exc}")
-    if not errors and marker_created:
+        except CaselawGlobalDedupError as exc:
+            errors.append(str(exc))
+    if not errors and marker_identity is not None:
         try:
-            marker_path.unlink(missing_ok=True)
+            _unlink_owned_path(
+                marker_path,
+                marker_identity,
+                label="rollback marker",
+                missing_ok=True,
+            )
             _fsync_directory(marker_path.parent)
-        except (OSError, CaselawGlobalDedupError) as exc:
-            errors.append(f"{marker_path}: {exc}")
+        except CaselawGlobalDedupError as exc:
+            errors.append(str(exc))
     return errors
 
 
@@ -988,20 +1286,52 @@ def _link_staged_output(stage_path: Path, final_path: Path) -> None:
 
 def _cleanup_committed_publication_residue(
     manifest_path: Path,
-    stages: tuple[Path, ...],
+    manifest_identity: tuple[int, int],
+    stages: list[tuple[Path, tuple[int, int]]],
 ) -> None:
-    touched_dirs: set[Path] = set()
-    for stage_path in stages:
-        try:
-            stage_path.unlink(missing_ok=True)
-            touched_dirs.add(stage_path.parent)
-        except OSError:
-            return
+    # Publication is already terminal once the marker removal is durably synced.
+    # Cleanup must never delete a substituted pathname and must not turn a
+    # committed terminal set into a false failure. Any retained canonical
+    # residue is verified and removed by the next invocation.
     try:
-        manifest_path.unlink(missing_ok=True)
-        touched_dirs.add(manifest_path.parent)
-    except OSError:
+        for stage_path, identity in stages:
+            _require(
+                _regular_file_identity(
+                    stage_path, label="committed publication stage"
+                )
+                == identity,
+                f"committed publication stage ownership changed: {stage_path}",
+            )
+        _require(
+            _regular_file_identity(
+                manifest_path, label="committed publication manifest"
+            )
+            == manifest_identity,
+            "committed publication manifest ownership changed",
+        )
+    except CaselawGlobalDedupError:
         return
+
+    touched_dirs: set[Path] = set()
+    for stage_path, identity in stages:
+        try:
+            _unlink_owned_path(
+                stage_path,
+                identity,
+                label="committed publication stage",
+            )
+        except CaselawGlobalDedupError:
+            return
+        touched_dirs.add(stage_path.parent)
+    try:
+        _unlink_owned_path(
+            manifest_path,
+            manifest_identity,
+            label="committed publication manifest",
+        )
+    except CaselawGlobalDedupError:
+        return
+    touched_dirs.add(manifest_path.parent)
     for directory in sorted(touched_dirs, key=str):
         try:
             _fsync_directory(directory)
@@ -1047,6 +1377,13 @@ def _publish_json_outputs(
             stages,
             pathset_id,
         )
+    elif _recover_committed_publication_residue(
+        manifest_path,
+        prepared,
+        stages,
+        pathset_id,
+    ):
+        return
 
     for path, _ in prepared:
         _require(not _path_entry_exists(path), f"refusing to overwrite: {path}")
@@ -1067,35 +1404,58 @@ def _publish_json_outputs(
         "publication stage derivation drift",
     )
 
-    marker_created = False
-    manifest_created = False
-    linked_finals: list[Path] = []
-    created_stages: list[Path] = []
+    marker_identity: tuple[int, int] | None = None
+    manifest_identity: tuple[int, int] | None = None
+    linked_finals: list[tuple[Path, tuple[int, int]]] = []
+    created_stages: list[tuple[Path, tuple[int, int]]] = []
     try:
-        _write_create_only_durable(marker_path, b"")
-        marker_created = True
+        marker_identity = _write_create_only_durable(
+            marker_path,
+            _publication_marker_payload(pathset_id),
+        )
         _fsync_directory(marker_path.parent)
 
-        _write_create_only_durable(manifest_path, manifest_payload)
-        manifest_created = True
+        manifest_identity = _write_create_only_durable(
+            manifest_path,
+            manifest_payload,
+        )
         _fsync_directory(manifest_path.parent)
 
         for (path, payload), stage_path in zip(prepared, stages, strict=True):
-            _write_create_only_durable(stage_path, payload)
-            created_stages.append(stage_path)
+            identity = _write_create_only_durable(stage_path, payload)
+            created_stages.append((stage_path, identity))
             _fsync_directory(stage_path.parent)
 
-        for (final_path, _), stage_path in zip(prepared, stages, strict=True):
+        for ((final_path, _), stage_path), (_, identity) in zip(
+            zip(prepared, stages, strict=True),
+            created_stages,
+            strict=True,
+        ):
             _link_staged_output(stage_path, final_path)
-            linked_finals.append(final_path)
+            linked_finals.append((final_path, identity))
+            _require(
+                _regular_file_identity(
+                    final_path, label="published final"
+                )
+                == identity,
+                f"published final ownership drift: {final_path}",
+            )
             _fsync_directory(final_path.parent)
 
         # Marker removal is the sole terminal commit point.  Stages and manifest
         # deliberately remain present until after this durable state transition
         # so an interrupted pre-commit run can prove final-path ownership.
-        marker_path.unlink()
+        if marker_identity is None:
+            raise CaselawGlobalDedupError(
+                "publication marker identity missing before commit point"
+            )
+        _unlink_owned_path(
+            marker_path,
+            marker_identity,
+            label="publication marker",
+        )
         _fsync_directory(marker_path.parent)
-        marker_created = False
+        marker_identity = None
     except Exception as exc:
         if isinstance(exc, PublicationWriteCleanupError):
             # Preserve the durable marker/control state.  Recovery must decide
@@ -1105,8 +1465,8 @@ def _publish_json_outputs(
         rollback_errors = _rollback_current_publication(
             marker_path=marker_path,
             manifest_path=manifest_path,
-            marker_created=marker_created,
-            manifest_created=manifest_created,
+            marker_identity=marker_identity,
+            manifest_identity=manifest_identity,
             linked_finals=linked_finals,
             created_stages=created_stages,
         )
@@ -1117,7 +1477,15 @@ def _publish_json_outputs(
             ) from exc
         raise
 
-    _cleanup_committed_publication_residue(manifest_path, stages)
+    if manifest_identity is None:
+        raise CaselawGlobalDedupError(
+            "publication manifest identity missing after commit point"
+        )
+    _cleanup_committed_publication_residue(
+        manifest_path,
+        manifest_identity,
+        created_stages,
+    )
 
 
 
