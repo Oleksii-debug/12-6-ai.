@@ -2405,6 +2405,72 @@ with TemporaryDirectory() as raw:
     )
 
 
+def test_committed_cleanup_preserves_late_stage_before_manifest_removal() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    mod._write_create_only_durable(final, payload)
+    mod._unlink_owned_path(marker, marker_identity, label="test marker")
+    assert not stages[0].exists()
+
+    late_stage = b"FOREIGN_LATE_COMMITTED_STAGE"
+    actual_snapshot = mod._require_publication_manifest_snapshot
+    snapshot_calls = [0]
+
+    def snapshot_then_stage(
+        manifest_path,
+        manifest_identity,
+        expected_manifest,
+        *,
+        label,
+    ):
+        actual_snapshot(
+            manifest_path,
+            manifest_identity,
+            expected_manifest,
+            label=label,
+        )
+        snapshot_calls[0] += 1
+        if snapshot_calls[0] == 2:
+            stages[0].write_bytes(late_stage)
+
+    mod._require_publication_manifest_snapshot = snapshot_then_stage
+    try:
+        try:
+            mod._recover_committed_publication_residue(
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "stage appeared before manifest cleanup" in str(exc)
+        else:
+            raise AssertionError("late committed stage orphaning was accepted")
+    finally:
+        mod._require_publication_manifest_snapshot = actual_snapshot
+
+    assert snapshot_calls == [2]
+    assert final.read_bytes() == payload
+    assert stages[0].read_bytes() == late_stage
+    assert manifest.exists()
+"""
+    )
+
+
 def test_committed_cleanup_rejects_in_place_manifest_mutation() -> None:
     _run_isolated(
         """
