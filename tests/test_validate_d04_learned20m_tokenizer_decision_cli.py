@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -60,7 +62,7 @@ def test_load_rejects_recursive_duplicate_members(tmp_path: Path) -> None:
     path = tmp_path / "duplicate.json"
     path.write_text('{"outer":{"same":1,"same":2}}', encoding="utf-8")
 
-    with pytest.raises(ValueError, match="duplicate_json_key:same"):
+    with pytest.raises(ValueError, match=r"^duplicate_json_key$"):
         _module()._load(path)
 
 
@@ -80,6 +82,106 @@ def test_load_rejects_float_overflow(tmp_path: Path, value: str) -> None:
 
     with pytest.raises(ValueError, match="non_finite_json_number"):
         _module()._load(path)
+
+
+def test_load_redacts_secret_duplicate_member(tmp_path: Path) -> None:
+    cli = _module()
+    secret = "PRIVATE_TOKENIZER_SOURCE_KEY_998877"
+    path = tmp_path / "duplicate-secret.json"
+    path.write_text(
+        '{"' + secret + '":1,"' + secret + '":2}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=r"^duplicate_json_key$") as caught:
+        cli._load(path)
+    assert secret not in str(caught.value)
+
+
+@pytest.mark.parametrize("negative", [False, True])
+def test_load_bounds_integer_before_python_conversion(
+    tmp_path: Path,
+    negative: bool,
+) -> None:
+    cli = _module()
+    path = tmp_path / "huge-int.json"
+    digits = ("-" if negative else "") + "9" * 100_000
+    path.write_text('{"value":' + digits + "}", encoding="utf-8")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            cli._load(path)
+    finally:
+        sys.set_int_max_str_digits(before)
+
+
+def test_load_missing_secret_path_is_redacted(tmp_path: Path) -> None:
+    cli = _module()
+    secret = "PRIVATE-TOKENIZER-PATH-998877"
+    with pytest.raises(
+        ValueError, match=r"^cannot read tokenizer authority input$"
+    ) as caught:
+        cli._load(tmp_path / f"{secret}.json")
+    assert secret not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__suppress_context__ is True
+
+
+def test_load_fifo_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "tokenizer FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    program = (
+        "import importlib.util,sys\n"
+        f"p={str(TOOL)!r}\n"
+        "s=importlib.util.spec_from_file_location('tok_cli',p)\n"
+        "m=importlib.util.module_from_spec(s);s.loader.exec_module(m)\n"
+        "try:\n"
+        " m._load(m.Path(sys.argv[1]))\n"
+        "except ValueError as e:\n"
+        " assert str(e) == 'tokenizer input must be a regular file'\n"
+        "else:\n"
+        " raise AssertionError('FIFO accepted')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program, str(fifo)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_load_rejects_regular_file_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    requested = tmp_path / "requested.json"
+    substitute = tmp_path / "substitute.json"
+    requested.write_text("{}", encoding="utf-8")
+    substitute.write_text("{}", encoding="utf-8")
+    actual_open = cli.os.open
+
+    def open_substitute(_path: Path, flags: int) -> int:
+        return actual_open(substitute, flags)
+
+    monkeypatch.setattr(cli.os, "open", open_substitute)
+    with pytest.raises(ValueError, match="changed between check and open"):
+        cli._load(requested)
+
+
+def test_load_valid_regular_symlink_is_supported(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    source = tmp_path / "source.json"
+    source.write_text('{"safe":1}', encoding="utf-8")
+    linked = tmp_path / "linked.json"
+    linked.symlink_to(source.resolve())
+    assert _module()._load(linked) == {"safe": 1}
 
 
 def test_load_rejects_non_object_root(tmp_path: Path) -> None:
@@ -394,6 +496,171 @@ def test_failed_atomic_link_removes_staging(
         cli._write(output, {"schema": "test-only"})
     assert not output.exists()
     assert not list(tmp_path.glob(".out.json.*.tmp"))
+
+
+def test_postlink_cleanup_denial_reports_committed_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    selection.write_text("{}", encoding="utf-8")
+    application.write_text("{}", encoding="utf-8")
+    output = tmp_path / "decision.json"
+    report = {"schema": "test-only", "status": "PASS_ZERO_CREDIT"}
+    monkeypatch.setattr(
+        cli, "bind_byte_baseline_decision", lambda *_a, **_k: report
+    )
+    real_unlink = Path.unlink
+
+    def deny_stage_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("injected Windows-style sharing denial")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny_stage_cleanup)
+    monkeypatch.setattr(sys, "argv", [
+        str(TOOL), "--balanced-selection", str(selection),
+        "--split-application", str(application), *HASH_ARGS,
+        "--output", str(output),
+    ])
+    assert cli.main() == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    status = json.loads(captured.out)
+    assert status["contract_valid"] is True
+    assert status["output_committed"] is True
+    assert status["cleanup_pending"] is True
+    assert "COMMITTED_AND_VERIFIED" in status["recovery"]
+    expected = cli._serialize_report(report).encode("utf-8")
+    assert output.read_bytes() == expected
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == expected
+    real_unlink(staged[0])
+
+
+def test_link_create_then_raise_is_reconciled_as_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    actual_link = cli.os.link
+
+    def link_then_raise(stage: Path, final: Path) -> None:
+        actual_link(stage, final)
+        raise PermissionError("injected post-create link error")
+
+    monkeypatch.setattr(cli.os, "link", link_then_raise)
+    cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    assert output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_postcreate_process_interrupt_rolls_back_owned_final_and_rethrows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+) -> None:
+    cli = _module()
+    output = tmp_path / "interrupted.json"
+    actual_link = cli.os.link
+
+    def link_then_interrupt(stage: Path, final: Path) -> None:
+        actual_link(stage, final)
+        raise interruption("injected post-create interruption")
+
+    monkeypatch.setattr(cli.os, "link", link_then_interrupt)
+    with pytest.raises(interruption, match="post-create interruption"):
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+
+
+def test_postcreate_interrupt_with_rollback_denial_retains_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "rollback-denied.json"
+    actual_link = cli.os.link
+    actual_unlink = Path.unlink
+
+    def link_then_interrupt(stage: Path, final: Path) -> None:
+        actual_link(stage, final)
+        raise KeyboardInterrupt("injected post-create interruption")
+
+    def deny_final_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path == output:
+            raise PermissionError("injected rollback denial")
+        actual_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", link_then_interrupt)
+    monkeypatch.setattr(Path, "unlink", deny_final_unlink)
+    with pytest.raises(
+        cli.PublicationIndeterminate, match="ROLLBACK_INDETERMINATE"
+    ) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and caught.value.staged == staged[0]
+    assert output.exists()
+    actual_unlink(output)
+    actual_unlink(staged[0])
+
+
+def test_foreign_final_after_link_error_is_indeterminate_and_never_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    foreign = b'{"foreign":true}\n'
+
+    def create_foreign_then_raise(_stage: Path, final: Path) -> None:
+        final.write_bytes(foreign)
+        raise PermissionError("injected foreign create race")
+
+    monkeypatch.setattr(cli.os, "link", create_foreign_then_raise)
+    with pytest.raises(cli.PublicationIndeterminate, match="not the staged") as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    assert output.read_bytes() == foreign
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and caught.value.staged == staged[0]
+    output.unlink()
+    staged[0].unlink()
+
+
+def test_staging_primary_failure_plus_cleanup_denial_preserves_primary_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    actual_unlink = Path.unlink
+
+    def fail_fsync(_fd: int) -> None:
+        raise OSError("primary staging fsync failure")
+
+    def deny_stage_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("secondary cleanup denial")
+        actual_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "fsync", fail_fsync)
+    monkeypatch.setattr(Path, "unlink", deny_stage_cleanup)
+    with pytest.raises(
+        cli.PublicationIndeterminate, match="STAGING_CLEANUP_INDETERMINATE"
+    ) as caught:
+        cli._write(output, {"schema": "test-only"})
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "primary staging fsync failure" in str(caught.value.__cause__)
+    assert not output.exists()
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1
+    actual_unlink(staged[0])
 
 
 def test_nonfinite_and_recursive_reports_are_not_published(
