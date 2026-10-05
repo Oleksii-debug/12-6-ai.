@@ -226,11 +226,11 @@ def load_trainer_checkpoint(
     # then bind the actual loader immediately before the first live mutation.
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
-    # Stateful component preflight can execute hooks. Recheck pure target
-    # ownership/freshness after them and before the first live mutation.
+    # Binding can itself execute a descriptor/proxy on a custom adapter. Do it
+    # before the final checks so lookup side effects cannot cross into apply.
+    load_trainer_state = _bind_trainer_state_loader(trainer)
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_target(trainer)
-    load_trainer_state = _bind_trainer_state_loader(trainer)
 
     # Preflight prevents known incompatibilities, but an application-time
     # model/RNG/optimizer failure can leave a mixed, non-replayable state.
