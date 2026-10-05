@@ -344,6 +344,22 @@ def _assert_trainer_restore_bindings(
             )
 
 
+def _note_restore_binding_drift(
+    trainer: Any,
+    snapshot: tuple[bool, dict[str, Any]],
+    exc: BaseException,
+) -> None:
+    """Preserve a primary callout error while recording target drift."""
+
+    try:
+        _assert_trainer_restore_bindings(trainer, snapshot)
+    except CheckpointCompatibilityError as drift_exc:
+        exc.add_note(
+            "trainer restore target drift also detected: "
+            f"{drift_exc}"
+        )
+
+
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
     """Refuse mismatched D02 model owners without executing custom descriptors."""
 
@@ -738,7 +754,8 @@ def _preflight_trainer_state(
     The actual loader runs later in the guarded model -> trainer -> RNG region.
     """
 
-    expected_canonical = _is_canonical_d02(trainer)
+    restore_bindings = _snapshot_trainer_restore_bindings(trainer)
+    expected_canonical = restore_bindings[0]
     ambient = capture_rng_state()
     torch_state = ambient.get("torch")
     warn_only = None
@@ -746,9 +763,17 @@ def _preflight_trainer_state(
         torch = importlib.import_module("torch")
         warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     try:
-        _preflight_trainer_state_without_rng_guard(
-            trainer, state, manifest=manifest,
-        )
+        try:
+            _preflight_trainer_state_without_rng_guard(
+                trainer, state, manifest=manifest,
+            )
+        except BaseException as exc:
+            _note_restore_binding_drift(
+                trainer,
+                restore_bindings,
+                exc,
+            )
+            raise
     finally:
         # Ambient probe rollback is not the application-stage RNG restore.
         # If it fails, the live RNG is ambiguous even though the model has not
