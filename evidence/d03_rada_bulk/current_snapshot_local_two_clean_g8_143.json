@@ -1,0 +1,100 @@
+{
+  "evidence_identity_sha256": "5fbcb694e005b40db37232132d84fefdaa2fe428700368d4d63365ef3886bf38",
+  "historical_comparison_non_authoritative": {
+    "current_minus_historical_accepted_bytes": 314991,
+    "current_minus_historical_accepted_chunks": 174,
+    "current_minus_historical_duplicate_observations": 1,
+    "historical_accepted_bytes": 192078166,
+    "historical_accepted_chunk_count": 101559,
+    "historical_exact_duplicate_observations": 764
+  },
+  "mechanics": {
+    "current_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
+    "historical_qp_config_git_blob": "e1798398a87893c5561afc6d9cd4f3d8fdce6d8b",
+    "historical_qp_config_path": "configs/data/d03_rada_bulk_quality_privacy_v1.json",
+    "historical_qp_reference_commit": "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9",
+    "historical_qp_tool_git_blob": "69491874e60a1b846d683fff3c10214a869f18ff",
+    "historical_qp_tool_path": "tools/filter_d03_rada_bulk_quality_privacy.py",
+    "normalization_config_git_blob": "3e0ca093762242f18fadb21002946b4b733afea3",
+    "normalization_config_path": "configs/data/d03_rada_bulk_normalization_v1.json",
+    "normalizer_git_blob": "55ef5f5e7f09042489fa2642d099aedffaddb740",
+    "normalizer_name": "RADA_VISIBLE_TEXT_HTML_UTF8_CP1251_NFKC_V1",
+    "normalizer_path": "tools/normalize_d03_rada_bulk_html.py",
+    "production_parent_authority_rebound": false,
+    "qp_chunking_name": "DATA228_DATA181_GENERIC_NATURAL_TEXT_V1",
+    "qp_policy_name": "DATA228_D03_PREVIEW_V1",
+    "scope": "MECHANICS_MEASUREMENT_ONLY_NOT_QP_ADMISSION"
+  },
+  "normalization": {
+    "jsonl_file_bytes": 214699202,
+    "jsonl_sha256": "da13b3cc036b19e44e212f3816a66ed261a743c41ed8545076c35eeb706ad511",
+    "nonempty_record_count": 3055,
+    "normalized_bytes_observed_not_credited": 211492947,
+    "normalized_record_inventory_sha256": "247aa5dde026f26aae4bc4587c7b0c9fb9496588d25bf8d58c79a198afc5fd76",
+    "record_count": 3055,
+    "source_encoding_counts": {
+      "utf-8": 887,
+      "windows-1251": 2168
+    }
+  },
+  "quality_privacy": {
+    "accepted_bytes_observed_not_credited": 192393157,
+    "accepted_chunk_count": 101733,
+    "accepted_inventory_sha256": "468a3132819527e1ce2b3aa375a55a15d55b7af53e66bf06ae1e5a69daf73e7a",
+    "accepted_jsonl_file_bytes": 224897989,
+    "accepted_jsonl_sha256": "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7",
+    "accepted_source_encoding_counts": {
+      "utf-8": 80134,
+      "windows-1251": 21599
+    },
+    "exact_duplicate_accepted_hashes_observed_not_removed": 765,
+    "rejected_chunk_count": 11519,
+    "rejection_reasons": {
+      "low_alpha_ratio": 3598,
+      "pii_email": 1,
+      "pii_phone": 7920
+    },
+    "total_chunks": 113252,
+    "zero_chunk_parent_count": 0
+  },
+  "reproducibility": {
+    "clean_replay_count": 2,
+    "measurement_identity_sha256": "aa011002f0f1566dd032530460af01d6ea79eba8d3e2ea4fa19d1a588016a06c",
+    "run_1_partition_count": 8,
+    "run_2_partition_count": 5,
+    "summaries_byte_identical": true
+  },
+  "schema_version": "12-6.d03-rada-current-snapshot-local-two-clean-measurement.v1",
+  "service_marker": "[APSTEP:scenario-work%3Ascenario-murmt746-ntwlwai%3Achat%3Ageneration-8:143]",
+  "source": {
+    "canonical_entry_count": 3055,
+    "canonical_raw_bytes": 353891824,
+    "entry_identity_sha256": "1fcc222a959d1dfc24e2b23b71a5412b1050e22a5004cbd36f0dc79998898cc0",
+    "family": "ua.rada.open-data.laws-texts",
+    "probe_file_sha256": "d2e1b233124551d91df7e7f9f41f38073843807c121adc73914264b04bef19a0",
+    "qualification_identity_sha256": "ced7b9370925ba0aa17952efd2cc5ff917601d44fa301b8449ba135644e5a8b3",
+    "retained_artifact_id": 11281540677,
+    "retained_artifact_outer_sha256": "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb",
+    "retained_artifact_run_id": 37136885886,
+    "source_archive_bytes": 46774786,
+    "source_archive_md5": "9b0b22e6bf3e4f251c50a02ded5a2e83",
+    "source_archive_sha256": "9f937b3283dd2d9508a0a92442fc007e7e6d373a17d3d50fa428e324cb2fa290",
+    "successor_pin_identity_sha256": "dcda0321145c03160cef435bc3d1ef5ac668c3415bc013750ed38cd2d891561e"
+  },
+  "status": "PHYSICAL_LOCAL_TWO_CLEAN_MECHANICS_MEASUREMENT_ZERO_CREDIT_PENDING_GITHUB_REEXECUTION_AND_PRODUCT_AUTHORITY_ADAPTER",
+  "truth_boundary": {
+    "canonical_capacity_credited": 0,
+    "corpus_admitted": false,
+    "current_source_eval_decontamination_executed": false,
+    "current_source_global_dedup_executed": false,
+    "evaluation_decontamination": "NOT_RUN",
+    "final_test_outcomes_read": false,
+    "global_cross_source_dedup": "NOT_RUN",
+    "learned_weights_created": false,
+    "paid_compute_used": false,
+    "production_qp_authority_established": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "training_executed": false
+  }
+}
