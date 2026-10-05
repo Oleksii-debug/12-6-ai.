@@ -10,7 +10,7 @@ import os
 import random
 import shutil
 import sys
-from importlib import metadata
+from importlib import metadata as importlib_metadata
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -253,7 +253,7 @@ def produce(
             "python": sys.version.split()[0],
             "torch": torch.__version__,
             "numpy": np.__version__,
-            "safetensors": metadata.version("safetensors"),
+            "safetensors": importlib_metadata.version("safetensors"),
         },
         "truth_boundary": {
             "real_learned20m_checkpoint": False,
