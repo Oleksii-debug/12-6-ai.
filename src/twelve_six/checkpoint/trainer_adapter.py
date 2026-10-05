@@ -269,6 +269,17 @@ def _is_canonical_d02(trainer: Any) -> bool:
     return "_failure_reason" in attrs and "_update_incomplete" in attrs
 
 
+def _poison_canonical_d02(trainer: Any, reason: str) -> None:
+    """Record fail-closed recovery state without invoking custom descriptors."""
+
+    if not _is_canonical_d02(trainer):
+        return
+    attrs = vars(trainer)
+    if attrs.get("_failure_reason") is None:
+        attrs["_failure_reason"] = reason
+    attrs["_update_incomplete"] = True
+
+
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
     """Refuse mismatched D02 model owners without executing custom descriptors."""
 
@@ -709,10 +720,10 @@ def _preflight_trainer_state(
                         )
                         raise
         except BaseException:
-            if _is_canonical_d02(trainer):
-                if trainer._failure_reason is None:
-                    trainer._failure_reason = "checkpoint_preflight_rng_rollback_failed"
-                trainer._update_incomplete = True
+            _poison_canonical_d02(
+                trainer,
+                "checkpoint_preflight_rng_rollback_failed",
+            )
             raise
 
 
@@ -888,10 +899,10 @@ def _restore_preapply_process_state(
     except BaseException as exc:
         _restore_ambient_rng_after_failed_apply(ambient, exc)
         _restore_initial_torch_policy(policy, exc)
-        if _is_canonical_d02(trainer):
-            if trainer._failure_reason is None:
-                trainer._failure_reason = "checkpoint_preapply_rng_rollback_failed"
-            trainer._update_incomplete = True
+        _poison_canonical_d02(
+            trainer,
+            "checkpoint_preapply_rng_rollback_failed",
+        )
         raise
 
 
@@ -1100,10 +1111,10 @@ def load_trainer_checkpoint(
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
             _restore_initial_torch_policy(rollback_policy, exc)
-        if _is_canonical_d02(trainer):
-            if trainer._failure_reason is None:
-                trainer._failure_reason = "checkpoint_restore_apply_failed"
-            trainer._update_incomplete = True
+        _poison_canonical_d02(
+            trainer,
+            "checkpoint_restore_apply_failed",
+        )
         raise
     return LoadResult(
         manifest=copy.deepcopy(manifest),
