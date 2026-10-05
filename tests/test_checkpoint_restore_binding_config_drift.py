@@ -967,17 +967,15 @@ def test_native_checkpoint_load_rejects_internal_config_identity_mismatch(
 
 
 @pytest.mark.parametrize(
-    ("mutation", "expected"),
-    [
-        ("counter", "post-load tokens_seen disagrees with checkpoint"),
-        ("mode", "requires model training mode"),
-    ],
+    "mutation",
+    ["counter", "mode"],
 )
-def test_native_checkpoint_save_seals_state_after_final_model_fingerprint(
+def test_native_checkpoint_final_model_fingerprint_avoids_named_parameter_hook(
     tmp_path: Path,
     mutation: str,
-    expected: str,
 ) -> None:
+    active_hook_calls: list[str] = []
+
     class FinalFingerprintEffectModel(_TinyLogits):
         def __init__(self) -> None:
             super().__init__()
@@ -991,7 +989,7 @@ def test_native_checkpoint_save_seals_state_after_final_model_fingerprint(
 
         def named_parameters(self, *args: Any, **kwargs: Any):
             if self.arm_final_fingerprint:
-                self.arm_final_fingerprint = False
+                active_hook_calls.append(mutation)
                 assert self.owner is not None
                 if mutation == "counter":
                     self.owner.tokens_seen += 1
@@ -1006,12 +1004,47 @@ def test_native_checkpoint_save_seals_state_after_final_model_fingerprint(
         device="cpu",
     )
     model.owner = target
-    checkpoint = tmp_path / f"final-fingerprint-{mutation}-must-not-exist"
+    checkpoint = tmp_path / f"hook-free-final-fingerprint-{mutation}"
 
-    with pytest.raises(core.CheckpointCompatibilityError, match=expected):
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=model,
+        trainer=target,
+        identity=_fresh_identity(),
+    )
+
+    assert checkpoint.exists()
+    assert active_hook_calls == []
+    assert target.tokens_seen == 0
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert model.training is True
+
+
+def test_native_checkpoint_save_rejects_subclass_export_model_mutation(
+    tmp_path: Path,
+) -> None:
+    class MutatingExporter(Trainer):
+        def state_dict(self) -> Any:
+            state = super().state_dict()
+            with torch.no_grad():
+                self.model.weight.add_(0.25)
+            return state
+
+    target = MutatingExporter(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    checkpoint = tmp_path / "subclass-export-model-drift-must-not-exist"
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="model changed during checkpoint export",
+    ):
         trainer_adapter.save_trainer_checkpoint(
             checkpoint,
-            model=model,
+            model=target.model,
             trainer=target,
             identity=_fresh_identity(),
         )
@@ -1019,11 +1052,57 @@ def test_native_checkpoint_save_seals_state_after_final_model_fingerprint(
     assert not checkpoint.exists()
     assert target._failure_reason == "checkpoint_export_state_drift"
     assert target._update_incomplete is True
-    if mutation == "counter":
-        assert target.tokens_seen == 1
-    else:
-        assert model.training is False
 
+
+@pytest.mark.parametrize(
+    "authority",
+    [
+        "_model_export_fingerprint",
+        "_require_exported_scheduler_matches_live",
+        "_require_exported_scaler_matches_live",
+        "_require_exported_optimizer_matches_live",
+        "_exact_export_leaf_equal",
+    ],
+)
+def test_native_checkpoint_save_rejects_subclass_safety_authority_override(
+    tmp_path: Path,
+    authority: str,
+) -> None:
+    class UnsafeAuthorityTrainer(Trainer):
+        pass
+
+    if authority == "_exact_export_leaf_equal":
+        setattr(
+            UnsafeAuthorityTrainer,
+            authority,
+            staticmethod(lambda saved, live: True),
+        )
+    elif authority == "_model_export_fingerprint":
+        setattr(UnsafeAuthorityTrainer, authority, lambda self: "0" * 64)
+    else:
+        setattr(UnsafeAuthorityTrainer, authority, lambda self, exported: None)
+
+    target = UnsafeAuthorityTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    checkpoint = tmp_path / f"unsafe-authority-{authority}"
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="safety authority must remain canonical",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
 
 
 @pytest.mark.parametrize(
