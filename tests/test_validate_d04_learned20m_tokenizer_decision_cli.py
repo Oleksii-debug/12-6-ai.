@@ -577,7 +577,7 @@ def test_same_size_staged_mutation_during_link_is_not_reported_committed(
     monkeypatch.setattr(cli.os, "link", mutate_then_link)
     with pytest.raises(
         cli.PublicationIndeterminate,
-        match="output bytes differ from staged authority",
+        match="output bytes differ from intended authority",
     ) as caught:
         cli._write(output, {"schema": "test-only", "status": "zero-credit"})
     staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
