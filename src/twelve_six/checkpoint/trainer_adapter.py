@@ -244,7 +244,10 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
         raise CheckpointCompatibilityError(f"{label} state/config mismatch")
     if component is None:
         return
-    if not hasattr(component, "state_dict") or not hasattr(component, "load_state_dict"):
+    if (
+        not callable(getattr(component, "state_dict", None))
+        or not callable(getattr(component, "load_state_dict", None))
+    ):
         raise CheckpointCompatibilityError(
             f"{label} must provide state_dict/load_state_dict"
         )
