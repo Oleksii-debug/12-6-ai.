@@ -1227,6 +1227,36 @@ def test_torch_rng_explicit_scope_shapes_fail_closed(
         core._preflight_rng_state(state)
 
 
+def test_torch_rng_preflight_rejects_invalid_per_device_cuda_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    torch = pytest.importorskip("torch")
+    state = core.capture_rng_state()
+    state = dict(state)
+    torch_state = dict(state["torch"])
+    torch_state["cuda"] = [torch_state["cpu"].clone()]
+    state["torch"] = torch_state
+
+    class ProbeGenerator:
+        def __init__(self, *, device: str) -> None:
+            self.device = device
+
+        def set_state(self, value: object) -> None:
+            del value
+            if self.device.startswith("cuda:"):
+                raise RuntimeError("simulated invalid CUDA RNG state")
+
+    monkeypatch.setattr(torch, "Generator", ProbeGenerator)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="CUDA RNG state for device 0 is invalid",
+    ):
+        core._preflight_rng_state(state)
+
+
 def test_torch_rng_explicit_null_remains_legacy_compatible() -> None:
     state = core.capture_rng_state()
     state = dict(state)
