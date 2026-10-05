@@ -2226,3 +2226,119 @@ def test_zero_grad_descriptor_side_effect_fails_before_checkpoint_apply(
     assert np_after[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
 
+@pytest.mark.parametrize(
+    ("marker", "stored", "error"),
+    [
+        ("_failure_reason", "synthetic poisoned target", "target trainer is poisoned"),
+        ("_update_incomplete", True, "target trainer has an incomplete update"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_recovery_marker_descriptor_cannot_mask_preio_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    marker: str,
+    stored: Any,
+    error: str,
+    loader: Any,
+) -> None:
+    target = Trainer(_TinyLogits(), TrainerConfig(seed=703, max_steps=3), device="cpu")
+    vars(target)[marker] = stored
+    checkpoint_reads: list[bool] = []
+
+    class MaskedMarker:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            return None if marker == "_failure_reason" else False
+
+        def __set__(self, instance: Any, value: Any) -> None:
+            raise AssertionError("recovery marker descriptor setter must not run")
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("masked recovery marker reached checkpoint I/O")
+
+    monkeypatch.setattr(Trainer, marker, MaskedMarker(), raising=False)
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 0, "expected_tokens_seen": 0}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert checkpoint_reads == []
+    assert vars(target)[marker] == stored
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_recovery_marker_descriptor_cannot_block_application_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    source = _source()
+    path = tmp_path / "descriptor-safe-poison-дані з пробілами"
+    core.save_checkpoint(
+        path,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+
+    class MaskedFailureReason:
+        def __get__(self, instance: Any, owner: type[Any]) -> None:
+            return None
+
+        def __set__(self, instance: Any, value: Any) -> None:
+            raise AssertionError("failure_reason descriptor setter must not run")
+
+    class MaskedIncomplete:
+        def __get__(self, instance: Any, owner: type[Any]) -> bool:
+            return False
+
+        def __set__(self, instance: Any, value: Any) -> None:
+            raise AssertionError("update_incomplete descriptor setter must not run")
+
+    def bind_failed_model_apply(*args: Any, **kwargs: Any) -> Any:
+        def fail_after_binding(materialized: Any) -> None:
+            del materialized
+            raise RuntimeError("synthetic model apply failure")
+
+        return fail_after_binding
+
+    monkeypatch.setattr(Trainer, "_failure_reason", MaskedFailureReason(), raising=False)
+    monkeypatch.setattr(Trainer, "_update_incomplete", MaskedIncomplete(), raising=False)
+    monkeypatch.setattr(loader, "_bind_model_state_loader", bind_failed_model_apply)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic model apply failure"):
+        loader.load_trainer_checkpoint(
+            path,
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
+    assert vars(target)["_update_incomplete"] is True
+
