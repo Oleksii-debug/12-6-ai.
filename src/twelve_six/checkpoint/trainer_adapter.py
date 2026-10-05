@@ -470,7 +470,7 @@ def _snapshot_native_d02_config(config: Any) -> dict[str, Any]:
             )
         try:
             value = descriptor.__get__(config, config_type)
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             raise CheckpointCompatibilityError(
                 f"native D02 config field unavailable: {field_name}"
             ) from exc
@@ -1466,7 +1466,7 @@ def _preflight_trainer_state(
             _preflight_trainer_state_without_rng_guard(
                 trainer, state, manifest=manifest,
             )
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             _note_restore_binding_drift(
                 trainer,
                 restore_bindings,
@@ -1480,7 +1480,7 @@ def _preflight_trainer_state(
         try:
             try:
                 _core.restore_rng_state(ambient)
-            except BaseException as rng_exc:  # noqa: BLE001
+            except BaseException as rng_exc:
                 _restore_ambient_rng_after_failed_apply(ambient, rng_exc)
                 # A secondary policy rollback fault must not hide the primary
                 # failed/interrupted RNG rollback or its preflight context.
@@ -1507,13 +1507,13 @@ def _preflight_trainer_state(
                             bool(torch_state["deterministic_algorithms"]),
                             warn_only=warn_only,
                         )
-                    except BaseException as mode_exc:  # noqa: BLE001
+                    except BaseException as mode_exc:
                         _restore_initial_torch_policy(
                             (bool(torch_state["deterministic_algorithms"]), warn_only),
                             mode_exc,
                         )
                         raise
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=expected_canonical,
@@ -1701,7 +1701,7 @@ def _restore_preapply_process_state(
                 policy[0],
                 warn_only=policy[1],
             )
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         _restore_ambient_rng_after_failed_apply(ambient, exc)
         _restore_initial_torch_policy(policy, exc)
         _poison_canonical_restore_failure(
@@ -1737,7 +1737,7 @@ def _restore_checkpoint_rng_preserving_warn_only(
                 torch.are_deterministic_algorithms_enabled(),
                 warn_only=policy[1],
             )
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         # Model/trainer loaders may already have changed process-global mode.
         # Roll back to the pre-application policy, not to that later value.
         _restore_initial_torch_policy(policy, exc)
@@ -1864,7 +1864,7 @@ def save_trainer_checkpoint(
                 raise CheckpointCompatibilityError(
                     "canonical trainer auxiliary state changed during checkpoint export"
                 )
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             _note_restore_binding_drift(trainer, save_bindings, exc)
             if export_started:
                 _poison_canonical_restore_failure(
@@ -1887,7 +1887,7 @@ def save_trainer_checkpoint(
             _assert_native_d02_model_training_mode(model, trainer)
             _assert_native_d02_postload_snapshot(trainer, state)
             _assert_live_d02_determinism(trainer)
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=save_bindings[0],
@@ -1931,7 +1931,7 @@ def save_trainer_checkpoint(
             _assert_trainer_model_binding(model, trainer)
             _assert_native_d02_model_training_mode(model, trainer)
             _assert_live_d02_determinism(trainer)
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=save_bindings[0],
@@ -1957,7 +1957,7 @@ def save_trainer_checkpoint(
                 phase="checkpoint model serialization",
             )
             model_export_authority(exported)
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=save_bindings[0],
@@ -1986,7 +1986,7 @@ def save_trainer_checkpoint(
                 sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
                 phase="final checkpoint publication seal",
             )
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=save_bindings[0],
@@ -2043,7 +2043,7 @@ def load_trainer_checkpoint(
         model_fingerprint = _bind_native_model_export_fingerprint(trainer)
         auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2077,7 +2077,7 @@ def load_trainer_checkpoint(
     try:
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2160,7 +2160,7 @@ def load_trainer_checkpoint(
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2241,7 +2241,7 @@ def load_trainer_checkpoint(
             sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             phase="final checkpoint restore seal",
         )
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
