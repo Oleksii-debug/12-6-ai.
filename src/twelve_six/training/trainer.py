@@ -953,10 +953,17 @@ class Trainer:
         return copy.deepcopy(snapshot)
 
     def _model_export_fingerprint(self) -> str:
-        """Hash weights and buffers in bounded chunks across effectful export hooks."""
+        """Hash model weights and buffers without overridable model iterators."""
         digest = hashlib.sha256()
+        seen_modules: set[int] = set()
+        seen_parameters: set[int] = set()
+        seen_buffers: set[int] = set()
 
         def hash_tensor(value: Tensor) -> None:
+            if type(value) not in {Tensor, nn.Parameter}:
+                raise TrainingStateInvalidError(
+                    "checkpoint model state must use canonical torch tensors"
+                )
             if value.layout != torch.strided:
                 raise TrainingStateInvalidError(
                     "checkpoint model contains unsupported non-strided state"
@@ -969,28 +976,90 @@ class Trainer:
                     raw = block.to(device="cpu").contiguous().view(torch.uint8)
                     digest.update(raw.numpy().tobytes())
             elif detached.numel() <= 262_144:
-                # An individual bounded strided window may be copied safely.
                 bounded = detached.to(device="cpu").contiguous().reshape(-1)
                 digest.update(bounded.view(torch.uint8).numpy().tobytes())
             elif detached.ndim == 1:
                 for index in range(0, detached.numel(), 262_144):
                     hash_tensor(detached[index:index + 262_144])
             else:
-                # Split a larger strided view until each copy is bounded.
                 for child in detached.unbind(0):
                     hash_tensor(child)
 
-        for label, members in (
-            ("parameter", self.model.named_parameters()),
-            ("buffer", self.model.named_buffers()),
-        ):
-            for name, value in members:
-                metadata = (
-                    label, name, id(value), str(value.dtype), str(value.device),
-                    tuple(value.shape), tuple(value.stride()), value.requires_grad,
+        def hash_member(label: str, name: str, value: Tensor) -> None:
+            metadata = (
+                label,
+                name,
+                id(value),
+                str(value.dtype),
+                str(value.device),
+                tuple(value.shape),
+                tuple(value.stride()),
+                value.requires_grad,
+            )
+            digest.update(repr(metadata).encode("utf-8"))
+            hash_tensor(value)
+
+        def walk(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            if module_id in seen_modules:
+                return
+            seen_modules.add(module_id)
+            try:
+                attrs = object.__getattribute__(module, "__dict__")
+            except (AttributeError, TypeError) as exc:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module state is unavailable"
+                ) from exc
+            parameters = attrs.get("_parameters")
+            buffers = attrs.get("_buffers")
+            modules = attrs.get("_modules")
+            if not all(type(value) is dict for value in (parameters, buffers, modules)):
+                raise TrainingStateInvalidError(
+                    "checkpoint model module registries must remain canonical dicts"
                 )
-                digest.update(repr(metadata).encode("utf-8"))
-                hash_tensor(value)
+
+            for name, value in parameters.items():
+                if type(name) is not str:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model parameter name is not canonical"
+                    )
+                if value is None or id(value) in seen_parameters:
+                    continue
+                if not isinstance(value, Tensor):
+                    raise TrainingStateInvalidError(
+                        "checkpoint model parameter is not a tensor"
+                    )
+                seen_parameters.add(id(value))
+                hash_member("parameter", f"{prefix}{name}", value)
+
+            for name, value in buffers.items():
+                if type(name) is not str:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model buffer name is not canonical"
+                    )
+                if value is None or id(value) in seen_buffers:
+                    continue
+                if not isinstance(value, Tensor):
+                    raise TrainingStateInvalidError(
+                        "checkpoint model buffer is not a tensor"
+                    )
+                seen_buffers.add(id(value))
+                hash_member("buffer", f"{prefix}{name}", value)
+
+            for name, child in modules.items():
+                if type(name) is not str:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model child-module name is not canonical"
+                    )
+                if child is None:
+                    continue
+                if not isinstance(child, nn.Module):
+                    raise TrainingStateInvalidError(
+                        "checkpoint model child is not a torch module"
+                    )
+                walk(child, f"{prefix}{name}.")
+
+        walk(self.model, "")
         return digest.hexdigest()
 
     def _optimizer_live_fingerprint(self) -> str | None:
@@ -1231,7 +1300,7 @@ class Trainer:
                 k: v for k, v in live_group.items()
                 if k not in ("params", "param_names")
             }
-            if not self._exact_export_leaf_equal(saved_options, live_options):
+            if not Trainer._exact_export_leaf_equal(saved_options, live_options):
                 raise TrainingStateInvalidError("optimizer export hyperparameters differ")
             for parameter in live_params:
                 live_slot = self.optimizer.state.get(parameter)
@@ -1240,7 +1309,7 @@ class Trainer:
                     if ordinal in saved_state:
                         raise TrainingStateInvalidError("optimizer export has foreign state")
                 elif type(ordinal) is not int or ordinal not in saved_state or not (
-                    self._exact_export_leaf_equal(saved_slot, live_slot)
+                    Trainer._exact_export_leaf_equal(saved_slot, live_slot)
                 ):
                     raise TrainingStateInvalidError("optimizer export moments differ")
                 else:
@@ -1357,7 +1426,7 @@ class Trainer:
                 or any(
                     not isinstance(group, Mapping)
                     or "lr" not in group
-                    or not self._exact_export_leaf_equal(rate, group["lr"])
+                    or not Trainer._exact_export_leaf_equal(rate, group["lr"])
                     for rate, group in zip(last_rates, saved_groups, strict=True)
                 )
             ):
@@ -1547,7 +1616,7 @@ class Trainer:
                 "growth_interval": scaler.get_growth_interval(),
                 "_growth_tracker": scaler._get_growth_tracker(),
             }
-        if not self._exact_export_leaf_equal(exported, expected):
+        if not Trainer._exact_export_leaf_equal(exported, expected):
             raise TrainingStateInvalidError(
                 "gradient scaler export differs from live state"
             )
@@ -1586,13 +1655,13 @@ class Trainer:
                 # Match PyTorch LambdaLR's own function-vs-callable-object
                 # serialization, but inspect the live object directly.
                 expected = None if isinstance(fn, FunctionType) else vars(fn)
-                if not self._exact_export_leaf_equal(saved, expected):
+                if not Trainer._exact_export_leaf_equal(saved, expected):
                     raise TrainingStateInvalidError("scheduler export lambda differs")
             exported = {
                 key: value for key, value in exported.items()
                 if key != "lr_lambdas"
             }
-        if not self._exact_export_leaf_equal(exported, live):
+        if not Trainer._exact_export_leaf_equal(exported, live):
             raise TrainingStateInvalidError("scheduler export differs from live state")
 
     def state_dict(self) -> TrainerState:
@@ -1620,7 +1689,7 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "checkpoint preflight changed optimizer state"
             )
-        if scheduler_before is not None and not self._exact_export_leaf_equal(
+        if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
             scheduler_before, self._canonical_lambda_lr_live_state()
         ):
             self._mark_failed("checkpoint preflight changed live scheduler")
@@ -1683,7 +1752,7 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "checkpoint export changed model weights or buffers"
                 )
-            if scheduler_before is not None and not self._exact_export_leaf_equal(
+            if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
                 scheduler_before, self._canonical_lambda_lr_live_state()
             ):
                 raise TrainingStateInvalidError(
