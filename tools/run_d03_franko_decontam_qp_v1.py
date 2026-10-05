@@ -59,6 +59,9 @@ PARENT_SURVIVOR_AUTHORITY_SHA256 = (
 PARENT_PROOF_IDENTITY_SHA256 = (
     "258a447dec49b2bb54d22af7f85458a51f786efe4f37c688ded9ca309614006c"
 )
+PARENT_PROOF_FILE_SHA256 = (
+    "db859857d483c0d77d1e1900ac48ee3064d014214e088556824549a7ebda18bc"
+)
 PARENT_PASS1_EVIDENCE_IDENTITY_SHA256 = (
     "0be4cb9526411cb49bf85e1803a80ee6db49e9d91c3c9c077e6e563a1b8c15ac"
 )
@@ -179,6 +182,7 @@ def verify_local_authority(expected_execution_head: str) -> dict[str, str]:
 def verify_parent_artifact(
     survivors_path: Path,
     evidence_path: Path,
+    proof_path: Path,
 ) -> tuple[dict[str, Any], dict[str, Any], frozenset[str]]:
     survivors = current_qp.load_json(
         survivors_path,
@@ -189,6 +193,40 @@ def verify_parent_artifact(
         evidence_path,
         "Franko parent evidence",
         expected_sha256=PARENT_EVIDENCE_FILE_SHA256,
+    )
+    proof = current_qp.load_json(
+        proof_path,
+        "Franko parent two-clean proof",
+        expected_sha256=PARENT_PROOF_FILE_SHA256,
+    )
+    _verify_self_hash(
+        proof,
+        "proof_identity_sha256",
+        PARENT_PROOF_IDENTITY_SHA256,
+        label="Franko parent two-clean proof",
+    )
+    require(
+        proof.get("execution_head_sha") == PARENT_EXECUTION_HEAD,
+        "Franko proof execution head drift",
+    )
+    require(
+        proof.get("matcher_report_sha256") == PARENT_MATCHER_REPORT_SHA256,
+        "Franko proof matcher root drift",
+    )
+    require(
+        proof.get("survivor_authority_sha256")
+        == PARENT_SURVIVOR_AUTHORITY_SHA256,
+        "Franko proof survivor root drift",
+    )
+    require(
+        proof.get("two_fresh_executions_converged") is True,
+        "Franko parent lacks two-clean convergence",
+    )
+    require(
+        proof.get("canonical_capacity_credited") == 0
+        and proof.get("training_executed") is False
+        and proof.get("tokenizer_fit_authorized") is False,
+        "Franko proof truth boundary drift",
     )
     _verify_self_hash(
         survivors,
@@ -467,6 +505,7 @@ def execute(
     expected_execution_head: str,
     parent_survivors_json: Path,
     parent_evidence_json: Path,
+    parent_proof_json: Path,
     candidate_jsonl: Path,
     historical_terminal_evidence_json: Path,
     fresh_execution_authority_json: Path,
@@ -486,6 +525,7 @@ def execute(
     _survivors, parent_evidence, survivor_ids = verify_parent_artifact(
         parent_survivors_json,
         parent_evidence_json,
+        parent_proof_json,
     )
     source_rows, payloads, source_authority = acquire_franko_survivors(
         candidate_jsonl=candidate_jsonl,
@@ -730,6 +770,7 @@ def main() -> int:
     parser.add_argument("--expected-execution-head", required=True)
     parser.add_argument("--parent-survivors-json", type=Path, required=True)
     parser.add_argument("--parent-evidence-json", type=Path, required=True)
+    parser.add_argument("--parent-proof-json", type=Path, required=True)
     parser.add_argument("--candidate-jsonl", type=Path, required=True)
     parser.add_argument("--historical-terminal-evidence-json", type=Path, required=True)
     parser.add_argument("--fresh-execution-authority-json", type=Path, required=True)
@@ -757,6 +798,7 @@ def main() -> int:
             expected_execution_head=args.expected_execution_head,
             parent_survivors_json=args.parent_survivors_json,
             parent_evidence_json=args.parent_evidence_json,
+            parent_proof_json=args.parent_proof_json,
             candidate_jsonl=args.candidate_jsonl,
             historical_terminal_evidence_json=args.historical_terminal_evidence_json,
             fresh_execution_authority_json=args.fresh_execution_authority_json,
