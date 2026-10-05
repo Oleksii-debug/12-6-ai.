@@ -639,6 +639,45 @@ def test_same_size_staged_mutation_during_link_is_not_reported_committed(
     staged[0].unlink()
 
 
+def test_final_path_swap_after_open_is_not_reported_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    actual_open = cli.os.open
+    captured_stage: list[Path] = []
+    actual_link = cli.os.link
+
+    def remember_link(stage: Path, final: Path) -> None:
+        captured_stage[:] = [stage]
+        actual_link(stage, final)
+
+    def open_then_swap(path: Path, flags: int) -> int:
+        descriptor = actual_open(path, flags)
+        if path == output and captured_stage:
+            output.unlink()
+            try:
+                output.symlink_to(captured_stage[0])
+            except (OSError, NotImplementedError) as exc:
+                cli.os.close(descriptor)
+                pytest.skip(f"filesystem cannot create file symlink: {exc}")
+        return descriptor
+
+    monkeypatch.setattr(cli.os, "link", remember_link)
+    monkeypatch.setattr(cli.os, "open", open_then_swap)
+    with pytest.raises(
+        cli.PublicationIndeterminate,
+        match="output bytes differ from intended authority",
+    ) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    assert output.is_symlink()
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and caught.value.staged == staged[0]
+    output.unlink()
+    staged[0].unlink()
+
+
 def test_foreign_final_after_link_error_is_indeterminate_and_never_removed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
