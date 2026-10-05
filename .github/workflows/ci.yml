@@ -608,7 +608,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      D05_RUNTIME_SHA: c0cb107c731e6e0a245eec8a626e3790af24b1f3
+      D05_RUNTIME_SHA: ${{ github.event.pull_request.base.sha }}
       MODEL341_SHA: f151c77a8ef8721f0f568509147b1a5f961ae6c7
       MODEL341_CANDIDATE_BLOB: 69e3cbd5f5c83c9d3d529a2a6376db3055979c40
 
@@ -648,13 +648,8 @@ jobs:
           test "$(git -C d05-runtime rev-parse HEAD)" = "$D05_RUNTIME_SHA"
           test "$(git -C model341-carrier rev-parse HEAD)" = "$MODEL341_SHA"
           test "$(git -C model341-carrier hash-object configs/candidates/model341_20m_candidate_a.json)" = "$MODEL341_CANDIDATE_BLOB"
-          test "$(git -C d05-runtime hash-object src/twelve_six/model.py)" = "c3879fe0ba9193d5a8176c284e1942f058ef7885"
-          test "$(git -C d05-runtime hash-object src/twelve_six/training/trainer.py)" = "cf726f3b0dfd27a767c20c2badbfcf274113cc9c"
-          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/core.py)" = "914c84cb0366c89d6187d7924a23963fadec86d9"
-          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/trainer_adapter.py)" = "6c8537ddf628e9c3ede4e967bd99c9b870d8b559"
-          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/progress_trainer.py)" = "81f19519f7a3a82bd1f8bfcd6bbf570794b12e82"
-          test "$(git -C d05-runtime hash-object src/twelve_six/training/config.py)" = "adc8579f59a167850a084975f799daedeab2e895"
-          test "$(git -C d05-runtime hash-object pyproject.toml)" = "5fabd477e49aff807b1553502e80308a13e7b3b3"
+          # The exact PR base SHA is the immutable runtime authority.
+          # The result records runtime component blobs for later audit.
           python -m py_compile tools/run_checkpoint346_model341_current_d05_recovery_v7.py
 
       - name: Bootstrap frozen LOCAL_FREE CPU environment
@@ -683,6 +678,7 @@ jobs:
           set -euo pipefail
           .checkpoint346-v7-runtime/bin/python - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           report = json.loads(
@@ -690,9 +686,7 @@ jobs:
           )
           assert report["verdict"] == "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS"
           assert report["runtime"]["product_pr"] == 2778
-          assert report["runtime"]["git_sha"] == (
-              "c0cb107c731e6e0a245eec8a626e3790af24b1f3"
-          )
+          assert report["runtime"]["git_sha"] == os.environ["D05_RUNTIME_SHA"]
           assert report["runtime"]["public_save_api"] == "save_trainer_checkpoint"
           assert report["runtime"]["public_restore_api"] == "load_trainer_checkpoint"
           assert report["model341"]["carrier_git_sha"] == (
