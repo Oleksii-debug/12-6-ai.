@@ -1463,3 +1463,95 @@ else:
 assert len(lineage_calls) == 10 and len(attest_calls) == 2
 """
     )
+
+
+def test_real_first_v3_attestation_failure_gets_bounded_pre_warmup_diagnostic() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+failure = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+calls = []
+
+def live_lineage(fingerprints, edges):
+    calls.append("warmup")
+    return []
+
+def canonical_lineage(fingerprints, edges):
+    return [1]
+
+def reject(_matcher):
+    calls.append("attest")
+    raise failure
+
+mod.indexed.attest_incumbent_runtime = reject
+mod.indexed._canonical_namespace = lambda _matcher, _label: {
+    "_lineage_matches": canonical_lineage
+}
+matcher = SimpleNamespace(_lineage_matches=live_lineage)
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is failure
+    note = "\\n".join(exc.__notes__)
+    assert "bounded V3 pre-warmup diagnostic:" in note
+    assert "STRUCTURAL_CODE_MISMATCH" in note
+    assert '"attestation_override_allowed": false' in note
+    assert "warmup_live_digest_changed" not in note
+    assert "source_payload" not in note
+else:
+    raise AssertionError("the first incumbent rejection was swallowed")
+assert calls == ["attest"]
+"""
+    )
+
+
+def test_unrelated_first_attestation_failure_remains_unmodified() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+failure = mod.indexed.IndexedExecutionError("V3 matcher source blob drift")
+def reject(_matcher):
+    raise failure
+mod.indexed.attest_incumbent_runtime = reject
+mod.indexed._canonical_namespace = lambda *_: (
+    _ for _ in ()
+).throw(AssertionError("must not diagnose unrelated errors"))
+try:
+    mod._preflight_attested_lineage_warmup(SimpleNamespace())
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is failure and not hasattr(exc, "__notes__")
+else:
+    raise AssertionError("source drift was swallowed")
+"""
+    )
+
+
+def test_uninspectable_first_v3_failure_preserves_incumbent_rejection() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+failure = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+mod.indexed.attest_incumbent_runtime = lambda _: (_ for _ in ()).throw(failure)
+mod.indexed._canonical_namespace = lambda *_: (
+    _ for _ in ()
+).throw(AssertionError("must not compile for an uninspectable callable"))
+try:
+    mod._preflight_attested_lineage_warmup(
+        SimpleNamespace(_lineage_matches=None)
+    )
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is failure
+    note = "\\n".join(exc.__notes__)
+    assert "bounded V3 pre-warmup diagnostic unavailable: TypeError" in note
+    assert "attestation_override_allowed" not in note
+else:
+    raise AssertionError("original attestation rejection was lost")
+"""
+    )
