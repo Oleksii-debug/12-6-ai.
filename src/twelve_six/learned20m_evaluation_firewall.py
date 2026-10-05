@@ -386,6 +386,19 @@ def trusted_selection_lock_evidence_identity(
     return hashlib.sha256(_canonical_bytes(payload)).hexdigest()
 
 
+def _trusted_selection_lock_snapshot(
+    trusted: dict[str, Any],
+    authority: dict[str, Any],
+) -> dict[str, Any]:
+    """Copy verified scalar authority state into plain owned dictionaries."""
+
+    return {
+        "schema_version": trusted["schema_version"],
+        "authority": {key: authority[key] for key in _AUTHORITY_KEYS},
+        **{key: trusted[key] for key in _SELECTION_LOCK_IDENTITY_FIELDS},
+    }
+
+
 def _validate_trusted_selection_lock_authority(
     trusted_selection_lock_authority: Any,
     verified_scientific_authorities: Collection[str],
@@ -399,20 +412,25 @@ def _validate_trusted_selection_lock_authority(
         _TRUSTED_SELECTION_LOCK_KEYS,
         "trusted_selection_lock_authority",
     )
-    expected_evidence_identity = trusted_selection_lock_evidence_identity(trusted)
     authority = _validate_dynamic_authority_ref(
         trusted.get("authority"),
         "trusted selection-lock authority",
     )
+    snapshot = _trusted_selection_lock_snapshot(trusted, authority)
+    expected_evidence_identity = trusted_selection_lock_evidence_identity(snapshot)
     _require(
-        authority.get("evidence_sha256") == expected_evidence_identity,
+        snapshot["authority"]["evidence_sha256"] == expected_evidence_identity,
         "trusted selection-lock evidence identity mismatch",
     )
     token = scientific_authority_token(
         SELECTION_LOCK_AUTHORITY_ROLE,
-        authority,
+        snapshot["authority"],
         require_workflow=True,
     )
+
+    # Iterating an externally supplied Collection is an effectful callout.  Verify
+    # only against owned pre-call snapshots, then prove the caller-owned authority
+    # did not change while the collection was traversed.
     verified = {
         value.strip()
         for value in verified_scientific_authorities
@@ -422,7 +440,21 @@ def _validate_trusted_selection_lock_authority(
         token is not None and token in verified,
         "trusted selection-lock authority unverified",
     )
-    return trusted, token
+
+    current = _require_exact_keys(
+        trusted_selection_lock_authority,
+        _TRUSTED_SELECTION_LOCK_KEYS,
+        "trusted_selection_lock_authority",
+    )
+    current_authority = _validate_dynamic_authority_ref(
+        current.get("authority"),
+        "trusted selection-lock authority",
+    )
+    _require(
+        _trusted_selection_lock_snapshot(current, current_authority) == snapshot,
+        "trusted selection-lock authority changed during verification",
+    )
+    return snapshot, token
 
 
 def authorize_final_test_reporting(
@@ -440,34 +472,54 @@ def authorize_final_test_reporting(
     """
     validated = validate_policy(policy)
     lock = _validate_selection_lock_shape(selection_lock)
+    lock_snapshot = {key: lock[key] for key in _SELECTION_LOCK_KEYS}
     _require(
-        lock["selection_lock_identity_sha256"] == selection_lock_identity(lock),
+        lock_snapshot["selection_lock_identity_sha256"]
+        == selection_lock_identity(lock_snapshot),
         "selection lock self-identity mismatch",
     )
+    final_test_reservation_snapshot = {
+        key: EVAL233_FINAL_TEST_RESERVATION_AUTHORITY[key]
+        for key in _AUTHORITY_KEYS
+    }
     trusted, trusted_token = _validate_trusted_selection_lock_authority(
         trusted_selection_lock_authority,
         verified_scientific_authorities,
     )
+
+    current_lock = _validate_selection_lock_shape(selection_lock)
+    _require(
+        {key: current_lock[key] for key in _SELECTION_LOCK_KEYS} == lock_snapshot,
+        "selection lock changed during authority verification",
+    )
+    _require(
+        {
+            key: EVAL233_FINAL_TEST_RESERVATION_AUTHORITY[key]
+            for key in _AUTHORITY_KEYS
+        }
+        == final_test_reservation_snapshot,
+        "final-test reservation authority changed during verification",
+    )
     for key in _SELECTION_LOCK_IDENTITY_FIELDS:
         _require(
-            lock[key] == trusted[key],
+            lock_snapshot[key] == trusted[key],
             f"trusted selection-lock mismatch: {key}",
         )
 
     receipt = {
         "schema_version": "12-6.learned20m-final-test-reporting-authorization.v1",
         "policy_identity_sha256": validated["policy_identity_sha256"],
-        "selection_lock_identity_sha256": lock["selection_lock_identity_sha256"],
-        "selected_checkpoint_sha256": lock["selected_checkpoint_sha256"],
-        "selection_validation_evidence_sha256": lock[
+        "selection_lock_identity_sha256": lock_snapshot["selection_lock_identity_sha256"],
+        "selected_checkpoint_sha256": lock_snapshot["selected_checkpoint_sha256"],
+        "selection_validation_evidence_sha256": lock_snapshot[
             "selection_validation_evidence_sha256"
         ],
-        "recipe_identity_sha256": lock["recipe_identity_sha256"],
-        "train_trace_identity_sha256": lock["train_trace_identity_sha256"],
+        "recipe_identity_sha256": lock_snapshot["recipe_identity_sha256"],
+        "train_trace_identity_sha256": lock_snapshot["train_trace_identity_sha256"],
         "selection_lock_authority": deepcopy(trusted["authority"]),
         "selection_lock_authority_token": trusted_token,
         "final_test_reservation_authority": deepcopy(
-            EVAL233_FINAL_TEST_RESERVATION_AUTHORITY
+            final_test_reservation_snapshot
         ),
         "final_test_access_authorized": True,
         "final_test_outcomes_reporting_authorized": True,
