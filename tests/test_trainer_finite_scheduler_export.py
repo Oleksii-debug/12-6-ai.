@@ -596,3 +596,61 @@ def test_injected_unscheduled_optimizer_retains_custom_constant_rate_policy(
     assert trainer.train_microbatch(_BATCH).optimizer_stepped
     assert target.train_microbatch(_BATCH).optimizer_stepped
     torch.testing.assert_close(trainer.model.weight, target.model.weight, rtol=0, atol=0)
+
+@pytest.mark.parametrize(
+    ("option", "wrong"), [
+        ("weight_decay", 0.5),
+        ("eps", 0.1),
+        ("betas", (0.5, 0.9)),
+        ("amsgrad", True),
+    ],
+)
+@pytest.mark.parametrize("schedule", ["constant", "cosine"])
+def test_default_adamw_finite_option_forgery_refused_before_direct_resume(
+    preserve_state: Any, option: str, wrong: Any, schedule: str,
+) -> None:
+    config = TrainerConfig(
+        seed=703, max_steps=4, scheduler=schedule, learning_rate=0.01,
+    )
+    source = Trainer(_TinyLogits(), config, device="cpu")
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    saved = source.state_dict()
+    bad_optimizer = copy.deepcopy(saved.optimizer)
+    bad_optimizer["param_groups"][0][option] = wrong
+    target = Trainer(_TinyLogits(), config, device="cpu")
+    with pytest.raises(TrainingStateInvalidError, match="default AdamW options differ"):
+        target.load_state_dict(replace(saved, optimizer=bad_optimizer))
+    assert not target.optimizer.state
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None and not target._update_incomplete
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("option", "wrong"), [
+        ("weight_decay", 0.5),
+        ("eps", 0.1),
+        ("betas", (0.5, 0.9)),
+        ("amsgrad", True),
+    ],
+)
+@pytest.mark.parametrize("schedule", ["constant", "cosine"])
+def test_default_adamw_finite_live_option_forgery_poisoned(
+    preserve_state: Any, option: str, wrong: Any, schedule: str,
+) -> None:
+    config = TrainerConfig(
+        seed=703, max_steps=4, scheduler=schedule, learning_rate=0.01,
+    )
+    trainer = Trainer(_TinyLogits(), config, device="cpu")
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    trainer.optimizer.param_groups[0][option] = wrong
+    with pytest.raises(TrainingStateInvalidError, match="default AdamW options differ"):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert trainer.optimizer_step == 1
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
