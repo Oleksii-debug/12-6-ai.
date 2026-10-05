@@ -36,6 +36,7 @@ jobs:
           BRIDGE_PATH=src/twelve_six/data/postmaterialization_balance_projection_v1.py
           SELECTION_PATH=src/twelve_six/data/current_clean_balanced_selection_v1.py
           VERIFIER_PATH=src/twelve_six/data/balanced_split_application_v1.py
+          SPLIT_PATH=src/twelve_six/split_robustness.py
           TEST_PATH=tests/test_postmaterialization_balance_projection_v1.py
           git cat-file -e "$CARRIER_HEAD^{commit}"
           git fetch --no-tags origin main
@@ -43,19 +44,24 @@ jobs:
           BRIDGE_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$BRIDGE_PATH")"
           SELECTION_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$SELECTION_PATH")"
           VERIFIER_BLOB_SHA="$(git rev-parse "$BOUND_MAIN_SHA:$VERIFIER_PATH")"
+          SPLIT_BLOB_SHA="$(git rev-parse "$BOUND_MAIN_SHA:$SPLIT_PATH")"
           TEST_BLOB_SHA="$(git rev-parse "$CARRIER_HEAD:$TEST_PATH")"
           test "$VERIFIER_BLOB_SHA" = "2ea3baaa68ab93c03d8c87da530f6f3f1335b287"
+          test "$SPLIT_BLOB_SHA" = "e49518f2e431dc8576005be4938c1f15881897c4"
           git show "$CARRIER_HEAD:$BRIDGE_PATH" > "$BRIDGE_PATH"
           git show "$CARRIER_HEAD:$SELECTION_PATH" > "$SELECTION_PATH"
           git show "$BOUND_MAIN_SHA:$VERIFIER_PATH" > "$VERIFIER_PATH"
+          git show "$BOUND_MAIN_SHA:$SPLIT_PATH" > "$SPLIT_PATH"
           git show "$CARRIER_HEAD:$TEST_PATH" > "$TEST_PATH"
           test "$(git hash-object "$BRIDGE_PATH")" = "$BRIDGE_BLOB_SHA"
           test "$(git hash-object "$SELECTION_PATH")" = "$SELECTION_BLOB_SHA"
           test "$(git hash-object "$VERIFIER_PATH")" = "$VERIFIER_BLOB_SHA"
+          test "$(git hash-object "$SPLIT_PATH")" = "$SPLIT_BLOB_SHA"
           test "$(git hash-object "$TEST_PATH")" = "$TEST_BLOB_SHA"
           echo "bridge_blob_sha=$BRIDGE_BLOB_SHA" >> "$GITHUB_OUTPUT"
           echo "selection_blob_sha=$SELECTION_BLOB_SHA" >> "$GITHUB_OUTPUT"
           echo "balanced_selection_verifier_blob_sha=$VERIFIER_BLOB_SHA" >> "$GITHUB_OUTPUT"
+          echo "canonical_split_blob_sha=$SPLIT_BLOB_SHA" >> "$GITHUB_OUTPUT"
           echo "bound_main_sha=$BOUND_MAIN_SHA" >> "$GITHUB_OUTPUT"
           echo "test_blob_sha=$TEST_BLOB_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
@@ -80,6 +86,7 @@ jobs:
           BRIDGE_BLOB_SHA: ${{ steps.bridge_repair.outputs.bridge_blob_sha }}
           SELECTION_BLOB_SHA: ${{ steps.bridge_repair.outputs.selection_blob_sha }}
           VERIFIER_BLOB_SHA: ${{ steps.bridge_repair.outputs.balanced_selection_verifier_blob_sha }}
+          SPLIT_BLOB_SHA: ${{ steps.bridge_repair.outputs.canonical_split_blob_sha }}
           TEST_BLOB_SHA: ${{ steps.bridge_repair.outputs.test_blob_sha }}
         run: |
           set -euo pipefail
@@ -94,6 +101,7 @@ jobs:
           test "$(git hash-object src/twelve_six/data/postmaterialization_balance_projection_v1.py)" = "$BRIDGE_BLOB_SHA"
           test "$(git hash-object src/twelve_six/data/current_clean_balanced_selection_v1.py)" = "$SELECTION_BLOB_SHA"
           test "$(git hash-object src/twelve_six/data/balanced_split_application_v1.py)" = "$VERIFIER_BLOB_SHA"
+          test "$(git hash-object src/twelve_six/split_robustness.py)" = "$SPLIT_BLOB_SHA"
           test "$(git hash-object tests/test_postmaterialization_balance_projection_v1.py)" = "$TEST_BLOB_SHA"
           git show "$CARRIER_HEAD":.github/workflows/ci.yml > /tmp/pr945-carrier-workflow.yml
           git show "$CARRIER_HEAD":src/twelve_six/data/postmaterialization_balance_projection_v1.py > /tmp/pr945-carrier-bridge.py
