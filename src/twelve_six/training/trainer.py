@@ -5,9 +5,11 @@ from __future__ import annotations
 import copy
 import math
 import random
+import struct
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
+from types import FunctionType
 from typing import Any
 
 import numpy as np
@@ -172,6 +174,26 @@ class Trainer:
         self._require_optimizer_parameter_coverage()
         self.scheduler = (
             scheduler if scheduler is not None else build_scheduler(self.optimizer, config)
+        )
+        # Only the unmodified first-party optimizer/scheduler pair has a
+        # configuration-derived rate oracle. Do not call arbitrary callbacks.
+        self._canonical_default_schedule = (
+            optimizer is None and scheduler is None and type(self.scheduler) is LambdaLR
+        )
+        # The default constant/no-warmup path has no LambdaLR object, but
+        # its AdamW LR is still an immutable part of the training contract.
+        self._canonical_unscheduled_default_optimizer = (
+            optimizer is None and scheduler is None and self.scheduler is None
+        )
+        # Freeze small constructor-owned AdamW options before external hooks
+        # can change otherwise finite optimizer behavior at a resume boundary.
+        self._canonical_default_optimizer_options = (
+            {
+                key: copy.deepcopy(value)
+                for key, value in self.optimizer.param_groups[0].items()
+                if key not in ("params", "lr", "initial_lr", "param_names")
+            }
+            if optimizer is None and scheduler is None else None
         )
         self.scaler = self._build_scaler()
 
@@ -390,9 +412,37 @@ class Trainer:
         # pre-backward check; a completed step must remain checkpoint-safe.
         self._require_optimizer_parameter_coverage()
         self._require_safe_optimizer_hyperparameters()
+        self._require_default_optimizer_options(
+            {"param_groups": self.optimizer.param_groups},
+        )
+        self._require_constant_default_rate({"param_groups": self.optimizer.param_groups})
         self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
         if self.scheduler is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
+            # The canonical LambdaLR advances exactly once per committed
+            # optimizer step. Finite live corruption is not an exact-resume
+            # chronology, even if state_dict accurately exports that corruption.
+            if (
+                isinstance(self.scheduler, LambdaLR)
+                and (
+                    type(self.scheduler.last_epoch) is not int
+                    or self.scheduler.last_epoch != self.optimizer_step
+                    or (
+                        type(self.scheduler) is LambdaLR
+                        and (
+                            type(self.scheduler._step_count) is not int
+                            or self.scheduler._step_count != self.optimizer_step + 1
+                        )
+                    )
+                )
+            ):
+                raise TrainingStateInvalidError(
+                    "scheduler chronology differs from committed optimizer step"
+                )
+            self._require_default_schedule_rates(
+                vars(self.scheduler), self.optimizer_step,
+                {"param_groups": self.optimizer.param_groups},
+            )
 
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
@@ -910,6 +960,262 @@ class Trainer:
         if any(type(k) is not int for k in saved_state) or set(saved_state) != present:
             raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
 
+    def _require_checkpoint_scheduler_chronology(
+        self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
+    ) -> None:
+        """Pure D02 chronology and configured-rate authority for direct/D05 preflight."""
+        if type(self.scheduler) is LambdaLR and (
+            not isinstance(scheduler_state, Mapping)
+            or type(scheduler_state.get("last_epoch")) is not int
+            or scheduler_state["last_epoch"] != optimizer_step
+        ):
+            # Refuse a known impossible committed history before optimizer or
+            # scheduler load. A fresh target can retry a verified checkpoint.
+            raise ValueError(
+                "checkpoint scheduler chronology differs from committed optimizer step"
+            )
+        if type(self.scheduler) is LambdaLR and (
+            type(scheduler_state.get("_step_count")) is not int
+            or scheduler_state["_step_count"] != optimizer_step + 1
+        ):
+            # PyTorch LambdaLR starts at internal scheduler step 1 and moves
+            # exactly once per successful optimizer update.
+            raise ValueError(
+                "checkpoint scheduler step count differs from committed optimizer step"
+            )
+        if type(self.scheduler) is LambdaLR:
+            saved_groups = (
+                optimizer_state.get("param_groups")
+                if isinstance(optimizer_state, Mapping) else None
+            )
+            last_rates = scheduler_state.get("_last_lr")
+            if (
+                not isinstance(saved_groups, list)
+                or not isinstance(last_rates, list)
+                or len(saved_groups) != len(last_rates)
+                or any(
+                    not isinstance(group, Mapping)
+                    or "lr" not in group
+                    or not self._exact_export_leaf_equal(rate, group["lr"])
+                    for rate, group in zip(last_rates, saved_groups, strict=True)
+                )
+            ):
+                raise ValueError(
+                    "checkpoint scheduler last LR differs from checkpoint optimizer"
+                )
+        self._require_default_schedule_rates(
+            scheduler_state, optimizer_step, optimizer_state,
+        )
+        self._require_constant_default_rate(optimizer_state)
+        self._require_default_optimizer_options(optimizer_state)
+
+    def _require_default_schedule_rates(
+        self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
+    ) -> None:
+        """Bind default LambdaLR rates to immutable config and committed step.
+
+        A pair of forged finite optimizer/scheduler rates can agree with each
+        other while changing the next update. Only the first-party optimizer
+        and its first-party LambdaLR have a safe configuration-derived oracle.
+        Injected optimizers/schedulers retain their existing authority.
+        """
+        if not self._canonical_default_schedule:
+            return
+        groups = (
+            optimizer_state.get("param_groups")
+            if isinstance(optimizer_state, Mapping) else None
+        )
+        if (
+            not isinstance(scheduler_state, Mapping)
+            or not isinstance(groups, list)
+            or not isinstance(scheduler_state.get("base_lrs"), list)
+            or not isinstance(scheduler_state.get("_last_lr"), list)
+            or type(optimizer_step) is not int
+            or optimizer_step < 0
+            or len(groups) != len(scheduler_state["base_lrs"])
+            or len(groups) != len(scheduler_state["_last_lr"])
+        ):
+            raise TrainingStateInvalidError("default scheduler rate authority is malformed")
+        base = self.config.learning_rate
+        rate = base * _lr_lambda(self.config)(optimizer_step)
+
+        def bits_equal(actual: Any, expected: Any) -> bool:
+            if type(actual) not in (int, float):
+                return False
+            try:
+                observed = float(actual)
+            except (OverflowError, ValueError):
+                return False
+            return (
+                math.isfinite(observed)
+                and struct.pack("!d", observed) == struct.pack("!d", float(expected))
+            )
+
+        for group, base_rate, last_rate in zip(
+            groups, scheduler_state["base_lrs"], scheduler_state["_last_lr"],
+            strict=True,
+        ):
+            if (
+                not isinstance(group, Mapping)
+                or not bits_equal(group.get("initial_lr"), base)
+                or not bits_equal(base_rate, base)
+                or not bits_equal(group.get("lr"), rate)
+                or not bits_equal(last_rate, rate)
+            ):
+                raise TrainingStateInvalidError(
+                    "default scheduler rate differs from configured committed schedule"
+                )
+
+    def _require_default_optimizer_options(self, optimizer_state: Any) -> None:
+        """Pin first-party AdamW non-LR options before export or state application.
+
+        LambdaLR owns the dynamic LR, but cannot justify a saved change to
+        AdamW's betas, eps, decay or constructor feature switches. Exclude
+        injected optimizers and schedulers from this first-party contract.
+        """
+        expected = self._canonical_default_optimizer_options
+        if expected is None:
+            return
+        groups = (
+            optimizer_state.get("param_groups")
+            if isinstance(optimizer_state, Mapping) else None
+        )
+        if (
+            not isinstance(groups, list)
+            or len(groups) != 1
+            or not isinstance(groups[0], Mapping)
+        ):
+            raise TrainingStateInvalidError("default AdamW option groups are malformed")
+        actual = {
+            key: value for key, value in groups[0].items()
+            if key not in ("params", "lr", "initial_lr", "param_names")
+        }
+
+        def equal(left: Any, right: Any) -> bool:
+            if type(left) is not type(right):
+                return False
+            if type(left) is float:
+                return struct.pack("!d", left) == struct.pack("!d", right)
+            if isinstance(left, (list, tuple)):
+                return len(left) == len(right) and all(
+                    equal(a, b) for a, b in zip(left, right, strict=True)
+                )
+            if isinstance(left, Mapping):
+                return left.keys() == right.keys() and all(
+                    equal(value, right[key]) for key, value in left.items()
+                )
+            return bool(left == right)
+
+        if not equal(actual, expected):
+            raise TrainingStateInvalidError(
+                "default AdamW options differ from configured constructor"
+            )
+
+    def _require_constant_default_rate(self, optimizer_state: Any) -> None:
+        """Reject forged finite LR on the default AdamW path without a scheduler.
+
+        This first-party constant/no-warmup path has no LambdaLR state for
+        the configured-rate oracle to inspect. Check both live publication
+        and saved state before direct or D05 model/optimizer application.
+        Custom/injected optimizers keep their existing rate policy.
+        """
+        if not self._canonical_unscheduled_default_optimizer:
+            return
+        groups = (
+            optimizer_state.get("param_groups")
+            if isinstance(optimizer_state, Mapping) else None
+        )
+        if (
+            not isinstance(groups, list)
+            or len(groups) != 1
+            or not isinstance(groups[0], Mapping)
+            or type(groups[0].get("lr")) not in (int, float)
+        ):
+            raise TrainingStateInvalidError("default constant optimizer rate is malformed")
+        try:
+            observed = float(groups[0]["lr"])
+        except (OverflowError, ValueError) as exc:
+            raise TrainingStateInvalidError(
+                "default constant optimizer rate is malformed"
+            ) from exc
+        expected = float(self.config.learning_rate)
+        if (
+            not math.isfinite(observed)
+            or struct.pack("!d", observed) != struct.pack("!d", expected)
+        ):
+            raise TrainingStateInvalidError(
+                "default constant optimizer rate differs from configured learning rate"
+            )
+
+    def _require_exported_scaler_matches_live(self, exported: Any) -> None:
+        """Refuse finite, detached GradScaler statistics that cannot replay."""
+        scaler = self.scaler
+        if scaler is None:
+            if exported is not None:
+                raise TrainingStateInvalidError("gradient scaler export is not canonical")
+            return
+        if not isinstance(exported, Mapping):
+            raise TrainingStateInvalidError("gradient scaler export is not canonical")
+        if not scaler.is_enabled():
+            expected: dict[str, Any] = {}
+        else:
+            # Match GradScaler's own five-field state_dict schema using live
+            # getters, never a second potentially effectful state_dict call.
+            expected = {
+                "scale": scaler.get_scale(),
+                "growth_factor": scaler.get_growth_factor(),
+                "backoff_factor": scaler.get_backoff_factor(),
+                "growth_interval": scaler.get_growth_interval(),
+                "_growth_tracker": scaler._get_growth_tracker(),
+            }
+        if not self._exact_export_leaf_equal(exported, expected):
+            raise TrainingStateInvalidError(
+                "gradient scaler export differs from live state"
+            )
+
+    def _require_exported_scheduler_matches_live(self, exported: Any) -> None:
+        """Bind finite scheduler snapshot to live epoch/rates without re-exporting.
+
+        LambdaLR stores callable descriptions separately from its live scalar
+        fields. Compare both parts directly; another state_dict() call could
+        itself be effectful, so it cannot be used as the reference.
+        """
+        scheduler = self.scheduler
+        if scheduler is None:
+            if exported is not None:
+                raise TrainingStateInvalidError("scheduler export is not canonical")
+            return
+        if not isinstance(exported, Mapping):
+            raise TrainingStateInvalidError("scheduler export is not canonical")
+        live = {
+            key: value for key, value in vars(scheduler).items()
+            if key != "optimizer"
+        }
+        if isinstance(scheduler, LambdaLR):
+            live.pop("lr_lambdas", None)
+            if set(exported) != set(live) | {"lr_lambdas"}:
+                raise TrainingStateInvalidError("scheduler export fields differ")
+            exported_lambdas = exported["lr_lambdas"]
+            if (
+                not isinstance(exported_lambdas, list)
+                or len(exported_lambdas) != len(scheduler.lr_lambdas)
+            ):
+                raise TrainingStateInvalidError("scheduler export lambda count differs")
+            for fn, saved in zip(
+                scheduler.lr_lambdas, exported_lambdas, strict=True,
+            ):
+                # Match PyTorch LambdaLR's own function-vs-callable-object
+                # serialization, but inspect the live object directly.
+                expected = None if isinstance(fn, FunctionType) else vars(fn)
+                if not self._exact_export_leaf_equal(saved, expected):
+                    raise TrainingStateInvalidError("scheduler export lambda differs")
+            exported = {
+                key: value for key, value in exported.items()
+                if key != "lr_lambdas"
+            }
+        if not self._exact_export_leaf_equal(exported, live):
+            raise TrainingStateInvalidError("scheduler export differs from live state")
+
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
         self.assert_checkpoint_safe()
@@ -948,8 +1254,12 @@ class Trainer:
             self._require_exported_optimizer_matches_live(snapshot.optimizer)
             if snapshot.scheduler is not None:
                 self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+            # A hook may suppress the second export entirely. Even a missing
+            # snapshot must agree with whether a live component exists.
+            self._require_exported_scheduler_matches_live(snapshot.scheduler)
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
+            self._require_exported_scaler_matches_live(snapshot.scaler)
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
@@ -1007,9 +1317,42 @@ class Trainer:
             raise ValueError("scheduler state/config mismatch")
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
+        if self.scaler.is_enabled():
+            expected_fields = {
+                "scale", "growth_factor", "backoff_factor",
+                "growth_interval", "_growth_tracker",
+            }
+            if not isinstance(state.scaler, Mapping) or set(state.scaler) != expected_fields:
+                raise ValueError("enabled gradient scaler checkpoint schema invalid")
+            scale = state.scaler["scale"]
+            growth = state.scaler["growth_factor"]
+            backoff = state.scaler["backoff_factor"]
+            interval = state.scaler["growth_interval"]
+            tracker = state.scaler["_growth_tracker"]
+            if (
+                any(type(value) is not float or not math.isfinite(value)
+                    for value in (scale, growth, backoff))
+                or scale <= 0.0
+                or growth <= 1.0
+                or not 0.0 < backoff < 1.0
+                or type(interval) is not int or interval < 1
+                or type(tracker) is not int or not 0 <= tracker < interval
+            ):
+                raise ValueError("enabled gradient scaler checkpoint statistics invalid")
+        if (
+            not self.scaler.is_enabled()
+            and state.scaler is not None
+            and (not isinstance(state.scaler, Mapping) or bool(state.scaler))
+        ):
+            # Disabled GradScaler.load_state_dict silently ignores a payload.
+            # Reject it before optimizer mutation instead of losing state.
+            raise ValueError("disabled gradient scaler checkpoint state must be empty")
         # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
         # parameter identity. Reject missing/reordered names before mutation.
         self._require_optimizer_state_parameter_order(state.optimizer)
+        self._require_checkpoint_scheduler_chronology(
+            state.scheduler, state.optimizer_step, state.optimizer,
+        )
 
         # From the first component load onward a failure may leave optimizer,
         # scheduler, scaler or counters partially applied. No same-instance
