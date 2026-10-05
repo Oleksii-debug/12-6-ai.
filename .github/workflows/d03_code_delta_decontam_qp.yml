@@ -355,11 +355,46 @@ jobs:
           if a_raw != b_raw:
               raise RuntimeError("two fresh executions diverged")
           evidence = json.loads(a_raw)
-
+          expected_evidence_fields = {
+              "schema_version",
+              "execution_profile",
+              "execution_head_sha",
+              "parent",
+              "delta_authority",
+              "gate_execution",
+              "survivor_inventory",
+              "capacity_projection",
+              "authority_blobs",
+              "content_boundary",
+              "truth_boundary",
+              "evidence_identity_sha256",
+          }
+          if set(evidence) != expected_evidence_fields:
+              raise RuntimeError("evidence fields are not closed-world")
           if evidence["schema_version"] != (
               "12-6.d03-code-delta-decontam-g05-g06-execution.v1"
           ):
               raise RuntimeError("evidence schema drift")
+          if evidence["execution_profile"] != "LOCAL_FREE":
+              raise RuntimeError("execution profile drift")
+          claimed_identity = evidence["evidence_identity_sha256"]
+          if (
+              not isinstance(claimed_identity, str)
+              or len(claimed_identity) != 64
+              or any(ch not in "0123456789abcdef" for ch in claimed_identity)
+          ):
+              raise RuntimeError("evidence identity malformed")
+          identity_core = dict(evidence)
+          identity_core.pop("evidence_identity_sha256")
+          canonical_identity_core = json.dumps(
+              identity_core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          if hashlib.sha256(canonical_identity_core).hexdigest() != claimed_identity:
+              raise RuntimeError("evidence self-hash mismatch")
           if evidence["execution_head_sha"] != os.environ["D03_EXECUTION_SHA"]:
               raise RuntimeError("execution head drift")
           parent = evidence["parent"]
@@ -371,6 +406,14 @@ jobs:
               "1312186bb19a1e65603afd95fa29bb8f44488b28b86df7136b0a99b3ef8b0254"
           ):
               raise RuntimeError("parent survivor drift")
+          if parent["combined_matcher_report_sha256"] != (
+              "b354114771d22fc1be59a74007baea2956a9e5b8311596c05eb3f6c92f6ea418"
+          ):
+              raise RuntimeError("parent matcher root drift")
+          if parent["two_clean_proof_identity_sha256"] != (
+              "5f5fe9551692da2b8c037c20b1261bdbb3d707dbc7bfb13776429ab4e792b1bb"
+          ):
+              raise RuntimeError("parent two-clean proof drift")
 
           delta = evidence["delta_authority"]
           if delta["source_object_count"] != 18:
@@ -392,6 +435,11 @@ jobs:
           records = inventory["records"]
           if inventory["record_count"] != len(records):
               raise RuntimeError("survivor inventory record count drift")
+          record_ids = [row.get("record_id") for row in records if isinstance(row, dict)]
+          if len(record_ids) != len(records) or len(set(record_ids)) != len(record_ids):
+              raise RuntimeError("survivor inventory record-id uniqueness drift")
+          if record_ids != sorted(record_ids):
+              raise RuntimeError("survivor inventory record order drift")
           if inventory["record_count"] != gate["survivor_records"]:
               raise RuntimeError("survivor inventory/gate record count drift")
           if inventory["total_payload_bytes"] != survivor:
@@ -404,6 +452,38 @@ jobs:
               gate["survivor_payload_inventory_digest_sha256"]
           ):
               raise RuntimeError("survivor inventory payload root drift")
+          canonical_records = json.dumps(
+              records,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          if (
+              hashlib.sha256(canonical_records).hexdigest()
+              != inventory["record_inventory_digest_sha256"]
+          ):
+              raise RuntimeError("survivor inventory record root is not reproducible")
+          payload_projection = [
+              {
+                  "record_id": row["record_id"],
+                  "payload_sha256": row["payload_sha256"],
+                  "payload_bytes": row["payload_bytes"],
+              }
+              for row in records
+          ]
+          canonical_payload_projection = json.dumps(
+              payload_projection,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          if (
+              hashlib.sha256(canonical_payload_projection).hexdigest()
+              != inventory["payload_inventory_digest_sha256"]
+          ):
+              raise RuntimeError("survivor inventory payload root is not reproducible")
           required_record_fields = {
               "record_id",
               "source_id",
@@ -454,24 +534,51 @@ jobs:
           ):
               raise RuntimeError("projected headroom arithmetic drift")
 
+          expected_truth = {
+              "global_cross_source_dedup_complete_for_delta": True,
+              "reserved_evaluation_decontamination_complete_for_delta": True,
+              "canonical_quality_privacy_complete_for_delta": True,
+              "balance_diversity_retest_complete": False,
+              "family_caps_complete": False,
+              "cluster_safe_split_complete": False,
+              "deterministic_pack_two_clean_complete": False,
+              "positive_exact_unique_loss_ledger": False,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+          }
           truth = evidence["truth_boundary"]
-          if truth["canonical_capacity_credited"] != 0:
-              raise RuntimeError("canonical credit fabricated")
-          if truth["training_authorized_bytes"] != 0:
-              raise RuntimeError("training bytes fabricated")
-          if truth["authorized_optimized_target_exposure"] != 0:
-              raise RuntimeError("target exposure fabricated")
-          if truth["optimizer_updates_executed_on_real_targets"] != 0:
-              raise RuntimeError("optimizer update fabricated")
-          for key in (
-              "tokenizer_fit_authorized",
-              "training_executed",
-              "learned_weights_created",
-              "final_test_outcomes_read",
-              "paid_compute_used",
-          ):
-              if truth[key] is not False:
-                  raise RuntimeError(f"truth boundary widened: {key}")
+          if truth != expected_truth:
+              raise RuntimeError("truth boundary drift")
+
+          expected_content = {
+              "raw_training_text_persisted": False,
+              "raw_evaluation_text_persisted": False,
+              "raw_survivor_text_persisted": False,
+              "durable_output_text_free": True,
+          }
+          if evidence["content_boundary"] != expected_content:
+              raise RuntimeError("content boundary drift")
+          blobs = evidence["authority_blobs"]
+          if not isinstance(blobs, dict) or not blobs:
+              raise RuntimeError("authority Git blobs missing")
+          for path, blob in blobs.items():
+              if (
+                  not isinstance(path, str)
+                  or not path
+                  or not isinstance(blob, str)
+                  or len(blob) != 40
+                  or any(ch not in "0123456789abcdef" for ch in blob)
+              ):
+                  raise RuntimeError("authority Git blob map drift")
 
           forbidden = {
               "text",
