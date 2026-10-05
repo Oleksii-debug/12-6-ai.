@@ -223,9 +223,9 @@ def test_finite_scheduler_snapshot_or_live_epoch_forgery_refused(
         saved = copy.deepcopy(original())
         if attack == "live-epoch" and len(calls) == 1:
             scheduler.last_epoch += 1
-        elif attack == "detached-epoch" and len(calls) == 2:
+        elif attack == "detached-epoch":
             saved["last_epoch"] += 1
-        elif attack == "detached-last-lr" and len(calls) == 2:
+        elif attack == "detached-last-lr":
             saved["_last_lr"][0] *= 0.5
         return saved
 
