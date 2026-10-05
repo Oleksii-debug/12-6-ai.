@@ -467,6 +467,18 @@ def _preflight_trainer_state_without_rng_guard(
                         f"checkpoint trainer {field} has non-finite or invalid numeric state"
                     ) from exc
 
+    # D02 owns learned-step chronology. Check its pure contract here while
+    # checkpoint data is still decoded and BEFORE D05 touches model/RNG state.
+    # Generic trainer adapters remain under their own stateful-load semantics.
+    chronology_check = getattr(trainer, "_require_checkpoint_scheduler_chronology", None)
+    if canonical_d02 and callable(chronology_check):
+        try:
+            chronology_check(state.get("scheduler"), state["optimizer_step"])
+        except (ValueError, TypeError) as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint trainer scheduler chronology mismatch"
+            ) from exc
+
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
         if not hasattr(trainer, "load_state_dict"):
