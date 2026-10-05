@@ -180,6 +180,11 @@ class Trainer:
         self._canonical_default_schedule = (
             optimizer is None and scheduler is None and type(self.scheduler) is LambdaLR
         )
+        # The default constant/no-warmup path has no LambdaLR object, but
+        # its AdamW LR is still an immutable part of the training contract.
+        self._canonical_unscheduled_default_optimizer = (
+            optimizer is None and scheduler is None and self.scheduler is None
+        )
         self.scaler = self._build_scaler()
 
         self.micro_step = 0
@@ -397,6 +402,7 @@ class Trainer:
         # pre-backward check; a completed step must remain checkpoint-safe.
         self._require_optimizer_parameter_coverage()
         self._require_safe_optimizer_hyperparameters()
+        self._require_constant_default_rate({"param_groups": self.optimizer.param_groups})
         self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
         if self.scheduler is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
@@ -987,6 +993,7 @@ class Trainer:
         self._require_default_schedule_rates(
             scheduler_state, optimizer_step, optimizer_state,
         )
+        self._require_constant_default_rate(optimizer_state)
 
     def _require_default_schedule_rates(
         self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
@@ -1044,6 +1051,42 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "default scheduler rate differs from configured committed schedule"
                 )
+
+    def _require_constant_default_rate(self, optimizer_state: Any) -> None:
+        """Reject forged finite LR on the default AdamW path without a scheduler.
+
+        This first-party constant/no-warmup path has no LambdaLR state for
+        the configured-rate oracle to inspect. Check both live publication
+        and saved state before direct or D05 model/optimizer application.
+        Custom/injected optimizers keep their existing rate policy.
+        """
+        if not self._canonical_unscheduled_default_optimizer:
+            return
+        groups = (
+            optimizer_state.get("param_groups")
+            if isinstance(optimizer_state, Mapping) else None
+        )
+        if (
+            not isinstance(groups, list)
+            or len(groups) != 1
+            or not isinstance(groups[0], Mapping)
+            or type(groups[0].get("lr")) not in (int, float)
+        ):
+            raise TrainingStateInvalidError("default constant optimizer rate is malformed")
+        try:
+            observed = float(groups[0]["lr"])
+        except (OverflowError, ValueError) as exc:
+            raise TrainingStateInvalidError(
+                "default constant optimizer rate is malformed"
+            ) from exc
+        expected = float(self.config.learning_rate)
+        if (
+            not math.isfinite(observed)
+            or struct.pack("!d", observed) != struct.pack("!d", expected)
+        ):
+            raise TrainingStateInvalidError(
+                "default constant optimizer rate differs from configured learning rate"
+            )
 
     def _require_exported_scaler_matches_live(self, exported: Any) -> None:
         """Refuse finite, detached GradScaler statistics that cannot replay."""
