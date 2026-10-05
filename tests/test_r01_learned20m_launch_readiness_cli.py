@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -79,6 +82,91 @@ def test_strict_loader_requires_object_root(tmp_path: Path, raw: str) -> None:
         tool._load_packet(_write(tmp_path, raw))
 
 
+def test_missing_secret_launch_path_is_redacted(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tool = _load_tool()
+    secret = "PRIVATE-READINESS-PATH-998877"
+    missing = tmp_path / f"{secret}.json"
+    assert tool.main(["assess", str(missing)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload == {"error": "invalid launch packet: cannot read launch packet"}
+    assert secret not in captured.out
+
+
+def test_launch_packet_fifo_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "readiness FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(fifo)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=5,
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout) == {
+        "error": "invalid launch packet: launch packet must be a regular file"
+    }
+
+
+def test_readiness_loader_detects_regular_file_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = _load_tool()
+    requested = tmp_path / "requested.json"
+    substitute = tmp_path / "substitute.json"
+    requested.write_text("{}", encoding="utf-8")
+    substitute.write_text("{}", encoding="utf-8")
+    actual_open = tool.os.open
+
+    def open_substitute(_path: Path, flags: int) -> int:
+        return actual_open(substitute, flags)
+
+    monkeypatch.setattr(tool.os, "open", open_substitute)
+    with pytest.raises(ValueError, match="changed between check and open"):
+        tool._load_packet(requested)
+
+
+def test_readiness_loader_supports_valid_regular_symlink(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    source = tmp_path / "source.json"
+    source.write_text('{"schema_version":1}', encoding="utf-8")
+    linked = tmp_path / "readiness link.json"
+    linked.symlink_to(source.resolve())
+    assert _load_tool()._load_packet(linked) == {"schema_version": 1}
+
+
+@pytest.mark.parametrize("negative", [False, True])
+def test_readiness_loader_bounds_integer_before_conversion(
+    tmp_path: Path,
+    negative: bool,
+) -> None:
+    tool = _load_tool()
+    literal = ("-" if negative else "") + "9" * 100_000
+    path = _write(tmp_path, '{"value":' + literal + "}")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            tool._load_packet(path)
+    finally:
+        sys.set_int_max_str_digits(before)
+
+
 def test_main_reports_decode_failure_without_traceback(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -115,3 +203,209 @@ def test_main_reports_missing_file_without_traceback(
     response = json.loads(captured.out)
     assert response["error"].startswith("invalid launch packet:")
     assert captured.err == ""
+
+
+@pytest.mark.parametrize("token", ["1e-9999", "-1e-9999", "0.001e-9999"])
+def test_loader_rejects_nonzero_decimal_underflow(tmp_path: Path, token: str) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="nonzero JSON number underflowed to zero"):
+        tool._load_packet(_write(tmp_path, '{"maximum_cost_usd":' + token + '}'))
+
+
+@pytest.mark.parametrize("token", ["0e-9999", "-0.000e-9999", "0.0"])
+def test_loader_preserves_lexical_decimal_zero(tmp_path: Path, token: str) -> None:
+    tool = _load_tool()
+    assert tool._load_packet(_write(tmp_path, '{"value":' + token + '}')) == {
+        "value": 0.0
+    }
+
+
+@pytest.mark.parametrize(
+    ("raw", "error"),
+    [
+        pytest.param(b" " * 1_048_577, "input byte limit", id="oversized"),
+        pytest.param(
+            ('{"nested":' + "[" * 80 + "0" + "]" * 80 + "}").encode("utf-8"),
+            "JSON structure limit",
+            id="depth",
+        ),
+        pytest.param(
+            ('{"items":[' + ",".join(["0"] * 10_010) + "]}").encode("utf-8"),
+            "JSON structure limit",
+            id="nodes",
+        ),
+        pytest.param(br'{"\ud800":"bad"}', "surrogates not allowed", id="surrogate-key"),
+        pytest.param(br'{"value":"\ud800"}', "surrogates not allowed", id="surrogate-value"),
+        pytest.param(b'{"value":"\xff"}', "decode", id="invalid-utf8"),
+    ],
+)
+def test_loader_bounds_untrusted_json(
+    tmp_path: Path, raw: bytes, error: str,
+) -> None:
+    tool = _load_tool()
+    path = tmp_path / "зовнішній пакет із пробілами.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError, match=error):
+        tool._load_packet(path)
+
+
+def test_main_rejects_oversized_file_without_scientific_assessment(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    tool = _load_tool()
+    path = tmp_path / "пакет із пробілами.json"
+    path.write_bytes(b" " * (tool.MAX_INPUT_BYTES + 1))
+    assert tool.main(["assess", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    result = json.loads(captured.out)
+    assert "input byte limit" in result["error"]
+
+
+def test_loader_preserves_checked_in_readiness_packet() -> None:
+    tool = _load_tool()
+    path = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
+    assert tool._load_packet(path) == json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_real_cli_rejects_oversized_unicode_path_without_science(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "зовнішній пакет із пробілами.json"
+    path.write_bytes(b" " * 1_048_577)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(path)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert "input byte limit" in json.loads(completed.stdout)["error"]
+
+
+def test_real_cli_keeps_canonical_unready_state() -> None:
+    path = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(path)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 1
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout)["material_training_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "api_token_sk_live_123456",
+        "Authorization: Bearer private-value",
+        "password=hunter2",
+    ],
+)
+def test_duplicate_member_refusal_does_not_echo_untrusted_key(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    secret_key: str,
+) -> None:
+    tool = _load_tool()
+    raw = json.dumps({secret_key: 1})[:-1] + "," + json.dumps(secret_key) + ":2}"
+    path = _write(tmp_path, raw)
+    assert tool.main(["assess", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    response = json.loads(captured.out)
+    assert response["error"].endswith("duplicate object member")
+    assert secret_key not in captured.out
+
+
+def test_duplicate_member_loader_error_is_generic(tmp_path: Path) -> None:
+    tool = _load_tool()
+    secret_key = "private-secret-field"
+    raw = '{"' + secret_key + '":1,"' + secret_key + '":2}'
+    with pytest.raises(ValueError, match=r"^duplicate object member$") as exc:
+        tool._load_packet(_write(tmp_path, raw))
+    assert secret_key not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "extra_args",
+    [
+        ["second-packet.json"],
+        ["--unknown"],
+        ["second-packet.json", "--unknown"],
+    ],
+)
+def test_main_rejects_extra_arguments_without_reading_inputs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    extra_args: list[str],
+) -> None:
+    tool = _load_tool()
+    first = tmp_path / "must-not-be-read.json"
+    first.write_text('{"schema_version":1}', encoding="utf-8")
+    assert tool.main(["assess", str(first), *extra_args]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    response = json.loads(captured.out)
+    assert response == {
+        "error": "invalid arguments: expected at most one packet path"
+    }
+
+
+def test_real_cli_rejects_extra_argument_without_traceback(tmp_path: Path) -> None:
+    first = tmp_path / "packet.json"
+    first.write_text('{"schema_version":1}', encoding="utf-8")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(first), "unexpected"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout) == {
+        "error": "invalid arguments: expected at most one packet path"
+    }
+
+
+def test_default_packet_path_is_bound_to_repository_root() -> None:
+    tool = _load_tool()
+    assert tool.DEFAULT_PATH == (
+        ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
+    )
+
+
+def test_real_cli_default_packet_works_outside_repository_cwd(tmp_path: Path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 1
+    assert completed.stderr == ""
+    result = json.loads(completed.stdout)
+    assert result["material_training_authorized"] is False
