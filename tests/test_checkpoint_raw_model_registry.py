@@ -229,6 +229,30 @@ def test_model_fingerprint_tracks_buffer_persistence_topology() -> None:
     assert before != after
 
 
+def test_training_mode_check_rejects_eval_child_module() -> None:
+    class NestedModeModel(_TwoParameters):
+        def __init__(self) -> None:
+            super().__init__()
+            self.child = torch.nn.Identity()
+
+    model = NestedModeModel()
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    model.child.eval()
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="requires model training mode",
+    ):
+        trainer_adapter._assert_native_d02_model_training_mode(model, trainer)
+
+    assert model.training is True
+    assert model.child.training is False
+
+
 def test_training_mode_check_ignores_armed_model_dict_descriptor() -> None:
     model = _ArmedDictModel()
     trainer = Trainer(
