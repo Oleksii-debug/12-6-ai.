@@ -194,7 +194,11 @@ def test_checksum_valid_numpy_nan_moment_refused_before_model_apply_and_retryabl
         touched.append(True)
         raise AssertionError("invalid optimizer moments reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = {"expected_step": 1, "expected_tokens_seen": 2} if (
         loader is progress_trainer
     ) else {}
