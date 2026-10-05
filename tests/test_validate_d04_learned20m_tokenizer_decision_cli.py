@@ -687,7 +687,7 @@ def test_link_create_then_raise_is_reconciled_as_committed(
 
 
 @pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
-def test_postcreate_process_interrupt_rolls_back_owned_final_and_rethrows(
+def test_postcreate_process_interrupt_preserves_recovery_state_and_rethrows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     interruption: type[BaseException],
@@ -695,6 +695,9 @@ def test_postcreate_process_interrupt_rolls_back_owned_final_and_rethrows(
     cli = _module()
     output = tmp_path / "interrupted.json"
     actual_link = cli.os.link
+    expected = cli._serialize_report(
+        {"schema": "test-only", "status": "zero-credit"}
+    ).encode("utf-8")
 
     def link_then_interrupt(stage: Path, final: Path) -> None:
         actual_link(stage, final)
@@ -703,40 +706,38 @@ def test_postcreate_process_interrupt_rolls_back_owned_final_and_rethrows(
     monkeypatch.setattr(cli.os, "link", link_then_interrupt)
     with pytest.raises(interruption, match="post-create interruption"):
         cli._write(output, {"schema": "test-only", "status": "zero-credit"})
-    assert not output.exists()
-    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
 
+    assert output.read_bytes() == expected
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == expected
 
-def test_postcreate_interrupt_with_rollback_denial_retains_stage(
+def test_postcreate_interrupt_never_attempts_pathname_rollback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cli = _module()
-    output = tmp_path / "rollback-denied.json"
+    output = tmp_path / "rollback-must-not-run.json"
     actual_link = cli.os.link
-    actual_unlink = Path.unlink
+    unlink_calls: list[Path] = []
 
     def link_then_interrupt(stage: Path, final: Path) -> None:
         actual_link(stage, final)
         raise KeyboardInterrupt("injected post-create interruption")
 
-    def deny_final_unlink(path: Path, *args: object, **kwargs: object) -> None:
-        if path == output:
-            raise PermissionError("injected rollback denial")
-        actual_unlink(path, *args, **kwargs)
+    def forbidden_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        unlink_calls.append(path)
+        raise AssertionError("interrupted publication must not unlink pathnames")
 
     monkeypatch.setattr(cli.os, "link", link_then_interrupt)
-    monkeypatch.setattr(Path, "unlink", deny_final_unlink)
-    with pytest.raises(
-        cli.PublicationIndeterminate, match="ROLLBACK_INDETERMINATE"
-    ) as caught:
+    monkeypatch.setattr(Path, "unlink", forbidden_unlink)
+    with pytest.raises(KeyboardInterrupt, match="post-create interruption"):
         cli._write(output, {"schema": "test-only", "status": "zero-credit"})
-    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
-    assert len(staged) == 1 and caught.value.staged == staged[0]
-    assert output.exists()
-    actual_unlink(output)
-    actual_unlink(staged[0])
 
+    assert unlink_calls == []
+    assert output.exists()
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1
 
 def test_staging_identity_failure_closes_descriptor_and_preserves_residue(
     tmp_path: Path,
@@ -807,7 +808,7 @@ def test_failed_link_cleanup_preserves_substituted_stage(
     assert not output.exists()
 
 
-def test_interrupt_rollback_preserves_substituted_final(
+def test_interrupt_never_enters_owned_unlink_hook(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -820,35 +821,35 @@ def test_interrupt_rollback_preserves_substituted_final(
     ).encode("utf-8")
     actual_link = cli.os.link
     actual_unlink_owned = cli._unlink_owned_path
+    unlink_hook_called = False
 
     def link_then_interrupt(stage: Path, final: Path) -> None:
         actual_link(stage, final)
         raise KeyboardInterrupt("injected post-create interruption")
 
-    def substitute_before_rollback(
+    def substitute_if_rollback_attempted(
         candidate: Path,
         identity: tuple[int, int],
         *,
         missing_ok: bool = False,
     ) -> None:
+        nonlocal unlink_hook_called
+        unlink_hook_called = True
         if candidate == output:
             candidate.rename(moved)
             candidate.write_bytes(unrelated)
         actual_unlink_owned(candidate, identity, missing_ok=missing_ok)
 
     monkeypatch.setattr(cli.os, "link", link_then_interrupt)
-    monkeypatch.setattr(cli, "_unlink_owned_path", substitute_before_rollback)
-    with pytest.raises(
-        cli.PublicationIndeterminate,
-        match="ROLLBACK_INDETERMINATE",
-    ):
+    monkeypatch.setattr(cli, "_unlink_owned_path", substitute_if_rollback_attempted)
+    with pytest.raises(KeyboardInterrupt, match="post-create interruption"):
         cli._write(output, {"schema": "test-only", "status": "zero-credit"})
 
-    assert output.read_bytes() == unrelated
-    assert moved.read_bytes() == expected
+    assert unlink_hook_called is False
+    assert not moved.exists()
+    assert output.read_bytes() == expected
     staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert len(staged) == 1 and staged[0].read_bytes() == expected
-
 
 def test_same_size_staged_mutation_during_link_is_not_reported_committed(
     tmp_path: Path,
