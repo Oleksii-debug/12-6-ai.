@@ -14,6 +14,7 @@ from twelve_six.learned20m_evaluation_firewall import EvaluationFirewallError, v
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_POLICY = Path("configs/evaluation/learned20m_evaluation_firewall_v1.json")
 MAX_INPUT_BYTES = 1_048_576
+MAX_JSON_INTEGER_DIGITS = 64
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -33,7 +34,16 @@ def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError("JSON number is not finite")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero JSON number underflowed to zero")
     return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.removeprefix("-")) > MAX_JSON_INTEGER_DIGITS:
+        raise ValueError("JSON integer exceeds 64 digits")
+    return int(value)
 
 
 def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
@@ -69,6 +79,7 @@ def _load_policy(path: Path) -> dict[str, Any]:
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_constant,
             parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
         )
     except RecursionError as exc:
         raise ValueError("evaluation firewall policy JSON nesting limit exceeded") from exc
