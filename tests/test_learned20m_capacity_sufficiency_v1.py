@@ -424,13 +424,15 @@ def test_capacity_report_fifo_with_no_writer_never_blocks(tmp_path: Path) -> Non
     os.mkfifo(fifo)
     # A subprocess timeout makes the test itself finite if the reader regresses.
     program = (
-        "import sys; "
+        "import sys\n"
         "from twelve_six.learned20m_capacity_sufficiency_v1 import "
-        "CapacityReportError, load_and_validate; "
-        "p=sys.argv[1]; "
-        "exec('try:\\n load_and_validate(p)\\nexcept CapacityReportError as e:\\n "
-        "assert str(e) == \\"capacity report must be a regular file\\"\\nelse:\\n "
-        "raise AssertionError(\\"FIFO accepted\\")')"
+        "CapacityReportError, load_and_validate\n"
+        "try:\n"
+        "    load_and_validate(sys.argv[1])\n"
+        "except CapacityReportError as exc:\n"
+        "    assert str(exc) == 'capacity report must be a regular file'\n"
+        "else:\n"
+        "    raise AssertionError('FIFO unexpectedly accepted')\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", program, str(fifo)],
