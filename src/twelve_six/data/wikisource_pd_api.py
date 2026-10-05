@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
@@ -24,6 +25,8 @@ from twelve_six.data.wikisource_pd_contract import (
 
 VALIDATED_PROOFREAD_QUALITY = 4
 SHORT_PAGE_REJECTION_REASON = "BELOW_MINIMUM_UTF8_BYTES_AFTER_EXACT_APPROVED_RENDER"
+MAX_API_RESPONSE_BYTES = 8 * 1024 * 1024
+MAX_JSON_INTEGER_DIGITS = 64
 
 
 @dataclass(frozen=True)
@@ -97,6 +100,59 @@ def rendered_html_to_text(value: str) -> str:
     return normalize_rendered_text(parser.text())
 
 
+def _reject_duplicate_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise WikisourceIntakeError("MediaWiki API JSON has duplicate object member")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_constant(value: str) -> None:
+    raise WikisourceIntakeError(f"MediaWiki API JSON has non-finite constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise WikisourceIntakeError("MediaWiki API JSON has non-finite number")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise WikisourceIntakeError("MediaWiki API JSON number underflowed to zero")
+    return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.removeprefix("-")) > MAX_JSON_INTEGER_DIGITS:
+        raise WikisourceIntakeError("MediaWiki API JSON integer exceeds 64 digits")
+    return int(value)
+
+
+def _decode_api_payload(payload: bytes) -> dict[str, Any]:
+    if len(payload) > MAX_API_RESPONSE_BYTES:
+        raise WikisourceIntakeError("MediaWiki API response exceeds byte limit")
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise WikisourceIntakeError("MediaWiki API response is not valid UTF-8") from exc
+    try:
+        value = json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_members,
+            parse_constant=_reject_nonstandard_constant,
+            parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
+        )
+    except json.JSONDecodeError as exc:
+        raise WikisourceIntakeError("MediaWiki API response is not valid JSON") from exc
+    except RecursionError as exc:
+        raise WikisourceIntakeError("MediaWiki API JSON nesting limit exceeded") from exc
+    if not isinstance(value, dict) or "error" in value:
+        raise WikisourceIntakeError("MediaWiki API returned an error")
+    return value
+
+
 def request_json(params: dict[str, str], *, timeout: float = 30.0) -> dict[str, Any]:
     query = urllib.parse.urlencode({**params, "format": "json", "formatversion": "2"})
     request = urllib.request.Request(
@@ -104,11 +160,8 @@ def request_json(params: dict[str, str], *, timeout: float = 30.0) -> dict[str, 
         headers={"User-Agent": "12-6-ai-local-free-wikisource-intake/1.0"},
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        payload = response.read()
-    value = json.loads(payload.decode("utf-8"))
-    if not isinstance(value, dict) or "error" in value:
-        raise WikisourceIntakeError("MediaWiki API returned an error")
-    return value
+        payload = response.read(MAX_API_RESPONSE_BYTES + 1)
+    return _decode_api_payload(payload)
 
 
 def _validated_sorted_page_titles(rows: Any, *, source: str) -> list[str]:

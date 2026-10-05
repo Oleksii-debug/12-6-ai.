@@ -3,15 +3,19 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import sys
 import unicodedata
 from pathlib import Path
 
 import pytest
 
+from twelve_six.data import wikisource_pd_api as api_module
 from twelve_six.data.wikisource_pd_api import (
+    MAX_API_RESPONSE_BYTES,
     PageSnapshot,
     discover_index_titles,
     fetch_page_snapshot,
+    request_json,
 )
 from twelve_six.data.wikisource_pd_contract import (
     APPROVED_CATEGORY,
@@ -40,6 +44,95 @@ def _snapshot(
         sha256=hashlib.sha256(payload).hexdigest(),
         utf8_bytes=len(payload),
     )
+
+
+
+class _FakeResponse:
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
+        self.read_sizes: list[int] = []
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self, size: int = -1) -> bytes:
+        self.read_sizes.append(size)
+        if size < 0:
+            return self.payload
+        return self.payload[:size]
+
+
+def _patch_urlopen(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: bytes,
+) -> _FakeResponse:
+    response = _FakeResponse(payload)
+    monkeypatch.setattr(
+        api_module.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: response,
+    )
+    return response
+
+
+def test_request_json_bounds_response_before_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = b" " * (MAX_API_RESPONSE_BYTES + 1)
+    response = _patch_urlopen(monkeypatch, payload)
+    with pytest.raises(WikisourceIntakeError, match="exceeds byte limit"):
+        request_json({"action": "query"})
+    assert response.read_sizes == [MAX_API_RESPONSE_BYTES + 1]
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b'{"a":1,"a":2}', "duplicate object member"),
+        (b'{"value":NaN}', "non-finite constant"),
+        (b'{"value":1e400}', "non-finite number"),
+        (b'{"value":1e-9999}', "underflowed to zero"),
+        (b"\xff", "not valid UTF-8"),
+        (b'{"error":{"code":"bad"}}', "returned an error"),
+    ],
+)
+def test_request_json_rejects_ambiguous_or_invalid_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: bytes,
+    message: str,
+) -> None:
+    _patch_urlopen(monkeypatch, payload)
+    with pytest.raises(WikisourceIntakeError, match=message):
+        request_json({"action": "query"})
+
+
+def test_request_json_bounds_integer_before_python_conversion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = ('{"value":' + "9" * 100_000 + "}").encode("ascii")
+    _patch_urlopen(monkeypatch, payload)
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(WikisourceIntakeError, match="integer exceeds 64 digits"):
+            request_json({"action": "query"})
+    finally:
+        sys.set_int_max_str_digits(before)
+
+
+def test_request_json_accepts_small_strict_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _patch_urlopen(
+        monkeypatch,
+        b'{"query":{"pages":[]},"batchcomplete":true}',
+    )
+    value = request_json({"action": "query"})
+    assert value == {"query": {"pages": []}, "batchcomplete": True}
+    assert response.read_sizes == [MAX_API_RESPONSE_BYTES + 1]
 
 
 def test_normalization_is_nfc_lf_and_stanza_stable() -> None:
