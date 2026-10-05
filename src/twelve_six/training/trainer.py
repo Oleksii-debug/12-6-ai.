@@ -10,8 +10,8 @@ import struct
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
-from typing import Any
 from types import FunctionType
+from typing import Any
 
 import numpy as np
 import torch
