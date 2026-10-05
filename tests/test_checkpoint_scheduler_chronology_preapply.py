@@ -523,11 +523,6 @@ def test_noncallable_trainer_loader_fails_before_model_and_rng(
 )
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
 @pytest.mark.parametrize(
-    "loader", [trainer_adapter, progress_trainer],
-    ids=["adapter", "progress"],
-)
-@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
-@pytest.mark.parametrize(
     "authority",
     [
         "_require_finite_auxiliary_state",
@@ -584,6 +579,70 @@ def test_late_missing_d02_authority_fails_before_model_apply(
     torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
 
 
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_trainer_model_rebind_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-model-rebind-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    initial_weights = original_model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+    replacement: list[Any] = []
+
+    def prepare_then_rebind(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        rebound = _TinyLogits()
+        replacement.append(rebound)
+        target.model = rebound
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("late trainer model rebind reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_rebind)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="owns a different model",
+    ):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert replacement and target.model is replacement[0]
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(original_model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
 def test_late_noncallable_trainer_loader_fails_before_model_apply(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     loader: Any, restore_rng: bool,
