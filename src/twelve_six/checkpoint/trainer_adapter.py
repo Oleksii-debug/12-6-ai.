@@ -984,7 +984,7 @@ def load_trainer_checkpoint(
     # model mutation. The trainer can be rebound while model-scale weights are
     # materialized; never apply weights to a model the trainer no longer owns.
     _assert_trainer_model_binding(model, trainer)
-    _preflight_trainer_target(trainer)
+    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
     load_trainer_state = _bind_trainer_state_loader(trainer)
 
     # State loaders may draw from process RNG even when they succeed.
