@@ -1470,11 +1470,13 @@ with TemporaryDirectory() as raw:
     manifest_identity = mod._regular_file_identity(manifest, label="test manifest")
 
     stage_rows = []
-    for (_, payload), stage in zip(prepared, stages, strict=True):
+    final_rows = []
+    for (final, payload), stage in zip(prepared, stages, strict=True):
         mod._write_create_only_durable(stage, payload)
-        stage_rows.append(
-            (stage, mod._regular_file_identity(stage, label="test stage"))
-        )
+        identity = mod._regular_file_identity(stage, label="test stage")
+        stage_rows.append((stage, identity))
+        mod._link_staged_output(stage, final)
+        final_rows.append((final, identity))
 
     owned_stage = root / "owned-stage-moved-aside"
     stages[0].rename(owned_stage)
@@ -1487,6 +1489,8 @@ with TemporaryDirectory() as raw:
         manifest,
         manifest_identity,
         stage_rows,
+        prepared,
+        final_rows,
     )
     assert stages[0].read_bytes() == unrelated
     assert owned_stage.read_bytes() == prepared[0][1]
@@ -2284,6 +2288,65 @@ with TemporaryDirectory() as raw:
     assert not manifest.exists()
     assert not any(stage.exists() for stage in stages)
     assert not any(path.exists() for path, _ in values)
+"""
+    )
+
+
+def test_committed_cleanup_rebinds_finals_before_discarding_manifest() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    mod._write_create_only_durable(stages[0], payload)
+    mod._link_staged_output(stages[0], final)
+    mod._unlink_owned_path(marker, marker_identity, label="test marker")
+
+    moved = root / "owned-final-before-cleanup"
+    foreign = b"FOREIGN_FINAL_BEFORE_RESIDUE_CLEANUP"
+    actual_verify = mod._verify_committed_finals_before_cleanup
+    verify_calls = [0]
+
+    def verify_then_swap(prepared_arg, linked_finals):
+        actual_verify(prepared_arg, linked_finals)
+        verify_calls[0] += 1
+        if verify_calls[0] == 1:
+            final.rename(moved)
+            final.write_bytes(foreign)
+
+    mod._verify_committed_finals_before_cleanup = verify_then_swap
+    try:
+        try:
+            mod._recover_committed_publication_residue(
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "COMMITTED" in str(exc)
+            assert "recovery residue retained" in str(exc)
+        else:
+            raise AssertionError("late committed-final cleanup swap was accepted")
+    finally:
+        mod._verify_committed_finals_before_cleanup = actual_verify
+
+    assert verify_calls == [1]
+    assert final.read_bytes() == foreign
+    assert moved.read_bytes() == payload
+    assert stages[0].read_bytes() == payload
+    assert manifest.exists()
 """
     )
 
