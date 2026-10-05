@@ -106,8 +106,19 @@ def _is_twelve_six_module(name: str) -> bool:
 
 
 def _validate_historical_namespace(source_root: Path) -> None:
+    package_root = (source_root / "twelve_six").resolve(strict=True)
     for name, module in tuple(sys.modules.items()):
         if not _is_twelve_six_module(name):
+            continue
+        if name == "twelve_six":
+            paths = tuple(
+                Path(value).resolve(strict=True)
+                for value in getattr(module, "__path__", ())
+            )
+            if paths != (package_root,):
+                raise ExpandedDedupError(
+                    "historical root namespace escaped exact V7 package"
+                )
             continue
         _require_historical_module(module, name, source_root)
 
