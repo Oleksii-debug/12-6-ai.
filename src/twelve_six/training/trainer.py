@@ -1019,6 +1019,19 @@ class Trainer:
                 raise ValueError(
                     "enabled gradient scaler checkpoint statistics invalid in float32"
                 )
+            # GradScaler unscales with the float32 reciprocal. A subnormal,
+            # positive scale can be representable while its inverse becomes
+            # infinity, corrupting an otherwise finite optimizer update.
+            try:
+                inverse32 = struct.unpack("!f", struct.pack("!f", 1.0 / scale32))[0]
+            except (OverflowError, struct.error) as exc:
+                raise ValueError(
+                    "enabled gradient scaler checkpoint statistics invalid in float32"
+                ) from exc
+            if not math.isfinite(inverse32):
+                raise ValueError(
+                    "enabled gradient scaler checkpoint statistics invalid in float32"
+                )
         if (
             not self.scaler.is_enabled()
             and scaler_state is not None
