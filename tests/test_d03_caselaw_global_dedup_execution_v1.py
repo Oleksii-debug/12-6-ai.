@@ -1465,7 +1465,9 @@ with TemporaryDirectory() as raw:
         (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
     )
     _, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
-    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    manifest_value, manifest_payload = mod._publication_manifest(
+        prepared, stages, pathset_id
+    )
     mod._write_create_only_durable(manifest, manifest_payload)
     manifest_identity = mod._regular_file_identity(manifest, label="test manifest")
 
@@ -1488,6 +1490,7 @@ with TemporaryDirectory() as raw:
     mod._cleanup_committed_publication_residue(
         manifest,
         manifest_identity,
+        manifest_value,
         stage_rows,
         prepared,
         final_rows,
@@ -1823,6 +1826,64 @@ else:
 assert calls == [url, url]
 assert sleeps == [0.25]
 assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_incomplete_recovery_rejects_manifest_mutation_before_payload_effects() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest_path, stages, pathset_id = mod._publication_control_paths(
+        prepared
+    )
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    mod._write_create_only_durable(manifest_path, manifest_payload)
+    mod._write_create_only_durable(stages[0], payload)
+    mod._link_staged_output(stages[0], final)
+
+    foreign_manifest = b"FOREIGN_MANIFEST_MUTATION"
+    actual_load = mod._load_publication_manifest
+    load_calls = [0]
+
+    def load_then_mutate(path):
+        value = actual_load(path)
+        load_calls[0] += 1
+        if load_calls[0] == 1:
+            Path(path).write_bytes(foreign_manifest)
+        return value
+
+    mod._load_publication_manifest = load_then_mutate
+    try:
+        try:
+            mod._recover_incomplete_publication(
+                marker,
+                manifest_path,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError:
+            pass
+        else:
+            raise AssertionError("in-place manifest mutation was accepted")
+    finally:
+        mod._load_publication_manifest = actual_load
+
+    assert load_calls == [1]
+    assert final.read_bytes() == payload
+    assert stages[0].read_bytes() == payload
+    assert manifest_path.read_bytes() == foreign_manifest
+    assert marker.exists()
 """
     )
 
@@ -2288,6 +2349,71 @@ with TemporaryDirectory() as raw:
     assert not manifest.exists()
     assert not any(stage.exists() for stage in stages)
     assert not any(path.exists() for path, _ in values)
+"""
+    )
+
+
+def test_committed_cleanup_rejects_in_place_manifest_mutation() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    mod._write_create_only_durable(stages[0], payload)
+    mod._link_staged_output(stages[0], final)
+    mod._unlink_owned_path(marker, marker_identity, label="test marker")
+
+    foreign_manifest = b"FOREIGN_COMMITTED_MANIFEST"
+    actual_cleanup = mod._cleanup_committed_publication_residue
+
+    def mutate_then_cleanup(
+        manifest_path,
+        manifest_identity,
+        expected_manifest,
+        stage_rows,
+        prepared_arg,
+        linked_finals,
+    ):
+        Path(manifest_path).write_bytes(foreign_manifest)
+        return actual_cleanup(
+            manifest_path,
+            manifest_identity,
+            expected_manifest,
+            stage_rows,
+            prepared_arg,
+            linked_finals,
+        )
+
+    mod._cleanup_committed_publication_residue = mutate_then_cleanup
+    try:
+        try:
+            mod._recover_committed_publication_residue(
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError:
+            pass
+        else:
+            raise AssertionError("committed manifest mutation was accepted")
+    finally:
+        mod._cleanup_committed_publication_residue = actual_cleanup
+
+    assert final.read_bytes() == payload
+    assert stages[0].read_bytes() == payload
+    assert manifest.read_bytes() == foreign_manifest
 """
     )
 
