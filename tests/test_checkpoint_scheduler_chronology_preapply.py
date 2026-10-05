@@ -1756,3 +1756,63 @@ def test_d05_model_loader_is_looked_up_once_before_apply(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
 
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_model_loader_replacement_during_materialization_is_not_reopened(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-model-loader-replacement-дані з пробілами"
+    core.save_checkpoint(
+        path,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    actual_prepare = loader._prepare_model_weights
+    descriptor_lookups: list[bool] = []
+
+    class ForbiddenLateModelLoader:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            descriptor_lookups.append(True)
+            raise AssertionError("late model loader replacement was reopened")
+
+    def prepare_then_replace_loader(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        monkeypatch.setattr(
+            _TinyLogits,
+            "load_state_dict",
+            ForbiddenLateModelLoader(),
+        )
+        return materialized
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_replace_loader)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    loader.load_trainer_checkpoint(
+        path,
+        model=original_model,
+        trainer=target,
+        strict_model=False,
+        restore_rng=restore_rng,
+        **extra,
+    )
+
+    assert descriptor_lookups == []
+    assert isinstance(_TinyLogits.__dict__["load_state_dict"], ForbiddenLateModelLoader)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    torch.testing.assert_close(original_model.weight, source.model.weight, rtol=0, atol=0)
+
