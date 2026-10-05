@@ -1003,6 +1003,56 @@ with TemporaryDirectory() as raw:
 
 
 
+
+def test_durable_create_failure_never_unlinks_substituted_path() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    path = root / "output.json"
+    moved = root / "owned-output-moved-aside"
+    payload = b'{"owned":true}\\n'
+    unrelated = b"UNRELATED_REPLACEMENT"
+
+    actual_fsync = mod.os.fsync
+    actual_unlink_owned = mod._unlink_owned_path
+
+    def fail_fsync(_fd):
+        raise OSError("injected durable-create fsync failure")
+
+    def substitute_before_cleanup(candidate, identity, *, label, missing_ok=False):
+        if label == "failed durable create":
+            candidate.rename(moved)
+            candidate.write_bytes(unrelated)
+        return actual_unlink_owned(
+            candidate,
+            identity,
+            label=label,
+            missing_ok=missing_ok,
+        )
+
+    mod.os.fsync = fail_fsync
+    mod._unlink_owned_path = substitute_before_cleanup
+    try:
+        try:
+            mod._write_create_only_durable(path, payload)
+        except mod.PublicationWriteCleanupError as exc:
+            assert "cleanup failed" in str(exc)
+            assert "ownership changed before unlink" in str(exc)
+        else:
+            raise AssertionError("substituted failed-create path was accepted")
+    finally:
+        mod.os.fsync = actual_fsync
+        mod._unlink_owned_path = actual_unlink_owned
+
+    assert path.read_bytes() == unrelated
+    assert moved.read_bytes() == payload
+"""
+    )
+
+
 def test_publication_preserves_unrelated_marker_path() -> None:
     _run_isolated(
         """
