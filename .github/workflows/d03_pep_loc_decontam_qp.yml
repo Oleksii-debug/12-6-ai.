@@ -1,0 +1,657 @@
+name: D03 PEP LoC post-QP two-clean execution
+
+on:
+  pull_request:
+    branches:
+      - execution/d03-pep-loc-v10-two-clean-g8-138-20261005
+    paths:
+      - ".github/workflows/d03_pep_loc_decontam_qp.yml"
+      - "tools/run_d03_pep_loc_decontam_qp_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-pep-loc-postqp-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-pep-loc-postqp-g6-123-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      D03_EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      CLEAN_ARTIFACT_ID: "10820342689"
+      CLEAN_ARTIFACT_ZIP_SHA256: "99069ce2183abbbc374749cca5c538efa259df0c64658a9b88cc96b25c0fbba0"
+      LOC_SHARD_SHA256: "a6a6023d9cae067b5531ba84537877c180ab3ff1579f99aeac446d65d465ae0f"
+      LOC_SHARD_BYTES: "358594502"
+      PARENT_PASS_ARTIFACT_ID: "11357173588"
+      PARENT_PASS_ZIP_SHA256: "379a7984b86afde8ea3bf0d55ee9f3c19a045799b0ee106e8bb19bf4680054d5"
+      PARENT_PROOF_ARTIFACT_ID: "11357043314"
+      PARENT_PROOF_ZIP_SHA256: "befa277e2c624b7719295907c863db383a8bc2f206271b073447f2e4d95a254c"
+      EXPECTED_SELECTION_ID: "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd"
+      EXPECTED_FINAL_ID: "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116"
+      EXPECTED_EVAL647_EVIDENCE_ID: "3401db10bad35fd1c6fac2839413fc6afffac58fa5f2135d2202b944bc2fda82"
+      EXPECTED_EVAL647_OBJECT_SET_ID: "0557410622403b411ac9d6d8fb01a57ef461617c19d06f112aa61dd57f670048"
+      EVAL290_HEAD_SHA: "029514654829cebc149cff6fc1fea2a8ba4fa566"
+      EVAL290_DATA_SHA256: "5400e37b8e8ddfdb9516a8b6eaa6fc01a8c5ec41811385d9f6907e6ef6d9614f"
+      EVAL290_MANIFEST_SHA256: "d0f8cf208724c80bda7b92aed54e10bea1492fa5bb3511a7e0fd828fc881e14a"
+      EVAL291_HEAD_SHA: "fb268061300127b62cc2a262664b30c614559dac"
+      EVAL291_DATA_SHA256: "df20e3d3ec75208399039a283487c3b8958c80ec3f119cee278fcc09948c6bfb"
+      EVAL291_AUTHORITY_SHA256: "493be56b8189325d122868ca778733676cc2143d24d121fb63f6b1b62a977177"
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact parent-relative executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="935d508130b4ba1cb5a3a81c2272fd4d19552579"
+          test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
+          test "$(git merge-base "$parent" HEAD)" = "$parent"
+          mapfile -t changed < <(git diff --name-only "$parent"..HEAD | sort)
+          expected=(
+            ".github/workflows/d03_pep_loc_decontam_qp.yml"
+            "tools/run_d03_pep_loc_decontam_qp_v1.py"
+          )
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          test "${#changed[@]}" -eq "${#wanted[@]}"
+          for i in "${!wanted[@]}"; do
+            test "${changed[$i]}" = "${wanted[$i]}"
+          done
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          python -m py_compile \
+            tools/run_d03_pep_loc_decontam_qp_v1.py \
+            tools/prepare_data232_ephemeral_handoff_v1.py \
+            tools/materialize_d03_peps.py \
+            tools/materialize_d03_common_pile_loc.py \
+            src/twelve_six/data/expanded_global_dedup_v10.py \
+            src/twelve_six/data/current_clean_execution_v1.py \
+            src/twelve_six/data/current_reserved_decontamination_v1.py \
+            src/twelve_six/data/quality_execution_authority.py \
+            src/twelve_six/data/privacy_execution_authority.py
+          test "$(git hash-object src/twelve_six/data/expanded_global_dedup_v10.py)" = \
+            "3d4f14f75cada51805afaa84080a0092fcf3bb92"
+          test "$(git hash-object src/twelve_six/data/current_clean_execution_v1.py)" = \
+            "b82ed11626a267dfffa16acd79e45c0cf3e6750b"
+          test "$(git hash-object tools/prepare_data232_ephemeral_handoff_v1.py)" = \
+            "88e75ea2cefaedf61f850a36376a6ebde7ee4ce8"
+          test "$(git hash-object tools/materialize_d03_peps.py)" = \
+            "310f5431dcad851c522d565d079513072ec9a1dc"
+          test "$(git hash-object tools/materialize_d03_common_pile_loc.py)" = \
+            "7d121300cd241672fd3f451451c573a98db680ed"
+
+      - name: Fetch exact independently-qualified PEP LoC parent artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          parent="$RUNNER_TEMP/parent"
+          rm -rf "$parent"
+          mkdir -p "$parent/pass" "$parent/proof"
+          curl --fail --location --retry 5 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o "$parent/pass.zip" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PARENT_PASS_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$parent/pass.zip" | cut -d' ' -f1)" = "$PARENT_PASS_ZIP_SHA256"
+          unzip -q "$parent/pass.zip" -d "$parent/pass"
+          test "$(sha256sum "$parent/pass/expanded-v10-survivors.json" | cut -d' ' -f1)" = \
+            "6f93ca5d730aaa1e07d8429f77606a43705697667e5a786bfda17506ac394d72"
+          test "$(sha256sum "$parent/pass/evidence.json" | cut -d' ' -f1)" = \
+            "a7c57f08708b718833272b9d41a67e39cc679476661486a7689f96cb405615fd"
+
+          curl --fail --location --retry 5 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o "$parent/proof.zip" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PARENT_PROOF_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$parent/proof.zip" | cut -d' ' -f1)" = "$PARENT_PROOF_ZIP_SHA256"
+          unzip -q "$parent/proof.zip" -d "$parent/proof"
+          test "$(sha256sum "$parent/proof/d03-pep-loc-v10-two-clean-proof.json" | cut -d' ' -f1)" = \
+            "2f3ce844a8d62203fa1ef54407842ad474059640ef06444fa62bf83ea8b79400"
+
+      - name: Reconstruct exact clean retained handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/source"
+          mkdir -p "$root/clean-artifact"
+          curl --fail --location --silent --show-error             --retry 3 --retry-all-errors             -H "Authorization: Bearer $GITHUB_TOKEN"             -H "Accept: application/vnd.github+json"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$CLEAN_ARTIFACT_ID/zip"             -o "$root/clean.zip"
+          test "$(sha256sum "$root/clean.zip" | cut -d' ' -f1)" =             "$CLEAN_ARTIFACT_ZIP_SHA256"
+          unzip -q "$root/clean.zip" -d "$root/clean-artifact"
+          test -f "$root/clean-artifact/records.jsonl"
+          test -f "$root/clean-artifact/inventory.json"
+          test -f "$root/clean-artifact/evidence.json"
+          python tools/prepare_data232_ephemeral_handoff_v1.py             --repo-root .             --records-jsonl "$root/clean-artifact/records.jsonl"             --record-inventory-json "$root/clean-artifact/inventory.json"             --materialization-evidence-json "$root/clean-artifact/evidence.json"             --output-dir "$root/clean-handoff"             --expected-carrier-git-sha "$EXECUTION_SHA"
+          test "$(sha256sum "$root/clean-handoff/training_records.jsonl" | cut -d' ' -f1)" =             "3458afe0380ea45d328ad3f004b21845a188ca69f2f7a83c24999e9e53268e53"
+          test "$(sha256sum "$root/clean-handoff/training_handoff.json" | cut -d' ' -f1)" =             "80bcf2dd28f0d13795ceea01b358c7149b636f55f17b29575d14313b5cee99ee"
+
+      - name: Reacquire exact pinned PEP candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/source"
+          python tools/materialize_d03_peps.py             --repo-root .             --output-dir "$root/pep"
+          test "$(wc -c < "$root/pep/pep-candidate.jsonl" | tr -d ' ')" = "5152269"
+          test "$(sha256sum "$root/pep/pep-candidate.jsonl" | cut -d' ' -f1)" =             "65d1cf23354efc5a66d7132b67602a7af1715e18a0fb77e729595866c25d33c3"
+          test "$(wc -c < "$root/pep/pep-report.json" | tr -d ' ')" = "1270"
+          test "$(sha256sum "$root/pep/pep-report.json" | cut -d' ' -f1)" =             "bc217b3b795bfe5001b8ef266270eee10089c88bc148e8a8f0fa540c2451edcb"
+
+      - name: Reacquire exact pinned LoC full shard and candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/source"
+          loc_url="https://huggingface.co/datasets/common-pile/library_of_congress/resolve/d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/data/00000_loc_books.jsonl.gz"
+          curl --fail --location --silent --show-error             --retry 3 --retry-all-errors             "$loc_url" -o "$root/loc-shard.jsonl.gz"
+          test "$(wc -c < "$root/loc-shard.jsonl.gz" | tr -d ' ')" = "$LOC_SHARD_BYTES"
+          test "$(sha256sum "$root/loc-shard.jsonl.gz" | cut -d' ' -f1)" =             "$LOC_SHARD_SHA256"
+          python tools/materialize_d03_common_pile_loc.py             --repo-root .             --shard "$root/loc-shard.jsonl.gz"             --output-dir "$root/loc"
+          test "$(wc -c < "$root/loc/loc-candidate.jsonl" | tr -d ' ')" = "4680968"
+          test "$(sha256sum "$root/loc/loc-candidate.jsonl" | cut -d' ' -f1)" =             "f87201d71eb8c3f2510cdf2c9b3ce1a32b83d1a11198e8a1ff0ad67d0a3fec20"
+          test "$(wc -c < "$root/loc/loc-report.json" | tr -d ' ')" = "1538"
+          test "$(sha256sum "$root/loc/loc-report.json" | cut -d' ' -f1)" =             "ae8de852ffeea6d2f697641b2f941eeb044e3377565d0bc1b3b7ba8b6cf3133a"
+
+
+      - name: Reconstruct immutable selection-validation payloads from exact heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval290_src="$RUNNER_TEMP/eval290-src"
+          eval290_out_a="$RUNNER_TEMP/eval290-out-a"
+          eval290_out_b="$RUNNER_TEMP/eval290-out-b"
+          eval290_lock="$RUNNER_TEMP/eval290-extra.lock.txt"
+          eval290_venv="$RUNNER_TEMP/eval290-venv"
+          eval290_environment="$RUNNER_TEMP/eval290-environment.json"
+          eval291_src="$RUNNER_TEMP/eval291-src"
+          eval291_venv="$RUNNER_TEMP/eval291-venv"
+          eval291_environment="$RUNNER_TEMP/eval291-environment.json"
+          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src" "$eval290_venv" "$eval291_venv"
+          rm -f "$eval290_environment" "$eval291_environment"
+
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL290_HEAD_SHA"
+          git worktree add --detach "$eval290_src" "$EVAL290_HEAD_SHA"
+          test "$(git -C "$eval290_src" rev-parse HEAD)" = "$EVAL290_HEAD_SHA"
+          git -C "$eval290_src" diff --quiet HEAD --
+          git -C "$eval290_src" diff --cached --quiet HEAD --
+
+          python "$eval290_src/tools/execution_bootstrap.py" bootstrap             --repo-root "$eval290_src"             --capabilities "runtime,tests"             --venv "$eval290_venv"             --manifest "$eval290_environment"             --command "python -m pytest -q tests/test_eval290_ua_selection.py"
+
+          git -C "$eval290_src" show             "$EVAL290_HEAD_SHA:requirements/locks/linux-x86_64/eval290-extra.lock.txt"             > "$eval290_lock"
+          "$eval290_venv/bin/python" -m pip install             --disable-pip-version-check             --require-hashes             --no-deps             -r "$eval290_lock"
+          "$eval290_venv/bin/python" -c 'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+          for out in "$eval290_out_a" "$eval290_out_b"; do
+            PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python"               -m twelve_six.eval290_ua_selection               build --repo-root "$eval290_src" --output-dir "$out"
+          done
+          diff -ru "$eval290_out_a" "$eval290_out_b"
+          PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python"             -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out_a"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
+
+          git fetch --no-tags origin refs/pull/395/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL291_HEAD_SHA"
+          git worktree add --detach "$eval291_src" "$EVAL291_HEAD_SHA"
+          test "$(git -C "$eval291_src" rev-parse HEAD)" = "$EVAL291_HEAD_SHA"
+          git -C "$eval291_src" diff --quiet HEAD --
+          git -C "$eval291_src" diff --cached --quiet HEAD --
+
+          python "$eval291_src/tools/execution_bootstrap.py" bootstrap             --repo-root "$eval291_src"             --capabilities "runtime,tests"             --venv "$eval291_venv"             --manifest "$eval291_environment"             --command "python -m pytest -q tests/test_eval291_en_selection_validation.py"
+
+          cp "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"             "$RUNNER_TEMP/eval291-en.jsonl"
+          cp "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"             "$RUNNER_TEMP/eval291-authority.json"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-en.jsonl" | cut -d' ' -f1)" = "$EVAL291_DATA_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-authority.json" | cut -d' ' -f1)" = "$EVAL291_AUTHORITY_SHA256"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python"             -m twelve_six.eval291_en_selection_validation             build --repo-root "$eval291_src"
+          cmp "$RUNNER_TEMP/eval291-en.jsonl"             "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"
+          cmp "$RUNNER_TEMP/eval291-authority.json"             "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python"             -m twelve_six.eval291_en_selection_validation             verify --repo-root "$eval291_src"
+
+      - name: Build complete ephemeral reserved-evaluation universe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.data.current_reserved_decontamination_v1 import (
+              build_reserved_payload_binding,
+          )
+          from twelve_six.data.eval233_final_test_resolver_v1 import (
+              DATA232_FINAL_TEST_ID,
+              resolve_eval233_final_test,
+          )
+          from twelve_six.data.eval303_selection_payload_resolver_v1 import (
+              EVAL303_SELECTION_ID,
+              resolve_eval303_selection_payloads_from_reconstructed,
+          )
+          from twelve_six.data.eval647_future_training_exclusion_v1 import (
+              build_eval647_auxiliary_reserved_set,
+              compose_eval647_future_training_exclusion,
+          )
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          tmp = Path(os.environ["RUNNER_TEMP"])
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("utf-8")
+
+          def write_json(path, value):
+              Path(path).write_bytes(canonical(value) + b"\n")
+
+          def write_jsonl(path, rows):
+              Path(path).write_bytes(
+                  b"".join(canonical(row) + b"\n" for row in rows)
+              )
+
+          selection_rows, selection_set, selection_evidence = (
+              resolve_eval303_selection_payloads_from_reconstructed(
+                  eval290_data_jsonl=(
+                      tmp
+                      / "eval290-out-a/eval290_ua_selection_validation_v1.jsonl"
+                  ),
+                  eval290_manifest_json=(
+                      tmp
+                      / "eval290-out-a/eval290_ua_selection_validation_manifest_v1.json"
+                  ),
+                  eval291_data_jsonl=tmp / "eval291-en.jsonl",
+                  eval291_authority_json=tmp / "eval291-authority.json",
+                  eval303_membership_jsonl=(
+                      root
+                      / "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
+                  ),
+              )
+          )
+          resolver_identity = selection_evidence.get("resolver_identity_sha256")
+          if not isinstance(resolver_identity, str) or len(resolver_identity) != 64:
+              raise RuntimeError("EVAL-303 resolver identity malformed")
+
+          final_rows, final_set, _ = resolve_eval233_final_test(root)
+          if EVAL303_SELECTION_ID != os.environ["EXPECTED_SELECTION_ID"]:
+              raise RuntimeError("selection identity drift")
+          if DATA232_FINAL_TEST_ID != os.environ["EXPECTED_FINAL_ID"]:
+              raise RuntimeError("final-test identity drift")
+
+          manifest = json.loads(
+              (root / "configs/evaluation/eval_code_reserve_v1.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          evidence = json.loads(
+              (
+                  root
+                  / "evidence/eval647/code_selection_source_materialization_v1.json"
+              ).read_text(encoding="utf-8")
+          )
+          if (
+              evidence["evidence_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_EVIDENCE_ID"]
+          ):
+              raise RuntimeError("EVAL-647 evidence identity drift")
+          if (
+              evidence["object_set_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_OBJECT_SET_ID"]
+          ):
+              raise RuntimeError("EVAL-647 object-set identity drift")
+
+          spec = importlib.util.spec_from_file_location(
+              "eval647_source_materializer",
+              root / "tools/materialize_eval_code_reserve_v1.py",
+          )
+          if spec is None or spec.loader is None:
+              raise RuntimeError("cannot load EVAL-647 materializer")
+          materializer = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(materializer)
+          observed = materializer.materialize(manifest, timeout=60)
+          if (
+              observed["object_set_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_OBJECT_SET_ID"]
+          ):
+              raise RuntimeError("fresh EVAL-647 materialization membership drift")
+
+          auxiliary = build_eval647_auxiliary_reserved_set(manifest, evidence)
+          member_by_source = {
+              member["source_id"]: member for member in auxiliary["members"]
+          }
+          eval647_rows = []
+          for obj in manifest["objects"]:
+              payload = materializer._fetch(materializer._raw_url(obj), 60)
+              if len(payload) != obj["expected_raw_bytes"]:
+                  raise RuntimeError("EVAL-647 raw byte count drift")
+              if hashlib.sha256(payload).hexdigest() != obj["raw_sha256"]:
+                  raise RuntimeError("EVAL-647 raw SHA drift")
+              source_id = f"{obj['repository']}@{obj['revision']}:{obj['path']}"
+              member = member_by_source[source_id]
+              if member["content_sha256"] != obj["raw_sha256"]:
+                  raise RuntimeError("EVAL-647 member/content binding drift")
+              eval647_rows.append(
+                  {
+                      "record_id": member["record_id"],
+                      "source_id": member["source_id"],
+                      "source_family": member["source_family"],
+                      "modality": "code",
+                      "text": payload.decode("utf-8", errors="strict"),
+                  }
+              )
+
+          base_binding = build_reserved_payload_binding([selection_set, final_set])
+          composed, _ = compose_eval647_future_training_exclusion(
+              base_binding,
+              manifest,
+              evidence,
+          )
+          expected_members = sum(
+              len(item["members"]) for item in composed["reserved_sets"]
+          )
+          evaluation_rows = [*selection_rows, *final_rows, *eval647_rows]
+          if len(evaluation_rows) != expected_members:
+              raise RuntimeError("reserved evaluation payload coverage drift")
+
+          write_json(tmp / "base_reserved_binding.json", base_binding)
+          write_jsonl(tmp / "evaluation_records.jsonl", evaluation_rows)
+          with (tmp / "execution.env").open("w", encoding="utf-8") as out:
+              values = {
+                  "BASE_BINDING_ID": base_binding["binding_identity_sha256"],
+                  "COMPOSED_BINDING_ID": composed["binding_identity_sha256"],
+              }
+              for key, value in values.items():
+                  if not isinstance(value, str) or len(value) != 64:
+                      raise RuntimeError(f"invalid derived identity: {key}")
+                  out.write(f"{key}={value}\n")
+
+          print(
+              json.dumps(
+                  {
+                      "base_binding_identity_sha256": (
+                          base_binding["binding_identity_sha256"]
+                      ),
+                      "composed_binding_identity_sha256": (
+                          composed["binding_identity_sha256"]
+                      ),
+                      "evaluation_records": len(evaluation_rows),
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+          cat "$RUNNER_TEMP/execution.env" >> "$GITHUB_ENV"
+
+
+      - name: Execute exact PEP LoC survivors twice in fresh processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/source"
+          run_once() {
+            out="$1"
+            rm -rf "$out"
+            mkdir -p "$out"
+            python tools/run_d03_pep_loc_decontam_qp_v1.py \
+              --expected-execution-head "$D03_EXECUTION_SHA" \
+              --parent-survivors-json "$RUNNER_TEMP/parent/pass/expanded-v10-survivors.json" \
+              --parent-evidence-json "$RUNNER_TEMP/parent/pass/evidence.json" \
+              --parent-proof-json "$RUNNER_TEMP/parent/proof/d03-pep-loc-v10-two-clean-proof.json" \
+              --clean-training-records "$root/clean-handoff/training_records.jsonl" \
+              --clean-training-handoff "$root/clean-handoff/training_handoff.json" \
+              --pep-candidate "$root/pep/pep-candidate.jsonl" \
+              --pep-report "$root/pep/pep-report.json" \
+              --loc-candidate "$root/loc/loc-candidate.jsonl" \
+              --loc-report "$root/loc/loc-report.json" \
+              --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl" \
+              --base-reserved-binding-json "$RUNNER_TEMP/base_reserved_binding.json" \
+              --eval647-manifest-json configs/evaluation/eval_code_reserve_v1.json \
+              --eval647-materialization-evidence-json evidence/eval647/code_selection_source_materialization_v1.json \
+              --expected-base-reserved-binding-identity-sha256 "$BASE_BINDING_ID" \
+              --expected-composed-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID" \
+              --expected-eval647-materialization-evidence-identity-sha256 "$EXPECTED_EVAL647_EVIDENCE_ID" \
+              --expected-eval647-object-set-identity-sha256 "$EXPECTED_EVAL647_OBJECT_SET_ID" \
+              --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID" \
+              --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID" \
+              --output-evidence "$out/evidence.json"
+          }
+          run_once "$RUNNER_TEMP/output-a"
+          run_once "$RUNNER_TEMP/output-b"
+          cmp "$RUNNER_TEMP/output-a/evidence.json" "$RUNNER_TEMP/output-b/evidence.json"
+
+      - name: Qualify text-free PEP LoC post-QP result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          a_raw = (tmp / "output-a/evidence.json").read_bytes()
+          b_raw = (tmp / "output-b/evidence.json").read_bytes()
+          if a_raw != b_raw:
+              raise RuntimeError("two fresh executions diverged")
+          evidence = json.loads(a_raw)
+          expected_fields = {
+              "schema_version",
+              "execution_profile",
+              "execution_head_sha",
+              "parent",
+              "source_authority",
+              "postdedup_authority",
+              "gate_execution",
+              "survivor_inventory",
+              "authority_blobs",
+              "content_boundary",
+              "truth_boundary",
+              "evidence_identity_sha256",
+          }
+          if set(evidence) != expected_fields:
+              raise RuntimeError("evidence fields are not closed-world")
+          if evidence["schema_version"] != "12-6.d03-pep-loc-v10-decontam-g05-g06-execution.v1":
+              raise RuntimeError("evidence schema drift")
+          if evidence["execution_profile"] != "LOCAL_FREE":
+              raise RuntimeError("execution profile drift")
+          if evidence["execution_head_sha"] != os.environ["D03_EXECUTION_SHA"]:
+              raise RuntimeError("execution head drift")
+
+          claimed = evidence["evidence_identity_sha256"]
+          core = dict(evidence)
+          core.pop("evidence_identity_sha256")
+          canonical = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          if hashlib.sha256(canonical).hexdigest() != claimed:
+              raise RuntimeError("evidence self-hash mismatch")
+
+          parent = evidence["parent"]
+          if parent["execution_head_sha"] != "935d508130b4ba1cb5a3a81c2272fd4d19552579":
+              raise RuntimeError("parent head drift")
+          if parent["survivor_authority_sha256"] != "01727ad4796cddd0a6c4ec6c2add9fda0c1e523155f4f9fa024d7be0956613c9":
+              raise RuntimeError("parent survivor root drift")
+          if parent["post_global_dedup_objects"] != 370:
+              raise RuntimeError("parent object count drift")
+          if parent["post_global_dedup_payload_bytes"] != 15014196:
+              raise RuntimeError("parent byte count drift")
+
+          gate = evidence["gate_execution"]
+          if gate["input_records"] != 370:
+              raise RuntimeError("post-QP input record count drift")
+          survivor = gate["survivor_payload_bytes"]
+          loss = gate["later_gate_loss_bytes"]
+          if type(survivor) is not int or not (0 < survivor <= 15014196):
+              raise RuntimeError("survivor bytes invalid")
+          if type(loss) is not int or loss != 15014196 - survivor:
+              raise RuntimeError("gate loss arithmetic drift")
+
+          partial = gate["g05_partial_materialization"]
+          required_partial = {
+              "input_documents",
+              "retain_all_documents",
+              "partial_documents",
+              "reject_documents",
+              "partial_emitted_units",
+              "partial_rejected_units",
+              "input_utf8_bytes",
+              "retained_utf8_bytes",
+              "rejected_utf8_bytes",
+              "partial_unit_projection_sha256",
+              "partial_unit_projection_count",
+          }
+          if not isinstance(partial, dict) or set(partial) != required_partial:
+              raise RuntimeError("G05 partial detail schema drift")
+          if partial["input_utf8_bytes"] != (
+              partial["retained_utf8_bytes"] + partial["rejected_utf8_bytes"]
+          ):
+              raise RuntimeError("G05 byte conservation drift")
+
+          inventory = evidence["survivor_inventory"]
+          records = inventory["records"]
+          if inventory["record_count"] != len(records):
+              raise RuntimeError("survivor inventory count drift")
+          if inventory["total_payload_bytes"] != survivor:
+              raise RuntimeError("survivor inventory bytes drift")
+          ids = [row["record_id"] for row in records]
+          if ids != sorted(ids) or len(ids) != len(set(ids)):
+              raise RuntimeError("survivor record identity drift")
+          if sum(row["payload_bytes"] for row in records) != survivor:
+              raise RuntimeError("survivor byte arithmetic drift")
+
+          truth = evidence["truth_boundary"]
+          expected_truth = {
+              "global_cross_source_dedup_complete_for_parent": True,
+              "reserved_evaluation_decontamination_complete": True,
+              "canonical_quality_privacy_complete": True,
+              "balance_diversity_retest_complete": False,
+              "family_caps_complete": False,
+              "cluster_safe_split_complete": False,
+              "deterministic_pack_two_clean_complete": False,
+              "positive_exact_unique_loss_ledger": False,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+          }
+          if truth != expected_truth:
+              raise RuntimeError("truth boundary drift")
+
+          forbidden = {
+              "text",
+              "raw_text",
+              "source_text",
+              "normalized_payload",
+              "payload_text",
+          }
+          def walk(value):
+              if isinstance(value, dict):
+                  overlap = forbidden.intersection(value)
+                  if overlap:
+                      raise RuntimeError("durable evidence contains raw-text key")
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(evidence)
+
+          evidence_sha = hashlib.sha256(a_raw).hexdigest()
+          proof_core = {
+              "schema_version": "12-6.d03-pep-loc-v10-post-qp-two-clean.v1",
+              "execution_head_sha": os.environ["D03_EXECUTION_SHA"],
+              "parent_execution_head_sha": parent["execution_head_sha"],
+              "parent_survivor_authority_sha256": parent["survivor_authority_sha256"],
+              "evidence_file_sha256": evidence_sha,
+              "evidence_identity_sha256": evidence["evidence_identity_sha256"],
+              "two_fresh_processes_byte_identical": True,
+              "input_records": gate["input_records"],
+              "input_payload_bytes": 15014196,
+              "survivor_records": gate["survivor_records"],
+              "survivor_payload_bytes": survivor,
+              "later_gate_loss_bytes": loss,
+              "g05_partial_documents": partial["partial_documents"],
+              "g05_partial_emitted_units": partial["partial_emitted_units"],
+              "survivor_payload_bytes_by_modality": gate[
+                  "survivor_payload_bytes_by_modality"
+              ],
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          proof_raw = json.dumps(
+              proof_core,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          proof = {
+              **proof_core,
+              "proof_identity_sha256": hashlib.sha256(proof_raw).hexdigest(),
+          }
+          (tmp / "pep-loc-post-qp-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Remove raw payloads before evidence upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/source"
+          rm -f "$RUNNER_TEMP/evaluation_records.jsonl"
+          rm -rf "$RUNNER_TEMP/eval290-src" "$RUNNER_TEMP/eval290-out-a" "$RUNNER_TEMP/eval290-out-b"
+          rm -rf "$RUNNER_TEMP/eval291-src"
+          test ! -e "$RUNNER_TEMP/source"
+
+      - name: Upload text-free PEP LoC post-QP evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-pep-loc-post-qp-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/output-a/evidence.json
+            ${{ runner.temp }}/pep-loc-post-qp-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
