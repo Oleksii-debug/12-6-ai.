@@ -950,6 +950,34 @@ def _build_identity(identity: CheckpointIdentity, environment: Mapping[str, Any]
     }
 
 
+def _checkpoint_save_warn_only(state: Mapping[str, Any]) -> bool | None:
+    """Capture torch warn-only policy omitted from checkpoint-v1 RNG payloads."""
+
+    if not state.get("torch"):
+        return None
+    torch = importlib.import_module("torch")
+    return bool(torch.is_deterministic_algorithms_warn_only_enabled())
+
+
+def _restore_checkpoint_save_rng(
+    state: Mapping[str, Any],
+    warn_only: bool | None,
+) -> None:
+    """Restore entry RNG/policy before publishing a checkpoint."""
+
+    restore_rng_state(state)
+    if warn_only is None:
+        return
+    torch_state = state.get("torch")
+    if not isinstance(torch_state, Mapping):
+        raise CheckpointError("checkpoint save torch RNG policy snapshot is unavailable")
+    torch = importlib.import_module("torch")
+    torch.use_deterministic_algorithms(
+        bool(torch_state.get("deterministic_algorithms", False)),
+        warn_only=warn_only,
+    )
+
+
 def save_checkpoint(
     directory: str | Path,
     *,
@@ -978,6 +1006,9 @@ def save_checkpoint(
             )
         raise FileExistsError(f"checkpoint already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
+    entry_rng = capture_rng_state()
+    entry_warn_only = _checkpoint_save_warn_only(entry_rng)
+    rng_restored = False
     temp_dir = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
     try:
         save_safetensors(_model_state_to_numpy(model), str(temp_dir / WEIGHTS_NAME))
@@ -985,7 +1016,7 @@ def save_checkpoint(
             "optimizer": _state_dict_or_none(optimizer),
             "scheduler": _state_dict_or_none(scheduler),
             "trainer": dict(trainer_state or {}),
-            "rng": capture_rng_state(),
+            "rng": entry_rng,
         }
         packed = pack_state_tree(combined_state)
         save_safetensors(packed.tensors, str(temp_dir / STATE_TENSORS_NAME))
@@ -1019,9 +1050,30 @@ def save_checkpoint(
             f"{manifest_sha}  {MANIFEST_NAME}\n", encoding="ascii"
         )
         verify_checkpoint(temp_dir)
+
+        # Checkpoint serialization is observational: state_dict hooks may draw
+        # from process RNG or alter torch's warn-only policy, but saving must not
+        # change the next training draw. Restore the exact entry process state
+        # before the checkpoint becomes visible, and persist that same RNG state.
+        try:
+            _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
+        except BaseException as exc:
+            raise CheckpointError(
+                "checkpoint save could not restore entry RNG state before publication"
+            ) from exc
+        rng_restored = True
+
         os.replace(temp_dir, destination)
         return manifest
-    except Exception:
+    except BaseException as exc:
+        if not rng_restored:
+            try:
+                _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
+            except BaseException as rollback_exc:
+                exc.add_note(
+                    "checkpoint save RNG rollback also failed: "
+                    f"{rollback_exc!r}"
+                )
         if temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
         raise
