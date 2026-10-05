@@ -381,3 +381,60 @@ def test_bind_rejects_byte_class_semantics_missing_from_tokenizer_identity(
             application,
             **SHA,
         )
+
+
+@pytest.mark.parametrize(
+    "method_name",
+    ["__init__", "identity", "encode", "decode", "oov_count", "fertility"],
+)
+def test_bind_rejects_semantically_equivalent_runtime_method_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+    method_name: str,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    raw = vars(authority.ByteTokenizer)[method_name]
+    if method_name == "identity":
+        original = raw.fget
+        assert original is not None
+
+        def wrapped_identity(self):
+            return original(self)
+
+        replacement = property(wrapped_identity)
+    elif method_name == "oov_count":
+        original = raw.__func__
+
+        def wrapped_oov_count(text):
+            return original(text)
+
+        replacement = staticmethod(wrapped_oov_count)
+    else:
+        original = raw
+
+        def wrapped_method(*args, **kwargs):
+            return original(*args, **kwargs)
+
+        replacement = wrapped_method
+
+    monkeypatch.setattr(authority.ByteTokenizer, method_name, replacement)
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime implementation drift: {method_name}",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
