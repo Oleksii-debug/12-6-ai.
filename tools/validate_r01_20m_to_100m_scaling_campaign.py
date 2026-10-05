@@ -4,9 +4,17 @@
 from __future__ import annotations
 
 import json
+import math
+import os
+import stat
 import sys
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PATH = ROOT / "configs/research/r01_20m_to_100m_scaling_campaign_v1.json"
+MAX_INPUT_BYTES = 1_048_576
+MAX_JSON_INTEGER_DIGITS = 64
 
 EXPECTED_AUTHORITY = {
     "main_sha_at_claim": "23b258d8599aa2c5381b735fdb58a6d0b4a8deb8",
@@ -64,15 +72,117 @@ EXPECTED_SOURCE_URLS = {
 }
 
 
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate object member")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(_value: str) -> Any:
+    raise ValueError("non-finite JSON constant")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("JSON number is not finite")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero JSON number underflowed to zero")
+    return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.removeprefix("-")) > MAX_JSON_INTEGER_DIGITS:
+        raise ValueError("JSON integer exceeds 64 digits")
+    return int(value)
+
+
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _load_campaign(path: Path) -> dict[str, Any]:
+    descriptor: int | None = None
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise ValueError("scaling campaign must be a regular file")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
+            raw = source.read(MAX_INPUT_BYTES + 1)
+            if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
+                raise ValueError("scaling campaign changed during read")
+    except OSError:
+        raise ValueError("cannot read scaling campaign") from None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+    try:
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ValueError("scaling campaign exceeds input byte limit")
+        data = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
+        )
+    except RecursionError as exc:
+        raise ValueError("scaling campaign JSON nesting limit exceeded") from exc
+    if not isinstance(data, dict):
+        raise ValueError("campaign root must be an object")
+    return data
+
+
 def _expect(errors: list[str], condition: bool, message: str) -> None:
     if not condition:
         errors.append(message)
 
 
+def _same_json_value(actual: Any, expected: Any) -> bool:
+    """Compare frozen JSON values without Python bool/int/float aliasing."""
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _same_json_value(left, right) for left, right in zip(actual, expected)
+        )
+    if isinstance(expected, dict):
+        return set(actual) == set(expected) and all(
+            _same_json_value(actual[key], value) for key, value in expected.items()
+        )
+    return actual == expected
+
+
+def _string_list(
+    value: Any,
+    name: str,
+    errors: list[str],
+) -> list[str] | None:
+    if not isinstance(value, list):
+        _expect(errors, False, f"{name} must be an array")
+        return None
+    if not all(type(item) is str for item in value):
+        errors.append(f"input shape: {name} entries must be strings")
+        return None
+    return value
+
+
 def validate_campaign(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
 
-    _expect(errors, data.get("schema_version") == 1, "schema_version must be 1")
+    _expect(
+        errors,
+        _same_json_value(data.get("schema_version"), 1),
+        "schema_version must be integer 1",
+    )
     _expect(
         errors,
         data.get("campaign_id") == "R01-20M-TO-100M-SCALING-V1",
@@ -88,13 +198,21 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
     _expect(errors, isinstance(authority, dict), "authority must be an object")
     if isinstance(authority, dict):
         for key, value in EXPECTED_AUTHORITY.items():
-            _expect(errors, authority.get(key) == value, f"authority.{key} mismatch")
+            _expect(
+                errors,
+                _same_json_value(authority.get(key), value),
+                f"authority.{key} mismatch",
+            )
 
     baseline = data.get("baseline_model")
     _expect(errors, isinstance(baseline, dict), "baseline_model must be an object")
     if isinstance(baseline, dict):
         for key, value in EXPECTED_BASELINE.items():
-            _expect(errors, baseline.get(key) == value, f"baseline_model.{key} mismatch")
+            _expect(
+                errors,
+                _same_json_value(baseline.get(key), value),
+                f"baseline_model.{key} mismatch",
+            )
 
     boundaries = data.get("hard_boundaries")
     _expect(errors, isinstance(boundaries, dict), "hard_boundaries must be an object")
@@ -134,38 +252,109 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
     matrix = data.get("experiment_matrix")
     _expect(errors, isinstance(matrix, list), "experiment_matrix must be an array")
     if isinstance(matrix, list):
-        ids = [entry.get("id") for entry in matrix if isinstance(entry, dict)]
-        _expect(errors, len(ids) == len(set(ids)), "experiment ids must be unique")
-        _expect(errors, set(ids) == {"R01-E00", "R01-E10", "R01-E20", "R01-E30"}, "experiment matrix ids mismatch")
+        ids: list[str] = []
+        all_ids_well_typed = True
         for entry in matrix:
             if not isinstance(entry, dict):
-                errors.append("experiment entry must be an object")
+                errors.append("input shape: experiment entry must be an object")
+                all_ids_well_typed = False
                 continue
+            experiment_id = entry.get("id")
+            if type(experiment_id) is not str:
+                errors.append("input shape: experiment id must be a string")
+                all_ids_well_typed = False
+            else:
+                ids.append(experiment_id)
+        if all_ids_well_typed:
+            _expect(errors, len(ids) == len(set(ids)), "experiment ids must be unique")
+            _expect(
+                errors,
+                set(ids) == {"R01-E00", "R01-E10", "R01-E20", "R01-E30"},
+                "experiment matrix ids mismatch",
+            )
+        for entry in matrix:
+            if not isinstance(entry, dict):
+                continue
+            experiment_id = entry.get("id")
             if entry.get("long_training") is True:
-                _expect(errors, entry.get("authorized_now") is False, f"{entry.get('id')} long training cannot be authorized now")
-            if entry.get("id") == "R01-E00":
-                _expect(errors, entry.get("parameters") == 20613440, "R01-E00 must bind exact MODEL-341 parameter count")
-                _expect(errors, entry.get("authorized_now") is True, "R01-E00 local mechanics control should remain executable")
-            if entry.get("id") == "R01-E10":
-                _expect(errors, entry.get("tokenizer_candidate_vocab_sizes") == [320, 384, 437, 512], "R01-E10 tokenizer grid drift")
-            if entry.get("id") in {"R01-E20", "R01-E30"}:
-                _expect(errors, entry.get("planned_tokens_per_parameter") == [10, 20, 40], f"{entry.get('id')} token sweep drift")
-        e30 = next((entry for entry in matrix if isinstance(entry, dict) and entry.get("id") == "R01-E30"), {})
-        _expect(errors, e30.get("parameter_targets") == [20000000, 50000000, 100000000], "R01-E30 target ladder drift")
-        _expect(errors, e30.get("freeze_100m_modelspec_now") is False, "100M ModelSpec must not be frozen before measured evidence")
+                _expect(
+                    errors,
+                    entry.get("authorized_now") is False,
+                    f"{experiment_id} long training cannot be authorized now",
+                )
+            if experiment_id == "R01-E00":
+                _expect(
+                    errors,
+                    _same_json_value(entry.get("parameters"), 20_613_440),
+                    "R01-E00 must bind exact MODEL-341 parameter count",
+                )
+                _expect(
+                    errors,
+                    entry.get("authorized_now") is True,
+                    "R01-E00 local mechanics control should remain executable",
+                )
+            if experiment_id == "R01-E10":
+                _expect(
+                    errors,
+                    _same_json_value(
+                        entry.get("tokenizer_candidate_vocab_sizes"),
+                        [320, 384, 437, 512],
+                    ),
+                    "R01-E10 tokenizer grid drift",
+                )
+            if type(experiment_id) is str and experiment_id in {"R01-E20", "R01-E30"}:
+                _expect(
+                    errors,
+                    _same_json_value(
+                        entry.get("planned_tokens_per_parameter"),
+                        [10, 20, 40],
+                    ),
+                    f"{experiment_id} token sweep drift",
+                )
+        e30 = next(
+            (
+                entry
+                for entry in matrix
+                if isinstance(entry, dict) and entry.get("id") == "R01-E30"
+            ),
+            {},
+        )
+        _expect(
+            errors,
+            _same_json_value(
+                e30.get("parameter_targets"),
+                [20_000_000, 50_000_000, 100_000_000],
+            ),
+            "R01-E30 target ladder drift",
+        )
+        _expect(
+            errors,
+            e30.get("freeze_100m_modelspec_now") is False,
+            "100M ModelSpec must not be frozen before measured evidence",
+        )
 
-    gates = data.get("promotion_gates")
-    _expect(errors, isinstance(gates, list), "promotion_gates must be an array")
-    if isinstance(gates, list):
-        _expect(errors, REQUIRED_PROMOTION_GATES.issubset(set(gates)), "promotion gate set is incomplete")
+    gates = _string_list(data.get("promotion_gates"), "promotion_gates", errors)
+    if gates is not None:
+        _expect(
+            errors,
+            REQUIRED_PROMOTION_GATES.issubset(set(gates)),
+            "promotion gate set is incomplete",
+        )
 
     metrics = data.get("metric_contract")
     _expect(errors, isinstance(metrics, dict), "metric_contract must be an object")
     if isinstance(metrics, dict):
-        required = metrics.get("required")
-        _expect(errors, isinstance(required, list), "metric_contract.required must be an array")
-        if isinstance(required, list):
-            _expect(errors, REQUIRED_METRICS.issubset(set(required)), "required metric set is incomplete")
+        required = _string_list(
+            metrics.get("required"),
+            "metric_contract.required",
+            errors,
+        )
+        if required is not None:
+            _expect(
+                errors,
+                REQUIRED_METRICS.issubset(set(required)),
+                "required metric set is incomplete",
+            )
         _expect(
             errors,
             metrics.get("tokenizer_comparison_rule")
@@ -176,27 +365,44 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
     sources = data.get("research_sources")
     _expect(errors, isinstance(sources, list), "research_sources must be an array")
     if isinstance(sources, list):
-        urls = {item.get("url") for item in sources if isinstance(item, dict)}
-        _expect(errors, EXPECTED_SOURCE_URLS.issubset(urls), "required research source set is incomplete")
+        urls: list[str] = []
+        for item in sources:
+            if not isinstance(item, dict):
+                errors.append("input shape: research source must be an object")
+                continue
+            url = item.get("url")
+            if type(url) is not str:
+                errors.append("input shape: research source url must be a string")
+                continue
+            urls.append(url)
+        _expect(
+            errors,
+            EXPECTED_SOURCE_URLS.issubset(set(urls)),
+            "required research source set is incomplete",
+        )
 
     return errors
 
 
 def validate_path(path: Path) -> list[str]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return ["campaign root must be an object"]
-    return validate_campaign(data)
+    return validate_campaign(_load_campaign(path))
 
 
 def main(argv: list[str]) -> int:
-    path = Path(argv[1]) if len(argv) > 1 else Path(
-        "configs/research/r01_20m_to_100m_scaling_campaign_v1.json"
-    )
-    errors = validate_path(path)
+    if len(argv) > 2:
+        print("FAIL: invalid arguments: expected at most one campaign path")
+        return 2
+    path = Path(argv[1]) if len(argv) > 1 else DEFAULT_PATH
+    try:
+        errors = validate_path(path)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        print(f"FAIL: invalid scaling campaign input: {exc}")
+        return 2
     if errors:
         for error in errors:
             print(f"FAIL: {error}")
+        if any(error.startswith("input shape: ") for error in errors):
+            return 2
         return 1
     print("PASS: R01 20M -> 100M scaling campaign is internally consistent and fail-closed")
     return 0
