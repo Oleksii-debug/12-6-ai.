@@ -7,8 +7,8 @@ real training, final-test access or Windows qualification.
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
 import random
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
