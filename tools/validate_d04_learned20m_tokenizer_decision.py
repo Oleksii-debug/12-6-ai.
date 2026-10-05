@@ -129,7 +129,7 @@ def _serialize_report(value: dict[str, Any]) -> str:
         # A JSON-escaped lone surrogate must not reach stdout or disk.
         rendered.encode("utf-8")
         return rendered + "\n"
-    except (TypeError, ValueError, RecursionError) as exc:
+    except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
         raise ValueError("tokenizer report is not strict finite JSON") from exc
 
 
