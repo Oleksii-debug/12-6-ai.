@@ -348,9 +348,11 @@ def _write(path: Path, value: dict[str, Any]) -> None:
             except (OSError, KeyboardInterrupt, SystemExit) as cleanup_error:
                 if committed and primary is None:
                     raise PublicationCleanupPending(
-                        "tokenizer authority is COMMITTED_AND_VERIFIED; staged cleanup "
-                        f"is pending at {temporary}; remove only that staging alias "
-                        "after confirming the final output remains unchanged",
+                        "tokenizer authority is COMMITTED_AND_VERIFIED; automatic "
+                        f"staging cleanup could not prove safe removal at {temporary}; "
+                        "do not delete or overwrite that pathname unless independent "
+                        "ownership reconciliation proves it is the retained staging "
+                        "inode; the final output remains committed",
                         staged=temporary,
                     ) from cleanup_error
                 raise PublicationIndeterminate(
