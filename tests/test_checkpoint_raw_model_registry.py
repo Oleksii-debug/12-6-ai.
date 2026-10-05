@@ -60,6 +60,42 @@ class _ArmedDictModel(torch.nn.Module):
         }
 
 
+class _ArmedDictAdamW(torch.optim.AdamW):
+    def __init__(self, params: Any, **kwargs: Any) -> None:
+        super().__init__(params, **kwargs)
+        raw = torch.optim.Optimizer.__dict__["__dict__"].__get__(self, type(self))
+        raw["_dict_spoof_armed"] = False
+        raw["dict_reads"] = []
+
+    @property
+    def __dict__(self) -> dict[str, Any]:
+        descriptor = torch.optim.Optimizer.__dict__["__dict__"]
+        real = descriptor.__get__(self, type(self))
+        if not real.get("_dict_spoof_armed", False):
+            return real
+        real["dict_reads"].append("__dict__")
+        return {
+            "state": {},
+            "param_groups": [],
+            "_dict_spoof_armed": True,
+            "dict_reads": real["dict_reads"],
+        }
+
+
+class _TypeIdentityMeta(type):
+    reads: list[str] = []
+
+    def __getattribute__(cls, name: str) -> Any:
+        if name in {"__module__", "__qualname__"}:
+            type.__getattribute__(cls, "reads").append(name)
+            return "forged.type"
+        return type.__getattribute__(cls, name)
+
+
+class _MetaclassAdamW(torch.optim.AdamW, metaclass=_TypeIdentityMeta):
+    pass
+
+
 def _raw_module_dict(module: torch.nn.Module) -> dict[str, Any]:
     descriptor = torch.nn.Module.__dict__["__dict__"]
     attrs = descriptor.__get__(module, type(module))
@@ -107,6 +143,51 @@ def test_model_fingerprint_ignores_armed_dict_descriptor() -> None:
 
     assert before != after
     assert raw["dict_reads"] == []
+
+
+def test_auxiliary_fingerprint_ignores_optimizer_dict_descriptor() -> None:
+    model = _TwoParameters()
+    optimizer = _ArmedDictAdamW(
+        [model.left, model.right],
+        lr=1e-3,
+    )
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        optimizer=optimizer,
+        device="cpu",
+    )
+    raw = torch.optim.Optimizer.__dict__["__dict__"].__get__(
+        optimizer,
+        type(optimizer),
+    )
+    raw["_dict_spoof_armed"] = True
+
+    before = trainer._checkpoint_auxiliary_fingerprint()
+    raw["param_groups"][0]["lr"] *= 0.5
+    after = trainer._checkpoint_auxiliary_fingerprint()
+
+    assert before != after
+    assert raw["dict_reads"] == []
+
+
+def test_auxiliary_type_identity_ignores_custom_metaclass() -> None:
+    _TypeIdentityMeta.reads.clear()
+    model = _TwoParameters()
+    optimizer = _MetaclassAdamW(
+        [model.left, model.right],
+        lr=1e-3,
+    )
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        optimizer=optimizer,
+        device="cpu",
+    )
+
+    trainer._checkpoint_auxiliary_fingerprint()
+
+    assert _TypeIdentityMeta.reads == []
 
 
 def test_restore_preflight_sees_gradient_hidden_from_parameters_override(
