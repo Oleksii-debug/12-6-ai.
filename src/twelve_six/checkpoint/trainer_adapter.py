@@ -1661,6 +1661,12 @@ def save_trainer_checkpoint(
                 )
         except BaseException as exc:
             _note_restore_binding_drift(trainer, save_bindings, exc)
+            _poison_canonical_restore_failure(
+                trainer,
+                expected_canonical=save_bindings[0],
+                reason="checkpoint_export_state_drift",
+                exc=exc,
+            )
             raise
         finally:
             _restore_preapply_process_state(
