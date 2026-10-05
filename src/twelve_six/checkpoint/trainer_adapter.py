@@ -279,31 +279,36 @@ def _is_native_d02_trainer(trainer: Any) -> bool:
 
 def _snapshot_trainer_restore_bindings(
     trainer: Any,
-) -> tuple[bool, dict[str, Any]]:
-    """Pin canonical restore-target object identities across effectful preflight."""
+) -> tuple[bool, bool, dict[str, Any]]:
+    """Pin canonical restore-target identities/classification across preflight."""
 
     canonical_d02 = _is_canonical_d02_trainer(trainer)
+    native_d02 = _is_native_d02_trainer(trainer)
     if not canonical_d02:
-        return False, {}
+        return False, native_d02, {}
     bindings: dict[str, Any] = {}
     for field in ("model", "optimizer", "scheduler", "scaler", "config"):
         sentinel = object()
         value = getattr(trainer, field, sentinel)
         if value is not sentinel:
             bindings[field] = value
-    return True, bindings
+    return True, native_d02, bindings
 
 
 def _assert_trainer_restore_bindings(
     trainer: Any,
-    snapshot: tuple[bool, dict[str, Any]],
+    snapshot: tuple[bool, bool, dict[str, Any]],
 ) -> None:
-    """Reject canonical/generic drift and component rebinding before mutation."""
+    """Reject safety-lineage drift and component rebinding before mutation."""
 
-    expected_canonical, bindings = snapshot
+    expected_canonical, expected_native, bindings = snapshot
     if _is_canonical_d02_trainer(trainer) != expected_canonical:
         raise CheckpointCompatibilityError(
             "trainer safety classification changed during checkpoint restore"
+        )
+    if _is_native_d02_trainer(trainer) != expected_native:
+        raise CheckpointCompatibilityError(
+            "trainer native D02 classification changed during checkpoint restore"
         )
     if not expected_canonical:
         return
