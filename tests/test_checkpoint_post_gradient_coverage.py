@@ -303,3 +303,74 @@ def test_final_authority_lookup_cannot_change_canonical_restore_policy_before_ap
         torch.is_deterministic_algorithms_warn_only_enabled(),
     ) == policy_before
 
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_restore_policy_snapshot_rejects_exotic_objects_without_running_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=811, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    hook_calls: list[str] = []
+    checkpoint_reads: list[bool] = []
+
+    class EffectfulPolicy:
+        def __deepcopy__(self, memo: Any) -> Any:
+            del memo
+            hook_calls.append("deepcopy")
+            random.random()
+            np.random.random()
+            torch.rand(1)
+            return self
+
+        def __eq__(self, other: Any) -> bool:
+            del other
+            hook_calls.append("eq")
+            random.random()
+            np.random.random()
+            torch.rand(1)
+            return True
+
+    target._canonical_default_optimizer_options = EffectfulPolicy()
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("invalid restore policy reached checkpoint I/O")
+
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 0, "expected_tokens_seen": 0}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="unsupported restore-policy data",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert hook_calls == []
+    assert checkpoint_reads == []
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
