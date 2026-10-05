@@ -135,14 +135,6 @@ def main() -> int:
             "authority arguments", ValueError("unrecognized authority option or argument")
         )
 
-    try:
-        policy = _load_json(args.policy)
-    except (OSError, UnicodeError, ValueError) as exc:
-        return _print_input_failure("policy JSON", exc)
-    try:
-        validate_policy(policy)
-    except (TypeError, ValueError) as exc:
-        return _print_input_failure("policy authority", exc)
     if args.bindings is None:
         if args.trusted_authorities is not None:
             return _print_input_failure(
@@ -153,7 +145,6 @@ def main() -> int:
                 "authority arguments",
                 ValueError("--expected-trusted-authorities-identity-sha256 requires --bindings"),
             )
-        result = blocked_template(policy)
     else:
         if args.trusted_authorities is None:
             return _print_input_failure(
@@ -167,6 +158,18 @@ def main() -> int:
                     "--expected-trusted-authorities-identity-sha256 is required with --bindings"
                 ),
             )
+
+    try:
+        policy = _load_json(args.policy)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return _print_input_failure("policy JSON", exc)
+    try:
+        validate_policy(policy)
+    except (TypeError, ValueError) as exc:
+        return _print_input_failure("policy authority", exc)
+    if args.bindings is None:
+        result = blocked_template(policy)
+    else:
         try:
             bindings = _load_json(args.bindings)
         except (OSError, UnicodeError, ValueError) as exc:
