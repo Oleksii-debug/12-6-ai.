@@ -12,8 +12,11 @@ from typing import Any
 
 import pytest
 
-from twelve_six.checkpoint import CheckpointCompatibilityError
-from twelve_six.checkpoint import progress_trainer, trainer_adapter
+from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
+    progress_trainer,
+    trainer_adapter,
+)
 
 
 class _PassiveTrainer:
