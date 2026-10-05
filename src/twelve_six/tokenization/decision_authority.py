@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from twelve_six.data.balanced_split_application_v1 import (
@@ -91,6 +92,16 @@ _EXPECTED_TOKENIZER_RUNTIME_IDENTITY = {
     "encoding": "utf-8",
     "special_tokens": {},
 }
+_EXPECTED_TOKENIZER_CLASS_STATE = {
+    "pad_id": None,
+    "bos_id": None,
+    "eos_id": None,
+    "byte_offset": 0,
+    "version": "s0-byte-v1",
+    "vocab_size": 256,
+    "normalization": "none",
+    "encoding": "utf-8",
+}
 
 
 class TokenizerDecisionError(ValueError):
@@ -154,6 +165,27 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
     """Bind the loaded runtime identity to the source-pinned byte baseline."""
 
     implementation = _verify_canonical_byte_tokenizer_implementation()
+
+    # TokenizerIdentity intentionally omits several class-level protocol fields.
+    # Inspect the class dictionary directly so a derived/spoofed identity cannot
+    # hide process-local drift in byte/special-token semantics.
+    class_state = vars(ByteTokenizer)
+    sentinel = object()
+    for field, expected in _EXPECTED_TOKENIZER_CLASS_STATE.items():
+        observed = class_state.get(field, sentinel)
+        if type(observed) is not type(expected) or observed != expected:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime identity drift: {field}"
+            )
+    class_special_tokens = class_state.get("special_tokens", sentinel)
+    if (
+        type(class_special_tokens) is not MappingProxyType
+        or dict(class_special_tokens)
+    ):
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime identity drift: special_tokens"
+        )
+
     tokenizer = ByteTokenizer().identity
     for field in (
         "version",
