@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -479,39 +480,27 @@ def test_capacity_report_rejects_regular_file_swap_before_open(
         load_and_validate(target)
 
 
-def test_capacity_report_rejects_inplace_change_during_read(
+def test_capacity_report_rejects_descriptor_stamp_change_after_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "capacity.json"
     target.write_bytes(REPORT.read_bytes())
-    real_fdopen = os.fdopen
+    real_fstat = os.fstat
+    calls = 0
 
-    class MutatingReader:
-        def __init__(self, source: object) -> None:
-            self.source = source
-
-        def __enter__(self) -> "MutatingReader":
-            return self
-
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-            self.source.close()
-
-        def fileno(self) -> int:
-            return self.source.fileno()
-
-        def read(self, size: int = -1) -> bytes:
-            raw = self.source.read(size)
-            info = target.stat()
-            os.utime(
-                target,
-                ns=(info.st_atime_ns, info.st_mtime_ns + 2_000_000_000),
+    def changing_fstat(fd: int) -> os.stat_result | SimpleNamespace:
+        nonlocal calls
+        info = real_fstat(fd)
+        calls += 1
+        if calls == 2:
+            return SimpleNamespace(
+                st_size=info.st_size,
+                st_mtime_ns=info.st_mtime_ns + 1,
+                st_ctime_ns=info.st_ctime_ns,
             )
-            return raw
+        return info
 
-    def mutating_fdopen(fd: int, mode: str) -> MutatingReader:
-        return MutatingReader(real_fdopen(fd, mode))
-
-    monkeypatch.setattr(os, "fdopen", mutating_fdopen)
+    monkeypatch.setattr(os, "fstat", changing_fstat)
     with pytest.raises(CapacityReportError, match="changed during read"):
         load_and_validate(target)
 
