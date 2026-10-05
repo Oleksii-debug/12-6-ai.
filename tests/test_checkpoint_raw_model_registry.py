@@ -186,6 +186,39 @@ def test_model_fingerprint_ignores_armed_dict_descriptor() -> None:
     assert raw["dict_reads"] == []
 
 
+def test_exact_export_tensor_comparison_preserves_signed_zero_bits() -> None:
+    positive = torch.tensor([0.0], dtype=torch.float32)
+    negative = torch.tensor([-0.0], dtype=torch.float32)
+
+    assert torch.equal(positive, negative)
+    assert not Trainer._exact_export_leaf_equal(positive, negative)
+
+
+def test_exact_export_tensor_comparison_does_not_dispatch_torch_equal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    left = torch.tensor([1.0, 2.0], dtype=torch.float32)
+    right = left.clone()
+    calls: list[bool] = []
+
+    def forbidden_equal(*args: Any, **kwargs: Any) -> bool:
+        calls.append(True)
+        raise AssertionError("exact checkpoint comparison dispatched torch.equal")
+
+    monkeypatch.setattr(torch, "equal", forbidden_equal)
+
+    assert Trainer._exact_export_leaf_equal(left, right)
+    assert calls == []
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
+def test_exact_export_tensor_comparison_is_device_portable() -> None:
+    cpu = torch.tensor([1.25, -0.0, 3.5], dtype=torch.float32)
+    cuda = cpu.to("cuda")
+
+    assert Trainer._exact_export_leaf_equal(cpu, cuda)
+
+
 def test_model_fingerprint_tracks_tied_parameter_binding_names() -> None:
     class TiedParameters(torch.nn.Module):
         def __init__(self) -> None:
