@@ -4,6 +4,8 @@ import copy
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import warnings
 from pathlib import Path
 
@@ -167,7 +169,7 @@ def test_strict_authority_loader_rejects_nested_duplicate_members(
         '{"outer":{"training_allowed":false,"training_allowed":true}}',
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="duplicate_json_key:training_allowed"):
+    with pytest.raises(ValueError, match=r"^duplicate_json_key$"):
         validator._load_mapping(path)
 
 
@@ -191,6 +193,83 @@ def test_strict_authority_loader_requires_object_root(tmp_path: Path) -> None:
     path.write_text("[]", encoding="utf-8")
     with pytest.raises(ValueError, match="must contain a JSON object"):
         validator._load_mapping(path)
+
+
+def test_strict_authority_loader_redacts_duplicate_secret_key(
+    tmp_path: Path,
+) -> None:
+    secret = "PRIVATE_EVAL647_AUTHORITY_KEY_998877"
+    path = tmp_path / "duplicate-secret.json"
+    path.write_text(
+        '{"' + secret + '":1,"' + secret + '":2}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=r"^duplicate_json_key$") as caught:
+        validator._load_mapping(path)
+    assert secret not in str(caught.value)
+
+
+@pytest.mark.parametrize("negative", [False, True])
+def test_strict_authority_loader_bounds_integer_before_conversion(
+    tmp_path: Path,
+    negative: bool,
+) -> None:
+    path = tmp_path / "huge-int.json"
+    digits = ("-" if negative else "") + "9" * 100_000
+    path.write_text('{"value":' + digits + "}", encoding="utf-8")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            validator._load_mapping(path)
+    finally:
+        sys.set_int_max_str_digits(before)
+
+
+def test_strict_authority_loader_rejects_regular_file_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested = tmp_path / "requested.json"
+    substitute = tmp_path / "substitute.json"
+    requested.write_text("{}", encoding="utf-8")
+    substitute.write_text("{}", encoding="utf-8")
+    actual_open = validator.os.open
+
+    def open_substitute(_path: Path, flags: int) -> int:
+        return actual_open(substitute, flags)
+
+    monkeypatch.setattr(validator.os, "open", open_substitute)
+    with pytest.raises(ValueError, match="changed between check and open"):
+        validator._load_mapping(requested)
+
+
+def test_strict_authority_loader_fifo_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "eval647 FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    program = (
+        "import importlib.util,sys\n"
+        f"p={str(VALIDATOR)!r}\n"
+        "s=importlib.util.spec_from_file_location('eval647_validator',p)\n"
+        "m=importlib.util.module_from_spec(s);s.loader.exec_module(m)\n"
+        "try:\n"
+        " m._load_mapping(m.Path(sys.argv[1]))\n"
+        "except ValueError as e:\n"
+        " assert str(e) == 'EVAL647 authority must be a regular file'\n"
+        "else:\n"
+        " raise AssertionError('FIFO accepted')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program, str(fifo)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 
