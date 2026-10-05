@@ -994,3 +994,233 @@ with TemporaryDirectory() as raw:
 """
     )
 
+
+
+def test_convergence_v7_tls_eof_retry_is_bounded_and_byte_identical() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/private?token=NEVER_EMIT"
+raw = b"\\x00verified-pinned-source\\xff"
+calls = []
+sleeps = []
+mod.time.sleep = lambda delay: sleeps.append(delay)
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    if len(calls) <= 2:
+        raise URLError(ssl.SSLEOFError(8, "simulated unexpected TLS EOF"))
+    return raw
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+assert mod._capture_terminal_v7_with_fetch_context(Path("."), {}) is raw
+assert calls == [url, url, url]
+assert sleeps == [0.25, 0.5]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_convergence_v7_tls_eof_exhaustion_preserves_last_error_and_redacts_url() -> None:
+    _run_isolated(
+        """
+import hashlib
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/private?token=NEVER_EMIT"
+errors = [URLError(ssl.SSLEOFError(8, "simulated EOF")) for _ in range(3)]
+calls = []
+sleeps = []
+mod.time.sleep = lambda delay: sleeps.append(delay)
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    raise errors[len(calls) - 1]
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except URLError as exc:
+    assert exc is errors[-1]
+    note = "\\n".join(exc.__notes__)
+    assert "host=source.example.invalid" in note
+    assert f"acquisition_url_sha256={hashlib.sha256(url.encode()).hexdigest()}" in note
+    assert "attempts=3" in note
+    assert "private" not in note and "NEVER_EMIT" not in note
+else:
+    raise AssertionError("exhausted TLS error was swallowed")
+assert calls == [url, url, url] and sleeps == [0.25, 0.5]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_convergence_v7_non_eof_and_interrupt_are_never_retried_or_relabelled() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/pinned"
+certificate = URLError(ssl.SSLCertVerificationError("certificate verification failed"))
+calls = []
+mod.time.sleep = lambda _delay: (_ for _ in ()).throw(
+    AssertionError("non-EOF failure must not be retried")
+)
+
+def certificate_fetch(candidate):
+    calls.append(candidate)
+    raise certificate
+
+fetch_module = SimpleNamespace(fetch_exact_source=certificate_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except URLError as exc:
+    assert exc is certificate and "attempts=1" in "\\n".join(exc.__notes__)
+else:
+    raise AssertionError("certificate error was swallowed")
+assert calls == [url]
+assert fetch_module.fetch_exact_source is certificate_fetch
+"""
+    )
+
+
+def test_convergence_v3_warmup_releases_float_result_before_strict_attest() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-result-lifetime.py", "exec"), live_ns)
+exec(compile(source, "v3-result-lifetime.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+expected = mod.indexed._code_digest(canonical_ns["lineage"].__code__)
+checks = []
+
+def attest(matcher):
+    checks.append(True)
+    if mod.indexed._code_digest(matcher._lineage_matches.__code__) != expected:
+        raise mod.indexed.IndexedExecutionError(
+            "V3 callable code drift: _lineage_matches"
+        )
+
+mod.indexed.attest_incumbent_runtime = attest
+mod._preflight_attested_lineage_warmup(
+    SimpleNamespace(_lineage_matches=live)
+)
+assert checks == [True, True]
+assert mod.indexed._code_digest(live.__code__) == expected
+"""
+    )
+
+
+def test_convergence_v3_reference_sample_releases_verified_report_before_attest() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-reference-sample.py", "exec"), live_ns)
+exec(compile(source, "v3-reference-sample.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+expected = mod.indexed._code_digest(canonical_ns["lineage"].__code__)
+calls = []
+
+def audit(sample, raw):
+    calls.append("reference")
+    return {"matches": live(sample["sources"], ())}
+
+def verify(report):
+    calls.append("verify")
+    assert len(report["matches"]) == 8
+
+def attest(_matcher):
+    calls.append("attest")
+    if mod.indexed._code_digest(live.__code__) != expected:
+        raise mod.indexed.IndexedExecutionError(
+            "V3 callable code drift: _lineage_matches"
+        )
+
+mod.indexed.attest_incumbent_runtime = attest
+matcher = SimpleNamespace(
+    audit_payloads=audit,
+    verify_report=verify,
+    _lineage_matches=live,
+)
+rows = [{"source_id": f"source-{i}"} for i in range(16)]
+mod._preflight_attested_reference_sample(
+    matcher,
+    {"sources": rows, "lineage_edges": []},
+    {row["source_id"]: b"x" for row in rows},
+)
+assert calls == ["reference", "verify", "attest"]
+assert mod.indexed._code_digest(live.__code__) == expected
+"""
+    )
+
+
+def test_convergence_v3_full_reference_freezes_bytes_before_release() -> None:
+    _run_isolated(
+        """
+import json
+
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-reference-full.py", "exec"), live_ns)
+exec(compile(source, "v3-reference-full.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+expected = mod.indexed._code_digest(canonical_ns["lineage"].__code__)
+reference = {"report_sha256": "a" * 64, "matches": live(list(range(16)), ())}
+assert mod.indexed._code_digest(live.__code__) != expected
+reference_hash = reference["report_sha256"]
+reference_bytes = json.dumps(
+    reference, sort_keys=True, separators=(",", ":")
+).encode()
+del reference
+assert mod.indexed._code_digest(live.__code__) == expected
+indexed_report = {
+    "report_sha256": reference_hash,
+    "matches": live(list(range(16)), ()),
+}
+indexed_bytes = json.dumps(
+    indexed_report, sort_keys=True, separators=(",", ":")
+).encode()
+assert indexed_bytes == reference_bytes
+assert indexed_report["report_sha256"] == reference_hash
+"""
+    )
