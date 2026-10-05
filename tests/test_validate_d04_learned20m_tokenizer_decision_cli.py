@@ -396,6 +396,119 @@ def test_failed_atomic_link_removes_staging(
     assert not list(tmp_path.glob(".out.json.*.tmp"))
 
 
+def test_postlink_cleanup_denial_reports_committed_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    selection.write_text("{}", encoding="utf-8")
+    application.write_text("{}", encoding="utf-8")
+    output = tmp_path / "decision.json"
+    report = {"schema": "test-only", "status": "PASS_ZERO_CREDIT"}
+    monkeypatch.setattr(
+        cli, "bind_byte_baseline_decision", lambda *_a, **_k: report
+    )
+    real_unlink = Path.unlink
+
+    def deny_stage_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("injected Windows-style sharing denial")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny_stage_cleanup)
+    monkeypatch.setattr(sys, "argv", [
+        str(TOOL), "--balanced-selection", str(selection),
+        "--split-application", str(application), *HASH_ARGS,
+        "--output", str(output),
+    ])
+    assert cli.main() == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    status = json.loads(captured.out)
+    assert status["contract_valid"] is True
+    assert status["output_committed"] is True
+    assert status["cleanup_pending"] is True
+    assert "COMMITTED_AND_VERIFIED" in status["recovery"]
+    expected = cli._serialize_report(report).encode("utf-8")
+    assert output.read_bytes() == expected
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == expected
+    real_unlink(staged[0])
+
+
+def test_link_create_then_raise_is_reconciled_as_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    actual_link = cli.os.link
+
+    def link_then_raise(stage: Path, final: Path) -> None:
+        actual_link(stage, final)
+        raise PermissionError("injected post-create link error")
+
+    monkeypatch.setattr(cli.os, "link", link_then_raise)
+    cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    assert output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+
+
+def test_foreign_final_after_link_error_is_indeterminate_and_never_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    foreign = b'{"foreign":true}\n'
+
+    def create_foreign_then_raise(_stage: Path, final: Path) -> None:
+        final.write_bytes(foreign)
+        raise PermissionError("injected foreign create race")
+
+    monkeypatch.setattr(cli.os, "link", create_foreign_then_raise)
+    with pytest.raises(cli.PublicationIndeterminate, match="not the staged") as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    assert output.read_bytes() == foreign
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and caught.value.staged == staged[0]
+    output.unlink()
+    staged[0].unlink()
+
+
+def test_staging_primary_failure_plus_cleanup_denial_preserves_primary_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    actual_unlink = Path.unlink
+
+    def fail_fsync(_fd: int) -> None:
+        raise OSError("primary staging fsync failure")
+
+    def deny_stage_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(f".{output.name}.") and path.suffix == ".tmp":
+            raise PermissionError("secondary cleanup denial")
+        actual_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "fsync", fail_fsync)
+    monkeypatch.setattr(Path, "unlink", deny_stage_cleanup)
+    with pytest.raises(
+        cli.PublicationIndeterminate, match="STAGING_CLEANUP_INDETERMINATE"
+    ) as caught:
+        cli._write(output, {"schema": "test-only"})
+    assert isinstance(caught.value.__cause__, OSError)
+    assert "primary staging fsync failure" in str(caught.value.__cause__)
+    assert not output.exists()
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1
+    actual_unlink(staged[0])
+
+
 def test_nonfinite_and_recursive_reports_are_not_published(
     tmp_path: Path,
 ) -> None:
