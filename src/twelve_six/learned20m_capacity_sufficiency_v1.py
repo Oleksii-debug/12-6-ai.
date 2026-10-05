@@ -600,9 +600,11 @@ def load_and_validate(path: str | Path, *, expected_main_sha: str | None = None)
             raw = source.read(MAX_REPORT_BYTES + 1)
             if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
                 fail("capacity report changed during read")
-    except OSError:
+    except CapacityReportError:
+        raise
+    except (OSError, ValueError):
         # Do not expose a caller-supplied path, provider error or private name,
-        # including through a chained exception in an unhandled traceback.
+        # including malformed path details through a chained traceback.
         raise CapacityReportError("cannot read capacity report") from None
     finally:
         if descriptor is not None:
