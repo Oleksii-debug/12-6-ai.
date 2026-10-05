@@ -2032,7 +2032,6 @@ class Trainer:
                 isinstance(saved, Tensor)
                 and isinstance(live, Tensor)
                 and saved.dtype == live.dtype
-                and saved.device == live.device
                 and saved.shape == live.shape
                 and saved.layout == live.layout == torch.strided
                 and saved.is_contiguous()
@@ -2040,10 +2039,35 @@ class Trainer:
             ):
                 # Never create an unbounded contiguous copy of model-scale state.
                 return False
-            return bool(torch.equal(
-                saved.reshape(-1).view(torch.uint8),
-                live.reshape(-1).view(torch.uint8),
-            ))
+
+            # Checkpoint state is portable across devices. A CPU-decoded state
+            # can be installed into a CUDA optimizer by PyTorch, so device
+            # identity is not part of the serialized numerical value. Compare
+            # bounded raw bytes instead. This also preserves signed-zero bits
+            # and avoids the mutable global torch.equal observer.
+            saved_flat = saved.detach().reshape(-1)
+            live_flat = live.detach().reshape(-1)
+            chunk_elements = 262_144
+            for index in range(0, saved_flat.numel(), chunk_elements):
+                saved_block = (
+                    saved_flat[index:index + chunk_elements]
+                    .to(device="cpu")
+                    .contiguous()
+                    .view(torch.uint8)
+                    .numpy()
+                    .tobytes()
+                )
+                live_block = (
+                    live_flat[index:index + chunk_elements]
+                    .to(device="cpu")
+                    .contiguous()
+                    .view(torch.uint8)
+                    .numpy()
+                    .tobytes()
+                )
+                if saved_block != live_block:
+                    return False
+            return True
         if isinstance(saved, np.ndarray) or isinstance(live, np.ndarray):
             if not (
                 isinstance(saved, np.ndarray)
