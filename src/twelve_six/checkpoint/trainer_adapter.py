@@ -829,6 +829,31 @@ def _restore_ambient_rng_after_failed_apply(
             )
 
 
+def _restore_preapply_process_state(
+    ambient: Mapping[str, Any],
+    policy: tuple[bool, bool] | None,
+    trainer: Any,
+) -> None:
+    """Make effectful pre-application inspection observationally RNG-neutral."""
+
+    try:
+        _core.restore_rng_state(ambient)
+        if policy is not None:
+            torch = importlib.import_module("torch")
+            torch.use_deterministic_algorithms(
+                policy[0],
+                warn_only=policy[1],
+            )
+    except BaseException as exc:
+        _restore_ambient_rng_after_failed_apply(ambient, exc)
+        _restore_initial_torch_policy(policy, exc)
+        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+            if trainer._failure_reason is None:
+                trainer._failure_reason = "checkpoint_preapply_rng_rollback_failed"
+            trainer._update_incomplete = True
+        raise
+
+
 def _restore_checkpoint_rng_preserving_warn_only(
     state: Mapping[str, Any],
     *,
