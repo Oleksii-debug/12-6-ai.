@@ -622,3 +622,32 @@ def test_live_scaler_with_overflowing_inverse_cannot_publish_checkpoint() -> Non
     assert source._failure_reason is not None
     with pytest.raises(RuntimeError, match="restore a verified checkpoint"):
         source.train_microbatch(_BATCH)
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_d05_accepts_small_scaler_with_finite_float32_inverse(
+    tmp_path: Path, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    state = asdict(source.state_dict())
+    state["scaler"]["scale"] = 1e-38
+    path = tmp_path / "valid-low-scale-дані з пробілами"
+    core.save_checkpoint(path, model=source.model, trainer_state=state, identity=_identity())
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    target.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    loader.load_trainer_checkpoint(
+        path, model=target.model, trainer=target,
+        strict_model=False, restore_rng=restore_rng, **extra,
+    )
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert bool(torch.isfinite(target.model.weight).all())
