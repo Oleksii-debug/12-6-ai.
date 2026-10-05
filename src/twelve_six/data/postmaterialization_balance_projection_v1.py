@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
-from twelve_six.data.trusted_family_authority_v1 import (
+from twelve_six.data.trusted_family_authority_current import (
     TRUSTED_FAMILY_SEMANTICS,
     trusted_family_authority_root_sha256,
 )
