@@ -163,16 +163,16 @@ def _source_row(
 ) -> dict[str, Any]:
     require(captured_blob(raw) == expected_blob, f"{source_id}: captured Git blob drift")
     require(len(raw) == expected_bytes, f"{source_id}: captured byte drift")
-    locator = f"github:{repository}@{commit}:{path}"
+    object_locator = f"github:{repository}:{commit}:{path}"
     return {
         "source_id": source_id,
         "source_family": family,
         "modality": "code",
         "evidence_status": "DEDICATED_TERMINAL",
         "acquisition_url": url,
-        "origin_key": locator,
-        "stable_origin_id": locator,
-        "stable_object_id": f"git-blob-sha1:{expected_blob}",
+        "origin_key": object_locator,
+        "stable_origin_id": f"github:{repository}",
+        "stable_object_id": f"git-sha1:{expected_blob}",
         "declared_capacity_bytes": expected_bytes,
         "expected_raw_bytes": expected_bytes,
         "expected_raw_sha256": sha256(raw),
