@@ -221,13 +221,13 @@ def _verify_runtime_functions(
         )
 
 
-def _source_runtime_code_identities(
+def _source_runtime_code_objects(
     module: ModuleType,
     names: Sequence[str],
     *,
     label: str,
-) -> dict[str, str]:
-    """Derive expected top-level function code from exact source without executing it."""
+) -> dict[str, CodeType]:
+    """Compile exact source without executing it and return required top-level code."""
 
     source_path = getattr(module, "__file__", None)
     _require(isinstance(source_path, str) and source_path, f"{label} module has no source")
@@ -248,7 +248,7 @@ def _source_runtime_code_identities(
             f"cannot compile exact {label} source for code authority: {exc}"
         ) from exc
 
-    expected: dict[str, str] = {}
+    expected: dict[str, CodeType] = {}
     required = set(names)
     for value in module_code.co_consts:
         if isinstance(value, CodeType) and value.co_name in required:
@@ -256,7 +256,7 @@ def _source_runtime_code_identities(
                 value.co_name not in expected,
                 f"{label} source function duplicated: {value.co_name}",
             )
-            expected[value.co_name] = hashlib.sha256(marshal.dumps(value)).hexdigest()
+            expected[value.co_name] = value
     _require(
         set(expected) == required,
         f"{label} source runtime closure incomplete",
@@ -684,18 +684,18 @@ def _verify_indexed_execution_backend(
         and indexed_attest.__module__ == _indexed.__name__,
         "indexed execution runtime attester identity drift",
     )
-    source_runtime_code_identities = _source_runtime_code_identities(
+    source_runtime_code_objects = _source_runtime_code_objects(
         _indexed,
         _INDEXED_FACADE_RUNTIME_FUNCTIONS,
         label="indexed facade",
     )
-    for name, expected_code in source_runtime_code_identities.items():
+    for name, expected_code in source_runtime_code_objects.items():
         current = getattr(_indexed, name, None)
         _require(
             isinstance(current, FunctionType)
             and current.__globals__ is _indexed.__dict__
             and current.__module__ == _indexed.__name__
-            and _runtime_code_identity(current) == expected_code,
+            and current.__code__ == expected_code,
             f"indexed execution facade runtime drift: {name}",
         )
 

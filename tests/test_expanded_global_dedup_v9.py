@@ -453,6 +453,8 @@ def test_indexed_mode_keeps_canonical_preflight_and_report_verifier(
 
 def test_preimport_indexed_facade_attester_substitution_fails_closed() -> None:
     script = r"""
+import hashlib
+import marshal
 from types import FunctionType
 
 from twelve_six.data import _incumbent_dedup_indexed_execution_core as core
@@ -471,6 +473,15 @@ replacement = FunctionType(
 assert replacement.__module__ == indexed.__name__
 indexed.attest_incumbent_runtime = replacement
 core.attest_incumbent_runtime = replacement
+
+
+class ForgedDigest:
+    def hexdigest(self):
+        return "0" * 64
+
+
+hashlib.sha256 = lambda *_args, **_kwargs: ForgedDigest()
+marshal.dumps = lambda *_args, **_kwargs: b"forged-equal-code"
 
 from twelve_six.data import expanded_global_dedup_v9 as expanded
 
@@ -501,4 +512,78 @@ else:
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_indexed_backend_rechecks_authority_at_execution_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    indexed_calls = 0
+
+    def indexed_audit(
+        _v3: object,
+        _inventory: object,
+        _payloads: object,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        nonlocal indexed_calls
+        indexed_calls += 1
+        return {"report_sha256": "must-not-run"}
+
+    def verify_backend(_matcher: object) -> tuple[object, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ExpandedDedupError("synthetic post-selection backend drift")
+        return object(), indexed_audit
+
+    monkeypatch.setattr(
+        expanded_v9,
+        "_verify_indexed_execution_backend",
+        verify_backend,
+    )
+
+    def canonical_matcher(
+        _inventory: object,
+        _payloads: object,
+    ) -> dict[str, object]:
+        return {}
+
+    execute, authority = expanded_v9._resolve_matcher_execution_backend(
+        expanded_v9._INDEXED_EXECUTION_BACKEND,
+        canonical_matcher,
+    )
+    assert authority is not None
+    assert calls == 1
+
+    with pytest.raises(
+        ExpandedDedupError,
+        match="synthetic post-selection backend drift",
+    ):
+        execute({}, {})
+
+    assert calls == 2
+    assert indexed_calls == 0
+
+
+def test_unknown_matcher_backend_fails_before_matcher_execution() -> None:
+    calls = 0
+
+    def canonical_matcher(
+        _inventory: object,
+        _payloads: object,
+    ) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    with pytest.raises(
+        ExpandedDedupError,
+        match="unsupported matcher execution backend",
+    ):
+        expanded_v9._resolve_matcher_execution_backend(
+            "untrusted-backend",
+            canonical_matcher,
+        )
+    assert calls == 0
 
