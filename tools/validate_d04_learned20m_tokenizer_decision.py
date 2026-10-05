@@ -356,6 +356,32 @@ def _write(path: Path, value: dict[str, Any]) -> None:
         if indeterminate:
             pass
         else:
+            if committed:
+                try:
+                    exact_payload = _final_bytes_match(
+                        path,
+                        identity=identity,
+                        payload=payload,
+                    )
+                except (KeyboardInterrupt, SystemExit):
+                    indeterminate = True
+                    raise
+                except OSError as verify_error:
+                    indeterminate = True
+                    raise PublicationIndeterminate(
+                        "PUBLICATION_INDETERMINATE: cannot rebind tokenizer "
+                        "authority immediately before staging cleanup; retained "
+                        f"stage {temporary}",
+                        staged=temporary,
+                    ) from verify_error
+                if not exact_payload:
+                    indeterminate = True
+                    raise PublicationIndeterminate(
+                        "PUBLICATION_INDETERMINATE: tokenizer output changed after "
+                        "exact-byte verification and before staging cleanup; "
+                        f"retained stage {temporary}",
+                        staged=temporary,
+                    )
             try:
                 _unlink_owned_path(temporary, identity, missing_ok=True)
             except (KeyboardInterrupt, SystemExit):
