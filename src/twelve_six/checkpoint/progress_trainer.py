@@ -222,8 +222,9 @@ def load_trainer_checkpoint(
     )
     del arrays
 
-    # Rebind the actual loader after all checkpoint decoding/materialization
-    # and immediately before the first live model mutation.
+    # Revalidate the live target after decoding/materialization and bind the
+    # actual loader immediately before the first live model mutation.
+    _preflight_trainer_target(trainer)
     load_trainer_state = _bind_trainer_state_loader(trainer)
 
     # Preflight prevents known incompatibilities, but an application-time
