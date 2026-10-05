@@ -1,0 +1,169 @@
+name: D03 code4 Rich FastAPI postdedup preflight
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_code4_rich_fastapi_postqp.yml"
+      - "tools/run_d03_code4_rich_fastapi_postqp_v1.py"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d03-code4-rich-fastapi-postqp-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-code4-rich-fastapi-postqp-g8-126-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pass_id: [1, 2]
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Install historical V7 PDF extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Execute exact #2746 replay and bind text-free handoff
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile tools/run_d03_code4_rich_fastapi_postqp_v1.py
+
+          run_root="$RUNNER_TEMP/preflight-$PASS_ID"
+          mkdir -p "$run_root"
+          git worktree add --detach "$run_root/v7" "$V7_HEAD"
+          test "$(git -C "$run_root/v7" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$run_root/v7" status --porcelain=v1 --untracked-files=all)"
+
+          cleanup() { git worktree remove --force "$run_root/v7" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          python tools/run_d03_code4_rich_fastapi_postqp_v1.py preflight \
+            --v7-root "$run_root/v7" \
+            --bulk-workspace "$run_root/bulk" \
+            --expected-execution-head "$EXECUTION_SHA" \
+            --output "$run_root/preflight.json"
+          cleanup
+          trap - EXIT
+
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / f"preflight-{os.environ['PASS_ID']}" / "preflight.json"
+          value = json.loads(p.read_text(encoding="utf-8"))
+          assert value["status"] == "POSTDEDUP_HANDOFF_BOUND_PENDING_RESERVED_EVALUATION"
+          assert value["reserved_evaluation_payload_accessed"] is False
+          assert value["canonical_capacity_credit_bytes"] == 0
+          assert value["tokenizer_fit_authorized"] is False
+          assert value["training_executed"] is False
+          print("PREFLIGHT_HANDOFF_ID=" + value["training_handoff_identity_sha256"])
+          print("PREFLIGHT_RECEIPT_ID=" + value["receipt_identity_sha256"])
+          PY
+
+      - name: Upload text-free preflight receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code4-rich-fastapi-postdedup-preflight-${{ matrix.pass_id }}
+          path: ${{ runner.temp }}/preflight-${{ matrix.pass_id }}/preflight.json
+          if-no-files-found: error
+          retention-days: 90
+
+  compare-preflight:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-code4-rich-fastapi-postqp-g8-126-20261005'
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Download preflight pass 1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-code4-rich-fastapi-postdedup-preflight-1
+          path: ${{ runner.temp }}/pass1
+      - name: Download preflight pass 2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-code4-rich-fastapi-postdedup-preflight-2
+          path: ${{ runner.temp }}/pass2
+      - name: Require byte-identical independent preflight and build pin proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp "$RUNNER_TEMP/pass1/preflight.json" "$RUNNER_TEMP/pass2/preflight.json"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          a = Path(os.environ["RUNNER_TEMP"]) / "pass1/preflight.json"
+          receipt = json.loads(a.read_text(encoding="utf-8"))
+          handoff = receipt["training_handoff_identity_sha256"]
+          proof = {
+              "schema_version": "12-6.d03-code4-rich-fastapi-postdedup-preflight-two-clean.v1",
+              "status": "TWO_CLEAN_PREFLIGHT_PASS_READY_FOR_INDEPENDENT_HANDOFF_PIN",
+              "execution_head_sha": os.environ["EXECUTION_SHA"],
+              "preflight_receipt_identity_sha256": receipt["receipt_identity_sha256"],
+              "training_handoff_identity_sha256": handoff,
+              "postdedup_inventory_identity_sha256": receipt["postdedup_inventory_identity_sha256"],
+              "retained_source_count": receipt["retained_source_count"],
+              "retained_payload_bytes": receipt["retained_payload_bytes"],
+              "two_fresh_executions_byte_identical": True,
+              "reserved_evaluation_payload_accessed": False,
+              "canonical_capacity_credit_bytes": 0,
+              "tokenizer_fit_authorized": False,
+              "authorized_optimized_target_exposure": 0,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(proof, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          out = Path(os.environ["RUNNER_TEMP"]) / "preflight-two-clean-proof.json"
+          out.write_text(json.dumps(proof, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+          print(json.dumps(proof, sort_keys=True))
+          PY
+      - name: Upload preflight pin proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code4-rich-fastapi-postdedup-preflight-two-clean
+          path: ${{ runner.temp }}/preflight-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
