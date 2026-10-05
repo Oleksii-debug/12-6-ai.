@@ -68,6 +68,81 @@ def _source() -> Trainer:
 
 
 @pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_native_trainer_lineage_drift_rejected_before_model_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    source = _source()
+    checkpoint = tmp_path / "native-lineage-drift-дані з пробілами"
+    core.save_checkpoint(
+        checkpoint,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(checkpoint)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    initial_weights = original_model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applications: list[bool] = []
+
+    class MarkerOnlyTrainer:
+        def load_state_dict(self, state: Any) -> None:
+            self.micro_step = state["micro_step"]
+            self.optimizer_step = state["optimizer_step"]
+            self.tokens_seen = state["tokens_seen"]
+
+    def prepare_then_downgrade(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        target.__class__ = MarkerOnlyTrainer
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applications.append(True)
+        raise AssertionError("native-lineage drift reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_downgrade)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="native D02 classification changed",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=original_model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    assert model_applications == []
+    assert target._failure_reason == "checkpoint_restore_target_drift"
+    assert target._update_incomplete is True
+    assert not target.optimizer.state
+    torch.testing.assert_close(
+        original_model.weight,
+        initial_weights,
+        rtol=0,
+        atol=0,
+    )
+
+
+@pytest.mark.parametrize(
     ("loader", "final_restore_call"),
     [
         (trainer_adapter, 6),
