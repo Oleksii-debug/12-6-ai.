@@ -181,3 +181,69 @@ def test_postflight_authority_cannot_hide_successful_state_mutation(
     else:
         assert target.tokens_seen == 2
         assert target._pending_tokens == 1
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "restore_rng",
+    [False, True],
+    ids=["opt-out", "exact-rng"],
+)
+def test_trainer_model_mode_drift_rejects_before_postflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    source = _source()
+    checkpoint = tmp_path / "trainer-eval-before-postflight-дані з пробілами"
+    core.save_checkpoint(
+        checkpoint,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(checkpoint)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_loader = Trainer.__dict__["load_state_dict"]
+    postflight_calls: list[bool] = []
+
+    def load_then_eval(self: Trainer, state: Any) -> None:
+        original_loader(self, state)
+        if self is target:
+            target.model.eval()
+
+    def forbid_postflight(*args: Any, **kwargs: Any) -> None:
+        postflight_calls.append(True)
+        raise AssertionError("invalid eval target reached postflight")
+
+    monkeypatch.setattr(Trainer, "load_state_dict", load_then_eval)
+    monkeypatch.setattr(loader, "_postflight_trainer_state", forbid_postflight)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="requires model training mode",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    assert postflight_calls == []
+    assert target.model.training is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
+    assert vars(target)["_update_incomplete"] is True
+
