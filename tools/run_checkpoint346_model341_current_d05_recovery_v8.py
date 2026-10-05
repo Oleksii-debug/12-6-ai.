@@ -38,6 +38,22 @@ if len(D05_RUNTIME_SHA) != 40 or any(
     character not in "0123456789abcdef" for character in D05_RUNTIME_SHA
 ):
     raise RuntimeError("D05_RUNTIME_SHA must be an exact lowercase 40-hex commit SHA")
+QUALIFICATION_CARRIER_SHA = os.environ.get("QUALIFICATION_CARRIER_SHA", "")
+if len(QUALIFICATION_CARRIER_SHA) != 40 or any(
+    character not in "0123456789abcdef" for character in QUALIFICATION_CARRIER_SHA
+):
+    raise RuntimeError(
+        "QUALIFICATION_CARRIER_SHA must be an exact lowercase 40-hex commit SHA"
+    )
+QUALIFICATION_RUNNER_BLOB = os.environ.get("QUALIFICATION_RUNNER_BLOB", "")
+if len(QUALIFICATION_RUNNER_BLOB) != 40 or any(
+    character not in "0123456789abcdef" for character in QUALIFICATION_RUNNER_BLOB
+):
+    raise RuntimeError(
+        "QUALIFICATION_RUNNER_BLOB must be an exact lowercase 40-hex git blob SHA"
+    )
+QUALIFICATION_ROOT = Path(__file__).resolve().parents[1]
+QUALIFICATION_RUNNER_PATH = "tools/run_checkpoint346_model341_current_d05_recovery_v8.py"
 MODEL341_CARRIER_SHA = "f151c77a8ef8721f0f568509147b1a5f961ae6c7"
 MODEL341_CANDIDATE_BLOB = "69e3cbd5f5c83c9d3d529a2a6376db3055979c40"
 EXPECTED_PARAMETERS = 20_613_440
@@ -272,6 +288,10 @@ def _load_runtime(runtime_root: Path) -> dict[str, Any]:
 
 
 def _assert_checkout_roots(runtime_root: Path, model341_root: Path) -> None:
+    if _git_head(QUALIFICATION_ROOT) != QUALIFICATION_CARRIER_SHA:
+        raise AssertionError("qualification carrier checkout SHA drifted")
+    if _git_blob(QUALIFICATION_ROOT, QUALIFICATION_RUNNER_PATH) != QUALIFICATION_RUNNER_BLOB:
+        raise AssertionError("qualification runner blob drifted")
     if _git_head(runtime_root) != D05_RUNTIME_SHA:
         raise AssertionError("D05 runtime checkout SHA drifted")
     if _git_head(model341_root) != MODEL341_CARRIER_SHA:
@@ -455,6 +475,10 @@ def _validate_report_contract(report: dict[str, Any]) -> None:
     runtime = report["runtime"]
     if runtime["product_pr"] != 2778 or runtime["git_sha"] != D05_RUNTIME_SHA:
         raise AssertionError("qualification runtime binding is contradictory")
+    if runtime["qualification_git_sha"] != QUALIFICATION_CARRIER_SHA:
+        raise AssertionError("qualification carrier binding is contradictory")
+    if runtime["qualification_runner_blob_sha"] != QUALIFICATION_RUNNER_BLOB:
+        raise AssertionError("qualification runner binding is contradictory")
     if runtime["public_save_api"] != "save_trainer_checkpoint":
         raise AssertionError("qualification save API binding is contradictory")
     if runtime["public_restore_api"] != "load_trainer_checkpoint":
@@ -780,6 +804,8 @@ def parent_main(args: argparse.Namespace) -> int:
             "runtime": {
                 "product_pr": 2778,
                 "git_sha": D05_RUNTIME_SHA,
+                "qualification_git_sha": QUALIFICATION_CARRIER_SHA,
+                "qualification_runner_blob_sha": QUALIFICATION_RUNNER_BLOB,
                 "model_blob_sha": _git_blob(
                     runtime_root,
                     "src/twelve_six/model.py",
