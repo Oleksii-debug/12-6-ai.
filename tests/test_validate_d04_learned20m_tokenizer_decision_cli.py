@@ -301,6 +301,45 @@ def test_main_semantic_authority_rejection_is_one_line_and_nonpublishing(
         assert not output.exists()
 
 
+@pytest.mark.parametrize(
+    ("abbreviated", "canonical"),
+    [
+        ("--balanced-sel", "--balanced-selection"),
+        ("--split-app", "--split-application"),
+        ("--expected-select", "--expected-selection-identity-sha256"),
+        ("--verif", "--verify-report"),
+    ],
+)
+def test_parse_args_rejects_abbreviated_authority_options(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    abbreviated: str,
+    canonical: str,
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    report = tmp_path / "report.json"
+    for path in (selection, application, report):
+        path.write_text("{}", encoding="utf-8")
+    argv = [
+        str(TOOL),
+        "--balanced-selection",
+        str(selection),
+        "--split-application",
+        str(application),
+        *HASH_ARGS,
+        "--verify-report",
+        str(report),
+    ]
+    option_index = argv.index(canonical)
+    argv[option_index] = abbreviated
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as caught:
+        cli.parse_args()
+    assert caught.value.code == 2
+
+
 def test_main_valid_dispatch_preserves_report_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
