@@ -573,3 +573,57 @@ def test_native_determinism_check_does_not_execute_config_descriptor(
     np.testing.assert_array_equal(np_after[1], np_before[1])
     assert np_after[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "missing_field",
+    [
+        "_canonical_default_schedule",
+        "_canonical_unscheduled_default_optimizer",
+        "_canonical_default_optimizer_options",
+    ],
+)
+def test_checkpoint_load_requires_complete_native_restore_policy_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    missing_field: str,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    del vars(target)[missing_field]
+    checkpoint_reads: list[bool] = []
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("incomplete native policy reached checkpoint I/O")
+
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 0, "expected_tokens_seen": 0}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="missing restore policy fields",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert checkpoint_reads == []
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
