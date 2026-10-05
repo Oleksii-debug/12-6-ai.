@@ -1,0 +1,106 @@
+{
+  "benchmark": {
+    "executed": false,
+    "latency": null,
+    "reason": "Real ENV-151 runtime cannot be executed in this LOCAL_FREE host because the exact interpreter/artifacts are unavailable.",
+    "rss": null,
+    "throughput": null
+  },
+  "blockers": [
+    "EXACT_PYTHON_UNAVAILABLE",
+    "PACKAGE_INDEX_NETWORK_UNAVAILABLE",
+    "NO_LOCAL_EXACT_ARTIFACT_CACHE",
+    "ENV151_SOURCE_NOT_ON_CURRENT_MAIN"
+  ],
+  "canonical_base_contamination": false,
+  "environment": {
+    "cache": {
+      "artifact_count": 0,
+      "directories": [],
+      "exact_match_candidates": []
+    },
+    "cpu": 5,
+    "git": {
+      "branch": null,
+      "head": null
+    },
+    "gpu": {
+      "nvidia_smi": null,
+      "visible_device": null
+    },
+    "network": {
+      "github.com": {
+        "dns": "FAILED",
+        "error": "gaierror: [Errno -3] Temporary failure in name resolution"
+      },
+      "pypi.org": {
+        "dns": "FAILED",
+        "error": "gaierror: [Errno -3] Temporary failure in name resolution"
+      }
+    },
+    "package_managers": {
+      "conda": {"available": false},
+      "git": {"available": true, "path": "/usr/bin/git", "version": "git version 2.47.3"},
+      "pdm": {"available": false},
+      "pip": {"available": true, "path": "/opt/pyvenv/bin/pip", "version": "pip 25.1.1 from /opt/pyvenv/lib/python3.13/site-packages/pip (python 3.13)"},
+      "poetry": {"available": false},
+      "python": {"available": true, "path": "/opt/pyvenv/bin/python", "version": "Python 3.13.5"},
+      "uv": {"available": true, "path": "/opt/pyvenv/bin/uv", "version": "uv 0.10.0"}
+    },
+    "platform": {
+      "machine": "x86_64",
+      "processor": "",
+      "release": "6.18.35",
+      "system": "Linux"
+    },
+    "python": {
+      "executable": "/opt/pyvenv/bin/python",
+      "implementation": "cpython",
+      "version": "3.13.5"
+    },
+    "python311": {"available": false, "candidates": []}
+  },
+  "evidence_identity_sha256": "356ecc3bdb5fe4011d184a485a8bb4a541480577574fc534acf461ab61b0d1b9",
+  "foreign_weights": false,
+  "lane_key": "D09|EXECUTION-BOOTSTRAP|INDEPENDENT-VERIFY|STRESS-V1",
+  "missing_artifacts": [
+    "CPython 3.11.16 executable",
+    "exact ENV-151 dependency wheel set for PR #313"
+  ],
+  "paid_compute": false,
+  "parity": {
+    "reason": "Exact ENV-151 stack could not be installed and run; no fabricated equivalence claim is emitted.",
+    "status": "NOT_EXECUTED_RUNTIME_REQUIRED"
+  },
+  "project": {
+    "base_sha": "5020afd671a3885c1b738c8b4eafe7525f630546",
+    "repository": "Oleksii-debug/12-6-ai."
+  },
+  "rights": {
+    "bootstrap_code": "PROJECT_OWNED_REUSE_QUALIFICATION",
+    "dataset_rights": "NONE",
+    "model_weights": "NONE",
+    "third_party_dependency_rights": "NOT_FULLY_VERIFIED_BECAUSE_RUNTIME_ARTIFACTS_UNAVAILABLE"
+  },
+  "runtime": {
+    "required_platform": "linux-x86_64",
+    "required_python": "3.11.16",
+    "status": "NOT_EXECUTED"
+  },
+  "schema": "12-6.open-source-bootstrap-stress-evidence.v1",
+  "static_checks": [
+    {"name": "base_sha_shape", "passed": true},
+    {"name": "incumbent_head_shape", "passed": true},
+    {"name": "path_safety", "passed": true},
+    {"name": "no_new_workflow", "passed": true},
+    {"name": "local_free", "passed": true},
+    {"name": "canonical_surfaces_avoided", "passed": true}
+  ],
+  "target": {
+    "branch": "env151/universal-execution-bootstrap-20260826",
+    "head": "bbca2101ea9409b47d844dd8292cd7f2290e3ff0",
+    "pr": 313
+  },
+  "training_updates": 0,
+  "worker_id": "OPEN-SOURCE-BOOTSTRAP-STRESS-V1"
+}
