@@ -82,6 +82,91 @@ def test_strict_loader_requires_object_root(tmp_path: Path, raw: str) -> None:
         tool._load_packet(_write(tmp_path, raw))
 
 
+def test_missing_secret_launch_path_is_redacted(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tool = _load_tool()
+    secret = "PRIVATE-READINESS-PATH-998877"
+    missing = tmp_path / f"{secret}.json"
+    assert tool.main(["assess", str(missing)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload == {"error": "invalid launch packet: cannot read launch packet"}
+    assert secret not in captured.out
+
+
+def test_launch_packet_fifo_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "readiness FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(fifo)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=5,
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout) == {
+        "error": "invalid launch packet: launch packet must be a regular file"
+    }
+
+
+def test_readiness_loader_detects_regular_file_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = _load_tool()
+    requested = tmp_path / "requested.json"
+    substitute = tmp_path / "substitute.json"
+    requested.write_text("{}", encoding="utf-8")
+    substitute.write_text("{}", encoding="utf-8")
+    actual_open = tool.os.open
+
+    def open_substitute(_path: Path, flags: int) -> int:
+        return actual_open(substitute, flags)
+
+    monkeypatch.setattr(tool.os, "open", open_substitute)
+    with pytest.raises(ValueError, match="changed between check and open"):
+        tool._load_packet(requested)
+
+
+def test_readiness_loader_supports_valid_regular_symlink(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    source = tmp_path / "source.json"
+    source.write_text('{"schema_version":1}', encoding="utf-8")
+    linked = tmp_path / "readiness link.json"
+    linked.symlink_to(source.resolve())
+    assert _load_tool()._load_packet(linked) == {"schema_version": 1}
+
+
+@pytest.mark.parametrize("negative", [False, True])
+def test_readiness_loader_bounds_integer_before_conversion(
+    tmp_path: Path,
+    negative: bool,
+) -> None:
+    tool = _load_tool()
+    literal = ("-" if negative else "") + "9" * 100_000
+    path = _write(tmp_path, '{"value":' + literal + "}")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            tool._load_packet(path)
+    finally:
+        sys.set_int_max_str_digits(before)
+
+
 def test_main_reports_decode_failure_without_traceback(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
