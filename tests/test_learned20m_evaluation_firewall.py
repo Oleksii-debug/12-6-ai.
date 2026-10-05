@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Collection
 from pathlib import Path
 
 import pytest
@@ -107,6 +108,22 @@ def authorize(item: dict | None = None, trusted: dict | None = None) -> dict:
         trusted,
         verified_scientific_authorities=verified_lock_tokens(trusted),
     )
+
+
+class _MutatingAuthorities(Collection[str]):
+    def __init__(self, token: str, mutate) -> None:
+        self._token = token
+        self._mutate = mutate
+
+    def __contains__(self, value: object) -> bool:
+        return value == self._token
+
+    def __iter__(self):
+        self._mutate()
+        yield self._token
+
+    def __len__(self) -> int:
+        return 1
 
 
 def test_checked_in_policy_is_terminal_boundary_but_non_authorizing() -> None:
@@ -401,3 +418,112 @@ def test_authority_constants_are_not_alias_mutated_by_receipts() -> None:
     receipt = preselection_binding(policy())
     receipt["selection_authority"]["git_sha"] = "f" * 40
     assert EVAL303_SELECTION_AUTHORITY["git_sha"] != "f" * 40
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("created_from_final_test", True),
+        ("reselection_allowed", True),
+        ("optimizer_updates_after_lock_allowed", True),
+        ("final_test_payload_consumed_before_lock", True),
+    ],
+)
+def test_effectful_verified_authority_collection_cannot_weaken_lock_boundary(
+    field: str,
+    replacement: object,
+) -> None:
+    item = lock()
+    trusted = trusted_lock_authority(item)
+    token = next(iter(verified_lock_tokens(trusted)))
+
+    def mutate() -> None:
+        item[field] = replacement
+
+    with pytest.raises(EvaluationFirewallError):
+        authorize_final_test_reporting(
+            policy(),
+            item,
+            trusted,
+            verified_scientific_authorities=_MutatingAuthorities(token, mutate),
+        )
+
+
+def test_effectful_verified_authority_collection_cannot_reseal_lock_and_trust() -> None:
+    item = lock()
+    trusted = trusted_lock_authority(item)
+    token = next(iter(verified_lock_tokens(trusted)))
+
+    def mutate() -> None:
+        item["selected_checkpoint_sha256"] = "9" * 64
+        item["selection_lock_identity_sha256"] = selection_lock_identity(item)
+        trusted["selected_checkpoint_sha256"] = item["selected_checkpoint_sha256"]
+        trusted["selection_lock_identity_sha256"] = item[
+            "selection_lock_identity_sha256"
+        ]
+
+    with pytest.raises(
+        EvaluationFirewallError,
+        match="trusted selection-lock authority changed during verification",
+    ):
+        authorize_final_test_reporting(
+            policy(),
+            item,
+            trusted,
+            verified_scientific_authorities=_MutatingAuthorities(token, mutate),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("git_sha", "9" * 40),
+        ("evidence_sha256", "8" * 64),
+        ("workflow_run_id", 999_999),
+        ("terminal", False),
+    ],
+)
+def test_effectful_verified_authority_collection_cannot_swap_trusted_authority(
+    field: str,
+    replacement: object,
+) -> None:
+    item = lock()
+    trusted = trusted_lock_authority(item)
+    token = next(iter(verified_lock_tokens(trusted)))
+
+    def mutate() -> None:
+        trusted["authority"][field] = replacement
+
+    with pytest.raises(EvaluationFirewallError):
+        authorize_final_test_reporting(
+            policy(),
+            item,
+            trusted,
+            verified_scientific_authorities=_MutatingAuthorities(token, mutate),
+        )
+
+
+def test_effectful_verified_authority_collection_cannot_swap_final_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = lock()
+    trusted = trusted_lock_authority(item)
+    token = next(iter(verified_lock_tokens(trusted)))
+
+    def mutate() -> None:
+        monkeypatch.setitem(
+            EVAL233_FINAL_TEST_RESERVATION_AUTHORITY,
+            "git_sha",
+            "9" * 40,
+        )
+
+    with pytest.raises(
+        EvaluationFirewallError,
+        match="final-test reservation authority changed during verification",
+    ):
+        authorize_final_test_reporting(
+            policy(),
+            item,
+            trusted,
+            verified_scientific_authorities=_MutatingAuthorities(token, mutate),
+        )
