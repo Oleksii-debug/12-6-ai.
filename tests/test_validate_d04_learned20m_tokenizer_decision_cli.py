@@ -559,6 +559,58 @@ def test_link_create_then_raise_is_reconciled_as_committed(
     assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
 
 
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_postcreate_process_interrupt_rolls_back_owned_final_and_rethrows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+) -> None:
+    cli = _module()
+    output = tmp_path / "interrupted.json"
+    actual_link = cli.os.link
+
+    def link_then_interrupt(stage: Path, final: Path) -> None:
+        actual_link(stage, final)
+        raise interruption("injected post-create interruption")
+
+    monkeypatch.setattr(cli.os, "link", link_then_interrupt)
+    with pytest.raises(interruption, match="post-create interruption"):
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    assert not output.exists()
+    assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
+
+
+def test_postcreate_interrupt_with_rollback_denial_retains_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "rollback-denied.json"
+    actual_link = cli.os.link
+    actual_unlink = Path.unlink
+
+    def link_then_interrupt(stage: Path, final: Path) -> None:
+        actual_link(stage, final)
+        raise KeyboardInterrupt("injected post-create interruption")
+
+    def deny_final_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path == output:
+            raise PermissionError("injected rollback denial")
+        actual_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", link_then_interrupt)
+    monkeypatch.setattr(Path, "unlink", deny_final_unlink)
+    with pytest.raises(
+        cli.PublicationIndeterminate, match="ROLLBACK_INDETERMINATE"
+    ) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and caught.value.staged == staged[0]
+    assert output.exists()
+    actual_unlink(output)
+    actual_unlink(staged[0])
+
+
 def test_foreign_final_after_link_error_is_indeterminate_and_never_removed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
