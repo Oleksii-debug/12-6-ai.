@@ -398,7 +398,7 @@ def test_post_rng_exact_seal_does_not_reenter_effectful_tensor_comparator(
 )
 @pytest.mark.parametrize(
     "mutation",
-    ["model", "optimizer", "gradient"],
+    ["model", "optimizer", "gradient", "policy"],
 )
 def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
     tmp_path: Path,
@@ -421,15 +421,27 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
     restore_rng = final_phase == "rng-replay"
     weight_before = target.model.weight.detach().clone()
     lr_before = target.optimizer.param_groups[0]["lr"]
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    mutation_calls = 0
 
     def mutate_exact_state() -> None:
+        nonlocal mutation_calls
+        mutation_calls += 1
         if mutation == "model":
             with torch.no_grad():
                 target.model.weight.add_(0.25)
         elif mutation == "optimizer":
             target.optimizer.param_groups[0]["lr"] *= 0.5
-        else:
+        elif mutation == "gradient":
             target.model.weight.grad = torch.full_like(target.model.weight, 0.25)
+        else:
+            torch.use_deterministic_algorithms(
+                torch.are_deterministic_algorithms_enabled(),
+                warn_only=not torch.is_deterministic_algorithms_warn_only_enabled(),
+            )
 
     if restore_rng:
         original_replay = loader._restore_checkpoint_rng_preserving_warn_only
@@ -465,7 +477,11 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
     expected = (
         "auxiliary state changed during final checkpoint restore seal"
         if mutation == "optimizer"
-        else "model changed during final checkpoint restore seal"
+        else (
+            "live torch deterministic policy disagrees"
+            if mutation == "policy"
+            else "model changed during final checkpoint restore seal"
+        )
     )
 
     with pytest.raises(core.CheckpointCompatibilityError, match=expected):
@@ -478,11 +494,12 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
             **extra,
         )
 
+    assert mutation_calls >= 1
     if mutation == "model":
         assert not torch.equal(target.model.weight.detach(), weight_before)
     elif mutation == "optimizer":
         assert target.optimizer.param_groups[0]["lr"] == lr_before * 0.5
-    else:
+    elif mutation == "gradient":
         assert target.model.weight.grad is not None
         torch.testing.assert_close(
             target.model.weight.grad,
@@ -490,6 +507,11 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
             rtol=0,
             atol=0,
         )
+    else:
+        assert (
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        ) == policy_before
     assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
     assert vars(target)["_update_incomplete"] is True
 
