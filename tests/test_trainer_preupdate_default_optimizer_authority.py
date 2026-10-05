@@ -246,8 +246,8 @@ def test_forward_hook_forged_default_scheduler_never_reaches_optimizer(
     handle = model.register_forward_hook(forge_scheduler)
     try:
         with pytest.raises(
-        TrainingStateInvalidError, match="live default scheduler chronology or rate",
-    ):
+            TrainingStateInvalidError, match="live default scheduler chronology or rate",
+        ):
             trainer.train_microbatch(_BATCH)
     finally:
         handle.remove()
