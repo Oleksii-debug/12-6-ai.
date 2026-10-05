@@ -1031,10 +1031,12 @@ class Trainer:
             self._require_exported_optimizer_matches_live(snapshot.optimizer)
             if snapshot.scheduler is not None:
                 self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
-                self._require_exported_scheduler_matches_live(snapshot.scheduler)
+            # A hook may suppress the second export entirely. Even a missing
+            # snapshot must agree with whether a live component exists.
+            self._require_exported_scheduler_matches_live(snapshot.scheduler)
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
-                self._require_exported_scaler_matches_live(snapshot.scaler)
+            self._require_exported_scaler_matches_live(snapshot.scaler)
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
