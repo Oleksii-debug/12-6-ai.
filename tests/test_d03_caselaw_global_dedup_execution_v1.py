@@ -766,7 +766,9 @@ with TemporaryDirectory() as raw:
     marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
     _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
 
-    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
     mod._write_create_only_durable(manifest, manifest_payload)
     for (_, payload), stage in zip(prepared, stages, strict=True):
         mod._write_create_only_durable(stage, payload)
@@ -803,7 +805,9 @@ with TemporaryDirectory() as raw:
     marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
     _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
 
-    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
     mod._write_create_only_durable(manifest, manifest_payload)
     for (_, payload), stage in zip(prepared, stages, strict=True):
         mod._write_create_only_durable(stage, payload)
@@ -953,7 +957,9 @@ with TemporaryDirectory() as raw:
         if key != "manifest_identity_sha256"
     }
     target_extra["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
-    mod._write_create_only_durable(marker, b"")
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
     mod._write_create_only_durable(
         manifest_path, mod._canonical(target_extra) + b"\\n"
     )
@@ -994,6 +1000,192 @@ with TemporaryDirectory() as raw:
 """
     )
 
+
+
+
+def test_publication_preserves_unrelated_marker_path() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+        (root / "evidence.json", {"kind": "evidence"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    unrelated = b"UNRELATED_USER_MARKER"
+    marker.write_bytes(unrelated)
+
+    try:
+        mod._publish_json_outputs(values)
+    except mod.CaselawGlobalDedupError as exc:
+        assert "marker is unreadable" in str(exc)
+    else:
+        raise AssertionError("unrelated marker was accepted as publication control")
+
+    assert marker.read_bytes() == unrelated
+    assert not manifest.exists()
+    assert not any(stage.exists() for stage in stages)
+    assert not any(path.exists() for path, _ in values)
+"""
+    )
+
+
+def test_publication_recovers_committed_residue_without_rewriting_finals() -> None:
+    _run_isolated(
+        """
+import json
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report", "value": 1}),
+        (root / "survivors.json", {"kind": "survivors", "value": 2}),
+        (root / "evidence.json", {"kind": "evidence", "value": 3}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(
+        marker, label="test publication marker"
+    )
+    mod._write_create_only_durable(manifest, manifest_payload)
+    for (_, payload), stage in zip(prepared, stages, strict=True):
+        mod._write_create_only_durable(stage, payload)
+    for (final_path, _), stage in zip(prepared, stages, strict=True):
+        mod._link_staged_output(stage, final_path)
+
+    final_identities = [
+        mod._regular_file_identity(path, label="test terminal final")
+        for path, _ in prepared
+    ]
+    mod._unlink_owned_path(
+        marker,
+        marker_identity,
+        label="test publication marker",
+    )
+    mod._fsync_directory(marker.parent)
+
+    # Simulate process loss after the durable commit point but before cleanup.
+    assert manifest.exists()
+    assert all(stage.exists() for stage in stages)
+    mod._publish_json_outputs(values)
+
+    assert not marker.exists()
+    assert not manifest.exists()
+    assert not any(stage.exists() for stage in stages)
+    for (path, value), identity in zip(prepared, final_identities, strict=True):
+        assert mod._regular_file_identity(
+            path, label="recovered terminal final"
+        ) == identity
+        assert json.loads(path.read_text(encoding="utf-8")) == value
+"""
+    )
+
+
+def test_publication_rollback_preserves_substituted_final_and_control_evidence() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    prepared = ((final, b'{"kind":"report"}\\n'),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    manifest_identity = mod._regular_file_identity(manifest, label="test manifest")
+    mod._write_create_only_durable(stages[0], prepared[0][1])
+    stage_identity = mod._regular_file_identity(stages[0], label="test stage")
+    mod._link_staged_output(stages[0], final)
+
+    owned_final = root / "owned-final-moved-aside"
+    final.rename(owned_final)
+    unrelated = b"UNRELATED_FINAL_BYTES"
+    final.write_bytes(unrelated)
+
+    errors = mod._rollback_current_publication(
+        marker_path=marker,
+        manifest_path=manifest,
+        marker_identity=marker_identity,
+        manifest_identity=manifest_identity,
+        linked_finals=[(final, stage_identity)],
+        created_stages=[(stages[0], stage_identity)],
+    )
+    assert errors
+    assert any("ownership changed before unlink" in item for item in errors)
+    assert final.read_bytes() == unrelated
+    assert owned_final.read_bytes() == prepared[0][1]
+    assert stages[0].exists()
+    assert manifest.exists()
+    assert marker.exists()
+"""
+    )
+
+
+def test_postcommit_cleanup_preserves_substituted_stage_and_manifest() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    _, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(manifest, manifest_payload)
+    manifest_identity = mod._regular_file_identity(manifest, label="test manifest")
+
+    stage_rows = []
+    for (_, payload), stage in zip(prepared, stages, strict=True):
+        mod._write_create_only_durable(stage, payload)
+        stage_rows.append(
+            (stage, mod._regular_file_identity(stage, label="test stage"))
+        )
+
+    owned_stage = root / "owned-stage-moved-aside"
+    stages[0].rename(owned_stage)
+    unrelated = b"UNRELATED_STAGE_BYTES"
+    stages[0].write_bytes(unrelated)
+
+    # Cleanup is post-commit best-effort: refuse foreign deletion and leave
+    # canonical control evidence for a later verified recovery attempt.
+    mod._cleanup_committed_publication_residue(
+        manifest,
+        manifest_identity,
+        stage_rows,
+    )
+    assert stages[0].read_bytes() == unrelated
+    assert owned_stage.read_bytes() == prepared[0][1]
+    assert stages[1].exists()
+    assert manifest.exists()
+"""
+    )
 
 
 def test_convergence_v7_tls_eof_retry_is_bounded_and_byte_identical() -> None:
