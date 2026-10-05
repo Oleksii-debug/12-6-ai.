@@ -108,18 +108,27 @@ def main() -> int:
         return _print_input_failure("policy authority", exc)
     if args.bindings is None:
         if args.trusted_authorities is not None:
-            parser.error("--trusted-authorities requires --bindings")
+            return _print_input_failure(
+                "authority arguments", ValueError("--trusted-authorities requires --bindings")
+            )
         if args.expected_trusted_authorities_identity_sha256 is not None:
-            parser.error(
-                "--expected-trusted-authorities-identity-sha256 requires --bindings"
+            return _print_input_failure(
+                "authority arguments",
+                ValueError("--expected-trusted-authorities-identity-sha256 requires --bindings"),
             )
         result = blocked_template(policy)
     else:
         if args.trusted_authorities is None:
-            parser.error("--trusted-authorities is required with --bindings")
+            return _print_input_failure(
+                "authority arguments",
+                ValueError("--trusted-authorities is required with --bindings"),
+            )
         if args.expected_trusted_authorities_identity_sha256 is None:
-            parser.error(
-                "--expected-trusted-authorities-identity-sha256 is required with --bindings"
+            return _print_input_failure(
+                "authority arguments",
+                ValueError(
+                    "--expected-trusted-authorities-identity-sha256 is required with --bindings"
+                ),
             )
         try:
             bindings = _load_json(args.bindings)
