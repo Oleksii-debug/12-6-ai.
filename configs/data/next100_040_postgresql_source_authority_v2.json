@@ -1,0 +1,74 @@
+{
+  "schema_version": "12-6.next100-040-postgresql-source-authority.v2",
+  "execution_profile": "LOCAL_FREE",
+  "project_authority": {
+    "swarm_control_issue": 723,
+    "convergence_issue": 2273,
+    "source_pr": 448,
+    "historical_prequal_issue": 1843
+  },
+  "bounded_source": {
+    "repository": "postgres/postgres",
+    "repository_url": "https://github.com/postgres/postgres",
+    "version": "18.6",
+    "tag": "REL_18_6",
+    "commit": "724edf9bde9d356724ad384a2e196edc3c9f80f7",
+    "source_family": "github:postgres/postgres:documentation",
+    "canonical_form": "source SGML only",
+    "selected_document_count": 10,
+    "raw_bytes": 958397,
+    "normalized_bytes": 624335,
+    "raw_manifest_sha256": "e4e732794b01177998ce3a13933cde767541d841df848de7c483bf114596a071",
+    "normalized_manifest_sha256": "cf7766effee9528339e80ae8e9c9ba4c3f78f511bfb4f2af618c9bbac17f9942",
+    "normalization_id": "POSTGRES_SGML_TEXT_V1"
+  },
+  "license": {
+    "name": "PostgreSQL License",
+    "path": "COPYRIGHT",
+    "git_blob_sha1": "0a397648dcd3c2177acc58bd7daecd11ad64be62",
+    "sha256": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
+    "rights_identity_sha256": "a9d9d8895d476b1efd946fdf451996880892b086ba4cd0fe87118196382061a3",
+    "model_training": "ALLOWED",
+    "redistribution": "ALLOWED_WITH_NOTICE",
+    "evaluation": "NOT_SEPARATELY_ADMITTED"
+  },
+  "historical_execution": {
+    "source_head_sha": "fad19a6932f644dc7355d71d10156a72b2fd3c01",
+    "run_id": 33006023353,
+    "job_id": 98299853774,
+    "artifact_id": 9621106855,
+    "artifact_zip_sha256": "bf125d64ef0eb381e18256da45051e5034ceb65e569a631731d560bde6fb3cd0",
+    "receipt_path": "evidence/data/next100_040_postgresql_terminal_source_authority_v1.json",
+    "receipt_git_blob_sha1": "706ce8d60cdc676830f70879cbb2ff741709c089",
+    "receipt_authority_identity_sha256": "51588291c95bd4f1e88654ad935d5cc22975d852f8d0c363219cb47a18df73a5"
+  },
+  "historical_dedup": {
+    "historical_only": true,
+    "bound_registry_exact_collision_absent": true,
+    "family_lineage_collision_absent": true,
+    "internal_exact_unique": true,
+    "maximum_seven_word_shingle_jaccard": 0.000257,
+    "near_duplicate_threshold": 0.85,
+    "current_global_authority": false
+  },
+  "current_composition": {
+    "global_dedup": "REQUIRED_NOT_EXECUTED_BY_THIS_AUTHORITY",
+    "evaluation_firewall": "REQUIRED_AT_COMPOSITION",
+    "current_retained_corpus_cleanliness": "NOT_PROVEN_BY_THIS_AUTHORITY",
+    "source_authority_status": "VERIFIED_BOUNDED_SOURCE_AUTHORITY",
+    "canonical_capacity_credit_bytes": 0,
+    "canonical_family_credit": 0,
+    "canonical_files_credit": 0
+  },
+  "truth_boundary": {
+    "current_retained_corpus_launch_authoritative": false,
+    "tokenizer_fit_authorized": false,
+    "authorized_optimized_target_exposure": 0,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false
+  }
+}
