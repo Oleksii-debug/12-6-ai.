@@ -530,7 +530,10 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
 
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint optimizer state must be a mapping")
-    if not hasattr(optimizer, "load_state_dict") or not hasattr(optimizer, "state_dict"):
+    if (
+        not callable(getattr(optimizer, "load_state_dict", None))
+        or not callable(getattr(optimizer, "state_dict", None))
+    ):
         raise CheckpointCompatibilityError("optimizer must provide state_dict/load_state_dict")
 
     optimizer_module = optimizer.__class__.__module__
