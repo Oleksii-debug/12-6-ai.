@@ -1,0 +1,438 @@
+name: D03 NBU current-40 exact-head pdftotext
+
+on:
+  pull_request:
+    branches:
+      - d03/nbu-pdftotext-materialization-20260907
+    paths:
+      - ".github/workflows/d03_nbu_current40_pdftotext_g8_143.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-nbu-current40-pdftotext-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  execute-nbu-chain:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/nbu-current-40-pdftotext-g8-143-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+      NBU_TARGET_DOCUMENTS: "40"
+      NBU_SEARCH_PER_PAGE: "100"
+      PARENT_HEAD: "13be2b000804b410aed7ba759a663408429f60f6"
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      RECENT_DISCOVERY_EVIDENCE_SHA256: "ccd24c4d6415236df2c0f688736d192412cd00ab3f780cf2723c3d12c85ae963"
+      RECENT_PDF_PIN_EVIDENCE_SHA256: "b2681c73b6bdaf2f87543fb0edbc95db545c41f011720e103b789f774f6ad7a4"
+    steps:
+      - name: Checkout exact execution child
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact parent-relative closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          test "$(git diff --name-only "$PARENT_HEAD"..HEAD)" = ".github/workflows/d03_nbu_current40_pdftotext_g8_143.yml"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test "$(git hash-object configs/data/d03_ua_nbu_official_resolutions_intake_v1.json)" = "b883cbdb489058e005e83f64ce11a67505e03778"
+          test "$(git hash-object configs/data/d03_ua_nbu_official_pdf_pin_v1.json)" = "7be7f986cf08da1971587aa203bf29e7f4ace4fa"
+          test "$(git hash-object configs/data/d03_ua_nbu_pdftotext_materialization_v1.json)" = "ea069bcec23f8b12f322d68b8eb8b72733b3805f"
+          test "$(git hash-object tools/validate_d03_ua_nbu_official_resolutions_intake_v1.py)" = "f5c1a1b5331ab7b5673df0f45188c59f4f060f6f"
+          test "$(git hash-object tools/materialize_d03_ua_nbu_official_pdf_pins_v1.py)" = "0e59c8fdb74608efad0e56f670bf8c4b54b03070"
+          test "$(git hash-object tools/_materialize_d03_ua_nbu_pdftotext_v1_impl.py)" = "f7e1be8d3af8d24430fb739d423a7fd4b8904e2c"
+          test "$(git hash-object tools/materialize_d03_ua_nbu_pdftotext_v1.py)" = "9d7dbd0465e159036fcdee57c4f9384d999d8a69"
+          test "$(git hash-object tests/test_d03_ua_nbu_pdftotext_materialization_v1.py)" = "ef2bb7a57aed8c8be3a290db3f727749b15556d7"
+          test "$(git hash-object tests/test_d03_ua_nbu_pdftotext_authority_hardening.py)" = "e2236e58dd85caa522af5d43f5e9363e4784fac6"
+
+      - name: Install local-free build and test prerequisites
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl libfontconfig1-dev libfreetype6-dev \
+            libharfbuzz-dev libjpeg-dev liblcms2-dev libopenjp2-7-dev libpng-dev \
+            libtiff-dev ninja-build pkg-config python3 python3-pytest zlib1g-dev
+          python3 --version
+          cmake --version | head -n 1
+
+      - name: Focused fail-closed contract tests
+        run: |
+          python3 -m pytest -q \
+            tests/test_d03_ua_nbu_official_resolutions_intake_v1.py \
+            tests/test_d03_ua_nbu_official_pdf_pins_v1.py \
+            tests/test_d03_ua_nbu_pdftotext_materialization_v1.py \
+            tests/test_d03_ua_nbu_pdftotext_authority_hardening.py
+
+      - name: Build exact Poppler pdftotext from pinned upstream source
+        run: |
+          set -euxo pipefail
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
+            --output /tmp/poppler.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" -B /tmp/poppler-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DENABLE_UTILS=ON \
+            -DENABLE_CPP=OFF \
+            -DENABLE_GLIB=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF \
+            -DENABLE_BOOST=OFF \
+            -DENABLE_LIBCURL=OFF \
+            -DENABLE_NSS3=OFF \
+            -DENABLE_GPGME=OFF \
+            -DBUILD_GTK_TESTS=OFF \
+            -DBUILD_QT5_TESTS=OFF \
+            -DBUILD_QT6_TESTS=OFF \
+            -DBUILD_CPP_TESTS=OFF \
+            -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-build --parallel 2
+          sudo cmake --install /tmp/poppler-build
+          sudo ldconfig
+          command -v pdftotext
+          pdftotext -v 2>&1 | tee /tmp/pdftotext-version.txt
+          grep -F "pdftotext version ${POPPLER_VERSION}" /tmp/pdftotext-version.txt
+
+      - name: Build stable bounded live NBU discovery evidence
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import importlib.util
+          import json
+          import os
+          import sys
+          import urllib.request
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          root = Path.cwd()
+          tool_path = root / "tools/validate_d03_ua_nbu_official_resolutions_intake_v1.py"
+          spec = importlib.util.spec_from_file_location("nbu_intake_live", tool_path)
+          if spec is None or spec.loader is None:
+              raise RuntimeError("cannot load NBU discovery authority")
+          module = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = module
+          spec.loader.exec_module(module)
+          config = module.load_config()
+
+          target_documents = int(os.environ["NBU_TARGET_DOCUMENTS"])
+          per_page = int(os.environ["NBU_SEARCH_PER_PAGE"])
+          hard_max = config["discovery_contract"]["hard_max_documents"]
+          if not 1 <= target_documents <= hard_max:
+              raise RuntimeError("bounded target exceeds discovery contract")
+          if not target_documents <= per_page <= hard_max:
+              raise RuntimeError("search page size outside discovery hard bound")
+
+          allowed = urlsplit(config["source"]["allowed_origin"])
+
+          class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+                  redirected = urlsplit(newurl)
+                  if (
+                      redirected.scheme != "https"
+                      or redirected.netloc.casefold() != allowed.netloc.casefold()
+                      or redirected.username
+                      or redirected.password
+                      or redirected.port not in (None, 443)
+                  ):
+                      raise urllib.error.HTTPError(
+                          newurl,
+                          code,
+                          "NBU redirect escaped canonical authority",
+                          headers,
+                          fp,
+                      )
+                  return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+          opener = urllib.request.build_opener(SameOriginRedirect())
+
+          def fetch_raw(url: str) -> tuple[str, str]:
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "User-Agent": "12-6-ai-d03-nbu-live-execution/4.0 (+source-audit)"
+                  },
+                  method="GET",
+              )
+              with opener.open(request, timeout=30) as response:
+                  final_url = response.geturl()
+                  final = urlsplit(final_url)
+                  if (
+                      final.scheme != "https"
+                      or final.netloc.casefold() != allowed.netloc.casefold()
+                  ):
+                      raise RuntimeError(f"NBU fetch escaped origin: {final_url}")
+                  body = response.read(8_000_001)
+              if len(body) > 8_000_000:
+                  raise RuntimeError(f"NBU HTML response exceeded bound: {url}")
+              return body.decode("utf-8", errors="strict"), final_url
+
+          def fetch_catalog(url: str) -> tuple[str, str]:
+              body, final_url = fetch_raw(url)
+              module.validate_catalog_response_url(final_url, url, config)
+              return body, final_url
+
+          candidate_target = min(hard_max, target_documents * 2)
+          continuity_anchors = (
+              "https://bank.gov.ua/ua/legislation/Resolution_22092026_108",
+              "https://bank.gov.ua/ua/legislation/Resolution_22092026_110",
+              "https://bank.gov.ua/ua/legislation/Resolution_24092026_113",
+              "https://bank.gov.ua/ua/legislation/Resolution_24092026_114",
+              "https://bank.gov.ua/ua/legislation/Resolution_28092026_115",
+          )
+          if target_documents < len(continuity_anchors):
+              raise RuntimeError("NBU target is smaller than continuity anchor set")
+
+          def catalog_snapshot() -> tuple[tuple[str, ...], tuple[str, ...]]:
+              requested, documents = module.crawl_resolution_catalog(
+                  config,
+                  fetch_catalog,
+                  target_documents=candidate_target,
+                  per_page=per_page,
+              )
+              print(
+                  "CATALOG_SNAPSHOT "
+                  f"documents={len(documents)} pages={len(requested)} "
+                  f"per_page={per_page}"
+              )
+              return requested, documents
+
+          first_pages, first_urls = catalog_snapshot()
+          second_pages, second_urls = catalog_snapshot()
+          if first_pages != second_pages:
+              raise RuntimeError(
+                  "NBU requested page sequence changed between independent bounded snapshots"
+              )
+          if first_urls != second_urls:
+              raise RuntimeError(
+                  "NBU canonical document set changed between independent bounded snapshots"
+              )
+          print(
+              "LIVE_DISCOVERY "
+              f"documents={len(first_urls)} pages={len(first_pages)}"
+          )
+
+          eligible_fetches: dict[str, list[str]] = {}
+          eligible_urls: list[str] = []
+          rejected_scope = 0
+          for index, url in enumerate(first_urls, start=1):
+              first_body, first_final = fetch_raw(url)
+              second_body, second_final = fetch_raw(url)
+              if first_final != url or second_final != url:
+                  raise RuntimeError(f"NBU document final identity changed: {url}")
+              pair = [first_body, second_body]
+              page, rejection = module.inspect_resolution_page_pair(pair, url, config)
+              if page is None:
+                  rejected_scope += 1
+                  print(
+                      f"REJECTED_DOCUMENT {index}/{len(first_urls)} "
+                      f"reason={rejection} url={url}"
+                  )
+                  continue
+              eligible_fetches[url] = pair
+              eligible_urls.append(url)
+
+          missing_anchors = [url for url in continuity_anchors if url not in eligible_fetches]
+          if missing_anchors:
+              raise RuntimeError(
+                  "NBU recent continuity anchors are absent or out of scope: "
+                  + ", ".join(missing_anchors)
+              )
+          anchor_set = set(continuity_anchors)
+          filler_target = target_documents - len(continuity_anchors)
+          filler_urls = [url for url in eligible_urls if url not in anchor_set][:filler_target]
+          if len(filler_urls) != filler_target:
+              raise RuntimeError(
+                  "NBU bounded candidate set did not yield enough deterministic fillers: "
+                  f"fillers={len(filler_urls)} target={filler_target} "
+                  f"eligible={len(eligible_urls)} candidates={len(first_urls)} "
+                  f"rejected_scope={rejected_scope}"
+              )
+          selected_set = anchor_set | set(filler_urls)
+          selected_urls = [url for url in eligible_urls if url in selected_set]
+          if len(selected_urls) != target_documents:
+              raise RuntimeError(
+                  "NBU continuity-anchor selection count drift: "
+                  f"selected={len(selected_urls)} target={target_documents}"
+              )
+          document_fetches = {url: eligible_fetches[url] for url in selected_urls}
+          for selected_index, url in enumerate(selected_urls, start=1):
+              print(
+                  f"LIVE_DOCUMENT {selected_index}/{target_documents} "
+                  f"continuity_anchor={url in anchor_set} url={url}"
+              )
+
+          evidence = module.build_body_free_discovery_evidence_from_documents(
+              config,
+              tuple(selected_urls),
+              document_fetches,
+          )
+          module.validate_evidence(evidence, config)
+          Path("/tmp/nbu-discovery-evidence.json").write_text(
+              json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          Path("/tmp/nbu-catalog-pages.json").write_text(
+              json.dumps(
+                  {
+                      "schema": "12-6.d03-ua-nbu-catalog-page-sequence.v1",
+                      "requested_urls": list(first_pages),
+                      "candidate_document_urls": list(first_urls),
+                      "selected_document_urls": list(selected_urls),
+                      "selection_policy": "RECENT_5_AUTHORITY_PLUS_CANONICAL_FIRST_35",
+                      "continuity_anchor_document_urls": list(continuity_anchors),
+                      "rejected_scope_count": rejected_scope,
+                  },
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          print(
+              "DISCOVERY_PASS "
+              f"documents={evidence['discovered_documents']} "
+              f"evidence_identity_sha256={evidence['evidence_identity_sha256']}"
+          )
+          PY
+
+      - name: Pin exact official NBU PDF bytes with independent refetch
+        run: |
+          python3 tools/materialize_d03_ua_nbu_official_pdf_pins_v1.py \
+            /tmp/nbu-discovery-evidence.json \
+            --output /tmp/nbu-pdf-pin-evidence.json
+
+      - name: Cross-bind five recent physical PDF pins from generation-8:140
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          pins = json.loads(Path("/tmp/nbu-pdf-pin-evidence.json").read_text(encoding="utf-8"))
+          observed = {
+              row["pdf_url"]: (row["pdf_sha256"], row["pdf_bytes"])
+              for row in pins["pins"]
+          }
+          expected = {
+              "https://bank.gov.ua/admin_uploads/law/22092026_108.pdf": ("31a388ffa9d5efe91299d049665fb8650e9de384b32483624d52505c2cd26854", 112297),
+              "https://bank.gov.ua/admin_uploads/law/22092026_110.pdf": ("bfba13af8bdf58dcf087f71bc32c544ec3c2a7cf75211d01961d873fddc34449", 118333),
+              "https://bank.gov.ua/admin_uploads/law/24092026_113.pdf": ("431130c13f116c7f805ddf9642aba3ee1be9f2dd102757c15b275c2c25e48c7b", 414717),
+              "https://bank.gov.ua/admin_uploads/law/24092026_114.pdf": ("44b930b6049b711922f0501c5468a7a91320a1b8b11a0bae6e116e5de4cae74c", 124436),
+              "https://bank.gov.ua/admin_uploads/law/28092026_115.pdf": ("a2d99c384c49668c0cd1eca118292eabfec01c35b0c57416bb8d8369e9605a98", 97532),
+          }
+          missing = [url for url, identity in expected.items() if observed.get(url) != identity]
+          if missing:
+              raise SystemExit("recent exact PDF pin continuity failed: " + ", ".join(missing))
+          if pins["pinned_pdfs"] != 40:
+              raise SystemExit(f"expected 40 pinned PDFs, observed {pins['pinned_pdfs']}")
+          print("RECENT_PIN_CONTINUITY=PASS")
+          print("RECENT_DISCOVERY_EVIDENCE_SHA256=" + os.environ["RECENT_DISCOVERY_EVIDENCE_SHA256"])
+          print("RECENT_PDF_PIN_EVIDENCE_SHA256=" + os.environ["RECENT_PDF_PIN_EVIDENCE_SHA256"])
+          PY
+
+      - name: Materialize exact text twice with exact qualified extractor
+        run: |
+          python3 tools/materialize_d03_ua_nbu_pdftotext_v1.py \
+            /tmp/nbu-discovery-evidence.json \
+            /tmp/nbu-pdf-pin-evidence.json \
+            --text-output /tmp/nbu-text-a.jsonl \
+            --evidence-output /tmp/nbu-text-evidence-a.json
+          python3 tools/materialize_d03_ua_nbu_pdftotext_v1.py \
+            /tmp/nbu-discovery-evidence.json \
+            /tmp/nbu-pdf-pin-evidence.json \
+            --text-output /tmp/nbu-text-b.jsonl \
+            --evidence-output /tmp/nbu-text-evidence-b.json
+          cmp /tmp/nbu-text-a.jsonl /tmp/nbu-text-b.jsonl
+          cmp /tmp/nbu-text-evidence-a.json /tmp/nbu-text-evidence-b.json
+          sha256sum /tmp/nbu-text-a.jsonl /tmp/nbu-text-b.jsonl
+
+      - name: Write body-free execution summary
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          discovery = json.loads(Path("/tmp/nbu-discovery-evidence.json").read_text(encoding="utf-8"))
+          pins = json.loads(Path("/tmp/nbu-pdf-pin-evidence.json").read_text(encoding="utf-8"))
+          text = json.loads(Path("/tmp/nbu-text-evidence-a.json").read_text(encoding="utf-8"))
+          summary = {
+              "schema": "12-6.d03-ua-nbu-pdftotext-real-execution-summary.v1",
+              "status": "REAL_TEXT_MATERIALIZED_ZERO_CREDIT",
+              "git_sha": os.environ["EXECUTION_HEAD"],
+              "parent_head_sha": os.environ["PARENT_HEAD"],
+              "recent_generation_8_140_discovery_evidence_sha256": os.environ["RECENT_DISCOVERY_EVIDENCE_SHA256"],
+              "recent_generation_8_140_pdf_pin_evidence_sha256": os.environ["RECENT_PDF_PIN_EVIDENCE_SHA256"],
+              "source_id": text["source_id"],
+              "catalog_url": "https://bank.gov.ua/ua/legislation/search",
+              "discovered_documents": discovery["discovered_documents"],
+              "pinned_pdfs": pins["pinned_pdfs"],
+              "recent_five_exact_pdf_pins_continuity_verified": True,
+              "observed_pdf_bytes": pins["observed_pdf_bytes"],
+              "materialized_records": text["materialized_records"],
+              "observed_text_bytes": text["observed_text_bytes"],
+              "text_artifact_bytes": text["text_artifact_bytes"],
+              "text_artifact_sha256": text["text_artifact_sha256"],
+              "discovery_evidence_identity_sha256": discovery["evidence_identity_sha256"],
+              "pdf_pin_evidence_identity_sha256": pins["evidence_identity_sha256"],
+              "text_evidence_identity_sha256": text["evidence_identity_sha256"],
+              "extractor_backend": text["extractor_backend"],
+              "extractor_version": text["extractor_version"],
+              "extractor_source_url": "https://poppler.freedesktop.org/poppler-25.06.0.tar.xz",
+              "extractor_source_sha256": os.environ["POPPLER_TARBALL_SHA256"],
+              "two_full_materializations_byte_identical": True,
+              "raw_text_persisted_in_durable_evidence": False,
+              "canonical_capacity_credit_bytes": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_executed": False,
+              "optimizer_updates": 0,
+              "final_test_accessed": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+              "external_llm_or_api_used_for_data_or_intelligence": False,
+          }
+          payload = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+          summary["summary_identity_sha256"] = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+          Path("/tmp/nbu-real-execution-summary.json").write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload body-free execution evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-nbu-pdftotext-real-execution-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            /tmp/pdftotext-version.txt
+            /tmp/nbu-discovery-evidence.json
+            /tmp/nbu-catalog-pages.json
+            /tmp/nbu-pdf-pin-evidence.json
+            /tmp/nbu-text-evidence-a.json
+            /tmp/nbu-text-evidence-b.json
+            /tmp/nbu-real-execution-summary.json
