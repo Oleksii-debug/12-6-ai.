@@ -518,7 +518,28 @@ def _prepare_model_weights(
     }
 
 
-def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
+def _bind_stateful_component_interfaces(
+    component: Any,
+    *,
+    label: str,
+) -> tuple[Any, Any]:
+    """Bind live state export/restore interfaces before compatibility preflight."""
+
+    state_exporter = getattr(component, "state_dict", None)
+    state_loader = getattr(component, "load_state_dict", None)
+    if not callable(state_exporter) or not callable(state_loader):
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        )
+    return state_exporter, state_loader
+
+
+def _preflight_optimizer_state(
+    optimizer: Any,
+    state: Any,
+    *,
+    interfaces: tuple[Any, Any] | None = None,
+) -> None:
     """Validate optimizer state before any live model or optimizer mutation.
 
     First-party PyTorch optimizers receive a structural geometry preflight because
@@ -530,11 +551,11 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
 
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint optimizer state must be a mapping")
-    if (
-        not callable(getattr(optimizer, "load_state_dict", None))
-        or not callable(getattr(optimizer, "state_dict", None))
-    ):
-        raise CheckpointCompatibilityError("optimizer must provide state_dict/load_state_dict")
+    if interfaces is None:
+        interfaces = _bind_stateful_component_interfaces(
+            optimizer,
+            label="optimizer",
+        )
 
     optimizer_module = optimizer.__class__.__module__
     if not optimizer_module.startswith("torch.optim"):
@@ -808,17 +829,22 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
         ) from exc
 
 
-def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
+def _preflight_stateful_component(
+    component: Any,
+    state: Any,
+    *,
+    label: str,
+    interfaces: tuple[Any, Any] | None = None,
+) -> None:
     """Validate scheduler-like state before model/optimizer mutation."""
 
-    if (
-        not callable(getattr(component, "state_dict", None))
-        or not callable(getattr(component, "load_state_dict", None))
-    ):
-        raise CheckpointCompatibilityError(
-            f"{label} must provide state_dict/load_state_dict"
+    if interfaces is None:
+        interfaces = _bind_stateful_component_interfaces(
+            component,
+            label=label,
         )
-    live_state = component.state_dict()
+    state_exporter, _state_loader = interfaces
+    live_state = state_exporter()
     if not isinstance(live_state, Mapping):
         raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
     _validate_state_schema(live_state, state, path=f"{label} state")
@@ -1316,13 +1342,32 @@ def load_verified_checkpoint(
         run_manifest_hash=expected_run_manifest_hash,
     )
     arrays, combined_state = _decode_verified_state(verified)
+
+    # Bind every live restore interface before model materialization/preflight.
+    # Descriptor lookup may execute user code; all compatibility checks below
+    # must observe any resulting target-state change, and application must not
+    # reopen those attributes after the first live mutation.
+    model_apply = _bind_model_state_loader(model, strict_model)
+    optimizer_interfaces = (
+        _bind_stateful_component_interfaces(optimizer, label="optimizer")
+        if optimizer is not None else None
+    )
+    scheduler_interfaces = (
+        _bind_stateful_component_interfaces(scheduler, label="scheduler")
+        if scheduler is not None else None
+    )
+
     materialized = _prepare_model_weights(model, arrays, strict_model)
     if optimizer is not None and combined_state.get("optimizer") is None:
         raise CheckpointCompatibilityError(
             "optimizer was requested but checkpoint has no optimizer state"
         )
     if optimizer is not None:
-        _preflight_optimizer_state(optimizer, combined_state["optimizer"])
+        _preflight_optimizer_state(
+            optimizer,
+            combined_state["optimizer"],
+            interfaces=optimizer_interfaces,
+        )
     if scheduler is not None and combined_state.get("scheduler") is None:
         raise CheckpointCompatibilityError(
             "scheduler was requested but checkpoint has no scheduler state"
@@ -1332,6 +1377,7 @@ def load_verified_checkpoint(
             scheduler,
             combined_state["scheduler"],
             label="scheduler",
+            interfaces=scheduler_interfaces,
         )
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
@@ -1339,11 +1385,11 @@ def load_verified_checkpoint(
     # No checkpoint byte is reopened after this point. All integrity, identity,
     # payload decoding, model/optimizer/scheduler compatibility and supported RNG
     # checks completed before the first mutation.
-    _apply_model_weights(model, materialized, strict_model)
-    if optimizer is not None:
-        optimizer.load_state_dict(combined_state["optimizer"])
-    if scheduler is not None:
-        scheduler.load_state_dict(combined_state["scheduler"])
+    model_apply(materialized)
+    if optimizer_interfaces is not None:
+        optimizer_interfaces[1](combined_state["optimizer"])
+    if scheduler_interfaces is not None:
+        scheduler_interfaces[1](combined_state["scheduler"])
     if restore_rng:
         restore_rng_state(combined_state["rng"])
     return LoadResult(
