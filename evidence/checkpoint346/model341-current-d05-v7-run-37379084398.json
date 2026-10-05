@@ -1,0 +1,227 @@
+{
+  "schema": "12-6.checkpoint346-model341-current-d05-qualification-evidence.v2",
+  "source": {
+    "qualification_pr": 2805,
+    "qualification_head": "511a59254a8eaa942e54d651d35ab4c202e0aceb",
+    "workflow_run_id": 37379084398,
+    "workflow_job_id": 111995999215,
+    "workflow_job_conclusion": "success",
+    "artifact_id": 11373331594,
+    "artifact_name": "checkpoint346-current-d05-model341-v7",
+    "artifact_zip_sha256": "b3a380569a24e9136c04d9b8a619c4d91edeafd4efd8d6937e9ad5befe1dc387",
+    "artifact_created_at": "2026-10-05T21:56:56Z",
+    "artifact_expires_at": "2026-11-04T21:56:55Z",
+    "supersedes_run": 37371471617,
+    "supersedes_reason": "Adds structural full captured RNG-state SHA-256 equality to the deterministic recovery replay."
+  },
+  "runtime": {
+    "product_pr": 2778,
+    "git_sha": "d13004de780759c88fe7e0039b2d0e8fd0b3b5c7",
+    "model_blob_sha": "c3879fe0ba9193d5a8176c284e1942f058ef7885",
+    "trainer_blob_sha": "866ddd80eeebe642a2c68d0b3025fc7432927d2a",
+    "checkpoint_core_blob_sha": "e28491467e1756446234ca746274b802ae6e7dd4",
+    "trainer_adapter_blob_sha": "ed8a56fe3ac8b944075f0c975e5c1edb734a57e5",
+    "progress_trainer_blob_sha": "81f19519f7a3a82bd1f8bfcd6bbf570794b12e82",
+    "public_save_api": "save_trainer_checkpoint",
+    "public_restore_api": "load_trainer_checkpoint"
+  },
+  "model341": {
+    "carrier_pr": 802,
+    "carrier_git_sha": "f151c77a8ef8721f0f568509147b1a5f961ae6c7",
+    "candidate_blob_sha": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "parameter_count": 20613440,
+    "canonical_base": "random_init"
+  },
+  "verdict": "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS",
+  "result_identity_sha256": "1fcfe2be657b6c7480b35ba6e834d70cfb0ccaec7855a8f519d10c970acd996c",
+  "execution": {
+    "local_free": true,
+    "synthetic_mechanics_only": true,
+    "device": "cpu",
+    "precision": "fp32",
+    "optimizer_updates_total": 3,
+    "parent_updates": 2,
+    "fresh_process_resumed_updates": 1,
+    "fresh_process_distinct": true,
+    "same_next_step_equal": true,
+    "binding_mismatch_failed_closed": true,
+    "binding_mismatch_retry_same_target": true,
+    "binding_mismatch_unchanged_scope": [
+      "counters",
+      "deterministic_policy",
+      "failure_reason",
+      "model",
+      "model_training",
+      "optimizer",
+      "pending_loss_sum",
+      "pending_tokens",
+      "rng",
+      "scaler",
+      "scheduler",
+      "update_incomplete"
+    ],
+    "exact_checkpoint_id_bound": true,
+    "exact_manifest_sha256_bound": true,
+    "rng_scope_restored": {
+      "python": true,
+      "numpy": true,
+      "torch_cpu": true
+    },
+    "exact_full_rng_state_equal": true,
+    "full_rng_state_sha256": "b8d64d6bb2f5a133e6f4d009946617238610dd2c336167610cd344f9a44d6e87"
+  },
+  "same_next_step": {
+    "baseline": {
+      "loss": 2.2995166778564453,
+      "update_loss": 2.2995166778564453,
+      "optimizer_step": 2,
+      "micro_step": 2,
+      "tokens_seen": 2,
+      "model_state_sha256": "cf044696ffdd8ca69d81c5db53edebf19f28b334b9167227c99746d96b93d653",
+      "optimizer_state_sha256": "82e2b744787bdadd0844d6101091cf976bee0d6b4ac6c04d05a139e6b737993c",
+      "trainer_state_sha256": "fe2f7669816bd5a13188a9d60178acd05bbcfd451b747d6dc00b9e5df406def6",
+      "rng_state_sha256": "b8d64d6bb2f5a133e6f4d009946617238610dd2c336167610cd344f9a44d6e87",
+      "rng_probe_before_step": {
+        "python": [
+          0.5111102493209799,
+          0.8162418900301913
+        ],
+        "numpy": [
+          0.9156608528511911,
+          0.22292021517272698
+        ],
+        "torch_cpu": [
+          0.4091787338256836,
+          0.7866764664649963
+        ]
+      }
+    },
+    "resumed": {
+      "loss": 2.2995166778564453,
+      "update_loss": 2.2995166778564453,
+      "optimizer_step": 2,
+      "micro_step": 2,
+      "tokens_seen": 2,
+      "model_state_sha256": "cf044696ffdd8ca69d81c5db53edebf19f28b334b9167227c99746d96b93d653",
+      "optimizer_state_sha256": "82e2b744787bdadd0844d6101091cf976bee0d6b4ac6c04d05a139e6b737993c",
+      "trainer_state_sha256": "fe2f7669816bd5a13188a9d60178acd05bbcfd451b747d6dc00b9e5df406def6",
+      "rng_state_sha256": "b8d64d6bb2f5a133e6f4d009946617238610dd2c336167610cd344f9a44d6e87",
+      "rng_probe_before_step": {
+        "python": [
+          0.5111102493209799,
+          0.8162418900301913
+        ],
+        "numpy": [
+          0.9156608528511911,
+          0.22292021517272698
+        ],
+        "torch_cpu": [
+          0.4091787338256836,
+          0.7866764664649963
+        ]
+      }
+    }
+  },
+  "checkpoint": {
+    "checkpoint_id": "7cdc53890c66cd142115fe6c435fc02b0ec825b10e7fa19647438300c3e4292c",
+    "manifest_sha256": "e876094256d0b62891e5749aa2a5363b1ffacf8d4021fb5d1ba2df898646e32d",
+    "total_bytes": 247810234,
+    "files": {
+      "MANIFEST.sha256": {
+        "bytes": 80,
+        "sha256": "26030cf8161ae273ed0f4437f950bf6b4376b24e552adcc3d59141e37119911f"
+      },
+      "manifest.json": {
+        "bytes": 2645,
+        "sha256": "e876094256d0b62891e5749aa2a5363b1ffacf8d4021fb5d1ba2df898646e32d"
+      },
+      "state.json": {
+        "bytes": 58693,
+        "sha256": "29e556f94f8deb47459aee5322ec6e267fcd7aff32cf559055b9b108930f74fc"
+      },
+      "state.safetensors": {
+        "bytes": 164952936,
+        "sha256": "e60f6a38fef84602be955dc0c04d461d722260f276c17e3290c0fdf33f961540"
+      },
+      "weights.safetensors": {
+        "bytes": 82795880,
+        "sha256": "18962b82b9251ee4846330254217979d1f69f57c1c6fef0fbc5542ca31380721"
+      }
+    }
+  },
+  "resource_observation": {
+    "platform": "linux",
+    "parent_peak_rss_bytes": 1240838144,
+    "fresh_child_peak_rss_bytes": 1240838144,
+    "concurrent_process_peak_rss_upper_bound_bytes": 2481676288,
+    "fresh_child_before_load": {
+      "current_rss_bytes": 399745024,
+      "peak_rss_bytes": 647286784
+    },
+    "fresh_child_after_load": {
+      "current_rss_bytes": 814600192,
+      "peak_rss_bytes": 1059328000
+    },
+    "fresh_child_after_resumed_step": {
+      "current_rss_bytes": 824197120,
+      "peak_rss_bytes": 1059328000
+    },
+    "fresh_child_resume_current_rss_delta_bytes": 414855168,
+    "fresh_child_resume_hwm_growth_bytes": 412041216,
+    "save_trainer_checkpoint_seconds": 3.565026149000005,
+    "load_trainer_checkpoint_seconds": 1.818207354000009,
+    "baseline_step2_seconds": 0.3156331140000077,
+    "scope": "single Ubuntu runner observation; not a 200M/1B feasibility claim"
+  },
+  "reproducibility": {
+    "python": "3.11.16",
+    "torch": "2.13.0+cpu",
+    "numpy": "2.4.6",
+    "safetensors": "0.8.0",
+    "environment_manifest_identity_sha256": "9e1cfb549bdb19e3a0bfbf3fe9a2b8a7473e49d00bb629dde1e0266cfa0eacb6",
+    "execution_plan_identity_sha256": "f835a6095d261076287e29294b95fe964b107155a83c5c60b981be8e8ab10151",
+    "execution_locks": [
+      {
+        "path": "requirements/locks/linux-x86_64/toolchain.lock.txt",
+        "sha256": "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3",
+        "role": "toolchain",
+        "package_count": 4
+      },
+      {
+        "path": "requirements/execution/linux-x86_64/cpu-runtime.lock.txt",
+        "sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a",
+        "role": "cpu_runtime",
+        "package_count": 12
+      }
+    ],
+    "d08_authority": {
+      "canonical_index_sha256": "5de40d40012123ccf654b3e29d9cd47df814978e4155ca9dde232b61e9cd6341",
+      "canonical_manifest_sha256": "283ca83571e527babda700e0c66ed03fb1c2aa4674bee0dba2272f64f344e1bf",
+      "canonical_profile": "requirements/locks/linux-x86_64/profile.json"
+    }
+  },
+  "scientific_credit": {
+    "real_corpus_used": false,
+    "training_authorized_corpus_used": false,
+    "optimized_target_exposure": 0,
+    "model_training_credit": false,
+    "learned_weights_created": false,
+    "final_test_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false,
+    "tokenizer_fit_authorized": false,
+    "scale_promotion_authorized": false
+  },
+  "limits": {
+    "maximum_optimizer_updates": 3,
+    "long_campaign": false,
+    "selection_or_recipe_tuning": false,
+    "learned20m_terminal_claim": false,
+    "cuda_rng_content_validation": false,
+    "real_cuda_checkpoint_memory": false,
+    "windows_qualification": false,
+    "full_rng_state_hash_compared": true
+  }
+}
