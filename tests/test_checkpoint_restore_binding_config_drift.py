@@ -71,6 +71,31 @@ def _source() -> Trainer:
     return source
 
 
+def test_native_snapshot_ignores_subclass_dict_descriptor() -> None:
+    observed: list[str] = []
+
+    class DictSpoofTrainer(Trainer):
+        @property
+        def __dict__(self) -> dict[str, Any]:
+            observed.append("__dict__")
+            return {
+                "_failure_reason": None,
+                "_update_incomplete": False,
+            }
+
+    target = DictSpoofTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+
+    canonical, snapshot = trainer_adapter._snapshot_trainer_restore_bindings(target)
+    assert canonical is True
+    assert snapshot["native_d02"] is True
+    assert snapshot["bindings"]["model"] is target.model
+    assert observed == []
+
+
 def test_native_lineage_ignores_custom_metaclass_mro_spoof() -> None:
     observed: list[str] = []
 
