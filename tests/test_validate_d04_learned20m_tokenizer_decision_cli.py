@@ -235,7 +235,7 @@ def test_main_malformed_authority_fails_machine_readably_without_output(
     assert captured.err == ""
     payload = json.loads(captured.out)
     assert payload["contract_valid"] is False
-    assert "duplicate_json_key:same" in payload["error"]
+    assert payload["error"] == "duplicate_json_key"
     assert not output.exists()
 
 
