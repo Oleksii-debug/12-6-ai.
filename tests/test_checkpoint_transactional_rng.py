@@ -108,3 +108,36 @@ def test_transactional_rng_interrupt_rolls_back_and_preserves_identity(
     assert raised.value is primary
     assert random.getstate() == before_python
     _assert_numpy_rng_equal(np.random.get_state(), before_numpy)
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_transactional_rng_rollback_failure_preserves_primary_interrupt(
+    interruption: type[BaseException],
+) -> None:
+    class FakeCore:
+        @staticmethod
+        def capture_rng_state() -> dict[str, str]:
+            return {"python": "before"}
+
+    primary = interruption("primary interrupted restore")
+    rollback_error = RuntimeError("secondary rollback failure")
+    calls = 0
+
+    def interrupt_then_fail(state: Mapping[str, Any]) -> dict[str, Any]:
+        nonlocal calls
+        del state
+        calls += 1
+        if calls == 1:
+            raise primary
+        raise rollback_error
+
+    with pytest.raises(interruption, match="primary interrupted restore") as raised:
+        _transactional_restore(FakeCore, interrupt_then_fail, {"python": "target"})
+
+    assert calls == 2
+    assert raised.value is primary
+    assert raised.value.__cause__ is rollback_error
+    assert any(
+        "secondary rollback failure" in note
+        for note in getattr(raised.value, "__notes__", ())
+    )
