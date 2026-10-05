@@ -362,3 +362,167 @@ def test_torch_state_roundtrip_if_available(tmp_path: Path):
     torch.testing.assert_close(resumed_x, continuation_x, rtol=0, atol=0)
     for name, tensor in model.state_dict().items():
         torch.testing.assert_close(tensor, uninterrupted[name], rtol=0, atol=0)
+
+
+
+def test_checkpoint_save_is_rng_neutral_across_effectful_state_exports(
+    tmp_path: Path,
+) -> None:
+    class EffectfulModel(NumpyModel):
+        def state_dict(self):
+            random.random()
+            np.random.random()
+            return super().state_dict()
+
+    class EffectfulOptimizer(MomentumSGD):
+        def state_dict(self):
+            random.random()
+            np.random.random()
+            return super().state_dict()
+
+    class EffectfulScheduler(StepScheduler):
+        def state_dict(self):
+            random.random()
+            np.random.random()
+            return super().state_dict()
+
+    random.seed(1701)
+    np.random.seed(1701)
+    model = EffectfulModel(np.array([0.1, -0.2, 0.3]))
+    optimizer = EffectfulOptimizer(model)
+    scheduler = EffectfulScheduler(optimizer)
+    python_before = copy.deepcopy(random.getstate())
+    numpy_before = copy.deepcopy(np.random.get_state())
+
+    checkpoint = tmp_path / "rng-neutral-save"
+    save_checkpoint(
+        checkpoint,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        trainer_state={"next_step": 0},
+        identity=identity(step=0, tokens_seen=0),
+    )
+
+    assert random.getstate() == python_before
+    numpy_after = np.random.get_state()
+    assert numpy_after[0] == numpy_before[0]
+    np.testing.assert_array_equal(numpy_after[1], numpy_before[1])
+    assert numpy_after[2:] == numpy_before[2:]
+
+    random.seed(999)
+    np.random.seed(999)
+    target_model = NumpyModel(np.array([9.0, 9.0, 9.0]))
+    target_optimizer = MomentumSGD(target_model)
+    target_scheduler = StepScheduler(target_optimizer)
+    load_checkpoint(
+        checkpoint,
+        model=target_model,
+        optimizer=target_optimizer,
+        scheduler=target_scheduler,
+        restore_rng=True,
+    )
+
+    assert random.getstate() == python_before
+    restored_numpy = np.random.get_state()
+    assert restored_numpy[0] == numpy_before[0]
+    np.testing.assert_array_equal(restored_numpy[1], numpy_before[1])
+    assert restored_numpy[2:] == numpy_before[2:]
+
+
+def test_failed_checkpoint_save_restores_entry_rng_and_publishes_nothing(
+    tmp_path: Path,
+) -> None:
+    class FailingModel(NumpyModel):
+        def state_dict(self):
+            random.random()
+            np.random.random()
+            raise RuntimeError("injected model export failure")
+
+    random.seed(1702)
+    np.random.seed(1702)
+    model = FailingModel(np.array([0.1, -0.2, 0.3]))
+    python_before = copy.deepcopy(random.getstate())
+    numpy_before = copy.deepcopy(np.random.get_state())
+    checkpoint = tmp_path / "failed-rng-neutral-save"
+
+    with pytest.raises(RuntimeError, match="injected model export failure"):
+        save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=identity(step=0, tokens_seen=0),
+        )
+
+    assert not checkpoint.exists()
+    assert random.getstate() == python_before
+    numpy_after = np.random.get_state()
+    assert numpy_after[0] == numpy_before[0]
+    np.testing.assert_array_equal(numpy_after[1], numpy_before[1])
+    assert numpy_after[2:] == numpy_before[2:]
+
+
+def test_checkpoint_save_restores_torch_rng_and_warn_only_policy(
+    tmp_path: Path,
+) -> None:
+    torch = pytest.importorskip("torch")
+    original_rng = torch.get_rng_state().clone()
+    original_policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+
+    class EffectfulLinear(torch.nn.Linear):
+        def state_dict(self, *args, **kwargs):
+            torch.rand(1)
+            torch.use_deterministic_algorithms(
+                torch.are_deterministic_algorithms_enabled(),
+                warn_only=not torch.is_deterministic_algorithms_warn_only_enabled(),
+            )
+            return super().state_dict(*args, **kwargs)
+
+    try:
+        torch.manual_seed(1703)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        model = EffectfulLinear(3, 2)
+        rng_before = torch.get_rng_state().clone()
+        policy_before = (
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        )
+        checkpoint = tmp_path / "torch-rng-neutral-save"
+        torch_identity = CheckpointIdentity(
+            git_sha="e" * 40,
+            model_spec={"kind": "effectful-torch-linear", "in": 3, "out": 2},
+            parameter_count=sum(parameter.numel() for parameter in model.parameters()),
+            tokenizer_hash="1" * 64,
+            tokenizer_vocab_hash="2" * 64,
+            dataset_manifest_hash="3" * 64,
+            run_manifest_hash="4" * 64,
+            training_config={"steps": 0},
+            seed=1703,
+            precision="float32",
+            step=0,
+            tokens_seen=0,
+            optimizer={"name": "none"},
+            scheduler=None,
+        )
+
+        save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=torch_identity,
+        )
+
+        torch.testing.assert_close(torch.get_rng_state(), rng_before, rtol=0, atol=0)
+        assert (
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        ) == policy_before
+    finally:
+        torch.set_rng_state(original_rng)
+        torch.use_deterministic_algorithms(
+            original_policy[0],
+            warn_only=original_policy[1],
+        )
