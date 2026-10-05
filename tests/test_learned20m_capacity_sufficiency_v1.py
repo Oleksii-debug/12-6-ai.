@@ -396,7 +396,8 @@ def test_rejects_huge_json_integer_with_python_digit_limit_disabled(
 
 
 def test_capacity_report_read_refuses_directory(tmp_path: Path) -> None:
-    with pytest.raises(CapacityReportError, match="must be a regular file"):
+    message = "cannot read capacity report" if os.name == "nt" else "must be a regular file"
+    with pytest.raises(CapacityReportError, match=message):
         load_and_validate(tmp_path)
 
 
@@ -413,7 +414,7 @@ def test_capacity_report_symlink_to_regular_report(tmp_path: Path) -> None:
     if os.name == "nt":
         pytest.skip("Windows symlink creation may require additional privileges")
     linked = tmp_path / "safe-linked-report.json"
-    linked.symlink_to(REPORT)
+    linked.symlink_to(REPORT.resolve())
     assert load_and_validate(linked, expected_main_sha=MAIN_SHA) == _report()
 
 
