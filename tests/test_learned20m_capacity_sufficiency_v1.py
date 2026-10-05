@@ -446,6 +446,32 @@ def test_capacity_report_fifo_with_no_writer_never_blocks(tmp_path: Path) -> Non
     assert result.returncode == 0, result.stderr
 
 
+def test_capacity_report_regular_path_swap_to_fifo_never_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    target = tmp_path / "capacity.json"
+    fifo = tmp_path / "replacement.pipe"
+    target.write_bytes(REPORT.read_bytes())
+    os.mkfifo(fifo)
+    real_open = os.open
+    swapped = False
+
+    def swapping_open(path: str | os.PathLike[str], flags: int) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == target:
+            assert flags & os.O_NONBLOCK
+            target.unlink()
+            fifo.replace(target)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swapping_open)
+    with pytest.raises(CapacityReportError, match="must be a regular file"):
+        load_and_validate(target)
+
+
 def test_rejects_nonzero_float_underflow_without_disclosing_literal(
     tmp_path: Path,
 ) -> None:
