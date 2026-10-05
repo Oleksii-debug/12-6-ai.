@@ -854,3 +854,84 @@ def test_canonical_bound_identity_cannot_drop_environment_lock_as_legacy_optiona
         )
 
     assert not checkpoint.exists()
+
+
+@pytest.mark.parametrize(
+    "fail",
+    [False, True],
+    ids=["success", "failure"],
+)
+def test_post_rng_validator_restores_torch_rng_and_warn_only(
+    tmp_path: Path,
+    fail: bool,
+) -> None:
+    torch = pytest.importorskip("torch")
+    original_rng = torch.get_rng_state().clone()
+    original_policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    try:
+        torch.manual_seed(1706)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        model = torch.nn.Linear(3, 2)
+        rng_before = torch.get_rng_state().clone()
+        policy_before = (
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        )
+        checkpoint = tmp_path / f"post-rng-validator-torch-{fail}"
+        torch_identity = CheckpointIdentity(
+            git_sha="e" * 40,
+            model_spec={"kind": "post-validator-torch-linear", "in": 3, "out": 2},
+            parameter_count=sum(parameter.numel() for parameter in model.parameters()),
+            tokenizer_hash="1" * 64,
+            tokenizer_vocab_hash="2" * 64,
+            dataset_manifest_hash="3" * 64,
+            run_manifest_hash="4" * 64,
+            training_config={"steps": 0},
+            seed=1706,
+            precision="float32",
+            step=0,
+            tokens_seen=0,
+            optimizer={"name": "none"},
+            scheduler=None,
+        )
+
+        def post_validator() -> None:
+            torch.rand(1)
+            torch.use_deterministic_algorithms(False, warn_only=False)
+            if fail:
+                raise RuntimeError("injected torch post-RNG rejection")
+
+        if fail:
+            with pytest.raises(RuntimeError, match="torch post-RNG rejection"):
+                save_checkpoint(
+                    checkpoint,
+                    model=model,
+                    trainer_state={},
+                    identity=torch_identity,
+                    post_rng_prepublish_validator=post_validator,
+                )
+            assert not checkpoint.exists()
+        else:
+            save_checkpoint(
+                checkpoint,
+                model=model,
+                trainer_state={},
+                identity=torch_identity,
+                post_rng_prepublish_validator=post_validator,
+            )
+            verify_checkpoint(checkpoint)
+
+        torch.testing.assert_close(torch.get_rng_state(), rng_before, rtol=0, atol=0)
+        assert (
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        ) == policy_before
+    finally:
+        torch.set_rng_state(original_rng)
+        torch.use_deterministic_algorithms(
+            original_policy[0],
+            warn_only=original_policy[1],
+        )
