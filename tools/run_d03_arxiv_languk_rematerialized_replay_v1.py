@@ -386,8 +386,10 @@ def _stage_new_bytes(path: Path, raw: bytes, *, label: str) -> Path:
         except (OSError, KeyboardInterrupt, SystemExit) as cleanup_error:
             raise RematerializationError(
                 "STAGING_CLEANUP_INCOMPLETE: "
-                f"{label} write/verification failed ({type(failure).__name__}), "
-                f"staged cleanup failed ({type(cleanup_error).__name__}); "
+                f"{label} write/verification failed "
+                f"({type(failure).__name__}: {failure}), "
+                f"staged cleanup failed "
+                f"({type(cleanup_error).__name__}: {cleanup_error}); "
                 f"unpublished stage: {staged}; manual reconciliation required"
             ) from failure
         raise
@@ -583,11 +585,17 @@ def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
                         f"{label} was published and byte-verified, but staged cleanup "
                         f"is pending: {staged}; inspect the final output before retry"
                     ) from cleanup_error
-                original = (
-                    f"; original publication failure: "
-                    f"{type(primary_failure).__name__}: {primary_failure}"
-                    if primary_failure is not None else ""
-                )
+                original = ""
+                if primary_failure is not None:
+                    original = (
+                        f"; original publication failure: "
+                        f"{type(primary_failure).__name__}: {primary_failure}"
+                    )
+                    cause = primary_failure.__cause__
+                    if cause is not None:
+                        original += (
+                            f"; original cause: {type(cause).__name__}: {cause}"
+                        )
                 raise RematerializationError(
                     f"{label} publication failed and staged cleanup is pending: "
                     f"{staged}; cleanup error: {type(cleanup_error).__name__}: "
@@ -784,10 +792,17 @@ def _publish_verified_outputs(
                     "outer receipt published and byte-verified; staged cleanup "
                     f"pending for {cleanup_failures}; inspect read-only recovery"
                 ) from cleanup_error
-            original = (
-                f"; original publication failure: {primary_failure}"
-                if primary_failure is not None else ""
-            )
+            original = ""
+            if primary_failure is not None:
+                original = (
+                    f"; original publication failure: "
+                    f"{type(primary_failure).__name__}: {primary_failure}"
+                )
+                cause = primary_failure.__cause__
+                if cause is not None:
+                    original += (
+                        f"; original cause: {type(cause).__name__}: {cause}"
+                    )
             raise RematerializationError(
                 "outer publication incomplete and staged cleanup pending for "
                 f"{cleanup_failures}{original}; manual reconciliation required"
