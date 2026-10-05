@@ -340,6 +340,60 @@ def test_parse_args_rejects_abbreviated_authority_options(
     assert caught.value.code == 2
 
 
+@pytest.mark.parametrize(
+    ("option", "extra_value", "use_equals"),
+    [
+        ("--balanced-selection", "second-selection.json", False),
+        ("--expected-selection-identity-sha256", "8" * 64, False),
+        ("--output", "second-output.json", False),
+        ("--verify-report", "second-report.json", True),
+    ],
+)
+def test_parse_args_rejects_duplicate_authority_options(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    option: str,
+    extra_value: str,
+    use_equals: bool,
+) -> None:
+    cli = _module()
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    report = tmp_path / "report.json"
+    output = tmp_path / "output.json"
+    for path in (selection, application, report):
+        path.write_text("{}", encoding="utf-8")
+    argv = [
+        str(TOOL),
+        "--balanced-selection",
+        str(selection),
+        "--split-application",
+        str(application),
+        *HASH_ARGS,
+        "--output",
+        str(output),
+        "--verify-report",
+        str(report),
+    ]
+    duplicate = (
+        f"{option}={tmp_path / extra_value}"
+        if use_equals and option in {"--output", "--verify-report", "--balanced-selection"}
+        else f"{option}={extra_value}"
+        if use_equals
+        else option
+    )
+    if use_equals:
+        argv.append(duplicate)
+    else:
+        argv.extend([option, str(tmp_path / extra_value) if option in {
+            "--balanced-selection", "--output", "--verify-report"
+        } else extra_value])
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as caught:
+        cli.parse_args()
+    assert caught.value.code == 2
+
+
 def test_main_valid_dispatch_preserves_report_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
