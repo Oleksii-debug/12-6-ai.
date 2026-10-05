@@ -333,11 +333,13 @@ jobs:
           run_once() {
             out="$1"
             mkdir -p "$out"
-            python tools/run_d03_code_delta_decontam_qp_v1.py               --expected-execution-head "$D03_EXECUTION_SHA"               --parent-survivors-json "$RUNNER_TEMP/parent/extracted/survivors.json"               --parent-evidence-json "$RUNNER_TEMP/parent/extracted/evidence.json"               --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl"               --base-reserved-binding-json "$RUNNER_TEMP/base_reserved_binding.json"               --eval647-manifest-json configs/evaluation/eval_code_reserve_v1.json               --eval647-materialization-evidence-json evidence/eval647/code_selection_source_materialization_v1.json               --expected-base-reserved-binding-identity-sha256 "$BASE_BINDING_ID"               --expected-composed-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID"               --expected-eval647-materialization-evidence-identity-sha256 "$EXPECTED_EVAL647_EVIDENCE_ID"               --expected-eval647-object-set-identity-sha256 "$EXPECTED_EVAL647_OBJECT_SET_ID"               --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID"               --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID"               --output-evidence "$out/evidence.json"
+            python tools/run_d03_code_delta_decontam_qp_v1.py               --expected-execution-head "$D03_EXECUTION_SHA"               --parent-survivors-json "$RUNNER_TEMP/parent/extracted/survivors.json"               --parent-evidence-json "$RUNNER_TEMP/parent/extracted/evidence.json"               --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl"               --base-reserved-binding-json "$RUNNER_TEMP/base_reserved_binding.json"               --eval647-manifest-json configs/evaluation/eval_code_reserve_v1.json               --eval647-materialization-evidence-json evidence/eval647/code_selection_source_materialization_v1.json               --expected-base-reserved-binding-identity-sha256 "$BASE_BINDING_ID"               --expected-composed-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID"               --expected-eval647-materialization-evidence-identity-sha256 "$EXPECTED_EVAL647_EVIDENCE_ID"               --expected-eval647-object-set-identity-sha256 "$EXPECTED_EVAL647_OBJECT_SET_ID"               --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID"               --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID"               --output-evidence "$out/evidence.json"               --output-composition-receipt "$out/composition_receipt.json"               --output-survivor-inventory "$out/survivor_inventory.json"
           }
           run_once "$RUNNER_TEMP/output-a"
           run_once "$RUNNER_TEMP/output-b"
-          cmp "$RUNNER_TEMP/output-a/evidence.json" "$RUNNER_TEMP/output-b/evidence.json"
+          for name in evidence.json composition_receipt.json survivor_inventory.json; do
+            cmp "$RUNNER_TEMP/output-a/$name" "$RUNNER_TEMP/output-b/$name"
+          done
 
       - name: Qualify text-free exact-delta result
         shell: bash
@@ -352,9 +354,19 @@ jobs:
           tmp = Path(os.environ["RUNNER_TEMP"])
           a_raw = (tmp / "output-a/evidence.json").read_bytes()
           b_raw = (tmp / "output-b/evidence.json").read_bytes()
-          if a_raw != b_raw:
+          receipt_raw = (tmp / "output-a/composition_receipt.json").read_bytes()
+          receipt_b_raw = (tmp / "output-b/composition_receipt.json").read_bytes()
+          inventory_raw = (tmp / "output-a/survivor_inventory.json").read_bytes()
+          inventory_b_raw = (tmp / "output-b/survivor_inventory.json").read_bytes()
+          if (
+              a_raw != b_raw
+              or receipt_raw != receipt_b_raw
+              or inventory_raw != inventory_b_raw
+          ):
               raise RuntimeError("two fresh executions diverged")
           evidence = json.loads(a_raw)
+          receipt = json.loads(receipt_raw)
+          inventory = json.loads(inventory_raw)
 
           if evidence["schema_version"] != (
               "12-6.d03-code-delta-decontam-g05-g06-execution.v1"
@@ -378,6 +390,43 @@ jobs:
           if delta["pre_gate_payload_bytes"] != 418487:
               raise RuntimeError("delta byte count drift")
 
+          durable = evidence["durable_authority"]
+          receipt_sha = hashlib.sha256(receipt_raw).hexdigest()
+          inventory_sha = hashlib.sha256(inventory_raw).hexdigest()
+          if durable["composition_receipt_json_sha256"] != receipt_sha:
+              raise RuntimeError("composition receipt file root drift")
+          if durable["survivor_inventory_json_sha256"] != inventory_sha:
+              raise RuntimeError("survivor inventory file root drift")
+          if (
+              durable["composition_receipt_identity_sha256"]
+              != receipt["receipt_identity_sha256"]
+          ):
+              raise RuntimeError("composition receipt identity drift")
+          if inventory.get("schema_version") != "12-6.data526-record-inventory.v1":
+              raise RuntimeError("survivor inventory schema drift")
+          rows = inventory.get("records")
+          if not isinstance(rows, list) or not rows:
+              raise RuntimeError("survivor inventory records missing")
+          required_row_keys = {
+              "record_id",
+              "source_id",
+              "family",
+              "modality",
+              "payload_sha256",
+              "payload_bytes",
+          }
+          if any(
+              not isinstance(row, dict) or set(row) != required_row_keys
+              for row in rows
+          ):
+              raise RuntimeError("survivor inventory row schema drift")
+          if inventory.get("record_count") != len(rows):
+              raise RuntimeError("survivor inventory record count drift")
+          if inventory.get("total_payload_bytes") != sum(
+              row["payload_bytes"] for row in rows
+          ):
+              raise RuntimeError("survivor inventory byte count drift")
+
           gate = evidence["gate_execution"]
           survivor = gate["survivor_payload_bytes"]
           loss = gate["later_gate_loss_bytes"]
@@ -385,6 +434,28 @@ jobs:
               raise RuntimeError("delta survivor bytes invalid")
           if type(loss) is not int or loss != 418487 - survivor:
               raise RuntimeError("gate loss accounting drift")
+          if inventory["total_payload_bytes"] != survivor:
+              raise RuntimeError("inventory/gate survivor byte drift")
+          if inventory["record_count"] != gate["survivor_records"]:
+              raise RuntimeError("inventory/gate survivor record drift")
+          if len({row["source_id"] for row in rows}) != gate["survivor_source_objects"]:
+              raise RuntimeError("inventory/gate source-object drift")
+          if (
+              inventory["record_inventory_digest_sha256"]
+              != gate["survivor_record_inventory_digest_sha256"]
+              or inventory["payload_inventory_digest_sha256"]
+              != gate["survivor_payload_inventory_digest_sha256"]
+          ):
+              raise RuntimeError("inventory/gate root drift")
+          if receipt["survivor_payload_bytes"] != survivor:
+              raise RuntimeError("receipt/gate survivor byte drift")
+          if (
+              receipt["survivor_record_inventory_digest_sha256"]
+              != inventory["record_inventory_digest_sha256"]
+              or receipt["survivor_payload_inventory_digest_sha256"]
+              != inventory["payload_inventory_digest_sha256"]
+          ):
+              raise RuntimeError("receipt/inventory root drift")
 
           cap = evidence["capacity_projection"]
           if cap["current_post_qp_code_bytes_reference"] != 3664247:
@@ -444,6 +515,8 @@ jobs:
                       walk(child)
 
           walk(evidence)
+          walk(receipt)
+          walk(inventory)
           evidence_sha = hashlib.sha256(a_raw).hexdigest()
           proof_core = {
               "schema_version": (
@@ -456,6 +529,14 @@ jobs:
               ),
               "evidence_file_sha256": evidence_sha,
               "evidence_identity_sha256": evidence["evidence_identity_sha256"],
+              "composition_receipt_json_sha256": receipt_sha,
+              "survivor_inventory_json_sha256": inventory_sha,
+              "survivor_record_inventory_digest_sha256": inventory[
+                  "record_inventory_digest_sha256"
+              ],
+              "survivor_payload_inventory_digest_sha256": inventory[
+                  "payload_inventory_digest_sha256"
+              ],
               "two_fresh_processes_byte_identical": True,
               "delta_source_objects": 18,
               "delta_pre_gate_payload_bytes": 418487,
@@ -495,6 +576,8 @@ jobs:
           name: d03-code-delta-decontam-qp-${{ github.event.pull_request.head.sha }}
           path: |
             ${{ runner.temp }}/output-a/evidence.json
+            ${{ runner.temp }}/output-a/composition_receipt.json
+            ${{ runner.temp }}/output-a/survivor_inventory.json
             ${{ runner.temp }}/two-clean-proof.json
           if-no-files-found: error
           retention-days: 90
