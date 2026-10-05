@@ -12,8 +12,9 @@ import copy
 import importlib
 import inspect
 from collections.abc import Mapping
-from dataclasses import asdict, fields, is_dataclass
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
+from types import MemberDescriptorType
 from typing import Any
 
 from . import core as _core
@@ -369,23 +370,47 @@ def _restore_contract_equal(left: Any, right: Any) -> bool:
 
 
 def _snapshot_native_d02_config(config: Any) -> dict[str, Any]:
-    """Snapshot native TrainerConfig fields without dataclasses.asdict deepcopy."""
+    """Snapshot native TrainerConfig without executing mutable field descriptors."""
 
-    if not is_dataclass(config) or isinstance(config, type):
+    config_type = type(config)
+    try:
+        module_name = type.__getattribute__(config_type, "__module__")
+        type_name = type.__getattribute__(config_type, "__name__")
+        type_attrs = type.__getattribute__(config_type, "__dict__")
+    except (AttributeError, TypeError) as exc:
         raise CheckpointCompatibilityError(
-            "native D02 trainer config must remain a dataclass instance"
+            "native D02 trainer config type is unavailable"
+        ) from exc
+    raw_fields = type_attrs.get("__dataclass_fields__")
+    if (
+        module_name != "twelve_six.training.config"
+        or type_name != "TrainerConfig"
+        or type(raw_fields) is not dict
+    ):
+        raise CheckpointCompatibilityError(
+            "native D02 trainer config must remain canonical TrainerConfig"
         )
+
     snapshot: dict[str, Any] = {}
-    for field in fields(config):
+    for field_name in raw_fields:
+        if type(field_name) is not str:
+            raise CheckpointCompatibilityError(
+                "native D02 trainer config contains an invalid field name"
+            )
+        descriptor = type_attrs.get(field_name)
+        if not isinstance(descriptor, MemberDescriptorType):
+            raise CheckpointCompatibilityError(
+                "native D02 trainer config fields must remain inert slots"
+            )
         try:
-            value = object.__getattribute__(config, field.name)
+            value = descriptor.__get__(config, config_type)
         except BaseException as exc:
             raise CheckpointCompatibilityError(
-                f"native D02 config field unavailable: {field.name}"
+                f"native D02 config field unavailable: {field_name}"
             ) from exc
-        snapshot[field.name] = _snapshot_restore_contract_value(
+        snapshot[field_name] = _snapshot_restore_contract_value(
             value,
-            path=f"native D02 config.{field.name}",
+            path=f"native D02 config.{field_name}",
         )
     return snapshot
 
