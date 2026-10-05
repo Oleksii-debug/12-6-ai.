@@ -687,6 +687,43 @@ def test_link_create_then_raise_is_reconciled_as_committed(
 
 
 @pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_precreate_process_interrupt_preserves_stage_and_rethrows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+) -> None:
+    cli = _module()
+    output = tmp_path / "precreate-interrupted.json"
+    expected = cli._serialize_report(
+        {"schema": "test-only", "status": "zero-credit"}
+    ).encode("utf-8")
+    unlink_calls: list[Path] = []
+    actual_unlink_owned = cli._unlink_owned_path
+
+    def interrupt_before_link(_stage: Path, _final: Path) -> None:
+        raise interruption("injected pre-create interruption")
+
+    def observe_unlink(
+        candidate: Path,
+        identity: tuple[int, int],
+        *,
+        missing_ok: bool = False,
+    ) -> None:
+        unlink_calls.append(candidate)
+        actual_unlink_owned(candidate, identity, missing_ok=missing_ok)
+
+    monkeypatch.setattr(cli.os, "link", interrupt_before_link)
+    monkeypatch.setattr(cli, "_unlink_owned_path", observe_unlink)
+    with pytest.raises(interruption, match="pre-create interruption"):
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+
+    assert unlink_calls == []
+    assert not output.exists()
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == expected
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
 def test_postcreate_process_interrupt_preserves_recovery_state_and_rethrows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
