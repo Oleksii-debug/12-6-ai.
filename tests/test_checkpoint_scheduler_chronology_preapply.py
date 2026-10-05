@@ -785,6 +785,77 @@ def test_late_target_freshness_drift_fails_before_model_and_rng(
 
 
 @pytest.mark.parametrize(
+    ("hook_effect", "error"),
+    [
+        ("model-rebind", "owns a different model"),
+        ("micro-step", "fresh trainer with no consumed exposure"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_stateful_preflight_hook_drift_is_rechecked_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    hook_effect: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-preflight-hook-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    initial_weights = original_model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+
+    def prepare_then_arm_hook(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        assert target.scheduler is not None
+        actual_state_dict = target.scheduler.state_dict
+
+        def effectful_state_dict() -> Any:
+            state = actual_state_dict()
+            if hook_effect == "model-rebind":
+                target.model = _TinyLogits()
+            elif hook_effect == "micro-step":
+                target.micro_step = 1
+            else:
+                raise AssertionError(f"unknown hook effect: {hook_effect}")
+            return state
+
+        target.scheduler.state_dict = effectful_state_dict  # type: ignore[method-assign]
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("stateful preflight hook drift reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_arm_hook)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    torch.testing.assert_close(original_model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer],
     ids=["adapter", "progress"],
 )
