@@ -729,3 +729,72 @@ def test_native_trainer_missing_recovery_marker_cannot_downgrade_to_generic(
         )
 
     assert checkpoint_reads == []
+
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ("weight", "model changed during checkpoint publication"),
+        ("counter", "post-load tokens_seen disagrees with checkpoint"),
+        ("mode", "requires model training mode"),
+    ],
+)
+def test_native_checkpoint_save_rejects_model_export_drift_before_publication(
+    tmp_path: Path,
+    mutation: str,
+    expected: str,
+) -> None:
+    class EffectfulModel(_TinyLogits):
+        def __init__(self) -> None:
+            super().__init__()
+            self.armed = False
+            self.owner: Trainer | None = None
+
+        def state_dict(self, *args: Any, **kwargs: Any) -> Any:
+            state = super().state_dict(*args, **kwargs)
+            if not self.armed:
+                return state
+            if mutation == "weight":
+                with torch.no_grad():
+                    self.weight.add_(1.0)
+            elif mutation == "counter":
+                assert self.owner is not None
+                self.owner.tokens_seen += 1
+            else:
+                self.eval()
+            return state
+
+    class ArmAfterTrainerExport(Trainer):
+        def state_dict(self) -> Any:
+            state = super().state_dict()
+            self.model.armed = True
+            return state
+
+    model = EffectfulModel()
+    target = ArmAfterTrainerExport(
+        model,
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    model.owner = target
+    weight_before = model.weight.detach().clone()
+    checkpoint = tmp_path / f"prepublish-{mutation}-must-not-exist"
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=expected):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=model,
+            trainer=target,
+            identity=_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
+    if mutation == "weight":
+        assert not torch.equal(model.weight.detach(), weight_before)
+    elif mutation == "counter":
+        assert target.tokens_seen == 1
+    else:
+        assert model.training is False
