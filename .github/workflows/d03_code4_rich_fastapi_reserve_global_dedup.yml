@@ -1,0 +1,377 @@
+name: D03 code4 Rich FastAPI reserve global dedup
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_code4_rich_fastapi_reserve_global_dedup.yml"
+      - "tools/run_d03_code4_rich_fastapi_reserve_global_dedup_v1.py"
+      - "configs/data/next100_051_rich_code_rights_v1.json"
+      - "configs/data/next100_044_fastapi_code_rights_policy_v1.json"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d03-code4-rich-fastapi-reserve-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-code4-rich-fastapi-reserve-g8-128-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pass_id: [1, 2]
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Install historical V7 PDF extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
+      - name: Bind exact head and reserve contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile \
+            tools/execute_d03_four_code_sources_materialization.py \
+            tools/run_d03_four_code_sources_global_dedup_v1.py \
+            tools/run_d03_code4_rich_fastapi_reserve_global_dedup_v1.py
+          python tools/run_d03_code4_rich_fastapi_reserve_global_dedup_v1.py \
+            --contract-check \
+            --expected-execution-head "$EXECUTION_SHA"
+          git cat-file -e "$V7_HEAD^{commit}"
+
+      - name: Reconstruct V7 and execute reserve global dedup
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/code4-rich-fastapi-$PASS_ID"
+          mkdir -p "$run_root"
+
+          success=false
+          for attempt in 1 2 3; do
+            attempt_root="$run_root/attempt-$attempt"
+            v7_root="$attempt_root/v7"
+            mkdir -p "$attempt_root"
+            git worktree add --detach "$v7_root" "$V7_HEAD"
+            test "$(git -C "$v7_root" rev-parse HEAD)" = "$V7_HEAD"
+            test -z "$(git -C "$v7_root" status --porcelain=v1 --untracked-files=all)"
+
+            set +e
+            python tools/run_d03_code4_rich_fastapi_reserve_global_dedup_v1.py \
+              --v7-root "$v7_root" \
+              --bulk-workspace "$attempt_root/bulk" \
+              --expected-execution-head "$EXECUTION_SHA" \
+              --output-code4-report "$attempt_root/code4-global-dedup-report.json" \
+              --output-combined-report "$attempt_root/combined-global-dedup-report.json" \
+              --output-survivors "$attempt_root/survivors.json" \
+              --output-evidence "$attempt_root/evidence.json"
+            status=$?
+            set -e
+
+            git worktree remove --force "$v7_root"
+            if [ "$status" -eq 0 ]; then
+              cp "$attempt_root/code4-global-dedup-report.json" \
+                "$run_root/code4-global-dedup-report.json"
+              cp "$attempt_root/combined-global-dedup-report.json" \
+                "$run_root/combined-global-dedup-report.json"
+              cp "$attempt_root/survivors.json" "$run_root/survivors.json"
+              cp "$attempt_root/evidence.json" "$run_root/evidence.json"
+              success=true
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit "$status"
+            fi
+            sleep "$((attempt * 5))"
+          done
+          test "$success" = true
+
+      - name: Verify zero-credit text-free reserve evidence
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/code4-rich-fastapi-$PASS_ID"
+          python - "$run_root" "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+          baseline = json.loads(
+              (root / "code4-global-dedup-report.json").read_text(encoding="utf-8")
+          )
+          combined = json.loads(
+              (root / "combined-global-dedup-report.json").read_text(encoding="utf-8")
+          )
+          survivors = json.loads((root / "survivors.json").read_text(encoding="utf-8"))
+          evidence = json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+
+          assert evidence["execution_head_sha"] == head
+          assert evidence["terminal_code4_parent"]["head_sha"] == (
+              "e33b441a767ee48a182f930d202f1419e3849480"
+          )
+          assert evidence["terminal_code4_parent"]["run_id"] == 37276943420
+          assert evidence["terminal_code4_parent"]["late_gate_headroom_bytes"] == 1194
+
+          rich = evidence["source_authorities"]["rich"]
+          fast = evidence["source_authorities"]["fastapi"]
+          assert rich["dedicated_run_id"] == 34840386134
+          assert rich["object_count"] == 6
+          assert rich["raw_bytes"] == 46162
+          assert fast["dedicated_run_id"] == 32999727387
+          assert fast["registry_seal_run_id"] == 32999727467
+          assert fast["object_count"] == 3
+          assert fast["raw_bytes"] == 19857
+
+          assert evidence["code4_baseline"]["matcher_report_sha256"] == (
+              baseline["report_sha256"]
+          )
+          assert evidence["combined"]["matcher_report_sha256"] == (
+              combined["report_sha256"]
+          )
+          assert evidence["combined"]["survivor_authority_sha256"] == (
+              survivors["survivor_authority_sha256"]
+          )
+
+          delta = evidence["reserve_delta"]
+          assert delta["pre_dedup_candidate_objects"] == 9
+          assert delta["pre_dedup_candidate_bytes"] == 66019
+          marginal = delta["marginal_global_unique_capacity_bytes"]
+          assert type(marginal) is int
+          assert delta["global_dedup_loss_vs_raw_candidate_bytes"] == 66019 - marginal
+          assert delta["projected_late_gate_headroom_after_global_dedup"] == 1194 + marginal
+
+          truth = evidence["truth_boundary"]
+          assert truth["global_cross_source_dedup_executed_for_exact_reserve"] is True
+          assert truth["reserved_evaluation_decontamination_complete"] is False
+          assert truth["canonical_quality_privacy_complete"] is False
+          assert truth["balance_diversity_retest_complete"] is False
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_unique_loss_positions"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates_executed_on_real_targets"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+
+          forbidden = {"text", "raw_text", "source_text", "normalized_payload"}
+
+          def walk(value):
+              if isinstance(value, dict):
+                  assert not forbidden.intersection(value)
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+
+          walk(baseline)
+          walk(combined)
+          walk(survivors)
+          walk(evidence)
+          print(
+              "D03_CODE4_RICH_FASTAPI_RESERVE_TEXT_FREE "
+              f"marginal={marginal} "
+              f"headroom={delta['projected_late_gate_headroom_after_global_dedup']}"
+          )
+          PY
+
+      - name: Upload text-free pass evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code4-rich-fastapi-pass-${{ matrix.pass_id }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/code4-rich-fastapi-${{ matrix.pass_id }}/code4-global-dedup-report.json
+            ${{ runner.temp }}/code4-rich-fastapi-${{ matrix.pass_id }}/combined-global-dedup-report.json
+            ${{ runner.temp }}/code4-rich-fastapi-${{ matrix.pass_id }}/survivors.json
+            ${{ runner.temp }}/code4-rich-fastapi-${{ matrix.pass_id }}/evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+  compare-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-code4-rich-fastapi-reserve-g8-128-20261005'
+    needs: execute
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Download pass 1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-code4-rich-fastapi-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-code4-rich-fastapi-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require deterministic matcher and survivor authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp artifacts/pass-1/code4-global-dedup-report.json \
+              artifacts/pass-2/code4-global-dedup-report.json
+          cmp artifacts/pass-1/combined-global-dedup-report.json \
+              artifacts/pass-2/combined-global-dedup-report.json
+          cmp artifacts/pass-1/survivors.json artifacts/pass-2/survivors.json
+
+          python - "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          head = sys.argv[1]
+          roots = [Path("artifacts/pass-1"), Path("artifacts/pass-2")]
+          evidences = [
+              json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+              for root in roots
+          ]
+          baselines = [
+              json.loads(
+                  (root / "code4-global-dedup-report.json").read_text(encoding="utf-8")
+              )
+              for root in roots
+          ]
+          combined = [
+              json.loads(
+                  (root / "combined-global-dedup-report.json").read_text(encoding="utf-8")
+              )
+              for root in roots
+          ]
+          survivors = [
+              json.loads((root / "survivors.json").read_text(encoding="utf-8"))
+              for root in roots
+          ]
+
+          baseline_ids = [value["report_sha256"] for value in baselines]
+          combined_ids = [value["report_sha256"] for value in combined]
+          survivor_ids = [value["survivor_authority_sha256"] for value in survivors]
+          assert len(set(baseline_ids)) == 1
+          assert len(set(combined_ids)) == 1
+          assert len(set(survivor_ids)) == 1
+          assert evidences[0]["reserve_delta"] == evidences[1]["reserve_delta"]
+
+          for evidence, baseline_id, combined_id, survivor_id in zip(
+              evidences,
+              baseline_ids,
+              combined_ids,
+              survivor_ids,
+              strict=True,
+          ):
+              assert evidence["execution_head_sha"] == head
+              assert evidence["code4_baseline"]["matcher_report_sha256"] == baseline_id
+              assert evidence["combined"]["matcher_report_sha256"] == combined_id
+              assert evidence["combined"]["survivor_authority_sha256"] == survivor_id
+              assert evidence["truth_boundary"]["canonical_capacity_credited"] == 0
+              assert evidence["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+              assert evidence["truth_boundary"]["training_executed"] is False
+
+          delta = evidences[0]["reserve_delta"]
+          proof = {
+              "schema_version": (
+                  "12-6.d03-code4-rich-fastapi-reserve-global-dedup-two-clean.v1"
+              ),
+              "execution_head_sha": head,
+              "terminal_code4_parent_sha": (
+                  "e33b441a767ee48a182f930d202f1419e3849480"
+              ),
+              "terminal_code4_run_id": 37276943420,
+              "source_authority_runs": {
+                  "rich": 34840386134,
+                  "fastapi": 32999727387,
+                  "fastapi_registry_seal": 32999727467,
+              },
+              "reserve_pre_dedup_candidate_objects": 9,
+              "reserve_pre_dedup_candidate_bytes": 66019,
+              "code4_baseline_matcher_report_sha256": baseline_ids[0],
+              "combined_matcher_report_sha256": combined_ids[0],
+              "survivor_authority_sha256": survivor_ids[0],
+              "reserve_marginal_global_unique_capacity_bytes": (
+                  delta["marginal_global_unique_capacity_bytes"]
+              ),
+              "reserve_global_dedup_loss_vs_raw_candidate_bytes": (
+                  delta["global_dedup_loss_vs_raw_candidate_bytes"]
+              ),
+              "projected_late_gate_headroom_after_global_dedup": (
+                  delta["projected_late_gate_headroom_after_global_dedup"]
+              ),
+              "two_fresh_executions_converged": True,
+              "raw_source_bytes_retained": False,
+              "canonical_capacity_credited": 0,
+              "tokenizer_fit_authorized": False,
+              "authorized_optimized_target_exposure": 0,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              proof,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          Path("d03-code4-rich-fastapi-reserve-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload two-clean proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code4-rich-fastapi-two-clean-${{ github.event.pull_request.head.sha }}
+          path: d03-code4-rich-fastapi-reserve-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
