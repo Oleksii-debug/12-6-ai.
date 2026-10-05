@@ -103,6 +103,32 @@ def _peak_rss_bytes() -> int | None:
     return None
 
 
+def _linux_proc_memory_bytes() -> dict[str, int] | None:
+    """Read current/peak resident memory without claiming cross-platform equivalence."""
+
+    if not sys.platform.startswith("linux"):
+        return None
+    status = Path("/proc/self/status")
+    try:
+        lines = status.read_text(encoding="ascii").splitlines()
+    except OSError:
+        return None
+    values: dict[str, int] = {}
+    for line in lines:
+        if line.startswith("VmRSS:") or line.startswith("VmHWM:"):
+            name, raw = line.split(":", 1)
+            fields = raw.split()
+            if len(fields) != 2 or fields[1] != "kB":
+                raise RuntimeError(f"unexpected /proc memory field: {line!r}")
+            values[name] = int(fields[0]) * 1024
+    if set(values) != {"VmRSS", "VmHWM"}:
+        raise RuntimeError("/proc/self/status is missing VmRSS or VmHWM")
+    return {
+        "current_rss_bytes": values["VmRSS"],
+        "peak_rss_bytes": values["VmHWM"],
+    }
+
+
 def _tree_hash(value: Any) -> str:
     """Stable structural hash for tensors plus optimizer/trainer/RNG state."""
     digest = hashlib.sha256()
@@ -398,6 +424,7 @@ def child_main(args: argparse.Namespace) -> int:
             "wrong run-manifest preflight mutated fresh restore target or RNG"
         )
 
+    memory_before_load = _linux_proc_memory_bytes()
     load_started = time.perf_counter()
     loaded = _load_expected(
         rt=rt,
@@ -408,6 +435,7 @@ def child_main(args: argparse.Namespace) -> int:
         run_manifest_hash=SYNTHETIC_RUN_HASH,
     )
     load_seconds = time.perf_counter() - load_started
+    memory_after_load = _linux_proc_memory_bytes()
 
     if trainer.optimizer_step != 1 or trainer.micro_step != 1 or trainer.tokens_seen != 1:
         raise AssertionError("restored canonical trainer counters differ from step-1 checkpoint")
@@ -415,6 +443,7 @@ def child_main(args: argparse.Namespace) -> int:
     restored_rng = rt["capture_rng_state"]()
     probe = _rng_probe_from_state(restored_rng)
     metrics = trainer.train_microbatch(_batch())
+    memory_after_resumed_step = _linux_proc_memory_bytes()
     child = _summary(trainer, metrics, probe)
     child.update(
         {
@@ -433,6 +462,9 @@ def child_main(args: argparse.Namespace) -> int:
             },
             "load_trainer_checkpoint_seconds": load_seconds,
             "peak_rss_bytes": _peak_rss_bytes(),
+            "memory_before_load": memory_before_load,
+            "memory_after_load": memory_after_load,
+            "memory_after_resumed_step": memory_after_resumed_step,
         }
     )
     _json_write(Path(args.child_output), child)
@@ -541,6 +573,24 @@ def parent_main(args: argparse.Namespace) -> int:
         )
         parent_peak = parent_peak_rss_bytes
         child_peak = child["peak_rss_bytes"]
+        child_memory_before = child["memory_before_load"]
+        child_memory_after = child["memory_after_load"]
+        child_memory_after_step = child["memory_after_resumed_step"]
+        if (
+            child_memory_before is None
+            or child_memory_after is None
+            or child_memory_after_step is None
+        ):
+            raise AssertionError("Linux /proc memory telemetry is unavailable")
+        resume_hwm_growth = max(
+            0,
+            child_memory_after["peak_rss_bytes"]
+            - child_memory_before["peak_rss_bytes"],
+        )
+        resume_current_rss_delta = (
+            child_memory_after["current_rss_bytes"]
+            - child_memory_before["current_rss_bytes"]
+        )
         concurrent_upper = (
             parent_peak + child_peak
             if isinstance(parent_peak, int) and isinstance(child_peak, int)
@@ -621,6 +671,11 @@ def parent_main(args: argparse.Namespace) -> int:
                 "checkpoint_total_bytes": checkpoint_total_bytes,
                 "parent_peak_rss_bytes": parent_peak,
                 "fresh_child_peak_rss_bytes": child_peak,
+                "fresh_child_before_load": child_memory_before,
+                "fresh_child_after_load": child_memory_after,
+                "fresh_child_after_resumed_step": child_memory_after_step,
+                "fresh_child_resume_hwm_growth_bytes": resume_hwm_growth,
+                "fresh_child_resume_current_rss_delta_bytes": resume_current_rss_delta,
                 "concurrent_process_peak_rss_upper_bound_bytes": concurrent_upper,
                 "save_trainer_checkpoint_seconds": save_seconds,
                 "load_trainer_checkpoint_seconds": child[
@@ -628,8 +683,10 @@ def parent_main(args: argparse.Namespace) -> int:
                 ],
                 "baseline_step2_seconds": baseline_step_seconds,
                 "measurement_scope": (
-                    "single Ubuntu runner observation; per-process ru_maxrss, "
-                    "not a 200M/1B feasibility claim"
+                    "single Ubuntu runner observation; ru_maxrss plus "
+                    "/proc/self/status VmRSS/VmHWM around fresh-process restore; "
+                    "observed HWM growth can be zero when an earlier process peak "
+                    "dominates; not a 200M/1B feasibility claim"
                 ),
             },
             "baseline_step2": baseline,
