@@ -908,7 +908,7 @@ jobs:
               assert type(baseline["comparison_payload_bytes"]) is int
               assert baseline["comparison_payload_bytes"] > 0
               removal = baseline["nomis1864_deauthorization"]
-              assert removal["blocked_family"] == "en.nomis1864"
+              assert removal["blocked_family"] == "ua.verba.public-domain.nomis1864"
               require_exact_int(removal["blocked_payload_bytes"], 1_659, "nomis.blocked_payload_bytes")
               require_exact_int(removal["pre_source_object_count"], 35, "nomis.pre_source_object_count")
               require_exact_int(removal["post_source_object_count"], 34, "nomis.post_source_object_count")
