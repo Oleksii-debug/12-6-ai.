@@ -1443,6 +1443,33 @@ def _cleanup_committed_publication_residue(
             return
 
 
+def _verify_linked_finals_before_commit(
+    prepared: tuple[tuple[Path, bytes], ...],
+    linked_finals: list[tuple[Path, tuple[int, int]]],
+) -> None:
+    """Require exact linked final bytes before the marker commit point."""
+    _require(
+        len(prepared) == len(linked_finals),
+        "publication final count drift before commit",
+    )
+    for (final_path, payload), (linked_path, expected_identity) in zip(
+        prepared, linked_finals, strict=True
+    ):
+        _require(
+            final_path == linked_path,
+            "publication final ordering drift before commit",
+        )
+        observed, observed_identity = _read_bounded_regular_file_with_identity(
+            final_path,
+            len(payload),
+            label="publication final before commit",
+        )
+        _require(
+            observed_identity == expected_identity and observed == payload,
+            f"publication final bytes or ownership drift before commit: {final_path}",
+        )
+
+
 def _verify_committed_finals_before_cleanup(
     prepared: tuple[tuple[Path, bytes], ...],
     linked_finals: list[tuple[Path, tuple[int, int]]],
@@ -1579,6 +1606,8 @@ def _publish_json_outputs(
                 f"published final ownership drift: {final_path}",
             )
             _fsync_directory(final_path.parent)
+
+        _verify_linked_finals_before_commit(prepared, linked_finals)
 
         # Marker removal is the sole terminal commit point.  Stages and manifest
         # deliberately remain present until after this durable state transition
