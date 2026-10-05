@@ -1417,7 +1417,25 @@ class Trainer:
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
+        model_before = self._model_export_fingerprint()
+        scheduler_before = self._canonical_lambda_lr_live_state()
         self.assert_checkpoint_safe()
+        if not _typed_state_equal(
+            committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+        ):
+            self._mark_failed("checkpoint preflight changed committed counters")
+            raise TrainingStateInvalidError("checkpoint export changed committed counters")
+        if self._model_export_fingerprint() != model_before:
+            self._mark_failed("checkpoint preflight changed model weights or buffers")
+            raise TrainingStateInvalidError(
+                "checkpoint export changed model weights or buffers"
+            )
+        if scheduler_before is not None and not self._exact_export_leaf_equal(
+            scheduler_before, self._canonical_lambda_lr_live_state()
+        ):
+            self._mark_failed("checkpoint preflight changed live scheduler")
+            raise TrainingStateInvalidError("checkpoint export changed live scheduler")
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
@@ -1459,6 +1477,22 @@ class Trainer:
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
             self._require_exported_scaler_matches_live(snapshot.scaler)
+            # Freeze the accepted count/weights across ALL effectful serializers;
+            # a valid-looking detached optimizer snapshot is not enough.
+            if not _typed_state_equal(
+                committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+            ):
+                raise TrainingStateInvalidError("checkpoint export changed committed counters")
+            if self._model_export_fingerprint() != model_before:
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed model weights or buffers"
+                )
+            if scheduler_before is not None and not self._exact_export_leaf_equal(
+                scheduler_before, self._canonical_lambda_lr_live_state()
+            ):
+                raise TrainingStateInvalidError(
+                    "checkpoint scheduler export differs from live committed state"
+                )
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
