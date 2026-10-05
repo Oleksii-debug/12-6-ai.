@@ -22,6 +22,7 @@ for location in (str(TOOLS), str(SRC)):
         sys.path.insert(0, location)
 
 import compose_data526_records_from_v8 as data526
+import derive_next100_065f_v8_survivors as v8_survivors
 import run_next100_065f_global_dedup_v8 as v8
 from twelve_six.data.expanded_global_dedup_v9 import ExpandedDedupError, run_expanded_dedup
 
@@ -220,6 +221,69 @@ def read_jsonl(path: Path) -> tuple[list[dict[str, Any]], bytes]:
     return rows, raw
 
 
+def rematerialize_v8_authority(
+    *,
+    v7_root: Path,
+    workspace: Path,
+    v8_config: dict[str, Any],
+    data526_config: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Reproduce the sealed V8 report/survivor authority without its expired artifact."""
+
+    if workspace.exists() or workspace.is_symlink():
+        raise ExpandedDedupError("V8 authority workspace must not already exist")
+    exact_v7_root = validate_v7_checkout(v7_root)
+    with _isolated_historical_v7_imports(exact_v7_root):
+        report = v8.run_audit(ROOT, exact_v7_root, workspace, v8_config)
+        v8.verify_report(v8_config, report)
+    validate_v7_checkout(exact_v7_root)
+
+    survivors = v8_survivors.derive_survivor_authority(report)
+    v8_survivors.verify_survivor_authority(report, survivors)
+    data526.validate_v8_inputs(report, survivors, data526_config)
+    return report, survivors
+
+
+def resolve_v8_authority(
+    *,
+    v8_report_path: Path | None,
+    v8_survivors_path: Path | None,
+    rematerialize: bool,
+    v8_authority_workspace: Path | None,
+    v7_root: Path,
+    v8_config: dict[str, Any],
+    data526_config: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if rematerialize:
+        if v8_report_path is not None or v8_survivors_path is not None:
+            raise ExpandedDedupError(
+                "rematerialized V8 authority cannot be mixed with supplied V8 files"
+            )
+        if v8_authority_workspace is None:
+            raise ExpandedDedupError(
+                "--v8-authority-workspace is required for V8 rematerialization"
+            )
+        return rematerialize_v8_authority(
+            v7_root=v7_root,
+            workspace=v8_authority_workspace,
+            v8_config=v8_config,
+            data526_config=data526_config,
+        )
+
+    if v8_authority_workspace is not None:
+        raise ExpandedDedupError(
+            "--v8-authority-workspace requires --rematerialize-v8-authority"
+        )
+    if v8_report_path is None or v8_survivors_path is None:
+        raise ExpandedDedupError(
+            "--v8-report and --v8-survivors are required unless V8 authority is rematerialized"
+        )
+    report = read_json(v8_report_path)
+    survivors = read_json(v8_survivors_path)
+    data526.validate_v8_inputs(report, survivors, data526_config)
+    return report, survivors
+
+
 def reconstruct_v8_source_inputs(
     *,
     v7_root: Path,
@@ -271,8 +335,17 @@ def main() -> int:
         type=Path,
         default=ROOT / "configs/data/data526_v8_record_composition_v1.json",
     )
-    parser.add_argument("--v8-report", type=Path, required=True)
-    parser.add_argument("--v8-survivors", type=Path, required=True)
+    parser.add_argument("--v8-report", type=Path)
+    parser.add_argument("--v8-survivors", type=Path)
+    parser.add_argument(
+        "--rematerialize-v8-authority",
+        action="store_true",
+        help=(
+            "Reproduce the exact sealed V8 report/survivor authority from pinned source "
+            "inputs instead of requiring the expired historical artifact."
+        ),
+    )
+    parser.add_argument("--v8-authority-workspace", type=Path)
     parser.add_argument(
         "--data526-evidence",
         type=Path,
@@ -310,9 +383,15 @@ def main() -> int:
         v8_config = v8.load_config(args.v8_config)
         data526_config = read_json(args.data526_config)
         data526.verify_config(data526_config, require_terminal_v8=True)
-        v8_report = read_json(args.v8_report)
-        v8_survivors = read_json(args.v8_survivors)
-        data526.validate_v8_inputs(v8_report, v8_survivors, data526_config)
+        v8_report, v8_survivors = resolve_v8_authority(
+            v8_report_path=args.v8_report,
+            v8_survivors_path=args.v8_survivors,
+            rematerialize=args.rematerialize_v8_authority,
+            v8_authority_workspace=args.v8_authority_workspace,
+            v7_root=args.v7_root,
+            v8_config=v8_config,
+            data526_config=data526_config,
+        )
         v8_inventory, v8_payloads = reconstruct_v8_source_inputs(
             v7_root=args.v7_root,
             bulk_workspace=args.bulk_workspace,

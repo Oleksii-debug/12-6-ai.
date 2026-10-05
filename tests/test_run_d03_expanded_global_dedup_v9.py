@@ -188,3 +188,144 @@ def test_historical_namespace_rejects_symlink_source_root(tmp_path: Path) -> Non
     ):
         with runner._isolated_historical_v7_imports(linked):
             pytest.fail("symlinked historical root was accepted")
+
+
+def test_rematerialize_v8_authority_runs_exact_historical_authority_chain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    v7_root = tmp_path / "v7"
+    _historical_tree(v7_root)
+    workspace = tmp_path / "v8-work"
+    report = {"report_sha256": "r"}
+    survivors = {"survivor_authority_sha256": "s"}
+    events: list[str] = []
+
+    monkeypatch.setattr(runner, "validate_v7_checkout", lambda root: root.resolve())
+
+    def run_audit(
+        current_root: Path,
+        historical_root: Path,
+        observed_workspace: Path,
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        events.append("run")
+        assert current_root == runner.ROOT
+        assert historical_root == v7_root.resolve()
+        assert observed_workspace == workspace
+        assert config == {"v8": True}
+        assert "twelve_six" in sys.modules
+        return report
+
+    monkeypatch.setattr(runner.v8, "run_audit", run_audit)
+    monkeypatch.setattr(
+        runner.v8,
+        "verify_report",
+        lambda config, value: events.append(
+            "verify-report" if config == {"v8": True} and value is report else "bad"
+        ),
+    )
+    monkeypatch.setattr(
+        runner.v8_survivors,
+        "derive_survivor_authority",
+        lambda value: survivors if value is report else pytest.fail("wrong report"),
+    )
+    monkeypatch.setattr(
+        runner.v8_survivors,
+        "verify_survivor_authority",
+        lambda value, authority: events.append(
+            "verify-survivors"
+            if value is report and authority is survivors
+            else "bad"
+        ),
+    )
+    monkeypatch.setattr(
+        runner.data526,
+        "validate_v8_inputs",
+        lambda value, authority, config: events.append(
+            "validate-data526"
+            if value is report
+            and authority is survivors
+            and config == {"data526": True}
+            else "bad"
+        ),
+    )
+
+    observed_report, observed_survivors = runner.rematerialize_v8_authority(
+        v7_root=v7_root,
+        workspace=workspace,
+        v8_config={"v8": True},
+        data526_config={"data526": True},
+    )
+
+    assert observed_report is report
+    assert observed_survivors is survivors
+    assert events == [
+        "run",
+        "verify-report",
+        "verify-survivors",
+        "validate-data526",
+    ]
+
+
+def test_rematerialize_v8_authority_refuses_existing_workspace(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "existing"
+    workspace.mkdir()
+    with pytest.raises(
+        runner.ExpandedDedupError,
+        match="V8 authority workspace must not already exist",
+    ):
+        runner.rematerialize_v8_authority(
+            v7_root=tmp_path / "unused",
+            workspace=workspace,
+            v8_config={},
+            data526_config={},
+        )
+
+
+def test_resolve_v8_authority_requires_exactly_one_authority_mode(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        runner.ExpandedDedupError,
+        match="required unless V8 authority is rematerialized",
+    ):
+        runner.resolve_v8_authority(
+            v8_report_path=None,
+            v8_survivors_path=None,
+            rematerialize=False,
+            v8_authority_workspace=None,
+            v7_root=tmp_path,
+            v8_config={},
+            data526_config={},
+        )
+
+    with pytest.raises(
+        runner.ExpandedDedupError,
+        match="cannot be mixed with supplied V8 files",
+    ):
+        runner.resolve_v8_authority(
+            v8_report_path=tmp_path / "report.json",
+            v8_survivors_path=None,
+            rematerialize=True,
+            v8_authority_workspace=tmp_path / "work",
+            v7_root=tmp_path,
+            v8_config={},
+            data526_config={},
+        )
+
+    with pytest.raises(
+        runner.ExpandedDedupError,
+        match="requires --rematerialize-v8-authority",
+    ):
+        runner.resolve_v8_authority(
+            v8_report_path=tmp_path / "report.json",
+            v8_survivors_path=tmp_path / "survivors.json",
+            rematerialize=False,
+            v8_authority_workspace=tmp_path / "work",
+            v7_root=tmp_path,
+            v8_config={},
+            data526_config={},
+        )
