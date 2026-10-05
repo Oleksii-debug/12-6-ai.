@@ -51,6 +51,14 @@ jobs:
         with:
           python-version: "3.11.16"
 
+      - name: Install historical V7 PDF extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pdftotext -v
+
       - name: Bind exact head and executable closure
         shell: bash
         run: |
@@ -68,13 +76,37 @@ jobs:
         run: |
           set -euo pipefail
           run_root="$RUNNER_TEMP/code4-global-dedup-$PASS_ID"
-          v7_root="$run_root/v7"
           mkdir -p "$run_root"
-          git worktree add --detach "$v7_root" "$V7_HEAD"
-          test "$(git -C "$v7_root" rev-parse HEAD)" = "$V7_HEAD"
-          test -z "$(git -C "$v7_root" status --porcelain=v1 --untracked-files=all)"
 
-          python tools/run_d03_four_code_sources_global_dedup_v1.py             --v7-root "$v7_root"             --bulk-workspace "$run_root/bulk"             --expected-execution-head "$EXECUTION_SHA"             --output-base-report "$run_root/base-global-dedup-report.json"             --output-combined-report "$run_root/combined-global-dedup-report.json"             --output-survivors "$run_root/survivors.json"             --output-evidence "$run_root/evidence.json"
+          success=false
+          for attempt in 1 2 3; do
+            attempt_root="$run_root/attempt-$attempt"
+            v7_root="$attempt_root/v7"
+            mkdir -p "$attempt_root"
+            git worktree add --detach "$v7_root" "$V7_HEAD"
+            test "$(git -C "$v7_root" rev-parse HEAD)" = "$V7_HEAD"
+            test -z "$(git -C "$v7_root" status --porcelain=v1 --untracked-files=all)"
+
+            set +e
+            python tools/run_d03_four_code_sources_global_dedup_v1.py               --v7-root "$v7_root"               --bulk-workspace "$attempt_root/bulk"               --expected-execution-head "$EXECUTION_SHA"               --output-base-report "$attempt_root/base-global-dedup-report.json"               --output-combined-report "$attempt_root/combined-global-dedup-report.json"               --output-survivors "$attempt_root/survivors.json"               --output-evidence "$attempt_root/evidence.json"
+            status=$?
+            set -e
+
+            git worktree remove --force "$v7_root"
+            if [ "$status" -eq 0 ]; then
+              cp "$attempt_root/base-global-dedup-report.json" "$run_root/base-global-dedup-report.json"
+              cp "$attempt_root/combined-global-dedup-report.json" "$run_root/combined-global-dedup-report.json"
+              cp "$attempt_root/survivors.json" "$run_root/survivors.json"
+              cp "$attempt_root/evidence.json" "$run_root/evidence.json"
+              success=true
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit "$status"
+            fi
+            sleep "$((attempt * 5))"
+          done
+          test "$success" = true
 
           test -s "$run_root/base-global-dedup-report.json"
           test -s "$run_root/combined-global-dedup-report.json"
