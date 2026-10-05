@@ -20,7 +20,10 @@ def _historical_tree(root: Path) -> Path:
         'raise RuntimeError("historical package initializer must never execute")\n',
         encoding="utf-8",
     )
-    (data / "__init__.py").write_text("", encoding="utf-8")
+    (data / "__init__.py").write_text(
+        'raise RuntimeError("historical data initializer must never execute")\n',
+        encoding="utf-8",
+    )
     (data / "cross_source_capacity_audit_v7.py").write_text(
         'MARKER = "historical-v7"\n',
         encoding="utf-8",
@@ -63,8 +66,13 @@ def test_historical_namespace_bypasses_preloaded_current_package_cache(
         assert historical.MARKER == "historical-v7"
         assert source.resolve() in Path(historical.__file__).resolve().parents
         package = sys.modules["twelve_six"]
+        data_package = sys.modules["twelve_six.data"]
         assert getattr(package, "__file__", None) is None
+        assert getattr(data_package, "__file__", None) is None
         assert list(package.__path__) == [str(source.resolve() / "twelve_six")]
+        assert list(data_package.__path__) == [
+            str(source.resolve() / "twelve_six" / "data")
+        ]
         for name, module in before.items():
             assert sys.modules.get(name) is not module
 

@@ -108,17 +108,21 @@ def _is_twelve_six_module(name: str) -> bool:
 
 def _validate_historical_namespace(source_root: Path) -> None:
     package_root = (source_root / "twelve_six").resolve(strict=True)
+    namespace_roots = {
+        "twelve_six": package_root,
+        "twelve_six.data": (package_root / "data").resolve(strict=True),
+    }
     for name, module in tuple(sys.modules.items()):
         if not _is_twelve_six_module(name):
             continue
-        if name == "twelve_six":
+        if name in namespace_roots:
             paths = tuple(
                 Path(value).resolve(strict=True)
                 for value in getattr(module, "__path__", ())
             )
-            if paths != (package_root,):
+            if paths != (namespace_roots[name],):
                 raise ExpandedDedupError(
-                    "historical root namespace escaped exact V7 package"
+                    f"historical namespace escaped exact V7 package: {name}"
                 )
             continue
         _require_historical_module(module, name, source_root)
@@ -175,16 +179,20 @@ def _isolated_historical_v7_imports(v7_root: Path) -> Iterator[None]:
             source_text,
             *(entry for entry in previous_path if entry != source_text),
         ]
-        package = ModuleType("twelve_six")
-        package.__package__ = "twelve_six"
-        package.__path__ = [str(package_root)]
-        package.__spec__ = importlib.machinery.ModuleSpec(
-            "twelve_six",
-            loader=None,
-            is_package=True,
-        )
-        package.__spec__.submodule_search_locations = [str(package_root)]
-        sys.modules["twelve_six"] = package
+        for name, namespace_root in (
+            ("twelve_six", package_root),
+            ("twelve_six.data", package_root / "data"),
+        ):
+            package = ModuleType(name)
+            package.__package__ = name
+            package.__path__ = [str(namespace_root)]
+            package.__spec__ = importlib.machinery.ModuleSpec(
+                name,
+                loader=None,
+                is_package=True,
+            )
+            package.__spec__.submodule_search_locations = [str(namespace_root)]
+            sys.modules[name] = package
         sys.dont_write_bytecode = True
         yield
         _validate_historical_namespace(source_root)
