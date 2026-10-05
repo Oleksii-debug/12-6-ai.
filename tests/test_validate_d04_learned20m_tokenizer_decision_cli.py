@@ -878,6 +878,80 @@ def test_staging_fsync_process_interrupt_preserves_written_stage(
     assert len(staged) == 1 and staged[0].read_bytes() == expected
 
 
+@pytest.mark.parametrize(
+    "recovery_source",
+    ["postcreate-final", "postcreate-stage", "precreate-stage"],
+)
+def test_interrupted_publication_recovery_report_is_reverifiable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    recovery_source: str,
+) -> None:
+    cli = _module()
+    output = tmp_path / "interrupted-decision.json"
+    selection = tmp_path / "selection.json"
+    application = tmp_path / "application.json"
+    selection.write_text("{}", encoding="utf-8")
+    application.write_text("{}", encoding="utf-8")
+    report = {"schema": "test-only", "status": "zero-credit"}
+    actual_link = cli.os.link
+
+    def interrupt_link(stage: Path, final: Path) -> None:
+        if recovery_source.startswith("postcreate"):
+            actual_link(stage, final)
+        raise KeyboardInterrupt("injected recoverable publication interruption")
+
+    monkeypatch.setattr(cli.os, "link", interrupt_link)
+    with pytest.raises(
+        KeyboardInterrupt,
+        match="recoverable publication interruption",
+    ):
+        cli._write(output, report)
+
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1
+    if recovery_source == "postcreate-final":
+        recovery_report = output
+    else:
+        recovery_report = staged[0]
+    if recovery_source == "precreate-stage":
+        assert not output.exists()
+    else:
+        assert output.exists()
+
+    verified: list[dict[str, object]] = []
+
+    def accept_recovery(
+        candidate: dict[str, object],
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
+        verified.append(candidate)
+
+    monkeypatch.setattr(cli, "verify_byte_baseline_decision", accept_recovery)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(TOOL),
+            "--balanced-selection",
+            str(selection),
+            "--split-application",
+            str(application),
+            *HASH_ARGS,
+            "--verify-report",
+            str(recovery_report),
+        ],
+    )
+
+    assert cli.main() == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out) == report
+    assert verified == [report]
+
+
 def test_staging_identity_failure_closes_descriptor_and_preserves_residue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
