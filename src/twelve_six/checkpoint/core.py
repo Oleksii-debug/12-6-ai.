@@ -44,6 +44,8 @@ STATE_TREE_NAME = "state.json"
 _PAYLOAD_NAMES = frozenset({WEIGHTS_NAME, STATE_TENSORS_NAME, STATE_TREE_NAME})
 _DIRECTORY_NAMES = frozenset({MANIFEST_NAME, MANIFEST_CHECKSUM_NAME, *_PAYLOAD_NAMES})
 _HEX = frozenset("0123456789abcdef")
+MAX_CHECKPOINT_MANIFEST_BYTES = 8 * 1024 * 1024
+MAX_CHECKPOINT_CHECKSUM_BYTES = 256
 
 
 class CheckpointError(RuntimeError):
@@ -928,7 +930,9 @@ def _require_checkpoint_directory(root: Path) -> None:
         )
 
 
-def _read_regular_bytes(root: Path, name: str) -> bytes:
+def _read_regular_bytes(
+    root: Path, name: str, *, max_bytes: int | None = None
+) -> bytes:
     path = root / name
     try:
         before = path.lstat()
@@ -955,8 +959,17 @@ def _read_regular_bytes(root: Path, name: str) -> bytes:
         opened_identity = (opened.st_dev, opened.st_ino)
         if before_identity != opened_identity:
             raise CheckpointIntegrityError(f"checkpoint artifact changed while opening: {name}")
+        if max_bytes is not None and opened.st_size > max_bytes:
+            raise CheckpointIntegrityError(
+                f"checkpoint artifact exceeds {max_bytes}-byte limit: {name}"
+            )
         with os.fdopen(fd, "rb", closefd=False) as handle:
-            return handle.read()
+            data = handle.read(max_bytes + 1) if max_bytes is not None else handle.read()
+        if max_bytes is not None and len(data) > max_bytes:
+            raise CheckpointIntegrityError(
+                f"checkpoint artifact exceeds {max_bytes}-byte limit: {name}"
+            )
+        return data
     finally:
         os.close(fd)
 
@@ -1065,8 +1078,12 @@ def prepare_checkpoint_load(directory: str | Path) -> VerifiedCheckpoint:
 
     root = Path(directory)
     _require_checkpoint_directory(root)
-    manifest_bytes = _read_regular_bytes(root, MANIFEST_NAME)
-    checksum_bytes = _read_regular_bytes(root, MANIFEST_CHECKSUM_NAME)
+    manifest_bytes = _read_regular_bytes(
+        root, MANIFEST_NAME, max_bytes=MAX_CHECKPOINT_MANIFEST_BYTES
+    )
+    checksum_bytes = _read_regular_bytes(
+        root, MANIFEST_CHECKSUM_NAME, max_bytes=MAX_CHECKPOINT_CHECKSUM_BYTES
+    )
     manifest = _parse_manifest_bytes(manifest_bytes, checksum_bytes)
     _validate_manifest_identity(manifest.get("identity"))
 
