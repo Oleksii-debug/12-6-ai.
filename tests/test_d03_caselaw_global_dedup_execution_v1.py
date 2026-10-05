@@ -2118,3 +2118,57 @@ with TemporaryDirectory() as raw:
     assert manifest_path.exists()
 """
     )
+
+
+
+def test_postcommit_final_swap_preserves_recovery_residue() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, _ = mod._publication_control_paths(prepared)
+    target = values[0][0]
+    moved = root / "owned-final-after-commit"
+    foreign = b"FOREIGN_TERMINAL_AFTER_COMMIT"
+    actual_unlink = mod._unlink_owned_path
+
+    def swap_after_commit(path, identity, *, label, missing_ok=False):
+        actual_unlink(
+            path,
+            identity,
+            label=label,
+            missing_ok=missing_ok,
+        )
+        if label == "publication marker":
+            target.rename(moved)
+            target.write_bytes(foreign)
+
+    mod._unlink_owned_path = swap_after_commit
+    try:
+        try:
+            mod._publish_json_outputs(values)
+        except mod.CaselawGlobalDedupError as exc:
+            assert "COMMITTED" in str(exc)
+            assert "recovery residue retained" in str(exc)
+        else:
+            raise AssertionError("post-commit terminal substitution was accepted")
+    finally:
+        mod._unlink_owned_path = actual_unlink
+
+    assert not marker.exists()
+    assert target.read_bytes() == foreign
+    assert moved.read_bytes() == prepared[0][1]
+    assert all(stage.exists() for stage in stages)
+    assert stages[0].read_bytes() == prepared[0][1]
+    assert manifest.exists()
+"""
+    )
