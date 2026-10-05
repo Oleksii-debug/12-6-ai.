@@ -236,6 +236,126 @@ def test_artifact_zip_mutation_fails_exact_outer_identity(
         module.resolve_eval303_selection_payloads(ua_zip, en_zip, membership)
 
 
+def test_strict_json_rejects_duplicate_members() -> None:
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="duplicate JSON object member: identity",
+    ):
+        module._parse_json_object(
+            b'{"identity":"first","nested":{"identity":"a","identity":"b"}}',
+            "candidate authority",
+        )
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_strict_json_rejects_nonfinite_constants(constant: str) -> None:
+    raw = f'{{"value":{constant}}}'.encode()
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="non-finite JSON constant rejected",
+    ):
+        module._parse_json_object(raw, "candidate authority")
+
+
+@pytest.mark.parametrize("number", ["1e999", "-1e999"])
+def test_strict_json_rejects_float_overflow(number: str) -> None:
+    raw = f'{{"value":{number}}}'.encode()
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="non-finite JSON number rejected",
+    ):
+        module._parse_json_object(raw, "candidate authority")
+
+
+def test_strict_jsonl_rejects_nested_duplicate_members() -> None:
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="duplicate JSON object member: root",
+    ):
+        module._parse_jsonl(
+            b'{"record_id":"r1","authority":{"root":"a","root":"b"}}\n',
+            "candidate rows",
+        )
+
+
+def test_reconstructed_exact_component_bytes_match_selection_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ua_zip, en_zip, membership, _, _ = _build_fixture(tmp_path, monkeypatch)
+    with zipfile.ZipFile(ua_zip) as archive:
+        ua_data = archive.read(module.EVAL290_DATA_PATH)
+        ua_manifest = archive.read(module.EVAL290_MANIFEST_PATH)
+    with zipfile.ZipFile(en_zip) as archive:
+        en_data = archive.read(module.EVAL291_DATA_PATH)
+        en_authority = archive.read(module.EVAL291_AUTHORITY_PATH)
+
+    ua_data_path = tmp_path / "ua.jsonl"
+    ua_manifest_path = tmp_path / "ua-manifest.json"
+    en_data_path = tmp_path / "en.jsonl"
+    en_authority_path = tmp_path / "en-authority.json"
+    ua_data_path.write_bytes(ua_data)
+    ua_manifest_path.write_bytes(ua_manifest)
+    en_data_path.write_bytes(en_data)
+    en_authority_path.write_bytes(en_authority)
+
+    artifact_rows, artifact_reserved, artifact_evidence = (
+        module.resolve_eval303_selection_payloads(
+            ua_zip,
+            en_zip,
+            membership,
+        )
+    )
+    rows, reserved, evidence = (
+        module.resolve_eval303_selection_payloads_from_reconstructed(
+            eval290_data_jsonl=ua_data_path,
+            eval290_manifest_json=ua_manifest_path,
+            eval291_data_jsonl=en_data_path,
+            eval291_authority_json=en_authority_path,
+            eval303_membership_jsonl=membership,
+        )
+    )
+    assert rows == artifact_rows
+    assert reserved == artifact_reserved
+    assert evidence == artifact_evidence
+    assert evidence["raw_text_persisted_in_evidence"] is False
+    assert evidence["authorized_training_exposure"] == 0
+
+
+def test_reconstructed_component_mutation_fails_exact_inner_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ua_zip, en_zip, membership, _, _ = _build_fixture(tmp_path, monkeypatch)
+    with zipfile.ZipFile(ua_zip) as archive:
+        ua_data = archive.read(module.EVAL290_DATA_PATH)
+        ua_manifest = archive.read(module.EVAL290_MANIFEST_PATH)
+    with zipfile.ZipFile(en_zip) as archive:
+        en_data = archive.read(module.EVAL291_DATA_PATH)
+        en_authority = archive.read(module.EVAL291_AUTHORITY_PATH)
+
+    ua_data_path = tmp_path / "ua.jsonl"
+    ua_manifest_path = tmp_path / "ua-manifest.json"
+    en_data_path = tmp_path / "en.jsonl"
+    en_authority_path = tmp_path / "en-authority.json"
+    ua_data_path.write_bytes(ua_data + b"\n")
+    ua_manifest_path.write_bytes(ua_manifest)
+    en_data_path.write_bytes(en_data)
+    en_authority_path.write_bytes(en_authority)
+
+    with pytest.raises(
+        module.SelectionPayloadResolverError,
+        match="EVAL-290 data SHA-256 drift",
+    ):
+        module.resolve_eval303_selection_payloads_from_reconstructed(
+            eval290_data_jsonl=ua_data_path,
+            eval290_manifest_json=ua_manifest_path,
+            eval291_data_jsonl=en_data_path,
+            eval291_authority_json=en_authority_path,
+            eval303_membership_jsonl=membership,
+        )
+
+
 def test_membership_mutation_fails_before_payload_use(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

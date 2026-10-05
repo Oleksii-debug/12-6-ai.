@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "profile_id": "R01-WINDOWS-LOCAL-FREE-OPERATOR-V1",
+  "status": "OPERATOR_PREFLIGHT_ONLY",
+  "execution_mode": "LOCAL_FREE",
+  "portable_packet": {
+    "path": "configs/research/r01_portable_local_free_run_packet_v1.json",
+    "schema_version": 1,
+    "packet_id": "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1"
+  },
+  "machine_policy": {
+    "required_os": "Windows",
+    "minimum_windows_major": 10,
+    "minimum_windows_minor": 0,
+    "minimum_windows_build": 22000,
+    "cpu_path_required": true,
+    "gpu_required": false,
+    "minimum_logical_cpus": 2,
+    "minimum_ram_bytes": 8589934592,
+    "minimum_free_disk_bytes": 5368709120,
+    "warn_below_logical_cpus": 6,
+    "warn_below_ram_bytes": 17179869184,
+    "warn_below_free_disk_bytes": 21474836480,
+    "threshold_semantics": "OPERATOR_ADMISSION_FLOORS_NOT_FULL_TRAINING_SUFFICIENCY"
+  },
+  "targets": {
+    "20m": {
+      "profile_id": "LEARNED_20M_CPU_FIRST_LOCAL_FREE",
+      "operator_preflight_only": true,
+      "qualification_only": false,
+      "launch_authorized_by_profile": false,
+      "training_authorized_by_profile": false
+    },
+    "100m": {
+      "profile_id": "100M_LOCAL_SAFE_QUALIFICATION_ONLY",
+      "operator_preflight_only": true,
+      "qualification_only": true,
+      "launch_authorized_by_profile": false,
+      "training_authorized_by_profile": false,
+      "runtime_or_speed_guaranteed": false
+    }
+  },
+  "safe_stop": {
+    "marker_filename": "STOP_REQUEST.json",
+    "request_kind": "SAFE_STOP_AT_NEXT_CHECKPOINT",
+    "consumer": "CANONICAL_TRAINER_ONLY",
+    "content_authenticated": true,
+    "idempotent": true,
+    "does_not_claim_checkpoint_or_training_success": true
+  },
+  "truth_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false
+  },
+  "notes": {
+    "windows_version": "Windows 11 admission is derived from native NT version facts (minimum 10.0 build 22000); platform.release() is display-only and never authoritative.",
+    "ram_and_disk_floors": "Conservative operator headroom policy only; measured resource-envelope evidence remains the authority for throughput/memory feasibility.",
+    "gpu": "AMD or other acceleration is optional and must be separately runtime-qualified; this profile never requires GPU.",
+    "corpus_provenance": "This machine-preflight leaf deliberately makes no global assertion about external-LLM/API corpus provenance; corpus authority is owned upstream."
+  }
+}
