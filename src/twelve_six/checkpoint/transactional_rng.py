@@ -8,8 +8,29 @@ back if the underlying restore raises.
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable, Mapping
 from typing import Any
+
+
+def _snapshot_torch_policy() -> tuple[bool, bool] | None:
+    """Capture process-global Torch deterministic policy outside RNG payload v1."""
+
+    try:
+        torch = importlib.import_module("torch")
+    except ModuleNotFoundError:
+        return None
+    return (
+        bool(torch.are_deterministic_algorithms_enabled()),
+        bool(torch.is_deterministic_algorithms_warn_only_enabled()),
+    )
+
+
+def _restore_torch_policy(policy: tuple[bool, bool] | None) -> None:
+    if policy is None:
+        return
+    torch = importlib.import_module("torch")
+    torch.use_deterministic_algorithms(policy[0], warn_only=policy[1])
 
 
 def _transactional_restore(
@@ -20,11 +41,15 @@ def _transactional_restore(
     """Restore RNG state or reinstate the exact pre-call state on failure."""
 
     before = core.capture_rng_state()
+    before_policy = _snapshot_torch_policy()
     try:
         return original_restore(state)
     except BaseException as exc:  # noqa: BLE001 - rollback must be interrupt-safe
         try:
             original_restore(before)
+            # Checkpoint-v1 RNG payloads do not encode Torch warn-only mode.
+            # Restore the exact ambient process policy alongside RNG rollback.
+            _restore_torch_policy(before_policy)
         except BaseException as rollback_exc:  # noqa: BLE001
             if not isinstance(exc, Exception):
                 exc.add_note(
