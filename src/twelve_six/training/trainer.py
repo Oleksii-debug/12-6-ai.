@@ -2566,30 +2566,44 @@ class Trainer:
                 "checkpoint boundary has invalid optimizer or residual gradients",
             )
             raise
-        self.assert_checkpoint_safe()
-        if not _typed_state_equal(
-            committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
-        ):
-            self._mark_failed("checkpoint preflight changed committed counters")
-            raise TrainingStateInvalidError("checkpoint export changed committed counters")
-        if self._model_export_fingerprint() != model_before:
-            self._mark_failed("checkpoint preflight changed model weights or buffers")
-            raise TrainingStateInvalidError(
-                "checkpoint export changed model weights or buffers"
+        try:
+            self.assert_checkpoint_safe()
+            if not _typed_state_equal(
+                committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+            ):
+                self._mark_failed("checkpoint preflight changed committed counters")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed committed counters"
+                )
+            if self._model_export_fingerprint() != model_before:
+                self._mark_failed("checkpoint preflight changed model weights or buffers")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed model weights or buffers"
+                )
+            if (
+                optimizer_before is not None
+                and self._optimizer_live_fingerprint() != optimizer_before
+            ):
+                self._mark_failed("checkpoint preflight changed live optimizer state")
+                raise TrainingStateInvalidError(
+                    "checkpoint preflight changed optimizer state"
+                )
+            if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
+                scheduler_before, self._canonical_lambda_lr_live_state()
+            ):
+                self._mark_failed("checkpoint preflight changed live scheduler")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed live scheduler"
+                )
+        except BaseException:  # noqa: BLE001
+            # Mid-accumulation was rejected above as the one retryable export
+            # refusal. Any failure after committed-boundary observation means
+            # the checkpoint boundary can no longer be trusted in-place.
+            Trainer._mark_failed(
+                self,
+                "checkpoint preflight failed after committed boundary",
             )
-        if (
-            optimizer_before is not None
-            and self._optimizer_live_fingerprint() != optimizer_before
-        ):
-            self._mark_failed("checkpoint preflight changed live optimizer state")
-            raise TrainingStateInvalidError(
-                "checkpoint preflight changed optimizer state"
-            )
-        if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
-            scheduler_before, self._canonical_lambda_lr_live_state()
-        ):
-            self._mark_failed("checkpoint preflight changed live scheduler")
-            raise TrainingStateInvalidError("checkpoint export changed live scheduler")
+            raise
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
