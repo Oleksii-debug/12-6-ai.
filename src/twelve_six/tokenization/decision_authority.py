@@ -102,6 +102,14 @@ _EXPECTED_TOKENIZER_CLASS_STATE = {
     "normalization": "none",
     "encoding": "utf-8",
 }
+_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS = {
+    "__init__": None,
+    "identity": None,
+    "encode": {"add_bos": False, "add_eos": False},
+    "decode": {"skip_special_tokens": True, "errors": "strict"},
+    "oov_count": None,
+    "fertility": None,
+}
 
 
 class TokenizerDecisionError(ValueError):
@@ -214,10 +222,10 @@ def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
     return methods
 
 
-def _runtime_byte_tokenizer_method_code(
+def _runtime_byte_tokenizer_method(
     class_state: Mapping[str, Any],
     name: str,
-) -> CodeType:
+) -> FunctionType:
     """Read one live class method without invoking descriptor binding."""
 
     raw = class_state.get(name)
@@ -243,7 +251,37 @@ def _runtime_byte_tokenizer_method_code(
         raise TokenizerDecisionError(
             f"canonical byte tokenizer runtime implementation drift: {name}"
         )
-    return function.__code__
+    return function
+
+
+def _verify_runtime_byte_tokenizer_method_defaults(
+    name: str,
+    function: FunctionType,
+) -> None:
+    """Bind behavior-bearing callable defaults omitted from code-object identity."""
+
+    if function.__defaults__ is not None:
+        raise TokenizerDecisionError(
+            f"canonical byte tokenizer runtime implementation drift: {name} defaults"
+        )
+    expected_kwdefaults = _EXPECTED_TOKENIZER_METHOD_KWDEFAULTS[name]
+    observed_kwdefaults = function.__kwdefaults__
+    if expected_kwdefaults is None:
+        valid = observed_kwdefaults is None
+    else:
+        valid = (
+            type(observed_kwdefaults) is dict
+            and set(observed_kwdefaults) == set(expected_kwdefaults)
+            and all(
+                type(observed_kwdefaults[key]) is type(expected)
+                and observed_kwdefaults[key] == expected
+                for key, expected in expected_kwdefaults.items()
+            )
+        )
+    if not valid:
+        raise TokenizerDecisionError(
+            f"canonical byte tokenizer runtime implementation drift: {name} defaults"
+        )
 
 
 def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
@@ -273,10 +311,12 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
 
     expected_method_codes = _verified_canonical_byte_tokenizer_method_codes()
     for name, expected_code in expected_method_codes.items():
-        if _runtime_byte_tokenizer_method_code(class_state, name) != expected_code:
+        runtime_method = _runtime_byte_tokenizer_method(class_state, name)
+        if runtime_method.__code__ != expected_code:
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime implementation drift: {name}"
             )
+        _verify_runtime_byte_tokenizer_method_defaults(name, runtime_method)
 
     tokenizer = ByteTokenizer().identity
     for field in (
