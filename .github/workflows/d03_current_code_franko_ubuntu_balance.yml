@@ -3,7 +3,7 @@ name: D03 current code Franko Ubuntu canonical balance
 on:
   pull_request:
     branches:
-      - d03/franko-ubuntu-trusted-family-g6-119-20261005
+      - execution/d03-balance-workflow-anchor-g8-136-20261005
     paths:
       - ".github/workflows/d03_current_code_franko_ubuntu_balance.yml"
       - "tools/run_d03_current_code_franko_ubuntu_balance_v1.py"
