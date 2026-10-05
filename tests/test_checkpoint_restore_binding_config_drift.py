@@ -430,3 +430,51 @@ def test_native_checkpoint_save_rejects_export_counter_drift(
     assert target.tokens_seen == 1
     assert target._failure_reason == "checkpoint_export_state_drift"
     assert target._update_incomplete is True
+
+
+@pytest.mark.parametrize(
+    ("method_name", "binder"),
+    [
+        ("state_dict", trainer_adapter._bind_trainer_state_exporter),
+        ("load_state_dict", trainer_adapter._bind_trainer_state_loader),
+    ],
+    ids=["export", "load"],
+)
+def test_native_trainer_method_binding_does_not_execute_class_descriptor(
+    monkeypatch: pytest.MonkeyPatch,
+    method_name: str,
+    binder: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    descriptor_calls: list[bool] = []
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+
+    class EffectfulMethod:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            descriptor_calls.append(True)
+            random.random()
+            np.random.random()
+            torch.rand(1)
+            return lambda *args, **kwargs: None
+
+    monkeypatch.setattr(Trainer, method_name, EffectfulMethod())
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match=f"{method_name} must remain class-bound",
+    ):
+        binder(target)
+
+    assert descriptor_calls == []
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
