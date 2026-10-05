@@ -14,7 +14,7 @@ import inspect
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from types import FunctionType, MemberDescriptorType
+from types import FunctionType, GetSetDescriptorType, MemberDescriptorType
 from typing import Any
 
 from ..training.config import TrainerConfig as _CanonicalTrainerConfig
@@ -283,22 +283,41 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
     _semantic_stateful_probe(component, state, label=label)
 
 
-def _is_canonical_d02(trainer: Any) -> bool:
-    """Identify the D02 recovery protocol without executing custom descriptors."""
-
-    try:
-        attrs = vars(trainer)
-    except TypeError:
-        return False
-    return "_failure_reason" in attrs and "_update_incomplete" in attrs
-
-
 def _is_native_d02(trainer: Any) -> bool:
     """Recognize real D02 lineage without dispatching a custom metaclass."""
 
     trainer_type = type(trainer)
     mro = type.__getattribute__(trainer_type, "__mro__")
     return _CanonicalTrainer in mro
+
+
+def _trainer_instance_attrs(trainer: Any) -> dict[str, Any]:
+    """Read native Trainer instance storage without subclass descriptor dispatch."""
+
+    if not _is_native_d02(trainer):
+        return vars(trainer)
+
+    namespace = type.__getattribute__(_CanonicalTrainer, "__dict__")
+    descriptor = namespace.get("__dict__")
+    if not isinstance(descriptor, GetSetDescriptorType):
+        raise TypeError("canonical Trainer instance dictionary authority unavailable")
+    try:
+        attrs = descriptor.__get__(trainer, type(trainer))
+    except (AttributeError, TypeError) as exc:
+        raise TypeError("native D02 trainer instance storage unavailable") from exc
+    if type(attrs) is not dict:
+        raise TypeError("native D02 trainer instance storage must be a dictionary")
+    return attrs
+
+
+def _is_canonical_d02(trainer: Any) -> bool:
+    """Identify the D02 recovery protocol without native subclass dispatch."""
+
+    try:
+        attrs = _trainer_instance_attrs(trainer)
+    except TypeError:
+        return False
+    return "_failure_reason" in attrs and "_update_incomplete" in attrs
 
 
 def _require_canonical_d02_markers(trainer: Any) -> bool:
@@ -318,7 +337,7 @@ def _assert_native_d02_checkpoint_safety_lineage(trainer: Any) -> None:
     if not _is_native_d02(trainer):
         return
     try:
-        instance_attrs = vars(trainer)
+        instance_attrs = _trainer_instance_attrs(trainer)
     except TypeError as exc:
         raise CheckpointCompatibilityError(
             "native D02 trainer does not expose checkpoint safety state"
@@ -367,7 +386,7 @@ def _poison_canonical_restore_failure(
     if not expected_canonical:
         return
     try:
-        attrs = vars(trainer)
+        attrs = _trainer_instance_attrs(trainer)
     except TypeError as poison_exc:
         exc.add_note(
             "canonical trainer recovery-state access also failed: "
@@ -493,7 +512,7 @@ def _snapshot_trainer_restore_bindings(
         return False, {}
     if native_d02:
         _assert_native_d02_checkpoint_safety_lineage(trainer)
-    attrs = vars(trainer)
+    attrs = _trainer_instance_attrs(trainer)
     component_fields = ("model", "optimizer", "scheduler", "scaler", "config")
     if native_d02:
         binding_fields = (*component_fields, "device")
@@ -580,7 +599,7 @@ def _assert_trainer_restore_bindings(
     if current_native:
         _assert_native_d02_checkpoint_safety_lineage(trainer)
     try:
-        attrs = vars(trainer)
+        attrs = _trainer_instance_attrs(trainer)
     except TypeError as exc:
         raise CheckpointCompatibilityError(
             "canonical trainer does not expose instance recovery state"
@@ -652,7 +671,7 @@ def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
 
     if not _require_canonical_d02_markers(trainer):
         return
-    attrs = vars(trainer)
+    attrs = _trainer_instance_attrs(trainer)
     if "model" in attrs and attrs["model"] is not model:
         raise CheckpointCompatibilityError(
             "canonical trainer owns a different model than the checkpoint target"
@@ -767,7 +786,7 @@ def _bind_trainer_state_exporter(trainer: Any) -> Any:
 
     if _is_native_d02(trainer):
         try:
-            instance_attrs = vars(trainer)
+            instance_attrs = _trainer_instance_attrs(trainer)
         except TypeError as exc:
             raise CheckpointCompatibilityError(
                 "native D02 trainer does not expose checkpoint exporter state"
@@ -808,7 +827,7 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
     canonical_d02 = _require_canonical_d02_markers(trainer)
     if _is_native_d02(trainer):
         try:
-            instance_attrs = vars(trainer)
+            instance_attrs = _trainer_instance_attrs(trainer)
         except TypeError as exc:
             raise CheckpointCompatibilityError(
                 "native D02 trainer does not expose checkpoint loader state"
@@ -848,7 +867,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
 
     if not _require_canonical_d02_markers(trainer):
         return
-    initial_attrs = vars(trainer)
+    initial_attrs = _trainer_instance_attrs(trainer)
     if initial_attrs.get("_failure_reason") is not None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer is poisoned"
@@ -936,7 +955,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
     # as instance attributes. Take one descriptor-free final snapshot so a
     # late property/proxy read cannot mutate an earlier checked field.
     try:
-        live_attrs = vars(trainer)
+        live_attrs = _trainer_instance_attrs(trainer)
     except TypeError as exc:
         raise CheckpointCompatibilityError(
             "canonical trainer does not expose instance recovery state"
@@ -997,7 +1016,7 @@ def _assert_native_d02_postload_snapshot(trainer: Any, state: Any) -> None:
         return
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
-    attrs = vars(trainer)
+    attrs = _trainer_instance_attrs(trainer)
     if (
         attrs.get("_failure_reason") is not None
         or attrs.get("_update_incomplete")
@@ -1032,7 +1051,7 @@ def _assert_native_d02_inert_determinism(trainer: Any) -> None:
 
     if not _is_native_d02(trainer):
         return
-    attrs = vars(trainer)
+    attrs = _trainer_instance_attrs(trainer)
     config_state = _snapshot_native_d02_config(attrs.get("config"))
     enabled = config_state.get("deterministic_algorithms")
     warn_only = config_state.get("deterministic_warn_only")
@@ -1265,7 +1284,7 @@ def _preflight_trainer_state_without_rng_guard(
         )
 
     if native_d02:
-        live_attrs = vars(trainer)
+        live_attrs = _trainer_instance_attrs(trainer)
         live_config = _snapshot_native_d02_config(live_attrs["config"])
     else:
         live_attrs = None
@@ -1530,7 +1549,7 @@ def _assert_live_d02_determinism(trainer: Any) -> bool | None:
 
     if not _require_canonical_d02_markers(trainer):
         return None
-    config = vars(trainer).get("config")
+    config = _trainer_instance_attrs(trainer).get("config")
     if _is_native_d02(trainer):
         config_state = _snapshot_native_d02_config(config)
         enabled = config_state.get("deterministic_algorithms")
