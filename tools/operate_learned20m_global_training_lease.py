@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import stat
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,7 @@ from twelve_six.learned20m_training_lease import build_authorized_training_run_l
 
 
 MAX_MANIFEST_BYTES = 1_048_576
+MAX_JSON_INTEGER_DIGITS = 64
 
 
 class _DuplicateKey(ValueError):
@@ -43,13 +46,49 @@ def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError("json_number_not_finite")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero_json_number_underflowed_to_zero")
     return parsed
 
 
+def _parse_bounded_int(value: str) -> int:
+    if len(value.removeprefix("-")) > MAX_JSON_INTEGER_DIGITS:
+        raise ValueError("json_integer_exceeds_64_digits")
+    return int(value)
+
+
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
 def _load_mapping(path: Path) -> Mapping[str, Any]:
-    # Bound attacker-controlled input before allocation or JSON decoding.
-    with path.open("rb") as handle:
-        raw = handle.read(MAX_MANIFEST_BYTES + 1)
+    # Open attacker-controlled input nonblocking and bind the read to one regular
+    # descriptor before allocation or JSON decoding.
+    descriptor: int | None = None
+    try:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_BINARY", 0)
+        )
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise ValueError("manifest_not_regular_file")
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = None
+            raw = handle.read(MAX_MANIFEST_BYTES + 1)
+            if _file_stamp(os.fstat(handle.fileno())) != _file_stamp(opened):
+                raise ValueError("manifest_changed_during_read")
+    except OSError:
+        raise ValueError("manifest_read_failed") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
     if len(raw) > MAX_MANIFEST_BYTES:
         raise ValueError("manifest_exceeds_byte_limit")
     try:
@@ -62,6 +101,7 @@ def _load_mapping(path: Path) -> Mapping[str, Any]:
             object_pairs_hook=_pairs_without_duplicates,
             parse_constant=_reject_constant,
             parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
         )
     except RecursionError as exc:
         raise ValueError("manifest_json_invalid") from exc
