@@ -608,7 +608,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      D05_RUNTIME_SHA: 998966cc6f78744c54c9062b772099a95030caea
+      D05_RUNTIME_SHA: 3e62f28addbfbc25708742801c14d2eb226baea1
       MODEL341_SHA: f151c77a8ef8721f0f568509147b1a5f961ae6c7
       MODEL341_CANDIDATE_BLOB: 69e3cbd5f5c83c9d3d529a2a6376db3055979c40
 
@@ -649,10 +649,10 @@ jobs:
           test "$(git -C model341-carrier rev-parse HEAD)" = "$MODEL341_SHA"
           test "$(git -C model341-carrier hash-object configs/candidates/model341_20m_candidate_a.json)" = "$MODEL341_CANDIDATE_BLOB"
           test "$(git -C d05-runtime hash-object src/twelve_six/model.py)" = "c3879fe0ba9193d5a8176c284e1942f058ef7885"
-          test "$(git -C d05-runtime hash-object src/twelve_six/training/trainer.py)" = "e4b7549b56bc5695e5cf46dcdf77ad9da02f5ae9"
+          test "$(git -C d05-runtime hash-object src/twelve_six/training/trainer.py)" = "cf726f3b0dfd27a767c20c2badbfcf274113cc9c"
           test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/core.py)" = "914c84cb0366c89d6187d7924a23963fadec86d9"
-          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/trainer_adapter.py)" = "4e080ef53720edcae9e29b7956db48134b420bdf"
-          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/progress_trainer.py)" = "5565a2737e9f4452023c9733cdfaaf9a4ecd11a7"
+          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/trainer_adapter.py)" = "4616e131388230acb405fb6291c753c3f42fd50d"
+          test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/progress_trainer.py)" = "81f19519f7a3a82bd1f8bfcd6bbf570794b12e82"
           test "$(git -C d05-runtime hash-object src/twelve_six/training/config.py)" = "adc8579f59a167850a084975f799daedeab2e895"
           test "$(git -C d05-runtime hash-object pyproject.toml)" = "5fabd477e49aff807b1553502e80308a13e7b3b3"
           python -m py_compile tools/run_checkpoint346_model341_current_d05_recovery_v7.py
@@ -691,7 +691,7 @@ jobs:
           assert report["verdict"] == "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS"
           assert report["runtime"]["product_pr"] == 2778
           assert report["runtime"]["git_sha"] == (
-              "998966cc6f78744c54c9062b772099a95030caea"
+              "3e62f28addbfbc25708742801c14d2eb226baea1"
           )
           assert report["runtime"]["public_save_api"] == "save_trainer_checkpoint"
           assert report["runtime"]["public_restore_api"] == "load_trainer_checkpoint"
