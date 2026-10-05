@@ -36,6 +36,7 @@ from .trainer_adapter import (
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
     _assert_native_d02_exact_live_state,
+    _assert_native_d02_inert_live_state,
     _assert_native_d02_model_training_mode,
     _assert_trainer_model_binding,
     _assert_trainer_restore_bindings,
@@ -360,14 +361,13 @@ def load_trainer_checkpoint(
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
-        _assert_native_d02_exact_live_state(
+        _assert_native_d02_inert_live_state(
             trainer,
             trainer_state,
             model_fingerprint=model_fingerprint,
             sealed_model_fingerprint=sealed_model_fingerprint,
             auxiliary_fingerprint=auxiliary_fingerprint,
             sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
-            export_live_authorities=restore_live_authorities,
             phase="final checkpoint restore seal",
         )
     except BaseException as exc:
