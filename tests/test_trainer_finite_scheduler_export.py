@@ -7,6 +7,7 @@ real training, final-test access or Windows qualification.
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 import random
 from typing import Any
 
@@ -205,3 +206,47 @@ def test_genuinely_absent_scheduler_still_exports_none(
     assert trainer.scheduler is None
     assert trainer.state_dict().scheduler is None
     assert trainer._failure_reason is None
+
+
+@pytest.mark.parametrize("forged_epoch", [0, 2, False, 1.0])
+def test_resume_scheduler_chronology_preflight_is_retryable(
+    preserve_state: Any, forged_epoch: Any,
+) -> None:
+    source = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert source.optimizer_step == 1
+    saved = source.state_dict()
+    assert saved.scheduler is not None and saved.scheduler["last_epoch"] == 1
+    forged_scheduler = copy.deepcopy(saved.scheduler)
+    forged_scheduler["last_epoch"] = forged_epoch
+    corrupted = replace(saved, scheduler=forged_scheduler)
+
+    target = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    assert not target.optimizer.state
+    with pytest.raises(
+        ValueError, match="checkpoint scheduler chronology differs from committed optimizer step",
+    ):
+        target.load_state_dict(corrupted)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (
+        0, 0, 0,
+    )
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+
+    # After preflight rejection, restore corresponding model weights and the
+    # unmodified committed trainer state into this same still-fresh target.
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (
+        1, 1, 2,
+    )
+    assert target.scheduler is not None
+    assert target.scheduler.last_epoch == 1
+    assert target._failure_reason is None and not target._update_incomplete
+    assert target.optimizer.param_groups[0]["lr"] == source.optimizer.param_groups[0]["lr"]
