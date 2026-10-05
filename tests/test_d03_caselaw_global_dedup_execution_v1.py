@@ -2120,6 +2120,77 @@ with TemporaryDirectory() as raw:
     )
 
 
+def test_committed_recovery_validates_all_targets_before_first_payload_read() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    first_final = root / "first.json"
+    second_final = root / "second.json"
+    first_payload = b'{"kind":"first"}\\n'
+    second_payload = b'{"kind":"second"}\\n'
+    prepared = (
+        (first_final, first_payload),
+        (second_final, second_payload),
+    )
+    _, manifest_path, stages, pathset_id = mod._publication_control_paths(
+        prepared
+    )
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(first_final, first_payload)
+    mod._write_create_only_durable(second_final, second_payload)
+
+    foreign_final = root / "foreign-second-final"
+    foreign_stage = root / "foreign-second-stage"
+    manifest["targets"][1]["path"] = str(foreign_final.resolve())
+    manifest["targets"][1]["stage_path"] = str(foreign_stage.resolve())
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    mod._write_create_only_durable(
+        manifest_path,
+        mod._canonical(manifest) + b"\\n",
+    )
+
+    actual_read = mod._read_bounded_regular_file_with_identity
+    payload_paths = {first_final, second_final, stages[0], stages[1]}
+    payload_reads = []
+
+    def tracked_read(path, max_bytes, *, label):
+        candidate = Path(path)
+        if candidate in payload_paths:
+            payload_reads.append(candidate)
+        return actual_read(path, max_bytes, label=label)
+
+    mod._read_bounded_regular_file_with_identity = tracked_read
+    try:
+        try:
+            mod._recover_committed_publication_residue(
+                manifest_path,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "target paths do not match requested outputs" in str(exc)
+        else:
+            raise AssertionError("late forged committed target was accepted")
+    finally:
+        mod._read_bounded_regular_file_with_identity = actual_read
+
+    assert payload_reads == []
+    assert first_final.read_bytes() == first_payload
+    assert second_final.read_bytes() == second_payload
+    assert manifest_path.exists()
+"""
+    )
+
+
 def test_postcommit_final_swap_preserves_recovery_residue() -> None:
     _run_isolated(
         """
