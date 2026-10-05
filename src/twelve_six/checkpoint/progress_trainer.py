@@ -42,7 +42,9 @@ from .trainer_adapter import (
     _assert_trainer_restore_bindings,
     _bind_native_auxiliary_fingerprint,
     _bind_native_export_live_authorities,
+    _bind_native_live_model_state_value_fingerprint,
     _bind_native_model_export_fingerprint,
+    _bind_native_model_state_value_fingerprint,
     _bind_trainer_state_loader,
     _effective_strict_model,
     _note_restore_binding_drift,
@@ -98,6 +100,12 @@ def load_trainer_checkpoint(
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
         model_fingerprint = _bind_native_model_export_fingerprint(trainer)
+        model_state_value_fingerprint = _bind_native_model_state_value_fingerprint(
+            trainer,
+        )
+        live_model_state_value_fingerprint = (
+            _bind_native_live_model_state_value_fingerprint(trainer)
+        )
         auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
     except BaseException as exc:  # noqa: BLE001
@@ -274,6 +282,11 @@ def load_trainer_checkpoint(
         _preflight_trainer_target(trainer)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         materialized = _prepare_model_weights(model, arrays, strict_model)
+        expected_model_value_fingerprint = (
+            model_state_value_fingerprint(materialized)
+            if model_state_value_fingerprint is not None
+            else None
+        )
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         del arrays
 
@@ -314,6 +327,12 @@ def load_trainer_checkpoint(
     # in-place retry; avoid copying model-scale weights to attempt rollback.
     try:
         model_apply(materialized)
+        if live_model_state_value_fingerprint is not None:
+            live_model_value_fingerprint = live_model_state_value_fingerprint()
+            if live_model_value_fingerprint != expected_model_value_fingerprint:
+                raise _core.CheckpointCompatibilityError(
+                    "checkpoint model apply did not restore verified model values"
+                )
         sealed_model_fingerprint = (
             model_fingerprint()
             if model_fingerprint is not None
