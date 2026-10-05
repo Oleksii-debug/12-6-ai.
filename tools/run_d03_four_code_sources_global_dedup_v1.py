@@ -477,17 +477,27 @@ def execute(
     )
 
     indexed = incumbent.indexed
-    indexed.attest_incumbent_runtime(matcher)
+    try:
+        indexed.attest_incumbent_runtime(matcher)
+    except indexed.IndexedExecutionError as exc:
+        raise FourCodeGlobalDedupError(
+            "pre_base_attestation: " + str(exc)
+        ) from exc
 
     base_started = time.perf_counter()
-    base_report = indexed.audit_payloads_indexed(
+    try:
+        base_report = indexed.audit_payloads_indexed(
         matcher,
         copy.deepcopy(base_inventory),
         dict(base_payloads),
         max_candidate_pairs=max_candidate_pairs,
         max_index_postings=max_index_postings,
-        max_pair_expansions=max_pair_expansions,
-    )
+            max_pair_expansions=max_pair_expansions,
+        )
+    except indexed.IndexedExecutionError as exc:
+        raise FourCodeGlobalDedupError(
+            "base_indexed_execution: " + str(exc)
+        ) from exc
     base_seconds = time.perf_counter() - base_started
     matcher.verify_report(base_report)
     base_terminal = terminal_summary(
@@ -498,14 +508,19 @@ def execute(
     )
 
     combined_started = time.perf_counter()
-    combined_report = indexed.audit_payloads_indexed(
-        matcher,
-        combined_inventory,
-        combined_payloads,
-        max_candidate_pairs=max_candidate_pairs,
-        max_index_postings=max_index_postings,
-        max_pair_expansions=max_pair_expansions,
-    )
+    try:
+        combined_report = indexed.audit_payloads_indexed(
+            matcher,
+            combined_inventory,
+            combined_payloads,
+            max_candidate_pairs=max_candidate_pairs,
+            max_index_postings=max_index_postings,
+            max_pair_expansions=max_pair_expansions,
+        )
+    except indexed.IndexedExecutionError as exc:
+        raise FourCodeGlobalDedupError(
+            "combined_indexed_execution: " + str(exc)
+        ) from exc
     combined_seconds = time.perf_counter() - combined_started
     matcher.verify_report(combined_report)
     combined_terminal = terminal_summary(
@@ -696,11 +711,19 @@ def main() -> int:
         OSError,
         ValueError,
     ) as exc:
+        detail = None
+        if isinstance(
+            exc,
+            (FourCodeGlobalDedupError, incumbent.indexed.IndexedExecutionError),
+        ):
+            rendered = " ".join(str(exc).split())
+            detail = rendered[:240]
         print(
             json.dumps(
                 {
                     "status": "BLOCKED_FOUR_CODE_GLOBAL_DEDUP",
                     "error_type": type(exc).__name__,
+                    "error_detail": detail,
                     "canonical_capacity_credited": 0,
                     "authorized_optimized_target_exposure": 0,
                     "training_executed": False,
