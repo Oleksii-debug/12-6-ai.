@@ -678,3 +678,54 @@ def test_checkpoint_load_requires_complete_native_restore_binding_inventory(
     assert checkpoint_reads == []
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "missing_marker",
+    ["_failure_reason", "_update_incomplete"],
+)
+def test_native_trainer_missing_recovery_marker_cannot_downgrade_to_generic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    missing_marker: str,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    owned_model = target.model
+    del vars(target)[missing_marker]
+    checkpoint_reads: list[bool] = []
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("marker-deficient native trainer reached checkpoint I/O")
+
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 0, "expected_tokens_seen": 0}
+        if loader is progress_trainer else {}
+    )
+
+    assert trainer_adapter._is_native_d02(target)
+    assert not trainer_adapter._is_canonical_d02(target)
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="recovery markers are unavailable",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=owned_model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert checkpoint_reads == []
