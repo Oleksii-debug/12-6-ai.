@@ -937,6 +937,28 @@ def test_strict_current_clean_json_keeps_valid_finite_float(literal: str) -> Non
     assert decoded["value"] == float(literal)
 
 
+@pytest.mark.parametrize(
+    "raw",
+    (
+        b'{"value":"\\ud800"}',
+        b'{"value":"\\udc00"}',
+        b'{"\\ud800":"bad-key"}',
+        b'{"nested":{"value":["\\udfff"]}}',
+    ),
+)
+def test_strict_current_clean_json_rejects_unpaired_surrogates(raw: bytes) -> None:
+    with pytest.raises(ProjectionError, match="invalid Unicode JSON"):
+        load_strict_json_object(raw, label="adversarial")
+
+
+def test_strict_current_clean_json_accepts_valid_surrogate_pair() -> None:
+    decoded = load_strict_json_object(
+        b'{"value":"\\ud83d\\ude00"}',
+        label="valid",
+    )
+    assert decoded["value"] == "\U0001f600"
+
+
 def test_strict_current_clean_json_rejects_nested_duplicate_keys() -> None:
     with pytest.raises(ProjectionError):
         load_strict_json_object(
