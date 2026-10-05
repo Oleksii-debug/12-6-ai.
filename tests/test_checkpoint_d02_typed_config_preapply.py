@@ -101,8 +101,9 @@ def test_generic_adapter_retains_existing_config_equality(
     subclass_counter: bool,
 ) -> None:
     class GenericAdapter:
-        config = {"deterministic_algorithms": True}
-        optimizer = None
+        def __init__(self) -> None:
+            self.config = {"deterministic_algorithms": True}
+            self.optimizer = None
 
         def load_state_dict(self, state: dict[str, Any]) -> None:
             self.restored = state
