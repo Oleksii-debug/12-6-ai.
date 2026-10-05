@@ -2123,3 +2123,94 @@ def test_model_loader_replacement_during_materialization_is_not_reopened(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
     torch.testing.assert_close(original_model.weight, source.model.weight, rtol=0, atol=0)
 
+@pytest.mark.parametrize(
+    ("descriptor_effect", "error"),
+    [
+        ("micro-step", "fresh trainer with no consumed exposure"),
+        ("optimizer-rebind", "target optimizer changed during preflight"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_zero_grad_descriptor_side_effect_fails_before_checkpoint_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    descriptor_effect: str,
+    error: str,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "zero-grad-descriptor-дані з пробілами"
+    core.save_checkpoint(
+        path,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_optimizer = target.optimizer
+    original_zero_grad = torch.optim.Optimizer.zero_grad
+    initial_weights = target.model.weight.detach().clone()
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    checkpoint_reads: list[bool] = []
+
+    class EffectfulZeroGrad:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            if instance is original_optimizer:
+                if descriptor_effect == "micro-step":
+                    target.micro_step = 1
+                elif descriptor_effect == "optimizer-rebind":
+                    target.optimizer = torch.optim.AdamW(
+                        target.model.parameters(),
+                        lr=target.config.learning_rate,
+                    )
+                else:
+                    raise AssertionError(
+                        f"unknown descriptor effect: {descriptor_effect}"
+                    )
+            return original_zero_grad.__get__(instance, owner)
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("effectful zero_grad lookup reached checkpoint I/O")
+
+    monkeypatch.setattr(
+        type(original_optimizer),
+        "zero_grad",
+        EffectfulZeroGrad(),
+    )
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path,
+            model=target.model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    assert checkpoint_reads == []
+    assert not original_optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
