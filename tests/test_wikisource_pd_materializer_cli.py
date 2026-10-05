@@ -239,17 +239,28 @@ def test_output_pair_refuses_preexisting_file_before_materialization(
 
 def test_output_pair_rolls_back_first_file_if_second_create_fails(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load_tool()
     publish = module["_publish_output_pair"]
     assert callable(publish)
     candidate = tmp_path / "candidate.jsonl"
     report = tmp_path / "report.json"
-    report.write_bytes(b"FOREIGN_REPORT")
-    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+    actual_write = publish.__globals__["_write_create_only_durable"]
+    calls = 0
+
+    def fail_second(path: Path, payload: bytes):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return actual_write(path, payload)
+        raise OSError("injected report create failure")
+
+    monkeypatch.setitem(publish.__globals__, "_write_create_only_durable", fail_second)
+    with pytest.raises(OSError, match="injected report create failure"):
         publish(candidate, b'{"page":1}\n', report, b'{"report":true}\n')
     assert not candidate.exists()
-    assert report.read_bytes() == b"FOREIGN_REPORT"
+    assert not report.exists()
 
 
 def test_output_pair_rollback_preserves_substituted_candidate(
@@ -283,6 +294,35 @@ def test_output_pair_rollback_preserves_substituted_candidate(
         publish(candidate, b'{"page":1}\n', report, b'{"report":true}\n')
     assert candidate.read_bytes() == unrelated
     assert moved.read_bytes() == b'{"page":1}\n'
+    assert not report.exists()
+
+
+
+def test_strict_control_loader_rejects_excessive_nesting() -> None:
+    loader = _load_tool()["load_strict_json_object"]
+    assert callable(loader)
+    raw = '{"value":' + "[" * 10_000 + "0" + "]" * 10_000 + "}"
+    with pytest.raises(WikisourceIntakeError, match="nesting limit"):
+        loader(raw)
+
+
+def test_output_pair_refuses_symlink_path_without_following_it(
+    tmp_path: Path,
+) -> None:
+    module = _load_tool()
+    prepare = module["_prepare_output_pair"]
+    assert callable(prepare)
+    target = tmp_path / "foreign-target.jsonl"
+    candidate = tmp_path / "candidate-link.jsonl"
+    report = tmp_path / "report.json"
+    try:
+        candidate.symlink_to(target)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink unavailable: {exc}")
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        prepare(candidate, report)
+    assert candidate.is_symlink()
+    assert not target.exists()
     assert not report.exists()
 
 
