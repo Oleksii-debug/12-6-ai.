@@ -559,6 +559,9 @@ def _float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         fail("nonfinite JSON number")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        fail("nonzero JSON number underflowed to zero")
     return parsed
 
 
@@ -570,18 +573,33 @@ def _int(value: str) -> int:
     return int(value)
 
 
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    # Atime can legitimately change during the read; size/mtime/ctime may not.
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
 def load_and_validate(path: str | Path, *, expected_main_sha: str | None = None) -> dict[str, Any]:
-    # Bind the read to one regular-file descriptor. O_NONBLOCK prevents a
-    # substituted POSIX FIFO from hanging before the byte limit is reached.
+    # Precheck the path, then bind the read to the same regular-file identity.
+    # O_NONBLOCK prevents a swapped POSIX FIFO from hanging before fstat.
     descriptor = None
     try:
+        before = os.stat(path)
+        if not stat.S_ISREG(before.st_mode):
+            fail("capacity report must be a regular file")
         flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
         descriptor = os.open(path, flags)
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
             fail("capacity report must be a regular file")
+        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+            fail("capacity report changed between check and open")
+        if _file_stamp(before) != _file_stamp(opened):
+            fail("capacity report changed before open")
         with os.fdopen(descriptor, "rb") as source:
             descriptor = None
             raw = source.read(MAX_REPORT_BYTES + 1)
+            if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
+                fail("capacity report changed during read")
     except OSError:
         # Do not expose a caller-supplied path, provider error or private name,
         # including through a chained exception in an unhandled traceback.
