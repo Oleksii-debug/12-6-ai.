@@ -220,3 +220,36 @@ def test_real_cli_keeps_canonical_unready_state() -> None:
     assert completed.returncode == 1
     assert completed.stderr == ""
     assert json.loads(completed.stdout)["material_training_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "api_token_sk_live_123456",
+        "Authorization: Bearer private-value",
+        "password=hunter2",
+    ],
+)
+def test_duplicate_member_refusal_does_not_echo_untrusted_key(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    secret_key: str,
+) -> None:
+    tool = _load_tool()
+    raw = json.dumps({secret_key: 1})[:-1] + "," + json.dumps(secret_key) + ":2}"
+    path = _write(tmp_path, raw)
+    assert tool.main(["assess", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    response = json.loads(captured.out)
+    assert response["error"].endswith("duplicate object member")
+    assert secret_key not in captured.out
+
+
+def test_duplicate_member_loader_error_is_generic(tmp_path: Path) -> None:
+    tool = _load_tool()
+    secret_key = "private-secret-field"
+    raw = '{"' + secret_key + '":1,"' + secret_key + '":2}'
+    with pytest.raises(ValueError, match=r"^duplicate object member$") as exc:
+        tool._load_packet(_write(tmp_path, raw))
+    assert secret_key not in str(exc.value)
