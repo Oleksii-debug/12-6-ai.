@@ -839,6 +839,15 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
             f"{label} cannot be isolated for semantic compatibility preflight"
         ) from exc
     try:
+        probe_state = probe.state_dict()
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} state failed isolated compatibility inspection"
+        ) from exc
+    if not isinstance(probe_state, Mapping):
+        raise CheckpointCompatibilityError(f"isolated {label} state must be a mapping")
+    _validate_state_schema(probe_state, state, path=f"{label} state")
+    try:
         probe.load_state_dict(copy.deepcopy(state))
     except Exception as exc:
         raise CheckpointCompatibilityError(
@@ -847,7 +856,7 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
 
 
 def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
-    """Validate scheduler-like state before model/optimizer mutation."""
+    """Validate scheduler-like state without invoking live state hooks."""
 
     if (
         not callable(getattr(component, "state_dict", None))
@@ -856,10 +865,6 @@ def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> 
         raise CheckpointCompatibilityError(
             f"{label} must provide state_dict/load_state_dict"
         )
-    live_state = component.state_dict()
-    if not isinstance(live_state, Mapping):
-        raise CheckpointCompatibilityError(f"live {label} state must be a mapping")
-    _validate_state_schema(live_state, state, path=f"{label} state")
     _semantic_stateful_probe(component, state, label=label)
 
 
