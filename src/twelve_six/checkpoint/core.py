@@ -1092,7 +1092,14 @@ def save_checkpoint(
         # Validators are arbitrary caller code and may reach the staging tree
         # through a closure or filesystem scan. Re-verify the exact staged bytes
         # after the final validator/RNG rollback and before atomic visibility.
-        verify_checkpoint(temp_dir)
+        # A callback might even reseal a modified payload into a self-consistent
+        # checkpoint, so the reverified manifest must still equal the manifest
+        # constructed by this save transaction.
+        reverified_manifest = verify_checkpoint(temp_dir)
+        if reverified_manifest != manifest:
+            raise CheckpointIntegrityError(
+                "checkpoint staging manifest changed after validation"
+            )
         rng_restored = True
 
         os.replace(temp_dir, destination)
