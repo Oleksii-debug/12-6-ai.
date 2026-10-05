@@ -1343,6 +1343,19 @@ def load_verified_checkpoint(
     )
     arrays, combined_state = _decode_verified_state(verified)
 
+    # Reject checkpoint-only incompatibilities before executing any target
+    # descriptor/proxy lookup.
+    if optimizer is not None and combined_state.get("optimizer") is None:
+        raise CheckpointCompatibilityError(
+            "optimizer was requested but checkpoint has no optimizer state"
+        )
+    if scheduler is not None and combined_state.get("scheduler") is None:
+        raise CheckpointCompatibilityError(
+            "scheduler was requested but checkpoint has no scheduler state"
+        )
+    if restore_rng:
+        _preflight_rng_state(combined_state["rng"])
+
     # Bind every live restore interface before model materialization/preflight.
     # Descriptor lookup may execute user code; all compatibility checks below
     # must observe any resulting target-state change, and application must not
@@ -1358,19 +1371,11 @@ def load_verified_checkpoint(
     )
 
     materialized = _prepare_model_weights(model, arrays, strict_model)
-    if optimizer is not None and combined_state.get("optimizer") is None:
-        raise CheckpointCompatibilityError(
-            "optimizer was requested but checkpoint has no optimizer state"
-        )
     if optimizer is not None:
         _preflight_optimizer_state(
             optimizer,
             combined_state["optimizer"],
             interfaces=optimizer_interfaces,
-        )
-    if scheduler is not None and combined_state.get("scheduler") is None:
-        raise CheckpointCompatibilityError(
-            "scheduler was requested but checkpoint has no scheduler state"
         )
     if scheduler is not None:
         _preflight_stateful_component(
@@ -1379,8 +1384,6 @@ def load_verified_checkpoint(
             label="scheduler",
             interfaces=scheduler_interfaces,
         )
-    if restore_rng:
-        _preflight_rng_state(combined_state["rng"])
 
     # No checkpoint byte is reopened after this point. All integrity, identity,
     # payload decoding, model/optimizer/scheduler compatibility and supported RNG
