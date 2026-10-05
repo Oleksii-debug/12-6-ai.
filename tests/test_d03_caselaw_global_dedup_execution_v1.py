@@ -1003,6 +1003,48 @@ with TemporaryDirectory() as raw:
     )
 
 
+def test_publication_control_read_rejects_in_place_stamp_drift() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    path = root / "manifest.json"
+    path.write_bytes(b"STABLE_CONTROL")
+    actual_fstat = mod.os.fstat
+    calls = 0
+
+    def drifting_fstat(descriptor):
+        nonlocal_calls[0] += 1
+        info = actual_fstat(descriptor)
+        if nonlocal_calls[0] >= 2:
+            values = list(info)
+            values[6] = info.st_size + 1
+            return mod.os.stat_result(values)
+        return info
+
+    nonlocal_calls = [0]
+    mod.os.fstat = drifting_fstat
+    try:
+        try:
+            mod._read_bounded_regular_file(
+                path,
+                mod.PUBLICATION_MANIFEST_MAX_BYTES,
+                label="publication manifest",
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "changed while reading" in str(exc)
+        else:
+            raise AssertionError("in-place control-file drift was accepted")
+    finally:
+        mod.os.fstat = actual_fstat
+
+    assert nonlocal_calls[0] >= 2
+"""
+    )
+
+
 def test_publication_control_read_never_blocks_on_fifo_swap() -> None:
     _run_isolated(
         """
