@@ -77,7 +77,12 @@ def _load_packet(path: Path) -> dict[str, Any]:
 
 def main(argv: list[str]) -> int:
     if len(argv) > 2:
-        print(json.dumps({"error": "invalid arguments: expected at most one packet path"}, sort_keys=True))
+        print(
+            json.dumps(
+                {"error": "invalid arguments: expected at most one packet path"},
+                sort_keys=True,
+            )
+        )
         return 2
     path = Path(argv[1]) if len(argv) > 1 else DEFAULT_PATH
     try:
