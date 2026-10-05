@@ -398,7 +398,7 @@ def test_post_rng_exact_seal_does_not_reenter_effectful_tensor_comparator(
 )
 @pytest.mark.parametrize(
     "mutation",
-    ["model", "optimizer"],
+    ["model", "optimizer", "gradient"],
 )
 def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
     tmp_path: Path,
@@ -426,8 +426,10 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
         if mutation == "model":
             with torch.no_grad():
                 target.model.weight.add_(0.25)
-        else:
+        elif mutation == "optimizer":
             target.optimizer.param_groups[0]["lr"] *= 0.5
+        else:
+            target.model.weight.grad = torch.full_like(target.model.weight, 0.25)
 
     if restore_rng:
         original_replay = loader._restore_checkpoint_rng_preserving_warn_only
@@ -461,9 +463,9 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
         if loader is progress_trainer else {}
     )
     expected = (
-        "model changed during final checkpoint restore seal"
-        if mutation == "model"
-        else "auxiliary state changed during final checkpoint restore seal"
+        "auxiliary state changed during final checkpoint restore seal"
+        if mutation == "optimizer"
+        else "model changed during final checkpoint restore seal"
     )
 
     with pytest.raises(core.CheckpointCompatibilityError, match=expected):
@@ -478,8 +480,16 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
 
     if mutation == "model":
         assert not torch.equal(target.model.weight.detach(), weight_before)
-    else:
+    elif mutation == "optimizer":
         assert target.optimizer.param_groups[0]["lr"] == lr_before * 0.5
+    else:
+        assert target.model.weight.grad is not None
+        torch.testing.assert_close(
+            target.model.weight.grad,
+            torch.full_like(target.model.weight, 0.25),
+            rtol=0,
+            atol=0,
+        )
     assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
     assert vars(target)["_update_incomplete"] is True
 
