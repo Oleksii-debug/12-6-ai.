@@ -12,7 +12,7 @@ import copy
 import importlib
 import inspect
 from collections.abc import Mapping
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, fields, is_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -305,6 +305,91 @@ def _poison_canonical_restore_failure(
     attrs["_update_incomplete"] = True
 
 
+def _snapshot_restore_contract_value(value: Any, *, path: str) -> Any:
+    """Copy small restore-contract data without invoking arbitrary object hooks."""
+
+    if value is None or type(value) in {bool, int, float, str, bytes}:
+        return value
+    if type(value) is tuple:
+        return tuple(
+            _snapshot_restore_contract_value(child, path=f"{path}[{index}]")
+            for index, child in enumerate(value)
+        )
+    if type(value) is list:
+        return [
+            _snapshot_restore_contract_value(child, path=f"{path}[{index}]")
+            for index, child in enumerate(value)
+        ]
+    if type(value) is dict:
+        copied: dict[str, Any] = {}
+        for key, child in value.items():
+            if type(key) is not str:
+                raise CheckpointCompatibilityError(
+                    f"{path} contains a non-string restore-contract key"
+                )
+            copied[key] = _snapshot_restore_contract_value(
+                child,
+                path=f"{path}.{key}",
+            )
+        return copied
+    raise CheckpointCompatibilityError(
+        f"{path} contains unsupported restore-contract data"
+    )
+
+
+def _restore_contract_equal(left: Any, right: Any) -> bool:
+    """Compare small restore-contract data without custom equality hooks."""
+
+    if type(left) is not type(right):
+        return False
+    if left is None:
+        return True
+    if type(left) in {bool, int, str, bytes}:
+        return bool(left == right)
+    if type(left) is float:
+        return left.hex() == right.hex()
+    if type(left) is tuple:
+        return len(left) == len(right) and all(
+            _restore_contract_equal(a, b)
+            for a, b in zip(left, right, strict=True)
+        )
+    if type(left) is list:
+        return len(left) == len(right) and all(
+            _restore_contract_equal(a, b)
+            for a, b in zip(left, right, strict=True)
+        )
+    if type(left) is dict:
+        if left.keys() != right.keys():
+            return False
+        return all(
+            _restore_contract_equal(left[key], right[key])
+            for key in left
+        )
+    return False
+
+
+def _snapshot_native_d02_config(config: Any) -> dict[str, Any]:
+    """Snapshot native TrainerConfig fields without dataclasses.asdict deepcopy."""
+
+    if not is_dataclass(config) or isinstance(config, type):
+        raise CheckpointCompatibilityError(
+            "native D02 trainer config must remain a dataclass instance"
+        )
+    snapshot: dict[str, Any] = {}
+    for field in fields(config):
+        try:
+            value = object.__getattribute__(config, field.name)
+        except BaseException as exc:
+            raise CheckpointCompatibilityError(
+                f"native D02 config field unavailable: {field.name}"
+            ) from exc
+        snapshot[field.name] = _snapshot_restore_contract_value(
+            value,
+            path=f"native D02 config.{field.name}",
+        )
+    return snapshot
+
+
 def _snapshot_trainer_restore_bindings(
     trainer: Any,
 ) -> tuple[bool, dict[str, Any]]:
@@ -314,11 +399,30 @@ def _snapshot_trainer_restore_bindings(
     if not canonical_d02:
         return False, {}
     attrs = vars(trainer)
-    return True, {
+    bindings = {
         field: attrs[field]
         for field in ("model", "optimizer", "scheduler", "scaler", "config")
         if field in attrs
     }
+    if _is_native_d02(trainer) and "device" in attrs:
+        bindings["device"] = attrs["device"]
+    policies = (
+        {
+            field: _snapshot_restore_contract_value(
+                attrs[field],
+                path=f"native D02 {field}",
+            )
+            for field in (
+                "_canonical_default_schedule",
+                "_canonical_unscheduled_default_optimizer",
+                "_canonical_default_optimizer_options",
+            )
+            if field in attrs
+        }
+        if _is_native_d02(trainer)
+        else {}
+    )
+    return True, {"bindings": bindings, "policies": policies}
 
 
 def _assert_trainer_restore_bindings(
@@ -327,7 +431,7 @@ def _assert_trainer_restore_bindings(
 ) -> None:
     """Reject safety classification or restore-component identity drift."""
 
-    expected_canonical, bindings = snapshot
+    expected_canonical, snapshot_state = snapshot
     current_canonical = _is_canonical_d02(trainer)
     if current_canonical != expected_canonical:
         exc = CheckpointCompatibilityError(
@@ -349,10 +453,18 @@ def _assert_trainer_restore_bindings(
             "canonical trainer does not expose instance recovery state"
         ) from exc
     sentinel = object()
-    for field, expected in bindings.items():
+    for field, expected in snapshot_state["bindings"].items():
         if attrs.get(field, sentinel) is not expected:
             raise CheckpointCompatibilityError(
                 f"canonical trainer {field} binding changed during checkpoint restore"
+            )
+    for field, expected in snapshot_state["policies"].items():
+        if (
+            field not in attrs
+            or not _restore_contract_equal(attrs[field], expected)
+        ):
+            raise CheckpointCompatibilityError(
+                f"canonical trainer {field} policy changed during checkpoint restore"
             )
 
 
@@ -369,6 +481,23 @@ def _note_restore_binding_drift(
         exc.add_note(
             "trainer restore target drift also detected: "
             f"{drift_exc}"
+        )
+
+
+def _assert_native_d02_model_training_mode(model: Any, trainer: Any) -> None:
+    """Require the non-serialized nn.Module training-mode resume invariant."""
+
+    if not _is_native_d02(trainer):
+        return
+    try:
+        training = vars(model).get("training")
+    except TypeError as exc:
+        raise CheckpointCompatibilityError(
+            "native D02 checkpoint model does not expose training mode"
+        ) from exc
+    if training is not True:
+        raise CheckpointCompatibilityError(
+            "native D02 checkpoint restore requires model training mode"
         )
 
 
@@ -449,14 +578,21 @@ def _preflight_trainer_target(trainer: Any) -> None:
     model = initial_attrs.get("model")
     optimizer = initial_attrs.get("optimizer")
     config = initial_attrs.get("config")
+    _assert_native_d02_model_training_mode(model, trainer)
     scheduler = initial_attrs.get("scheduler")
     scaler = initial_attrs.get("scaler")
+    native_d02 = _is_native_d02(trainer)
+    config_snapshot = (
+        _snapshot_native_d02_config(config)
+        if native_d02
+        else None
+    )
 
     # Bind every effectful authority/interface lookup before the final
     # freshness snapshot. Descriptor/proxy lookup itself may execute user code;
     # any such side effect must therefore be visible to the checks below.
     authorities: dict[str, Any] = {}
-    if _is_native_d02(trainer):
+    if native_d02:
         for authority, label in (
             ("_require_finite_auxiliary_state", "auxiliary-state"),
             ("_require_safe_optimizer_hyperparameters", "optimizer-hyperparameter"),
@@ -482,7 +618,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
     # D02 validates optimizer/model parameter ownership during its actual load.
     # Invoke the already-bound authority before the final freshness snapshot so
     # an effectful custom authority cannot mutate the target after that snapshot.
-    if _is_native_d02(trainer):
+    if native_d02:
         try:
             authorities["_require_optimizer_parameter_coverage"]()
         except Exception as exc:
@@ -497,6 +633,14 @@ def _preflight_trainer_target(trainer: Any) -> None:
             for parameter in parameters()
         )
     )
+
+    if native_d02:
+        try:
+            authorities["_require_optimizer_parameter_coverage"]()
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint restore requires stable optimizer ownership of model parameters"
+            ) from exc
 
     # Global deterministic mode is a pure target compatibility precondition.
     # Run it after the effectful bindings/calls above, then close with the
@@ -543,6 +687,17 @@ def _preflight_trainer_target(trainer: Any) -> None:
             raise CheckpointCompatibilityError(
                 f"checkpoint restore target {name} changed during preflight"
             )
+    if (
+        native_d02
+        and not _restore_contract_equal(
+            _snapshot_native_d02_config(config),
+            config_snapshot,
+        )
+    ):
+        raise CheckpointCompatibilityError(
+            "checkpoint restore target config changed during preflight"
+        )
+    _assert_native_d02_model_training_mode(model, trainer)
     if pending_gradient:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer with no pending gradients"
@@ -1141,6 +1296,7 @@ def save_trainer_checkpoint(
     if not callable(getattr(trainer, "state_dict", None)):
         raise TypeError("trainer must provide state_dict()")
     _assert_trainer_model_binding(model, trainer)
+    _assert_native_d02_model_training_mode(model, trainer)
     state = _trainer_state_as_mapping(trainer.state_dict())
     # A canonical D02 checkpoint should never be produced under a different
     # ambient PyTorch policy than the validated trainer configuration.
@@ -1333,10 +1489,12 @@ def load_trainer_checkpoint(
         model_apply(materialized)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
+        _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_native_d02_model_training_mode(model, trainer)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
                 combined_state["rng"],
