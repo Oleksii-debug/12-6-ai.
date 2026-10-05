@@ -127,20 +127,6 @@ def _lstat_or_none(path: Path) -> os.stat_result | None:
         return None
 
 
-def _is_same_regular_inode(
-    path: Path,
-    identity: tuple[int, int],
-    expected_size: int,
-) -> bool:
-    info = _lstat_or_none(path)
-    return bool(
-        info is not None
-        and stat.S_ISREG(info.st_mode)
-        and (info.st_dev, info.st_ino) == identity
-        and info.st_size == expected_size
-    )
-
-
 def _write(path: Path, value: dict[str, Any]) -> None:
     """Create one exact report or preserve enough state for deterministic recovery."""
     if path.exists() or path.is_symlink():
@@ -186,7 +172,12 @@ def _write(path: Path, value: dict[str, Any]) -> None:
                 staged=temporary,
             ) from inspect_error
 
-        if final is not None and _is_same_regular_inode(path, identity, len(payload)):
+        if (
+            final is not None
+            and stat.S_ISREG(final.st_mode)
+            and (final.st_dev, final.st_ino) == identity
+            and final.st_size == len(payload)
+        ):
             # This also resolves wrappers that create the hard link and then raise.
             committed = True
         elif link_error is not None and final is None:
