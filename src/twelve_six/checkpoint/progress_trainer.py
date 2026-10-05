@@ -39,6 +39,7 @@ from .trainer_adapter import (
     _assert_native_d02_model_training_mode,
     _assert_trainer_model_binding,
     _assert_trainer_restore_bindings,
+    _bind_native_auxiliary_fingerprint,
     _bind_native_export_live_authorities,
     _bind_native_model_export_fingerprint,
     _bind_trainer_state_loader,
@@ -95,6 +96,7 @@ def load_trainer_checkpoint(
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
         model_fingerprint = _bind_native_model_export_fingerprint(trainer)
+        auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
     except BaseException as exc:
         _note_restore_binding_drift(trainer, restore_bindings, exc)
@@ -319,6 +321,11 @@ def load_trainer_checkpoint(
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
+        sealed_auxiliary_fingerprint = (
+            auxiliary_fingerprint()
+            if auxiliary_fingerprint is not None
+            else None
+        )
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_native_d02_model_training_mode(model, trainer)
         _postflight_trainer_state(trainer, trainer_state)
@@ -329,6 +336,8 @@ def load_trainer_checkpoint(
             trainer_state,
             model_fingerprint=model_fingerprint,
             sealed_model_fingerprint=sealed_model_fingerprint,
+            auxiliary_fingerprint=auxiliary_fingerprint,
+            sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             export_live_authorities=restore_live_authorities,
             phase="checkpoint restore",
         )
@@ -356,6 +365,8 @@ def load_trainer_checkpoint(
             trainer_state,
             model_fingerprint=model_fingerprint,
             sealed_model_fingerprint=sealed_model_fingerprint,
+            auxiliary_fingerprint=auxiliary_fingerprint,
+            sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             export_live_authorities=restore_live_authorities,
             phase="final checkpoint restore seal",
         )
