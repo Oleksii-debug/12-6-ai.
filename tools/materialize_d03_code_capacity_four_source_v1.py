@@ -181,7 +181,7 @@ def validate_configs(configs: dict[str, dict[str, Any]]) -> None:
     pydantic = configs["pydantic"]
     expected = EXPECTED["pydantic"]
     require(pydantic.get("source_family") == expected["family"], "Pydantic family drift")
-    require(pydantic.get("upstream_commit") == expected["commit"], "Pydantic commit drift")
+    require(\n        pydantic.get("upstream_commit") == expected["commit"],\n        "Pydantic commit drift: "\n        f"actual={pydantic.get('upstream_commit')!r} expected={expected['commit']!r}",\n    )
     license_info = pydantic.get("license")
     require(isinstance(license_info, dict), "Pydantic license missing")
     require(
