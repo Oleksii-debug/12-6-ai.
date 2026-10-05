@@ -593,3 +593,19 @@ def test_direct_d02_rejects_float32_invalid_scaler_before_optimizer_mutation(
     assert target.train_microbatch(_BATCH).optimizer_stepped
     assert source.optimizer_step == target.optimizer_step == 2
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+def test_direct_d02_accepts_small_scaler_with_finite_float32_inverse() -> None:
+    # The new bound is on the usable inverse, not an arbitrary large minimum.
+    # 1e-38 is float32-representable and its reciprocal is still finite.
+    source = _source()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    state = asdict(source.state_dict())
+    state["scaler"]["scale"] = 1e-38
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    target.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(state)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert bool(torch.isfinite(target.model.weight).all())
