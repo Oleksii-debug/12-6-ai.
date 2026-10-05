@@ -1081,3 +1081,536 @@ else:
 assert fetch_module.fetch_exact_source is original_fetch
 """
     )
+
+
+def test_v7_tls_eof_retry_is_bounded_and_byte_identical() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/private?token=NEVER_EMIT"
+raw = b"\\x00verified-pinned-source\\xff"
+calls = []
+sleeps = []
+original_sleep = mod.time.sleep
+mod.time.sleep = lambda delay: sleeps.append(delay)
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    if len(calls) <= 2:
+        raise URLError(ssl.SSLEOFError(8, "simulated unexpected TLS EOF"))
+    return raw
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    assert mod._capture_terminal_v7_with_fetch_context(Path("."), {}) is raw
+    assert calls == [url, url, url]
+    assert sleeps == [0.25, 0.5]
+    assert fetch_module.fetch_exact_source is original_fetch
+finally:
+    mod.time.sleep = original_sleep
+"""
+    )
+
+
+def test_v7_tls_eof_final_error_stays_original_and_redacted() -> None:
+    _run_isolated(
+        """
+import hashlib
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/private?token=NEVER_EMIT"
+calls = []
+sleeps = []
+errors = [URLError(ssl.SSLEOFError(8, "simulated EOF")) for _ in range(3)]
+mod.time.sleep = lambda delay: sleeps.append(delay)
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    raise errors[len(calls) - 1]
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except URLError as exc:
+    assert exc is errors[-1]
+    note = "\\n".join(exc.__notes__)
+    assert "host=source.example.invalid" in note
+    assert f"acquisition_url_sha256={hashlib.sha256(url.encode()).hexdigest()}" in note
+    assert "attempts=3" in note
+    assert "private" not in note and "NEVER_EMIT" not in note
+else:
+    raise AssertionError("the exhausted TLS error was swallowed")
+assert calls == [url, url, url] and sleeps == [0.25, 0.5]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_v7_non_eof_network_failure_is_not_retried() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/pinned"
+calls = []
+mod.time.sleep = lambda _delay: (_ for _ in ()).throw(
+    AssertionError("non-EOF transport failure must not be retried")
+)
+error = URLError(ssl.SSLCertVerificationError("certificate verification failed"))
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    raise error
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except URLError as exc:
+    assert exc is error and "attempts=1" in "\\n".join(exc.__notes__)
+else:
+    raise AssertionError("certificate error was swallowed")
+assert calls == [url]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_v7_interruption_after_eof_retry_restores_fetch_hook() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/pinned"
+calls = []
+mod.time.sleep = lambda _delay: None
+interrupted = KeyboardInterrupt("user-requested stop")
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    if len(calls) == 1:
+        raise URLError(ssl.SSLEOFError(8, "temporary EOF"))
+    raise interrupted
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except KeyboardInterrupt as exc:
+    assert exc is interrupted and not hasattr(exc, "__notes__")
+else:
+    raise AssertionError("interruption was swallowed")
+assert calls == [url, url]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
+
+
+def test_v3_post_warmup_attestation_failure_keeps_original_and_reports_bounded_diff() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+error = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+attest_calls = []
+lineage_calls = []
+
+def live_lineage(fingerprints, edges):
+    lineage_calls.append(True)
+    return [
+        {
+            "match_type": "lineage_same_origin_alias",
+            "capacity_collapsing": True,
+        }
+        for _ in range(8)
+    ]
+
+def canonical_lineage(fingerprints, edges):
+    return []
+
+def fake_attester(_matcher):
+    attest_calls.append(True)
+    if len(attest_calls) == 2:
+        raise error
+
+mod.indexed.attest_incumbent_runtime = fake_attester
+mod.indexed._canonical_namespace = lambda _matcher, _label: {
+    "_lineage_matches": canonical_lineage
+}
+matcher = SimpleNamespace(_lineage_matches=live_lineage)
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is error
+    note = "\\n".join(exc.__notes__)
+    assert "STRUCTURAL_CODE_MISMATCH" in note
+    assert '"warmup_live_callable_rebound": false' in note
+    assert '"warmup_live_digest_changed": false' in note
+    assert '"attestation_override_allowed": false' in note
+    assert "bounded V3 post-warmup diagnostic:" in note
+    assert "source_payload" not in note
+else:
+    raise AssertionError("incumbent attester rejection was bypassed")
+assert len(attest_calls) == 2
+assert len(lineage_calls) == 10
+"""
+    )
+
+
+def test_unrelated_attestation_failure_does_not_invoke_v3_diagnostic() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+primary = mod.indexed.IndexedExecutionError("V3 matcher source blob drift")
+attest_calls = []
+
+def reject(_matcher):
+    attest_calls.append(True)
+    raise primary
+
+mod.indexed.attest_incumbent_runtime = reject
+mod.indexed._canonical_namespace = lambda *_args: (
+    _ for _ in ()
+).throw(AssertionError("diagnostic must not run"))
+try:
+    mod._preflight_attested_lineage_warmup(SimpleNamespace())
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is primary
+    assert not hasattr(exc, "__notes__")
+else:
+    raise AssertionError("original blob mismatch was swallowed")
+assert len(attest_calls) == 1
+"""
+    )
+
+
+
+def test_v3_warmup_live_code_mutation_is_identified_but_still_rejected() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+error = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+attest_calls = []
+lineage_calls = []
+
+def replacement(fingerprints, edges):
+    return []
+
+def live_lineage(fingerprints, edges):
+    lineage_calls.append(True)
+    if len(lineage_calls) == 10:
+        live_lineage.__code__ = replacement.__code__
+    return [
+        {
+            "match_type": "lineage_same_origin_alias",
+            "capacity_collapsing": True,
+        }
+        for _ in range(8)
+    ]
+
+def fake_attester(_matcher):
+    attest_calls.append(True)
+    if len(attest_calls) == 2:
+        raise error
+
+mod.indexed.attest_incumbent_runtime = fake_attester
+mod.indexed._canonical_namespace = lambda _matcher, _label: {
+    "_lineage_matches": replacement
+}
+matcher = SimpleNamespace(_lineage_matches=live_lineage)
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is error
+    note = "\\n".join(exc.__notes__)
+    assert '"warmup_live_digest_changed": true' in note
+    assert '"attestation_override_allowed": false' in note
+else:
+    raise AssertionError("mutated code was incorrectly accepted")
+assert len(attest_calls) == 2
+assert len(lineage_calls) == 10
+"""
+    )
+
+
+def test_v3_warmup_callable_rebinding_is_attributed_to_current_live_code() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+error = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+attest_calls = []
+lineage_calls = []
+
+def old_lineage(fingerprints, edges):
+    lineage_calls.append(True)
+    if len(lineage_calls) == 10:
+        matcher._lineage_matches = new_lineage
+    return [
+        {
+            "match_type": "lineage_same_origin_alias",
+            "capacity_collapsing": True,
+        }
+        for _ in range(8)
+    ]
+
+def new_lineage(fingerprints, edges):
+    return []
+
+def unrelated_canonical(fingerprints, edges):
+    return [1]
+
+matcher = SimpleNamespace(_lineage_matches=old_lineage)
+def fake_attester(_matcher):
+    attest_calls.append(True)
+    if len(attest_calls) == 2:
+        raise error
+
+mod.indexed.attest_incumbent_runtime = fake_attester
+mod.indexed._canonical_namespace = lambda _matcher, _label: {
+    "_lineage_matches": unrelated_canonical
+}
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is error
+    note = "\\n".join(exc.__notes__)
+    assert '"warmup_live_callable_rebound": true' in note
+    assert '"warmup_live_digest_changed": true' in note
+    assert '"attestation_override_allowed": false' in note
+    assert "STRUCTURAL_CODE_MISMATCH" in note
+else:
+    raise AssertionError("rebound matcher was incorrectly accepted")
+assert len(lineage_calls) == 10 and len(attest_calls) == 2
+"""
+    )
+
+
+def test_v3_warmup_invalid_callable_never_replaces_incumbent_rejection() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+error = mod.indexed.IndexedExecutionError(
+    "V3 callable code drift: _lineage_matches"
+)
+attest_calls = []
+lineage_calls = []
+
+def old_lineage(fingerprints, edges):
+    lineage_calls.append(True)
+    if len(lineage_calls) == 10:
+        matcher._lineage_matches = None
+    return [
+        {
+            "match_type": "lineage_same_origin_alias",
+            "capacity_collapsing": True,
+        }
+        for _ in range(8)
+    ]
+
+matcher = SimpleNamespace(_lineage_matches=old_lineage)
+def fake_attester(_matcher):
+    attest_calls.append(True)
+    if len(attest_calls) == 2:
+        raise error
+
+mod.indexed.attest_incumbent_runtime = fake_attester
+try:
+    mod._preflight_attested_lineage_warmup(matcher)
+except mod.indexed.IndexedExecutionError as exc:
+    assert exc is error
+    note = "\\n".join(exc.__notes__)
+    assert "bounded V3 post-warmup diagnostic unavailable: TypeError" in note
+    assert "attestation_override_allowed" not in note
+else:
+    raise AssertionError("missing callable was incorrectly accepted")
+assert len(lineage_calls) == 10 and len(attest_calls) == 2
+"""
+    )
+
+
+def test_v3_literal_score_result_changes_default_marshal_but_not_code() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+# Only literal 1.0 is retained by the result: no code, data, or runtime swap.
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_namespace = {}
+canonical_namespace = {}
+exec(compile(source, "v3-warmup-reference.py", "exec"), live_namespace)
+exec(compile(source, "v3-warmup-reference.py", "exec"), canonical_namespace)
+live = live_namespace["lineage"]
+canonical = canonical_namespace["lineage"]
+original_bytes = live.__code__.co_code
+strict = mod.indexed._code_digest
+original_digest = strict(canonical.__code__)
+assert strict(live.__code__) == original_digest
+
+# Marshal v2 does not use the ref table whose TYPE_REF decisions are
+# refcount-sensitive. Keep this as causal evidence only: production still
+# uses the unchanged incumbent strict/default marshal digest.
+import hashlib
+import marshal
+version2_digest = lambda code: hashlib.sha256(marshal.dumps(code, 2)).hexdigest()
+original_v2 = version2_digest(live.__code__)
+assert original_v2 == version2_digest(canonical.__code__)
+
+held = live(list(range(16)), ())
+assert len(held) == 8
+assert strict(live.__code__) != original_digest
+assert version2_digest(live.__code__) == original_v2
+assert live.__code__.co_code == original_bytes
+del held
+assert strict(live.__code__) == original_digest
+assert version2_digest(live.__code__) == original_v2
+"""
+    )
+
+
+def test_v3_warmup_releases_synthetic_result_before_strict_second_attest() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-result-lifetime.py", "exec"), live_ns)
+exec(compile(source, "v3-result-lifetime.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+canonical = canonical_ns["lineage"]
+expected_digest = mod.indexed._code_digest(canonical.__code__)
+checks = []
+def unchanged_strict_attest(matcher):
+    checks.append(True)
+    if mod.indexed._code_digest(matcher._lineage_matches.__code__) != expected_digest:
+        raise mod.indexed.IndexedExecutionError(
+            "V3 callable code drift: _lineage_matches"
+        )
+mod.indexed.attest_incumbent_runtime = unchanged_strict_attest
+matcher = SimpleNamespace(_lineage_matches=live)
+mod._preflight_attested_lineage_warmup(matcher)
+assert len(checks) == 2
+assert mod.indexed._code_digest(live.__code__) == expected_digest
+"""
+    )
+
+
+def test_v3_reference_sample_releases_verified_report_before_strict_attest() -> None:
+    _run_isolated(
+        """
+from types import SimpleNamespace
+
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-reference-sample.py", "exec"), live_ns)
+exec(compile(source, "v3-reference-sample.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+expected_digest = mod.indexed._code_digest(canonical_ns["lineage"].__code__)
+calls = []
+def audit(sample, raw):
+    calls.append("reference")
+    return {"matches": live(sample["sources"], ())}
+def verify(report):
+    calls.append("verify")
+    assert len(report["matches"]) == 8
+def strict_attest(_matcher):
+    calls.append("attest")
+    if mod.indexed._code_digest(live.__code__) != expected_digest:
+        raise mod.indexed.IndexedExecutionError(
+            "V3 callable code drift: _lineage_matches"
+        )
+mod.indexed.attest_incumbent_runtime = strict_attest
+matcher = SimpleNamespace(
+    audit_payloads=audit, verify_report=verify, _lineage_matches=live
+)
+rows = [{"source_id": f"source-{i}"} for i in range(16)]
+mod._preflight_attested_reference_sample(
+    matcher, {"sources": rows, "lineage_edges": []},
+    {row["source_id"]: b"x" for row in rows},
+)
+assert calls == ["reference", "verify", "attest"]
+assert mod.indexed._code_digest(live.__code__) == expected_digest
+"""
+    )
+
+
+def test_v3_verified_reference_can_be_frozen_without_losing_byte_comparison() -> None:
+    _run_isolated(
+        """
+import json
+
+source = (
+    "def lineage(rows, edges):\\n"
+    "    return [{'match_type': 'lineage_same_origin_alias', "
+    "'capacity_collapsing': True, 'score': 1.0} for _ in rows[:8]]\\n"
+)
+live_ns, canonical_ns = {}, {}
+exec(compile(source, "v3-reference-full.py", "exec"), live_ns)
+exec(compile(source, "v3-reference-full.py", "exec"), canonical_ns)
+live = live_ns["lineage"]
+expected_digest = mod.indexed._code_digest(canonical_ns["lineage"].__code__)
+reference = {"report_sha256": "a" * 64, "matches": live(list(range(16)), ())}
+assert mod.indexed._code_digest(live.__code__) != expected_digest
+reference_hash = reference["report_sha256"]
+reference_bytes = json.dumps(
+    reference, sort_keys=True, separators=(",", ":")
+).encode()
+del reference
+assert mod.indexed._code_digest(live.__code__) == expected_digest
+indexed_report = {"report_sha256": reference_hash, "matches": live(list(range(16)), ())}
+indexed_bytes = json.dumps(
+    indexed_report, sort_keys=True, separators=(",", ":")
+).encode()
+assert reference_bytes == indexed_bytes
+assert indexed_report["report_sha256"] == reference_hash
+"""
+    )

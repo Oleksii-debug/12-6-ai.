@@ -14,6 +14,7 @@ import hashlib
 import importlib
 import json
 import os
+import ssl
 try:
     import resource
 except ImportError:  # pragma: no cover - Windows/local fallback
@@ -24,6 +25,7 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -236,19 +238,32 @@ def _capture_terminal_v7_with_fetch_context(
     original_fetch = fetch_module.fetch_exact_source
 
     def contextual_fetch(url: str) -> bytes:
-        try:
-            return original_fetch(url)
-        except OSError as exc:
+        # The historical V7 fetcher and its HTTPS certificate validation are
+        # unchanged. Retry ONLY an aborted TLS read/handshake, using precisely
+        # the same pinned URL; never retry a source-integrity or rights error.
+        for attempt in range(1, 4):
             try:
-                host = urlsplit(url).hostname or "unknown"
-            except ValueError:
-                host = "invalid-url"
-            url_sha256 = hashlib.sha256(url.encode("utf-8")).hexdigest()
-            exc.add_note(
-                "historical V7 source fetch failed: "
-                f"host={host}; acquisition_url_sha256={url_sha256}"
-            )
-            raise
+                return original_fetch(url)
+            except OSError as exc:
+                if (
+                    isinstance(exc, URLError)
+                    and isinstance(exc.reason, ssl.SSLEOFError)
+                    and attempt < 3
+                ):
+                    time.sleep(0.25 * attempt)
+                    continue
+                try:
+                    host = urlsplit(url).hostname or "unknown"
+                except ValueError:
+                    host = "invalid-url"
+                url_sha256 = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                exc.add_note(
+                    "historical V7 source fetch failed: "
+                    f"host={host}; acquisition_url_sha256={url_sha256}; "
+                    f"attempts={attempt}"
+                )
+                raise
+        raise AssertionError("unreachable historical fetch attempt state")
 
     fetch_module.fetch_exact_source = contextual_fetch
     try:
@@ -404,6 +419,10 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
     indexed.attest_incumbent_runtime(matcher)
     lineage = getattr(matcher, "_lineage_matches", None)
     _require(callable(lineage), "terminal V3 lineage function missing")
+    # The first incumbent attestation already established executable authority.
+    # Record its exact live code digest before synthetic execution so a later
+    # attestation fault can distinguish mutated live code from recompile drift.
+    original_live_code_sha256 = indexed._code_digest(lineage.__code__)
     fingerprints = [
         {
             "row": {
@@ -422,7 +441,55 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
                      and match.get("capacity_collapsing") is True
                      for match in matches),
                  "terminal V3 lineage warmup authority drift")
-    indexed.attest_incumbent_runtime(matcher)
+    # The result dictionaries hold V3's literal float score=1.0 by identity.
+    # CPython 3.11 marshal v4 records reference-table flags based on refcount;
+    # retaining the last result can change _code_digest without changing code.
+    # Release ONLY synthetic results before the UNCHANGED second attestation.
+    # The first attestation, 10 semantic probes, and second refusal remain.
+    del matches
+    try:
+        indexed.attest_incumbent_runtime(matcher)
+    except indexed.IndexedExecutionError as exc:
+        if str(exc) != "V3 callable code drift: _lineage_matches":
+            raise
+        # Diagnose the known post-warmup drift on the exact failed authority.
+        # Even equal structural fields cannot bypass the original attester.
+        try:
+            from diagnose_d03_v3_code_drift import compare_code_objects
+
+            current_lineage = getattr(matcher, "_lineage_matches", None)
+            if not callable(current_lineage) or not hasattr(current_lineage, "__code__"):
+                raise TypeError("the live V3 callable is no longer inspectable")
+            canonical = indexed._canonical_namespace(matcher, "V3")["_lineage_matches"]
+            diagnostic = compare_code_objects(
+                current_lineage.__code__, canonical.__code__,
+            )
+            diagnostic["warmup_live_callable_rebound"] = current_lineage is not lineage
+            diagnostic["warmup_live_digest_changed"] = (
+                indexed._code_digest(current_lineage.__code__)
+                != original_live_code_sha256
+            )
+            allowed = (
+                "warmup_live_callable_rebound", "warmup_live_digest_changed",
+                "classification", "marshal_equal", "structural_fields_equal",
+                "different_field_paths", "diagnostic_limited",
+                "live_marshal_sha256", "canonical_marshal_sha256",
+                "attestation_override_allowed",
+            )
+            exc.add_note(
+                "bounded V3 post-warmup diagnostic: "
+                + json.dumps(
+                    {key: diagnostic[key] for key in allowed},
+                    sort_keys=True,
+                )
+            )
+        except Exception as diagnostic_error:
+            # Never replace the original fail-closed execution result.
+            exc.add_note(
+                "bounded V3 post-warmup diagnostic unavailable: "
+                + type(diagnostic_error).__name__
+            )
+        raise
 
 
 def _preflight_attested_reference_sample(
@@ -456,6 +523,9 @@ def _preflight_attested_reference_sample(
     sample_payloads = {row["source_id"]: payloads[row["source_id"]] for row in selected}
     sample_report = matcher.audit_payloads(sample_inventory, sample_payloads)
     matcher.verify_report(sample_report)
+    # A verified report owns match dicts with V3 literal score=1.0. Keep no
+    # synthetic report alive while the unchanged post-reference attester runs.
+    del sample_report
     indexed.attest_incumbent_runtime(matcher)
 
 
@@ -1197,6 +1267,12 @@ def execute(
     reference = matcher.audit_payloads(inventory, payloads)
     reference_seconds = time.perf_counter() - reference_started
     matcher.verify_report(reference)
+    # Freeze the verified canonical bytes and self-hash BEFORE dropping the
+    # all-pairs report. Its match dicts otherwise retain V3's literal score
+    # and can falsely change the strict marshal digest inside indexed replay.
+    reference_hash = reference["report_sha256"]
+    reference_bytes = matcher.v1._canonical_bytes(reference)
+    del reference
 
     indexed_started = time.perf_counter()
     indexed_report = indexed.audit_payloads_indexed(
@@ -1210,7 +1286,6 @@ def execute(
     indexed_seconds = time.perf_counter() - indexed_started
     matcher.verify_report(indexed_report)
 
-    reference_bytes = matcher.v1._canonical_bytes(reference)
     indexed_bytes = matcher.v1._canonical_bytes(indexed_report)
     _require(reference_bytes == indexed_bytes, "indexed report differs from incumbent all-pairs report")
 
@@ -1281,7 +1356,7 @@ def execute(
             "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
             "declared_capacity_bytes": EXPECTED_COMBINED_BYTES,
             "comparison_payload_bytes": combined_comparison_payload_bytes,
-            "reference_report_sha256": reference["report_sha256"],
+            "reference_report_sha256": reference_hash,
             "indexed_report_sha256": indexed_report["report_sha256"],
             "reports_byte_identical": True,
             "post_dedup_conservative_unique_bytes": terminal.get(
