@@ -210,6 +210,24 @@ def test_strict_authority_loader_redacts_duplicate_secret_key(
 
 
 @pytest.mark.parametrize("negative", [False, True])
+def test_strict_authority_loader_redacts_secret_path_and_nested_key_on_unicode(
+    tmp_path: Path,
+) -> None:
+    secret_path = "PRIVATE_FINAL_TEST_PATH_998877"
+    secret_key = "PRIVATE_FINAL_TEST_KEY_665544"
+    path = tmp_path / f"{secret_path}.json"
+    path.write_bytes(
+        ('{"' + secret_key + '":"\\ud800"}').encode("ascii")
+    )
+
+    with pytest.raises(ValueError, match="contains invalid UTF-8") as caught:
+        validator._load_mapping(path)
+
+    diagnostic = str(caught.value)
+    assert secret_path not in diagnostic
+    assert secret_key not in diagnostic
+
+
 def test_strict_authority_loader_bounds_integer_before_conversion(
     tmp_path: Path,
     negative: bool,
