@@ -463,6 +463,7 @@ def test_resealed_default_adamw_finite_decay_forgery_rejected_before_model_apply
     assert target.train_microbatch(_BATCH).optimizer_stepped
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
 
+
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer],
     ids=["adapter", "progress"],
