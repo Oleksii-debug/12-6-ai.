@@ -652,8 +652,8 @@ jobs:
           echo "D05_RUNTIME_SHA=$D05_RUNTIME_SHA" >> "$GITHUB_ENV"
           test "$(git -C model341-carrier rev-parse HEAD)" = "$MODEL341_SHA"
           test "$(git -C model341-carrier hash-object configs/candidates/model341_20m_candidate_a.json)" = "$MODEL341_CANDIDATE_BLOB"
-          # The exact PR base SHA is the immutable runtime authority.
-          # The result records runtime component blobs for later audit.
+          # Freeze the exact commit actually checked out from the live Product
+          # base ref; the result records it and component blobs for later audit.
           python -m py_compile tools/run_checkpoint346_model341_current_d05_recovery_v7.py
 
       - name: Bootstrap frozen LOCAL_FREE CPU environment
@@ -710,6 +710,20 @@ jobs:
           assert execution["same_next_step_equal"] is True
           assert execution["binding_mismatch_failed_closed"] is True
           assert execution["binding_mismatch_retry_same_target"] is True
+          assert execution["binding_mismatch_unchanged_scope"] == [
+              "counters",
+              "deterministic_policy",
+              "failure_reason",
+              "model",
+              "model_training",
+              "optimizer",
+              "pending_loss_sum",
+              "pending_tokens",
+              "rng",
+              "scaler",
+              "scheduler",
+              "update_incomplete",
+          ]
           assert execution["exact_checkpoint_id_bound"] is True
           assert execution["exact_manifest_sha256_bound"] is True
           assert execution["rng_scope_restored"] == {
