@@ -71,6 +71,31 @@ def _source() -> Trainer:
     return source
 
 
+def test_native_lineage_ignores_custom_metaclass_mro_spoof() -> None:
+    observed: list[str] = []
+
+    class LyingMroMeta(type):
+        def __getattribute__(cls, name: str) -> Any:
+            if name == "__mro__":
+                observed.append(name)
+                return (cls, object)
+            return type.__getattribute__(cls, name)
+
+    class LyingTrainer(Trainer, metaclass=LyingMroMeta):
+        pass
+
+    target = LyingTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+
+    canonical, snapshot = trainer_adapter._snapshot_trainer_restore_bindings(target)
+    assert canonical is True
+    assert snapshot["native_d02"] is True
+    assert observed == []
+
+
 @pytest.mark.parametrize(
     "loader",
     [trainer_adapter, progress_trainer],
