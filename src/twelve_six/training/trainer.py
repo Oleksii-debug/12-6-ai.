@@ -1756,9 +1756,24 @@ class Trainer:
         # From the first component load onward a failure may leave optimizer,
         # scheduler, scaler or counters partially applied. No same-instance
         # retry is safe without also restoring the verified model/RNG state.
+        # param_names is checkpoint-only transport metadata used above to
+        # authenticate positional optimizer slots. Do not install it into the
+        # live PyTorch optimizer: uninterrupted training does not carry this key,
+        # and retaining it would make a resumed raw optimizer state differ from
+        # the exact uninterrupted state despite identical numerical dynamics.
+        optimizer_state = dict(state.optimizer)
+        optimizer_state["param_groups"] = [
+            {
+                key: value
+                for key, value in group.items()
+                if key != "param_names"
+            }
+            for group in state.optimizer["param_groups"]
+        ]
+
         self._update_incomplete = True
         try:
-            self.optimizer.load_state_dict(state.optimizer)
+            self.optimizer.load_state_dict(optimizer_state)
             self._require_optimizer_parameter_coverage()
             if self.scheduler is not None and state.scheduler is not None:
                 self.scheduler.load_state_dict(state.scheduler)
