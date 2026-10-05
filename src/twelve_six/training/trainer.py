@@ -416,7 +416,11 @@ class Trainer:
             {"param_groups": self.optimizer.param_groups},
         )
         self._require_constant_default_rate({"param_groups": self.optimizer.param_groups})
-        self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
+        scaler_state = self.scaler.state_dict()
+        self._require_finite_state_tree(scaler_state, "gradient scaler")
+        # Live scaler state must also be restorable: finite subnormal scales
+        # can yield an infinite float32 inverse on the next unscale_.
+        self._require_checkpoint_scaler_state(scaler_state)
         if self.scheduler is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
             # The canonical LambdaLR advances exactly once per committed
