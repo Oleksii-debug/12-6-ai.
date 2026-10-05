@@ -242,7 +242,7 @@ def test_final_authority_lookup_cannot_change_canonical_restore_policy_before_ap
     class EffectfulCoverage:
         def __get__(self, instance: Any, owner: type[Any]) -> Any:
             if instance is target:
-                target._canonical_default_optimizer_options = {"drifted": True}
+                target._canonical_default_optimizer_options["drifted"] = True
             return original_coverage.__get__(instance, owner)
 
     def bind_tracked_model_loader(model: Any, strict: bool):
