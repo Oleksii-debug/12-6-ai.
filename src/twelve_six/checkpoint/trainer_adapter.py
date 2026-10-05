@@ -17,6 +17,7 @@ from pathlib import Path
 from types import MemberDescriptorType
 from typing import Any
 
+from ..training.config import TrainerConfig as _CanonicalTrainerConfig
 from . import core as _core
 from .core import (
     CheckpointCompatibilityError,
@@ -374,19 +375,13 @@ def _snapshot_native_d02_config(config: Any) -> dict[str, Any]:
 
     config_type = type(config)
     try:
-        module_name = type.__getattribute__(config_type, "__module__")
-        type_name = type.__getattribute__(config_type, "__name__")
         type_attrs = type.__getattribute__(config_type, "__dict__")
     except (AttributeError, TypeError) as exc:
         raise CheckpointCompatibilityError(
             "native D02 trainer config type is unavailable"
         ) from exc
     raw_fields = type_attrs.get("__dataclass_fields__")
-    if (
-        module_name != "twelve_six.training.config"
-        or type_name != "TrainerConfig"
-        or type(raw_fields) is not dict
-    ):
+    if config_type is not _CanonicalTrainerConfig or type(raw_fields) is not dict:
         raise CheckpointCompatibilityError(
             "native D02 trainer config must remain canonical TrainerConfig"
         )
