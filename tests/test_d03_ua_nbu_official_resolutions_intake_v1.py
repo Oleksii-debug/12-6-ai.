@@ -46,6 +46,7 @@ DOC_10 = """
 
 def test_contract_validates_and_remains_zero_credit():
     config = load_config()
+    assert config["source"]["catalog_url"] == "https://bank.gov.ua/ua/legislation/search"
     module.validate_config(config)
     assert config["claims"]["training_authorized_bytes"] == 0
     assert config["claims"]["authorized_unique_loss_positions"] == 0
