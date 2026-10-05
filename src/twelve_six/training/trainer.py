@@ -353,21 +353,36 @@ class Trainer:
         self, optimizer_state: Any | None = None,
     ) -> None:
         """Validate live or checkpoint group hyperparameters before use."""
-        groups = self.optimizer.param_groups
+        live_groups = self.optimizer.param_groups
+        groups = live_groups
+        compare_checkpoint_types = optimizer_state is not None
         if optimizer_state is not None:
             if not isinstance(optimizer_state, Mapping):
                 raise NonFiniteTrainingError("optimizer parameter groups must be valid")
             groups = optimizer_state.get("param_groups")
-            if not isinstance(groups, list):
+            if (
+                not isinstance(groups, list)
+                or not isinstance(live_groups, list)
+                or len(groups) != len(live_groups)
+            ):
                 raise NonFiniteTrainingError("optimizer parameter groups must be valid")
-        for group in groups:
+        for group_index, group in enumerate(groups):
             if not isinstance(group, Mapping):
                 raise NonFiniteTrainingError("optimizer parameter groups must be valid")
+            live_group = live_groups[group_index] if compare_checkpoint_types else group
             for field in ("lr", "weight_decay", "eps"):
                 if field not in group:
                     continue  # Other injected optimizer families may omit these fields.
                 value = group[field]
                 label = "learning rate" if field == "lr" else field
+                if (
+                    compare_checkpoint_types
+                    and field in live_group
+                    and type(value) is not type(live_group[field])
+                ):
+                    raise NonFiniteTrainingError(
+                        f"optimizer {label} type differs from live optimizer"
+                    )
                 if isinstance(value, bool) or not math.isfinite(float(value)):
                     raise NonFiniteTrainingError(
                         f"optimizer {label} must be finite and >= 0"
@@ -380,6 +395,17 @@ class Trainer:
                 betas = group["betas"]
                 if not isinstance(betas, (list, tuple)) or len(betas) != 2:
                     raise NonFiniteTrainingError("optimizer betas must be valid")
+                if compare_checkpoint_types and "betas" in live_group:
+                    live_betas = live_group["betas"]
+                    if (
+                        type(betas) is not type(live_betas)
+                        or len(live_betas) != 2
+                        or any(
+                            type(beta) is not type(live_beta)
+                            for beta, live_beta in zip(betas, live_betas, strict=True)
+                        )
+                    ):
+                        raise NonFiniteTrainingError("optimizer betas must be valid")
                 for beta in betas:
                     if isinstance(beta, bool) or not math.isfinite(float(beta)):
                         raise NonFiniteTrainingError("optimizer betas must be valid")
