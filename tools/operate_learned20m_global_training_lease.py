@@ -8,6 +8,7 @@ import json
 import math
 import os
 import stat
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -33,7 +34,8 @@ def _pairs_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise _DuplicateKey(f"duplicate_json_key:{key}")
+            # Never echo attacker-controlled member names into operator logs.
+            raise _DuplicateKey("duplicate_json_key")
         result[key] = value
     return result
 
@@ -115,25 +117,25 @@ def _emit(payload: Mapping[str, Any]) -> None:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--manifest", type=Path, required=True)
     subparsers = parser.add_subparsers(dest="operation", required=True)
 
-    subparsers.add_parser("inspect")
+    subparsers.add_parser("inspect", allow_abbrev=False)
 
-    acquire = subparsers.add_parser("acquire")
+    acquire = subparsers.add_parser("acquire", allow_abbrev=False)
     acquire.add_argument("--run-id", required=True)
     acquire.add_argument("--holder-id", required=True)
     acquire.add_argument("--ttl-seconds", type=int, required=True)
     acquire.add_argument("--expected-terminal-authority-sha256", required=True)
 
-    renew = subparsers.add_parser("renew")
+    renew = subparsers.add_parser("renew", allow_abbrev=False)
     renew.add_argument("--expected-remote-tip", required=True)
     renew.add_argument("--ttl-seconds", type=int, required=True)
 
-    terminate = subparsers.add_parser("terminate")
+    terminate = subparsers.add_parser("terminate", allow_abbrev=False)
     terminate.add_argument("--expected-remote-tip", required=True)
     terminate.add_argument(
         "--status",
@@ -143,8 +145,42 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _reject_repeated_known_options(
+    parser: argparse.ArgumentParser,
+    raw_args: list[str],
+) -> None:
+    known: set[str] = set()
+    pending = [parser]
+    while pending:
+        current = pending.pop()
+        for action in current._actions:
+            known.update(
+                option
+                for option in action.option_strings
+                if option.startswith("--")
+            )
+            choices = getattr(action, "choices", None)
+            if isinstance(choices, dict):
+                pending.extend(
+                    choice
+                    for choice in choices.values()
+                    if isinstance(choice, argparse.ArgumentParser)
+                )
+
+    seen: set[str] = set()
+    for raw in raw_args:
+        option = raw.split("=", 1)[0]
+        if option not in known:
+            continue
+        if option in seen:
+            parser.error(f"argument {option}: may not be repeated")
+        seen.add(option)
+
+
 def main() -> int:
-    args = _parser().parse_args()
+    parser = _parser()
+    _reject_repeated_known_options(parser, sys.argv[1:])
+    args = parser.parse_args()
     try:
         manifest = _load_mapping(args.manifest)
         if args.operation == "inspect":
