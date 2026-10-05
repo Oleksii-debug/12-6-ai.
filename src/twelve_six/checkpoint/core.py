@@ -21,7 +21,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import UTC, datetime
 from importlib import metadata
@@ -987,6 +987,7 @@ def save_checkpoint(
     scheduler: Any | None = None,
     trainer_state: Mapping[str, Any] | None = None,
     overwrite: bool = False,
+    prepublish_validator: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Atomically publish one immutable verified checkpoint directory.
 
@@ -1050,6 +1051,10 @@ def save_checkpoint(
             f"{manifest_sha}  {MANIFEST_NAME}\n", encoding="ascii"
         )
         verify_checkpoint(temp_dir)
+        if prepublish_validator is not None:
+            if not callable(prepublish_validator):
+                raise TypeError("prepublish_validator must be callable or None")
+            prepublish_validator()
 
         # Checkpoint serialization is observational: state_dict hooks may draw
         # from process RNG or alter torch's warn-only policy, but saving must not
