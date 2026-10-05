@@ -918,6 +918,132 @@ with TemporaryDirectory() as raw:
     )
 
 
+def test_publication_control_json_errors_do_not_echo_untrusted_values() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    path = root / "manifest.json"
+    secret_key = "NEVER_EXPOSE_CONTROL_KEY_781"
+    secret_digits = "99887766554433221100998877665544"
+    bad_inputs = (
+        (
+            ('{"' + secret_key + '":1,"' + secret_key + '":2}\\n').encode(),
+            secret_key,
+        ),
+        (
+            ('{"value":1e' + secret_digits + '}\\n').encode(),
+            secret_digits,
+        ),
+    )
+    for payload, secret in bad_inputs:
+        path.write_bytes(payload)
+        try:
+            mod._load_publication_manifest(path)
+        except mod.CaselawGlobalDedupError as exc:
+            assert "unreadable" in str(exc)
+            assert secret not in str(exc)
+            assert exc.__cause__ is not None
+            assert secret not in str(exc.__cause__)
+        else:
+            raise AssertionError("unsafe control JSON was accepted")
+"""
+    )
+
+
+def test_publication_control_read_rejects_path_swap_before_any_read() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    path = root / "manifest.json"
+    moved = root / "original-control"
+    path.write_bytes(b"ORIGINAL_CONTROL")
+    replacement = b"FOREIGN_CONTROL_NEVER_READ"
+
+    actual_open = mod.os.open
+    actual_read = mod.os.read
+    read_calls = []
+
+    def swap_then_open(candidate, flags, *args, **kwargs):
+        if Path(candidate) == path and not moved.exists():
+            path.rename(moved)
+            path.write_bytes(replacement)
+        return actual_open(candidate, flags, *args, **kwargs)
+
+    def record_read(descriptor, size):
+        read_calls.append((descriptor, size))
+        return actual_read(descriptor, size)
+
+    mod.os.open = swap_then_open
+    mod.os.read = record_read
+    try:
+        try:
+            mod._read_bounded_regular_file(
+                path,
+                mod.PUBLICATION_MANIFEST_MAX_BYTES,
+                label="publication manifest",
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "identity changed before read" in str(exc)
+        else:
+            raise AssertionError("substituted control file was accepted")
+    finally:
+        mod.os.open = actual_open
+        mod.os.read = actual_read
+
+    assert read_calls == []
+    assert moved.read_bytes() == b"ORIGINAL_CONTROL"
+    assert path.read_bytes() == replacement
+"""
+    )
+
+
+def test_publication_control_read_never_blocks_on_fifo_swap() -> None:
+    _run_isolated(
+        """
+import os
+from tempfile import TemporaryDirectory
+
+if hasattr(os, "mkfifo"):
+    with TemporaryDirectory() as raw:
+        root = Path(raw)
+        path = root / "manifest.json"
+        moved = root / "original-control"
+        path.write_bytes(b"ORIGINAL_CONTROL")
+        actual_open = mod.os.open
+
+        def swap_to_fifo(candidate, flags, *args, **kwargs):
+            if Path(candidate) == path and not moved.exists():
+                path.rename(moved)
+                os.mkfifo(path)
+            return actual_open(candidate, flags, *args, **kwargs)
+
+        mod.os.open = swap_to_fifo
+        try:
+            try:
+                mod._read_bounded_regular_file(
+                    path,
+                    mod.PUBLICATION_MANIFEST_MAX_BYTES,
+                    label="publication manifest",
+                )
+            except mod.CaselawGlobalDedupError as exc:
+                assert "regular file" in str(exc)
+            else:
+                raise AssertionError("FIFO control replacement was accepted")
+        finally:
+            mod.os.open = actual_open
+
+        assert moved.read_bytes() == b"ORIGINAL_CONTROL"
+        assert path.exists()
+"""
+    )
+
+
 def test_publication_manifest_rejects_extra_root_and_target_keys() -> None:
     _run_isolated(
         """
