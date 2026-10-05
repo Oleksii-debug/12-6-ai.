@@ -1787,6 +1787,47 @@ def test_exact_record_realization_rejects_unrepresentable_allocation() -> None:
     )
 
 
+
+@pytest.mark.parametrize(
+    ("weights", "target"),
+    [
+        ([0, 4], 4),
+        ([4, 0], 4),
+        ([0, 4, 2], 4),
+        ([4, 0, 2], 4),
+    ],
+)
+def test_exact_record_realization_rejects_zero_weight_before_shortcut(
+    weights: list[int], target: int,
+) -> None:
+    rows = [
+        {"record_id": f"record-{index}", "payload_bytes": weight}
+        for index, weight in enumerate(weights)
+    ]
+    with pytest.raises(ProjectionError, match="selected survivor payload_bytes must be positive"):
+        _exact_record_subset(rows, target_bytes=target, family="family")
+
+
+@pytest.mark.parametrize(
+    ("weights", "target", "expected_ids"),
+    [
+        ([4, 2], 6, ["a", "b"]),
+        ([4, 2], 4, ["a"]),
+        ([2, 4], 4, ["b"]),
+    ],
+)
+def test_exact_record_realization_preserves_positive_shortcut_and_subset(
+    weights: list[int], target: int, expected_ids: list[str],
+) -> None:
+    rows = [
+        {"record_id": label, "payload_bytes": weight}
+        for label, weight in zip(("a", "b"), weights, strict=True)
+    ]
+    chosen = _exact_record_subset(rows, target_bytes=target, family="family")
+    assert [row["record_id"] for row in chosen] == expected_ids
+    assert sum(row["payload_bytes"] for row in chosen) == target
+
+
 def test_exact_record_realization_fails_closed_on_state_budget() -> None:
     rows = [
         {"record_id": "a", "payload_bytes": 1},
