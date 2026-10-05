@@ -77,11 +77,22 @@ def identity() -> CheckpointIdentity:
         run_manifest_hash="4" * 64,
         training_config={
             "run_id": "fail-closed-test",
+            "stage": "unit-test",
+            "run_kind": "checkpoint-fixture",
             "run_manifest_sha256": "4" * 64,
             "init_spec_sha256": INIT_SHA,
-            "training": {"seed": 11, "precision": "fp32"},
+            "training": {
+                "seed": 11,
+                "precision": "fp32",
+                "optimizer": {"name": "test"},
+                "scheduler": {"name": "test"},
+            },
             "data": {
+                "dataset_manifest_sha256": "3" * 64,
+                "tokenizer_sha256": "1" * 64,
+                "tokenizer_vocab_sha256": "2" * 64,
                 "split_identity": "train:fixture-sha",
+                "tokenizer_version": "fixture-v1",
                 "packing_sha256": PACKING_SHA,
                 "packing_version": "pack-v1",
             },
