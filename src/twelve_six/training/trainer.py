@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import math
 import random
+import struct
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
+from types import FunctionType
 from typing import Any
 
 import numpy as np
@@ -780,23 +783,119 @@ class Trainer:
             self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
             raise
 
+    def _canonical_lambda_lr_live_state(self) -> dict[str, Any] | None:
+        """Obtain the canonical built-in scheduler's state without invoking hooks."""
+        if self.scheduler is None or type(self.scheduler) is not LambdaLR:
+            return None
+        live = vars(self.scheduler)
+        functions = live.get("lr_lambdas")
+        if not isinstance(functions, list) or any(
+            not isinstance(fn, FunctionType) for fn in functions
+        ):
+            raise TrainingStateInvalidError(
+                "LambdaLR callback state lacks a pure export authority"
+            )
+        snapshot = {
+            key: value for key, value in live.items()
+            if key not in ("optimizer", "lr_lambdas")
+        }
+        snapshot["lr_lambdas"] = [None] * len(functions)
+        # Freeze mutable scheduler lists: an export hook may change them in place.
+        return copy.deepcopy(snapshot)
+
+    def _model_export_fingerprint(self) -> str:
+        """Hash weights and buffers in bounded chunks across effectful export hooks."""
+        digest = hashlib.sha256()
+
+        def hash_tensor(value: Tensor) -> None:
+            if value.layout != torch.strided:
+                raise TrainingStateInvalidError(
+                    "checkpoint model contains unsupported non-strided state"
+                )
+            detached = value.detach()
+            if detached.is_contiguous():
+                flat = detached.reshape(-1)
+                for index in range(0, flat.numel(), 262_144):
+                    block = flat[index:index + 262_144]
+                    raw = block.to(device="cpu").contiguous().view(torch.uint8)
+                    digest.update(raw.numpy().tobytes())
+            elif detached.numel() <= 262_144:
+                # An individual bounded strided window may be copied safely.
+                bounded = detached.to(device="cpu").contiguous().reshape(-1)
+                digest.update(bounded.view(torch.uint8).numpy().tobytes())
+            elif detached.ndim == 1:
+                for index in range(0, detached.numel(), 262_144):
+                    hash_tensor(detached[index:index + 262_144])
+            else:
+                # Split a larger strided view until each copy is bounded.
+                for child in detached.unbind(0):
+                    hash_tensor(child)
+
+        for label, members in (
+            ("parameter", self.model.named_parameters()),
+            ("buffer", self.model.named_buffers()),
+        ):
+            for name, value in members:
+                metadata = (
+                    label, name, id(value), str(value.dtype), str(value.device),
+                    tuple(value.shape), tuple(value.stride()), value.requires_grad,
+                )
+                digest.update(repr(metadata).encode("utf-8"))
+                hash_tensor(value)
+        return digest.hexdigest()
+
     @staticmethod
     def _exact_export_leaf_equal(saved: Any, live: Any) -> bool:
-        """Compare serialized optimizer values without invoking export hooks again."""
+        """Compare exact stored bits; numerical equality loses signed-zero identity."""
         if isinstance(saved, Tensor) or isinstance(live, Tensor):
-            return (
+            if not (
                 isinstance(saved, Tensor)
                 and isinstance(live, Tensor)
                 and saved.dtype == live.dtype
                 and saved.device == live.device
-                and torch.equal(saved, live)
-            )
+                and saved.shape == live.shape
+                and saved.layout == live.layout == torch.strided
+                and saved.is_contiguous()
+                and live.is_contiguous()
+            ):
+                # Never create an unbounded contiguous copy of model-scale state.
+                return False
+            return bool(torch.equal(
+                saved.reshape(-1).view(torch.uint8),
+                live.reshape(-1).view(torch.uint8),
+            ))
         if isinstance(saved, np.ndarray) or isinstance(live, np.ndarray):
-            return (
+            if not (
                 isinstance(saved, np.ndarray)
                 and isinstance(live, np.ndarray)
                 and saved.dtype == live.dtype
-                and np.array_equal(saved, live)
+                and saved.shape == live.shape
+                and not saved.dtype.hasobject
+            ):
+                return False
+            # Buffered external loops bound temporary memory for strided arrays.
+            for left, right in np.nditer(
+                [saved, live],
+                flags=["external_loop", "buffered", "zerosize_ok"],
+                op_flags=[["readonly"], ["readonly"]],
+                order="C",
+                buffersize=262_144,
+            ):
+                if left.tobytes(order="C") != right.tobytes(order="C"):
+                    return False
+            return True
+        if isinstance(saved, np.generic) or isinstance(live, np.generic):
+            return (
+                isinstance(saved, np.generic)
+                and isinstance(live, np.generic)
+                and saved.dtype == live.dtype
+                and saved.tobytes() == live.tobytes()
+            )
+        if type(saved) is float and type(live) is float:
+            return struct.pack("!d", saved) == struct.pack("!d", live)
+        if type(saved) is complex and type(live) is complex:
+            return struct.pack("!dd", saved.real, saved.imag) == struct.pack(
+                "!dd", live.real, live.imag,
             )
         if isinstance(saved, Mapping) and isinstance(live, Mapping):
             return (
@@ -860,7 +959,25 @@ class Trainer:
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
+        model_before = self._model_export_fingerprint()
+        scheduler_before = self._canonical_lambda_lr_live_state()
         self.assert_checkpoint_safe()
+        if not _typed_state_equal(
+            committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+        ):
+            self._mark_failed("checkpoint preflight changed committed counters")
+            raise TrainingStateInvalidError("checkpoint export changed committed counters")
+        if self._model_export_fingerprint() != model_before:
+            self._mark_failed("checkpoint preflight changed model weights or buffers")
+            raise TrainingStateInvalidError(
+                "checkpoint export changed model weights or buffers"
+            )
+        if scheduler_before is not None and not self._exact_export_leaf_equal(
+            scheduler_before, self._canonical_lambda_lr_live_state()
+        ):
+            self._mark_failed("checkpoint preflight changed live scheduler")
+            raise TrainingStateInvalidError("checkpoint export changed live scheduler")
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
@@ -896,8 +1013,25 @@ class Trainer:
             self._require_exported_optimizer_matches_live(snapshot.optimizer)
             if snapshot.scheduler is not None:
                 self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+            if scheduler_before is not None and (
+                not self._exact_export_leaf_equal(snapshot.scheduler, scheduler_before)
+                or not self._exact_export_leaf_equal(
+                    scheduler_before, self._canonical_lambda_lr_live_state()
+                )
+            ):
+                raise TrainingStateInvalidError(
+                    "checkpoint scheduler export differs from live committed state"
+                )
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
+            if not _typed_state_equal(
+                committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+            ):
+                raise TrainingStateInvalidError("checkpoint export changed committed counters")
+            if self._model_export_fingerprint() != model_before:
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed model weights or buffers"
+                )
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
