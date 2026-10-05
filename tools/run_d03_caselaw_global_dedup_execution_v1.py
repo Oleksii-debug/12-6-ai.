@@ -1497,6 +1497,19 @@ def _cleanup_committed_publication_residue(
         expected_manifest,
         label="committed publication manifest",
     )
+    expected_stage_paths = tuple(
+        Path(row["stage_path"]) for row in expected_manifest["targets"]
+    )
+    known_stage_paths = {
+        path.resolve(strict=False) for path, _ in stages
+    }
+    for expected_stage_path in expected_stage_paths:
+        if _path_entry_exists(expected_stage_path):
+            _require(
+                expected_stage_path.resolve(strict=False) in known_stage_paths,
+                "committed publication stage appeared after validation: "
+                f"{expected_stage_path}",
+            )
     _verify_committed_finals_before_cleanup(prepared, linked_finals)
 
     touched_dirs: set[Path] = set()
@@ -1521,6 +1534,10 @@ def _cleanup_committed_publication_residue(
         label="committed publication manifest",
     )
     _verify_committed_finals_before_cleanup(prepared, linked_finals)
+    _require(
+        not any(_path_entry_exists(path) for path in expected_stage_paths),
+        "committed publication stage appeared before manifest cleanup",
+    )
     try:
         _unlink_owned_path(
             manifest_path,
