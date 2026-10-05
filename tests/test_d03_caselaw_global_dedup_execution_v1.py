@@ -1486,12 +1486,24 @@ original_bytes = live.__code__.co_code
 strict = mod.indexed._code_digest
 original_digest = strict(canonical.__code__)
 assert strict(live.__code__) == original_digest
+
+# Marshal v2 does not use the ref table whose TYPE_REF decisions are
+# refcount-sensitive. Keep this as causal evidence only: production still
+# uses the unchanged incumbent strict/default marshal digest.
+import hashlib
+import marshal
+version2_digest = lambda code: hashlib.sha256(marshal.dumps(code, 2)).hexdigest()
+original_v2 = version2_digest(live.__code__)
+assert original_v2 == version2_digest(canonical.__code__)
+
 held = live(list(range(16)), ())
 assert len(held) == 8
 assert strict(live.__code__) != original_digest
+assert version2_digest(live.__code__) == original_v2
 assert live.__code__.co_code == original_bytes
 del held
 assert strict(live.__code__) == original_digest
+assert version2_digest(live.__code__) == original_v2
 """
     )
 
