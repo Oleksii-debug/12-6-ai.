@@ -2236,6 +2236,9 @@ def test_zero_grad_descriptor_side_effect_fails_before_checkpoint_apply(
     class EffectfulZeroGrad:
         def __get__(self, instance: Any, owner: type[Any]) -> Any:
             if instance is original_optimizer:
+                random.random()
+                np.random.random()
+                torch.rand(1)
                 if descriptor_effect == "micro-step":
                     target.micro_step = 1
                 elif descriptor_effect == "optimizer-rebind":
