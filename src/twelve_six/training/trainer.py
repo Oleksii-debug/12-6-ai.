@@ -701,6 +701,9 @@ class Trainer:
                     )
 
                 self._require_deterministic_policy()
+                # unscale_/gradient clipping may invoke effectful callbacks.
+                # Recheck after them, immediately before the real update.
+                self._require_first_party_optimizer_contract()
                 self.scaler.step(self.optimizer)
                 self._require_deterministic_policy()
                 # A finite gradient and finite LR do not guarantee a finite
