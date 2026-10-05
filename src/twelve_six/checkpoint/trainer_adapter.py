@@ -24,7 +24,6 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
-    capture_rng_state,
     _bind_model_state_loader,
     _decode_verified_state,
     _preflight_optimizer_state,
@@ -32,6 +31,7 @@ from .core import (
     _prepare_model_weights,
     _semantic_stateful_probe,
     assert_identity,
+    capture_rng_state,
     prepare_checkpoint_load,
     restore_rng_state,
     save_checkpoint,
@@ -469,7 +469,7 @@ def _snapshot_native_d02_config(config: Any) -> dict[str, Any]:
             )
         try:
             value = descriptor.__get__(config, config_type)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             raise CheckpointCompatibilityError(
                 f"native D02 config field unavailable: {field_name}"
             ) from exc
@@ -1465,7 +1465,7 @@ def _preflight_trainer_state(
             _preflight_trainer_state_without_rng_guard(
                 trainer, state, manifest=manifest,
             )
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             _note_restore_binding_drift(
                 trainer,
                 restore_bindings,
@@ -1479,7 +1479,7 @@ def _preflight_trainer_state(
         try:
             try:
                 _core.restore_rng_state(ambient)
-            except BaseException as rng_exc:
+            except BaseException as rng_exc:  # noqa: BLE001
                 _restore_ambient_rng_after_failed_apply(ambient, rng_exc)
                 # A secondary policy rollback fault must not hide the primary
                 # failed/interrupted RNG rollback or its preflight context.
@@ -1489,7 +1489,7 @@ def _preflight_trainer_state(
                             bool(torch_state["deterministic_algorithms"]),
                             warn_only=warn_only,
                         )
-                    except BaseException as mode_exc:
+                    except BaseException as mode_exc:  # noqa: BLE001
                         rng_exc.add_note(
                             "PyTorch preflight-mode rollback also failed: "
                             f"{mode_exc!r}"
@@ -1506,13 +1506,13 @@ def _preflight_trainer_state(
                             bool(torch_state["deterministic_algorithms"]),
                             warn_only=warn_only,
                         )
-                    except BaseException as mode_exc:
+                    except BaseException as mode_exc:  # noqa: BLE001
                         _restore_initial_torch_policy(
                             (bool(torch_state["deterministic_algorithms"]), warn_only),
                             mode_exc,
                         )
                         raise
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=expected_canonical,
@@ -1629,7 +1629,7 @@ def _restore_initial_torch_policy(
         torch.use_deterministic_algorithms(
             initial_policy[0], warn_only=initial_policy[1],
         )
-    except BaseException as mode_exc:
+    except BaseException as mode_exc:  # noqa: BLE001
         exc.add_note(f"PyTorch deterministic-mode rollback also failed: {mode_exc!r}")
 
 
@@ -1641,7 +1641,7 @@ def _restore_ambient_rng_after_failed_apply(
     try:
         _core.restore_rng_state(ambient)
         return
-    except BaseException as rng_exc:
+    except BaseException as rng_exc:  # noqa: BLE001
         exc.add_note(f"Ambient RNG rollback also failed: {rng_exc!r}")
 
     # core.restore_rng_state stops at its first failed setter. Retry each
@@ -1650,12 +1650,12 @@ def _restore_ambient_rng_after_failed_apply(
     if "python" in ambient:
         try:
             _core.random.setstate(ambient["python"])
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(f"Python RNG rollback also failed: {rollback_exc!r}")
     if "numpy" in ambient:
         try:
             _core.np.random.set_state(ambient["numpy"])
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(f"NumPy RNG rollback also failed: {rollback_exc!r}")
 
     torch_state = ambient.get("torch")
@@ -1663,18 +1663,18 @@ def _restore_ambient_rng_after_failed_apply(
         return
     try:
         torch = importlib.import_module("torch")
-    except BaseException as rollback_exc:
+    except BaseException as rollback_exc:  # noqa: BLE001
         exc.add_note(f"PyTorch RNG rollback unavailable: {rollback_exc!r}")
         return
     if "cpu" in torch_state:
         try:
             torch.set_rng_state(torch_state["cpu"].cpu())
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(f"PyTorch CPU RNG rollback also failed: {rollback_exc!r}")
     for index, cuda_state in enumerate(torch_state.get("cuda", ())):
         try:
             torch.cuda.set_rng_state(cuda_state.cpu(), device=index)
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(
                 f"PyTorch CUDA RNG rollback on device {index} also failed: "
                 f"{rollback_exc!r}"
@@ -1700,7 +1700,7 @@ def _restore_preapply_process_state(
                 policy[0],
                 warn_only=policy[1],
             )
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         _restore_ambient_rng_after_failed_apply(ambient, exc)
         _restore_initial_torch_policy(policy, exc)
         _poison_canonical_restore_failure(
@@ -1736,7 +1736,7 @@ def _restore_checkpoint_rng_preserving_warn_only(
                 torch.are_deterministic_algorithms_enabled(),
                 warn_only=policy[1],
             )
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         # Model/trainer loaders may already have changed process-global mode.
         # Roll back to the pre-application policy, not to that later value.
         _restore_initial_torch_policy(policy, exc)
@@ -1863,7 +1863,7 @@ def save_trainer_checkpoint(
                 raise CheckpointCompatibilityError(
                     "canonical trainer auxiliary state changed during checkpoint export"
                 )
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             _note_restore_binding_drift(trainer, save_bindings, exc)
             if export_started:
                 _poison_canonical_restore_failure(
@@ -1886,7 +1886,7 @@ def save_trainer_checkpoint(
             _assert_native_d02_model_training_mode(model, trainer)
             _assert_native_d02_postload_snapshot(trainer, state)
             _assert_live_d02_determinism(trainer)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=save_bindings[0],
@@ -1930,7 +1930,7 @@ def save_trainer_checkpoint(
             _assert_trainer_model_binding(model, trainer)
             _assert_native_d02_model_training_mode(model, trainer)
             _assert_live_d02_determinism(trainer)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=save_bindings[0],
@@ -1956,7 +1956,7 @@ def save_trainer_checkpoint(
                 phase="checkpoint model serialization",
             )
             model_export_authority(exported)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=save_bindings[0],
@@ -1985,7 +1985,7 @@ def save_trainer_checkpoint(
                 sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
                 phase="final checkpoint publication seal",
             )
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             _poison_canonical_restore_failure(
                 trainer,
                 expected_canonical=save_bindings[0],
@@ -2042,7 +2042,7 @@ def load_trainer_checkpoint(
         model_fingerprint = _bind_native_model_export_fingerprint(trainer)
         auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2076,7 +2076,7 @@ def load_trainer_checkpoint(
     try:
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2159,7 +2159,7 @@ def load_trainer_checkpoint(
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2240,7 +2240,7 @@ def load_trainer_checkpoint(
             sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             phase="final checkpoint restore seal",
         )
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
