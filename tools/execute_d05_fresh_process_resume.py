@@ -266,8 +266,10 @@ def resume(
     product_head: str,
 ) -> None:
     require(product_head == PRODUCT_HEAD, "execution Product head drift")
-    reset_rng(SEED + 999)
     trainer = make_trainer()
+    # Prove that loader-side RNG restore, not constructor seeding, determines
+    # the resumed process state.
+    reset_rng(SEED + 999)
     load_checkpoint(loader_name, checkpoint, trainer, product_head)
     require(
         (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2),
@@ -300,8 +302,8 @@ def reject_corrupt(
     product_head: str,
 ) -> None:
     require(product_head == PRODUCT_HEAD, "execution Product head drift")
-    reset_rng(SEED + 1234)
     trainer = make_trainer()
+    reset_rng(SEED + 1234)
     before = trainer_record(trainer)
     exception_type = ""
     try:
