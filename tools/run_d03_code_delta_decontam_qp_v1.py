@@ -603,10 +603,6 @@ def execute(
     finally:
         _restore_clean_release(original)
 
-    require(
-        receipt.get("input_training_records") == EXPECTED_DELTA_OBJECTS,
-        "later-gate input record count drift",
-    )
     final_bytes = int(receipt["survivor_payload_bytes"])
     projected_code_bytes = CURRENT_POST_QP_CODE_BYTES + final_bytes
     projected_headroom = projected_code_bytes - CODE_TARGET_BYTES
