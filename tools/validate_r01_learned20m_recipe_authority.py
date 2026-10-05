@@ -24,7 +24,7 @@ def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate object member: {key}")
+            raise ValueError("duplicate object member")
         result[key] = value
     return result
 
