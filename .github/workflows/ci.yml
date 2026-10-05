@@ -601,7 +601,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-checkpoint346-current-d05-model341-v8-structural-v2:
+  checkpoint346-current-d05-model341-v8-structural-v2:
     if: >-
       github.event_name == 'pull_request' &&
       github.head_ref == 'qualification/2778-model341-recovery-v8-g6-132-20261006'
