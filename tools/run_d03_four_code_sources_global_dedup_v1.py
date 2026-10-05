@@ -182,7 +182,7 @@ def _source_row(
 
 def captured_blob(raw: bytes) -> str:
     prefix = b"blob " + str(len(raw)).encode("ascii") + b"\0"
-    return hashlib.sha1(prefix + raw, usedforsecurity=False).hexdigest()
+    return hashlib.sha1(  # noqa: S324 - exact Git object identity\n        prefix + raw, usedforsecurity=False\n    ).hexdigest()
 
 
 def _captured(captured: Mapping[str, bytes], url: str, source_id: str) -> bytes:
