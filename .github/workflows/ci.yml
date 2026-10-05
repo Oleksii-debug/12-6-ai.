@@ -738,6 +738,19 @@ jobs:
           assert resources["parent_peak_rss_bytes"] > 0
           assert resources["fresh_child_peak_rss_bytes"] > 0
           assert resources["concurrent_process_peak_rss_upper_bound_bytes"] > 0
+          before_load = resources["fresh_child_before_load"]
+          after_load = resources["fresh_child_after_load"]
+          after_step = resources["fresh_child_after_resumed_step"]
+          for snapshot in (before_load, after_load, after_step):
+              assert snapshot["current_rss_bytes"] > 0
+              assert snapshot["peak_rss_bytes"] >= snapshot["current_rss_bytes"]
+          assert resources["fresh_child_resume_hwm_growth_bytes"] >= 0
+          assert isinstance(
+              resources["fresh_child_resume_current_rss_delta_bytes"],
+              int,
+          )
+          assert after_load["peak_rss_bytes"] >= before_load["peak_rss_bytes"]
+          assert after_step["peak_rss_bytes"] >= after_load["peak_rss_bytes"]
 
           credit = report["scientific_credit"]
           assert credit == {
