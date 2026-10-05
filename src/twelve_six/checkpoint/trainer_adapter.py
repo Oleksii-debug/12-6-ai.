@@ -2116,6 +2116,7 @@ def load_trainer_checkpoint(
     prebind_policy = _snapshot_torch_policy(prebind_ambient)
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
+        model_apply_authority = _bind_native_model_export_validator(trainer)
         model_fingerprint = _bind_native_model_export_fingerprint(trainer)
         auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
@@ -2263,6 +2264,16 @@ def load_trainer_checkpoint(
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
         model_apply(materialized)
+        if model_apply_authority is not None:
+            try:
+                model_apply_authority(materialized)
+            except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
+                raise CheckpointCompatibilityError(
+                    "checkpoint model load differs from verified model state"
+                ) from exc
+        # No later stage needs the materialized model-scale copy. Release it
+        # before optimizer/scheduler/scaler restoration to reduce peak resume memory.
+        del materialized
         sealed_model_fingerprint = (
             model_fingerprint()
             if model_fingerprint is not None
