@@ -1088,8 +1088,6 @@ def _recover_incomplete_publication(
         len(targets) == len(prepared) == len(stages),
         "incomplete publication target count mismatch",
     )
-    expected_final_paths = [str(path.resolve(strict=False)) for path, _ in prepared]
-    expected_stage_paths = [str(stage.resolve(strict=False)) for stage in stages]
     marker_final_paths: list[str] = []
     marker_stage_paths: list[str] = []
 
@@ -1115,13 +1113,20 @@ def _recover_incomplete_publication(
         )
         marker_final_paths.append(final_value)
         marker_stage_paths.append(stage_value)
+        expected_final_value = str(expected_final_path.resolve(strict=False))
+        expected_stage_value = str(expected_stage_path.resolve(strict=False))
+        _require(
+            final_value == expected_final_value
+            and stage_value == expected_stage_value,
+            "incomplete publication target paths do not match requested outputs",
+        )
         _require(
             expected_sha == _sha256(payload),
             f"incomplete publication intended digest mismatch: {expected_final_path}",
         )
 
-        final_path = Path(final_value)
-        stage_path = Path(stage_value)
+        final_path = expected_final_path
+        stage_path = expected_stage_path
         final_exists = _path_entry_exists(final_path)
         stage_exists = _path_entry_exists(stage_path)
         stage_owned_identity: tuple[int, int] | None = None
@@ -1148,7 +1153,8 @@ def _recover_incomplete_publication(
                 and observed_final == payload
                 and observed_stage == payload
                 and _sha256(observed_stage) == expected_sha,
-                f"incomplete publication final is not linked to its exact stable stage: {final_path}",
+                "incomplete publication final/stage ownership or bytes drift: "
+                f"{final_path}",
             )
             _unlink_owned_path(
                 final_path,
