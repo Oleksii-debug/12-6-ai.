@@ -325,6 +325,15 @@ def load_trainer_checkpoint(
             )
         else:
             _assert_live_d02_determinism(trainer)
+
+        # The final RNG replay / opt-out policy check is itself effectful.
+        # Seal the already-restored native D02 state one last time before
+        # reporting success so a late callout cannot consume exposure or
+        # change restore ownership after postflight.
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_trainer_model_binding(model, trainer)
+        _assert_native_d02_model_training_mode(model, trainer)
+        _assert_native_d02_postload_snapshot(trainer, trainer_state)
     except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
