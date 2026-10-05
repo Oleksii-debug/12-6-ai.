@@ -139,12 +139,21 @@ def load_trainer_checkpoint(
     # A canonical trainer's optimizer belongs to trainer.model. Do not mix its
     # state with a separately supplied model, even if weight shapes match.
     # Reuse the adapter's early model-ownership boundary in both restore paths.
-    _assert_trainer_model_binding(model, trainer)
+    preio_ambient = _core.capture_rng_state()
+    preio_policy = _snapshot_torch_policy(preio_ambient)
+    try:
+        _assert_trainer_model_binding(model, trainer)
 
-    # Refuse a previously poisoned instance before opening or decoding a
-    # potentially model-scale checkpoint; post-decode preflight repeats this
-    # guard before mutation in case the target state changed meanwhile.
-    _preflight_trainer_target(trainer)
+        # Refuse a previously poisoned instance before opening or decoding a
+        # potentially model-scale checkpoint; post-decode preflight repeats this
+        # guard before mutation in case the target state changed meanwhile.
+        _preflight_trainer_target(trainer)
+    finally:
+        _restore_preapply_process_state(
+            preio_ambient,
+            preio_policy,
+            trainer,
+        )
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
     if (
