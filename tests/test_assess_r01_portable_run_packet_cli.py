@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -137,3 +140,80 @@ def test_assessor_programmer_recursion_is_not_swallowed(
     with pytest.raises(RecursionError, match="programmer error inside assessment"):
         cli.main(["assess_r01_portable_run_packet.py", str(path)])
     assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    "secret_key",
+    [
+        "api_token_sk_live_123456",
+        "Authorization: Bearer private-value",
+        "password=hunter2",
+    ],
+)
+def test_duplicate_member_error_does_not_echo_untrusted_key(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    secret_key: str,
+) -> None:
+    cli = _load_cli()
+    raw = json.dumps({secret_key: 1})[:-1] + "," + json.dumps(secret_key) + ":2}"
+    path = _write(tmp_path, raw)
+    assert cli.main(["assess_r01_portable_run_packet.py", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload == {
+        "contract_valid": False,
+        "error": "duplicate object member",
+    }
+    assert secret_key not in captured.out
+
+
+def test_cli_rejects_oversized_packet_before_json_decode(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "oversized-packet.json"
+    path.write_bytes(b" " * (cli.MAX_INPUT_BYTES + 1))
+    assert cli.main(["assess_r01_portable_run_packet.py", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "contract_valid": False,
+        "error": "run packet exceeds input byte limit",
+    }
+
+
+@pytest.mark.parametrize("extra", [["second.json"], ["--unknown"], ["x", "y"]])
+def test_cli_rejects_extra_arguments_without_reading_packet(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    extra: list[str],
+) -> None:
+    cli = _load_cli()
+    path = _write(tmp_path, "{}")
+    assert cli.main(["assess_r01_portable_run_packet.py", str(path), *extra]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "contract_valid": False,
+        "error": "invalid arguments: expected at most one packet path",
+    }
+
+
+def test_default_packet_works_outside_repository_cwd(tmp_path: Path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(
+        [sys.executable, str(TOOL)],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode in {0, 1}
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert "contract_valid" in payload
