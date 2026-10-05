@@ -191,6 +191,15 @@ def main() -> int:
     parser.add_argument("--rada-quality-privacy-jsonl", type=Path, required=True)
     parser.add_argument("--rada-quality-privacy-report", type=Path, required=True)
     parser.add_argument("--expected-rada-report-sha256", required=True)
+    parser.add_argument(
+        "--matcher-execution-backend",
+        choices=("canonical_all_pairs_v3", "incumbent_indexed_v1"),
+        default="canonical_all_pairs_v3",
+        help=(
+            "Execution backend for the expanded graph. The canonical V3 callbacks "
+            "remain semantic authority and sealed-V8 preflight in all modes."
+        ),
+    )
     parser.add_argument("--output-report", type=Path, required=True)
     parser.add_argument("--output-survivors", type=Path, required=True)
     args = parser.parse_args()
@@ -221,6 +230,7 @@ def main() -> int:
             expected_rada_report_sha256=args.expected_rada_report_sha256,
             rada_rows=rada_rows,
             rada_raw_jsonl=rada_raw,
+            matcher_execution_backend=args.matcher_execution_backend,
         )
         write_json(args.output_report, report)
         write_json(args.output_survivors, survivors)
