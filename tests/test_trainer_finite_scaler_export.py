@@ -190,3 +190,45 @@ def test_disabled_scaler_restore_allows_legacy_missing_payload(
     assert target._failure_reason is None
     assert not target._update_incomplete
     assert target.state_dict().scaler == {}
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value", "error"),
+    [
+        ("missing", None, "schema invalid"),
+        ("scale", -1.0, "statistics invalid"),
+        ("scale", float("nan"), "statistics invalid"),
+        ("growth_factor", 1.0, "statistics invalid"),
+        ("backoff_factor", 0.0, "statistics invalid"),
+        ("growth_interval", False, "statistics invalid"),
+        ("_growth_tracker", -1, "statistics invalid"),
+    ],
+)
+def test_enabled_scaler_restore_preflight_rejects_bad_statistics(
+    preserve_state: Any, field: str, bad_value: Any, error: str,
+) -> None:
+    # CPU-enabled scaler tests the native five-field serializer without
+    # claiming actual mixed-precision CUDA recovery.
+    source = _fresh_trainer()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    saved = source.state_dict()
+    assert saved.scaler is not None
+    corrupt_scaler = copy.deepcopy(saved.scaler)
+    if field == "missing":
+        corrupt_scaler.pop("_growth_tracker")
+    else:
+        corrupt_scaler[field] = bad_value
+    corrupted = replace(saved, scaler=corrupt_scaler)
+
+    target = _fresh_trainer()
+    target.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    with pytest.raises(ValueError, match=error):
+        target.load_state_dict(corrupted)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (
+        0, 0, 0,
+    )
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    target.load_state_dict(saved)
+    assert target.state_dict().scaler == saved.scaler
+    assert target._failure_reason is None and not target._update_incomplete
