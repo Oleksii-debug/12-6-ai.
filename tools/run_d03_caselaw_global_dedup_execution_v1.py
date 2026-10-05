@@ -1090,8 +1090,7 @@ def _recover_incomplete_publication(
     )
     marker_final_paths: list[str] = []
     marker_stage_paths: list[str] = []
-
-    touched_dirs: set[Path] = set()
+    validated_targets: list[tuple[Path, Path, str, bytes]] = []
     for row, (expected_final_path, payload), expected_stage_path in zip(
         targets, prepared, stages, strict=True
     ):
@@ -1124,9 +1123,20 @@ def _recover_incomplete_publication(
             expected_sha == _sha256(payload),
             f"incomplete publication intended digest mismatch: {expected_final_path}",
         )
+        validated_targets.append(
+            (expected_final_path, expected_stage_path, expected_sha, payload)
+        )
 
-        final_path = expected_final_path
-        stage_path = expected_stage_path
+    _require(
+        marker_final_paths == expected_final_paths
+        and marker_stage_paths == expected_stage_paths,
+        "incomplete publication manifest targets do not match requested outputs",
+    )
+
+    # Complete manifest validation precedes every recovery read or unlink. This
+    # prevents a later forged row from causing effects on earlier valid rows.
+    touched_dirs: set[Path] = set()
+    for final_path, stage_path, expected_sha, payload in validated_targets:
         final_exists = _path_entry_exists(final_path)
         stage_exists = _path_entry_exists(stage_path)
         stage_owned_identity: tuple[int, int] | None = None
@@ -1183,12 +1193,6 @@ def _recover_incomplete_publication(
                 label="incomplete publication stage",
             )
             touched_dirs.add(stage_path.parent)
-
-    _require(
-        marker_final_paths == expected_final_paths
-        and marker_stage_paths == expected_stage_paths,
-        "incomplete publication manifest targets do not match requested outputs",
-    )
 
     for directory in sorted(touched_dirs, key=str):
         _fsync_directory(directory)
