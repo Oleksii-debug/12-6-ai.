@@ -97,6 +97,7 @@ def test_native_trainer_lineage_drift_rejected_before_model_apply(
     original_model = target.model
     initial_weights = original_model.weight.detach().clone()
     actual_prepare = loader._prepare_model_weights
+    original_bind = loader._bind_model_state_loader
     model_applications: list[bool] = []
 
     class MarkerOnlyTrainer:
@@ -110,12 +111,17 @@ def test_native_trainer_lineage_drift_rejected_before_model_apply(
         target.__class__ = MarkerOnlyTrainer
         return materialized
 
-    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
-        model_applications.append(True)
-        raise AssertionError("native-lineage drift reached model application")
+    def bind_tracked_model_loader(model: Any, strict: bool):
+        apply = original_bind(model, strict)
+
+        def tracked_apply(materialized: Any) -> Any:
+            model_applications.append(True)
+            return apply(materialized)
+
+        return tracked_apply
 
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_downgrade)
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(loader, "_bind_model_state_loader", bind_tracked_model_loader)
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -147,11 +153,8 @@ def test_native_trainer_lineage_drift_rejected_before_model_apply(
 
 
 @pytest.mark.parametrize(
-    ("loader", "final_restore_call"),
-    [
-        (trainer_adapter, 6),
-        (progress_trainer, 3),
-    ],
+    "loader",
+    [trainer_adapter, progress_trainer],
     ids=["adapter", "progress"],
 )
 @pytest.mark.parametrize(
@@ -163,7 +166,6 @@ def test_final_process_state_rollback_cannot_redefine_native_config_before_apply
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     loader: Any,
-    final_restore_call: int,
     restore_rng: bool,
 ) -> None:
     source = _source()
@@ -182,20 +184,28 @@ def test_final_process_state_rollback_cannot_redefine_native_config_before_apply
     assert not torch.equal(initial_weights, source.model.weight.detach())
 
     original_restore = loader._restore_preapply_process_state
+    original_prepare = loader._prepare_model_weights
     original_bind = loader._bind_model_state_loader
-    restore_calls = 0
+    materialized = False
+    mutated = False
     model_applications: list[bool] = []
 
+    def prepare_then_arm(*args: Any, **kwargs: Any) -> Any:
+        nonlocal materialized
+        result = original_prepare(*args, **kwargs)
+        materialized = True
+        return result
+
     def restore_then_mutate(*args: Any, **kwargs: Any) -> Any:
-        nonlocal restore_calls
+        nonlocal mutated
         result = original_restore(*args, **kwargs)
-        restore_calls += 1
-        if restore_calls == final_restore_call:
+        if materialized and not mutated:
             object.__setattr__(
                 target.config,
                 "max_steps",
                 target.config.max_steps + 1,
             )
+            mutated = True
         return result
 
     def bind_tracked_model_loader(model: Any, strict: bool):
@@ -207,6 +217,7 @@ def test_final_process_state_rollback_cannot_redefine_native_config_before_apply
 
         return tracked_apply
 
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_arm)
     monkeypatch.setattr(
         loader,
         "_restore_preapply_process_state",
@@ -232,7 +243,7 @@ def test_final_process_state_rollback_cannot_redefine_native_config_before_apply
             **extra,
         )
 
-    assert restore_calls == final_restore_call
+    assert mutated is True
     assert model_applications == []
     assert target.config.max_steps == initial_max_steps + 1
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
@@ -462,17 +473,30 @@ def test_native_checkpoint_save_restores_export_process_state(
 
     monkeypatch.setattr(trainer_adapter, "save_checkpoint", observe_save)
 
-    result = trainer_adapter.save_trainer_checkpoint(
-        tmp_path / "observed-only",
-        model=target.model,
-        trainer=target,
-        identity=_fresh_identity(),
-    )
+    with pytest.raises(
+        Exception,
+        match="live PyTorch deterministic policy disagrees with trainer configuration",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / "observed-only",
+            model=target.model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
 
-    assert result == {"sealed": True}
-    assert save_calls == [True]
-    assert target._failure_reason is None
-    assert target._update_incomplete is False
+    assert save_calls == []
+    assert random.getstate() == py_before
+    np_now = np.random.get_state()
+    assert np_now[0] == np_before[0]
+    np.testing.assert_array_equal(np_now[1], np_before[1])
+    assert np_now[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    ) == policy_before
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
 
 
 def test_native_checkpoint_save_rejects_export_counter_drift(
@@ -818,7 +842,7 @@ def test_native_trainer_missing_recovery_marker_cannot_downgrade_to_generic(
 @pytest.mark.parametrize(
     ("mutation", "expected"),
     [
-        ("weight", "model changed during checkpoint publication"),
+        ("weight", "model changed during checkpoint model serialization"),
         ("counter", "post-load tokens_seen disagrees with checkpoint"),
         ("mode", "requires model training mode"),
     ],
@@ -1224,7 +1248,7 @@ def test_native_checkpoint_save_rejects_subclass_safety_authority_override(
     }:
         setattr(UnsafeAuthorityTrainer, authority, lambda self: "0" * 64)
     else:
-        setattr(UnsafeAuthorityTrainer, authority, lambda self, exported: None)
+        setattr(UnsafeAuthorityTrainer, authority, lambda self, *args: None)
 
     target = UnsafeAuthorityTrainer(
         _TinyLogits(),
@@ -1276,10 +1300,15 @@ def test_native_checkpoint_save_rejects_forged_model_state_dict(
     )
     checkpoint = tmp_path / f"forged-model-export-{forgery}"
 
-    with pytest.raises(
-        core.CheckpointCompatibilityError,
-        match="staged model export differs from live model state",
-    ):
+    expected_error = (
+        ValueError if forgery == "missing" else core.CheckpointCompatibilityError
+    )
+    expected_message = (
+        "model.state_dict\(\) must be a non-empty mapping"
+        if forgery == "missing"
+        else "staged model export differs from live model state"
+    )
+    with pytest.raises(expected_error, match=expected_message):
         trainer_adapter.save_trainer_checkpoint(
             checkpoint,
             model=model,
@@ -1288,8 +1317,12 @@ def test_native_checkpoint_save_rejects_forged_model_state_dict(
         )
 
     assert not checkpoint.exists()
-    assert target._failure_reason == "checkpoint_export_state_drift"
-    assert target._update_incomplete is True
+    if forgery == "missing":
+        assert target._failure_reason is None
+        assert target._update_incomplete is False
+    else:
+        assert target._failure_reason == "checkpoint_export_state_drift"
+        assert target._update_incomplete is True
 
 
 def test_native_checkpoint_save_rechecks_safety_after_temporary_subclass_bypass(
@@ -1322,7 +1355,10 @@ def test_native_checkpoint_save_rechecks_safety_after_temporary_subclass_bypass(
 
     assert not checkpoint.exists()
     assert "_require_finite_committed_update" not in vars(target)
-    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert (
+        target._failure_reason
+        == "checkpoint boundary has invalid optimizer or residual gradients"
+    )
     assert target._update_incomplete is True
 
 
@@ -1371,7 +1407,7 @@ def test_native_checkpoint_save_rejects_auxiliary_drift_from_model_export(
 
     with pytest.raises(
         core.CheckpointCompatibilityError,
-        match="auxiliary state changed during checkpoint publication",
+        match="auxiliary state changed during checkpoint model serialization",
     ):
         trainer_adapter.save_trainer_checkpoint(
             checkpoint,
@@ -1446,7 +1482,7 @@ def test_native_checkpoint_load_rejects_subclass_safety_authority_before_io(
     }:
         setattr(UnsafeAuthorityTrainer, authority, lambda self: "0" * 64)
     else:
-        setattr(UnsafeAuthorityTrainer, authority, lambda self, exported: None)
+        setattr(UnsafeAuthorityTrainer, authority, lambda self, *args: None)
 
     target = UnsafeAuthorityTrainer(
         _TinyLogits(),
@@ -1747,4 +1783,3 @@ def test_native_checkpoint_save_rejects_attribute_write_override_before_io(
     assert not (tmp_path / "must-not-write").exists()
     assert target._failure_reason is None
     assert target._update_incomplete is False
-
