@@ -3,10 +3,14 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from twelve_six.data import expanded_global_dedup_v9 as expanded_v9
 from twelve_six.data.expanded_global_dedup_v9 import (
     DATA526_BYTES,
     DATA526_SOURCES,
@@ -315,3 +319,271 @@ def test_survivor_derivation_matches_incumbent_selection_rule() -> None:
     assert authority["survivor_source_ids"] == ["b", "c"]
     assert authority["post_dedup_declared_capacity_bytes"] == 40
     assert authority["truth_boundary"]["training_authorized_bytes"] == 0
+
+
+def test_indexed_backend_rejects_core_loader_attester_alias_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def bypass_loader_attestation() -> None:
+        return None
+
+    monkeypatch.setattr(
+        expanded_v9._indexed,
+        "_CORE_LOADER_ATTEST",
+        bypass_loader_attestation,
+    )
+
+    def matcher_must_not_execute(*_args: object, **_kwargs: object) -> dict[str, object]:
+        pytest.fail("matcher executed after indexed loader-attester drift")
+
+    with pytest.raises(
+        ExpandedDedupError,
+        match="indexed execution core loader attester drift",
+    ):
+        expanded_v9._verify_indexed_execution_backend(matcher_must_not_execute)
+
+
+def test_default_backend_preserves_exact_canonical_callback() -> None:
+    def canonical_matcher(
+        _inventory: object,
+        _payloads: object,
+    ) -> dict[str, object]:
+        return {"report_sha256": "canonical"}
+
+    execute, authority = expanded_v9._resolve_matcher_execution_backend(
+        expanded_v9._CANONICAL_EXECUTION_BACKEND,
+        canonical_matcher,
+    )
+    assert execute is canonical_matcher
+    assert authority is None
+
+
+def test_indexed_mode_keeps_canonical_preflight_and_report_verifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    def canonical_matcher(
+        _inventory: object,
+        _payloads: object,
+    ) -> dict[str, object]:
+        events.append("canonical-preflight")
+        return {"report_sha256": "preflight"}
+
+    def canonical_verify(_report: object) -> None:
+        events.append("canonical-verify")
+
+    def indexed_execute(
+        _inventory: object,
+        _payloads: object,
+    ) -> dict[str, object]:
+        events.append("indexed-execute")
+        return {"report_sha256": "indexed"}
+
+    monkeypatch.setattr(expanded_v9, "validate_rada_rows", lambda *_args: [])
+    monkeypatch.setattr(
+        expanded_v9,
+        "_verify_matcher_semantic_closure",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        expanded_v9,
+        "_validate_reconstructed_v8_against_preflight",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        expanded_v9,
+        "_restrict_lineage_to_survivors",
+        lambda inventory, _authority: dict(inventory),
+    )
+
+    def resolve_backend(
+        backend: str,
+        matcher: object,
+    ) -> tuple[object, dict[str, object]]:
+        assert backend == expanded_v9._INDEXED_EXECUTION_BACKEND
+        assert matcher is canonical_matcher
+        return indexed_execute, {"name": expanded_v9._INDEXED_EXECUTION_BACKEND}
+
+    monkeypatch.setattr(
+        expanded_v9,
+        "_resolve_matcher_execution_backend",
+        resolve_backend,
+    )
+
+    def legacy_run(**kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        assert events == ["canonical-preflight", "canonical-verify"]
+        assert kwargs["matcher_audit"] is indexed_execute
+        assert kwargs["matcher_verify"] is canonical_verify
+        final_report = indexed_execute({}, {})
+        canonical_verify(final_report)
+        return (
+            {"schema_version": "fixture", "report_sha256": "legacy"},
+            {"survivor_authority_sha256": "fixture"},
+        )
+
+    monkeypatch.setattr(expanded_v9, "_LEGACY_RUN_EXPANDED_DEDUP", legacy_run)
+    report, _survivors = expanded_v9.run_expanded_dedup(
+        matcher_audit=canonical_matcher,
+        matcher_verify=canonical_verify,
+        reconstructed_v8_inventory={"sources": []},
+        reconstructed_v8_payloads={},
+        v8_survivor_authority={},
+        data526_evidence={},
+        data526_record_inventory={},
+        rada_language_report={},
+        rada_quality_privacy_report={},
+        expected_rada_report_sha256="0" * 64,
+        rada_rows=[],
+        rada_raw_jsonl=b"x",
+        matcher_execution_backend=expanded_v9._INDEXED_EXECUTION_BACKEND,
+    )
+
+    assert events == [
+        "canonical-preflight",
+        "canonical-verify",
+        "indexed-execute",
+        "canonical-verify",
+    ]
+    assert (
+        report["matcher_execution_authority"]["execution_backend"]["name"]
+        == expanded_v9._INDEXED_EXECUTION_BACKEND
+    )
+
+
+def test_preimport_indexed_facade_attester_substitution_fails_closed() -> None:
+    script = r"""
+import hashlib
+import marshal
+from types import FunctionType
+
+from twelve_six.data import _incumbent_dedup_indexed_execution_core as core
+from twelve_six.data import incumbent_dedup_indexed_execution as indexed
+
+
+def bypass(_v3):
+    return None
+
+
+replacement = FunctionType(
+    bypass.__code__,
+    indexed.__dict__,
+    "attest_incumbent_runtime",
+)
+assert replacement.__module__ == indexed.__name__
+indexed.attest_incumbent_runtime = replacement
+core.attest_incumbent_runtime = replacement
+
+
+class ForgedDigest:
+    def hexdigest(self):
+        return "0" * 64
+
+
+hashlib.sha256 = lambda *_args, **_kwargs: ForgedDigest()
+marshal.dumps = lambda *_args, **_kwargs: b"forged-equal-code"
+
+from twelve_six.data import expanded_global_dedup_v9 as expanded
+
+
+def matcher(_inventory, _payloads):
+    raise AssertionError("matcher must not execute after pre-import substitution")
+
+
+try:
+    expanded._verify_indexed_execution_backend(matcher)
+except expanded.ExpandedDedupError as exc:
+    assert "indexed execution facade runtime drift: attest_incumbent_runtime" in str(exc)
+else:
+    raise AssertionError("pre-import indexed facade substitution was accepted")
+"""
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH")
+    src = str(ROOT / "src")
+    env["PYTHONPATH"] = src if not existing else src + os.pathsep + existing
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_indexed_backend_rechecks_authority_at_execution_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    indexed_calls = 0
+
+    def indexed_audit(
+        _v3: object,
+        _inventory: object,
+        _payloads: object,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        nonlocal indexed_calls
+        indexed_calls += 1
+        return {"report_sha256": "must-not-run"}
+
+    def verify_backend(_matcher: object) -> tuple[object, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ExpandedDedupError("synthetic post-selection backend drift")
+        return object(), indexed_audit
+
+    monkeypatch.setattr(
+        expanded_v9,
+        "_verify_indexed_execution_backend",
+        verify_backend,
+    )
+
+    def canonical_matcher(
+        _inventory: object,
+        _payloads: object,
+    ) -> dict[str, object]:
+        return {}
+
+    execute, authority = expanded_v9._resolve_matcher_execution_backend(
+        expanded_v9._INDEXED_EXECUTION_BACKEND,
+        canonical_matcher,
+    )
+    assert authority is not None
+    assert calls == 1
+
+    with pytest.raises(
+        ExpandedDedupError,
+        match="synthetic post-selection backend drift",
+    ):
+        execute({}, {})
+
+    assert calls == 2
+    assert indexed_calls == 0
+
+
+def test_unknown_matcher_backend_fails_before_matcher_execution() -> None:
+    calls = 0
+
+    def canonical_matcher(
+        _inventory: object,
+        _payloads: object,
+    ) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    with pytest.raises(
+        ExpandedDedupError,
+        match="unsupported matcher execution backend",
+    ):
+        expanded_v9._resolve_matcher_execution_backend(
+            "untrusted-backend",
+            canonical_matcher,
+        )
+    assert calls == 0
+
