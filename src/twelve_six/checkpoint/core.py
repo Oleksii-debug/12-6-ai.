@@ -568,12 +568,6 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
 
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint optimizer state must be a mapping")
-    if (
-        not callable(getattr(optimizer, "load_state_dict", None))
-        or not callable(getattr(optimizer, "state_dict", None))
-    ):
-        raise CheckpointCompatibilityError("optimizer must provide state_dict/load_state_dict")
-
     optimizer_module = optimizer.__class__.__module__
     if not optimizer_module.startswith("torch.optim"):
         try:
@@ -858,14 +852,27 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
 def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
     """Validate scheduler-like state without invoking live state hooks."""
 
-    if (
-        not callable(getattr(component, "state_dict", None))
-        or not callable(getattr(component, "load_state_dict", None))
-    ):
-        raise CheckpointCompatibilityError(
-            f"{label} must provide state_dict/load_state_dict"
-        )
     _semantic_stateful_probe(component, state, label=label)
+
+
+def _bind_state_loader(component: Any, *, label: str) -> Any:
+    """Bind a one-argument state loader once before the checkpoint apply region."""
+
+    loader = getattr(component, "load_state_dict", None)
+    if not callable(loader):
+        raise CheckpointCompatibilityError(f"{label} must provide load_state_dict")
+    try:
+        signature = inspect.signature(loader)
+        signature.bind({})
+    except (TypeError, ValueError) as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} load_state_dict cannot safely bind checkpoint state"
+        ) from exc
+
+    def apply(state: Any) -> Any:
+        return loader(state)
+
+    return apply
 
 
 def _bind_model_state_loader(model: Any, strict: bool) -> Any:
@@ -1590,10 +1597,21 @@ def load_verified_checkpoint(
         run_manifest_hash=expected_run_manifest_hash,
     )
     arrays, combined_state = _decode_verified_state(verified)
-    # Bind loader lookup/signature semantics before target materialization.
-    # A descriptor-backed loader can change model structure when inspected; the
-    # compatibility snapshot below must observe that change before any apply.
+    # Bind live loader lookup/signature semantics once before target
+    # materialization/preflight. Descriptor/proxy lookup can execute user code;
+    # all later compatibility snapshots must observe any resulting target state,
+    # and the apply region must never perform a second mutable lookup.
     model_apply = _bind_model_state_loader(model, strict_model)
+    optimizer_apply = (
+        _bind_state_loader(optimizer, label="optimizer")
+        if optimizer is not None
+        else None
+    )
+    scheduler_apply = (
+        _bind_state_loader(scheduler, label="scheduler")
+        if scheduler is not None
+        else None
+    )
     materialized = _prepare_model_weights(model, arrays, strict_model)
     if optimizer is not None and combined_state.get("optimizer") is None:
         raise CheckpointCompatibilityError(
@@ -1618,10 +1636,10 @@ def load_verified_checkpoint(
     # payload decoding, model/optimizer/scheduler compatibility and supported RNG
     # checks completed before the first mutation.
     model_apply(materialized)
-    if optimizer is not None:
-        optimizer.load_state_dict(combined_state["optimizer"])
-    if scheduler is not None:
-        scheduler.load_state_dict(combined_state["scheduler"])
+    if optimizer_apply is not None:
+        optimizer_apply(combined_state["optimizer"])
+    if scheduler_apply is not None:
+        scheduler_apply(combined_state["scheduler"])
     if restore_rng:
         restore_rng_state(combined_state["rng"])
     return LoadResult(
