@@ -472,6 +472,60 @@ jobs:
           if gate["input_records"] != 959:
               raise RuntimeError("Ubuntu input record count drift")
 
+          partial = gate["g05_partial_materialization"]
+          expected_partial_keys = {
+              "input_documents",
+              "retain_all_documents",
+              "partial_documents",
+              "reject_documents",
+              "partial_emitted_units",
+              "partial_rejected_units",
+              "input_utf8_bytes",
+              "retained_utf8_bytes",
+              "rejected_utf8_bytes",
+              "partial_unit_projection_sha256",
+              "partial_unit_projection_count",
+          }
+          if not isinstance(partial, dict) or set(partial) != expected_partial_keys:
+              raise RuntimeError("Ubuntu G05 partial ledger schema drift")
+          for key in expected_partial_keys - {"partial_unit_projection_sha256"}:
+              if type(partial[key]) is not int or partial[key] < 0:
+                  raise RuntimeError(f"Ubuntu G05 partial integer drift: {key}")
+          partial_root = partial["partial_unit_projection_sha256"]
+          if (
+              not isinstance(partial_root, str)
+              or len(partial_root) != 64
+              or any(ch not in "0123456789abcdef" for ch in partial_root)
+          ):
+              raise RuntimeError("Ubuntu G05 partial projection root malformed")
+          rejection = gate["rejection_counts"]
+          if partial["input_documents"] != gate["post_decontamination_records"]:
+              raise RuntimeError("Ubuntu G05 input-document count drift")
+          if partial["input_documents"] != (
+              partial["retain_all_documents"]
+              + partial["partial_documents"]
+              + partial["reject_documents"]
+          ):
+              raise RuntimeError("Ubuntu G05 document classification drift")
+          if partial["partial_documents"] <= 0:
+              raise RuntimeError("Ubuntu G05 partial seam was not physically exercised")
+          if partial["partial_documents"] != rejection["g05_partial_documents"]:
+              raise RuntimeError("Ubuntu G05 partial-document ledger drift")
+          if partial["reject_documents"] != rejection["g05_reject_documents"]:
+              raise RuntimeError("Ubuntu G05 reject-document ledger drift")
+          if partial["partial_unit_projection_count"] != partial["partial_emitted_units"]:
+              raise RuntimeError("Ubuntu G05 partial projection count drift")
+          if gate["post_quality_records"] != (
+              partial["retain_all_documents"] + partial["partial_emitted_units"]
+          ):
+              raise RuntimeError("Ubuntu G05 physical output count drift")
+          if partial["input_utf8_bytes"] != (
+              partial["retained_utf8_bytes"] + partial["rejected_utf8_bytes"]
+          ):
+              raise RuntimeError("Ubuntu G05 byte conservation drift")
+          if partial["rejected_utf8_bytes"] != rejection["g05_rejected_utf8_bytes"]:
+              raise RuntimeError("Ubuntu G05 rejected-byte ledger drift")
+
           inventory = evidence["survivor_inventory"]
           if inventory["schema_version"] != "12-6.data526-record-inventory.v1":
               raise RuntimeError("survivor inventory schema drift")
@@ -595,6 +649,10 @@ jobs:
               "ubuntu_pre_gate_payload_bytes": 4775057,
               "ubuntu_survivor_payload_bytes": survivor,
               "later_gate_loss_bytes": loss,
+              "g05_partial_documents": partial["partial_documents"],
+              "g05_partial_emitted_units": partial["partial_emitted_units"],
+              "g05_partial_rejected_units": partial["partial_rejected_units"],
+              "g05_partial_unit_projection_sha256": partial_root,
               "canonical_capacity_credited": 0,
               "authorized_optimized_target_exposure": 0,
               "training_executed": False,
