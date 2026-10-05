@@ -834,6 +834,10 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
         ) from exc
     try:
         probe_state = probe.state_dict()
+    except (AttributeError, TypeError) as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        ) from exc
     except Exception as exc:
         raise CheckpointCompatibilityError(
             f"{label} state failed isolated compatibility inspection"
@@ -843,6 +847,10 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
     _validate_state_schema(probe_state, state, path=f"{label} state")
     try:
         probe.load_state_dict(copy.deepcopy(state))
+    except (AttributeError, TypeError) as exc:
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        ) from exc
     except Exception as exc:
         raise CheckpointCompatibilityError(
             f"checkpoint {label} state failed isolated semantic compatibility preflight"
@@ -860,7 +868,9 @@ def _bind_state_loader(component: Any, *, label: str) -> Any:
 
     loader = getattr(component, "load_state_dict", None)
     if not callable(loader):
-        raise CheckpointCompatibilityError(f"{label} must provide load_state_dict")
+        raise CheckpointCompatibilityError(
+            f"{label} must provide state_dict/load_state_dict"
+        )
     try:
         signature = inspect.signature(loader)
         signature.bind({})
