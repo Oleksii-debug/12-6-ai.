@@ -866,7 +866,7 @@ class Trainer:
             input_ids = raw_inputs.to(self.device)
             targets = raw_targets.to(self.device)
             loss_mask = None if raw_mask is None else raw_mask.to(self.device)
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             # Transfers can fail after asynchronous device activity. A pending
             # accumulation group is no longer safe to retry in-place.
             self._mark_failed(f"batch transfer failed at micro_step={self.micro_step + 1}")
@@ -895,7 +895,7 @@ class Trainer:
                 reason = f"non-finite loss at micro_step={self.micro_step + 1}"
                 self._mark_failed(reason)
                 raise NonFiniteTrainingError(reason)
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             # Forward, loss or device synchronization may have changed model
             # buffers/RNG; an earlier microbatch can have pending gradients.
             if self._failure_reason is None:
@@ -941,7 +941,7 @@ class Trainer:
             self._require_optimizer_parameter_coverage()
             # Detect drift between committed steps before consuming another batch.
             self._require_first_party_optimizer_contract()
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             self._mark_failed("optimizer identity or configured update contract changed")
             raise
         input_ids, targets, loss_mask, aligned_targets = self._prepare_batch(batch)
@@ -951,7 +951,7 @@ class Trainer:
                 aligned_targets=aligned_targets,
                 loss_mask=loss_mask,
             )
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             # A device-side reduction/synchronization can fail after successful
             # transfers; do not reuse earlier accumulated gradients afterward.
             self._mark_failed(f"target accounting failed at micro_step={self.micro_step + 1}")
@@ -963,7 +963,7 @@ class Trainer:
             self.model.train()
             # A custom train-mode hook may have changed process-global policy.
             self._require_deterministic_policy()
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             # Custom train-mode hooks can mutate buffers or consume RNG before
             # failing; prior accumulated gradients must not be replayed.
             self._mark_failed(f"train-mode transition failed at micro_step={self.micro_step + 1}")
@@ -979,7 +979,7 @@ class Trainer:
         # Check before backward, before gradients can be accumulated.
         try:
             self._require_deterministic_policy()
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             self._mark_failed(
                 f"deterministic policy drift before backward at micro_step={self.micro_step + 1}"
             )
@@ -990,7 +990,7 @@ class Trainer:
             # Do not run backward on any tensor under a mismatched mode.
             self._require_deterministic_policy()
             scaled_loss.backward()
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             # Autograd may raise non-RuntimeError exceptions or be interrupted after
             # partially accumulating gradients. A retry requires verified recovery.
             self._mark_failed(f"backward failed at micro_step={self.micro_step + 1}")
@@ -1016,7 +1016,7 @@ class Trainer:
             # Forward/backward hooks may change otherwise finite AdamW options
             # or rates. Refuse before scaler/optimizer.step can mutate weights.
             self._require_first_party_optimizer_contract()
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             # Backward already ran; do not allow a partial accounting transition
             # or an interrupted device synchronization to reuse these gradients.
             self._mark_failed(f"post-backward accounting failed at micro_step={self.micro_step}")
@@ -1066,7 +1066,7 @@ class Trainer:
                 # groups inside step(). Never expose that as a clean boundary.
                 self._require_no_residual_model_gradients()
                 self._require_deterministic_policy()
-            except BaseException:  # noqa: BLE001
+            except BaseException:
                 self._mark_failed(
                     f"optimizer/scheduler update failed at micro_step={self.micro_step}"
                 )
@@ -1119,7 +1119,7 @@ class Trainer:
 
         try:
             iterator = iter(batches)
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             self._mark_failed("batch iterator construction failed")
             raise
         while self.optimizer_step < self.config.max_steps:
@@ -1127,7 +1127,7 @@ class Trainer:
                 batch = next(iterator)
             except StopIteration:
                 break
-            except BaseException:  # noqa: BLE001
+            except BaseException:
                 # A failing source may have consumed bytes, advanced its cursor
                 # or changed RNG before raising. In-place retry is not safe.
                 self._mark_failed("batch iterator failed after possible cursor advancement")
@@ -1138,7 +1138,7 @@ class Trainer:
             if on_metrics is not None:
                 try:
                     on_metrics(metrics)
-                except BaseException as exc:  # noqa: BLE001
+                except BaseException as exc:
                     # The batch has already been consumed. The optimizer may
                     # also have committed, and the checkpoint hook has not run.
                     self._mark_failed(
@@ -1161,7 +1161,7 @@ class Trainer:
                 if on_cadence or is_final:
                     try:
                         on_checkpoint(self, metrics)
-                    except BaseException as exc:  # noqa: BLE001
+                    except BaseException as exc:
                         self._mark_failed(
                             f"checkpoint hook failed after optimizer_step={metrics.optimizer_step}"
                         )
@@ -1227,7 +1227,7 @@ class Trainer:
             self._require_finite_committed_update()
             self._require_no_residual_model_gradients()
             self._require_deterministic_policy()
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             self._mark_failed("checkpoint boundary has invalid optimizer or residual gradients")
             raise
 
@@ -1873,7 +1873,7 @@ class Trainer:
                 return
             if isinstance(value, FunctionType):
                 digest.update(
-                    f"{value.__module__}.{value.__qualname__}:{id(value)}".encode("utf-8")
+                    f"{value.__module__}.{value.__qualname__}:{id(value)}".encode()
                 )
                 return
             if type(value) in {dict, defaultdict, OrderedDict}:
@@ -2668,7 +2668,7 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "checkpoint scheduler export differs from live committed state"
                 )
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
         return snapshot
@@ -2782,7 +2782,7 @@ class Trainer:
             self._require_finite_committed_update()
             self._require_no_residual_model_gradients()
             self._require_deterministic_policy()
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             self._mark_failed("trainer state restore failed after possible partial apply")
             raise
         self._update_incomplete = False
