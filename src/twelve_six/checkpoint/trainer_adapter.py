@@ -291,13 +291,22 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
     loader = getattr(trainer, "load_state_dict", None)
     if not callable(loader):
         raise TypeError("trainer must provide load_state_dict()")
-    try:
-        signature = inspect.signature(loader)
-        signature.bind({})
-    except (TypeError, ValueError) as exc:
-        raise CheckpointCompatibilityError(
-            "trainer load_state_dict cannot safely bind checkpoint state"
-        ) from exc
+
+    # Canonical D02 must fail closed before model mutation when its restore
+    # invocation cannot accept the one authoritative trainer-state payload.
+    # Generic adapters retain the historical permissive callable contract.
+    canonical_d02 = (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    )
+    if canonical_d02:
+        try:
+            signature = inspect.signature(loader)
+            signature.bind({})
+        except (TypeError, ValueError) as exc:
+            raise CheckpointCompatibilityError(
+                "trainer load_state_dict cannot safely bind checkpoint state"
+            ) from exc
     return loader
 
 
