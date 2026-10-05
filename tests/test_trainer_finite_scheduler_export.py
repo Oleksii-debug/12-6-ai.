@@ -503,3 +503,96 @@ def test_injected_optimizer_does_not_inherit_default_schedule_rate_oracle(
     assert source.train_microbatch(_BATCH).optimizer_stepped
     assert target.train_microbatch(_BATCH).optimizer_stepped
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+@pytest.mark.parametrize("completed", [0, 1, 2])
+def test_unscheduled_default_constant_rate_valid_replay(
+    preserve_state: Any, completed: int,
+) -> None:
+    config = TrainerConfig(
+        seed=703, max_steps=4, scheduler="constant", warmup_steps=0,
+        learning_rate=0.01,
+    )
+    source = Trainer(_TinyLogits(), config, device="cpu")
+    assert source.scheduler is None
+    for _ in range(completed):
+        assert source.train_microbatch(_BATCH).optimizer_stepped
+    saved = source.state_dict()
+    assert saved.scheduler is None
+    target = Trainer(_TinyLogits(), config, device="cpu")
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert target.optimizer_step == completed
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert source.optimizer.param_groups[0]["lr"] == 0.01
+    assert target.optimizer.param_groups[0]["lr"] == 0.01
+    torch.testing.assert_close(source.model.weight, target.model.weight, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("forged_rate", [0.12, False, 0.0, 10 ** 400])
+def test_unscheduled_default_constant_rate_direct_resume_rejects_before_apply(
+    preserve_state: Any, forged_rate: Any,
+) -> None:
+    config = TrainerConfig(
+        seed=703, max_steps=4, scheduler="constant", learning_rate=0.01,
+    )
+    source = Trainer(_TinyLogits(), config, device="cpu")
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    saved = source.state_dict()
+    corrupt_optimizer = copy.deepcopy(saved.optimizer)
+    corrupt_optimizer["param_groups"][0]["lr"] = forged_rate
+    corrupt = replace(saved, optimizer=corrupt_optimizer)
+    target = Trainer(_TinyLogits(), config, device="cpu")
+    with pytest.raises(TrainingStateInvalidError, match="default constant optimizer rate"):
+        target.load_state_dict(corrupt)
+    assert not target.optimizer.state
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None and not target._update_incomplete
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert target.optimizer_step == 1
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    torch.testing.assert_close(source.model.weight, target.model.weight, rtol=0, atol=0)
+
+
+def test_unscheduled_default_constant_live_rate_forgery_poisoned(
+    preserve_state: Any,
+) -> None:
+    config = TrainerConfig(
+        seed=703, max_steps=4, scheduler="constant", learning_rate=0.01,
+    )
+    trainer = Trainer(_TinyLogits(), config, device="cpu")
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    trainer.optimizer.param_groups[0]["lr"] = 0.12
+    with pytest.raises(TrainingStateInvalidError, match="default constant optimizer rate"):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert trainer.optimizer_step == 1
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_injected_unscheduled_optimizer_retains_custom_constant_rate_policy(
+    preserve_state: Any,
+) -> None:
+    config = TrainerConfig(
+        seed=703, max_steps=4, scheduler="constant", learning_rate=0.01,
+    )
+    model = _TinyLogits()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.02)
+    trainer = Trainer(model, config, optimizer=optimizer, device="cpu")
+    assert trainer.scheduler is None
+    assert not trainer._canonical_unscheduled_default_optimizer
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    saved = trainer.state_dict()
+    assert saved.optimizer["param_groups"][0]["lr"] == 0.02
+    target_model = _TinyLogits()
+    target_optimizer = torch.optim.AdamW(target_model.parameters(), lr=0.02)
+    target = Trainer(target_model, config, optimizer=target_optimizer, device="cpu")
+    target.model.load_state_dict(model.state_dict())
+    target.load_state_dict(saved)
+    assert target.optimizer_step == 1
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    torch.testing.assert_close(trainer.model.weight, target.model.weight, rtol=0, atol=0)
