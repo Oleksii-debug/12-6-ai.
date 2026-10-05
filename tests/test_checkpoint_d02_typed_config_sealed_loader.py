@@ -184,7 +184,11 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
         application_calls.append(True)
         raise AssertionError("model application reached before config validation")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbidden_model_apply)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbidden_model_apply,
+    )
     extra = {"expected_step": 0, "expected_tokens_seen": 0} if (
         loader is progress_trainer
     ) else {}
@@ -297,7 +301,11 @@ def test_sealed_counter_alias_refused_before_weight_apply_and_retryable(
         reached_apply.append(True)
         raise AssertionError("counter type rejection must precede model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_apply)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_apply,
+    )
     expected = {"expected_step": 0, "expected_tokens_seen": 0} if (
         loader is progress_trainer
     ) else {}
@@ -415,7 +423,11 @@ def test_sealed_nonzero_counter_alias_cannot_remap_adamw_or_replay(
         model_applications.append(True)
         raise AssertionError("invalid committed counter reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", refuse_model_apply)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: refuse_model_apply,
+    )
     expected = {"expected_step": 1, "expected_tokens_seen": 2} if (
         loader is progress_trainer
     ) else {}
