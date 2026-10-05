@@ -1087,7 +1087,7 @@ with TemporaryDirectory() as raw:
     assert not marker.exists()
     assert not manifest.exists()
     assert not any(stage.exists() for stage in stages)
-    for (path, value), identity in zip(prepared, final_identities, strict=True):
+    for (path, value), identity in zip(values, final_identities, strict=True):
         assert mod._regular_file_identity(
             path, label="recovered terminal final"
         ) == identity
