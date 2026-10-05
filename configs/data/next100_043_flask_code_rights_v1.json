@@ -1,0 +1,148 @@
+{
+  "schema_version": "12-6.next100-043-flask-code-admission.v1",
+  "worker_id": "NEXT100-043-CODE-FLASK",
+  "authority": "EXTERNAL_REAL_CODE_SOURCE_ADMISSION_LOCAL_FREE",
+  "purpose": "base_pretraining_source_qualification",
+  "upstream": {
+    "repository": "https://github.com/pallets/flask",
+    "source_family": "github:pallets/flask",
+    "release_tag": "3.1.3",
+    "annotated_tag_sha1": "8d05782cf7e01c815ceed85eac9d744533af4c44",
+    "commit": "22d924701a6ae2e4cd01e9a15bbaf3946094af65",
+    "tree_sha1": "49f9a8f8cdf5b51b90b61e64ea098b94b7aaac32"
+  },
+  "license_review": {
+    "license_id": "BSD-3-Clause",
+    "license_path": "LICENSE.txt",
+    "license_blob_sha1": "9d227a0cc43c3268d15722b763bd94ad298645a1",
+    "license_size_bytes": 1475,
+    "license_url": "https://raw.githubusercontent.com/pallets/flask/22d924701a6ae2e4cd01e9a15bbaf3946094af65/LICENSE.txt",
+    "reviewed_at": "2026-08-26",
+    "reviewer_ref": "NEXT100-043-CODE-FLASK",
+    "rights_basis": "The exact pinned BSD-3-Clause text permits redistribution and use in source and binary forms, with or without modification, subject to retaining the copyright notice, conditions and disclaimer and to the non-endorsement condition. Under the project explicit-purpose policy, this exact bounded snapshot is approved for model-training use and redistribution subject to those conditions; public availability alone is not the basis.",
+    "uses": {
+      "acquisition": "ALLOWED",
+      "storage": "ALLOWED",
+      "analysis": "ALLOWED",
+      "model_training": "ALLOWED",
+      "redistribution": "ALLOWED"
+    },
+    "redistribution_conditions": "Retain the Pallets copyright notice, BSD-3-Clause conditions and disclaimer; do not use Pallets/contributor names for endorsement without permission."
+  },
+  "selection_policy": {
+    "kind": "explicit_bounded_first_party_implementation_allowlist",
+    "counted_capacity_rule": "Only the eight exact Python blobs listed in selected_files count as candidate capacity.",
+    "excluded_capacity": [
+      "docs/**",
+      "tests/**",
+      "examples/**",
+      ".github/**",
+      "uv.lock",
+      "README*",
+      "CHANGES*",
+      "pyproject.toml",
+      "src/flask/py.typed",
+      "any path containing vendor, vendored, third_party, node_modules, dist, build, generated, gen, deps, dependencies, .venv, or site-packages"
+    ],
+    "excluded_objects_count_as_capacity": false
+  },
+  "selected_files": [
+    {
+      "path": "src/flask/app.py",
+      "blob_sha1": "cc326dbe3c2a373171ecb372206b9e694e9c5ffe",
+      "size_bytes": 61719
+    },
+    {
+      "path": "src/flask/cli.py",
+      "blob_sha1": "ed11f256a153300887657e51b0b2f00543ca5229",
+      "size_bytes": 37184
+    },
+    {
+      "path": "src/flask/config.py",
+      "blob_sha1": "34ef1a57217878e21daba0bc4f20ded293a33e7e",
+      "size_bytes": 13219
+    },
+    {
+      "path": "src/flask/ctx.py",
+      "blob_sha1": "5f7b1f1db013739d1b3b24f5014af62cf2bd21ba",
+      "size_bytes": 15521
+    },
+    {
+      "path": "src/flask/helpers.py",
+      "blob_sha1": "5d412c90f2bde5ab32adcf6126908330bb2880d6",
+      "size_bytes": 23517
+    },
+    {
+      "path": "src/flask/json/tag.py",
+      "blob_sha1": "8dc3629bf9e5e4788e3ef69e528dfd72675cc0c6",
+      "size_bytes": 9281
+    },
+    {
+      "path": "src/flask/sessions.py",
+      "blob_sha1": "ad357706ff59ae07ee2c8b2a850624a33e19e220",
+      "size_bytes": 14969
+    },
+    {
+      "path": "src/flask/templating.py",
+      "blob_sha1": "c5fb5b99050824efd4d09453e22b2877c599f6cf",
+      "size_bytes": 7678
+    }
+  ],
+  "candidate_bytes": 183088,
+  "terminal_code_registry_baseline": {
+    "authority": "DATA-227",
+    "head": "8ebdb2e132ed7bae5245e9d4c140752640ab9885",
+    "workflow_run": 32956209865,
+    "artifact_id": 9602093542,
+    "artifact_digest": "sha256:080f073327020cb3bbb05c7348f658223804684d23012d9b66ab9b798c4fed5d",
+    "source_families": [
+      "github:encode/httpx",
+      "github:psf/requests"
+    ],
+    "admitted_raw_bytes": 9703,
+    "objects": [
+      {
+        "source_id": "code.encode.httpx._content",
+        "source_family": "github:encode/httpx",
+        "commit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+        "path": "httpx/_content.py",
+        "blob_sha1": "6f479a0885f723b7395843d41164a87041820776",
+        "raw_sha256": "2c61b3ac94d1dcebcde0c6f519554d2d7917247fbaa0a97002db4ef69e70ff28",
+        "size_bytes": 8161,
+        "raw_url": "https://raw.githubusercontent.com/encode/httpx/b5addb64f0161ff6bfe94c124ef76f6a1fba5254/httpx/_content.py"
+      },
+      {
+        "source_id": "code.psf.requests._internal_utils",
+        "source_family": "github:psf/requests",
+        "commit": "5460f467b02e49471c0fd6cfc9ca0adab6351f98",
+        "path": "src/requests/_internal_utils.py",
+        "blob_sha1": "0466a7d347db4ed34a37db51b75fc8e80bc06055",
+        "raw_sha256": "4c7d8d132c9898fc7d715e473f3ac74785ddc4ab96d2c9240f87835dc6d981ff",
+        "size_bytes": 1542,
+        "raw_url": "https://raw.githubusercontent.com/psf/requests/5460f467b02e49471c0fd6cfc9ca0adab6351f98/src/requests/_internal_utils.py"
+      }
+    ]
+  },
+  "evaluation_boundary": {
+    "authority": "EVAL-289",
+    "head_at_review": "1c870e5e02bf48891ca599b0b3f3bfe6e84425bc",
+    "evidence_identity": "de52b38690230bee8a912fc1265ad34b80a3abde46bd23401f15395749a4813c",
+    "reserved_object_count_at_review": 0,
+    "candidate_role": "TRAINING_ONLY",
+    "evaluation_use_authorized": false,
+    "rule": "Fail closed if any selected Flask blob becomes evaluation-reserved before terminal sealing."
+  },
+  "verification": {
+    "normalization": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+    "python_parse": "AST_REQUIRED_ALL_FILES",
+    "secret_scan": "PRIVATE_KEY_GITHUB_OPENAI_AWS_GOOGLE_SLACK_TOKEN_PATTERNS",
+    "privacy_scan": "HIGH_RISK_PII_US_SSN_AND_PAYMENT_PAN_LIKE_PATTERNS",
+    "exact_dedup": "SHA256",
+    "near_dedup": {
+      "token_shingle_size": 5,
+      "jaccard_threshold": 0.85
+    },
+    "compare_against_terminal_code_baseline": true,
+    "family_rule": "All selected Flask blobs count as exactly one source family, github:pallets/flask."
+  }
+}
