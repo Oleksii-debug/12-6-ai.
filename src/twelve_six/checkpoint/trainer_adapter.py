@@ -42,6 +42,7 @@ from .expected_binding import (
 )
 
 _NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES = (
+    "__dict__",
     "__getattribute__",
     "__setattr__",
     "assert_checkpoint_safe",
