@@ -496,7 +496,10 @@ def main() -> int:
             handle.flush()
             os.fsync(handle.fileno())
     except (OSError, PhysicalSourceError) as exc:
-        print(f"D03_CODE4_PHYSICAL_BLOCKED {type(exc).__name__}")
+        print(
+            "D03_CODE4_PHYSICAL_BLOCKED "
+            f"{type(exc).__name__} reason={str(exc)}"
+        )
         return 2
 
     print(
