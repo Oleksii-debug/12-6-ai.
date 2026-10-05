@@ -1188,6 +1188,65 @@ with TemporaryDirectory() as raw:
     )
 
 
+
+def test_incomplete_recovery_preserves_stage_replaced_after_final_unlink() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    prepared = ((final, b'{"kind":"report"}\\n'),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    mod._write_create_only_durable(manifest, manifest_payload)
+    mod._write_create_only_durable(stages[0], prepared[0][1])
+    mod._link_staged_output(stages[0], final)
+
+    actual_unlink_owned = mod._unlink_owned_path
+    owned_stage = root / "owned-stage-moved-aside"
+    unrelated = b"UNRELATED_STAGE_AFTER_FINAL_UNLINK"
+
+    def replace_after_final(path, identity, *, label, missing_ok=False):
+        actual_unlink_owned(
+            path,
+            identity,
+            label=label,
+            missing_ok=missing_ok,
+        )
+        if label == "incomplete publication final":
+            stages[0].rename(owned_stage)
+            stages[0].write_bytes(unrelated)
+
+    mod._unlink_owned_path = replace_after_final
+    try:
+        try:
+            mod._recover_incomplete_publication(
+                marker,
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError as exc:
+            assert "ownership changed before unlink" in str(exc)
+        else:
+            raise AssertionError("replacement stage was deleted during recovery")
+    finally:
+        mod._unlink_owned_path = actual_unlink_owned
+
+    assert stages[0].read_bytes() == unrelated
+    assert owned_stage.read_bytes() == prepared[0][1]
+    assert marker.exists()
+    assert manifest.exists()
+"""
+    )
+
+
 def test_convergence_v7_tls_eof_retry_is_bounded_and_byte_identical() -> None:
     _run_isolated(
         """
