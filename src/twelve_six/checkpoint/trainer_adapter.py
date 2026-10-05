@@ -401,9 +401,11 @@ def _snapshot_trainer_restore_bindings(
     attrs = vars(trainer)
     bindings = {
         field: attrs[field]
-        for field in ("model", "optimizer", "scheduler", "scaler", "config", "device")
+        for field in ("model", "optimizer", "scheduler", "scaler", "config")
         if field in attrs
     }
+    if _is_native_d02(trainer) and "device" in attrs:
+        bindings["device"] = attrs["device"]
     policies = (
         {
             field: _snapshot_restore_contract_value(
