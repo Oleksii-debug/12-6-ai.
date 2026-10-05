@@ -2173,7 +2173,6 @@ with TemporaryDirectory() as raw:
     )
 
 
-
 def test_precommit_final_byte_drift_rolls_back_before_terminal_commit() -> None:
     _run_isolated(
         """
