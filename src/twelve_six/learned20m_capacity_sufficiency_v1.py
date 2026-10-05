@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -569,11 +571,24 @@ def _int(value: str) -> int:
 
 
 def load_and_validate(path: str | Path, *, expected_main_sha: str | None = None) -> dict[str, Any]:
+    # Bind the read to one regular-file descriptor. O_NONBLOCK prevents a
+    # substituted POSIX FIFO from hanging before the byte limit is reached.
+    descriptor = None
     try:
-        with Path(path).open("rb") as source:
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        descriptor = os.open(path, flags)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            fail("capacity report must be a regular file")
+        with os.fdopen(descriptor, "rb") as source:
+            descriptor = None
             raw = source.read(MAX_REPORT_BYTES + 1)
-    except OSError as exc:
-        fail(f"cannot read capacity report: {exc}")
+    except OSError:
+        # Do not expose a caller-supplied path, provider error or private name,
+        # including through a chained exception in an unhandled traceback.
+        raise CapacityReportError("cannot read capacity report") from None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     if len(raw) > MAX_REPORT_BYTES:
         fail("capacity report exceeds byte limit")
     try:
