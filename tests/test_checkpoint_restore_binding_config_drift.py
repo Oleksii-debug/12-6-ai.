@@ -71,6 +71,37 @@ def _source() -> Trainer:
     return source
 
 
+@pytest.mark.parametrize("hook", ["__getattribute__", "__setattr__"])
+def test_native_checkpoint_rejects_dispatch_hook_override(hook: str) -> None:
+    def passthrough_getattribute(self: Any, name: str) -> Any:
+        return object.__getattribute__(self, name)
+
+    def passthrough_setattr(self: Any, name: str, value: Any) -> None:
+        object.__setattr__(self, name, value)
+
+    override = (
+        passthrough_getattribute
+        if hook == "__getattribute__"
+        else passthrough_setattr
+    )
+    subclass = type(
+        f"DispatchOverride_{hook}",
+        (Trainer,),
+        {hook: override},
+    )
+    target = subclass(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match=f"native D02 safety authority must remain canonical: {hook}",
+    ):
+        trainer_adapter._snapshot_trainer_restore_bindings(target)
+
+
 def test_native_snapshot_ignores_subclass_dict_descriptor() -> None:
     observed: list[str] = []
 
