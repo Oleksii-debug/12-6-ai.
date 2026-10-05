@@ -202,6 +202,7 @@ def test_disabled_scaler_restore_allows_legacy_missing_payload(
         ("backoff_factor", 0.0, "statistics invalid"),
         ("growth_interval", False, "statistics invalid"),
         ("_growth_tracker", -1, "statistics invalid"),
+        ("_growth_tracker", 2000, "statistics invalid"),
     ],
 )
 def test_enabled_scaler_restore_preflight_rejects_bad_statistics(
