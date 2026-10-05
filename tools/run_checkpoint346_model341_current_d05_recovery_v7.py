@@ -285,6 +285,36 @@ def _summary(
     }
 
 
+def _fresh_target_snapshot(trainer: Any, rt: dict[str, Any]) -> dict[str, Any]:
+    """Seal all recovery-relevant fresh-target state around fail-closed preflight."""
+
+    scheduler_state = (
+        None if trainer.scheduler is None else trainer.scheduler.state_dict()
+    )
+    scaler_state = None if trainer.scaler is None else trainer.scaler.state_dict()
+    return {
+        "model": _tree_hash(trainer.model.state_dict()),
+        "optimizer": _tree_hash(trainer.optimizer.state_dict()),
+        "scheduler": _tree_hash(scheduler_state),
+        "scaler": _tree_hash(scaler_state),
+        "counters": [
+            trainer.micro_step,
+            trainer.optimizer_step,
+            trainer.tokens_seen,
+        ],
+        "pending_tokens": trainer._pending_tokens,
+        "pending_loss_sum": trainer._pending_loss_sum,
+        "failure_reason": trainer._failure_reason,
+        "update_incomplete": trainer._update_incomplete,
+        "model_training": trainer.model.training,
+        "deterministic_policy": [
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        ],
+        "rng": _tree_hash(rt["capture_rng_state"]()),
+    }
+
+
 def _identity(stage: Any, config: Any, trainer: Any, rt: dict[str, Any]) -> Any:
     return rt["CheckpointIdentity"](
         git_sha=D05_RUNTIME_SHA,
@@ -345,16 +375,7 @@ def child_main(args: argparse.Namespace) -> int:
     trainer = _new_trainer(stage, config, rt, init_seed=SEED + 999)
 
     checkpoint = Path(args.checkpoint).resolve()
-    before_wrong_binding = {
-        "model": _tree_hash(trainer.model.state_dict()),
-        "optimizer": _tree_hash(trainer.optimizer.state_dict()),
-        "counters": [
-            trainer.micro_step,
-            trainer.optimizer_step,
-            trainer.tokens_seen,
-        ],
-        "rng": _tree_hash(rt["capture_rng_state"]()),
-    }
+    before_wrong_binding = _fresh_target_snapshot(trainer, rt)
 
     binding_fail_closed = False
     try:
@@ -371,16 +392,7 @@ def child_main(args: argparse.Namespace) -> int:
     if not binding_fail_closed:
         raise AssertionError("wrong run-manifest binding did not fail closed")
 
-    after_wrong_binding = {
-        "model": _tree_hash(trainer.model.state_dict()),
-        "optimizer": _tree_hash(trainer.optimizer.state_dict()),
-        "counters": [
-            trainer.micro_step,
-            trainer.optimizer_step,
-            trainer.tokens_seen,
-        ],
-        "rng": _tree_hash(rt["capture_rng_state"]()),
-    }
+    after_wrong_binding = _fresh_target_snapshot(trainer, rt)
     if after_wrong_binding != before_wrong_binding:
         raise AssertionError(
             "wrong run-manifest preflight mutated fresh restore target or RNG"
@@ -410,6 +422,7 @@ def child_main(args: argparse.Namespace) -> int:
             "parent_pid": os.getppid(),
             "binding_mismatch_failed_closed": binding_fail_closed,
             "binding_mismatch_retry_same_target": True,
+            "binding_mismatch_unchanged_scope": sorted(before_wrong_binding),
             "restored_rng_scope": {
                 "python": "python" in loaded.rng_state,
                 "numpy": "numpy" in loaded.rng_state,
@@ -595,6 +608,9 @@ def parent_main(args: argparse.Namespace) -> int:
                 ],
                 "binding_mismatch_retry_same_target": child[
                     "binding_mismatch_retry_same_target"
+                ],
+                "binding_mismatch_unchanged_scope": child[
+                    "binding_mismatch_unchanged_scope"
                 ],
                 "exact_checkpoint_id_bound": True,
                 "exact_manifest_sha256_bound": True,
