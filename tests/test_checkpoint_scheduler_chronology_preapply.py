@@ -2128,6 +2128,9 @@ def test_model_loader_replacement_during_materialization_is_not_reopened(
     [
         ("micro-step", "fresh trainer with no consumed exposure"),
         ("optimizer-rebind", "target optimizer changed during preflight"),
+        ("config-rebind", "target config changed during preflight"),
+        ("scheduler-rebind", "target scheduler changed during preflight"),
+        ("scaler-rebind", "target scaler changed during preflight"),
     ],
 )
 @pytest.mark.parametrize(
@@ -2172,6 +2175,15 @@ def test_zero_grad_descriptor_side_effect_fails_before_checkpoint_apply(
                         target.model.parameters(),
                         lr=target.config.learning_rate,
                     )
+                elif descriptor_effect == "config-rebind":
+                    target.config = replace(
+                        target.config,
+                        max_steps=target.config.max_steps + 1,
+                    )
+                elif descriptor_effect == "scheduler-rebind":
+                    target.scheduler = None
+                elif descriptor_effect == "scaler-rebind":
+                    target.scaler = object()
                 else:
                     raise AssertionError(
                         f"unknown descriptor effect: {descriptor_effect}"
