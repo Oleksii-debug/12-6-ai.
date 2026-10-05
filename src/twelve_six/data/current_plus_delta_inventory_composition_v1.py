@@ -131,6 +131,7 @@ _COMPOSITION_KEYS = {
     "base",
     "delta",
     "combined_inventory",
+    "inventory_membership",
     "cross_inventory_record_id_collision_free",
     "cross_inventory_source_id_collision_free",
     "cross_inventory_exact_payload_collision_free",
@@ -650,6 +651,14 @@ def compose_current_clean_and_delta_inventory(
         "payload_inventory_digest_sha256": _sha256(payload_projection),
         "records": combined_rows,
     }
+    base_ids = {row["record_id"] for row in base_rows}
+    inventory_membership = [
+        {
+            "record_id": row["record_id"],
+            "origin": "base" if row["record_id"] in base_ids else "delta",
+        }
+        for row in combined_rows
+    ]
     family = _family_projection(combined_rows)
     delta_gate = delta_evidence["gate_execution"]
 
@@ -696,6 +705,7 @@ def compose_current_clean_and_delta_inventory(
             "source_object_count": delta_gate["survivor_source_objects"],
         },
         "combined_inventory": combined_inventory,
+        "inventory_membership": inventory_membership,
         "cross_inventory_record_id_collision_free": True,
         "cross_inventory_source_id_collision_free": True,
         "cross_inventory_exact_payload_collision_free": True,
@@ -840,12 +850,97 @@ def verify_current_clean_and_delta_composition(
             "payload_inventory_digest_sha256"
         ),
     )
+    membership = document.get("inventory_membership")
+    _require(
+        isinstance(membership, list) and len(membership) == len(rows),
+        "composition inventory membership missing",
+    )
+    by_id = {row["record_id"]: row for row in rows}
+    base_rows: list[dict[str, Any]] = []
+    delta_rows: list[dict[str, Any]] = []
+    previous_id: str | None = None
+    for index, raw in enumerate(membership):
+        _require(
+            isinstance(raw, Mapping) and set(raw) == {"record_id", "origin"},
+            f"composition inventory membership[{index}] schema drift",
+        )
+        record_id = raw.get("record_id")
+        origin = raw.get("origin")
+        _require(
+            isinstance(record_id, str) and record_id in by_id,
+            f"composition inventory membership[{index}] record_id drift",
+        )
+        _require(
+            previous_id is None or record_id > previous_id,
+            "composition inventory membership order drift",
+        )
+        previous_id = record_id
+        _require(origin in {"base", "delta"}, "composition inventory membership origin drift")
+        target = base_rows if origin == "base" else delta_rows
+        target.append(by_id[record_id])
+    _require(
+        len({row["record_id"] for row in base_rows + delta_rows}) == len(rows),
+        "composition inventory membership is not one-to-one",
+    )
+
+    def partition_roots(part: list[dict[str, Any]]) -> tuple[str, str, int, int]:
+        payload = [
+            {
+                "record_id": row["record_id"],
+                "payload_sha256": row["payload_sha256"],
+                "payload_bytes": row["payload_bytes"],
+            }
+            for row in part
+        ]
+        return (
+            _sha256(part),
+            _sha256(payload),
+            sum(row["payload_bytes"] for row in part),
+            len({row["source_id"] for row in part}),
+        )
+
+    base_record_root, base_payload_root, rebuilt_base_bytes, rebuilt_base_sources = (
+        partition_roots(base_rows)
+    )
+    delta_record_root, delta_payload_root, rebuilt_delta_bytes, rebuilt_delta_sources = (
+        partition_roots(delta_rows)
+    )
+    _require(len(base_rows) == base_records, "composition base membership count drift")
+    _require(rebuilt_base_bytes == base_bytes, "composition base membership byte drift")
+    _require(rebuilt_base_sources == base_sources, "composition base membership source drift")
+    _require(
+        base_record_root == base["record_inventory_digest_sha256"],
+        "composition base record root drift",
+    )
+    _require(
+        base_payload_root == base["payload_inventory_digest_sha256"],
+        "composition base payload root drift",
+    )
+    _require(len(delta_rows) == delta_records, "composition delta membership count drift")
+    _require(rebuilt_delta_bytes == delta_bytes, "composition delta membership byte drift")
+    _require(rebuilt_delta_sources == delta_sources, "composition delta membership source drift")
+    _require(
+        delta_record_root == delta["record_inventory_digest_sha256"],
+        "composition delta record root drift",
+    )
+    _require(
+        delta_payload_root == delta["payload_inventory_digest_sha256"],
+        "composition delta payload root drift",
+    )
+    _require(
+        not ({row["source_id"] for row in base_rows} & {row["source_id"] for row in delta_rows}),
+        "composition base/delta source collision",
+    )
+    _require(
+        len({row["payload_sha256"] for row in delta_rows}) == len(delta_rows),
+        "composition delta exact payload collision",
+    )
     _require(
         not (
-            {row["record_id"] for row in rows[:base_records]}
-            & {row["record_id"] for row in rows[base_records:]}
+            {row["payload_sha256"] for row in base_rows}
+            & {row["payload_sha256"] for row in delta_rows}
         ),
-        "combined inventory record collision proof drift",
+        "composition base/delta exact payload collision",
     )
     family = _family_projection(rows)
     _require(document.get("families") == family["families"], "composition family rows drift")
