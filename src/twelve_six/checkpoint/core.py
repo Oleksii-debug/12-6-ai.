@@ -988,6 +988,7 @@ def save_checkpoint(
     trainer_state: Mapping[str, Any] | None = None,
     overwrite: bool = False,
     prepublish_validator: Callable[[], None] | None = None,
+    post_rng_prepublish_validator: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Atomically publish one immutable verified checkpoint directory.
 
@@ -1067,6 +1068,12 @@ def save_checkpoint(
                 "checkpoint save could not restore entry RNG state before publication"
             ) from exc
         rng_restored = True
+        if post_rng_prepublish_validator is not None:
+            if not callable(post_rng_prepublish_validator):
+                raise TypeError(
+                    "post_rng_prepublish_validator must be callable or None"
+                )
+            post_rng_prepublish_validator()
 
         os.replace(temp_dir, destination)
         return manifest
