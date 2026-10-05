@@ -33,7 +33,6 @@ jobs:
       POLICY_IDENTITY_SHA256: 9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7
       BALANCE_GATE_BLOB: ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5
       BALANCE_POLICY_BLOB: b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f
-      FAMILY_AUTHORITY_CURRENT_BLOB: faa23fb0802d99465835748cf8db0f173ef6abeb
       FAMILY_AUTHORITY_V1_BLOB: 9382332d2d0d5c09aa5582e6f949b1630c459cbb
       PEP_CONFIG_BLOB: 0fe71942aa1f61c870a290f23a4d9b2bbb405d70
       LOC_CONFIG_BLOB: 958339654703f3aab4ea9cc3686e4e4fd44a7e09
@@ -59,21 +58,18 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
           test "$(git hash-object tools/next100_106_balance_gate.py)" = "$BALANCE_GATE_BLOB"
           test "$(git hash-object configs/data/next100_106_balance_gate_policy_v1.json)" = "$BALANCE_POLICY_BLOB"
-          test "$(git hash-object src/twelve_six/data/trusted_family_authority_current.py)" = "$FAMILY_AUTHORITY_CURRENT_BLOB"
           test "$(git hash-object src/twelve_six/data/trusted_family_authority_v1.py)" = "$FAMILY_AUTHORITY_V1_BLOB"
           test "$(git hash-object configs/data/d03_pep_public_domain_intake_v1.json)" = "$PEP_CONFIG_BLOB"
           test "$(git hash-object configs/data/d03_common_pile_loc_intake_v1.json)" = "$LOC_CONFIG_BLOB"
           test "$(git hash-object src/twelve_six/data/pep_intake.py)" = "$PEP_INTAKE_BLOB"
           test "$(git hash-object src/twelve_six/data/common_pile_loc_intake.py)" = "$LOC_INTAKE_BLOB"
-          python -m py_compile             tools/run_d03_pep_loc_postqp_balance_v1.py             tools/next100_106_balance_gate.py             src/twelve_six/data/trusted_family_authority_current.py             src/twelve_six/data/trusted_family_authority_v1.py             src/twelve_six/data/pep_intake.py             src/twelve_six/data/common_pile_loc_intake.py
+          python -m py_compile             tools/run_d03_pep_loc_postqp_balance_v1.py             tools/next100_106_balance_gate.py src/twelve_six/data/trusted_family_authority_v1.py             src/twelve_six/data/pep_intake.py             src/twelve_six/data/common_pile_loc_intake.py
           PYTHONPATH=src:. python tools/next100_106_balance_gate.py validate-policy
           PYTHONPATH=src:. python - <<'PY'
           import json
           from pathlib import Path
           from twelve_six.data import common_pile_loc_intake, pep_intake
-          from twelve_six.data.trusted_family_authority_current import (
-              trusted_family_projection,
-          )
+          from twelve_six.data.trusted_family_authority_v1 import trusted_family_projection
 
           pep = json.loads(Path("configs/data/d03_pep_public_domain_intake_v1.json").read_text())
           loc = json.loads(Path("configs/data/d03_common_pile_loc_intake_v1.json").read_text())
