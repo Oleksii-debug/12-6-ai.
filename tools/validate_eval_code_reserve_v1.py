@@ -121,11 +121,11 @@ def _require_finite_json_value(
         for key, item in value.items():
             _require(type(key) is str, f"{label} has a non-string JSON key")
             _require_finite_json_value(key, label=f"{label}.key", depth=depth + 1)
-            _require_finite_json_value(item, label=f"{label}.{key}", depth=depth + 1)
+            _require_finite_json_value(item, label=f"{label}.value", depth=depth + 1)
         return
     if type(value) is list:
-        for index, item in enumerate(value):
-            _require_finite_json_value(item, label=f"{label}[{index}]", depth=depth + 1)
+        for item in value:
+            _require_finite_json_value(item, label=f"{label}.item", depth=depth + 1)
         return
     if type(value) is str:
         try:
@@ -202,7 +202,7 @@ def _load_mapping(path: Path) -> dict[str, Any]:
             pending.extend(current.values())
         elif type(current) is list:
             pending.extend(current)
-    _require_finite_json_value(value, label=str(path))
+    _require_finite_json_value(value, label="EVAL647 authority")
     return value
 
 
