@@ -1,0 +1,201 @@
+name: D03 four code sources real LOCAL_FREE execution
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d03_four_code_sources_real_execution.yml"
+      - "configs/data/next100_048_pydantic_code_rights_v1.json"
+      - "configs/data/next100_050_pandas_source_authority_v2.json"
+      - "configs/data/next100_052_typer_source_authority_v2.json"
+      - "configs/data/scipy_v118_source_authority_v1.json"
+      - "tools/execute_d03_four_code_sources_materialization.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-four-code-real-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  acquire-a:
+    name: independent physical acquisition A
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      summary_sha256: ${{ steps.evidence.outputs.summary_sha256 }}
+      object_set_sha256: ${{ steps.evidence.outputs.object_set_sha256 }}
+      license_set_sha256: ${{ steps.evidence.outputs.license_set_sha256 }}
+      candidate_raw_bytes: ${{ steps.evidence.outputs.candidate_raw_bytes }}
+      object_count: ${{ steps.evidence.outputs.object_count }}
+      family_count: ${{ steps.evidence.outputs.family_count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact execution head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Materialize exact pinned source and license bytes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/d03-code-a
+          python tools/execute_d03_four_code_sources_materialization.py \
+            --repo-root . \
+            --output /tmp/d03-code-a/summary.json
+      - name: Emit text-free cryptographic evidence
+        id: evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("/tmp/d03-code-a/summary.json")
+          raw = path.read_bytes()
+          value = json.loads(raw.decode("utf-8"))
+          truth = value["truth_boundary"]
+          assert value["status"] == "PHYSICAL_EXACT_SOURCE_BYTES_MATERIALIZED_ZERO_CREDIT"
+          assert value["candidate_raw_bytes"] == 336_947
+          assert value["object_count"] == 8
+          assert value["source_family_count"] == 4
+          assert truth["canonical_capacity_credit_bytes"] == 0
+          assert truth["canonical_family_credit"] == 0
+          assert truth["global_cross_source_dedup_executed"] is False
+          assert truth["reserved_evaluation_decontamination_executed"] is False
+          assert truth["balance_diversity_retest_executed"] is False
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["optimizer_updates_executed_on_real_targets"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          fields = {
+              "summary_sha256": hashlib.sha256(raw).hexdigest(),
+              "object_set_sha256": value["object_set_sha256"],
+              "license_set_sha256": value["license_set_sha256"],
+              "candidate_raw_bytes": str(value["candidate_raw_bytes"]),
+              "object_count": str(value["object_count"]),
+              "family_count": str(value["source_family_count"]),
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              for key, item in fields.items():
+                  handle.write(f"{key}={item}\n")
+          print("TEXT_FREE_CODE_SOURCE_EVIDENCE " + json.dumps(fields, sort_keys=True))
+          PY
+      - name: Ensure execution did not mutate repository
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  acquire-b:
+    name: independent physical acquisition B
+    needs: acquire-a
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      summary_sha256: ${{ steps.evidence.outputs.summary_sha256 }}
+      object_set_sha256: ${{ steps.evidence.outputs.object_set_sha256 }}
+      license_set_sha256: ${{ steps.evidence.outputs.license_set_sha256 }}
+      candidate_raw_bytes: ${{ steps.evidence.outputs.candidate_raw_bytes }}
+      object_count: ${{ steps.evidence.outputs.object_count }}
+      family_count: ${{ steps.evidence.outputs.family_count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact execution head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Materialize exact pinned source and license bytes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/d03-code-b
+          python tools/execute_d03_four_code_sources_materialization.py \
+            --repo-root . \
+            --output /tmp/d03-code-b/summary.json
+      - name: Emit text-free cryptographic evidence
+        id: evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("/tmp/d03-code-b/summary.json")
+          raw = path.read_bytes()
+          value = json.loads(raw.decode("utf-8"))
+          truth = value["truth_boundary"]
+          assert value["status"] == "PHYSICAL_EXACT_SOURCE_BYTES_MATERIALIZED_ZERO_CREDIT"
+          assert value["candidate_raw_bytes"] == 336_947
+          assert value["object_count"] == 8
+          assert value["source_family_count"] == 4
+          assert truth["canonical_capacity_credit_bytes"] == 0
+          assert truth["global_cross_source_dedup_executed"] is False
+          assert truth["reserved_evaluation_decontamination_executed"] is False
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["training_executed"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          fields = {
+              "summary_sha256": hashlib.sha256(raw).hexdigest(),
+              "object_set_sha256": value["object_set_sha256"],
+              "license_set_sha256": value["license_set_sha256"],
+              "candidate_raw_bytes": str(value["candidate_raw_bytes"]),
+              "object_count": str(value["object_count"]),
+              "family_count": str(value["source_family_count"]),
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              for key, item in fields.items():
+                  handle.write(f"{key}={item}\n")
+          print("TEXT_FREE_CODE_SOURCE_EVIDENCE " + json.dumps(fields, sort_keys=True))
+          PY
+      - name: Ensure execution did not mutate repository
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+  compare-independent-acquisitions:
+    name: compare independent physical acquisitions
+    needs: [acquire-a, acquire-b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Require byte-identical text-free evidence
+        env:
+          A_SUMMARY: ${{ needs.acquire-a.outputs.summary_sha256 }}
+          B_SUMMARY: ${{ needs.acquire-b.outputs.summary_sha256 }}
+          A_OBJECTS: ${{ needs.acquire-a.outputs.object_set_sha256 }}
+          B_OBJECTS: ${{ needs.acquire-b.outputs.object_set_sha256 }}
+          A_LICENSES: ${{ needs.acquire-a.outputs.license_set_sha256 }}
+          B_LICENSES: ${{ needs.acquire-b.outputs.license_set_sha256 }}
+          A_BYTES: ${{ needs.acquire-a.outputs.candidate_raw_bytes }}
+          B_BYTES: ${{ needs.acquire-b.outputs.candidate_raw_bytes }}
+          A_OBJECT_COUNT: ${{ needs.acquire-a.outputs.object_count }}
+          B_OBJECT_COUNT: ${{ needs.acquire-b.outputs.object_count }}
+          A_FAMILY_COUNT: ${{ needs.acquire-a.outputs.family_count }}
+          B_FAMILY_COUNT: ${{ needs.acquire-b.outputs.family_count }}
+        run: |
+          test -n "$A_SUMMARY" && test "$A_SUMMARY" = "$B_SUMMARY"
+          test -n "$A_OBJECTS" && test "$A_OBJECTS" = "$B_OBJECTS"
+          test -n "$A_LICENSES" && test "$A_LICENSES" = "$B_LICENSES"
+          test "$A_BYTES" = "336947" && test "$A_BYTES" = "$B_BYTES"
+          test "$A_OBJECT_COUNT" = "8" && test "$A_OBJECT_COUNT" = "$B_OBJECT_COUNT"
+          test "$A_FAMILY_COUNT" = "4" && test "$A_FAMILY_COUNT" = "$B_FAMILY_COUNT"
+          printf '%s\n' \
+            "DETERMINISTIC_PHYSICAL_CODE_SOURCE_EVIDENCE" \
+            "summary_sha256=$A_SUMMARY object_set_sha256=$A_OBJECTS" \
+            "license_set_sha256=$A_LICENSES candidate_raw_bytes=$A_BYTES" \
+            "object_count=$A_OBJECT_COUNT family_count=$A_FAMILY_COUNT canonical_credit=0"
