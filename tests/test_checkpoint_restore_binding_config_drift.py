@@ -1658,3 +1658,93 @@ def test_native_checkpoint_save_rejects_attribute_lookup_override_before_io(
     assert target._failure_reason is None
     assert target._update_incomplete is False
 
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_native_checkpoint_load_rejects_attribute_write_override_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    class WriteHookTrainer(Trainer):
+        def __setattr__(self, name: str, value: Any) -> None:
+            if name in {"_failure_reason", "_update_incomplete"} and name in vars(self):
+                return
+            super().__setattr__(name, value)
+
+    target = WriteHookTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    Trainer._mark_failed(target, "synthetic poison probe")
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    checkpoint_reads: list[bool] = []
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("unsafe native write hook reached checkpoint I/O")
+
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="safety authority must remain canonical: __setattr__",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+        )
+
+    assert checkpoint_reads == []
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+def test_native_checkpoint_save_rejects_attribute_write_override_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class WriteHookTrainer(Trainer):
+        def __setattr__(self, name: str, value: Any) -> None:
+            if name in {"_failure_reason", "_update_incomplete"} and name in vars(self):
+                return
+            super().__setattr__(name, value)
+
+    target = WriteHookTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    Trainer._mark_failed(target, "synthetic poison probe")
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    save_calls: list[bool] = []
+
+    def forbid_save(*args: Any, **kwargs: Any) -> Any:
+        save_calls.append(True)
+        raise AssertionError("unsafe native write hook reached checkpoint publication")
+
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_save)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="safety authority must remain canonical: __setattr__",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / "must-not-write",
+            model=target.model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
+
+    assert save_calls == []
+    assert not (tmp_path / "must-not-write").exists()
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
