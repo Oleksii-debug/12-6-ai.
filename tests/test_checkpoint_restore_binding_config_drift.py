@@ -1088,3 +1088,52 @@ def test_native_checkpoint_save_rejects_auxiliary_drift_from_model_export(
     else:
         assert target.scheduler is not None
         assert target.scheduler.last_epoch == original_epoch + 1
+
+
+
+def test_generic_preflight_does_not_dispatch_native_only_authorities() -> None:
+    descriptor_calls: list[str] = []
+
+    class EffectfulUnusedAuthority:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            descriptor_calls.append(self.name)
+            raise AssertionError(f"unused native authority dispatched: {self.name}")
+
+    class GenericTrainer:
+        _require_safe_optimizer_hyperparameters = EffectfulUnusedAuthority("optimizer")
+        _require_checkpoint_scheduler_chronology = EffectfulUnusedAuthority("scheduler")
+
+        def __init__(self) -> None:
+            self.model = _TinyLogits()
+            self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.001)
+            self.scheduler = None
+            self.scaler = None
+            self.config = {
+                "gradient_accumulation_steps": 1,
+                "max_steps": 3,
+            }
+
+        def load_state_dict(self, state: Any) -> None:
+            del state
+
+    target = GenericTrainer()
+    state = {
+        "micro_step": 0,
+        "optimizer_step": 0,
+        "tokens_seen": 0,
+        "optimizer": target.optimizer.state_dict(),
+        "scheduler": None,
+        "scaler": None,
+        "config": dict(target.config),
+    }
+
+    trainer_adapter._preflight_trainer_state(
+        target,
+        state,
+        manifest=None,
+    )
+
+    assert descriptor_calls == []
