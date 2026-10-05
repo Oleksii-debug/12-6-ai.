@@ -3,7 +3,12 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "configs/research/r01_20m_to_100m_scaling_campaign_v1.json"
@@ -74,3 +79,87 @@ def test_mutating_copy_does_not_change_control() -> None:
     assert validator.validate_campaign(original) == []
     errors = validator.validate_campaign(mutated)
     assert any("baseline_model.n_layers" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"status":"a","status":"b"}',
+        '{"outer":{"status":"a","status":"b"}}',
+    ],
+)
+def test_strict_loader_rejects_duplicate_members(tmp_path: Path, raw: str) -> None:
+    path = tmp_path / "campaign.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"^duplicate object member$"):
+        validator._load_campaign(path)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_strict_loader_rejects_nonfinite_constants(
+    tmp_path: Path,
+    constant: str,
+) -> None:
+    path = tmp_path / "campaign.json"
+    path.write_text('{"value":' + constant + "}", encoding="utf-8")
+    with pytest.raises(ValueError, match="non-finite JSON constant"):
+        validator._load_campaign(path)
+
+
+@pytest.mark.parametrize("number", ["1e400", "-1e400"])
+def test_strict_loader_rejects_float_overflow(tmp_path: Path, number: str) -> None:
+    path = tmp_path / "campaign.json"
+    path.write_text('{"value":' + number + "}", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON number is not finite"):
+        validator._load_campaign(path)
+
+
+def test_validator_rejects_oversized_campaign_before_decode(tmp_path: Path) -> None:
+    path = tmp_path / "campaign.json"
+    path.write_bytes(b" " * (validator.MAX_INPUT_BYTES + 1))
+    with pytest.raises(ValueError, match="input byte limit"):
+        validator._load_campaign(path)
+    assert validator.main(["validate", str(path)]) == 2
+
+
+@pytest.mark.parametrize("kind", ["array", "object"])
+def test_validator_rejects_excessive_nesting_without_traceback(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    depth = 10_000
+    raw = (
+        "[" * depth + "0" + "]" * depth
+        if kind == "array"
+        else '{"item":' * depth + "0" + "}" * depth
+    )
+    path = tmp_path / "campaign.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON nesting limit exceeded"):
+        validator._load_campaign(path)
+    assert validator.main(["validate", str(path)]) == 2
+
+
+def test_validator_rejects_extra_arguments(capsys: pytest.CaptureFixture[str]) -> None:
+    assert validator.main(["validate", "one.json", "two.json"]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out.strip() == (
+        "FAIL: invalid arguments: expected at most one campaign path"
+    )
+
+
+def test_default_campaign_works_outside_repository_cwd(tmp_path: Path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR_PATH)],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 0
+    assert completed.stderr == ""
+    assert completed.stdout.strip().startswith("PASS: R01 20M -> 100M")
