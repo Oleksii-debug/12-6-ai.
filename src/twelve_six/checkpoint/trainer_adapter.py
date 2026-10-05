@@ -404,6 +404,7 @@ def _snapshot_trainer_restore_bindings(
         for field in ("model", "optimizer", "scheduler", "scaler", "config", "device")
         if field in attrs
     }
+    native_d02 = _is_native_d02(trainer)
     policies = (
         {
             field: _snapshot_restore_contract_value(
@@ -417,10 +418,19 @@ def _snapshot_trainer_restore_bindings(
             )
             if field in attrs
         }
-        if _is_native_d02(trainer)
+        if native_d02
         else {}
     )
-    return True, {"bindings": bindings, "policies": policies}
+    config = (
+        _snapshot_native_d02_config(bindings["config"])
+        if native_d02 and "config" in bindings
+        else None
+    )
+    return True, {
+        "bindings": bindings,
+        "policies": policies,
+        "config": config,
+    }
 
 
 def _assert_trainer_restore_bindings(
@@ -455,6 +465,19 @@ def _assert_trainer_restore_bindings(
         if attrs.get(field, sentinel) is not expected:
             raise CheckpointCompatibilityError(
                 f"canonical trainer {field} binding changed during checkpoint restore"
+            )
+    expected_config = snapshot_state["config"]
+    if expected_config is not None:
+        current_config = attrs.get("config", sentinel)
+        try:
+            current_config = _snapshot_native_d02_config(current_config)
+        except CheckpointCompatibilityError as exc:
+            raise CheckpointCompatibilityError(
+                "canonical trainer config changed during checkpoint restore"
+            ) from exc
+        if not _restore_contract_equal(current_config, expected_config):
+            raise CheckpointCompatibilityError(
+                "canonical trainer config changed during checkpoint restore"
             )
     for field, expected in snapshot_state["policies"].items():
         if (
