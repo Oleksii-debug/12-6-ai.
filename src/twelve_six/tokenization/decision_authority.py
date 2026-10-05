@@ -431,6 +431,7 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
         "__getattr__",
         "__setattr__",
         "__delattr__",
+        "__del__",
     ):
         if hook in class_state:
             raise TokenizerDecisionError(

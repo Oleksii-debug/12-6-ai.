@@ -971,3 +971,40 @@ def test_bind_rejects_dual_alias_inherited_constructor(
         match="runtime implementation drift: bases",
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+
+def test_bind_rejects_dual_alias_destructor_side_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    destructor_called = False
+
+    def effectful_del(_self):
+        nonlocal destructor_called
+        destructor_called = True
+
+    namespace = _replacement_tokenizer_namespace()
+    namespace["__del__"] = effectful_del
+    replacement = type("ByteTokenizer", (object,), namespace)
+    monkeypatch.setattr(authority, "ByteTokenizer", replacement)
+    monkeypatch.setattr(byte_module, "ByteTokenizer", replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: __del__",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+    assert destructor_called is False
