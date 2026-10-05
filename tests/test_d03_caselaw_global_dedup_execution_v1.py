@@ -1169,7 +1169,6 @@ with TemporaryDirectory() as raw:
     )
 
 
-
 def test_durable_create_failure_never_unlinks_substituted_path() -> None:
     _run_isolated(
         """
