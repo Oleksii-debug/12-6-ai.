@@ -1,0 +1,85 @@
+{
+  "authority_identity_sha256": "8e6e3a37b49dc26f3de3f863d5535f49ae6c457330c91bebd05bd2b7d51bbdc9",
+  "consumer_gate": {
+    "allowed_next_consumer": "CURRENT_GLOBAL_CROSS_SOURCE_DEDUP_ONLY",
+    "current_source_eval_decontamination_executed": false,
+    "current_source_global_dedup_executed": false,
+    "production_qp_authority_established": false
+  },
+  "github_reexecution": {
+    "artifact_digest_sha256": "c74bb46d81a816c9bacfc27773b14f6348cf8bf2d6c473e72f2cccd7053d092f",
+    "artifact_id": 11372000691,
+    "conclusion": "success",
+    "fresh_replay_count": 2,
+    "head_sha": "839be52926e07d69e8d5b9875101c65da1e475b0",
+    "job_id": 111957620578,
+    "local_measurement_identity_sha256": "5fbcb694e005b40db37232132d84fefdaa2fe428700368d4d63365ef3886bf38",
+    "pr": 2806,
+    "replays_byte_identical": true,
+    "workflow_run_id": 37367953460
+  },
+  "mechanics": {
+    "normalization_config_git_blob_sha1": "3e0ca093762242f18fadb21002946b4b733afea3",
+    "normalization_config_path": "configs/data/d03_rada_bulk_normalization_v1.json",
+    "normalizer_git_blob_sha1": "55ef5f5e7f09042489fa2642d099aedffaddb740",
+    "normalizer_path": "tools/normalize_d03_rada_bulk_html.py",
+    "product_parent_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
+    "qp_config_git_blob_sha1": "e1798398a87893c5561afc6d9cd4f3d8fdce6d8b",
+    "qp_config_path": "configs/data/d03_rada_bulk_quality_privacy_v1.json",
+    "qp_reference_commit": "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9",
+    "qp_tool_git_blob_sha1": "69491874e60a1b846d683fff3c10214a869f18ff",
+    "qp_tool_path": "tools/filter_d03_rada_bulk_quality_privacy.py"
+  },
+  "normalization": {
+    "inventory_sha256": "247aa5dde026f26aae4bc4587c7b0c9fb9496588d25bf8d58c79a198afc5fd76",
+    "jsonl_file_bytes": 214699202,
+    "jsonl_sha256": "da13b3cc036b19e44e212f3816a66ed261a743c41ed8545076c35eeb706ad511",
+    "nonempty_record_count": 3055,
+    "payload_utf8_bytes": 211492947,
+    "record_count": 3055,
+    "source_encoding_counts": {
+      "utf-8": 887,
+      "windows-1251": 2168
+    }
+  },
+  "quality_privacy": {
+    "accepted_chunk_count": 101733,
+    "accepted_inventory_sha256": "468a3132819527e1ce2b3aa375a55a15d55b7af53e66bf06ae1e5a69daf73e7a",
+    "accepted_jsonl_file_bytes": 224897989,
+    "accepted_jsonl_sha256": "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7",
+    "accepted_payload_utf8_bytes": 192393157,
+    "accepted_source_encoding_counts": {
+      "utf-8": 80134,
+      "windows-1251": 21599
+    },
+    "exact_duplicate_payload_hashes_observed_not_removed": 765,
+    "rejected_chunk_count": 11519,
+    "total_chunks": 113252,
+    "zero_chunk_parent_count": 0
+  },
+  "schema_version": "12-6.d03-rada-current-snapshot-replay-authority.v1",
+  "source": {
+    "canonical_entry_count": 3055,
+    "canonical_raw_bytes": 353891824,
+    "entry_identity_sha256": "1fcc222a959d1dfc24e2b23b71a5412b1050e22a5004cbd36f0dc79998898cc0",
+    "family": "ua.rada.open-data.laws-texts",
+    "qualification_identity_sha256": "ced7b9370925ba0aa17952efd2cc5ff917601d44fa301b8449ba135644e5a8b3",
+    "retained_artifact_id": 11281540677,
+    "retained_artifact_outer_sha256": "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb",
+    "retained_artifact_run_id": 37136885886,
+    "source_archive_bytes": 46774786,
+    "source_archive_sha256": "9f937b3283dd2d9508a0a92442fc007e7e6d373a17d3d50fa428e324cb2fa290",
+    "successor_pin_identity_sha256": "dcda0321145c03160cef435bc3d1ef5ac668c3415bc013750ed38cd2d891561e"
+  },
+  "status": "PASS_REPRODUCIBLE_MECHANICS_ZERO_CREDIT_READY_FOR_GLOBAL_DEDUP_CONSUMER",
+  "truth_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "canonical_capacity_credited": 0,
+    "final_test_outcomes_read": false,
+    "learned_weights_created": false,
+    "paid_compute_used": false,
+    "tokenizer_fit_authorized": false,
+    "training_authorized_bytes": 0,
+    "training_executed": false
+  }
+}
