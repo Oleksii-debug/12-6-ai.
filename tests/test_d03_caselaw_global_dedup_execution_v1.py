@@ -1086,6 +1086,58 @@ if hasattr(os, "mkfifo"):
     )
 
 
+def test_marker_only_recovery_rejects_in_place_marker_mutation() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+
+    foreign_marker = b"FOREIGN_MARKER_MUTATION"
+    actual_validate = mod._validate_publication_marker
+    validate_calls = [0]
+
+    def validate_then_mutate(path, expected_pathset):
+        identity = actual_validate(path, expected_pathset)
+        validate_calls[0] += 1
+        if validate_calls[0] == 1:
+            Path(path).write_bytes(foreign_marker)
+        return identity
+
+    mod._validate_publication_marker = validate_then_mutate
+    try:
+        try:
+            mod._recover_incomplete_publication(
+                marker,
+                manifest,
+                prepared,
+                stages,
+                pathset_id,
+            )
+        except mod.CaselawGlobalDedupError:
+            pass
+        else:
+            raise AssertionError("marker-only in-place mutation was accepted")
+    finally:
+        mod._validate_publication_marker = actual_validate
+
+    assert validate_calls == [1]
+    assert marker.read_bytes() == foreign_marker
+    assert not manifest.exists()
+    assert not final.exists()
+    assert not stages[0].exists()
+"""
+    )
+
+
 def test_publication_manifest_rejects_extra_root_and_target_keys() -> None:
     _run_isolated(
         """
