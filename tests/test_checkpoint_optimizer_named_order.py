@@ -149,6 +149,19 @@ def test_same_named_order_preserves_adamw_moments_and_next_update(
         strict_model=False, restore_rng=False, **extra,
     )
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 3)
+    assert all("param_names" not in group for group in target.optimizer.param_groups)
+    assert (
+        source.optimizer.state_dict()["param_groups"]
+        == target.optimizer.state_dict()["param_groups"]
+    )
+    resealed = target.state_dict()
+    expected_names = (
+        [["left"], ["right"]] if multiple_groups else [["left", "right"]]
+    )
+    assert [
+        group["param_names"] for group in resealed.optimizer["param_groups"]
+    ] == expected_names
+    assert all("param_names" not in group for group in target.optimizer.param_groups)
     for name in ("left", "right"):
         src = getattr(source_model, name)
         dst = getattr(target_model, name)
