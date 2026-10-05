@@ -1228,6 +1228,60 @@ def test_torch_rng_explicit_scope_shapes_fail_closed(
         core._preflight_rng_state(state)
 
 
+def test_direct_model_loader_descriptor_drift_rejected_before_apply(
+    tmp_path: Path,
+) -> None:
+    source = NumpyModel(np.array([0.1, -0.2, 0.3]))
+    checkpoint = tmp_path / "descriptor-schema-drift"
+    save_checkpoint(
+        checkpoint,
+        model=source,
+        trainer_state={},
+        identity=identity(step=0, tokens_seen=0),
+    )
+
+    class DescriptorModel:
+        def __init__(self) -> None:
+            self.weights = np.array([9.0, 8.0, 7.0], dtype=np.float64)
+            self.bias = np.array([5.0], dtype=np.float64)
+            self.armed = False
+            self.loader_lookups = 0
+            self.apply_calls = 0
+
+        def state_dict(self) -> dict[str, np.ndarray]:
+            state = {"weights": self.weights.copy()}
+            if self.armed:
+                state["bias"] = self.bias.copy()
+            return state
+
+        @property
+        def load_state_dict(self):
+            self.loader_lookups += 1
+            self.armed = True
+
+            def apply(state: dict[str, np.ndarray], strict: bool = True) -> None:
+                self.apply_calls += 1
+                self.weights = state["weights"].copy()
+                if strict and set(state) != set(self.state_dict()):
+                    raise RuntimeError("descriptor changed model schema before apply")
+
+            return apply
+
+    target = DescriptorModel()
+    before = target.weights.copy()
+
+    with pytest.raises(CheckpointCompatibilityError, match="state_dict keys differ"):
+        load_checkpoint(
+            checkpoint,
+            model=target,
+            restore_rng=False,
+        )
+
+    assert target.loader_lookups == 1
+    assert target.apply_calls == 0
+    np.testing.assert_array_equal(target.weights, before)
+
+
 def test_direct_scheduler_preflight_does_not_call_live_state_dict(
     tmp_path: Path,
 ) -> None:
