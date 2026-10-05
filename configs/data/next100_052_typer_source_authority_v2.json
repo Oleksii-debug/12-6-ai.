@@ -1,0 +1,89 @@
+{
+  "bounded_source": {
+    "commit": "fe2aa0e2f9c853de378e60ca24ec3b256144decf",
+    "git_blob_sha1": "addf9334d4210a9cddc9e5608ae446417d372eb0",
+    "path": "typer/utils.py",
+    "raw_sha256": "c272750d65c114c9f12c768c37f1c3627b712d16f2d0afabbb1eb76a89072272",
+    "release": "0.27.1",
+    "repository": "fastapi/typer",
+    "repository_id": 229937405,
+    "repository_url": "https://github.com/fastapi/typer",
+    "size_bytes": 7599,
+    "source_family": "github:fastapi/typer",
+    "source_id": "code.fastapi.typer.utils"
+  },
+  "current_composition": {
+    "canonical_capacity_credit_bytes": 0,
+    "canonical_family_credit": 0,
+    "canonical_files_credit": 0,
+    "current_retained_corpus_cleanliness": "NOT_PROVEN_BY_THIS_AUTHORITY",
+    "evaluation_firewall": "REQUIRED_AT_COMPOSITION",
+    "global_dedup": "REQUIRED_NOT_EXECUTED_BY_THIS_AUTHORITY",
+    "source_authority_status": "HISTORICAL_EXECUTION_BOUND_CURRENT_MAIN_CARRIER"
+  },
+  "execution_profile": "LOCAL_FREE",
+  "historical_dedup": {
+    "baseline_registry_authority": "DATA-287_HISTORICAL_ONLY",
+    "comparison_families": [
+      "github:encode/httpx",
+      "github:psf/requests",
+      "github:pallets/click",
+      "github:fastapi/fastapi"
+    ],
+    "current_global_authority": false,
+    "exact_duplicate": false,
+    "historical_only": true,
+    "lineage_exact_blob_collision": false,
+    "near_duplicate_thresholds": {
+      "python_skeleton_5gram_containment": 0.9,
+      "python_skeleton_5gram_jaccard": 0.85
+    }
+  },
+  "historical_execution": {
+    "artifact_id": 9618793476,
+    "artifact_zip_sha256": "58b444adedf11c1b79731ee98f1e4c0f7d9469c3a6a773a76ad45390eb134f41",
+    "dedicated_verifier_conclusion": "SUCCESS",
+    "historical_evidence_verdict": "ADMIT",
+    "job_id": 98276978124,
+    "pull_request_merge_sha": "6d6dc1ce94e1e8f6f1b9e40d091f038b24ba87e1",
+    "receipt_file_sha256": "742068b814a3617e38273bd2001939a91a855309f9811b042d77eea297c6ef42",
+    "receipt_path": "evidence/data/next100_052_typer_terminal_source_receipt_v1.json",
+    "receipt_report_sha256": "3bc54e23b63d975ff31cfbf2762679974f60ea06729ab7291e6cb765a613bf00",
+    "run_id": 32999414943,
+    "source_head_sha": "1ad3387fa21ce208c6553c2a460573ae5648eb7b"
+  },
+  "license": {
+    "evaluation": "NOT_AUTHORIZED_BY_THIS_AUTHORITY",
+    "git_blob_sha1": "a7694736cf37716aafec14b24aa8d6316ebe07a3",
+    "license_id": "MIT",
+    "model_training": "ALLOWED",
+    "path": "LICENSE",
+    "redistribution": "ALLOWED_WITH_NOTICE",
+    "sha256": "58992cebcf8dfb6e40c4e2112ed12126c243666dca3912a3d78b7ecac4859d49",
+    "size_bytes": 1086
+  },
+  "lineage_exclusions": {
+    "all_other_typer_objects": "NOT_AUTHORIZED_BY_THIS_BOUNDED_SOURCE_AUTHORITY",
+    "typer/_click/**": "CLICK_DERIVED_OR_VENDORED_ZERO_TYPER_CAPACITY",
+    "typer/_typing.py": "COPIED_REDUCED_FROM_PYDANTIC_1_9_2_ZERO_TYPER_CAPACITY"
+  },
+  "project_authority": {
+    "convergence_issue": 1983,
+    "fresh_current_head_audit_required": true,
+    "historical_source_audit": "NOT_PERFORMED",
+    "source_pr": 476,
+    "swarm_control_issue": 723
+  },
+  "schema_version": "12-6.next100-052-typer-source-authority.v2",
+  "truth_boundary": {
+    "authorized_optimized_target_exposure": 0,
+    "current_retained_corpus_launch_authoritative": false,
+    "final_test_outcomes_read": false,
+    "foreign_pretrained_weights": false,
+    "learned_weights_created": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "paid_compute_used": false,
+    "tokenizer_fit_authorized": false,
+    "training_executed": false
+  }
+}
