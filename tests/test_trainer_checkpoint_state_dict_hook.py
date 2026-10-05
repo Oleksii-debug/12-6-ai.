@@ -247,3 +247,73 @@ def test_finite_detached_optimizer_export_must_match_live_committed_state(
     assert model.weight.grad is None
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.train_microbatch(_BATCH)
+
+
+def test_poisoned_state_dict_rejects_before_fingerprint_traversal(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2, deterministic_warn_only=True),
+        device="cpu",
+    )
+    Trainer._mark_failed(trainer, "injected prior transition failure")
+
+    def unexpected_fingerprint() -> str:
+        raise AssertionError("fingerprint must not run for an already-poisoned trainer")
+
+    monkeypatch.setattr(trainer, "_model_export_fingerprint", unexpected_fingerprint)
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert "injected prior transition failure" in trainer._failure_reason
+
+
+def test_mid_accumulation_state_dict_rejects_before_fingerprint_traversal(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(
+            seed=703,
+            max_steps=2,
+            gradient_accumulation_steps=2,
+            deterministic_warn_only=True,
+        ),
+        device="cpu",
+    )
+    result = trainer.train_microbatch(_BATCH)
+    assert not result.optimizer_stepped
+    assert trainer.micro_step == 1
+    assert trainer.optimizer_step == 0
+
+    def unexpected_fingerprint() -> str:
+        raise AssertionError("fingerprint must not run mid-accumulation")
+
+    monkeypatch.setattr(trainer, "_model_export_fingerprint", unexpected_fingerprint)
+    with pytest.raises(RuntimeError, match="mid-accumulation"):
+        trainer.state_dict()
+    assert trainer._failure_reason is None
+
+
+def test_committed_boundary_fingerprint_failure_poisons_trainer(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2, deterministic_warn_only=True),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+
+    def fail_fingerprint() -> str:
+        raise ValueError("injected canonical fingerprint failure")
+
+    monkeypatch.setattr(trainer, "_model_export_fingerprint", fail_fingerprint)
+    with pytest.raises(ValueError, match="canonical fingerprint failure"):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert "checkpoint boundary has invalid optimizer" in trainer._failure_reason
