@@ -327,6 +327,9 @@ def capture_rng_state() -> dict[str, Any]:
         "cpu": torch.get_rng_state(),
         "cuda": [],
         "deterministic_algorithms": bool(torch.are_deterministic_algorithms_enabled()),
+        "deterministic_warn_only": bool(
+            torch.is_deterministic_algorithms_warn_only_enabled()
+        ),
     }
     if torch.cuda.is_available():
         torch_state["cuda"] = torch.cuda.get_rng_state_all()
@@ -356,6 +359,16 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
         return
     if not isinstance(torch_state, Mapping) or "cpu" not in torch_state:
         raise CheckpointCompatibilityError("checkpoint torch RNG state is invalid")
+    deterministic_algorithms = torch_state.get("deterministic_algorithms", False)
+    if type(deterministic_algorithms) is not bool:
+        raise CheckpointCompatibilityError(
+            "checkpoint torch deterministic_algorithms must be a boolean"
+        )
+    deterministic_warn_only = torch_state.get("deterministic_warn_only")
+    if deterministic_warn_only is not None and type(deterministic_warn_only) is not bool:
+        raise CheckpointCompatibilityError(
+            "checkpoint torch deterministic_warn_only must be a boolean"
+        )
     try:
         torch = importlib.import_module("torch")
     except ModuleNotFoundError as exc:
@@ -400,7 +413,18 @@ def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
         if cuda_states:
             torch.cuda.set_rng_state_all([item.cpu() for item in cuda_states])
             scope["torch_cuda_devices"] = len(cuda_states)
-        torch.use_deterministic_algorithms(bool(torch_state.get("deterministic_algorithms", False)))
+        deterministic_warn_only = torch_state.get("deterministic_warn_only")
+        if deterministic_warn_only is None:
+            # Checkpoint-v1 snapshots written before this field existed cannot
+            # prove the saved warning mode. Preserve the live mode instead of
+            # silently forcing legacy warn_only=False.
+            deterministic_warn_only = (
+                torch.is_deterministic_algorithms_warn_only_enabled()
+            )
+        torch.use_deterministic_algorithms(
+            torch_state.get("deterministic_algorithms", False),
+            warn_only=deterministic_warn_only,
+        )
     return scope
 
 
