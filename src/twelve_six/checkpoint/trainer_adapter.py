@@ -304,6 +304,69 @@ def _poison_canonical_restore_failure(
     attrs["_update_incomplete"] = True
 
 
+def _snapshot_restore_policy_value(value: Any, *, path: str) -> Any:
+    """Copy canonical small policy data without invoking arbitrary object hooks."""
+
+    if value is None or type(value) in {bool, int, float, str, bytes}:
+        return value
+    if type(value) is tuple:
+        return tuple(
+            _snapshot_restore_policy_value(child, path=f"{path}[{index}]")
+            for index, child in enumerate(value)
+        )
+    if type(value) is list:
+        return [
+            _snapshot_restore_policy_value(child, path=f"{path}[{index}]")
+            for index, child in enumerate(value)
+        ]
+    if type(value) is dict:
+        copied: dict[str, Any] = {}
+        for key, child in value.items():
+            if type(key) is not str:
+                raise CheckpointCompatibilityError(
+                    f"{path} contains a non-string policy key"
+                )
+            copied[key] = _snapshot_restore_policy_value(
+                child,
+                path=f"{path}.{key}",
+            )
+        return copied
+    raise CheckpointCompatibilityError(
+        f"{path} contains unsupported restore-policy data"
+    )
+
+
+def _restore_policy_equal(left: Any, right: Any) -> bool:
+    """Compare canonical policy data without invoking custom equality hooks."""
+
+    if type(left) is not type(right):
+        return False
+    if left is None:
+        return True
+    if type(left) in {bool, int, str, bytes}:
+        return bool(left == right)
+    if type(left) is float:
+        return left.hex() == right.hex()
+    if type(left) is tuple:
+        return len(left) == len(right) and all(
+            _restore_policy_equal(a, b)
+            for a, b in zip(left, right, strict=True)
+        )
+    if type(left) is list:
+        return len(left) == len(right) and all(
+            _restore_policy_equal(a, b)
+            for a, b in zip(left, right, strict=True)
+        )
+    if type(left) is dict:
+        if left.keys() != right.keys():
+            return False
+        return all(
+            _restore_policy_equal(left[key], right[key])
+            for key in left
+        )
+    return False
+
+
 def _snapshot_trainer_restore_bindings(
     trainer: Any,
 ) -> tuple[bool, dict[str, Any]]:
@@ -319,7 +382,10 @@ def _snapshot_trainer_restore_bindings(
         if field in attrs
     }
     policies = {
-        field: copy.deepcopy(attrs[field])
+        field: _snapshot_restore_policy_value(
+            attrs[field],
+            path=f"canonical trainer {field}",
+        )
         for field in (
             "_canonical_default_schedule",
             "_canonical_unscheduled_default_optimizer",
@@ -358,7 +424,7 @@ def _assert_trainer_restore_bindings(
     for field, expected in snapshot_state["policies"].items():
         if (
             field not in attrs
-            or not _typed_config_equal(attrs[field], expected)
+            or not _restore_policy_equal(attrs[field], expected)
         ):
             raise CheckpointCompatibilityError(
                 f"canonical trainer {field} policy changed during checkpoint restore"
