@@ -898,6 +898,85 @@ def test_native_trainer_missing_recovery_marker_cannot_downgrade_to_generic(
 
 
 @pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_native_checkpoint_load_rejects_eval_child_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    class NestedModeModel(_TinyLogits):
+        def __init__(self) -> None:
+            super().__init__()
+            self.child = torch.nn.Identity()
+
+    model = NestedModeModel()
+    target = Trainer(
+        model,
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    model.child.eval()
+    checkpoint_reads: list[bool] = []
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("eval child reached checkpoint I/O")
+
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="requires model training mode",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=model,
+            trainer=target,
+            restore_rng=False,
+        )
+
+    assert checkpoint_reads == []
+    assert model.training is True
+    assert model.child.training is False
+
+
+def test_native_checkpoint_save_rejects_eval_child_before_publication(
+    tmp_path: Path,
+) -> None:
+    class NestedModeModel(_TinyLogits):
+        def __init__(self) -> None:
+            super().__init__()
+            self.child = torch.nn.Identity()
+
+    model = NestedModeModel()
+    target = Trainer(
+        model,
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    model.child.eval()
+    checkpoint = tmp_path / "eval-child-must-not-exist"
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="requires model training mode",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
     ("mutation", "expected"),
     [
         ("weight", "model changed during checkpoint publication"),
