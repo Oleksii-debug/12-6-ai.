@@ -517,6 +517,840 @@ def test_noncallable_trainer_loader_fails_before_model_and_rng(
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
 
 
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+@pytest.mark.parametrize(
+    "authority",
+    [
+        "_require_finite_auxiliary_state",
+        "_require_safe_optimizer_hyperparameters",
+        "_require_finite_committed_update",
+        "_require_no_residual_model_gradients",
+        "_require_deterministic_policy",
+        "_require_optimizer_parameter_coverage",
+    ],
+)
+def test_late_missing_d02_authority_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    loader: Any, restore_rng: bool, authority: str,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-authority-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+
+    def prepare_then_shadow(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        setattr(target, authority, None)
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("late missing D02 authority reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_shadow)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match="authority unavailable"):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_trainer_model_rebind_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-model-rebind-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    initial_weights = original_model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+    replacement: list[Any] = []
+
+    def prepare_then_rebind(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        rebound = _TinyLogits()
+        replacement.append(rebound)
+        target.model = rebound
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("late trainer model rebind reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_rebind)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="owns a different model",
+    ):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert replacement and target.model is replacement[0]
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(original_model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("drift", "error"),
+    [
+        ("config", "trainer config mismatch"),
+        ("optimizer-loader", "optimizer must provide state_dict/load_state_dict"),
+        ("scheduler", "scheduler state/config mismatch"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_trainer_state_drift_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    drift: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-state-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+
+    def prepare_then_drift(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        if drift == "config":
+            target.config = replace(target.config, max_steps=target.config.max_steps + 1)
+        elif drift == "optimizer-loader":
+            target.optimizer.load_state_dict = None  # type: ignore[method-assign]
+        elif drift == "scheduler":
+            target.scheduler = None
+        else:
+            raise AssertionError(f"unknown drift fixture: {drift}")
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("late trainer-state drift reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_drift)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("drift", "error"),
+    [
+        ("micro-step", "fresh trainer with no consumed exposure"),
+        ("pending-tokens", "fresh trainer with no consumed exposure"),
+        ("gradient", "fresh trainer with no pending gradients"),
+        ("policy", "live torch deterministic policy disagrees"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_target_freshness_drift_fails_before_model_and_rng(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    drift: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-target-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+
+    def prepare_then_drift(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        if drift == "micro-step":
+            target.micro_step = 1
+        elif drift == "pending-tokens":
+            target._pending_tokens = 1
+        elif drift == "gradient":
+            target.model.weight.grad = torch.ones_like(target.model.weight)
+        elif drift == "policy":
+            torch.use_deterministic_algorithms(
+                not target.config.deterministic_algorithms,
+                warn_only=target.config.deterministic_warn_only,
+            )
+        else:
+            raise AssertionError(f"unknown target drift fixture: {drift}")
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("late target freshness drift reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_drift)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("hook_effect", "error"),
+    [
+        ("model-rebind", "owns a different model"),
+        ("micro-step", "fresh trainer with no consumed exposure"),
+        ("scheduler-rebind", "scheduler binding changed"),
+        ("config-rebind", "config binding changed"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_stateful_preflight_hook_drift_is_rechecked_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    hook_effect: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-preflight-hook-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    initial_weights = original_model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+
+    def prepare_then_arm_hook(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        assert target.scheduler is not None
+        actual_state_dict = target.scheduler.state_dict
+
+        def effectful_state_dict() -> Any:
+            state = actual_state_dict()
+            if hook_effect == "model-rebind":
+                target.model = _TinyLogits()
+            elif hook_effect == "micro-step":
+                target.micro_step = 1
+            elif hook_effect == "scheduler-rebind":
+                target.scheduler = None
+            elif hook_effect == "config-rebind":
+                target.config = replace(target.config)
+            else:
+                raise AssertionError(f"unknown hook effect: {hook_effect}")
+            return state
+
+        target.scheduler.state_dict = effectful_state_dict  # type: ignore[method-assign]
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("stateful preflight hook drift reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_arm_hook)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    torch.testing.assert_close(original_model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("hook_effect", "error"),
+    [
+        ("micro-step", "fresh trainer with no consumed exposure"),
+        ("scheduler-rebind", "scheduler binding changed"),
+        ("drop-failure-marker", "safety classification changed"),
+        ("drop-incomplete-marker", "safety classification changed"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_final_trainer_loader_bind_drift_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    hook_effect: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-loader-bind-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    initial_weights = original_model.weight.detach().clone()
+    actual_bind = loader._bind_trainer_state_loader
+    bind_calls = 0
+    model_applied: list[bool] = []
+
+    def bind_then_drift(trainer: Any) -> Any:
+        nonlocal bind_calls
+        bound = actual_bind(trainer)
+        bind_calls += 1
+        if bind_calls == 2:
+            if hook_effect == "micro-step":
+                target.micro_step = 1
+            elif hook_effect == "scheduler-rebind":
+                target.scheduler = None
+            elif hook_effect == "drop-failure-marker":
+                del target._failure_reason
+            elif hook_effect == "drop-incomplete-marker":
+                del target._update_incomplete
+            else:
+                raise AssertionError(f"unknown bind hook effect: {hook_effect}")
+        return bound
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("final trainer-loader bind drift reached model application")
+
+    monkeypatch.setattr(loader, "_bind_trainer_state_loader", bind_then_drift)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert bind_calls == 2
+    assert model_applied == []
+    assert not target.optimizer.state
+    torch.testing.assert_close(original_model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("effect", "error"),
+    [
+        ("noop", "post-load micro_step disagrees"),
+        ("counters-only", "post-load auxiliary state invalid"),
+        ("scheduler-corrupt", "post-load auxiliary state invalid"),
+        ("counter-type", "post-load tokens_seen disagrees"),
+        ("pending", "retained pending accumulation"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_postload_verification_rejects_silent_or_partial_trainer_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    effect: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "postload-verification-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_loader = Trainer.load_state_dict
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+
+    def incomplete_loader(self: Trainer, state: Any) -> None:
+        assert self is target
+        if effect == "noop":
+            return
+        if effect == "counters-only":
+            self.micro_step = state["micro_step"]
+            self.optimizer_step = state["optimizer_step"]
+            self.tokens_seen = state["tokens_seen"]
+            return
+        actual_loader(self, state)
+        if effect == "scheduler-corrupt":
+            assert self.scheduler is not None
+            self.scheduler.last_epoch += 1
+        elif effect == "counter-type":
+            self.tokens_seen = float(self.tokens_seen)  # type: ignore[assignment]
+        elif effect == "pending":
+            self._pending_tokens = 1
+        else:
+            raise AssertionError(f"unknown post-load effect: {effect}")
+
+    monkeypatch.setattr(Trainer, "load_state_dict", incomplete_loader)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert target._failure_reason is not None
+    assert target._update_incomplete
+    assert not torch.equal(target.model.weight, initial_weights)
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("attack", "error"),
+    [
+        ("model", "model binding changed"),
+        ("optimizer", "optimizer binding changed"),
+        ("scheduler", "scheduler binding changed"),
+        ("scaler", "scaler binding changed"),
+        ("config", "config binding changed"),
+        ("failure-marker", "safety classification changed"),
+        ("incomplete-marker", "safety classification changed"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_model_apply_hook_drift_is_detected_before_trainer_state_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    attack: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "model-apply-hook-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    original_optimizer = target.optimizer
+    original_scheduler = target.scheduler
+    original_scaler = target.scaler
+    original_config = target.config
+    initial_weights = original_model.weight.detach().clone()
+    actual_model_loader = original_model.load_state_dict
+
+    def model_loader_with_drift(
+        state: Any, *, strict: bool = True,
+    ) -> Any:
+        result = actual_model_loader(state, strict=strict)
+        if attack == "model":
+            target.model = _TinyLogits()
+        elif attack == "optimizer":
+            target.optimizer = object()  # type: ignore[assignment]
+        elif attack == "scheduler":
+            target.scheduler = object()  # type: ignore[assignment]
+        elif attack == "scaler":
+            target.scaler = object()  # type: ignore[assignment]
+        elif attack == "config":
+            target.config = replace(target.config)
+        elif attack == "failure-marker":
+            del target._failure_reason
+        elif attack == "incomplete-marker":
+            del target._update_incomplete
+        else:
+            raise AssertionError(f"unknown model-loader hook attack: {attack}")
+        return result
+
+    original_model.load_state_dict = model_loader_with_drift  # type: ignore[method-assign]
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert target._failure_reason is not None
+    assert target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert not original_optimizer.state
+    assert not torch.equal(original_model.weight, initial_weights)
+    torch.testing.assert_close(original_model.weight, source.model.weight, rtol=0, atol=0)
+
+    target.model = original_model
+    target.optimizer = original_optimizer
+    target.scheduler = original_scheduler
+    target.scaler = original_scaler
+    target.config = original_config
+    original_model.load_state_dict = actual_model_loader  # type: ignore[method-assign]
+    retry_model_applied: list[bool] = []
+
+    def forbid_retry_model_application(*args: Any, **kwargs: Any) -> None:
+        retry_model_applied.append(True)
+        raise AssertionError("poisoned model-hook retry reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_retry_model_application)
+    with pytest.raises(core.CheckpointCompatibilityError, match="target trainer is poisoned"):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+    assert retry_model_applied == []
+
+
+@pytest.mark.parametrize(
+    "marker", ["_failure_reason", "_update_incomplete"],
+    ids=["failure-marker", "incomplete-marker"],
+)
+@pytest.mark.parametrize("outcome", ["raise", "return"], ids=["raises", "returns"])
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_apply_stage_marker_loss_is_repaired_and_same_instance_retry_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    marker: str, outcome: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "apply-marker-loss-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_loader = Trainer.load_state_dict
+
+    def loader_with_marker_loss(self: Trainer, state: Any) -> None:
+        assert self is target
+        delattr(self, marker)
+        if outcome == "raise":
+            raise RuntimeError("injected trainer apply failure")
+
+    monkeypatch.setattr(Trainer, "load_state_dict", loader_with_marker_loss)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    error: type[BaseException]
+    message: str
+    if outcome == "raise":
+        error, message = RuntimeError, "injected trainer apply failure"
+    else:
+        error, message = core.CheckpointCompatibilityError, "safety classification changed"
+
+    with pytest.raises(error, match=message):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert hasattr(target, "_failure_reason")
+    assert hasattr(target, "_update_incomplete")
+    assert target._failure_reason is not None
+    assert target._update_incomplete
+    assert not target.optimizer.state
+    assert not torch.equal(target.model.weight, initial_weights)
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+    monkeypatch.setattr(Trainer, "load_state_dict", actual_loader)
+    retry_model_applied: list[bool] = []
+
+    def forbid_retry_model_application(*args: Any, **kwargs: Any) -> None:
+        retry_model_applied.append(True)
+        raise AssertionError("poisoned same-instance retry reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_retry_model_application)
+    with pytest.raises(core.CheckpointCompatibilityError, match="target trainer is poisoned"):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+    assert retry_model_applied == []
+
+
+@pytest.mark.parametrize(
+    "marker", ["_failure_reason", "_update_incomplete"],
+    ids=["failure-marker", "incomplete-marker"],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_preflight_rng_rollback_marker_loss_still_poisons_canonical_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    marker: str, loader: Any,
+) -> None:
+    source = _source()
+    path = tmp_path / "preflight-rng-marker-loss-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_restore = core.restore_rng_state
+    restore_calls = 0
+
+    def fail_first_restore(state: Any) -> None:
+        nonlocal restore_calls
+        restore_calls += 1
+        if restore_calls == 1:
+            delattr(target, marker)
+            raise RuntimeError("injected preflight RNG rollback failure")
+        actual_restore(state)
+
+    monkeypatch.setattr(core, "restore_rng_state", fail_first_restore)
+    model_applied: list[bool] = []
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("preflight RNG rollback failure reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(RuntimeError, match="injected preflight RNG rollback failure"):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=False, **extra,
+        )
+
+    assert restore_calls >= 1
+    assert model_applied == []
+    assert hasattr(target, "_failure_reason")
+    assert hasattr(target, "_update_incomplete")
+    assert target._failure_reason == "checkpoint_preflight_rng_rollback_failed"
+    assert target._update_incomplete
+    assert not target.optimizer.state
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_native_instance_callable_loader_shadow_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "instance-loader-shadow-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    native_loader = target.load_state_dict
+    model_applied: list[bool] = []
+
+    def instance_shadow(state: Any) -> None:
+        native_loader(state)
+
+    target.load_state_dict = instance_shadow  # type: ignore[method-assign]
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("instance loader shadow reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="load_state_dict must remain class-bound",
+    ):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert target._failure_reason is None and not target._update_incomplete
+    assert not target.optimizer.state
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_noncallable_trainer_loader_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-noncallable-loader-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+
+    def prepare_then_disable(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        target.load_state_dict = None  # type: ignore[method-assign]
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("late non-callable trainer loader reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_disable)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(TypeError, match="trainer must provide load_state_dict"):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+
 def test_noncallable_trainer_state_dict_refuses_save_before_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

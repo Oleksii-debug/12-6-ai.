@@ -258,12 +258,96 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
     _semantic_stateful_probe(component, state, label=label)
 
 
+def _is_canonical_d02_trainer(trainer: Any) -> bool:
+    return (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    )
+
+
+def _is_native_d02_trainer(trainer: Any) -> bool:
+    """Distinguish the real D02 Trainer lineage from marker-only adapters."""
+
+    if not _is_canonical_d02_trainer(trainer):
+        return False
+    return any(
+        base.__module__ == "twelve_six.training.trainer"
+        and base.__name__ == "Trainer"
+        for base in type(trainer).__mro__
+    )
+
+
+def _snapshot_trainer_restore_bindings(
+    trainer: Any,
+) -> tuple[bool, dict[str, Any]]:
+    """Pin canonical restore-target object identities across effectful preflight."""
+
+    canonical_d02 = _is_canonical_d02_trainer(trainer)
+    if not canonical_d02:
+        return False, {}
+    bindings: dict[str, Any] = {}
+    for field in ("model", "optimizer", "scheduler", "scaler", "config"):
+        sentinel = object()
+        value = getattr(trainer, field, sentinel)
+        if value is not sentinel:
+            bindings[field] = value
+    return True, bindings
+
+
+def _assert_trainer_restore_bindings(
+    trainer: Any,
+    snapshot: tuple[bool, dict[str, Any]],
+) -> None:
+    """Reject canonical/generic drift and component rebinding before mutation."""
+
+    expected_canonical, bindings = snapshot
+    if _is_canonical_d02_trainer(trainer) != expected_canonical:
+        raise CheckpointCompatibilityError(
+            "trainer safety classification changed during checkpoint restore"
+        )
+    if not expected_canonical:
+        return
+    sentinel = object()
+    for field, expected in bindings.items():
+        if getattr(trainer, field, sentinel) is not expected:
+            raise CheckpointCompatibilityError(
+                f"canonical trainer {field} binding changed during checkpoint restore"
+            )
+
+
+def _poison_canonical_restore_failure(
+    trainer: Any,
+    *,
+    expected_canonical: bool,
+    reason: str,
+    exc: BaseException,
+) -> None:
+    """Best-effort poison an entry-canonical target without masking failure."""
+
+    if not expected_canonical:
+        return
+    try:
+        if getattr(trainer, "_failure_reason", None) is None:
+            setattr(trainer, "_failure_reason", reason)
+    except BaseException as poison_exc:
+        exc.add_note(
+            "canonical trainer failure-marker restore also failed: "
+            f"{poison_exc!r}"
+        )
+    try:
+        setattr(trainer, "_update_incomplete", True)
+    except BaseException as poison_exc:
+        exc.add_note(
+            "canonical trainer incomplete-update marker restore also failed: "
+            f"{poison_exc!r}"
+        )
+
+
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
     """Refuse mismatched D02 model/optimizer owners before saving or restoring."""
 
     if (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
+        _is_canonical_d02_trainer(trainer)
         and hasattr(trainer, "model")
         and trainer.model is not model
     ):
@@ -280,19 +364,29 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
     model, even when the caller explicitly requests strict_model=False.
     """
 
-    return strict_model or (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    )
+    return strict_model or _is_canonical_d02_trainer(trainer)
+
+
+def _bind_trainer_state_loader(trainer: Any) -> Any:
+    loader = getattr(trainer, "load_state_dict", None)
+    if not callable(loader):
+        raise TypeError("trainer must provide load_state_dict()")
+    if _is_native_d02_trainer(trainer):
+        class_loader = getattr(type(trainer), "load_state_dict", None)
+        if (
+            getattr(loader, "__self__", None) is not trainer
+            or getattr(loader, "__func__", None) is not class_loader
+        ):
+            raise CheckpointCompatibilityError(
+                "native D02 trainer load_state_dict must remain class-bound"
+            )
+    return loader
 
 
 def _preflight_trainer_target(trainer: Any) -> None:
     """Reject a D02 trainer target that its own loader would refuse after mutation."""
 
-    if not (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    ):
+    if not _is_canonical_d02_trainer(trainer):
         return
     if trainer._failure_reason is not None:
         raise CheckpointCompatibilityError(
@@ -306,18 +400,19 @@ def _preflight_trainer_target(trainer: Any) -> None:
     # counters, scheduler/scaler or gradients may already have been changed.
     # An incompatible canonical object must therefore expose them before D05
     # opens the application region.
-    for authority, label in (
-        ("_require_finite_auxiliary_state", "auxiliary-state"),
-        ("_require_safe_optimizer_hyperparameters", "optimizer-hyperparameter"),
-        ("_require_finite_committed_update", "committed-update"),
-        ("_require_no_residual_model_gradients", "gradient-cleanliness"),
-        ("_require_deterministic_policy", "deterministic-policy"),
-        ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
-    ):
-        if not callable(getattr(trainer, authority, None)):
-            raise CheckpointCompatibilityError(
-                f"canonical trainer {label} authority unavailable"
-            )
+    if _is_native_d02_trainer(trainer):
+        for authority, label in (
+            ("_require_finite_auxiliary_state", "auxiliary-state"),
+            ("_require_safe_optimizer_hyperparameters", "optimizer-hyperparameter"),
+            ("_require_finite_committed_update", "committed-update"),
+            ("_require_no_residual_model_gradients", "gradient-cleanliness"),
+            ("_require_deterministic_policy", "deterministic-policy"),
+            ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
+        ):
+            if not callable(getattr(trainer, authority, None)):
+                raise CheckpointCompatibilityError(
+                    f"canonical trainer {label} authority unavailable"
+                )
     # Global deterministic mode is a pure target compatibility precondition.
     # Reject drift before opening a model-scale checkpoint in either loader.
     _assert_live_d02_determinism(trainer)
@@ -363,6 +458,106 @@ def _preflight_trainer_target(trainer: Any) -> None:
             "canonical trainer optimizer zero_grad unavailable"
         )
 
+    # Coverage/interface probes above are live callouts. They must not be able
+    # to downgrade canonical safety identity or consume exposure after the
+    # earlier freshness check and thereby postpone failure until after weights.
+    if not _is_canonical_d02_trainer(trainer):
+        raise CheckpointCompatibilityError(
+            "trainer safety classification changed during checkpoint restore"
+        )
+    if trainer._failure_reason is not None:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer; target trainer is poisoned"
+        )
+    if trainer._update_incomplete:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
+        )
+    _assert_live_d02_determinism(trainer)
+    if any(
+        getattr(trainer, field, 0) != 0
+        for field in (
+            "micro_step",
+            "optimizer_step",
+            "tokens_seen",
+            "_pending_tokens",
+            "_pending_loss_sum",
+        )
+    ):
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer with no consumed exposure"
+        )
+    final_model = getattr(trainer, "model", None)
+    final_parameters = getattr(final_model, "parameters", None)
+    if callable(final_parameters) and any(
+        getattr(parameter, "grad", None) is not None
+        for parameter in final_parameters()
+    ):
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer with no pending gradients"
+        )
+
+
+def _postflight_trainer_state(trainer: Any, state: Any) -> None:
+    """Verify canonical live trainer state after its loader returns.
+
+    This deliberately uses D02's direct live-state authorities instead of a
+    second state_dict() export, which could allocate/copy model-scale optimizer
+    state or invoke another effectful serializer.
+    """
+
+    if not _is_native_d02_trainer(trainer):
+        return
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
+    if trainer._failure_reason is not None or trainer._update_incomplete:
+        raise CheckpointCompatibilityError(
+            "canonical trainer remained poisoned after checkpoint restore"
+        )
+    for field in ("micro_step", "optimizer_step", "tokens_seen"):
+        live = getattr(trainer, field, None)
+        expected = state.get(field)
+        if type(live) is not int or live != expected:
+            raise CheckpointCompatibilityError(
+                f"canonical trainer post-load {field} disagrees with checkpoint"
+            )
+    if (
+        getattr(trainer, "_pending_tokens", None) != 0
+        or getattr(trainer, "_pending_loss_sum", None) != 0.0
+    ):
+        raise CheckpointCompatibilityError(
+            "canonical trainer retained pending accumulation after checkpoint restore"
+        )
+
+    live_config = getattr(trainer, "config", None)
+    if is_dataclass(live_config) and not isinstance(live_config, type):
+        live_config = asdict(live_config)
+    elif hasattr(live_config, "model_dump"):
+        live_config = live_config.model_dump(mode="python")
+    if not _typed_config_equal(state.get("config"), live_config):
+        raise CheckpointCompatibilityError(
+            "canonical trainer post-load config disagrees with checkpoint"
+        )
+
+    for authority, label in (
+        ("_require_optimizer_parameter_coverage", "optimizer coverage"),
+        ("_require_finite_auxiliary_state", "auxiliary state"),
+        ("_require_finite_committed_update", "committed update"),
+        ("_require_no_residual_model_gradients", "gradient cleanliness"),
+        ("_require_deterministic_policy", "deterministic policy"),
+    ):
+        check = getattr(trainer, authority, None)
+        if not callable(check):
+            raise CheckpointCompatibilityError(
+                f"canonical trainer post-load {label} authority unavailable"
+            )
+        try:
+            check()
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                f"canonical trainer post-load {label} invalid"
+            ) from exc
+
 
 def _preflight_trainer_state_without_rng_guard(
     trainer: Any,
@@ -391,10 +586,8 @@ def _preflight_trainer_state_without_rng_guard(
     # Canonical D02 Trainer and its scale subclasses construct TrainerState(**state)
     # during the real load. Extra keys therefore fail only at that final call unless
     # the adapter mirrors the exact schema now, before model/RNG mutation.
-    canonical_d02 = (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    )
+    canonical_d02 = _is_canonical_d02_trainer(trainer)
+    native_d02 = _is_native_d02_trainer(trainer)
     if canonical_d02:
         actual_fields = set(state)
         if actual_fields != _CANONICAL_TRAINER_STATE_FIELDS:
@@ -480,7 +673,7 @@ def _preflight_trainer_state_without_rng_guard(
     # loading them. Reject poisoned tensor leaves here, while the live model,
     # optimizer, counters and RNG are still untouched. Use D02's own recursive
     # numerical contract rather than introducing a different finiteness policy.
-    if canonical_d02:
+    if native_d02:
         require_finite = getattr(trainer, "_require_finite_state_tree", None)
         if not callable(require_finite):
             raise CheckpointCompatibilityError(
@@ -499,7 +692,7 @@ def _preflight_trainer_state_without_rng_guard(
     safe_optimizer_check = getattr(
         trainer, "_require_safe_optimizer_hyperparameters", None
     )
-    if canonical_d02:
+    if native_d02:
         if not callable(safe_optimizer_check):
             raise CheckpointCompatibilityError(
                 "canonical trainer optimizer-hyperparameter authority unavailable"
@@ -515,7 +708,7 @@ def _preflight_trainer_state_without_rng_guard(
     # BEFORE either D05 public loader can apply model weights or restore RNG.
     # Generic third-party trainer adapters retain their original semantics.
     chronology_check = getattr(trainer, "_require_checkpoint_scheduler_chronology", None)
-    if canonical_d02:
+    if native_d02:
         if not callable(chronology_check):
             raise CheckpointCompatibilityError(
                 "canonical trainer scheduler authority unavailable"
@@ -531,7 +724,7 @@ def _preflight_trainer_state_without_rng_guard(
 
     # Native GradScaler accepts finite but invalid statistics in a detached
     # load probe. Mirror D02's single authority before model/RNG application.
-    if canonical_d02:
+    if native_d02:
         scaler_check = getattr(trainer, "_require_checkpoint_scaler_state", None)
         if not callable(scaler_check):
             raise CheckpointCompatibilityError(
@@ -560,7 +753,7 @@ def _preflight_trainer_state_without_rng_guard(
     # D02's authoritative names bind serialized optimizer slots to live
     # parameters before model weights or optimizer moments can be applied.
     order_check = getattr(trainer, "_require_optimizer_state_parameter_order", None)
-    if canonical_d02 and not callable(order_check):
+    if native_d02 and not callable(order_check):
         raise CheckpointCompatibilityError(
             "canonical trainer optimizer-order authority unavailable"
         )
@@ -599,6 +792,7 @@ def _preflight_trainer_state(
     The actual loader runs later in the guarded model -> trainer -> RNG region.
     """
 
+    expected_canonical = _is_canonical_d02_trainer(trainer)
     ambient = capture_rng_state()
     torch_state = ambient.get("torch")
     warn_only = None
@@ -649,11 +843,13 @@ def _preflight_trainer_state(
                             mode_exc,
                         )
                         raise
-        except BaseException:
-            if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
-                if trainer._failure_reason is None:
-                    trainer._failure_reason = "checkpoint_preflight_rng_rollback_failed"
-                trainer._update_incomplete = True
+        except BaseException as exc:
+            _poison_canonical_restore_failure(
+                trainer,
+                expected_canonical=expected_canonical,
+                reason="checkpoint_preflight_rng_rollback_failed",
+                exc=exc,
+            )
             raise
 
 
@@ -661,10 +857,7 @@ def _preflight_trainer_state(
 def _assert_live_d02_determinism(trainer: Any) -> bool | None:
     """Reject ambient torch policy drift before exporting or restoring D02."""
 
-    if not (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    ):
+    if not _is_canonical_d02_trainer(trainer):
         return None
     config = getattr(trainer, "config", None)
     enabled = getattr(config, "deterministic_algorithms", None)
@@ -899,8 +1092,9 @@ def load_trainer_checkpoint(
     No checkpoint artifact is reopened or decoded a second time before mutation.
     """
 
-    if not callable(getattr(trainer, "load_state_dict", None)):
-        raise TypeError("trainer must provide load_state_dict()")
+    restore_bindings = _snapshot_trainer_restore_bindings(trainer)
+    _bind_trainer_state_loader(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
 
     _validate_expected_core_identity(
         expected_git_sha=expected_git_sha,
@@ -952,6 +1146,7 @@ def load_trainer_checkpoint(
         trainer_state,
         manifest=manifest,
     )
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
@@ -974,12 +1169,36 @@ def load_trainer_checkpoint(
     # the same checkpoint path scales from 20M toward 100M and 1B parameters.
     del arrays
 
+    # Revalidate ownership and the live target at the last safe point before
+    # model mutation. The trainer can be rebound while model-scale weights are
+    # materialized; never apply weights to a model the trainer no longer owns.
+    _assert_trainer_model_binding(model, trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+    # Bind the exact trainer loader before the final target check. Attribute
+    # lookup itself is a potential user-code callout, so any drift it causes
+    # must be rejected before the model application region opens.
+    load_trainer_state = _bind_trainer_state_loader(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+    _assert_trainer_model_binding(model, trainer)
+    _preflight_trainer_target(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+
     # State loaders may draw from process RNG even when they succeed.
     # Failed application may leave a mixed model/optimizer state, so canonical
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
         _apply_model_weights(model, materialized, strict_model)
-        trainer.load_state_dict(trainer_state)
+        # Model loaders are application-stage callouts too. Before restoring
+        # optimizer/counters, reject any ownership/classification/component
+        # drift they caused and poison the already-mutated canonical target.
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_trainer_model_binding(model, trainer)
+        load_trainer_state(trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _postflight_trainer_state(trainer, trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
                 combined_state["rng"],
@@ -993,10 +1212,12 @@ def load_trainer_checkpoint(
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
             _restore_initial_torch_policy(rollback_policy, exc)
-        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
-            if trainer._failure_reason is None:
-                trainer._failure_reason = "checkpoint_restore_apply_failed"
-            trainer._update_incomplete = True
+        _poison_canonical_restore_failure(
+            trainer,
+            expected_canonical=restore_bindings[0],
+            reason="checkpoint_restore_apply_failed",
+            exc=exc,
+        )
         raise
     return LoadResult(
         manifest=copy.deepcopy(manifest),

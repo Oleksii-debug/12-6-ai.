@@ -36,13 +36,18 @@ from .trainer_adapter import (
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
     _assert_trainer_model_binding,
+    _assert_trainer_restore_bindings,
+    _bind_trainer_state_loader,
     _effective_strict_model,
     _preflight_trainer_state,
     _preflight_trainer_target,
+    _poison_canonical_restore_failure,
+    _postflight_trainer_state,
     _restore_ambient_rng_after_failed_apply,
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
     _snapshot_torch_policy,
+    _snapshot_trainer_restore_bindings,
 )
 
 def load_trainer_checkpoint(
@@ -78,8 +83,9 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify/decode once and reject wrong progress/exposure before mutation."""
 
-    if not callable(getattr(trainer, "load_state_dict", None)):
-        raise TypeError("trainer must provide load_state_dict()")
+    restore_bindings = _snapshot_trainer_restore_bindings(trainer)
+    _bind_trainer_state_loader(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
 
     _require_expected_sha256(
         expected_checkpoint_id,
@@ -204,6 +210,7 @@ def load_trainer_checkpoint(
     del verified
     trainer_state = combined_state.get("trainer")
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
     if restore_rng:
         _preflight_rng_state(combined_state["rng"])
         _assert_d02_checkpoint_rng_policy(trainer, combined_state["rng"])
@@ -222,13 +229,35 @@ def load_trainer_checkpoint(
     )
     del arrays
 
+    # Revalidate ownership and the live target after decoding/materialization,
+    # then bind the actual loader immediately before the first live mutation.
+    _assert_trainer_model_binding(model, trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+    # Bind the exact trainer loader before the final target check. Attribute
+    # lookup itself is a potential user-code callout, so any drift it causes
+    # must be rejected before the model application region opens.
+    load_trainer_state = _bind_trainer_state_loader(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+    _assert_trainer_model_binding(model, trainer)
+    _preflight_trainer_target(trainer)
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
+
     # Preflight prevents known incompatibilities, but an application-time
     # model/RNG/optimizer failure can leave a mixed, non-replayable state.
     # Canonical D02 trainers must then refuse any further optimizer step or
     # in-place retry; avoid copying model-scale weights to attempt rollback.
     try:
         _apply_model_weights(model, materialized, strict_model)
-        trainer.load_state_dict(trainer_state)
+        # Model application is an effectful callout. Do not let it rebind the
+        # canonical trainer before optimizer/counter restore.
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_trainer_model_binding(model, trainer)
+        load_trainer_state(trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _postflight_trainer_state(trainer, trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
         # torch RNG even on success. Restore the checkpoint streams last so
         # the first resumed batch sees the exact captured next draws.
@@ -245,12 +274,15 @@ def load_trainer_checkpoint(
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
             _restore_initial_torch_policy(rollback_policy, exc)
-        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
-            # D02 may already have recorded a more specific partial-load error
-            # (including a second gradient-cleanup failure). Preserve it.
-            if trainer._failure_reason is None:
-                trainer._failure_reason = "checkpoint_restore_apply_failed"
-            trainer._update_incomplete = True
+        # D02 may already have recorded a more specific partial-load error
+        # (including a second gradient-cleanup failure). Preserve it, but use
+        # entry classification so a hostile loader cannot erase poison markers.
+        _poison_canonical_restore_failure(
+            trainer,
+            expected_canonical=restore_bindings[0],
+            reason="checkpoint_restore_apply_failed",
+            exc=exc,
+        )
         raise
     return LoadResult(
         manifest=copy.deepcopy(manifest),
