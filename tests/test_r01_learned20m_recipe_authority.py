@@ -1103,3 +1103,24 @@ def test_recipe_cli_refuses_directory_instead_of_authority_file(
     tool = _load_tool()
     with pytest.raises(ValueError, match="authority input must be a regular file"):
         tool._load_json(tmp_path)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO unsupported on this OS")
+def test_recipe_cli_rechecks_open_descriptor_after_path_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = _load_tool()
+    regular = tmp_path / "normal.json"
+    regular.write_text("{}", encoding="utf-8")
+    fifo = tmp_path / "replacement.fifo"
+    os.mkfifo(fifo)
+    real_open = os.open
+
+    def swapped_open(path, flags):
+        if os.fspath(path) == os.fspath(regular):
+            return real_open(fifo, flags)
+        return real_open(path, flags)
+
+    monkeypatch.setattr(tool.os, "open", swapped_open)
+    with pytest.raises(ValueError, match="authority input must be a regular file"):
+        tool._load_json(regular)
