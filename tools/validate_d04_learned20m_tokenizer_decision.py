@@ -222,10 +222,24 @@ def _write(path: Path, value: dict[str, Any]) -> None:
         suffix=".tmp",
     )
     temporary = Path(name)
-    created = os.fstat(descriptor)
-    if not stat.S_ISREG(created.st_mode):
-        os.close(descriptor)
-        raise OSError("tokenizer report staging descriptor is not regular")
+    try:
+        created = os.fstat(descriptor)
+        if not stat.S_ISREG(created.st_mode):
+            raise OSError("tokenizer report staging descriptor is not regular")
+    except OSError as identity_error:
+        try:
+            os.close(descriptor)
+        except OSError as close_error:
+            raise PublicationIndeterminate(
+                "STAGING_IDENTITY_INDETERMINATE: cannot bind tokenizer staging "
+                f"ownership or close its descriptor; retained stage {temporary}",
+                staged=temporary,
+            ) from close_error
+        raise PublicationIndeterminate(
+            "STAGING_IDENTITY_INDETERMINATE: cannot bind tokenizer staging "
+            f"ownership; retained stage {temporary}",
+            staged=temporary,
+        ) from identity_error
     identity = (created.st_dev, created.st_ino)
     committed = False
     indeterminate = False
