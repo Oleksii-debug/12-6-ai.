@@ -1371,13 +1371,37 @@ def save_trainer_checkpoint(
 ) -> dict[str, Any]:
     """Save model + trainer-owned optimizer/scheduler/scaler/counter state."""
 
+    save_bindings = _snapshot_trainer_restore_bindings(trainer)
     export_trainer_state = _bind_trainer_state_exporter(trainer)
     _assert_trainer_model_binding(model, trainer)
     _assert_native_d02_model_training_mode(model, trainer)
-    state = _trainer_state_as_mapping(export_trainer_state())
+
+    if save_bindings[0]:
+        export_ambient = capture_rng_state()
+        export_policy = _snapshot_torch_policy(export_ambient)
+        try:
+            state = _trainer_state_as_mapping(export_trainer_state())
+        except BaseException as exc:
+            _note_restore_binding_drift(trainer, save_bindings, exc)
+            raise
+        finally:
+            _restore_preapply_process_state(
+                export_ambient,
+                export_policy,
+                trainer,
+                expected_canonical=save_bindings[0],
+            )
+        _assert_trainer_restore_bindings(trainer, save_bindings)
+        _assert_trainer_model_binding(model, trainer)
+        _assert_native_d02_model_training_mode(model, trainer)
+        _assert_native_d02_postload_snapshot(trainer, state)
+    else:
+        state = _trainer_state_as_mapping(export_trainer_state())
+
     # A canonical D02 checkpoint should never be produced under a different
     # ambient PyTorch policy than the validated trainer configuration.
     _assert_live_d02_determinism(trainer)
+    _assert_trainer_restore_bindings(trainer, save_bindings)
     return save_checkpoint(
         directory,
         model=model,
