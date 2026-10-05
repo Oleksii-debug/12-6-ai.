@@ -1170,7 +1170,6 @@ with TemporaryDirectory() as raw:
 
 
 
-
 def test_durable_create_failure_never_unlinks_substituted_path() -> None:
     _run_isolated(
         """
@@ -2045,7 +2044,6 @@ with TemporaryDirectory() as raw:
     assert manifest_path.exists()
 """
     )
-
 
 
 def test_incomplete_recovery_validates_all_targets_before_first_effect() -> None:
