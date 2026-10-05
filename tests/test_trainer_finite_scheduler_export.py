@@ -167,3 +167,41 @@ def test_finite_live_scheduler_chronology_cannot_be_saved(
     )
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.train_microbatch(_BATCH)
+
+def test_missing_scheduler_export_is_not_a_valid_none_snapshot(
+    monkeypatch: pytest.MonkeyPatch, preserve_state: Any,
+) -> None:
+    trainer = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    assert trainer.scheduler is not None
+    original_export = trainer.scheduler.state_dict
+    calls: list[int] = []
+
+    def missing_export() -> dict[str, Any] | None:
+        calls.append(1)
+        return None if len(calls) == 2 else original_export()
+
+    monkeypatch.setattr(trainer.scheduler, "state_dict", missing_export)
+    with pytest.raises(TrainingStateInvalidError, match="scheduler export"):
+        trainer.state_dict()
+    assert len(calls) >= 2
+    assert trainer._failure_reason is not None
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (
+        0, 0, 0,
+    )
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+def test_genuinely_absent_scheduler_still_exports_none(
+    preserve_state: Any,
+) -> None:
+    trainer = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=2, scheduler="constant"),
+        device="cpu",
+    )
+    assert trainer.scheduler is None
+    assert trainer.state_dict().scheduler is None
+    assert trainer._failure_reason is None
