@@ -255,3 +255,38 @@ def test_forward_hook_forged_default_scheduler_never_reaches_optimizer(
     assert trainer.optimizer_step == 0
     assert not trainer.optimizer.state
     torch.testing.assert_close(model.weight, original_weights, rtol=0, atol=0)
+
+@pytest.mark.parametrize("schedule", ["constant", "cosine"])
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [("lr", 0.12), ("weight_decay", 0.5)],
+)
+def test_unscale_callback_cannot_change_default_adamw_at_last_pre_step_boundary(
+    monkeypatch: pytest.MonkeyPatch, schedule: str, field: str, forged: Any,
+) -> None:
+    trainer = Trainer(
+        _HookLogits(), TrainerConfig(
+            seed=703, max_steps=3, scheduler=schedule, learning_rate=0.01,
+        ),
+        device="cpu",
+    )
+    original_weights = trainer.model.weight.detach().clone()
+    original_unscale = trainer.scaler.unscale_
+    calls: list[bool] = []
+
+    def drift_after_unscale(optimizer: torch.optim.Optimizer) -> Any:
+        result = original_unscale(optimizer)
+        calls.append(True)
+        optimizer.param_groups[0][field] = forged
+        return result
+
+    monkeypatch.setattr(trainer.scaler, "unscale_", drift_after_unscale)
+    with pytest.raises(TrainingStateInvalidError):
+        trainer.train_microbatch(_BATCH)
+    assert calls == [True]
+    assert trainer._failure_reason is not None
+    assert trainer._update_incomplete
+    assert trainer.optimizer_step == 0
+    assert not trainer.optimizer.state
+    assert trainer.model.weight.grad is None
+    torch.testing.assert_close(trainer.model.weight, original_weights, rtol=0, atol=0)
