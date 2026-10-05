@@ -60,7 +60,8 @@ jobs:
           done
           git diff --quiet HEAD --
           git diff --cached --quiet HEAD --
-          python -m py_compile             src/twelve_six/data/trusted_family_authority_franko_ubuntu.py             tests/test_trusted_family_authority_franko_ubuntu.py
+          python -m py_compile src/twelve_six/data/trusted_family_authority_franko_ubuntu.py
+          python -m py_compile tests/test_trusted_family_authority_franko_ubuntu.py
 
       - name: Install canonical project
         shell: bash
@@ -74,7 +75,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pytest -q             tests/test_trusted_family_authority_current.py             tests/test_trusted_family_authority_franko.py             tests/test_trusted_family_authority_franko_ubuntu.py
+          python -m pytest -q tests/test_trusted_family_authority_current.py
+          python -m pytest -q tests/test_trusted_family_authority_franko.py
+          python -m pytest -q tests/test_trusted_family_authority_franko_ubuntu.py
 
       - name: Prove all non-Ubuntu roots are delegated byte-exact
         shell: bash
