@@ -312,6 +312,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
         ("_require_finite_committed_update", "committed-update"),
         ("_require_no_residual_model_gradients", "gradient-cleanliness"),
         ("_require_deterministic_policy", "deterministic-policy"),
+        ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
     ):
         if not callable(getattr(trainer, authority, None)):
             raise CheckpointCompatibilityError(
