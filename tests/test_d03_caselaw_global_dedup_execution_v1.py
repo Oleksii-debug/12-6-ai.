@@ -2217,7 +2217,6 @@ with TemporaryDirectory() as raw:
     )
 
 
-
 def test_committed_restart_rebinds_finals_after_stage_verification() -> None:
     _run_isolated(
         """
