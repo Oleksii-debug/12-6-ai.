@@ -611,17 +611,17 @@ def _reject_manifest_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate publication manifest key: {key}")
+            raise ValueError("duplicate publication manifest key")
         result[key] = value
     return result
 
 
-def _reject_manifest_constant(value: str) -> Any:
-    raise ValueError(f"non-finite publication manifest constant: {value}")
+def _reject_manifest_constant(_value: str) -> Any:
+    raise ValueError("non-finite publication manifest constant")
 
 
-def _reject_manifest_float(value: str) -> Any:
-    raise ValueError(f"publication manifest float is forbidden: {value}")
+def _reject_manifest_float(_value: str) -> Any:
+    raise ValueError("publication manifest float is forbidden")
 
 
 def _is_sha256_hex(value: Any) -> bool:
@@ -643,6 +643,67 @@ def _regular_file_identity(path: Path, *, label: str) -> tuple[int, int]:
         raise CaselawGlobalDedupError(f"cannot inspect {label}: {path}") from exc
     _require(stat.S_ISREG(info.st_mode), f"{label} is not a regular file: {path}")
     return (info.st_dev, info.st_ino)
+
+
+def _read_bounded_regular_file(
+    path: Path,
+    max_bytes: int,
+    *,
+    label: str,
+) -> bytes:
+    """Read one control file from a stable, nonblocking regular-file descriptor."""
+    _require(
+        type(max_bytes) is int and max_bytes >= 0,
+        "bounded control-file read limit must be a nonnegative exact int",
+    )
+    identity_before = _regular_file_identity(path, label=label)
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise CaselawGlobalDedupError(f"cannot open {label}: {path}") from exc
+    try:
+        info_before = os.fstat(descriptor)
+        _require(
+            stat.S_ISREG(info_before.st_mode),
+            f"{label} opened object is not a regular file: {path}",
+        )
+        opened_identity = (info_before.st_dev, info_before.st_ino)
+        _require(
+            opened_identity == identity_before,
+            f"{label} identity changed before read: {path}",
+        )
+        chunks: list[bytes] = []
+        remaining = max_bytes + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        info_after = os.fstat(descriptor)
+        _require(
+            (info_after.st_dev, info_after.st_ino) == opened_identity,
+            f"{label} descriptor identity changed while reading: {path}",
+        )
+    except OSError as exc:
+        raise CaselawGlobalDedupError(f"cannot read {label}: {path}") from exc
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError as exc:
+            raise CaselawGlobalDedupError(
+                f"cannot close {label}: {path}"
+            ) from exc
+    identity_after = _regular_file_identity(path, label=label)
+    _require(
+        identity_after == opened_identity,
+        f"{label} pathname identity changed while reading: {path}",
+    )
+    return raw
 
 
 def _unlink_owned_path(
@@ -790,8 +851,11 @@ def _validate_publication_marker(
         marker_path, label="incomplete publication marker"
     )
     try:
-        with marker_path.open("rb") as handle:
-            raw = handle.read(PUBLICATION_MARKER_MAX_BYTES + 1)
+        raw = _read_bounded_regular_file(
+            marker_path,
+            PUBLICATION_MARKER_MAX_BYTES,
+            label="incomplete publication marker",
+        )
         if len(raw) > PUBLICATION_MARKER_MAX_BYTES:
             raise ValueError("publication marker exceeds bounded size")
         value = json.loads(
@@ -863,13 +927,12 @@ def _publication_manifest(
 
 
 def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
-    _require(
-        not manifest_path.is_symlink() and manifest_path.is_file(),
-        "incomplete publication manifest is not a regular file",
-    )
     try:
-        with manifest_path.open("rb") as handle:
-            raw = handle.read(PUBLICATION_MANIFEST_MAX_BYTES + 1)
+        raw = _read_bounded_regular_file(
+            manifest_path,
+            PUBLICATION_MANIFEST_MAX_BYTES,
+            label="publication manifest",
+        )
         if len(raw) > PUBLICATION_MANIFEST_MAX_BYTES:
             raise ValueError("publication manifest exceeds bounded size")
         value = json.loads(
