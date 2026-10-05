@@ -76,7 +76,6 @@ _NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES = (
     "_require_checkpoint_scheduler_chronology",
     "_require_optimizer_state_parameter_order",
     "_optimizer_parameter_name_groups",
-    "_require_exported_model_matches_live",
     "_mark_failed",
 )
 
