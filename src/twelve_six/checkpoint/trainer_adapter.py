@@ -467,6 +467,20 @@ def _preflight_trainer_state_without_rng_guard(
                         f"checkpoint trainer {field} has non-finite or invalid numeric state"
                     ) from exc
 
+    # Shared D02 authority must reject finite but forged scheduler state
+    # BEFORE either D05 public loader can apply model weights or restore RNG.
+    # Generic third-party trainer adapters retain their original semantics.
+    chronology_check = getattr(trainer, "_require_checkpoint_scheduler_chronology", None)
+    if canonical_d02 and callable(chronology_check):
+        try:
+            chronology_check(
+                state.get("scheduler"), state["optimizer_step"], state.get("optimizer"),
+            )
+        except (ArithmeticError, ValueError, TypeError, RuntimeError) as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint trainer scheduler chronology mismatch"
+            ) from exc
+
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
         if not hasattr(trainer, "load_state_dict"):
