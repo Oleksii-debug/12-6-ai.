@@ -177,10 +177,15 @@ def _final_bytes_match(
             return False
         observed = handle.read(len(payload) + 1)
         after = os.fstat(handle.fileno())
+    final_after = _lstat_or_none(path)
     return (
         (after.st_dev, after.st_ino) == identity
         and after.st_size == len(payload)
         and observed == payload
+        and final_after is not None
+        and stat.S_ISREG(final_after.st_mode)
+        and (final_after.st_dev, final_after.st_ino) == identity
+        and final_after.st_size == len(payload)
     )
 
 
