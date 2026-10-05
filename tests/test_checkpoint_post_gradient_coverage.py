@@ -790,3 +790,154 @@ def test_final_authority_lookup_cannot_switch_model_to_eval_before_apply(
         torch.is_deterministic_algorithms_warn_only_enabled(),
     ) == policy_before
 
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "restore_rng",
+    [False, True],
+    ids=["opt-out", "exact-rng"],
+)
+def test_model_apply_cannot_leave_native_d02_model_in_eval_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    source = _source()
+    checkpoint = tmp_path / "model-apply-eval-drift-дані з пробілами"
+    core.save_checkpoint(
+        checkpoint,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(checkpoint)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    actual_bind = loader._bind_model_state_loader
+    trainer_state_calls: list[bool] = []
+    actual_trainer_loader = target.load_state_dict
+
+    def bind_eval_model_loader(model: Any, strict: bool):
+        apply = actual_bind(model, strict)
+
+        def apply_then_eval(materialized: Any) -> Any:
+            result = apply(materialized)
+            target.model.eval()
+            return result
+
+        return apply_then_eval
+
+    def tracked_trainer_loader(state: Any) -> None:
+        trainer_state_calls.append(True)
+        actual_trainer_loader(state)
+
+    monkeypatch.setattr(loader, "_bind_model_state_loader", bind_eval_model_loader)
+    monkeypatch.setattr(
+        Trainer,
+        "load_state_dict",
+        lambda self, state: tracked_trainer_loader(state)
+        if self is target
+        else actual_trainer_loader(state),
+    )
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="requires model training mode",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    assert trainer_state_calls == []
+    assert target.model.training is False
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
+    assert vars(target)["_update_incomplete"] is True
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(
+        target.model.weight,
+        source.model.weight,
+        rtol=0,
+        atol=0,
+    )
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "restore_rng",
+    [False, True],
+    ids=["opt-out", "exact-rng"],
+)
+def test_trainer_apply_cannot_leave_native_d02_model_in_eval_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    source = _source()
+    checkpoint = tmp_path / "trainer-apply-eval-drift-дані з пробілами"
+    core.save_checkpoint(
+        checkpoint,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(checkpoint)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    actual_trainer_loader = Trainer.__dict__["load_state_dict"]
+    trainer_state_calls: list[bool] = []
+
+    def load_then_eval(self: Trainer, state: Any) -> None:
+        actual_trainer_loader(self, state)
+        if self is target:
+            trainer_state_calls.append(True)
+            target.model.eval()
+
+    monkeypatch.setattr(Trainer, "load_state_dict", load_then_eval)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="requires model training mode",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    assert trainer_state_calls == [True]
+    assert target.model.training is False
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
+    assert vars(target)["_update_incomplete"] is True
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    torch.testing.assert_close(
+        target.model.weight,
+        source.model.weight,
+        rtol=0,
+        atol=0,
+    )
+
