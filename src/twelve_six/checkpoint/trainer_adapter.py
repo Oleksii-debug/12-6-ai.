@@ -916,7 +916,6 @@ def _preflight_trainer_target(trainer: Any) -> None:
                 )
             authorities[authority] = bound
 
-    parameters = getattr(model, "parameters", None)
     zero_grad = getattr(optimizer, "zero_grad", None) if optimizer is not None else None
     if optimizer is not None and not callable(zero_grad):
         raise CheckpointCompatibilityError(
@@ -934,20 +933,18 @@ def _preflight_trainer_target(trainer: Any) -> None:
                 "checkpoint restore requires valid optimizer ownership of model parameters"
             ) from exc
 
-    pending_gradient = bool(
-        callable(parameters)
-        and any(
-            getattr(parameter, "grad", None) is not None
-            for parameter in parameters()
-        )
-    )
-
     if native_d02:
         try:
             authorities["_require_optimizer_parameter_coverage"]()
         except Exception as exc:
             raise CheckpointCompatibilityError(
                 "checkpoint restore requires stable optimizer ownership of model parameters"
+            ) from exc
+        try:
+            authorities["_require_no_residual_model_gradients"]()
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint restore requires a fresh trainer with no pending gradients"
             ) from exc
 
     # Global deterministic mode is a pure target compatibility precondition.
@@ -1006,10 +1003,6 @@ def _preflight_trainer_target(trainer: Any) -> None:
             "checkpoint restore target config changed during preflight"
         )
     _assert_native_d02_model_training_mode(model, trainer)
-    if pending_gradient:
-        raise CheckpointCompatibilityError(
-            "checkpoint restore requires a fresh trainer with no pending gradients"
-        )
 
 
 def _assert_native_d02_postload_snapshot(trainer: Any, state: Any) -> None:
