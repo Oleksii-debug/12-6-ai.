@@ -289,3 +289,152 @@ def test_canonical_authority_hash_preserves_finite_identity() -> None:
     value = {"b": 2, "a": 1, "fraction": 0.25}
     expected = hashlib.sha256(b'{"a":1,"b":2,"fraction":0.25}').hexdigest()
     assert authority.authority_sha256(value) == expected
+
+
+@pytest.mark.parametrize(
+    "surface",
+    ["version", "config_sha256", "vocab_sha256"],
+)
+def test_reloaded_authority_does_not_trust_mutated_byte_module_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    import importlib
+
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    tampered_hash = "a" * 64
+
+    try:
+        with monkeypatch.context() as patch:
+            if surface == "version":
+                patch.setattr(byte_module, "BYTE_TOKENIZER_VERSION", "tampered-byte-v1")
+                patch.setattr(byte_module.ByteTokenizer, "version", "tampered-byte-v1")
+            elif surface == "config_sha256":
+                patch.setattr(byte_module, "BYTE_TOKENIZER_HASH", tampered_hash)
+                patch.setattr(byte_module, "tokenizer_config_hash", lambda: tampered_hash)
+            else:
+                patch.setattr(byte_module, "BYTE_VOCAB_HASH", tampered_hash)
+                patch.setattr(byte_module, "vocab_hash", lambda: tampered_hash)
+
+            reloaded = importlib.reload(authority)
+            patch.setattr(
+                reloaded,
+                "_bind_upstreams",
+                lambda *_args, **_kwargs: (
+                    SHA["expected_selection_identity_sha256"],
+                    SHA["expected_application_identity_sha256"],
+                ),
+            )
+            with pytest.raises(
+                reloaded.TokenizerDecisionError,
+                match=f"runtime identity drift: {surface}",
+            ):
+                reloaded.bind_byte_baseline_decision(
+                    selection,
+                    application,
+                    **SHA,
+                )
+    finally:
+        importlib.reload(authority)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("pad_id", 0),
+        ("bos_id", 1),
+        ("eos_id", 2),
+        ("byte_offset", 1),
+        ("special_tokens", {}),
+    ],
+)
+def test_bind_rejects_byte_class_semantics_missing_from_tokenizer_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    monkeypatch.setattr(authority.ByteTokenizer, field, replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime identity drift: {field}",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
+
+
+@pytest.mark.parametrize(
+    "method_name",
+    ["__init__", "identity", "encode", "decode", "oov_count", "fertility"],
+)
+def test_bind_rejects_semantically_equivalent_runtime_method_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+    method_name: str,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    raw = vars(authority.ByteTokenizer)[method_name]
+    if method_name == "identity":
+        original = raw.fget
+        assert original is not None
+
+        def wrapped_identity(self):
+            return original(self)
+
+        replacement = property(wrapped_identity)
+    elif method_name == "oov_count":
+        original = raw.__func__
+
+        def wrapped_oov_count(text):
+            return original(text)
+
+        replacement = staticmethod(wrapped_oov_count)
+    else:
+        original = raw
+
+        def wrapped_method(*args, **kwargs):
+            return original(*args, **kwargs)
+
+        replacement = wrapped_method
+
+    monkeypatch.setattr(authority.ByteTokenizer, method_name, replacement)
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime implementation drift: {method_name}",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )

@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
+from types import CodeType, FunctionType, MappingProxyType
 from typing import Any
 
 from twelve_six.data.balanced_split_application_v1 import (
@@ -17,12 +18,7 @@ from twelve_six.data.balanced_split_application_v1 import (
     verify_balanced_selection,
 )
 
-from .byte import (
-    BYTE_TOKENIZER_HASH,
-    BYTE_TOKENIZER_VERSION,
-    BYTE_VOCAB_HASH,
-    ByteTokenizer,
-)
+from .byte import ByteTokenizer
 
 SCHEMA = "12-6.d04-learned20m-tokenizer-decision.v1"
 DECISION = "RETAIN_BYTE_BASELINE"
@@ -83,14 +79,28 @@ _ZERO_CREDIT_BOUNDARY = {
     "final_test_outcomes_read": False,
     "authorized_optimized_target_exposure": 0,
 }
+# These values are intentionally literal and independent of the already-loaded
+# byte module. The checked source blob is one authority; mutable Python module
+# globals must not be able to redefine the expected runtime baseline before
+# this module is imported or reloaded.
 _EXPECTED_TOKENIZER_RUNTIME_IDENTITY = {
-    "version": BYTE_TOKENIZER_VERSION,
-    "config_sha256": BYTE_TOKENIZER_HASH,
-    "vocab_sha256": BYTE_VOCAB_HASH,
+    "version": "s0-byte-v1",
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
     "vocab_size": 256,
     "normalization": "none",
     "encoding": "utf-8",
     "special_tokens": {},
+}
+_EXPECTED_TOKENIZER_CLASS_STATE = {
+    "pad_id": None,
+    "bos_id": None,
+    "eos_id": None,
+    "byte_offset": 0,
+    "version": "s0-byte-v1",
+    "vocab_size": 256,
+    "normalization": "none",
+    "encoding": "utf-8",
 }
 
 
@@ -151,10 +161,123 @@ def _verify_canonical_byte_tokenizer_implementation() -> str:
     return observed
 
 
+def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
+    """Compile the pinned source without executing it and bind live method code."""
+
+    try:
+        payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
+    except OSError as exc:
+        raise TokenizerDecisionError(
+            "cannot read canonical byte tokenizer implementation"
+        ) from exc
+    if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer implementation identity drift"
+        )
+    try:
+        module_code = compile(
+            payload,
+            str(_BYTE_TOKENIZER_SOURCE_PATH),
+            "exec",
+            dont_inherit=True,
+        )
+    except (SyntaxError, ValueError, TypeError) as exc:
+        raise TokenizerDecisionError(
+            "cannot compile canonical byte tokenizer implementation"
+        ) from exc
+    class_codes = [
+        value
+        for value in module_code.co_consts
+        if isinstance(value, CodeType) and value.co_name == "ByteTokenizer"
+    ]
+    if len(class_codes) != 1:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer class code identity unavailable"
+        )
+    expected_names = {
+        "__init__",
+        "identity",
+        "encode",
+        "decode",
+        "oov_count",
+        "fertility",
+    }
+    methods = {
+        value.co_name: value
+        for value in class_codes[0].co_consts
+        if isinstance(value, CodeType) and value.co_name in expected_names
+    }
+    if set(methods) != expected_names:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer method code identity unavailable"
+        )
+    return methods
+
+
+def _runtime_byte_tokenizer_method_code(
+    class_state: Mapping[str, Any],
+    name: str,
+) -> CodeType:
+    """Read one live class method without invoking descriptor binding."""
+
+    raw = class_state.get(name)
+    if name == "identity":
+        if type(raw) is not property or raw.fget is None:
+            raise TokenizerDecisionError(
+                "canonical byte tokenizer runtime implementation drift: identity"
+            )
+        function = raw.fget
+    elif name == "oov_count":
+        if type(raw) is not staticmethod:
+            raise TokenizerDecisionError(
+                "canonical byte tokenizer runtime implementation drift: oov_count"
+            )
+        function = raw.__func__
+    else:
+        if type(raw) is not FunctionType:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime implementation drift: {name}"
+            )
+        function = raw
+    if type(function) is not FunctionType:
+        raise TokenizerDecisionError(
+            f"canonical byte tokenizer runtime implementation drift: {name}"
+        )
+    return function.__code__
+
+
 def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
     """Bind the loaded runtime identity to the source-pinned byte baseline."""
 
     implementation = _verify_canonical_byte_tokenizer_implementation()
+
+    # TokenizerIdentity intentionally omits several class-level protocol fields.
+    # Inspect the class dictionary directly so a derived/spoofed identity cannot
+    # hide process-local drift in byte/special-token semantics.
+    class_state = vars(ByteTokenizer)
+    sentinel = object()
+    for field, expected in _EXPECTED_TOKENIZER_CLASS_STATE.items():
+        observed = class_state.get(field, sentinel)
+        if type(observed) is not type(expected) or observed != expected:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime identity drift: {field}"
+            )
+    class_special_tokens = class_state.get("special_tokens", sentinel)
+    if (
+        type(class_special_tokens) is not MappingProxyType
+        or dict(class_special_tokens)
+    ):
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime identity drift: special_tokens"
+        )
+
+    expected_method_codes = _verified_canonical_byte_tokenizer_method_codes()
+    for name, expected_code in expected_method_codes.items():
+        if _runtime_byte_tokenizer_method_code(class_state, name) != expected_code:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime implementation drift: {name}"
+            )
+
     tokenizer = ByteTokenizer().identity
     for field in (
         "version",
