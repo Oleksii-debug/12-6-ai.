@@ -1,0 +1,503 @@
+name: D03 current Rada global dedup two-clean
+
+on:
+  pull_request:
+    branches:
+      - d03/rada-current-snapshot-replay-authority-g8-143-20261005
+    paths:
+      - ".github/workflows/d03_rada_current_global_dedup_g8_143.yml"
+      - "tools/run_d03_rada_current_global_dedup_v1.py"
+      - "tools/materialize_d03_rada_current_snapshot_candidate_v1.py"
+      - "tests/test_d03_rada_current_global_dedup_v1.py"
+      - "tests/test_d03_rada_current_replay_materialization_v1.py"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d03-rada-current-global-dedup-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  focused-contract:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/rada-current-global-dedup-g8-143-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+      PRODUCT_PARENT: "fb49b7e212444547219df2bd2aa466db955d51e5"
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+
+      - name: Bind stacked scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git merge-base --is-ancestor "$PRODUCT_PARENT" HEAD
+          git diff --name-only "$PRODUCT_PARENT"..HEAD | sort > /tmp/changed.txt
+          cat >/tmp/expected.txt <<'EOF'
+          .github/workflows/d03_rada_current_global_dedup_g8_143.yml
+          tests/test_d03_rada_current_global_dedup_v1.py
+          tests/test_d03_rada_current_replay_materialization_v1.py
+          tools/materialize_d03_rada_current_snapshot_candidate_v1.py
+          tools/run_d03_rada_current_global_dedup_v1.py
+          EOF
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - name: Run focused execution-carrier tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "pytest>=8,<9"
+          python -m pytest -q             tests/test_d03_rada_current_global_dedup_v1.py             tests/test_d03_rada_current_replay_materialization_v1.py
+
+  physical-pass:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/rada-current-global-dedup-g8-143-20261005'
+    needs: focused-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        pass: [1, 2]
+    env:
+      PASS_ID: "${{ matrix.pass }}"
+      HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+      PRODUCT_PARENT: "fb49b7e212444547219df2bd2aa466db955d51e5"
+      HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
+      V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
+      RETAINED_ARTIFACT_ID: "11281540677"
+      OUTER_SHA256: "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb"
+      SOURCE_SHA256: "9f937b3283dd2d9508a0a92442fc007e7e6d373a17d3d50fa428e324cb2fa290"
+      CANDIDATE_SHA256: "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7"
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout frozen historical QP mechanics
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.HISTORICAL_QP_REF }}
+          path: _historical_qp
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact V7 authority worktree
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.V7_HEAD }}
+          path: _v7
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+
+      - name: Bind exact stacked head and frozen mechanics
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git merge-base --is-ancestor "$PRODUCT_PARENT" HEAD
+          test "$(git -C _historical_qp rev-parse HEAD)" = "$HISTORICAL_QP_REF"
+          test "$(git -C _v7 rev-parse HEAD)" = "$V7_HEAD"
+          test "$(git hash-object tools/normalize_d03_rada_bulk_html.py)" =             "55ef5f5e7f09042489fa2642d099aedffaddb740"
+          test "$(git hash-object configs/data/d03_rada_bulk_normalization_v1.json)" =             "3e0ca093762242f18fadb21002946b4b733afea3"
+          test "$(git hash-object configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json)" =             "4a6cb0bd6b009ef36c9d2fb712967a4ae1cbfe0b"
+          test "$(git -C _historical_qp hash-object tools/filter_d03_rada_bulk_quality_privacy.py)" =             "69491874e60a1b846d683fff3c10214a869f18ff"
+          test "$(git -C _historical_qp hash-object configs/data/d03_rada_bulk_quality_privacy_v1.json)" =             "e1798398a87893c5561afc6d9cd4f3d8fdce6d8b"
+
+      - name: Download exact retained source artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/rada-current-global-dedup-$PASS_ID"
+          mkdir -p "$RUN_DIR/retained"
+          curl --fail --location --silent --show-error             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$RETAINED_ARTIFACT_ID/zip"             -o "$RUN_DIR/source-artifact.zip"
+          echo "$OUTER_SHA256  $RUN_DIR/source-artifact.zip" | sha256sum --check --strict
+          zipinfo -1 "$RUN_DIR/source-artifact.zip" | sort > "$RUN_DIR/members.txt"
+          cat >"$RUN_DIR/expected-members.txt" <<'EOF'
+          ATTRIBUTION.txt
+          rada-fresh-snapshot-qualification-v2.json
+          rada-probe-a.json
+          rada-probe-b.json
+          rada-source-a.zip
+          rada-successor-pin-v2.json
+          EOF
+          sort -o "$RUN_DIR/expected-members.txt" "$RUN_DIR/expected-members.txt"
+          cmp "$RUN_DIR/expected-members.txt" "$RUN_DIR/members.txt"
+          while IFS= read -r member; do
+            unzip -p "$RUN_DIR/source-artifact.zip" "$member"               > "$RUN_DIR/retained/$member"
+          done < "$RUN_DIR/expected-members.txt"
+          test "$(stat -c %s "$RUN_DIR/retained/rada-source-a.zip")" = "46774786"
+          echo "$SOURCE_SHA256  $RUN_DIR/retained/rada-source-a.zip"             | sha256sum --check --strict
+
+      - name: Materialize exact current Rada accepted candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/rada-current-global-dedup-$PASS_ID"
+          python tools/materialize_d03_rada_current_snapshot_candidate_v1.py             --repository-root "$GITHUB_WORKSPACE"             --historical-qp-root "$GITHUB_WORKSPACE/_historical_qp"             --retained-root "$RUN_DIR/retained"             --candidate-output "$RUN_DIR/rada-accepted.jsonl"             --summary-output "$RUN_DIR/replay-summary.json"
+          test "$(stat -c %s "$RUN_DIR/rada-accepted.jsonl")" = "224897989"
+          echo "$CANDIDATE_SHA256  $RUN_DIR/rada-accepted.jsonl"             | sha256sum --check --strict
+
+      - name: Execute incumbent indexed global dedup
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/rada-current-global-dedup-$PASS_ID"
+          python tools/run_d03_rada_current_global_dedup_v1.py             --v7-root "$GITHUB_WORKSPACE/_v7"             --bulk-workspace "$RUN_DIR/bulk-workspace"             --candidate-jsonl "$RUN_DIR/rada-accepted.jsonl"             --output-dir "$RUN_DIR/dedup-output"             --expected-execution-head "$HEAD_SHA"             --max-candidate-pairs 5000000             --max-index-postings 50000000             --max-pair-expansions 50000000
+
+      - name: Validate text-free zero-credit outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/rada-current-global-dedup-$PASS_ID"
+          python - "$RUN_DIR" "$PASS_ID" <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          pass_id = int(sys.argv[2])
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  allow_nan=False,
+              ).encode("utf-8")
+
+          def load(name):
+              return json.loads((root / name).read_text(encoding="utf-8"))
+
+          def self_hash(value, key):
+              core = dict(value)
+              claimed = core.pop(key)
+              assert type(claimed) is str and len(claimed) == 64
+              assert hashlib.sha256(canonical(core)).hexdigest() == claimed
+              return claimed
+
+          replay = load("replay-summary.json")
+          report = load("dedup-output/dedup-report.json")
+          survivors = load("dedup-output/survivor-authority.json")
+          execution = load("dedup-output/execution-evidence.json")
+          replay_id = self_hash(replay, "summary_identity_sha256")
+          survivor_id = self_hash(survivors, "survivor_authority_sha256")
+          execution_id = self_hash(execution, "evidence_identity_sha256")
+          assert replay["accepted_jsonl_sha256"] == (
+              "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7"
+          )
+          assert replay["canonical_capacity_credited"] == 0
+          assert replay["training_authorized_bytes"] == 0
+          assert execution["combined"]["source_object_count"] == 101996
+          assert execution["combined"]["declared_capacity_bytes"] == 198487122
+          assert execution["current_rada"]["source_object_count"] == 101733
+          assert execution["current_rada"]["declared_capacity_bytes"] == 192393157
+          assert execution["current_rada"]["bulk_corpus_admission_granted"] is False
+          assert execution["current_rada"]["training_authority_granted"] is False
+          assert execution["truth_boundary"]["canonical_capacity_credited"] == 0
+          assert execution["truth_boundary"]["training_authorized_bytes"] == 0
+          assert execution["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+          assert execution["truth_boundary"]["tokenizer_fit_authorized"] is False
+          assert execution["truth_boundary"]["training_executed"] is False
+          assert execution["truth_boundary"]["learned_weights_created"] is False
+          assert execution["truth_boundary"]["final_test_outcomes_read"] is False
+          assert execution["truth_boundary"]["paid_compute_used"] is False
+          assert survivors["canonical_capacity_credited"] == 0
+          assert survivors["training_authorized_bytes"] == 0
+          assert survivors["rights_recheck_for_training_required"] is True
+          summary_core = {
+              "schema_version": "12-6.d03-rada-current-global-dedup-physical-pass.v1",
+              "pass_id": pass_id,
+              "replay_summary_identity_sha256": replay_id,
+              "matcher_report_sha256": report["report_sha256"],
+              "survivor_authority_sha256": survivor_id,
+              "execution_evidence_identity_sha256": execution_id,
+              "source_object_count": 101996,
+              "declared_capacity_bytes": 198487122,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_optimized_target_exposure": 0,
+              "training_executed": False,
+              "raw_candidate_uploaded": False,
+              "source_archive_uploaded": False,
+          }
+          summary = {
+              **summary_core,
+              "summary_identity_sha256": hashlib.sha256(
+                  canonical(summary_core)
+              ).hexdigest(),
+          }
+          (root / "physical-pass-summary.json").write_text(
+              json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Remove raw source and candidate before artifact publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_DIR="$RUNNER_TEMP/rada-current-global-dedup-$PASS_ID"
+          rm -rf             "$RUN_DIR/retained"             "$RUN_DIR/source-artifact.zip"             "$RUN_DIR/rada-accepted.jsonl"             "$RUN_DIR/bulk-workspace"
+          test ! -e "$RUN_DIR/rada-accepted.jsonl"
+          test ! -e "$RUN_DIR/retained/rada-source-a.zip"
+
+      - name: Publish text-free physical pass
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-current-global-dedup-pass-${{ matrix.pass }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/rada-current-global-dedup-${{ matrix.pass }}/replay-summary.json
+            ${{ runner.temp }}/rada-current-global-dedup-${{ matrix.pass }}/physical-pass-summary.json
+            ${{ runner.temp }}/rada-current-global-dedup-${{ matrix.pass }}/dedup-output/dedup-report.json
+            ${{ runner.temp }}/rada-current-global-dedup-${{ matrix.pass }}/dedup-output/survivor-authority.json
+            ${{ runner.temp }}/rada-current-global-dedup-${{ matrix.pass }}/dedup-output/execution-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+  two-clean-authority:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/rada-current-global-dedup-g8-143-20261005'
+    needs: physical-pass
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+
+    steps:
+      - name: Download both exact pass artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rada-two-clean
+          curl --fail --location --silent --show-error             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100"             -o /tmp/rada-two-clean/artifacts.json
+          python - /tmp/rada-two-clean/artifacts.json "$HEAD_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          head = sys.argv[2]
+          artifacts = value.get("artifacts")
+          assert isinstance(artifacts, list)
+          selected = {}
+          for row in artifacts:
+              name = row.get("name")
+              for pass_id in (1, 2):
+                  expected = f"d03-rada-current-global-dedup-pass-{pass_id}-{head}"
+                  if name == expected:
+                      assert row.get("expired") is False
+                      selected[pass_id] = int(row["id"])
+          assert set(selected) == {1, 2}
+          Path("/tmp/rada-two-clean/ids.json").write_text(
+              json.dumps(selected, sort_keys=True),
+              encoding="utf-8",
+          )
+          PY
+          for pass_id in 1 2; do
+            artifact_id="$(python -c 'import json,sys; print(json.load(open("/tmp/rada-two-clean/ids.json"))[sys.argv[1]])' "$pass_id")"
+            curl --fail --location --silent --show-error               -H "Authorization: Bearer $GH_TOKEN"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               -o "/tmp/rada-two-clean/pass-$pass_id.zip"
+            mkdir -p "/tmp/rada-two-clean/pass-$pass_id"
+            unzip -q "/tmp/rada-two-clean/pass-$pass_id.zip"               -d "/tmp/rada-two-clean/pass-$pass_id"
+          done
+
+      - name: Require two byte-identical scientific outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          P1="/tmp/rada-two-clean/pass-1"
+          P2="/tmp/rada-two-clean/pass-2"
+          cmp "$P1/replay-summary.json" "$P2/replay-summary.json"
+          cmp "$P1/dedup-output/dedup-report.json" "$P2/dedup-output/dedup-report.json"
+          cmp "$P1/dedup-output/survivor-authority.json" "$P2/dedup-output/survivor-authority.json"
+
+      - name: Build two-clean zero-credit authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - /tmp/rada-two-clean "$HEAD_SHA" <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  allow_nan=False,
+              ).encode("utf-8")
+
+          def load(pass_id, relative):
+              return json.loads(
+                  (root / f"pass-{pass_id}" / relative).read_text(
+                      encoding="utf-8"
+                  )
+              )
+
+          def verify(value, key):
+              core = dict(value)
+              claimed = core.pop(key)
+              assert type(claimed) is str and len(claimed) == 64
+              assert hashlib.sha256(canonical(core)).hexdigest() == claimed
+              return claimed
+
+          reports = [load(i, "dedup-output/dedup-report.json") for i in (1, 2)]
+          survivors = [
+              load(i, "dedup-output/survivor-authority.json") for i in (1, 2)
+          ]
+          executions = [
+              load(i, "dedup-output/execution-evidence.json") for i in (1, 2)
+          ]
+          replays = [load(i, "replay-summary.json") for i in (1, 2)]
+          pass_summaries = [load(i, "physical-pass-summary.json") for i in (1, 2)]
+
+          report_ids = [row["report_sha256"] for row in reports]
+          assert report_ids[0] == report_ids[1]
+          survivor_ids = [verify(row, "survivor_authority_sha256") for row in survivors]
+          assert survivor_ids[0] == survivor_ids[1]
+          replay_ids = [verify(row, "summary_identity_sha256") for row in replays]
+          assert replay_ids[0] == replay_ids[1]
+          execution_ids = [verify(row, "evidence_identity_sha256") for row in executions]
+          pass_ids = [verify(row, "summary_identity_sha256") for row in pass_summaries]
+
+          for index, execution in enumerate(executions, 1):
+              assert execution["execution_head_sha"] == head
+              assert execution["combined"]["indexed_report_sha256"] == report_ids[0]
+              assert execution["survivor_authority_sha256"] == survivor_ids[0]
+              assert execution["current_rada"]["source_object_count"] == 101733
+              assert execution["current_rada"]["declared_capacity_bytes"] == 192393157
+              assert execution["combined"]["source_object_count"] == 101996
+              assert execution["combined"]["declared_capacity_bytes"] == 198487122
+              assert execution["matcher_execution"]["max_candidate_pairs"] == 5000000
+              assert execution["matcher_execution"]["max_index_postings"] == 50000000
+              assert execution["matcher_execution"]["max_pair_expansions"] == 50000000
+              truth = execution["truth_boundary"]
+              assert truth["canonical_capacity_credited"] == 0
+              assert truth["training_authorized_bytes"] == 0
+              assert truth["authorized_optimized_target_exposure"] == 0
+              assert truth["tokenizer_fit_authorized"] is False
+              assert truth["training_executed"] is False
+              assert truth["learned_weights_created"] is False
+              assert truth["final_test_outcomes_read"] is False
+              assert truth["paid_compute_used"] is False
+              assert pass_summaries[index - 1]["pass_id"] == index
+              assert pass_summaries[index - 1]["raw_candidate_uploaded"] is False
+              assert pass_summaries[index - 1]["source_archive_uploaded"] is False
+
+          stable_execution_keys = (
+              "product_parent_sha",
+              "dependency_path_blobs",
+              "baseline_v8_nomissafe",
+              "current_rada",
+              "combined",
+              "content_boundary",
+              "truth_boundary",
+          )
+          for key in stable_execution_keys:
+              assert executions[0][key] == executions[1][key]
+
+          core = {
+              "schema_version": "12-6.d03-rada-current-global-dedup-two-clean.v1",
+              "status": "PASS_TWO_CLEAN_GLOBAL_DEDUP_ZERO_CREDIT",
+              "execution_head_sha": head,
+              "fresh_physical_pass_count": 2,
+              "replay_summary_identity_sha256": replay_ids[0],
+              "indexed_report_sha256": report_ids[0],
+              "survivor_authority_sha256": survivor_ids[0],
+              "execution_evidence_identity_sha256": execution_ids,
+              "physical_pass_summary_identity_sha256": pass_ids,
+              "source_object_count": 101996,
+              "declared_capacity_bytes_before_global_dedup": 198487122,
+              "post_dedup_conservative_unique_bytes": executions[0]["combined"][
+                  "post_dedup_conservative_unique_bytes"
+              ],
+              "duplicate_discount_bytes": executions[0]["combined"][
+                  "duplicate_discount_bytes"
+              ],
+              "duplicate_cluster_count": executions[0]["combined"][
+                  "duplicate_cluster_count"
+              ],
+              "rights_scope": "ARTIFACT_RETENTION_AND_REPRODUCIBILITY_ONLY",
+              "rights_recheck_for_training_required": True,
+              "global_cross_source_dedup_executed": True,
+              "evaluation_decontamination_executed": False,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "raw_text_emitted": False,
+          }
+          authority = {
+              **core,
+              "authority_identity_sha256": hashlib.sha256(
+                  canonical(core)
+              ).hexdigest(),
+          }
+          (root / "two-clean-authority.json").write_text(
+              json.dumps(
+                  authority,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          print("D03_RADA_CURRENT_GLOBAL_DEDUP_TWO_CLEAN=PASS_ZERO_CREDIT")
+          print("AUTHORITY_IDENTITY_SHA256=" + authority["authority_identity_sha256"])
+          PY
+
+      - name: Publish two-clean authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-current-global-dedup-two-clean-${{ github.event.pull_request.head.sha }}
+          path: /tmp/rada-two-clean/two-clean-authority.json
+          if-no-files-found: error
+          retention-days: 30
