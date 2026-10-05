@@ -530,16 +530,27 @@ def test_unscheduled_default_constant_rate_valid_replay(
 
 
 @pytest.mark.parametrize(
-    ("forged_rate", "expected_message"),
+    ("forged_rate", "expected_error", "expected_message"),
     [
-        (0.12, "default constant optimizer rate"),
-        (False, "optimizer learning rate type differs from live optimizer"),
-        (0.0, "default constant optimizer rate"),
-        (10 ** 400, "optimizer learning rate type differs from live optimizer"),
+        (0.12, TrainingStateInvalidError, "default constant optimizer rate"),
+        (
+            False,
+            NonFiniteTrainingError,
+            "optimizer learning rate type differs from live optimizer",
+        ),
+        (0.0, TrainingStateInvalidError, "default constant optimizer rate"),
+        (
+            10 ** 400,
+            NonFiniteTrainingError,
+            "optimizer learning rate type differs from live optimizer",
+        ),
     ],
 )
 def test_unscheduled_default_constant_rate_direct_resume_rejects_before_apply(
-    preserve_state: Any, forged_rate: Any, expected_message: str,
+    preserve_state: Any,
+    forged_rate: Any,
+    expected_error: type[BaseException],
+    expected_message: str,
 ) -> None:
     config = TrainerConfig(
         seed=703, max_steps=4, scheduler="constant", learning_rate=0.01,
@@ -551,7 +562,7 @@ def test_unscheduled_default_constant_rate_direct_resume_rejects_before_apply(
     corrupt_optimizer["param_groups"][0]["lr"] = forged_rate
     corrupt = replace(saved, optimizer=corrupt_optimizer)
     target = Trainer(_TinyLogits(), config, device="cpu")
-    with pytest.raises(TrainingStateInvalidError, match=expected_message):
+    with pytest.raises(expected_error, match=expected_message):
         target.load_state_dict(corrupt)
     assert not target.optimizer.state
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
