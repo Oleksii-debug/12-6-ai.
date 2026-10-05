@@ -600,3 +600,150 @@ jobs:
             ${{ runner.temp }}/rada-probe-b.json
           if-no-files-found: warn
           retention-days: 30
+
+checkpoint346-current-d05-model341-v8-structural-v2:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'qualification/2778-model341-recovery-v8-g6-132-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MODEL341_SHA: f151c77a8ef8721f0f568509147b1a5f961ae6c7
+      MODEL341_CANDIDATE_BLOB: 69e3cbd5f5c83c9d3d529a2a6376db3055979c40
+
+    steps:
+      - name: Checkout exact qualification candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout exact D05 Product runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ github.base_ref }}
+          path: d05-runtime
+          persist-credentials: false
+
+      - name: Checkout exact canonical MODEL-341 carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Oleksii-debug/12-6-ai.
+          ref: ${{ env.MODEL341_SHA }}
+          path: model341-carrier
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact D05 and MODEL-341 source identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          D05_RUNTIME_SHA="$(git -C d05-runtime rev-parse HEAD)"
+          test "${#D05_RUNTIME_SHA}" -eq 40
+          case "$D05_RUNTIME_SHA" in
+            *[!0-9a-f]*) exit 1 ;;
+          esac
+          echo "D05_RUNTIME_SHA=$D05_RUNTIME_SHA" >> "$GITHUB_ENV"
+          test "$(git -C model341-carrier rev-parse HEAD)" = "$MODEL341_SHA"
+          test "$(git -C model341-carrier hash-object configs/candidates/model341_20m_candidate_a.json)" = "$MODEL341_CANDIDATE_BLOB"
+          python -m py_compile tools/run_checkpoint346_model341_current_d05_recovery_v8.py
+
+      - name: Bootstrap frozen LOCAL_FREE CPU environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python model341-carrier/tools/execution_bootstrap.py bootstrap \
+            --repo-root model341-carrier \
+            --capabilities runtime \
+            --venv "$GITHUB_WORKSPACE/.checkpoint346-v8-runtime" \
+            --manifest "$GITHUB_WORKSPACE/checkpoint346-v8-environment.json"
+
+      - name: Execute collision-safe current-D05 fresh-process recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          .checkpoint346-v8-runtime/bin/python \
+            tools/run_checkpoint346_model341_current_d05_recovery_v8.py \
+            --runtime-root d05-runtime \
+            --model341-root model341-carrier \
+            --output checkpoint346-v8-result.json
+
+      - name: Enforce structural-v2 mechanics-only result contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          .checkpoint346-v8-runtime/bin/python - <<'PY'
+          import copy
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path("checkpoint346-v8-result.json")
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+
+          tool_path = Path("tools/run_checkpoint346_model341_current_d05_recovery_v8.py")
+          spec = importlib.util.spec_from_file_location("checkpoint346_v7", tool_path)
+          assert spec is not None and spec.loader is not None
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          module._validate_report_contract(report)
+          execution = report["execution"]
+          assert execution["state_hash_scheme"] == (
+              "sha256:length-prefixed-structural-v2"
+          )
+          assert execution["structural_hash_self_test"] is True
+          assert execution["exact_full_rng_state_equal"] is True
+          assert execution["full_rng_state_sha256"] == (
+              report["baseline_step2"]["rng_state_sha256"]
+          )
+          assert report["baseline_step2"] == report["resumed_step2"]
+          assert report["runtime"]["git_sha"] == os.environ["D05_RUNTIME_SHA"]
+
+          collision_vectors = [
+              ([[], []], [[[]]]),
+              (((), ()), (((),),)),
+              ([(), []], [([],)]),
+          ]
+          for left, right in collision_vectors:
+              assert module._tree_hash(left) != module._tree_hash(right)
+
+          bad = copy.deepcopy(report)
+          bad["execution"]["same_next_step_equal"] = False
+          try:
+              module._validate_report_contract(bad)
+          except AssertionError:
+              pass
+          else:
+              raise AssertionError("contradictory PASS flag was accepted")
+
+          bad = copy.deepcopy(report)
+          bad["resumed_step2"]["rng_state_sha256"] = "0" * 64
+          try:
+              module._validate_report_contract(bad)
+          except AssertionError:
+              pass
+          else:
+              raise AssertionError("contradictory RNG identity was accepted")
+
+          print("CHECKPOINT346_STRUCTURAL_V2=PASS_ZERO_CREDIT")
+          print("RESULT_IDENTITY_SHA256=" + report["identity_sha256"])
+          PY
+
+      - name: Upload collision-safe qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint346-current-d05-model341-v8-structural-v2
+          path: |
+            checkpoint346-v8-result.json
+            checkpoint346-v8-environment.json
+          retention-days: 30
+          compression-level: 9
+          if-no-files-found: error
