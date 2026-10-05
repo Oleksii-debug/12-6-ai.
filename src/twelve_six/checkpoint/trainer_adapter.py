@@ -482,6 +482,23 @@ def _note_restore_binding_drift(
         )
 
 
+def _assert_native_d02_model_training_mode(model: Any, trainer: Any) -> None:
+    """Require the non-serialized nn.Module training-mode resume invariant."""
+
+    if not _is_native_d02(trainer):
+        return
+    try:
+        training = vars(model).get("training")
+    except TypeError as exc:
+        raise CheckpointCompatibilityError(
+            "native D02 checkpoint model does not expose training mode"
+        ) from exc
+    if training is not True:
+        raise CheckpointCompatibilityError(
+            "native D02 checkpoint restore requires model training mode"
+        )
+
+
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
     """Refuse mismatched D02 model owners without executing custom descriptors."""
 
@@ -559,6 +576,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
     model = initial_attrs.get("model")
     optimizer = initial_attrs.get("optimizer")
     config = initial_attrs.get("config")
+    _assert_native_d02_model_training_mode(model, trainer)
     scheduler = initial_attrs.get("scheduler")
     scaler = initial_attrs.get("scaler")
     native_d02 = _is_native_d02(trainer)
@@ -677,6 +695,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore target config changed during preflight"
         )
+    _assert_native_d02_model_training_mode(model, trainer)
     if pending_gradient:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer with no pending gradients"
@@ -1275,6 +1294,7 @@ def save_trainer_checkpoint(
     if not callable(getattr(trainer, "state_dict", None)):
         raise TypeError("trainer must provide state_dict()")
     _assert_trainer_model_binding(model, trainer)
+    _assert_native_d02_model_training_mode(model, trainer)
     state = _trainer_state_as_mapping(trainer.state_dict())
     # A canonical D02 checkpoint should never be produced under a different
     # ambient PyTorch policy than the validated trainer configuration.
