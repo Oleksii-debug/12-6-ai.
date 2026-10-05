@@ -1,0 +1,203 @@
+name: D05 fresh-process checkpoint resume execution
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/d05_fresh_process_resume_execution.yml"
+      - "tools/execute_d05_fresh_process_resume.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d05-fresh-process-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  fresh-process-resume:
+    name: fresh-process exact replay and corrupt refusal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bind exact Product source
+        env:
+          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+        run: |
+          git cat-file -e "$PRODUCT_HEAD^{commit}"
+          changed="$(git diff --name-only "$PRODUCT_HEAD"..HEAD)"
+          test "$changed" = $'.github/workflows/d05_fresh_process_resume_execution.yml\ntools/execute_d05_fresh_process_resume.py'
+      - name: Install current project execution environment
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Producer process - commit step one, seal checkpoint, run baseline step two
+        env:
+          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+        run: |
+          mkdir -p "/tmp/d05 fresh процес"
+          python tools/execute_d05_fresh_process_resume.py produce \
+            --checkpoint "/tmp/d05 fresh процес/checkpoint" \
+            --baseline "/tmp/d05 fresh процес/baseline.json" \
+            --metadata "/tmp/d05 fresh процес/metadata.json" \
+            --product-head "$PRODUCT_HEAD"
+      - name: Fresh adapter process - restore then run real step two
+        env:
+          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+        run: |
+          python tools/execute_d05_fresh_process_resume.py resume \
+            --loader adapter \
+            --checkpoint "/tmp/d05 fresh процес/checkpoint" \
+            --output "/tmp/d05 fresh процес/adapter.json" \
+            --product-head "$PRODUCT_HEAD"
+      - name: Fresh progress process - restore then run real step two
+        env:
+          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+        run: |
+          python tools/execute_d05_fresh_process_resume.py resume \
+            --loader progress \
+            --checkpoint "/tmp/d05 fresh процес/checkpoint" \
+            --output "/tmp/d05 fresh процес/progress.json" \
+            --product-head "$PRODUCT_HEAD"
+      - name: Create checksum-corrupt independent checkpoint copy
+        run: |
+          python tools/execute_d05_fresh_process_resume.py corrupt-copy \
+            --source "/tmp/d05 fresh процес/checkpoint" \
+            --destination "/tmp/d05 fresh процес/checkpoint-corrupt"
+      - name: Fresh adapter process - reject corrupt checkpoint without mutation
+        env:
+          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+        run: |
+          python tools/execute_d05_fresh_process_resume.py reject-corrupt \
+            --loader adapter \
+            --checkpoint "/tmp/d05 fresh процес/checkpoint-corrupt" \
+            --output "/tmp/d05 fresh процес/adapter-reject.json" \
+            --product-head "$PRODUCT_HEAD"
+      - name: Fresh progress process - reject corrupt checkpoint without mutation
+        env:
+          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+        run: |
+          python tools/execute_d05_fresh_process_resume.py reject-corrupt \
+            --loader progress \
+            --checkpoint "/tmp/d05 fresh процес/checkpoint-corrupt" \
+            --output "/tmp/d05 fresh процес/progress-reject.json" \
+            --product-head "$PRODUCT_HEAD"
+      - name: Require bit-identical baseline and both fresh-process replays
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("/tmp/d05 fresh процес")
+          baseline = json.loads(root.joinpath("baseline.json").read_text(encoding="utf-8"))
+
+          def mismatch_paths(left, right, path=""):
+              if type(left) is not type(right):
+                  return [path or "/"]
+              if isinstance(left, dict):
+                  paths = []
+                  for key in sorted(set(left) | set(right)):
+                      child = f"{path}/{key}"
+                      if key not in left or key not in right:
+                          paths.append(child)
+                      else:
+                          paths.extend(mismatch_paths(left[key], right[key], child))
+                  return paths
+              if isinstance(left, list):
+                  if len(left) != len(right):
+                      return [f"{path}/length"]
+                  paths = []
+                  for index, (a, b) in enumerate(zip(left, right)):
+                      paths.extend(mismatch_paths(a, b, f"{path}/{index}"))
+                  return paths
+              return [] if left == right else [path or "/"]
+
+          failed = False
+          for name in ("adapter", "progress"):
+              replay = json.loads(
+                  root.joinpath(f"{name}.json").read_text(encoding="utf-8")
+              )
+              paths = mismatch_paths(baseline, replay)
+              if paths:
+                  failed = True
+                  print(
+                      "D05_FRESH_PROCESS_MISMATCH "
+                      f"loader={name} count={len(paths)} paths={','.join(paths[:64])}"
+                  )
+                  baseline_groups = baseline["optimizer"]["items"][0][1]["items"]
+                  replay_groups = replay["optimizer"]["items"][0][1]["items"]
+                  baseline_keys = sorted(
+                      pair[0] for pair in baseline_groups[0]["items"]
+                  )
+                  replay_keys = sorted(
+                      pair[0] for pair in replay_groups[0]["items"]
+                  )
+                  print(
+                      "D05_OPTIMIZER_GROUP_KEYSET "
+                      f"loader={name} "
+                      f"baseline_only={','.join(str(k) for k in baseline_keys if k not in replay_keys)} "
+                      f"replay_only={','.join(str(k) for k in replay_keys if k not in baseline_keys)}"
+                  )
+              else:
+                  print(f"D05_FRESH_PROCESS_MATCH loader={name}")
+          if failed:
+              raise SystemExit(1)
+          PY
+      - name: Validate corrupt refusal and emit text-free evidence
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path("/tmp/d05 fresh процес")
+          baseline = root.joinpath("baseline.json").read_bytes()
+          metadata_raw = root.joinpath("metadata.json").read_bytes()
+          metadata = json.loads(metadata_raw.decode("utf-8"))
+          adapter_reject = json.loads(
+              root.joinpath("adapter-reject.json").read_text(encoding="utf-8")
+          )
+          progress_reject = json.loads(
+              root.joinpath("progress-reject.json").read_text(encoding="utf-8")
+          )
+          assert adapter_reject["rejected"] is True
+          assert adapter_reject["unchanged"] is True
+          assert progress_reject["rejected"] is True
+          assert progress_reject["unchanged"] is True
+          truth = metadata["truth_boundary"]
+          assert truth["real_learned20m_checkpoint"] is False
+          assert truth["synthetic_physical_resume_only"] is True
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["training_executed_on_admitted_targets"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          evidence = {
+              "product_head": metadata["product_head"],
+              "checkpoint_id": metadata["checkpoint_id"],
+              "manifest_sha256": metadata["manifest_sha256"],
+              "baseline_state_sha256": hashlib.sha256(baseline).hexdigest(),
+              "environment": metadata["environment"],
+              "adapter_corrupt_exception": adapter_reject["exception_type"],
+              "progress_corrupt_exception": progress_reject["exception_type"],
+              "fresh_process_adapter_exact": True,
+              "fresh_process_progress_exact": True,
+              "corrupt_adapter_unchanged": True,
+              "corrupt_progress_unchanged": True,
+              "authorized_optimized_target_exposure": 0,
+              "real_learned20m_checkpoint": False,
+          }
+          print(
+              "D05_FRESH_PROCESS_TEXT_FREE_EVIDENCE "
+              + json.dumps(evidence, sort_keys=True, separators=(",", ":"))
+          )
+          PY
+      - name: Ensure execution did not mutate repository
+        run: test -z "$(git status --porcelain --untracked-files=no)"
