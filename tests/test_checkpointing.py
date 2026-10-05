@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import random
 from dataclasses import replace
 from pathlib import Path
@@ -967,6 +969,57 @@ def test_checkpoint_validator_cannot_publish_tampered_staging_bytes(
             trainer_state={},
             identity=identity(step=0, tokens_seen=0),
             **validators,
+        )
+
+    assert not checkpoint.exists()
+
+
+def test_checkpoint_validator_cannot_reseal_different_staging_manifest(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "resealed-staging"
+    model = NumpyModel(np.array([0.1, -0.2, 0.3]))
+
+    def reseal_staging() -> None:
+        candidates = [
+            path
+            for path in tmp_path.rglob("weights.safetensors")
+            if path.is_file()
+        ]
+        assert len(candidates) == 1
+        weights = candidates[0]
+        changed = weights.read_bytes() + b"resealed-after-verification"
+        weights.write_bytes(changed)
+
+        manifest_path = weights.parent / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["files"]["weights.safetensors"] = {
+            "sha256": hashlib.sha256(changed).hexdigest(),
+            "bytes": len(changed),
+        }
+        manifest["checkpoint_id"] = hash_json(
+            {"identity": manifest["identity"], "files": manifest["files"]}
+        )
+        manifest_path.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        manifest_sha = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        (weights.parent / "MANIFEST.sha256").write_text(
+            f"{manifest_sha}  manifest.json\n",
+            encoding="ascii",
+        )
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="staging manifest changed after validation",
+    ):
+        save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=identity(step=0, tokens_seen=0),
+            post_rng_prepublish_validator=reseal_staging,
         )
 
     assert not checkpoint.exists()
