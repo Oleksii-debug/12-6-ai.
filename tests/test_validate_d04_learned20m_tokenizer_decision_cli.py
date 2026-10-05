@@ -623,11 +623,49 @@ def test_postlink_cleanup_denial_reports_committed_success(
     assert status["output_committed"] is True
     assert status["cleanup_pending"] is True
     assert "COMMITTED_AND_VERIFIED" in status["recovery"]
+    assert "do not delete or overwrite" in status["recovery"]
     expected = cli._serialize_report(report).encode("utf-8")
     assert output.read_bytes() == expected
     staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert len(staged) == 1 and staged[0].read_bytes() == expected
     real_unlink(staged[0])
+
+
+
+def test_postcommit_substituted_stage_gets_non_destructive_recovery_guidance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    moved = tmp_path / "owned-stage-moved-aside"
+    unrelated = b"UNRELATED_POSTCOMMIT_STAGE"
+    expected = cli._serialize_report(
+        {"schema": "test-only", "status": "zero-credit"}
+    ).encode("utf-8")
+    actual_unlink_owned = cli._unlink_owned_path
+
+    def substitute_before_cleanup(
+        candidate: Path,
+        identity: tuple[int, int],
+        *,
+        missing_ok: bool = False,
+    ) -> None:
+        if candidate.name.startswith(f".{output.name}."):
+            candidate.rename(moved)
+            candidate.write_bytes(unrelated)
+        actual_unlink_owned(candidate, identity, missing_ok=missing_ok)
+
+    monkeypatch.setattr(cli, "_unlink_owned_path", substitute_before_cleanup)
+    with pytest.raises(cli.PublicationCleanupPending) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+
+    assert "COMMITTED_AND_VERIFIED" in str(caught.value)
+    assert "do not delete or overwrite" in str(caught.value)
+    assert output.read_bytes() == expected
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == unrelated
+    assert moved.read_bytes() == expected
 
 
 def test_link_create_then_raise_is_reconciled_as_committed(
