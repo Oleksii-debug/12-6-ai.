@@ -1589,7 +1589,6 @@ def _publish_json_outputs(
     )
 
 
-
 def execute(
     *,
     v7_root: Path,
