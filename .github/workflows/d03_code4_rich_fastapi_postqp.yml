@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/d03_code4_rich_fastapi_postqp.yml"
+      - "tools/execute_d03_code4_rich_fastapi_postqp_v1.py"
       - "tools/run_d03_code4_rich_fastapi_postqp_v1.py"
 
 permissions:
@@ -63,7 +64,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
           git diff --quiet HEAD --
           git diff --cached --quiet HEAD --
-          python -m py_compile tools/run_d03_code4_rich_fastapi_postqp_v1.py
+          python -m py_compile \
+            tools/execute_d03_code4_rich_fastapi_postqp_v1.py \
+            tools/run_d03_code4_rich_fastapi_postqp_v1.py
 
           run_root="$RUNNER_TEMP/preflight-$PASS_ID"
           mkdir -p "$run_root"
@@ -73,7 +76,7 @@ jobs:
 
           cleanup() { git worktree remove --force "$run_root/v7" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
-          python tools/run_d03_code4_rich_fastapi_postqp_v1.py preflight \
+          python tools/execute_d03_code4_rich_fastapi_postqp_v1.py preflight \
             --v7-root "$run_root/v7" \
             --bulk-workspace "$run_root/bulk" \
             --expected-execution-head "$EXECUTION_SHA" \
