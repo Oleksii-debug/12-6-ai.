@@ -1023,3 +1023,43 @@ def test_checkpoint_validator_cannot_reseal_different_staging_manifest(
         )
 
     assert not checkpoint.exists()
+
+
+def test_checkpoint_validator_cannot_rewrite_canonical_metadata_bytes(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "rewritten-metadata"
+    model = NumpyModel(np.array([0.1, -0.2, 0.3]))
+
+    def rewrite_metadata() -> None:
+        candidates = [
+            path
+            for path in tmp_path.rglob("manifest.json")
+            if path.is_file()
+        ]
+        assert len(candidates) == 1
+        manifest_path = candidates[0]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_path.write_text(
+            json.dumps(manifest, sort_keys=True, indent=1) + "\n",
+            encoding="utf-8",
+        )
+        manifest_sha = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        (manifest_path.parent / "MANIFEST.sha256").write_text(
+            f"{manifest_sha}  manifest.json\n",
+            encoding="ascii",
+        )
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="staging metadata bytes changed after validation",
+    ):
+        save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=identity(step=0, tokens_seen=0),
+            post_rng_prepublish_validator=rewrite_metadata,
+        )
+
+    assert not checkpoint.exists()
