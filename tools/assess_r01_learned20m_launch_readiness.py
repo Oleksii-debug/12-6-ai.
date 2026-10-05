@@ -11,7 +11,8 @@ from typing import Any
 
 from twelve_six.learned20m_readiness import assess_learned20m_readiness
 
-DEFAULT_PATH = Path("configs/research/r01_learned20m_launch_readiness_v1.json")
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PATH = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
 MAX_INPUT_BYTES = 1_048_576
 MAX_JSON_DEPTH = 64
 MAX_JSON_NODES = 10_000
