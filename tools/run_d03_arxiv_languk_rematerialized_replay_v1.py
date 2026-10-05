@@ -8,6 +8,7 @@ import importlib.util
 import io
 import json
 import os
+import stat
 import subprocess
 import sys
 import tarfile
@@ -382,11 +383,13 @@ def _stage_new_bytes(path: Path, raw: bytes, *, label: str) -> Path:
     except BaseException as failure:
         try:
             staged.unlink(missing_ok=True)
-        except OSError as cleanup_error:
+        except (OSError, KeyboardInterrupt, SystemExit) as cleanup_error:
             raise RematerializationError(
                 "STAGING_CLEANUP_INCOMPLETE: "
-                f"{label} write/verification failed ({type(failure).__name__}), "
-                f"staged cleanup failed ({type(cleanup_error).__name__}); "
+                f"{label} write/verification failed "
+                f"({type(failure).__name__}: {failure}), "
+                f"staged cleanup failed "
+                f"({type(cleanup_error).__name__}: {cleanup_error}); "
                 f"unpublished stage: {staged}; manual reconciliation required"
             ) from failure
         raise
@@ -410,6 +413,37 @@ class PublicationIndeterminate(RematerializationError):
     def __init__(self, message: str, *, staged: Path) -> None:
         super().__init__(message)
         self.staged = staged
+
+
+@contextmanager
+def _held_publication_source(
+    source: Any, staged: Path, final: Path, *, label: str,
+) -> Iterator[Any]:
+    """Never discard a recovery alias when closing a held source fails."""
+    primary_failure: BaseException | None = None
+    try:
+        yield source
+    except BaseException as exc:
+        primary_failure = exc
+        raise
+    finally:
+        try:
+            source.close()
+        except (OSError, KeyboardInterrupt, SystemExit) as close_error:
+            original = (
+                f"; original error: {type(primary_failure).__name__}: "
+                f"{primary_failure}"
+                if primary_failure is not None else ""
+            )
+            raise PublicationIndeterminate(
+                f"SOURCE_CLOSE_INDETERMINATE: cannot close held {label} "
+                f"source for final {final}; retained stage {staged}; "
+                f"close error: {type(close_error).__name__}: {close_error}"
+                f"{original}; manual reconciliation required",
+                staged=staged,
+            ) from (
+                primary_failure if primary_failure is not None else close_error
+            )
 
 
 def _matches_staged_identity(
@@ -447,7 +481,7 @@ def _link_verified_new_bytes(
         raise RematerializationError(
             f"staged {label} identity unavailable before publication"
         ) from exc
-    with source:
+    with _held_publication_source(source, staged, path, label=label):
         info = os.fstat(source.fileno())
         identity = (info.st_dev, info.st_ino)
         if (
@@ -457,18 +491,26 @@ def _link_verified_new_bytes(
         ):
             raise RematerializationError(f"staged {label} changed before publication")
 
-        link_error: Exception | None = None
+        link_error: BaseException | None = None
         try:
             _link_staged_new_bytes(staged, path, label=label)
-        except (OSError, RematerializationError) as exc:
+        except (OSError, RematerializationError, KeyboardInterrupt, SystemExit) as exc:
             link_error = exc
 
-        if (
-            link_error is None
-            and _matches_staged_identity(staged, raw, identity)
-            and _matches_staged_identity(path, raw, identity)
-        ):
-            return
+        try:
+            if (
+                link_error is None
+                and _matches_staged_identity(staged, raw, identity)
+                and _matches_staged_identity(path, raw, identity)
+            ):
+                return
+        except (KeyboardInterrupt, SystemExit) as interruption:
+            raise PublicationIndeterminate(
+                f"PUBLICATION_INDETERMINATE: {label} verification interrupted "
+                f"after a possible link at {path}; retained original stage "
+                f"{staged}; manual reconciliation required",
+                staged=staged,
+            ) from interruption
 
         try:
             published = path.stat(follow_symlinks=False)
@@ -479,7 +521,7 @@ def _link_verified_new_bytes(
                 f"published {label} disappeared before verification; "
                 "manual reconciliation required"
             ) from None
-        except OSError as inspect_error:
+        except (OSError, KeyboardInterrupt, SystemExit) as inspect_error:
             raise PublicationIndeterminate(
                 f"PUBLICATION_INDETERMINATE: cannot inspect final {path}; "
                 f"retained original stage {staged}; "
@@ -503,7 +545,7 @@ def _link_verified_new_bytes(
                 ) from link_error
             try:
                 path.unlink()
-            except OSError as rollback_error:
+            except (OSError, KeyboardInterrupt, SystemExit) as rollback_error:
                 raise PublicationIndeterminate(
                     f"ROLLBACK_INCOMPLETE: own final {path} could not be removed; "
                     f"retained original stage {staged}; "
@@ -524,27 +566,36 @@ def _write_new_bytes(path: Path, raw: bytes, *, label: str) -> None:
     """Create one complete output without clobbering existing names."""
     staged = _stage_new_bytes(path, raw, label=label)
     published_and_verified = False
+    primary_failure: BaseException | None = None
     try:
         _link_verified_new_bytes(staged, path, raw, label=label)
         published_and_verified = True
+    except BaseException as exc:
+        primary_failure = exc
+        raise
     finally:
         # Do not discard the sole recovery alias if final-path inspection or
         # owned-only rollback failed. A human must reconcile both names.
-        primary_failure = sys.exc_info()[1]
         if not isinstance(primary_failure, PublicationIndeterminate):
             try:
                 staged.unlink(missing_ok=True)
-            except OSError as cleanup_error:
+            except (OSError, KeyboardInterrupt, SystemExit) as cleanup_error:
                 if published_and_verified and primary_failure is None:
                     raise RematerializationError(
                         f"{label} was published and byte-verified, but staged cleanup "
                         f"is pending: {staged}; inspect the final output before retry"
                     ) from cleanup_error
-                original = (
-                    f"; original publication failure: "
-                    f"{type(primary_failure).__name__}: {primary_failure}"
-                    if primary_failure is not None else ""
-                )
+                original = ""
+                if primary_failure is not None:
+                    original = (
+                        f"; original publication failure: "
+                        f"{type(primary_failure).__name__}: {primary_failure}"
+                    )
+                    cause = primary_failure.__cause__
+                    if cause is not None:
+                        original += (
+                            f"; original cause: {type(cause).__name__}: {cause}"
+                        )
                 raise RematerializationError(
                     f"{label} publication failed and staged cleanup is pending: "
                     f"{staged}; cleanup error: {type(cleanup_error).__name__}: "
@@ -618,20 +669,28 @@ def inspect_outer_publication_recovery(
         )
     published: list[str] = []
     for label, path, raw in outputs:
-        if path.is_symlink():
+        # A permission error must not be misclassified as a missing output.
+        try:
+            final_stat = path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise RematerializationError(
+                f"cannot inspect recovery {label}: {path}"
+            ) from exc
+        if stat.S_ISLNK(final_stat.st_mode):
             raise RematerializationError(f"recovery {label} must not be a symlink")
-        if path.exists():
-            if not path.is_file():
-                raise RematerializationError(f"recovery {label} is not a file")
-            try:
-                observed_sha = sha256_bytes(path.read_bytes())
-            except OSError as exc:
-                raise RematerializationError(f"cannot read recovery {label}") from exc
-            if observed_sha != sha256_bytes(raw):
-                raise RematerializationError(
-                    f"recovery {label} differs from authenticated expected bytes"
-                )
-            published.append(label)
+        if not stat.S_ISREG(final_stat.st_mode):
+            raise RematerializationError(f"recovery {label} is not a file")
+        try:
+            observed_sha = sha256_bytes(path.read_bytes())
+        except OSError as exc:
+            raise RematerializationError(f"cannot read recovery {label}") from exc
+        if observed_sha != sha256_bytes(raw):
+            raise RematerializationError(
+                f"recovery {label} differs from authenticated expected bytes"
+            )
+        published.append(label)
     if "outer receipt" in published and len(published) != len(outputs):
         raise RematerializationError(
             "recovery receipt exists without both authenticated source authorities"
@@ -678,6 +737,7 @@ def _publish_verified_outputs(
     intent_path = pass_root / "outer-publication-intent.json"
     if any(path.resolve() == intent_path.resolve() for _, path, _ in outputs):
         raise RematerializationError("outer output cannot alias publication intent")
+    primary_failure: BaseException | None = None
     try:
         for label, path, raw in outputs:
             staged.append((label, path, _stage_new_bytes(path, raw, label=label), raw))
@@ -709,16 +769,18 @@ def _publish_verified_outputs(
                     f"manual reconciliation required before retry"
                 ) from exc
             published.append((label, path, sha256_bytes(raw)))
+    except BaseException as exc:
+        primary_failure = exc
+        raise
     finally:
-        primary_failure = sys.exc_info()[1]
-        cleanup_error: OSError | None = None
+        cleanup_error: BaseException | None = None
         cleanup_failures: list[str] = []
         for _, _, temporary, _ in staged:
             if temporary == preserved_stage:
                 continue  # Indeterminate final: retain the original inode alias.
             try:
                 temporary.unlink(missing_ok=True)
-            except OSError as exc:
+            except (OSError, KeyboardInterrupt, SystemExit) as exc:
                 cleanup_failures.append(
                     f"{temporary}: {type(exc).__name__}: {exc}"
                 )
@@ -730,10 +792,17 @@ def _publish_verified_outputs(
                     "outer receipt published and byte-verified; staged cleanup "
                     f"pending for {cleanup_failures}; inspect read-only recovery"
                 ) from cleanup_error
-            original = (
-                f"; original publication failure: {primary_failure}"
-                if primary_failure is not None else ""
-            )
+            original = ""
+            if primary_failure is not None:
+                original = (
+                    f"; original publication failure: "
+                    f"{type(primary_failure).__name__}: {primary_failure}"
+                )
+                cause = primary_failure.__cause__
+                if cause is not None:
+                    original += (
+                        f"; original cause: {type(cause).__name__}: {cause}"
+                    )
             raise RematerializationError(
                 "outer publication incomplete and staged cleanup pending for "
                 f"{cleanup_failures}{original}; manual reconciliation required"
