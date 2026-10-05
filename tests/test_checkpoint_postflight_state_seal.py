@@ -27,6 +27,17 @@ class _TinyLogits(torch.nn.Module):
         return self.weight.reshape(1, 1, 3).expand(*input_ids.shape, 3)
 
 
+class _NestedLogits(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.tensor([0.1, -0.2, 0.3]))
+        self.dropout = torch.nn.Dropout(p=0.1)
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        weight = self.dropout(self.weight)
+        return weight.reshape(1, 1, 3).expand(*input_ids.shape, 3)
+
+
 _BATCH = {
     "input_ids": torch.tensor([[0, 1]], dtype=torch.long),
     "target_ids": torch.tensor([[1, 2]], dtype=torch.long),
@@ -440,6 +451,105 @@ def test_final_save_rng_restore_cannot_hide_exact_state_drift(
     assert restore_calls == 2
     assert not checkpoint.exists()
     assert vars(target)["_failure_reason"] == "checkpoint_export_state_drift"
+    assert vars(target)["_update_incomplete"] is True
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "final_phase",
+    ["rng-replay", "opt-out-policy"],
+)
+@pytest.mark.parametrize(
+    "mutation",
+    ["child-mode", "child-binding"],
+)
+def test_final_effectful_resume_callout_cannot_hide_module_topology_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    final_phase: str,
+    mutation: str,
+) -> None:
+    source = Trainer(
+        _NestedLogits(),
+        TrainerConfig(seed=821, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    checkpoint = tmp_path / f"final-module-{final_phase}-{mutation}"
+    core.save_checkpoint(
+        checkpoint,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(checkpoint)
+
+    target = Trainer(_NestedLogits(), source.config, device="cpu")
+    restore_rng = final_phase == "rng-replay"
+    original_child = target.model.dropout
+
+    def mutate_module_state() -> None:
+        if mutation == "child-mode":
+            target.model.dropout.eval()
+        else:
+            target.model.dropout = torch.nn.Identity()
+
+    if restore_rng:
+        original_replay = loader._restore_checkpoint_rng_preserving_warn_only
+
+        def replay_then_mutate(*args: Any, **kwargs: Any) -> None:
+            original_replay(*args, **kwargs)
+            mutate_module_state()
+
+        monkeypatch.setattr(
+            loader,
+            "_restore_checkpoint_rng_preserving_warn_only",
+            replay_then_mutate,
+        )
+    else:
+        original_policy = loader._assert_live_d02_determinism
+
+        def final_policy_then_mutate(trainer: Any) -> Any:
+            result = original_policy(trainer)
+            if trainer is target and target.optimizer_step == 1:
+                mutate_module_state()
+            return result
+
+        monkeypatch.setattr(
+            loader,
+            "_assert_live_d02_determinism",
+            final_policy_then_mutate,
+        )
+
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="model changed during final checkpoint restore seal",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    if mutation == "child-mode":
+        assert target.model.dropout is original_child
+        assert target.model.dropout.training is False
+    else:
+        assert target.model.dropout is not original_child
+        assert type(target.model.dropout) is torch.nn.Identity
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
     assert vars(target)["_update_incomplete"] is True
 
 
