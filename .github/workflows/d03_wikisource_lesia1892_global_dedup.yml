@@ -1,0 +1,333 @@
+name: D03 Lesia Wikisource global dedup two-clean
+
+on:
+  pull_request:
+    branches:
+      - repair/2728-wikisource-ruff-self-g8-140-20261005
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-lesia-wikisource-global-dedup-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  wikisource-global-dedup:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2793-wikisource-global-dedup-g8-142-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pass_id: [1, 2]
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      PARENT_SHA: 774dcfdad408cf7f9d924a69edf516547fc98560
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: 8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83
+      CANDIDATE_SHA256: 13025e767ff3f92c0809de807893a5002b691c296b345c12978249c11bc44d12
+      REPORT_IDENTITY_SHA256: 8f3ec6c8ecba70f74c6b024873afe9c1d4574be5415d7dcd54bfd1cdd0aa81ce
+      CANDIDATE_RECORDS: "107"
+      CANDIDATE_BYTES: "169399"
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind branch, closure and syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
+          test "$(git merge-base "$PARENT_SHA" HEAD)" = "$PARENT_SHA"
+          mapfile -t changed < <(git diff --name-only "$PARENT_SHA"..HEAD | sort)
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = \
+            ".github/workflows/d03_wikisource_lesia1892_global_dedup.yml"
+          test "${changed[1]}" = \
+            "tools/run_d03_wikisource_lesia1892_global_dedup_v1.py"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          git cat-file -e "$V7_HEAD^{commit}"
+          python -m py_compile \
+            tools/materialize_d03_wikisource_lesia1892.py \
+            tools/run_d03_wikisource_lesia1892_global_dedup_v1.py \
+            src/twelve_six/data/wikisource_pd_api.py \
+            src/twelve_six/data/wikisource_pd_contract.py \
+            src/twelve_six/data/wikisource_pd_edition.py
+
+      - name: Build exact historical pdftotext dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            --no-install-recommends \
+            build-essential ca-certificates cmake curl libfontconfig1-dev \
+            libfreetype6-dev libharfbuzz-dev libjpeg-dev liblcms2-dev \
+            libopenjp2-7-dev libpng-dev libtiff-dev ninja-build pkg-config \
+            zlib1g-dev
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
+            --output /tmp/poppler.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | \
+            sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" \
+            -B /tmp/poppler-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DENABLE_UTILS=ON \
+            -DENABLE_CPP=OFF \
+            -DENABLE_GLIB=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF \
+            -DENABLE_BOOST=OFF \
+            -DENABLE_LIBCURL=OFF \
+            -DENABLE_NSS3=OFF \
+            -DENABLE_GPGME=OFF \
+            -DBUILD_GTK_TESTS=OFF \
+            -DBUILD_QT5_TESTS=OFF \
+            -DBUILD_QT6_TESTS=OFF \
+            -DBUILD_CPP_TESTS=OFF \
+            -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-build --parallel 2
+          sudo cmake --install /tmp/poppler-build
+          sudo ldconfig
+          root="$RUNNER_TEMP/pass-${{ matrix.pass_id }}"
+          mkdir -p "$root"
+          pdftotext -v 2>&1 | tee "$root/pdftotext-version.txt"
+          grep -F "pdftotext version ${POPPLER_VERSION}" \
+            "$root/pdftotext-version.txt"
+
+      - name: Fresh Wikisource materialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pass-${{ matrix.pass_id }}"
+          python tools/materialize_d03_wikisource_lesia1892.py \
+            --candidate-out "$root/candidate.jsonl" \
+            --report-out "$root/materialization.json" \
+            --max-pages 112
+          test "$(sha256sum "$root/candidate.jsonl" | cut -d' ' -f1)" = \
+            "$CANDIDATE_SHA256"
+          test "$(wc -l < "$root/candidate.jsonl" | tr -d ' ')" = \
+            "$CANDIDATE_RECORDS"
+          python - "$root/materialization.json" "$REPORT_IDENTITY_SHA256" \
+            "$CANDIDATE_BYTES" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert report["report_sha256"] == sys.argv[2]
+          assert report["candidate"]["page_count"] == 107
+          assert report["candidate"]["normalized_utf8_bytes"] == int(sys.argv[3])
+          assert report["disposition"]["rejected_page_count"] == 1
+          truth = report["truth_boundary"]
+          assert truth["canonical_capacity_credit_bytes"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates"] == 0
+          assert truth["model_training_executed"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          PY
+
+      - name: Execute incumbent indexed global dedup
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pass-${{ matrix.pass_id }}"
+          git worktree add --detach "$root/v7" "$V7_HEAD"
+          test "$(git -C "$root/v7" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$root/v7" status --porcelain=v1 --untracked-files=all)"
+          python tools/run_d03_wikisource_lesia1892_global_dedup_v1.py \
+            --v7-root "$root/v7" \
+            --bulk-workspace "$root/bulk" \
+            --candidate-jsonl "$root/candidate.jsonl" \
+            --materialization-report "$root/materialization.json" \
+            --expected-execution-head "$EXECUTION_SHA" \
+            --output-base-report "$root/base.json" \
+            --output-combined-report "$root/combined.json" \
+            --output-survivors "$root/survivors.json" \
+            --output-evidence "$root/evidence.json"
+          test -s "$root/base.json"
+          test -s "$root/combined.json"
+          test -s "$root/survivors.json"
+          test -s "$root/evidence.json"
+          rm -f "$root/candidate.jsonl"
+
+      - name: Verify zero-credit content boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/pass-${{ matrix.pass_id }}"
+          python - "$root/evidence.json" "$EXECUTION_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          evidence = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert evidence["execution_head_sha"] == sys.argv[2]
+          source = evidence["wikisource_lesia1892"]
+          assert source["candidate_sha256"] == (
+              "13025e767ff3f92c0809de807893a5002b691c296b345c12978249c11bc44d12"
+          )
+          assert source["materialization_report_identity_sha256"] == (
+              "8f3ec6c8ecba70f74c6b024873afe9c1d4574be5415d7dcd54bfd1cdd0aa81ce"
+          )
+          assert source["candidate_source_object_count"] == 107
+          assert source["candidate_normalized_utf8_bytes"] == 169399
+          marginal = source["marginal_global_unique_capacity_bytes"]
+          assert type(marginal) is int and 0 <= marginal <= 169399
+          boundary = evidence["content_boundary"]
+          assert boundary["raw_candidate_uploaded"] is False
+          assert boundary["raw_source_text_emitted_in_evidence"] is False
+          truth = evidence["truth_boundary"]
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_unique_loss_positions"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["model_training_authorized"] is False
+          assert truth["optimizer_updates"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          PY
+
+      - name: Upload text-free pass authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesia-wikisource-global-dedup-pass-${{ matrix.pass_id }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/pass-${{ matrix.pass_id }}/materialization.json
+            ${{ runner.temp }}/pass-${{ matrix.pass_id }}/base.json
+            ${{ runner.temp }}/pass-${{ matrix.pass_id }}/combined.json
+            ${{ runner.temp }}/pass-${{ matrix.pass_id }}/survivors.json
+            ${{ runner.temp }}/pass-${{ matrix.pass_id }}/evidence.json
+            ${{ runner.temp }}/pass-${{ matrix.pass_id }}/pdftotext-version.txt
+          if-no-files-found: error
+          retention-days: 90
+
+  wikisource-two-clean-compare:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2793-wikisource-global-dedup-g8-142-20261005'
+    needs: wikisource-global-dedup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Download pass 1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: lesia-wikisource-global-dedup-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: lesia-wikisource-global-dedup-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require deterministic text-free two-clean result
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            materialization.json base.json combined.json survivors.json \
+            evidence.json pdftotext-version.txt; do
+            cmp "artifacts/pass-1/$file" "artifacts/pass-2/$file"
+          done
+          python - "$HEAD_SHA" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          head = sys.argv[1]
+          root = Path("artifacts/pass-1")
+          evidence = json.loads(
+              (root / "evidence.json").read_text(encoding="utf-8")
+          )
+          survivors = json.loads(
+              (root / "survivors.json").read_text(encoding="utf-8")
+          )
+          assert evidence["execution_head_sha"] == head
+          source = evidence["wikisource_lesia1892"]
+          marginal = source["marginal_global_unique_capacity_bytes"]
+          assert 0 <= marginal <= 169399
+          assert evidence["survivor_authority_sha256"] == (
+              survivors["survivor_authority_sha256"]
+          )
+          proof = {
+              "schema_version": (
+                  "12-6.d03-wikisource-lesia1892-global-dedup-two-clean-proof.v1"
+              ),
+              "execution_head_sha": head,
+              "parent_product_head_sha": evidence["parent_product_head_sha"],
+              "candidate_sha256": source["candidate_sha256"],
+              "materialization_report_identity_sha256": source[
+                  "materialization_report_identity_sha256"
+              ],
+              "candidate_records": 107,
+              "candidate_normalized_utf8_bytes": 169399,
+              "base_report_sha256": evidence["base"]["report_sha256"],
+              "combined_report_sha256": evidence["combined"]["report_sha256"],
+              "survivor_authority_sha256": evidence[
+                  "survivor_authority_sha256"
+              ],
+              "marginal_global_unique_capacity_bytes": marginal,
+              "two_fresh_executions_converged": True,
+              "raw_candidate_retained": False,
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              proof,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          Path("lesia-wikisource-global-dedup-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload two-clean proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesia-wikisource-global-dedup-two-clean-${{ github.event.pull_request.head.sha }}
+          path: lesia-wikisource-global-dedup-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
