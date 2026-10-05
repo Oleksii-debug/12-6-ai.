@@ -197,7 +197,12 @@ def test_sealed_mistyped_config_refused_before_model_apply_then_valid_retry(
     extra = {"expected_step": 0, "expected_tokens_seen": 0} if (
         loader is progress_trainer
     ) else {}
-    with pytest.raises(CheckpointCompatibilityError, match="trainer config mismatch"):
+    expected_error = (
+        "native config identity mismatch"
+        if field == "seed"
+        else "trainer config mismatch"
+    )
+    with pytest.raises(CheckpointCompatibilityError, match=expected_error):
         loader.load_trainer_checkpoint(
             invalid_path, model=target_model, trainer=target,
             strict_model=False, restore_rng=restore_rng, **extra,
