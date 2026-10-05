@@ -1026,6 +1026,24 @@ def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
     return value
 
 
+def _require_publication_manifest_snapshot(
+    manifest_path: Path,
+    manifest_identity: tuple[int, int],
+    expected_manifest: Mapping[str, Any],
+    *,
+    label: str,
+) -> None:
+    observed = _load_publication_manifest(manifest_path)
+    _require(
+        observed == expected_manifest,
+        f"{label} contents changed after validation",
+    )
+    _require(
+        _regular_file_identity(manifest_path, label=label) == manifest_identity,
+        f"{label} identity changed after validation",
+    )
+
+
 def _remove_control_without_payload(
     marker_path: Path,
     manifest_path: Path,
@@ -1132,6 +1150,16 @@ def _recover_incomplete_publication(
         and marker_stage_paths == expected_stage_paths,
         "incomplete publication manifest targets do not match requested outputs",
     )
+    _require_publication_manifest_snapshot(
+        manifest_path,
+        manifest_identity,
+        manifest,
+        label="incomplete publication manifest",
+    )
+    _require(
+        _validate_publication_marker(marker_path, pathset_id) == marker_identity,
+        "incomplete publication marker changed after validation",
+    )
 
     # Complete manifest validation precedes every recovery read or unlink. This
     # prevents a later forged row from causing effects on earlier valid rows.
@@ -1199,12 +1227,26 @@ def _recover_incomplete_publication(
 
     for directory in sorted(touched_dirs, key=str):
         _fsync_directory(directory)
+    _require_publication_manifest_snapshot(
+        manifest_path,
+        manifest_identity,
+        manifest,
+        label="incomplete publication manifest",
+    )
+    _require(
+        _validate_publication_marker(marker_path, pathset_id) == marker_identity,
+        "incomplete publication marker changed before control cleanup",
+    )
     _unlink_owned_path(
         manifest_path,
         manifest_identity,
         label="incomplete publication manifest",
     )
     _fsync_directory(manifest_path.parent)
+    _require(
+        _validate_publication_marker(marker_path, pathset_id) == marker_identity,
+        "incomplete publication marker changed before marker cleanup",
+    )
     _unlink_owned_path(
         marker_path,
         marker_identity,
@@ -1321,6 +1363,7 @@ def _recover_committed_publication_residue(
     _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
+        manifest,
         stage_identities,
         prepared,
         final_identities,
@@ -1410,6 +1453,7 @@ def _link_staged_output(stage_path: Path, final_path: Path) -> None:
 def _cleanup_committed_publication_residue(
     manifest_path: Path,
     manifest_identity: tuple[int, int],
+    expected_manifest: Mapping[str, Any],
     stages: list[tuple[Path, tuple[int, int]]],
     prepared: tuple[tuple[Path, bytes], ...],
     linked_finals: list[tuple[Path, tuple[int, int]]],
@@ -1437,6 +1481,12 @@ def _cleanup_committed_publication_residue(
     except CaselawGlobalDedupError:
         return
 
+    _require_publication_manifest_snapshot(
+        manifest_path,
+        manifest_identity,
+        expected_manifest,
+        label="committed publication manifest",
+    )
     _verify_committed_finals_before_cleanup(prepared, linked_finals)
 
     touched_dirs: set[Path] = set()
@@ -1452,7 +1502,14 @@ def _cleanup_committed_publication_residue(
         touched_dirs.add(stage_path.parent)
 
     # Stages are optional committed residue. The manifest is the final recovery
-    # evidence, so bind finals once more after stage cleanup before removing it.
+    # evidence, so rebind both manifest and finals after stage cleanup before
+    # removing the last durable recovery record.
+    _require_publication_manifest_snapshot(
+        manifest_path,
+        manifest_identity,
+        expected_manifest,
+        label="committed publication manifest",
+    )
     _verify_committed_finals_before_cleanup(prepared, linked_finals)
     try:
         _unlink_owned_path(
@@ -1679,6 +1736,7 @@ def _publish_json_outputs(
     _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
+        manifest,
         created_stages,
         prepared,
         linked_finals,
