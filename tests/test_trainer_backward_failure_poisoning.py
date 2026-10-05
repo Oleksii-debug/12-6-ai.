@@ -1648,12 +1648,16 @@ def test_direct_restore_rejects_existing_corrupted_model_buffer():
 @pytest.mark.parametrize(
     ("field", "invalid"),
     [
+        ("lr", "0.001"),
         ("weight_decay", float("nan")),
         ("weight_decay", -0.1),
+        ("weight_decay", "0.01"),
         ("eps", float("inf")),
         ("eps", 0.0),
+        ("eps", "1e-8"),
         ("betas", (float("nan"), 0.9)),
         ("betas", (0.9, 1.0)),
+        ("betas", ("0.9", "0.999")),
     ],
 )
 def test_restore_rejects_invalid_adamw_hyperparameters_before_mutation(
@@ -1671,7 +1675,8 @@ def test_restore_rejects_invalid_adamw_hyperparameters_before_mutation(
     corrupt["param_groups"][0][field] = invalid
     receiver = Trainer(_TinyLogitModel(), config)
 
-    with pytest.raises(NonFiniteTrainingError, match=f"optimizer {field}"):
+    label = "learning rate" if field == "lr" else field
+    with pytest.raises(NonFiniteTrainingError, match=f"optimizer {label}"):
         receiver.load_state_dict(replace(snapshot, optimizer=corrupt))
 
     assert receiver.optimizer_step == 0
