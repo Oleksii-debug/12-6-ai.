@@ -114,3 +114,53 @@ def test_dataclass_trainer_state_roundtrip(tmp_path: Path):
     assert trainer.tokens_seen == 64
     assert trainer.scheduler_step == 2
     assert result.trainer_state["config"] == trainer.config
+
+def test_generic_trainer_opaque_loader_signature_remains_compatible(tmp_path: Path):
+    class OpaqueLoader:
+        def __init__(self, owner: Trainer) -> None:
+            self.owner = owner
+
+        @property
+        def __signature__(self) -> object:
+            raise ValueError("generic signature intentionally opaque")
+
+        def __call__(self, state: dict[str, object]) -> None:
+            self.owner.micro_step = int(state["micro_step"])
+            self.owner.optimizer_step = int(state["optimizer_step"])
+            self.owner.tokens_seen = int(state["tokens_seen"])
+            self.owner.velocity = state["optimizer"]["state"][0]["momentum"].copy()
+            self.owner.scheduler_step = int(state["scheduler"]["last_epoch"])
+
+    model = Model()
+    trainer = Trainer()
+    expected_weights = model.weights.copy()
+    expected_velocity = trainer.velocity.copy()
+    checkpoint = tmp_path / "generic-opaque-loader"
+
+    save_trainer_checkpoint(
+        checkpoint,
+        model=model,
+        trainer=trainer,
+        identity=identity(),
+    )
+
+    model.weights[:] = 41.0
+    trainer.micro_step = 0
+    trainer.optimizer_step = 0
+    trainer.tokens_seen = 0
+    trainer.velocity[:] = -41.0
+    trainer.scheduler_step = 0
+    trainer.load_state_dict = OpaqueLoader(trainer)  # type: ignore[method-assign]
+
+    load_trainer_checkpoint(
+        checkpoint,
+        model=model,
+        trainer=trainer,
+        restore_rng=False,
+    )
+
+    np.testing.assert_array_equal(model.weights, expected_weights)
+    np.testing.assert_array_equal(trainer.velocity, expected_velocity)
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (4, 2, 64)
+    assert trainer.scheduler_step == 2
+
