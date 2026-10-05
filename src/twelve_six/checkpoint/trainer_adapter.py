@@ -337,6 +337,16 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
+
+    # Freeze canonical component identities before *any* effectful authority
+    # descriptor lookup. A getter that rebinds one of these objects must be
+    # observed as drift by the descriptor-free final snapshot below.
+    model = initial_attrs.get("model")
+    optimizer = initial_attrs.get("optimizer")
+    config = initial_attrs.get("config")
+    scheduler = initial_attrs.get("scheduler")
+    scaler = initial_attrs.get("scaler")
+
     # Bind every effectful authority/interface lookup before the final
     # freshness snapshot. Descriptor/proxy lookup itself may execute user code;
     # any such side effect must therefore be visible to the checks below.
@@ -356,12 +366,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
             )
         authorities[authority] = bound
 
-    model = getattr(trainer, "model", None)
     parameters = getattr(model, "parameters", None)
-    optimizer = getattr(trainer, "optimizer", None)
-    config = getattr(trainer, "config", None)
-    scheduler = getattr(trainer, "scheduler", None)
-    scaler = getattr(trainer, "scaler", None)
     zero_grad = getattr(optimizer, "zero_grad", None) if optimizer is not None else None
     if optimizer is not None and not callable(zero_grad):
         raise CheckpointCompatibilityError(
