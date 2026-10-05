@@ -22,7 +22,7 @@ from typing import Any
 
 import tools.next100_106_balance_gate as gate
 from twelve_six.data import common_pile_loc_intake, pep_intake
-from twelve_six.data.trusted_family_authority_current import (
+from twelve_six.data.trusted_family_authority_v1 import (
     trusted_family_authority_root_sha256,
     trusted_family_projection,
 )
