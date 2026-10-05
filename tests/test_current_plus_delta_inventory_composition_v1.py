@@ -315,6 +315,23 @@ def test_unknown_delta_family_fails_at_family_projection() -> None:
         _compose(base, delta)
 
 
+def test_composition_verifier_rejects_membership_origin_swap() -> None:
+    result = _compose(_base(), _delta())
+    delta_entry = next(
+        row for row in result["inventory_membership"] if row["origin"] == "delta"
+    )
+    delta_entry["origin"] = "base"
+    result["composition_identity_sha256"] = _sha256(
+        {
+            key: value
+            for key, value in result.items()
+            if key != "composition_identity_sha256"
+        }
+    )
+    with pytest.raises(ProjectionError, match="base membership count drift"):
+        compose.verify_current_clean_and_delta_composition(result)
+
+
 def test_composition_verifier_rejects_capacity_tamper() -> None:
     result = _compose(_base(), _delta())
     result["families"][0]["capacity_bytes"] += 1
