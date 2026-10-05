@@ -95,7 +95,10 @@ def main() -> int:
         policy = _load_json(args.policy)
     except (OSError, UnicodeError, ValueError) as exc:
         return _print_input_failure("policy JSON", exc)
-    validate_policy(policy)
+    try:
+        validate_policy(policy)
+    except (TypeError, ValueError) as exc:
+        return _print_input_failure("policy authority", exc)
     if args.bindings is None:
         if args.trusted_authorities is not None:
             parser.error("--trusted-authorities requires --bindings")
@@ -119,14 +122,17 @@ def main() -> int:
             trusted_authorities = _load_json(args.trusted_authorities)
         except (OSError, UnicodeError, ValueError) as exc:
             return _print_input_failure("trusted-authorities JSON", exc)
-        result = bind_terminal_authorities(
-            policy,
-            bindings,
-            trusted_authorities=trusted_authorities,
-            expected_trusted_authorities_identity_sha256=(
-                args.expected_trusted_authorities_identity_sha256
-            ),
-        )
+        try:
+            result = bind_terminal_authorities(
+                policy,
+                bindings,
+                trusted_authorities=trusted_authorities,
+                expected_trusted_authorities_identity_sha256=(
+                    args.expected_trusted_authorities_identity_sha256
+                ),
+            )
+        except (TypeError, ValueError) as exc:
+            return _print_input_failure("terminal authority bindings", exc)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
