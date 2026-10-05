@@ -35,10 +35,13 @@ from .trainer_adapter import (
     _assert_bound_metadata,
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
+    _assert_native_d02_exact_live_state,
     _assert_native_d02_model_training_mode,
     _assert_native_d02_postload_snapshot,
     _assert_trainer_model_binding,
     _assert_trainer_restore_bindings,
+    _bind_native_export_live_authorities,
+    _bind_native_model_export_fingerprint,
     _bind_trainer_state_loader,
     _effective_strict_model,
     _note_restore_binding_drift,
@@ -92,6 +95,8 @@ def load_trainer_checkpoint(
     prebind_policy = _snapshot_torch_policy(prebind_ambient)
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
+        model_fingerprint = _bind_native_model_export_fingerprint(trainer)
+        restore_live_authorities = _bind_native_export_live_authorities(trainer)
     except BaseException as exc:
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
@@ -306,6 +311,11 @@ def load_trainer_checkpoint(
     # in-place retry; avoid copying model-scale weights to attempt rollback.
     try:
         model_apply(materialized)
+        sealed_model_fingerprint = (
+            model_fingerprint()
+            if model_fingerprint is not None
+            else None
+        )
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
@@ -315,6 +325,14 @@ def load_trainer_checkpoint(
         _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_native_d02_model_training_mode(model, trainer)
+        _assert_native_d02_exact_live_state(
+            trainer,
+            trainer_state,
+            model_fingerprint=model_fingerprint,
+            sealed_model_fingerprint=sealed_model_fingerprint,
+            export_live_authorities=restore_live_authorities,
+            phase="checkpoint restore",
+        )
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
         # torch RNG even on success. Restore the checkpoint streams last so
         # the first resumed batch sees the exact captured next draws.
@@ -334,7 +352,14 @@ def load_trainer_checkpoint(
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
-        _assert_native_d02_postload_snapshot(trainer, trainer_state)
+        _assert_native_d02_exact_live_state(
+            trainer,
+            trainer_state,
+            model_fingerprint=model_fingerprint,
+            sealed_model_fingerprint=sealed_model_fingerprint,
+            export_live_authorities=restore_live_authorities,
+            phase="final checkpoint restore seal",
+        )
     except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
