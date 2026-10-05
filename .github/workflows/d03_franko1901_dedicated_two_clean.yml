@@ -1,0 +1,375 @@
+name: D03 Franko1901 dedicated two-clean
+
+on:
+  pull_request:
+    branches:
+      - execution/2394-franko1901-two-clean-g8-122-20261005
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-franko1901-dedicated-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  franko1901-global-dedup:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2709-franko-dedicated-two-clean-g6-116-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pass_id: [1, 2]
+    env:
+      FRANKO_EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      PARENT_EXECUTION_SHA: 0128be227b666dc60fd2c77461cadf6228769953
+      PINNED_AUTHORITY_MAIN: ba9e49cedba4a110e1c4f7d83702e8fcf8a42461
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: 8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83
+      FRANKO_CANDIDATE_SHA256: 9b00da2a2a5110cc4e384711fffbbbdaa917904462ddd133e7178e2d07dcb5ec
+      FRANKO_CANDIDATE_RECORDS: "30660"
+      FRANKO_DECLARED_TEXT_BYTES: "1762005"
+      RUNNER_BLOB: a314c59a90e89a61c6cd8adfab10caf668bbce93
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+
+    steps:
+      - name: Checkout exact child head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind parent and executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FRANKO_EXECUTION_SHA"
+          test "$(git merge-base "$PARENT_EXECUTION_SHA" HEAD)" = "$PARENT_EXECUTION_SHA"
+          test "$(git diff --name-only "$PARENT_EXECUTION_SHA"..HEAD)" = \
+            ".github/workflows/d03_franko1901_dedicated_two_clean.yml"
+          test "$(git hash-object tools/run_d03_franko1901_global_dedup_execution_v1.py)" = "$RUNNER_BLOB"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          git cat-file -e "$PINNED_AUTHORITY_MAIN^{commit}"
+          git cat-file -e "$V7_HEAD^{commit}"
+          python -m py_compile \
+            tools/materialize_d03_franko1901.py \
+            tools/run_d03_franko1901_global_dedup_execution_v1.py
+
+      - name: Install canonical runtime and Poppler build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check -e .
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl libfontconfig1-dev \
+            libfreetype6-dev libharfbuzz-dev libjpeg-dev liblcms2-dev \
+            libopenjp2-7-dev libpng-dev libtiff-dev ninja-build pkg-config zlib1g-dev
+
+      - name: Build exact pinned Poppler pdftotext
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
+            --output /tmp/poppler.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | \
+            sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" -B /tmp/poppler-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DENABLE_UTILS=ON \
+            -DENABLE_CPP=OFF \
+            -DENABLE_GLIB=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF \
+            -DENABLE_BOOST=OFF \
+            -DENABLE_LIBCURL=OFF \
+            -DENABLE_NSS3=OFF \
+            -DENABLE_GPGME=OFF \
+            -DBUILD_GTK_TESTS=OFF \
+            -DBUILD_QT5_TESTS=OFF \
+            -DBUILD_QT6_TESTS=OFF \
+            -DBUILD_CPP_TESTS=OFF \
+            -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-build --parallel 2
+          sudo cmake --install /tmp/poppler-build
+          sudo ldconfig
+          run_root="$RUNNER_TEMP/franko-pass-$PASS_ID"
+          mkdir -p "$run_root"
+          pdftotext -v 2>&1 | tee "$run_root/pdftotext-version.txt"
+          grep -F "pdftotext version ${POPPLER_VERSION}" \
+            "$run_root/pdftotext-version.txt"
+
+      - name: Reconstruct exact V7 and fresh Franko candidate
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/franko-pass-$PASS_ID"
+          v7_root="$run_root/v7"
+          mkdir -p "$run_root"
+          git worktree add --detach "$v7_root" "$V7_HEAD"
+          test "$(git -C "$v7_root" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$v7_root" status --porcelain=v1 --untracked-files=all)"
+
+          python tools/materialize_d03_franko1901.py \
+            --output-dir "$run_root/franko"
+
+          candidate="$run_root/franko/franko1901-candidate.jsonl"
+          test -s "$candidate"
+          test "$(sha256sum "$candidate" | cut -d' ' -f1)" = "$FRANKO_CANDIDATE_SHA256"
+          test "$(wc -l < "$candidate" | tr -d ' ')" = "$FRANKO_CANDIDATE_RECORDS"
+
+      - name: Execute incumbent indexed global dedup
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/franko-pass-$PASS_ID"
+          python tools/run_d03_franko1901_global_dedup_execution_v1.py \
+            --v7-root "$run_root/v7" \
+            --bulk-workspace "$run_root/bulk" \
+            --candidate-jsonl "$run_root/franko/franko1901-candidate.jsonl" \
+            --historical-terminal-evidence-json \
+              configs/data/d03_franko1901_terminal_execution_v1.json \
+            --fresh-execution-authority-json \
+              configs/data/d03_franko1901_fresh_execution_authority_v1.json \
+            --expected-execution-head "$FRANKO_EXECUTION_SHA" \
+            --output-report "$run_root/global-dedup-report.json" \
+            --output-survivors "$run_root/survivors.json" \
+            --output-evidence "$run_root/evidence.json"
+
+          test -s "$run_root/global-dedup-report.json"
+          test -s "$run_root/survivors.json"
+          test -s "$run_root/evidence.json"
+
+      - name: Verify text-free zero-credit evidence
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/franko-pass-$PASS_ID"
+          python - "$run_root" "$FRANKO_EXECUTION_SHA" \
+            "$FRANKO_CANDIDATE_SHA256" "$FRANKO_CANDIDATE_RECORDS" \
+            "$FRANKO_DECLARED_TEXT_BYTES" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+          candidate_sha = sys.argv[3]
+          candidate_records = int(sys.argv[4])
+          declared_text_bytes = int(sys.argv[5])
+
+          evidence = json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+          report = json.loads(
+              (root / "global-dedup-report.json").read_text(encoding="utf-8")
+          )
+          survivors = json.loads((root / "survivors.json").read_text(encoding="utf-8"))
+
+          assert evidence["execution_head_sha"] == head
+          assert evidence["franko1901"]["candidate_sha256"] == candidate_sha
+          assert evidence["franko1901"]["source_object_count"] == candidate_records
+          assert evidence["franko1901"]["declared_capacity_bytes"] == declared_text_bytes
+          assert evidence["combined"]["indexed_report_sha256"] == report["report_sha256"]
+          assert evidence["survivor_authority_sha256"] == (
+              survivors["survivor_authority_sha256"]
+          )
+          assert evidence["content_boundary"] == {
+              "raw_text_emitted": False,
+              "raw_candidate_written_to_durable_evidence": False,
+              "payload_artifact_required": False,
+              "dedup_report_text_free": True,
+              "survivor_authority_text_free": True,
+          }
+          truth = evidence["truth_boundary"]
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_unique_loss_positions"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates_executed_on_real_targets"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          assert truth["foreign_pretrained_weights_used"] is False
+          assert truth["whole_corpus_external_llm_cleanliness_claimed"] is False
+
+          print(
+              json.dumps(
+                  {
+                      "pass": True,
+                      "execution_head_sha": head,
+                      "report_sha256": report["report_sha256"],
+                      "survivor_authority_sha256": survivors[
+                          "survivor_authority_sha256"
+                      ],
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+
+      - name: Upload Franko text-free pass evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: franko1901-dedicated-pass-${{ matrix.pass_id }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/franko-pass-${{ matrix.pass_id }}/global-dedup-report.json
+            ${{ runner.temp }}/franko-pass-${{ matrix.pass_id }}/survivors.json
+            ${{ runner.temp }}/franko-pass-${{ matrix.pass_id }}/evidence.json
+            ${{ runner.temp }}/franko-pass-${{ matrix.pass_id }}/pdftotext-version.txt
+          if-no-files-found: error
+          retention-days: 90
+
+  franko1901-two-clean-compare:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2709-franko-dedicated-two-clean-g6-116-20261005'
+    needs: franko1901-global-dedup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Set exact CPython
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Download pass 1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: franko1901-dedicated-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: franko1901-dedicated-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require deterministic two-clean authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp artifacts/pass-1/global-dedup-report.json \
+              artifacts/pass-2/global-dedup-report.json
+          cmp artifacts/pass-1/survivors.json artifacts/pass-2/survivors.json
+          cmp artifacts/pass-1/pdftotext-version.txt \
+              artifacts/pass-2/pdftotext-version.txt
+
+          python - "$HEAD_SHA" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          head = sys.argv[1]
+          roots = [Path("artifacts/pass-1"), Path("artifacts/pass-2")]
+          evidences = [
+              json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+              for root in roots
+          ]
+          reports = [
+              json.loads(
+                  (root / "global-dedup-report.json").read_text(encoding="utf-8")
+              )
+              for root in roots
+          ]
+          survivors = [
+              json.loads((root / "survivors.json").read_text(encoding="utf-8"))
+              for root in roots
+          ]
+
+          report_ids = [item["report_sha256"] for item in reports]
+          survivor_ids = [item["survivor_authority_sha256"] for item in survivors]
+          assert len(set(report_ids)) == 1
+          assert len(set(survivor_ids)) == 1
+
+          for evidence, report_id, survivor_id in zip(
+              evidences, report_ids, survivor_ids, strict=True
+          ):
+              assert evidence["execution_head_sha"] == head
+              assert evidence["combined"]["indexed_report_sha256"] == report_id
+              assert evidence["survivor_authority_sha256"] == survivor_id
+              truth = evidence["truth_boundary"]
+              assert truth["canonical_capacity_credited"] == 0
+              assert truth["authorized_optimized_target_exposure"] == 0
+              assert truth["training_executed"] is False
+
+          proof = {
+              "schema_version": (
+                  "12-6.d03-franko1901-global-dedup-two-clean-proof.v1"
+              ),
+              "execution_head_sha": head,
+              "parent_execution_sha": (
+                  "0128be227b666dc60fd2c77461cadf6228769953"
+              ),
+              "candidate_sha256": (
+                  "9b00da2a2a5110cc4e384711fffbbbdaa917904462ddd133e7178e2d07dcb5ec"
+              ),
+              "candidate_records": 30660,
+              "candidate_text_utf8_bytes": 1762005,
+              "matcher_report_sha256": report_ids[0],
+              "survivor_authority_sha256": survivor_ids[0],
+              "two_fresh_executions_converged": True,
+              "raw_text_retained": False,
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              proof,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          Path("franko1901-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload Franko two-clean proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: franko1901-dedicated-two-clean-proof-${{ github.event.pull_request.head.sha }}
+          path: franko1901-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
