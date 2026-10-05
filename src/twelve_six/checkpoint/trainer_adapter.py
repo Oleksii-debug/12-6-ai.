@@ -331,6 +331,14 @@ def _preflight_trainer_target(trainer: Any) -> None:
     # Reject a predictably invalid target before checkpoint I/O and weight mutation.
     # Older D02 implementations do not expose this method; retain their API.
     coverage_check = getattr(trainer, "_require_optimizer_parameter_coverage", None)
+    canonical_d02_target = (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+    )
+    if canonical_d02_target and not callable(coverage_check):
+        raise CheckpointCompatibilityError(
+            "canonical trainer optimizer-coverage authority unavailable"
+        )
     if callable(coverage_check):
         try:
             coverage_check()

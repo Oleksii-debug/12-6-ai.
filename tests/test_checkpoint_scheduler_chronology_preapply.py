@@ -469,6 +469,7 @@ def test_resealed_default_adamw_finite_decay_forgery_rejected_before_model_apply
         ("_require_finite_state_tree", "numeric-state authority unavailable"),
         ("_require_checkpoint_scheduler_chronology", "scheduler authority unavailable"),
         ("_require_optimizer_state_parameter_order", "optimizer-order authority unavailable"),
+        ("_require_optimizer_parameter_coverage", "optimizer-coverage authority unavailable"),
     ],
 )
 @pytest.mark.parametrize(
