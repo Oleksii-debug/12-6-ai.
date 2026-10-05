@@ -1,0 +1,134 @@
+name: D03 Franko plus Ubuntu trusted-family successor
+
+on:
+  pull_request:
+    branches:
+      - d03/franko-trusted-family-g6-116-20261005
+    paths:
+      - ".github/workflows/d03_franko_ubuntu_trusted_family.yml"
+      - "src/twelve_six/data/trusted_family_authority_franko_ubuntu.py"
+      - "tests/test_trusted_family_authority_franko_ubuntu.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-franko-ubuntu-trusted-family-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'd03/franko-ubuntu-trusted-family-g6-119-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: src
+
+    steps:
+      - name: Checkout exact child head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact path scope and syntax
+        shell: bash
+        env:
+          BASE_SHA: 108bb80d3eeba27684acac7a5ae40cb496ed456f
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git merge-base "$BASE_SHA" HEAD)" = "$BASE_SHA"
+          mapfile -t changed < <(git diff --name-only "$BASE_SHA"..HEAD | sort)
+          expected=(
+            ".github/workflows/d03_franko_ubuntu_trusted_family.yml"
+            "src/twelve_six/data/trusted_family_authority_franko_ubuntu.py"
+            "tests/test_trusted_family_authority_franko_ubuntu.py"
+          )
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          test "${#changed[@]}" -eq "${#wanted[@]}"
+          for i in "${!wanted[@]}"; do
+            test "${changed[$i]}" = "${wanted[$i]}"
+          done
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile src/twelve_six/data/trusted_family_authority_franko_ubuntu.py
+          python -m py_compile tests/test_trusted_family_authority_franko_ubuntu.py
+
+      - name: Install canonical project
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check -e .
+          python -m pip install --disable-pip-version-check "pytest==8.4.2"
+
+      - name: Run parent and successor authority regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_trusted_family_authority_current.py
+          python -m pytest -q tests/test_trusted_family_authority_franko.py
+          python -m pytest -q tests/test_trusted_family_authority_franko_ubuntu.py
+
+      - name: Prove all non-Ubuntu roots are delegated byte-exact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from twelve_six.data import trusted_family_authority_franko as parent
+          from twelve_six.data import trusted_family_authority_franko_ubuntu as successor
+
+          old_sets = [
+              ["ua.rada.open-data.laws-texts"],
+              [
+                  parent.FRANKO_FAMILY,
+                  "ua.verba.public-domain.nomis1864",
+                  "en.standardebooks.manual",
+              ],
+              [
+                  "github:pydantic/pydantic",
+                  "github:fastapi/fastapi",
+                  "github:pallets/flask",
+              ],
+              sorted(parent.TRUSTED_FAMILY_SEMANTICS),
+          ]
+          for families in old_sets:
+              assert successor.trusted_family_projection(families) == (
+                  parent.trusted_family_projection(families)
+              )
+              assert successor.trusted_family_authority_root_sha256(families) == (
+                  parent.trusted_family_authority_root_sha256(families)
+              )
+
+          projection = successor.trusted_family_projection(
+              [
+                  successor.UBUNTU_FAMILY,
+                  parent.FRANKO_FAMILY,
+                  "github:pydantic/pydantic",
+              ]
+          )
+          ubuntu = next(
+              row for row in projection
+              if row["family"] == successor.UBUNTU_FAMILY
+          )
+          assert ubuntu["stratum"] == "en"
+          assert ubuntu["language"] == "en"
+          assert ubuntu["modalities"] == ["text"]
+          truth = successor.UBUNTU_AUTHORITY_CHAIN["truth_boundary"]
+          assert truth["ubuntu_post_qp_complete"] is False
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          print(
+              "D03_FRANKO_UBUNTU_TRUSTED_FAMILY=PASS_ZERO_CREDIT "
+              f"family_count={len(successor.TRUSTED_FAMILY_SEMANTICS)}"
+          )
+          PY
