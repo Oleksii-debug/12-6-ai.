@@ -656,3 +656,51 @@ def test_recipe_cli_valid_terminal_binding_stays_recipe_only(tmp_path: Path) -> 
     assert response["compute_authorized"] is False
     assert response["authorized_optimized_targets"] == 0
     assert response["optimizer_updates_executed"] == 0
+
+
+def test_recipe_cli_json_input_byte_boundary(tmp_path: Path) -> None:
+    tool = _load_tool()
+    path = tmp_path / "exact-boundary.json"
+    path.write_bytes(b"{}" + b" " * (tool.MAX_AUTHORITY_JSON_BYTES - 2))
+    assert tool._load_json(path) == {}
+    with path.open("ab") as target:
+        target.write(b" ")
+    with pytest.raises(ValueError, match="8 MiB input limit"):
+        tool._load_json(path)
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted"])
+def test_recipe_cli_refuses_oversized_authority_without_traceback(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    tool = _load_tool()
+    oversized = tmp_path / "oversized.json"
+    # The limit is checked before decoding; this must not parse the entire file.
+    oversized.write_bytes(b"{}" + b" " * (tool.MAX_AUTHORITY_JSON_BYTES - 1))
+    empty = tmp_path / "empty.json"
+    empty.write_text("{}", encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(oversized)]
+    else:
+        command += [
+            "--bindings", str(oversized if bad_role == "bindings" else empty),
+            "--trusted-authorities",
+            str(oversized if bad_role == "trusted" else empty),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    expected_label = "trusted-authorities" if bad_role == "trusted" else bad_role
+    assert response["status"] == "FAIL"
+    assert f"invalid {expected_label} JSON" in response["error"]
+    assert "8 MiB input limit" in response["error"]
