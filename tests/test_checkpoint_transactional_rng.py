@@ -72,3 +72,39 @@ def test_transactional_rng_restore_surfaces_rollback_failure() -> None:
 
     with pytest.raises(CheckpointError, match="rollback.*also failed"):
         _transactional_restore(FakeCore, always_fail, target)
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_transactional_rng_interrupt_rolls_back_and_preserves_identity(
+    interruption: type[BaseException],
+) -> None:
+    random.seed(123)
+    np.random.seed(123)
+    before_python = copy.deepcopy(random.getstate())
+    before_numpy = copy.deepcopy(np.random.get_state())
+
+    random.seed(777)
+    np.random.seed(777)
+    target = capture_rng_state()
+    random.setstate(before_python)
+    np.random.set_state(before_numpy)
+    real_restore = restore_rng_state
+    primary = interruption("simulated interrupted backend apply")
+
+    def interrupt_after_partial_apply(state: Mapping[str, Any]) -> dict[str, Any]:
+        if state is target:
+            random.seed(999)
+            np.random.seed(999)
+            raise primary
+        return real_restore(state)
+
+    with pytest.raises(interruption, match="interrupted backend apply") as raised:
+        _transactional_restore(
+            __import__("twelve_six.checkpoint", fromlist=["checkpoint"]),
+            interrupt_after_partial_apply,
+            target,
+        )
+
+    assert raised.value is primary
+    assert random.getstate() == before_python
+    _assert_numpy_rng_equal(np.random.get_state(), before_numpy)
