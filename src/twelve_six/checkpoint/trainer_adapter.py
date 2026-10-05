@@ -587,8 +587,34 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
     return strict_model or _is_native_d02(trainer) or _is_canonical_d02(trainer)
 
 
+def _bind_exact_native_d02_authority(
+    trainer: Any,
+    name: str,
+    *,
+    positional_args: int,
+) -> Any | None:
+    """Bind one exact first-party D02 safety authority without subclass dispatch."""
+
+    if not _is_native_d02(trainer):
+        return None
+    canonical = inspect.getattr_static(_CanonicalTrainer, name, None)
+    resolved = inspect.getattr_static(type(trainer), name, None)
+    if not isinstance(canonical, FunctionType) or resolved is not canonical:
+        raise CheckpointCompatibilityError(
+            f"native D02 safety authority must remain canonical: {name}"
+        )
+    bound = canonical.__get__(trainer, type(trainer))
+    try:
+        inspect.signature(bound).bind(*([None] * positional_args))
+    except (TypeError, ValueError) as exc:
+        raise CheckpointCompatibilityError(
+            f"native D02 safety authority cannot bind safely: {name}"
+        ) from exc
+    return bound
+
+
 def _bind_native_export_live_authorities(trainer: Any) -> dict[str, Any]:
-    """Bind D02 exported-vs-live authorities without instance descriptors."""
+    """Bind exact D02 exported-vs-live authorities without subclass overrides."""
 
     if not _is_native_d02(trainer):
         return {}
@@ -598,44 +624,24 @@ def _bind_native_export_live_authorities(trainer: Any) -> dict[str, Any]:
         "_require_exported_scaler_matches_live",
         "_require_exported_optimizer_matches_live",
     ):
-        authority = inspect.getattr_static(type(trainer), name, None)
-        if not isinstance(authority, FunctionType):
-            raise CheckpointCompatibilityError(
-                f"native D02 export authority must remain class-bound: {name}"
-            )
-        bound = authority.__get__(trainer, type(trainer))
-        try:
-            inspect.signature(bound).bind(None)
-        except (TypeError, ValueError) as exc:
-            raise CheckpointCompatibilityError(
-                f"native D02 export authority cannot bind safely: {name}"
-            ) from exc
+        bound = _bind_exact_native_d02_authority(
+            trainer,
+            name,
+            positional_args=1,
+        )
+        assert bound is not None
         authorities[name] = bound
     return authorities
 
 
 def _bind_native_model_export_fingerprint(trainer: Any) -> Any | None:
-    """Bind the native model fingerprint authority without descriptor dispatch."""
+    """Bind the exact first-party model fingerprint authority."""
 
-    if not _is_native_d02(trainer):
-        return None
-    fingerprint = inspect.getattr_static(
-        type(trainer),
+    return _bind_exact_native_d02_authority(
+        trainer,
         "_model_export_fingerprint",
-        None,
+        positional_args=0,
     )
-    if not isinstance(fingerprint, FunctionType):
-        raise CheckpointCompatibilityError(
-            "native D02 model fingerprint authority must remain class-bound"
-        )
-    bound = fingerprint.__get__(trainer, type(trainer))
-    try:
-        inspect.signature(bound).bind()
-    except (TypeError, ValueError) as exc:
-        raise CheckpointCompatibilityError(
-            "native D02 model fingerprint authority cannot bind safely"
-        ) from exc
-    return bound
 
 
 def _bind_trainer_state_exporter(trainer: Any) -> Any:
@@ -901,6 +907,55 @@ def _assert_native_d02_postload_snapshot(trainer: Any, state: Any) -> None:
         raise CheckpointCompatibilityError(
             "canonical trainer post-load config disagrees with checkpoint"
         )
+
+
+def _assert_native_d02_exact_live_state(
+    trainer: Any,
+    state: Any,
+    *,
+    model_fingerprint: Any | None,
+    sealed_model_fingerprint: str | None,
+    export_live_authorities: Mapping[str, Any],
+    phase: str,
+) -> None:
+    """Prove native model and auxiliary state still equal the accepted snapshot."""
+
+    if not _is_native_d02(trainer):
+        return
+    if model_fingerprint is None or sealed_model_fingerprint is None:
+        raise CheckpointCompatibilityError(
+            "native D02 exact-state authority is unavailable"
+        )
+
+    _assert_native_d02_postload_snapshot(trainer, state)
+    observed_model = model_fingerprint()
+    if observed_model != sealed_model_fingerprint:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer model changed during {phase}"
+        )
+    try:
+        export_live_authorities[
+            "_require_exported_scheduler_matches_live"
+        ](state.get("scheduler"))
+        export_live_authorities[
+            "_require_exported_scaler_matches_live"
+        ](state.get("scaler"))
+        export_live_authorities[
+            "_require_exported_optimizer_matches_live"
+        ](state.get("optimizer"))
+    except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer auxiliary state changed during {phase}"
+        ) from exc
+
+    # Auxiliary observers run before this final model digest. The digest itself
+    # is descriptor-free for native torch Module registries, so no overridable
+    # model iterator can mutate state after being observed.
+    if model_fingerprint() != sealed_model_fingerprint:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer model changed during {phase}"
+        )
+    _assert_native_d02_postload_snapshot(trainer, state)
 
 
 def _postflight_trainer_state(trainer: Any, state: Any) -> None:
@@ -1574,12 +1629,21 @@ def save_trainer_checkpoint(
         export_ambient = capture_rng_state()
         export_policy = _snapshot_torch_policy(export_ambient)
         try:
+            entry_model_fingerprint = (
+                model_fingerprint()
+                if model_fingerprint is not None
+                else None
+            )
             state = _trainer_state_as_mapping(export_trainer_state())
             sealed_model_fingerprint = (
                 model_fingerprint()
                 if model_fingerprint is not None
                 else None
             )
+            if sealed_model_fingerprint != entry_model_fingerprint:
+                raise CheckpointCompatibilityError(
+                    "canonical trainer model changed during checkpoint export"
+                )
         except BaseException as exc:
             _note_restore_binding_drift(trainer, save_bindings, exc)
             raise
@@ -1625,38 +1689,18 @@ def save_trainer_checkpoint(
             _assert_native_d02_model_training_mode(model, trainer)
             _assert_native_d02_postload_snapshot(trainer, state)
             _assert_live_d02_determinism(trainer)
-            if model_fingerprint is not None:
-                observed_model_fingerprint = model_fingerprint()
-                if observed_model_fingerprint != sealed_model_fingerprint:
-                    raise CheckpointCompatibilityError(
-                        "canonical trainer model changed during checkpoint publication"
-                    )
-                # Model traversal may mutate auxiliary live state through custom
-                # hooks. Rebind the accepted trainer snapshot to scheduler,
-                # scaler and optimizer without another state_dict export.
-                try:
-                    export_live_authorities[
-                        "_require_exported_scheduler_matches_live"
-                    ](state.get("scheduler"))
-                    export_live_authorities[
-                        "_require_exported_scaler_matches_live"
-                    ](state.get("scaler"))
-                    export_live_authorities[
-                        "_require_exported_optimizer_matches_live"
-                    ](state.get("optimizer"))
-                except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
-                    raise CheckpointCompatibilityError(
-                        "canonical trainer auxiliary state changed during "
-                        "checkpoint publication"
-                    ) from exc
-
-                # The fingerprint/auxiliary authorities are effectful callouts.
-                # Seal runtime ownership and committed state after the final one.
-                _assert_trainer_restore_bindings(trainer, save_bindings)
-                _assert_trainer_model_binding(model, trainer)
-                _assert_native_d02_model_training_mode(model, trainer)
-                _assert_native_d02_postload_snapshot(trainer, state)
-                _assert_live_d02_determinism(trainer)
+            _assert_native_d02_exact_live_state(
+                trainer,
+                state,
+                model_fingerprint=model_fingerprint,
+                sealed_model_fingerprint=sealed_model_fingerprint,
+                export_live_authorities=export_live_authorities,
+                phase="checkpoint publication",
+            )
+            _assert_trainer_restore_bindings(trainer, save_bindings)
+            _assert_trainer_model_binding(model, trainer)
+            _assert_native_d02_model_training_mode(model, trainer)
+            _assert_live_d02_determinism(trainer)
         except BaseException as exc:
             _poison_canonical_restore_failure(
                 trainer,
@@ -1709,6 +1753,8 @@ def load_trainer_checkpoint(
     prebind_policy = _snapshot_torch_policy(prebind_ambient)
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
+        model_fingerprint = _bind_native_model_export_fingerprint(trainer)
+        restore_live_authorities = _bind_native_export_live_authorities(trainer)
     except BaseException as exc:
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
@@ -1853,6 +1899,11 @@ def load_trainer_checkpoint(
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
         model_apply(materialized)
+        sealed_model_fingerprint = (
+            model_fingerprint()
+            if model_fingerprint is not None
+            else None
+        )
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
@@ -1862,6 +1913,14 @@ def load_trainer_checkpoint(
         _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_native_d02_model_training_mode(model, trainer)
+        _assert_native_d02_exact_live_state(
+            trainer,
+            trainer_state,
+            model_fingerprint=model_fingerprint,
+            sealed_model_fingerprint=sealed_model_fingerprint,
+            export_live_authorities=restore_live_authorities,
+            phase="checkpoint restore",
+        )
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
                 combined_state["rng"],
@@ -1878,7 +1937,14 @@ def load_trainer_checkpoint(
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
-        _assert_native_d02_postload_snapshot(trainer, trainer_state)
+        _assert_native_d02_exact_live_state(
+            trainer,
+            trainer_state,
+            model_fingerprint=model_fingerprint,
+            sealed_model_fingerprint=sealed_model_fingerprint,
+            export_live_authorities=restore_live_authorities,
+            phase="final checkpoint restore seal",
+        )
     except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
