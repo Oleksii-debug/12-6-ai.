@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+import twelve_six.data.trusted_family_authority_current as current
 from twelve_six.data.postdecontam_balance_projection_v1 import ProjectionError
 from twelve_six.data.postmaterialization_balance_projection_v1 import (
     build_postmaterialization_family_vector,
@@ -181,6 +182,7 @@ def test_extended_family_identity_is_source_authority_blob_bound() -> None:
             _canonical(
                 {
                     "authority_git_blob_sha1": meta["blob_sha1"],
+                    "authority_family_json_path": meta["family_json_path"],
                     "source_family": family,
                     "canonical_stratum": "code",
                 }
@@ -251,3 +253,46 @@ def test_coherently_resealed_unknown_family_cannot_cross_projection() -> None:
             ],
             source_git_sha=GIT_SHA,
         )
+
+
+def _git_blob_sha1(raw: bytes) -> str:
+    header = f"blob {len(raw)}".encode("ascii") + bytes((0,))
+    return hashlib.sha1(header + raw, usedforsecurity=False).hexdigest()
+
+
+def test_source_authority_family_value_drift_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    family = "github:pydantic/pydantic"
+    raw = b'{"source_family":"github:other/project"}\n'
+    altered = copy.deepcopy(SOURCE_AUTHORITY_FILES[family])
+    altered["blob_sha1"] = _git_blob_sha1(raw)
+    monkeypatch.setitem(SOURCE_AUTHORITY_FILES, family, altered)
+    monkeypatch.setattr(current, "_read_authority_bytes", lambda _path: raw)
+    with pytest.raises(ValueError, match="authority family drift"):
+        trusted_family_projection([family])
+
+
+def test_source_authority_duplicate_json_member_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    family = "github:pydantic/pydantic"
+    raw = (
+        b'{"source_family":"github:pydantic/pydantic",'
+        b'"source_family":"github:pydantic/pydantic"}\n'
+    )
+    altered = copy.deepcopy(SOURCE_AUTHORITY_FILES[family])
+    altered["blob_sha1"] = _git_blob_sha1(raw)
+    monkeypatch.setitem(SOURCE_AUTHORITY_FILES, family, altered)
+    monkeypatch.setattr(current, "_read_authority_bytes", lambda _path: raw)
+    with pytest.raises(ValueError, match="duplicate trusted authority JSON member"):
+        trusted_family_projection([family])
+
+
+def test_source_authority_identity_binds_family_json_path() -> None:
+    family = "github:pydantic/pydantic"
+    meta = SOURCE_AUTHORITY_FILES[family]
+    baseline = current._source_family_identity(family, meta)
+    altered = copy.deepcopy(meta)
+    altered["family_json_path"] = "other.family"
+    assert baseline != current._source_family_identity(family, altered)
