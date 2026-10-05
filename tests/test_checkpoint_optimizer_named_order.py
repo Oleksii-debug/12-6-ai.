@@ -149,6 +149,19 @@ def test_same_named_order_preserves_adamw_moments_and_next_update(
         strict_model=False, restore_rng=False, **extra,
     )
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 3)
+    assert all("param_names" not in group for group in target.optimizer.param_groups)
+    assert (
+        source.optimizer.state_dict()["param_groups"]
+        == target.optimizer.state_dict()["param_groups"]
+    )
+    resealed = target.state_dict()
+    expected_names = (
+        [["left"], ["right"]] if multiple_groups else [["left", "right"]]
+    )
+    assert [
+        group["param_names"] for group in resealed.optimizer["param_groups"]
+    ] == expected_names
+    assert all("param_names" not in group for group in target.optimizer.param_groups)
     for name in ("left", "right"):
         src = getattr(source_model, name)
         dst = getattr(target_model, name)
@@ -163,6 +176,41 @@ def test_same_named_order_preserves_adamw_moments_and_next_update(
         torch.testing.assert_close(
             getattr(source_model, name), getattr(target_model, name), rtol=0, atol=0,
         )
+
+
+@pytest.mark.parametrize("multiple_groups", [False, True], ids=["one-group", "two-groups"])
+def test_direct_d02_restore_does_not_install_checkpoint_param_names(
+    tmp_path: Path,
+    multiple_groups: bool,
+) -> None:
+    checkpoint = tmp_path / "named direct restore"
+    _, source, config = _saved_nonzero_checkpoint(
+        checkpoint, multiple_groups=multiple_groups,
+    )
+    state = source.state_dict()
+    assert all(
+        "param_names" in group for group in state.optimizer["param_groups"]
+    )
+
+    model = _TwoNamedParameters()
+    target = _trainer(model, config, multiple_groups=multiple_groups)
+    target.load_state_dict(state)
+
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 3)
+    assert all("param_names" not in group for group in target.optimizer.param_groups)
+    assert (
+        source.optimizer.state_dict()["param_groups"]
+        == target.optimizer.state_dict()["param_groups"]
+    )
+
+    resealed = target.state_dict()
+    expected_names = (
+        [["left"], ["right"]] if multiple_groups else [["left", "right"]]
+    )
+    assert [
+        group["param_names"] for group in resealed.optimizer["param_groups"]
+    ] == expected_names
+    assert all("param_names" not in group for group in target.optimizer.param_groups)
 
 
 @pytest.mark.parametrize("multiple_groups", [False, True])
