@@ -911,6 +911,32 @@ class Trainer:
         if any(type(k) is not int for k in saved_state) or set(saved_state) != present:
             raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
 
+    def _require_exported_scaler_matches_live(self, exported: Any) -> None:
+        """Refuse finite, detached GradScaler statistics that cannot replay."""
+        scaler = self.scaler
+        if scaler is None:
+            if exported is not None:
+                raise TrainingStateInvalidError("gradient scaler export is not canonical")
+            return
+        if not isinstance(exported, Mapping):
+            raise TrainingStateInvalidError("gradient scaler export is not canonical")
+        if not scaler.is_enabled():
+            expected: dict[str, Any] = {}
+        else:
+            # Match GradScaler's own five-field state_dict schema using live
+            # getters, never a second potentially effectful state_dict call.
+            expected = {
+                "scale": scaler.get_scale(),
+                "growth_factor": scaler.get_growth_factor(),
+                "backoff_factor": scaler.get_backoff_factor(),
+                "growth_interval": scaler.get_growth_interval(),
+                "_growth_tracker": scaler._get_growth_tracker(),
+            }
+        if not self._exact_export_leaf_equal(exported, expected):
+            raise TrainingStateInvalidError(
+                "gradient scaler export differs from live state"
+            )
+
     def _require_exported_scheduler_matches_live(self, exported: Any) -> None:
         """Bind finite scheduler snapshot to live epoch/rates without re-exporting.
 
@@ -995,6 +1021,7 @@ class Trainer:
                 self._require_exported_scheduler_matches_live(snapshot.scheduler)
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
+                self._require_exported_scaler_matches_live(snapshot.scaler)
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
