@@ -19,6 +19,7 @@ import os
 import platform
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -124,7 +125,7 @@ def _sha256(raw: bytes) -> str:
 
 def _git(*args: str, check: bool = True) -> str:
     try:
-        proc = __import__("subprocess").run(
+        proc = subprocess.run(
             ["git", "-C", str(ROOT), *args],
             check=False,
             capture_output=True,
@@ -132,7 +133,7 @@ def _git(*args: str, check: bool = True) -> str:
             encoding="utf-8",
             timeout=30,
         )
-    except (OSError, __import__("subprocess").SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         raise RadaCurrentGlobalDedupError(f"cannot execute git: {exc}") from exc
     if check and proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
@@ -151,7 +152,7 @@ def _bind_execution_head(expected_execution_head: str) -> str:
     )
     observed = _git("rev-parse", "HEAD")
     _require(observed == expected_execution_head, "execution HEAD drift")
-    ancestor = __import__("subprocess").run(
+    ancestor = subprocess.run(
         [
             "git",
             "-C",
@@ -176,7 +177,7 @@ def _bind_execution_head(expected_execution_head: str) -> str:
 def verify_repository_authority() -> dict[str, str]:
     """Bind every science/runtime dependency to exact PR #2808 Product bytes."""
 
-    dirty = __import__("subprocess").run(
+    dirty = subprocess.run(
         [
             "git",
             "-C",
