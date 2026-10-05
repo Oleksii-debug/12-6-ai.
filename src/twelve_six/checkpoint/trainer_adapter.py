@@ -587,6 +587,33 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
     return strict_model or _is_native_d02(trainer) or _is_canonical_d02(trainer)
 
 
+def _bind_native_export_live_authorities(trainer: Any) -> dict[str, Any]:
+    """Bind D02 exported-vs-live authorities without instance descriptors."""
+
+    if not _is_native_d02(trainer):
+        return {}
+    authorities: dict[str, Any] = {}
+    for name in (
+        "_require_exported_scheduler_matches_live",
+        "_require_exported_scaler_matches_live",
+        "_require_exported_optimizer_matches_live",
+    ):
+        authority = inspect.getattr_static(type(trainer), name, None)
+        if not isinstance(authority, FunctionType):
+            raise CheckpointCompatibilityError(
+                f"native D02 export authority must remain class-bound: {name}"
+            )
+        bound = authority.__get__(trainer, type(trainer))
+        try:
+            inspect.signature(bound).bind(None)
+        except (TypeError, ValueError) as exc:
+            raise CheckpointCompatibilityError(
+                f"native D02 export authority cannot bind safely: {name}"
+            ) from exc
+        authorities[name] = bound
+    return authorities
+
+
 def _bind_native_model_export_fingerprint(trainer: Any) -> Any | None:
     """Bind the native model fingerprint authority without descriptor dispatch."""
 
@@ -1514,6 +1541,7 @@ def save_trainer_checkpoint(
     save_bindings = _snapshot_trainer_restore_bindings(trainer)
     export_trainer_state = _bind_trainer_state_exporter(trainer)
     model_fingerprint = _bind_native_model_export_fingerprint(trainer)
+    export_live_authorities = _bind_native_export_live_authorities(trainer)
     _assert_trainer_model_binding(model, trainer)
     _assert_native_d02_model_training_mode(model, trainer)
     # Reject a pre-existing process-policy mismatch before any effectful export.
@@ -1580,9 +1608,27 @@ def save_trainer_checkpoint(
                     raise CheckpointCompatibilityError(
                         "canonical trainer model changed during checkpoint publication"
                     )
-                # The fingerprint authority traverses model parameter/buffer
-                # interfaces and is therefore itself effectful. Seal runtime
-                # ownership and committed state after that final model callout.
+                # Model traversal may mutate auxiliary live state through custom
+                # hooks. Rebind the accepted trainer snapshot to scheduler,
+                # scaler and optimizer without another state_dict export.
+                try:
+                    export_live_authorities[
+                        "_require_exported_scheduler_matches_live"
+                    ](state.get("scheduler"))
+                    export_live_authorities[
+                        "_require_exported_scaler_matches_live"
+                    ](state.get("scaler"))
+                    export_live_authorities[
+                        "_require_exported_optimizer_matches_live"
+                    ](state.get("optimizer"))
+                except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
+                    raise CheckpointCompatibilityError(
+                        "canonical trainer auxiliary state changed during "
+                        "checkpoint publication"
+                    ) from exc
+
+                # The fingerprint/auxiliary authorities are effectful callouts.
+                # Seal runtime ownership and committed state after the final one.
                 _assert_trainer_restore_bindings(trainer, save_bindings)
                 _assert_trainer_model_binding(model, trainer)
                 _assert_native_d02_model_training_mode(model, trainer)
