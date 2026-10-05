@@ -738,7 +738,7 @@ def _assert_live_d02_determinism(trainer: Any) -> bool | None:
 
     if not _is_canonical_d02(trainer):
         return None
-    config = getattr(trainer, "config", None)
+    config = vars(trainer).get("config")
     enabled = getattr(config, "deterministic_algorithms", None)
     warn_only = getattr(config, "deterministic_warn_only", None)
     if type(enabled) is not bool or type(warn_only) is not bool:
