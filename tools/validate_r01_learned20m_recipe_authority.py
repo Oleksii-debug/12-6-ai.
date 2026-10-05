@@ -84,7 +84,7 @@ class _StoreAuthorityOnce(argparse.Action):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(exit_on_error=False)
+    parser = argparse.ArgumentParser(exit_on_error=False, allow_abbrev=False)
     parser.add_argument(
         "--policy", type=Path, default=DEFAULT_POLICY, action=_StoreAuthorityOnce,
     )
@@ -116,9 +116,15 @@ def main() -> int:
         ),
     )
     try:
-        args = parser.parse_args()
+        args, unknown = parser.parse_known_args()
     except argparse.ArgumentError as exc:
         return _print_input_failure("authority arguments", exc)
+    if unknown:
+        # Reject unknown flags and positionals before opening any authority file.
+        # Never echo an untrusted argument: it may contain secret material.
+        return _print_input_failure(
+            "authority arguments", ValueError("unrecognized authority option or argument")
+        )
 
     try:
         policy = _load_json(args.policy)
