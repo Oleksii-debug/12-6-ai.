@@ -518,30 +518,24 @@ def _snapshot_native_d02_config(config: Any) -> dict[str, Any]:
     return snapshot
 
 
-def _snapshot_native_d02_model_trainability(
+def _snapshot_native_d02_model_contract(
     trainer: Any,
-) -> tuple[tuple[str, int, bool], ...]:
-    """Pin raw parameter identity/name/trainability across restore callouts."""
+) -> tuple[tuple[Any, ...], ...]:
+    """Pin non-serialized model topology/trainability across restore callouts."""
 
-    canonical = inspect.getattr_static(
-        _CanonicalTrainer,
-        "_canonical_model_members",
-        None,
-    )
-    if not isinstance(canonical, FunctionType):
-        raise CheckpointCompatibilityError(
-            "native D02 model-member authority is unavailable"
-        )
-    try:
-        named_parameters, _ = canonical.__get__(trainer, type(trainer))()
-    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
-        raise CheckpointCompatibilityError(
-            "native D02 model trainability snapshot is unavailable"
-        ) from exc
-
+    attrs = _trainer_instance_attrs(trainer)
+    model = attrs.get("model")
     torch = importlib.import_module("torch")
+    module_type = torch.nn.Module
+    parameter_type = torch.nn.Parameter
+    tensor_type = torch.Tensor
+    if not isinstance(model, module_type):
+        raise CheckpointCompatibilityError(
+            "native D02 model contract requires a torch module"
+        )
+
     requires_grad_descriptor = inspect.getattr_static(
-        torch.Tensor,
+        tensor_type,
         "requires_grad",
         None,
     )
@@ -550,23 +544,151 @@ def _snapshot_native_d02_model_trainability(
             "native D02 tensor trainability authority is unavailable"
         )
 
-    snapshot: list[tuple[str, int, bool]] = []
-    for name, parameter in named_parameters:
+    entries: list[tuple[Any, ...]] = []
+    seen: set[int] = set()
+    active: set[int] = set()
+
+    def walk(module: Any, prefix: str) -> None:
+        module_id = id(module)
+        if module_id in active:
+            raise CheckpointCompatibilityError(
+                "native D02 model contract contains a module cycle"
+            )
+        if module_id in seen:
+            return
+        active.add(module_id)
+        seen.add(module_id)
         try:
-            requires_grad = requires_grad_descriptor.__get__(
-                parameter,
-                type(parameter),
+            try:
+                module_attrs = _CanonicalTrainer._raw_instance_dict(
+                    module,
+                    module_type,
+                    label="checkpoint model contract module",
+                )
+            except (AttributeError, RuntimeError, TypeError) as exc:
+                raise CheckpointCompatibilityError(
+                    "native D02 model contract storage is unavailable"
+                ) from exc
+
+            training = module_attrs.get("training")
+            parameters = module_attrs.get("_parameters")
+            buffers = module_attrs.get("_buffers")
+            children = module_attrs.get("_modules")
+            non_persistent = module_attrs.get("_non_persistent_buffers_set")
+            if type(training) is not bool:
+                raise CheckpointCompatibilityError(
+                    "native D02 model contract training flag is invalid"
+                )
+            if (
+                type(parameters) is not dict
+                or type(buffers) is not dict
+                or type(children) is not dict
+                or type(non_persistent) is not set
+                or any(type(name) is not str for name in non_persistent)
+            ):
+                raise CheckpointCompatibilityError(
+                    "native D02 model contract registries are not canonical"
+                )
+
+            entries.append(
+                (
+                    "module",
+                    prefix,
+                    module_id,
+                    _CanonicalTrainer._type_identity(module),
+                    training,
+                    tuple(sorted(non_persistent)),
+                )
             )
-        except (AttributeError, RuntimeError, TypeError) as exc:
-            raise CheckpointCompatibilityError(
-                f"native D02 parameter trainability is unavailable: {name}"
-            ) from exc
-        if type(requires_grad) is not bool:
-            raise CheckpointCompatibilityError(
-                f"native D02 parameter trainability is invalid: {name}"
-            )
-        snapshot.append((name, id(parameter), requires_grad))
-    return tuple(snapshot)
+
+            for name, parameter in parameters.items():
+                if type(name) is not str:
+                    raise CheckpointCompatibilityError(
+                        "native D02 model parameter name is not canonical"
+                    )
+                full_name = f"{prefix}{name}"
+                if parameter is None:
+                    entries.append(("parameter", full_name, None, None, None))
+                    continue
+                if not isinstance(parameter, parameter_type):
+                    raise CheckpointCompatibilityError(
+                        "native D02 model parameter binding is not canonical"
+                    )
+                try:
+                    requires_grad = requires_grad_descriptor.__get__(
+                        parameter,
+                        type(parameter),
+                    )
+                except (AttributeError, RuntimeError, TypeError) as exc:
+                    raise CheckpointCompatibilityError(
+                        f"native D02 parameter trainability is unavailable: {full_name}"
+                    ) from exc
+                if type(requires_grad) is not bool:
+                    raise CheckpointCompatibilityError(
+                        f"native D02 parameter trainability is invalid: {full_name}"
+                    )
+                entries.append(
+                    (
+                        "parameter",
+                        full_name,
+                        id(parameter),
+                        _CanonicalTrainer._type_identity(parameter),
+                        requires_grad,
+                    )
+                )
+
+            for name, buffer in buffers.items():
+                if type(name) is not str:
+                    raise CheckpointCompatibilityError(
+                        "native D02 model buffer name is not canonical"
+                    )
+                full_name = f"{prefix}{name}"
+                if buffer is None:
+                    entries.append(
+                        ("buffer", full_name, None, None, name in non_persistent)
+                    )
+                    continue
+                if not isinstance(buffer, tensor_type):
+                    raise CheckpointCompatibilityError(
+                        "native D02 model buffer binding is not canonical"
+                    )
+                entries.append(
+                    (
+                        "buffer",
+                        full_name,
+                        id(buffer),
+                        _CanonicalTrainer._type_identity(buffer),
+                        name in non_persistent,
+                    )
+                )
+
+            for name, child in children.items():
+                if type(name) is not str:
+                    raise CheckpointCompatibilityError(
+                        "native D02 model child name is not canonical"
+                    )
+                full_name = f"{prefix}{name}"
+                if child is None:
+                    entries.append(("child", full_name, None, None))
+                    continue
+                if not isinstance(child, module_type):
+                    raise CheckpointCompatibilityError(
+                        "native D02 model child binding is not canonical"
+                    )
+                entries.append(
+                    (
+                        "child",
+                        full_name,
+                        id(child),
+                        _CanonicalTrainer._type_identity(child),
+                    )
+                )
+                walk(child, f"{full_name}.")
+        finally:
+            active.remove(module_id)
+
+    walk(model, "")
+    return tuple(entries)
 
 
 def _snapshot_trainer_restore_bindings(
@@ -623,8 +745,8 @@ def _snapshot_trainer_restore_bindings(
         if native_d02 and "config" in bindings
         else None
     )
-    model_trainability = (
-        _snapshot_native_d02_model_trainability(trainer)
+    model_contract = (
+        _snapshot_native_d02_model_contract(trainer)
         if native_d02
         else None
     )
@@ -633,7 +755,7 @@ def _snapshot_trainer_restore_bindings(
         "bindings": bindings,
         "policies": policies,
         "config": config,
-        "model_trainability": model_trainability,
+        "model_contract": model_contract,
     }
 
 
@@ -697,12 +819,12 @@ def _assert_trainer_restore_bindings(
             raise CheckpointCompatibilityError(
                 "canonical trainer config changed during checkpoint restore"
             )
-    expected_trainability = snapshot_state["model_trainability"]
-    if expected_trainability is not None:
-        current_trainability = _snapshot_native_d02_model_trainability(trainer)
-        if not _restore_contract_equal(current_trainability, expected_trainability):
+    expected_model_contract = snapshot_state["model_contract"]
+    if expected_model_contract is not None:
+        current_model_contract = _snapshot_native_d02_model_contract(trainer)
+        if not _restore_contract_equal(current_model_contract, expected_model_contract):
             raise CheckpointCompatibilityError(
-                "canonical trainer model trainability changed during checkpoint restore"
+                "canonical trainer model contract changed during checkpoint restore"
             )
     for field, expected in snapshot_state["policies"].items():
         if (
