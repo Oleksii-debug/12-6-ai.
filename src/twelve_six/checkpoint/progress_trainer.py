@@ -78,7 +78,7 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify/decode once and reject wrong progress/exposure before mutation."""
 
-    if not hasattr(trainer, "load_state_dict"):
+    if not callable(getattr(trainer, "load_state_dict", None)):
         raise TypeError("trainer must provide load_state_dict()")
 
     _require_expected_sha256(

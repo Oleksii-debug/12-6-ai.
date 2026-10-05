@@ -1519,7 +1519,7 @@ def test_direct_restore_rejects_nonfinite_adamw_moment_before_clean_status():
         receiver.load_state_dict(snapshot)
 
 
-def test_direct_restore_rejects_nonfinite_optimizer_group_rate():
+def test_direct_restore_rejects_nonfinite_optimizer_group_rate_before_mutation():
     from copy import deepcopy
     from dataclasses import replace
 
@@ -1534,10 +1534,12 @@ def test_direct_restore_rejects_nonfinite_optimizer_group_rate():
     with pytest.raises(NonFiniteTrainingError, match="learning rate must be finite"):
         receiver.load_state_dict(replace(snapshot, optimizer=bad_optimizer))
 
-    assert receiver._failure_reason.startswith("trainer state restore failed")
-    assert receiver._update_incomplete is True
-    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
-        receiver.train_microbatch(_BATCH)
+    assert receiver._failure_reason is None
+    assert receiver._update_incomplete is False
+    assert receiver.optimizer_step == 0
+    assert not receiver.optimizer.state
+    receiver.load_state_dict(snapshot)
+    assert receiver.train_microbatch(_BATCH).optimizer_stepped is True
 
 
 def test_nonfinite_model_buffer_after_optimizer_step_never_earns_step_credit(
@@ -1646,13 +1648,19 @@ def test_direct_restore_rejects_existing_corrupted_model_buffer():
 @pytest.mark.parametrize(
     ("field", "invalid"),
     [
+        ("lr", "0.001"),
         ("weight_decay", float("nan")),
         ("weight_decay", -0.1),
+        ("weight_decay", "0.01"),
         ("eps", float("inf")),
+        ("eps", 0.0),
+        ("eps", "1e-8"),
         ("betas", (float("nan"), 0.9)),
+        ("betas", (0.9, 1.0)),
+        ("betas", ("0.9", "0.999")),
     ],
 )
-def test_restore_rejects_invalid_adamw_hyperparameters_before_clean_status(
+def test_restore_rejects_invalid_adamw_hyperparameters_before_mutation(
     field, invalid,
 ):
     from copy import deepcopy
@@ -1667,14 +1675,16 @@ def test_restore_rejects_invalid_adamw_hyperparameters_before_clean_status(
     corrupt["param_groups"][0][field] = invalid
     receiver = Trainer(_TinyLogitModel(), config)
 
-    with pytest.raises(NonFiniteTrainingError, match=f"optimizer {field}"):
+    label = "learning rate" if field == "lr" else field
+    with pytest.raises(NonFiniteTrainingError, match=f"optimizer {label}"):
         receiver.load_state_dict(replace(snapshot, optimizer=corrupt))
 
     assert receiver.optimizer_step == 0
-    assert receiver._update_incomplete is True
-    assert receiver._failure_reason.startswith("trainer state restore failed")
-    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
-        receiver.state_dict()
+    assert receiver._update_incomplete is False
+    assert receiver._failure_reason is None
+    assert not receiver.optimizer.state
+    receiver.load_state_dict(snapshot)
+    assert receiver.state_dict().optimizer_step == 0
 
 
 def test_checkpoint_export_rejects_nonfinite_group_weight_decay():

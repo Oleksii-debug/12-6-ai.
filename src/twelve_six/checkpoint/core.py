@@ -530,7 +530,10 @@ def _preflight_optimizer_state(optimizer: Any, state: Any) -> None:
 
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint optimizer state must be a mapping")
-    if not hasattr(optimizer, "load_state_dict") or not hasattr(optimizer, "state_dict"):
+    if (
+        not callable(getattr(optimizer, "load_state_dict", None))
+        or not callable(getattr(optimizer, "state_dict", None))
+    ):
         raise CheckpointCompatibilityError("optimizer must provide state_dict/load_state_dict")
 
     optimizer_module = optimizer.__class__.__module__
@@ -808,7 +811,10 @@ def _semantic_stateful_probe(component: Any, state: Any, *, label: str) -> None:
 def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> None:
     """Validate scheduler-like state before model/optimizer mutation."""
 
-    if not hasattr(component, "state_dict") or not hasattr(component, "load_state_dict"):
+    if (
+        not callable(getattr(component, "state_dict", None))
+        or not callable(getattr(component, "load_state_dict", None))
+    ):
         raise CheckpointCompatibilityError(
             f"{label} must provide state_dict/load_state_dict"
         )

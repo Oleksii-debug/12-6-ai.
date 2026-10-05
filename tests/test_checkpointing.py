@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
     CheckpointIdentity,
     CheckpointIntegrityError,
     hash_json,
@@ -166,6 +167,46 @@ def test_save_load_roundtrip_and_manifest(tmp_path: Path):
     np.testing.assert_array_equal(optimizer.velocity, expected_velocity)
     assert result.trainer_state == {"loss": 1.25, "micro_step": 3}
     assert scheduler.steps == 3
+
+
+@pytest.mark.parametrize("scheduler_method", ["state_dict", "load_state_dict"])
+def test_noncallable_scheduler_interface_rejected_before_model_mutation(
+    tmp_path: Path, scheduler_method: str,
+) -> None:
+    source_model, source_optimizer, source_scheduler = seeded_stack()
+    train_step(source_model, source_optimizer, source_scheduler)
+    ckpt = tmp_path / "noncallable-scheduler-interface"
+    save_checkpoint(
+        ckpt,
+        model=source_model,
+        optimizer=source_optimizer,
+        scheduler=source_scheduler,
+        trainer_state={},
+        identity=identity(step=1, tokens_seen=8),
+    )
+
+    target_model, target_optimizer, target_scheduler = seeded_stack()
+    target_model.weights[:] = 77.0
+    target_optimizer.velocity[:] = -55.0
+    weights_before = target_model.weights.copy()
+    velocity_before = target_optimizer.velocity.copy()
+    setattr(target_scheduler, scheduler_method, None)
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="scheduler must provide state_dict/load_state_dict",
+    ):
+        load_checkpoint(
+            ckpt,
+            model=target_model,
+            optimizer=target_optimizer,
+            scheduler=target_scheduler,
+            restore_rng=False,
+        )
+
+    np.testing.assert_array_equal(target_model.weights, weights_before)
+    np.testing.assert_array_equal(target_optimizer.velocity, velocity_before)
+    assert target_scheduler.steps == 0
 
 
 def test_checksum_tamper_is_rejected_before_load(tmp_path: Path):

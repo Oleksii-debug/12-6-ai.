@@ -244,7 +244,10 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
         raise CheckpointCompatibilityError(f"{label} state/config mismatch")
     if component is None:
         return
-    if not hasattr(component, "state_dict") or not hasattr(component, "load_state_dict"):
+    if (
+        not callable(getattr(component, "state_dict", None))
+        or not callable(getattr(component, "load_state_dict", None))
+    ):
         raise CheckpointCompatibilityError(
             f"{label} must provide state_dict/load_state_dict"
         )
@@ -299,6 +302,22 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
+    # Direct D02 load invokes these safety authorities only after live optimizer,
+    # counters, scheduler/scaler or gradients may already have been changed.
+    # An incompatible canonical object must therefore expose them before D05
+    # opens the application region.
+    for authority, label in (
+        ("_require_finite_auxiliary_state", "auxiliary-state"),
+        ("_require_safe_optimizer_hyperparameters", "optimizer-hyperparameter"),
+        ("_require_finite_committed_update", "committed-update"),
+        ("_require_no_residual_model_gradients", "gradient-cleanliness"),
+        ("_require_deterministic_policy", "deterministic-policy"),
+        ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
+    ):
+        if not callable(getattr(trainer, authority, None)):
+            raise CheckpointCompatibilityError(
+                f"canonical trainer {label} authority unavailable"
+            )
     # Global deterministic mode is a pure target compatibility precondition.
     # Reject drift before opening a model-scale checkpoint in either loader.
     _assert_live_d02_determinism(trainer)
@@ -338,6 +357,11 @@ def _preflight_trainer_target(trainer: Any) -> None:
             raise CheckpointCompatibilityError(
                 "checkpoint restore requires valid optimizer ownership of model parameters"
             ) from exc
+    optimizer = getattr(trainer, "optimizer", None)
+    if optimizer is not None and not callable(getattr(optimizer, "zero_grad", None)):
+        raise CheckpointCompatibilityError(
+            "canonical trainer optimizer zero_grad unavailable"
+        )
 
 
 def _preflight_trainer_state_without_rng_guard(
@@ -470,6 +494,23 @@ def _preflight_trainer_state_without_rng_guard(
                     f"checkpoint trainer {field} has non-finite or invalid numeric state"
                 ) from exc
 
+    # A finite optimizer group can still encode an invalid update contract
+    # (for example negative decay/LR, zero eps or beta outside [0, 1)).
+    safe_optimizer_check = getattr(
+        trainer, "_require_safe_optimizer_hyperparameters", None
+    )
+    if canonical_d02:
+        if not callable(safe_optimizer_check):
+            raise CheckpointCompatibilityError(
+                "canonical trainer optimizer-hyperparameter authority unavailable"
+            )
+        try:
+            safe_optimizer_check(state.get("optimizer"))
+        except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint trainer optimizer hyperparameters invalid"
+            ) from exc
+
     # Shared D02 authority must reject finite but forged scheduler state
     # BEFORE either D05 public loader can apply model weights or restore RNG.
     # Generic third-party trainer adapters retain their original semantics.
@@ -505,7 +546,7 @@ def _preflight_trainer_state_without_rng_guard(
 
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
-        if not hasattr(trainer, "load_state_dict"):
+        if not callable(getattr(trainer, "load_state_dict", None)):
             raise CheckpointCompatibilityError("trainer must provide load_state_dict")
         try:
             probe = copy.deepcopy(trainer)
@@ -814,7 +855,7 @@ def save_trainer_checkpoint(
 ) -> dict[str, Any]:
     """Save model + trainer-owned optimizer/scheduler/scaler/counter state."""
 
-    if not hasattr(trainer, "state_dict"):
+    if not callable(getattr(trainer, "state_dict", None)):
         raise TypeError("trainer must provide state_dict()")
     _assert_trainer_model_binding(model, trainer)
     state = _trainer_state_as_mapping(trainer.state_dict())
@@ -858,7 +899,7 @@ def load_trainer_checkpoint(
     No checkpoint artifact is reopened or decoded a second time before mutation.
     """
 
-    if not hasattr(trainer, "load_state_dict"):
+    if not callable(getattr(trainer, "load_state_dict", None)):
         raise TypeError("trainer must provide load_state_dict()")
 
     _validate_expected_core_identity(

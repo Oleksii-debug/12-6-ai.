@@ -349,14 +349,40 @@ class Trainer:
                             f"optimizer produced non-finite state at micro_step={self.micro_step}"
                         ) from exc
 
-    def _require_safe_optimizer_hyperparameters(self) -> None:
-        """Validate all group hyperparameters, not only the reported group LR."""
-        for group in self.optimizer.param_groups:
+    def _require_safe_optimizer_hyperparameters(
+        self, optimizer_state: Any | None = None,
+    ) -> None:
+        """Validate live or checkpoint group hyperparameters before use."""
+        live_groups = self.optimizer.param_groups
+        groups = live_groups
+        compare_checkpoint_types = optimizer_state is not None
+        if optimizer_state is not None:
+            if not isinstance(optimizer_state, Mapping):
+                raise NonFiniteTrainingError("optimizer parameter groups must be valid")
+            groups = optimizer_state.get("param_groups")
+            if (
+                not isinstance(groups, list)
+                or not isinstance(live_groups, list)
+                or len(groups) != len(live_groups)
+            ):
+                raise NonFiniteTrainingError("optimizer parameter groups must be valid")
+        for group_index, group in enumerate(groups):
+            if not isinstance(group, Mapping):
+                raise NonFiniteTrainingError("optimizer parameter groups must be valid")
+            live_group = live_groups[group_index] if compare_checkpoint_types else group
             for field in ("lr", "weight_decay", "eps"):
                 if field not in group:
                     continue  # Other injected optimizer families may omit these fields.
                 value = group[field]
                 label = "learning rate" if field == "lr" else field
+                if (
+                    compare_checkpoint_types
+                    and field in live_group
+                    and type(value) is not type(live_group[field])
+                ):
+                    raise NonFiniteTrainingError(
+                        f"optimizer {label} type differs from live optimizer"
+                    )
                 if isinstance(value, bool) or not math.isfinite(float(value)):
                     raise NonFiniteTrainingError(
                         f"optimizer {label} must be finite and >= 0"
@@ -369,6 +395,17 @@ class Trainer:
                 betas = group["betas"]
                 if not isinstance(betas, (list, tuple)) or len(betas) != 2:
                     raise NonFiniteTrainingError("optimizer betas must be valid")
+                if compare_checkpoint_types and "betas" in live_group:
+                    live_betas = live_group["betas"]
+                    if (
+                        type(betas) is not type(live_betas)
+                        or len(live_betas) != 2
+                        or any(
+                            type(beta) is not type(live_beta)
+                            for beta, live_beta in zip(betas, live_betas, strict=True)
+                        )
+                    ):
+                        raise NonFiniteTrainingError("optimizer betas must be valid")
                 for beta in betas:
                     if isinstance(beta, bool) or not math.isfinite(float(beta)):
                         raise NonFiniteTrainingError("optimizer betas must be valid")
@@ -1711,6 +1748,7 @@ class Trainer:
         # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
         # parameter identity. Reject missing/reordered names before mutation.
         self._require_optimizer_state_parameter_order(state.optimizer)
+        self._require_safe_optimizer_hyperparameters(state.optimizer)
         self._require_checkpoint_scheduler_chronology(
             state.scheduler, state.optimizer_step, state.optimizer,
         )
@@ -1718,9 +1756,24 @@ class Trainer:
         # From the first component load onward a failure may leave optimizer,
         # scheduler, scaler or counters partially applied. No same-instance
         # retry is safe without also restoring the verified model/RNG state.
+        # param_names is checkpoint-only transport metadata used above to
+        # authenticate positional optimizer slots. Do not install it into the
+        # live PyTorch optimizer: uninterrupted training does not carry this key,
+        # and retaining it would make a resumed raw optimizer state differ from
+        # the exact uninterrupted state despite identical numerical dynamics.
+        optimizer_state = dict(state.optimizer)
+        optimizer_state["param_groups"] = [
+            {
+                key: value
+                for key, value in group.items()
+                if key != "param_names"
+            }
+            for group in state.optimizer["param_groups"]
+        ]
+
         self._update_incomplete = True
         try:
-            self.optimizer.load_state_dict(state.optimizer)
+            self.optimizer.load_state_dict(optimizer_state)
             self._require_optimizer_parameter_coverage()
             if self.scheduler is not None and state.scheduler is not None:
                 self.scheduler.load_state_dict(state.scheduler)
