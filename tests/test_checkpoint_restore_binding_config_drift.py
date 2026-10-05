@@ -474,7 +474,7 @@ def test_native_checkpoint_save_restores_export_process_state(
     monkeypatch.setattr(trainer_adapter, "save_checkpoint", observe_save)
 
     with pytest.raises(
-        Exception,
+        TrainingStateInvalidError,
         match="live PyTorch deterministic policy disagrees with trainer configuration",
     ):
         trainer_adapter.save_trainer_checkpoint(
