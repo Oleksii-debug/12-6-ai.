@@ -186,6 +186,49 @@ def test_model_fingerprint_ignores_armed_dict_descriptor() -> None:
     assert raw["dict_reads"] == []
 
 
+def test_model_fingerprint_tracks_tied_parameter_binding_names() -> None:
+    class TiedParameters(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            shared = torch.nn.Parameter(torch.tensor([0.5, -0.25]))
+            self.primary = shared
+            self.alias = shared
+
+    model = TiedParameters()
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    raw = _raw_module_dict(model)
+    before = trainer._model_export_fingerprint()
+    raw["_parameters"]["renamed_alias"] = raw["_parameters"].pop("alias")
+    after = trainer._model_export_fingerprint()
+
+    assert before != after
+
+
+def test_model_fingerprint_tracks_buffer_persistence_topology() -> None:
+    class Buffered(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.ones(1))
+            self.register_buffer("cache", torch.tensor([3.0]))
+
+    model = Buffered()
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    raw = _raw_module_dict(model)
+    before = trainer._model_export_fingerprint()
+    raw["_non_persistent_buffers_set"].add("cache")
+    after = trainer._model_export_fingerprint()
+
+    assert before != after
+
+
 def test_training_mode_check_ignores_armed_model_dict_descriptor() -> None:
     model = _ArmedDictModel()
     trainer = Trainer(
