@@ -935,6 +935,141 @@ def test_final_trainer_loader_bind_drift_fails_before_model_apply(
 
 
 @pytest.mark.parametrize(
+    "marker", ["_failure_reason", "_update_incomplete"],
+    ids=["failure-marker", "incomplete-marker"],
+)
+@pytest.mark.parametrize("outcome", ["raise", "return"], ids=["raises", "returns"])
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_apply_stage_marker_loss_is_repaired_and_same_instance_retry_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    marker: str, outcome: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "apply-marker-loss-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_loader = target.load_state_dict
+
+    def loader_with_marker_loss(state: Any) -> None:
+        delattr(target, marker)
+        if outcome == "raise":
+            raise RuntimeError("injected trainer apply failure")
+
+    target.load_state_dict = loader_with_marker_loss  # type: ignore[method-assign]
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    error: type[BaseException]
+    message: str
+    if outcome == "raise":
+        error, message = RuntimeError, "injected trainer apply failure"
+    else:
+        error, message = core.CheckpointCompatibilityError, "safety classification changed"
+
+    with pytest.raises(error, match=message):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert hasattr(target, "_failure_reason")
+    assert hasattr(target, "_update_incomplete")
+    assert target._failure_reason is not None
+    assert target._update_incomplete
+    assert not target.optimizer.state
+    assert not torch.equal(target.model.weight, initial_weights)
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+    target.load_state_dict = actual_loader  # type: ignore[method-assign]
+    retry_model_applied: list[bool] = []
+
+    def forbid_retry_model_application(*args: Any, **kwargs: Any) -> None:
+        retry_model_applied.append(True)
+        raise AssertionError("poisoned same-instance retry reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_retry_model_application)
+    with pytest.raises(core.CheckpointCompatibilityError, match="target trainer is poisoned"):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+    assert retry_model_applied == []
+
+
+@pytest.mark.parametrize(
+    "marker", ["_failure_reason", "_update_incomplete"],
+    ids=["failure-marker", "incomplete-marker"],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_preflight_rng_rollback_marker_loss_still_poisons_canonical_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    marker: str, loader: Any,
+) -> None:
+    source = _source()
+    path = tmp_path / "preflight-rng-marker-loss-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_restore = core.restore_rng_state
+    restore_calls = 0
+
+    def fail_first_restore(state: Any) -> None:
+        nonlocal restore_calls
+        restore_calls += 1
+        if restore_calls == 1:
+            delattr(target, marker)
+            raise RuntimeError("injected preflight RNG rollback failure")
+        actual_restore(state)
+
+    monkeypatch.setattr(core, "restore_rng_state", fail_first_restore)
+    model_applied: list[bool] = []
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("preflight RNG rollback failure reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(RuntimeError, match="injected preflight RNG rollback failure"):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=False, **extra,
+        )
+
+    assert restore_calls >= 1
+    assert model_applied == []
+    assert hasattr(target, "_failure_reason")
+    assert hasattr(target, "_update_incomplete")
+    assert target._failure_reason == "checkpoint_preflight_rng_rollback_failed"
+    assert target._update_incomplete
+    assert not target.optimizer.state
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer],
     ids=["adapter", "progress"],
 )
