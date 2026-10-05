@@ -656,6 +656,10 @@ def test_post_rng_prepublish_validator_runs_after_rng_restore(
         assert numpy_live[0] == numpy_before[0]
         np.testing.assert_array_equal(numpy_live[1], numpy_before[1])
         assert numpy_live[2:] == numpy_before[2:]
+        # The final validator itself is effectful. A successful save must still
+        # leave the caller at the exact entry RNG state.
+        random.random()
+        np.random.random()
         if fail:
             raise RuntimeError("injected post-RNG rejection")
 
