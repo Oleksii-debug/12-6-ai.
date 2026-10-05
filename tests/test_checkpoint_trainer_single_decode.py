@@ -47,21 +47,27 @@ def test_trainer_resume_decodes_verified_snapshot_once(monkeypatch: Any) -> None
         events.append("model-preflight")
         return materialized
 
-    def apply_model(model: Any, prepared: Any, strict: bool) -> None:
-        assert prepared is materialized
+    def bind_model(model: Any, strict: bool) -> Any:
+        assert model is target_model
         assert strict is True
-        events.append("model-apply")
+        events.append("model-bind")
+
+        def apply_model(prepared: Any) -> None:
+            assert prepared is materialized
+            events.append("model-apply")
+
+        return apply_model
 
     monkeypatch.setattr(trainer_adapter, "_decode_verified_state", decode)
     monkeypatch.setattr(trainer_adapter, "_preflight_trainer_state", preflight_trainer)
     monkeypatch.setattr(trainer_adapter, "_prepare_model_weights", prepare_model)
-    monkeypatch.setattr(trainer_adapter, "_apply_model_weights", apply_model)
+    monkeypatch.setattr(trainer_adapter, "_bind_model_state_loader", bind_model)
 
-    model = object()
+    target_model = object()
     trainer = _TrainerProbe()
     result = trainer_adapter.load_trainer_checkpoint(
         "unused-checkpoint-path",
-        model=model,
+        model=target_model,
         trainer=trainer,
         restore_rng=False,
     )
@@ -71,7 +77,10 @@ def test_trainer_resume_decodes_verified_snapshot_once(monkeypatch: Any) -> None
     assert events == [
         "decode",
         "trainer-preflight",
+        "model-bind",
+        "trainer-preflight",
         "model-preflight",
+        "trainer-preflight",
         "model-apply",
         "trainer-apply",
     ]

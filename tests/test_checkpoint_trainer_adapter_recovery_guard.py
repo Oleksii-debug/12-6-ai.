@@ -53,7 +53,38 @@ class PlainTrainer:
         self.state = dict(state)
 
 
-class CanonicalTarget(PlainTrainer):
+class _CanonicalAuthorityProtocol:
+    def _require_finite_auxiliary_state(self) -> None:
+        return None
+
+    def _require_safe_optimizer_hyperparameters(self, _state: object = None) -> None:
+        return None
+
+    def _require_finite_committed_update(self) -> None:
+        return None
+
+    def _require_no_residual_model_gradients(self) -> None:
+        return None
+
+    def _require_deterministic_policy(self) -> None:
+        return None
+
+    def _require_optimizer_parameter_coverage(self) -> None:
+        return None
+
+    def _require_finite_state_tree(self, _state: object, _label: str) -> None:
+        return None
+
+    def _require_checkpoint_scheduler_chronology(
+        self, _scheduler: object, _step: int, _optimizer: object,
+    ) -> None:
+        return None
+
+    def _require_checkpoint_scaler_state(self, _state: object) -> None:
+        return None
+
+
+class CanonicalTarget(_CanonicalAuthorityProtocol, PlainTrainer):
     def __init__(self, model: Model) -> None:
         super().__init__()
         self.model = model
@@ -167,13 +198,18 @@ def test_adapter_partial_apply_poison_and_zero_read_retry(
 
     target = FailingTarget(model)
     if stage == "model":
-        original = trainer_adapter._apply_model_weights
+        original_bind = trainer_adapter._bind_model_state_loader
 
-        def fail_after_model(*args: object, **kwargs: object) -> None:
-            original(*args, **kwargs)
-            raise RuntimeError("injected model failure after apply")
+        def bind_then_fail(model: object, strict: bool):
+            apply = original_bind(model, strict)
 
-        monkeypatch.setattr(trainer_adapter, "_apply_model_weights", fail_after_model)
+            def fail_after_model(materialized: object) -> None:
+                apply(materialized)
+                raise RuntimeError("injected model failure after apply")
+
+            return fail_after_model
+
+        monkeypatch.setattr(trainer_adapter, "_bind_model_state_loader", bind_then_fail)
     elif stage == "rng":
         def fail_rng(_state: object) -> None:
             raise RuntimeError("injected rng failure after apply")

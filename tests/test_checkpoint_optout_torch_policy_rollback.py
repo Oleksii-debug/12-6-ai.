@@ -79,7 +79,11 @@ def test_optout_failure_restores_policy_when_checkpoint_omits_torch(
             torch.use_deterministic_algorithms(False, warn_only=False)
             raise primary
 
-        monkeypatch.setattr(loader, "_apply_model_weights", failed_apply)
+        monkeypatch.setattr(
+            loader,
+            "_bind_model_state_loader",
+            lambda *args, **kwargs: failed_apply,
+        )
         with pytest.raises(RuntimeError) as error:
             loader.load_trainer_checkpoint(
                 checkpoint, model=model, trainer=target, restore_rng=False,

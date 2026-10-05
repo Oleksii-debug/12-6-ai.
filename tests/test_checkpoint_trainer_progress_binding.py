@@ -49,6 +49,37 @@ class GenericTrainer:
         self.state = dict(state)
 
 
+class _CanonicalAuthorityProtocol:
+    def _require_finite_auxiliary_state(self) -> None:
+        return None
+
+    def _require_safe_optimizer_hyperparameters(self, _state: object = None) -> None:
+        return None
+
+    def _require_finite_committed_update(self) -> None:
+        return None
+
+    def _require_no_residual_model_gradients(self) -> None:
+        return None
+
+    def _require_deterministic_policy(self) -> None:
+        return None
+
+    def _require_optimizer_parameter_coverage(self) -> None:
+        return None
+
+    def _require_finite_state_tree(self, _state: object, _label: str) -> None:
+        return None
+
+    def _require_checkpoint_scheduler_chronology(
+        self, _scheduler: object, _step: int, _optimizer: object,
+    ) -> None:
+        return None
+
+    def _require_checkpoint_scaler_state(self, _state: object) -> None:
+        return None
+
+
 def identity(
     *,
     seed: int = 7,
@@ -289,7 +320,7 @@ def test_partial_restore_poison_prevents_in_place_retry(
 ) -> None:
     from twelve_six.checkpoint import progress_trainer
 
-    class CanonicalTarget(GenericTrainer):
+    class CanonicalTarget(_CanonicalAuthorityProtocol, GenericTrainer):
         def __init__(self) -> None:
             super().__init__()
             self._failure_reason: str | None = None
@@ -305,13 +336,22 @@ def test_partial_restore_poison_prevents_in_place_retry(
     model = NumpyModel([9.0, 9.0, 9.0])
     trainer = CanonicalTarget()
     if failed_stage == "model":
-        original_apply = progress_trainer._apply_model_weights
+        original_bind = progress_trainer._bind_model_state_loader
 
-        def broken_apply(*args: object, **kwargs: object) -> None:
-            original_apply(*args, **kwargs)
-            raise RuntimeError("model apply failed after mutation")
+        def bind_broken_apply(model: object, strict: bool):
+            apply = original_bind(model, strict)
 
-        monkeypatch.setattr(progress_trainer, "_apply_model_weights", broken_apply)
+            def broken_apply(materialized: object) -> None:
+                apply(materialized)
+                raise RuntimeError("model apply failed after mutation")
+
+            return broken_apply
+
+        monkeypatch.setattr(
+            progress_trainer,
+            "_bind_model_state_loader",
+            bind_broken_apply,
+        )
     elif failed_stage == "trainer":
         original_load = CanonicalTarget.load_state_dict
 
@@ -363,7 +403,7 @@ def test_interrupted_restore_poison_keeps_original_interruption(
 ) -> None:
     from twelve_six.checkpoint import progress_trainer
 
-    class CanonicalTarget(GenericTrainer):
+    class CanonicalTarget(_CanonicalAuthorityProtocol, GenericTrainer):
         def __init__(self) -> None:
             super().__init__()
             self._failure_reason: str | None = None
@@ -396,7 +436,7 @@ def test_partial_d02_restore_diagnostic_survives_d05_failure_wrapper(
 ) -> None:
     """D05 must not overwrite D02's original error and cleanup-fault detail."""
 
-    class DiagnosticTarget(GenericTrainer):
+    class DiagnosticTarget(_CanonicalAuthorityProtocol, GenericTrainer):
         def __init__(self) -> None:
             super().__init__()
             self._failure_reason: str | None = None
@@ -450,7 +490,7 @@ def test_fresh_target_recovers_after_partial_model_apply_failure(
 ) -> None:
     from twelve_six.checkpoint import progress_trainer
 
-    class CanonicalTarget(GenericTrainer):
+    class CanonicalTarget(_CanonicalAuthorityProtocol, GenericTrainer):
         def __init__(self) -> None:
             super().__init__()
             self._failure_reason: str | None = None
@@ -463,18 +503,25 @@ def test_fresh_target_recovers_after_partial_model_apply_failure(
         trainer=GenericTrainer(),
         identity=identity(),
     )
-    original_apply = progress_trainer._apply_model_weights
+    original_bind = progress_trainer._bind_model_state_loader
     call_count = 0
 
-    def fail_only_first_application(*args: object, **kwargs: object) -> None:
-        nonlocal call_count
-        call_count += 1
-        original_apply(*args, **kwargs)
-        if call_count == 1:
-            raise RuntimeError("first model apply failed after mutation")
+    def bind_fail_only_first(model: object, strict: bool):
+        apply = original_bind(model, strict)
+
+        def fail_only_first_application(materialized: object) -> None:
+            nonlocal call_count
+            call_count += 1
+            apply(materialized)
+            if call_count == 1:
+                raise RuntimeError("first model apply failed after mutation")
+
+        return fail_only_first_application
 
     monkeypatch.setattr(
-        progress_trainer, "_apply_model_weights", fail_only_first_application,
+        progress_trainer,
+        "_bind_model_state_loader",
+        bind_fail_only_first,
     )
     poisoned = CanonicalTarget()
     with pytest.raises(RuntimeError, match="first model apply failed"):
@@ -506,7 +553,7 @@ def test_fresh_target_recovers_after_partial_model_apply_failure(
 def test_rejected_preflight_does_not_poison_fresh_canonical_target(
     tmp_path: Path,
 ) -> None:
-    class CanonicalTarget(GenericTrainer):
+    class CanonicalTarget(_CanonicalAuthorityProtocol, GenericTrainer):
         def __init__(self) -> None:
             super().__init__()
             self._failure_reason: str | None = None
@@ -628,7 +675,7 @@ def test_canonical_progress_restore_rejects_unowned_model_before_checkpoint_read
     owned_model = NumpyModel([3.0, 4.0, 5.0])
     wrong_model = NumpyModel([9.0, 9.0, 9.0])
 
-    class CanonicalTarget(GenericTrainer):
+    class CanonicalTarget(_CanonicalAuthorityProtocol, GenericTrainer):
         def __init__(self) -> None:
             super().__init__()
             self.model = owned_model
@@ -661,7 +708,7 @@ def test_progress_refuses_nonfresh_canonical_target_before_checkpoint_io(
 ) -> None:
     from twelve_six.checkpoint import progress_trainer
 
-    class CanonicalTarget(GenericTrainer):
+    class CanonicalTarget(_CanonicalAuthorityProtocol, GenericTrainer):
         def __init__(self, model: NumpyModel) -> None:
             super().__init__()
             self.model = model

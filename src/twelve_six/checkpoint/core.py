@@ -825,13 +825,16 @@ def _preflight_stateful_component(component: Any, state: Any, *, label: str) -> 
     _semantic_stateful_probe(component, state, label=label)
 
 
-def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
-    """Apply model state exactly once, even if a loader raises TypeError.
+def _bind_model_state_loader(model: Any, strict: bool) -> Any:
+    """Bind model-state invocation mode before model materialization.
 
-    A TypeError raised *inside* load_state_dict may follow a partial weight
-    update or a side effect. Discover keyword support before calling instead
-    of retrying a possibly mutated model with a different calling convention.
+    Descriptor/proxy lookup and signature inspection may execute user code. The
+    returned callable accepts the later materialized state, so D05 can complete
+    all loader lookup before asking the live model for its target state. This
+    prevents loader-lookup side effects from changing model structure between
+    materialization and the first mutation.
     """
+
     loader = getattr(model, "load_state_dict", None)
     if not callable(loader):
         raise TypeError("model must provide load_state_dict()")
@@ -847,7 +850,7 @@ def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bo
         and strict_parameter.kind == inspect.Parameter.POSITIONAL_ONLY
     ):
         try:
-            bound = signature.bind(materialized, strict)
+            bound = signature.bind({}, strict)
         except TypeError as exc:
             raise CheckpointCompatibilityError(
                 "model load_state_dict cannot safely bind positional strict"
@@ -856,15 +859,48 @@ def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bo
             raise CheckpointCompatibilityError(
                 "model load_state_dict cannot safely bind positional strict"
             )
-        loader(materialized, strict)
-    elif strict_parameter is not None or any(
+
+        def apply(materialized: Mapping[str, Any]) -> Any:
+            return loader(materialized, strict)
+
+        return apply
+
+    if strict_parameter is not None or any(
         parameter.kind == inspect.Parameter.VAR_KEYWORD
         for parameter in signature.parameters.values()
     ):
-        loader(materialized, strict=strict)
-    else:
-        # Generic legacy adapters accept only load_state_dict(state).
-        loader(materialized)
+        try:
+            signature.bind({}, strict=strict)
+        except TypeError as exc:
+            raise CheckpointCompatibilityError(
+                "model load_state_dict cannot safely bind checkpoint state/strict"
+            ) from exc
+
+        def apply(materialized: Mapping[str, Any]) -> Any:
+            return loader(materialized, strict=strict)
+
+        return apply
+
+    # Generic legacy adapters accept only load_state_dict(state). Validate that
+    # invocation shape now so a predictable TypeError cannot poison a fresh D02
+    # target after model application has started.
+    try:
+        signature.bind({})
+    except TypeError as exc:
+        raise CheckpointCompatibilityError(
+            "model load_state_dict cannot safely bind checkpoint state"
+        ) from exc
+
+    def apply(materialized: Mapping[str, Any]) -> Any:
+        return loader(materialized)
+
+    return apply
+
+
+def _apply_model_weights(model: Any, materialized: Mapping[str, Any], strict: bool) -> None:
+    """Apply model state exactly once, with no retry after a partial mutation."""
+
+    _bind_model_state_loader(model, strict)(materialized)
 
 
 def _state_dict_or_none(obj: Any | None) -> Any | None:
