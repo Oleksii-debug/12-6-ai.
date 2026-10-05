@@ -1,0 +1,149 @@
+{
+  "schema_version": "12-6.next100-046-click-code-source.v1",
+  "authority_id": "NEXT100-046-CODE-CLICK",
+  "captured_at": "2026-08-26",
+  "execution_profile": "LOCAL_FREE",
+  "purpose": "bounded_base_pretraining_source_qualification",
+  "source_family": "github:pallets/click",
+  "repository_url": "https://github.com/pallets/click",
+  "repository_id": 19103692,
+  "upstream_release": "8.4.2",
+  "tag_object_sha1": "c6b2d71ee056a96b8e6e06e6c29f67c1a766f8e4",
+  "upstream_commit": "b2e30a175449cfda909ee4fbf4a29a6a071cad53",
+  "source_tree": {
+    "path": "src/click",
+    "git_tree_sha1": "abb3201d1d4b3e1c3cf2ff958d1b95e8ea650fe8"
+  },
+  "license": {
+    "spdx": "BSD-3-Clause",
+    "path": "LICENSE.txt",
+    "git_blob_sha1": "d12a849186982399c537c5b9a8fd77bf2edd5eab",
+    "size_bytes": 1475,
+    "raw_url": "https://raw.githubusercontent.com/pallets/click/b2e30a175449cfda909ee4fbf4a29a6a071cad53/LICENSE.txt",
+    "training_use_decision": "ALLOWED",
+    "redistribution_decision": "ALLOWED_WITH_LICENSE_CONDITIONS",
+    "conditions": [
+      "Retain the copyright notice, BSD-3-Clause conditions, and disclaimer in source redistribution.",
+      "Reproduce the copyright notice, conditions, and disclaimer in documentation or other materials for binary or transformed redistribution where applicable.",
+      "Do not use Pallets or contributor names to endorse or promote derived products without specific prior written permission."
+    ]
+  },
+  "files": [
+    {
+      "path": "src/click/decorators.py",
+      "git_blob_sha1": "db6a45ebbaedfdcde339397bbfe936c9440de180",
+      "size_bytes": 19709,
+      "role": "command, option, argument and context decorator implementation"
+    },
+    {
+      "path": "src/click/formatting.py",
+      "git_blob_sha1": "c4aa2de571a1eb17bfeb1853e315d28bc968e74c",
+      "size_bytes": 10444,
+      "role": "terminal help and formatter implementation"
+    },
+    {
+      "path": "src/click/shell_completion.py",
+      "git_blob_sha1": "468ee7720d934396d0a309067d800ea819af7da2",
+      "size_bytes": 22618,
+      "role": "shell completion protocol and renderer implementation"
+    }
+  ],
+  "capacity_bytes": 52771,
+  "selected_inventory_sha256": "37e0abc2386f1e762ddba23417cd6e6df6c707c12ae63f625f48a5d8b4288a3e",
+  "normalization_policy": "STRICT_UTF8_IDENTITY_PRESERVE_V1",
+  "selection_policy": {
+    "kind": "explicit_bounded_first_party_implementation_allowlist",
+    "capacity_rule": "Only the three exact Git blobs in files count as Click training capacity.",
+    "excluded_capacity": [
+      "docs/**",
+      "tests/**",
+      "examples/**",
+      ".github/**",
+      "release archives",
+      "build/dist outputs",
+      "generated/minified/binary assets",
+      "vendored/third-party copies",
+      "packaging metadata",
+      "license text",
+      "src/click/py.typed",
+      "all Click files not explicitly listed in files"
+    ]
+  },
+  "lineage_exclusions": [
+    {
+      "path": "src/click/parser.py",
+      "git_blob_sha1": "4fcbf7caa83a474cee2d3ea25da56b0399dd893a",
+      "reason": "Explicit file notice says the module started as largely copy-paste from stdlib optparse and incorporates Gregory P. Ward / Python Software Foundation material; excluded from Click-native capacity."
+    },
+    {
+      "path": "src/click/_textwrap.py",
+      "git_blob_sha1": "82840f2dff3ce627712c0ece2752382a0f7dab8b",
+      "reason": "Implementation explicitly mirrors the CPython textwrap.TextWrapper algorithm; excluded conservatively from Click-native capacity."
+    }
+  ],
+  "rights_decision": {
+    "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+    "reviewer_ref": "NEXT100-046-CODE-CLICK",
+    "model_training": "ALLOWED",
+    "redistribution": "ALLOWED_WITH_LICENSE_CONDITIONS",
+    "evaluation_use": "NOT_AUTHORIZED",
+    "basis": "The exact pinned BSD-3-Clause license expressly permits redistribution and use in source and binary forms, with or without modification, subject to notice/disclaimer and non-endorsement conditions. The project therefore permits training on only the exact enumerated first-party blobs; public availability alone is not authority."
+  },
+  "family_policy": {
+    "family_id": "github:pallets/click",
+    "independent_family_credit": 1,
+    "rule": "Canonical upstream repository lineage defines the family. Shared Pallets organization membership or dependency relationships with Flask/Jinja do not collapse distinct repositories absent fork/mirror/vendor/shared-source or dedup evidence."
+  },
+  "verification": {
+    "python_parse": "AST_PARSE_AND_COMPILE_REQUIRED_ALL_SELECTED_FILES",
+    "secret_scan": "PRIVATE_KEY_GITHUB_OPENAI_AWS_SLACK_NPM_TOKEN_PATTERNS",
+    "privacy_scan": "NON_EXAMPLE_EMAIL_AND_PRIVATE_NETWORK_ENDPOINT_HEURISTICS",
+    "generated_vendored": "PATH_AND_HEADER_MARKER_FAIL_CLOSED",
+    "quality": "SUBSTANTIVE_AST_AND_CODE_LINE_THRESHOLDS",
+    "exact_dedup": "RAW_SHA256_AND_GIT_BLOB",
+    "near_dedup": {
+      "token_shingle_size": 5,
+      "jaccard_threshold": 0.85,
+      "containment_threshold": 0.9
+    }
+  },
+  "comparison_objects": [
+    {"source_family":"github:encode/httpx","repository_url":"https://github.com/encode/httpx","commit":"b5addb64f0161ff6bfe94c124ef76f6a1fba5254","path":"httpx/_content.py","git_blob_sha1":"6f479a0885f723b7395843d41164a87041820776"},
+    {"source_family":"github:psf/requests","repository_url":"https://github.com/psf/requests","commit":"5460f467b02e49471c0fd6cfc9ca0adab6351f98","path":"src/requests/_internal_utils.py","git_blob_sha1":"0466a7d347db4ed34a37db51b75fc8e80bc06055"},
+    {"source_family":"github:python/cpython","repository_url":"https://github.com/python/cpython","commit":"9036982ed73d17848d45b60b7550f097371214e4","path":"Lib/graphlib.py","git_blob_sha1":"af5245ccbcd3a826d0dd49f7541e92bff98c0d0d"},
+    {"source_family":"github:python/cpython","repository_url":"https://github.com/python/cpython","commit":"9036982ed73d17848d45b60b7550f097371214e4","path":"Lib/fnmatch.py","git_blob_sha1":"10e1c936688d8f84c87977ed592c4beaf88e4336"},
+    {"source_family":"github:python/cpython","repository_url":"https://github.com/python/cpython","commit":"9036982ed73d17848d45b60b7550f097371214e4","path":"Lib/bisect.py","git_blob_sha1":"ca6ca7240840bbee58c1bbc79b56998c5ae2dbbd"},
+    {"source_family":"github:django/django","repository_url":"https://github.com/django/django","commit":"b2821457e8bfa9e9066837b9f9b3a3955224ab19","path":"django/core/signing.py","git_blob_sha1":"d6be4a5d804916e3d7705018f485c4c374d90cc3"},
+    {"source_family":"github:django/django","repository_url":"https://github.com/django/django","commit":"b2821457e8bfa9e9066837b9f9b3a3955224ab19","path":"django/db/transaction.py","git_blob_sha1":"1710d1ef17497c4aef3f4b65498dd539d0ee0050"},
+    {"source_family":"github:django/django","repository_url":"https://github.com/django/django","commit":"b2821457e8bfa9e9066837b9f9b3a3955224ab19","path":"django/urls/resolvers.py","git_blob_sha1":"6c681f9d8d32a35ca512cf3d08b68ab5bc358777"},
+    {"source_family":"github:Kludex/starlette","repository_url":"https://github.com/Kludex/starlette","commit":"4f250d6b814587e20c5365f0a5f0c4d42bcb929f","path":"starlette/_utils.py","git_blob_sha1":"b9b8639b2106fd552db7526c3f12aa429b430252"},
+    {"source_family":"github:Kludex/starlette","repository_url":"https://github.com/Kludex/starlette","commit":"4f250d6b814587e20c5365f0a5f0c4d42bcb929f","path":"starlette/convertors.py","git_blob_sha1":"72b1cf9fdfb6d7f5be61f648a9ae016deb45012b"},
+    {"source_family":"github:pallets/jinja","repository_url":"https://github.com/pallets/jinja","commit":"5ef70112a1ff19c05324ff889dd30405b1002044","path":"src/jinja2/lexer.py","git_blob_sha1":"e35cd471e98f516221759ef4345867d71d28230a"},
+    {"source_family":"github:pallets/jinja","repository_url":"https://github.com/pallets/jinja","commit":"5ef70112a1ff19c05324ff889dd30405b1002044","path":"src/jinja2/parser.py","git_blob_sha1":"3ae857ebe2a937c1362c44f38e5c436bfd3c84b0"},
+    {"source_family":"github:pallets/jinja","repository_url":"https://github.com/pallets/jinja","commit":"5ef70112a1ff19c05324ff889dd30405b1002044","path":"src/jinja2/compiler.py","git_blob_sha1":"84cd513028021b327715400bfa89d28f4e3120cd"},
+    {"source_family":"github:pallets/jinja","repository_url":"https://github.com/pallets/jinja","commit":"5ef70112a1ff19c05324ff889dd30405b1002044","path":"src/jinja2/environment.py","git_blob_sha1":"acaaffb5946c7a4f8973db47a317a286d496ada1"},
+    {"source_family":"github:pallets/jinja","repository_url":"https://github.com/pallets/jinja","commit":"5ef70112a1ff19c05324ff889dd30405b1002044","path":"src/jinja2/runtime.py","git_blob_sha1":"667c0416dd6a524dbee6853df7efec67a463d667"},
+    {"source_family":"github:pallets/flask","repository_url":"https://github.com/pallets/flask","commit":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","path":"src/flask/app.py","git_blob_sha1":"cc326dbe3c2a373171ecb372206b9e694e9c5ffe"},
+    {"source_family":"github:pallets/flask","repository_url":"https://github.com/pallets/flask","commit":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","path":"src/flask/cli.py","git_blob_sha1":"ed11f256a153300887657e51b0b2f00543ca5229"},
+    {"source_family":"github:pallets/flask","repository_url":"https://github.com/pallets/flask","commit":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","path":"src/flask/config.py","git_blob_sha1":"34ef1a57217878e21daba0bc4f20ded293a33e7e"},
+    {"source_family":"github:pallets/flask","repository_url":"https://github.com/pallets/flask","commit":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","path":"src/flask/ctx.py","git_blob_sha1":"5f7b1f1db013739d1b3b24f5014af62cf2bd21ba"},
+    {"source_family":"github:pallets/flask","repository_url":"https://github.com/pallets/flask","commit":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","path":"src/flask/helpers.py","git_blob_sha1":"5d412c90f2bde5ab32adcf6126908330bb2880d6"},
+    {"source_family":"github:pallets/flask","repository_url":"https://github.com/pallets/flask","commit":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","path":"src/flask/json/tag.py","git_blob_sha1":"8dc3629bf9e5e4788e3ef69e528dfd72675cc0c6"},
+    {"source_family":"github:pallets/flask","repository_url":"https://github.com/pallets/flask","commit":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","path":"src/flask/sessions.py","git_blob_sha1":"ad357706ff59ae07ee2c8b2a850624a33e19e220"},
+    {"source_family":"github:pallets/flask","repository_url":"https://github.com/pallets/flask","commit":"22d924701a6ae2e4cd01e9a15bbaf3946094af65","path":"src/flask/templating.py","git_blob_sha1":"c5fb5b99050824efd4d09453e22b2877c599f6cf"}
+  ],
+  "evaluation_boundary": {
+    "candidate_role": "TRAINING_ONLY",
+    "evaluation_use_authorized": false,
+    "rule": "Fail closed if any selected Click Git blob becomes evaluation-reserved before terminal sealing."
+  },
+  "upstream_ci_evidence": [
+    {"workflow":"pre-commit","run_id":28079506908,"exact_commit":"b2e30a175449cfda909ee4fbf4a29a6a071cad53","conclusion":"success"},
+    {"workflow":"Tests","run_id":28079506934,"exact_commit":"b2e30a175449cfda909ee4fbf4a29a6a071cad53","conclusion":"success"}
+  ],
+  "release_archive_hashes_provenance_only": {
+    "wheel_sha256": "e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76",
+    "sdist_sha256": "9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6",
+    "capacity_bytes": 0
+  }
+}
