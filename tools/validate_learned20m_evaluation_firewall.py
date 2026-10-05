@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -34,10 +36,32 @@ def _parse_finite_float(value: str) -> float:
     return parsed
 
 
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    # Atime may change during the read; content-bearing metadata must not.
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
 def _load_policy(path: Path) -> dict[str, Any]:
     try:
-        with path.open("rb") as source:
+        before = path.stat()
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("evaluation firewall policy must be a regular file")
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        with os.fdopen(os.open(path, flags), "rb") as source:
+            opened = os.fstat(source.fileno())
+            if not stat.S_ISREG(opened.st_mode):
+                raise ValueError("evaluation firewall policy must be a regular file")
+            if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+                raise ValueError("evaluation firewall policy changed between check and open")
+            if _file_stamp(before) != _file_stamp(opened):
+                raise ValueError("evaluation firewall policy changed before open")
             raw = source.read(MAX_INPUT_BYTES + 1)
+            if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
+                raise ValueError("evaluation firewall policy changed during read")
+    except OSError:
+        raise ValueError("cannot read evaluation firewall policy") from None
+
+    try:
         if len(raw) > MAX_INPUT_BYTES:
             raise ValueError("evaluation firewall policy exceeds input byte limit")
         value = json.loads(

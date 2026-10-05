@@ -268,6 +268,86 @@ def test_policy_loader_rejects_oversized_input_before_json_decode(
     }
 
 
+def test_policy_loader_missing_path_redacts_secret(
+    tmp_path: Path,
+) -> None:
+    secret = "PRIVATE-FINAL-TEST-PATH-998877"
+    result = _run_cli(tmp_path / f"{secret}.json")
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "error": "cannot read evaluation firewall policy",
+        "status": "FAIL",
+    }
+    assert secret not in result.stdout
+
+
+def test_policy_loader_rejects_directory_without_path_echo(tmp_path: Path) -> None:
+    result = _run_cli(tmp_path)
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    expected = (
+        "cannot read evaluation firewall policy"
+        if os.name == "nt"
+        else "evaluation firewall policy must be a regular file"
+    )
+    assert payload == {"error": expected, "status": "FAIL"}
+
+
+def test_policy_loader_fifo_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "evaluation FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    result = subprocess.run(
+        [sys.executable, str(TOOL), "--policy", str(fifo)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert json.loads(result.stdout) == {
+        "error": "evaluation firewall policy must be a regular file",
+        "status": "FAIL",
+    }
+
+
+def test_policy_loader_rejects_regular_file_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    requested = tmp_path / "requested.json"
+    substitute = tmp_path / "substitute.json"
+    requested.write_bytes(POLICY.read_bytes())
+    substitute.write_bytes(POLICY.read_bytes())
+    real_open = cli.os.open
+
+    def open_substitute(_path: Path, flags: int) -> int:
+        return real_open(substitute, flags)
+
+    monkeypatch.setattr(cli.os, "open", open_substitute)
+    with pytest.raises(ValueError, match="changed between check and open"):
+        cli._load_policy(requested)
+
+
+def test_policy_loader_valid_regular_symlink_still_works(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    linked = tmp_path / "evaluation policy link.json"
+    linked.symlink_to(POLICY.resolve())
+    cli = _load_cli()
+    assert cli._load_policy(linked) == json.loads(POLICY.read_text(encoding="utf-8"))
+
+
 def test_default_policy_works_outside_repository_cwd(tmp_path: Path) -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
