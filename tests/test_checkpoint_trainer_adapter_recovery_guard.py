@@ -119,7 +119,7 @@ def identity() -> CheckpointIdentity:
         run_manifest_hash="e" * 64,
         training_config={"steps": 10},
         seed=703,
-        precision="float64",
+        precision="fp32",
         step=7,
         tokens_seen=128,
         optimizer={"name": "trainer-owned"},
