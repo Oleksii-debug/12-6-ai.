@@ -985,6 +985,10 @@ def load_trainer_checkpoint(
     # materialized; never apply weights to a model the trainer no longer owns.
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+    # The full preflight may invoke stateful component hooks. Recheck pure
+    # ownership/freshness after those hooks and before opening the apply region.
+    _assert_trainer_model_binding(model, trainer)
+    _preflight_trainer_target(trainer)
     load_trainer_state = _bind_trainer_state_loader(trainer)
 
     # State loaders may draw from process RNG even when they succeed.
