@@ -2251,8 +2251,13 @@ class Trainer:
             # The direct checkpoint preflight uses ValueError for an invalid
             # saved payload. During training this is an invalid live state.
             try:
+                scheduler_state = self._canonical_scheduler_storage()
+                if scheduler_state is None:
+                    raise ValueError("default scheduler storage is unavailable")
                 self._require_checkpoint_scheduler_chronology(
-                    vars(self.scheduler), self.optimizer_step, groups,
+                    scheduler_state,
+                    self.optimizer_step,
+                    groups,
                 )
             except ValueError as exc:
                 raise TrainingStateInvalidError(
