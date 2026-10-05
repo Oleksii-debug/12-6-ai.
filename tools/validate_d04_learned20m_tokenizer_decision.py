@@ -23,36 +23,63 @@ def _pairs_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
+            raise ValueError("duplicate_json_key")
         result[key] = value
     return result
 
 
-def _reject_constant(value: str) -> None:
-    raise ValueError(f"non_finite_json_constant:{value}")
+def _reject_constant(_value: str) -> None:
+    raise ValueError("non_finite_json_constant")
 
 
 def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
-        raise ValueError(f"non_finite_json_number:{value}")
+        raise ValueError("non_finite_json_number")
     # A lexically nonzero external number must not silently become zero.
     # Preserve genuine positive/negative JSON zero, including 0e-9999.
     significand = value.split("e", 1)[0].split("E", 1)[0]
     if parsed == 0.0 and any(digit in "123456789" for digit in significand):
-        raise ValueError(f"nonzero_json_number_underflowed_to_zero:{value}")
+        raise ValueError("nonzero_json_number_underflowed_to_zero")
     return parsed
 
 
 MAX_INPUT_BYTES = 1_048_576
 MAX_JSON_DEPTH = 64
 MAX_JSON_NODES = 10_000
+MAX_JSON_INTEGER_DIGITS = 64
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.removeprefix("-")) > MAX_JSON_INTEGER_DIGITS:
+        raise ValueError("JSON integer exceeds 64 digits")
+    return int(value)
+
+
+def _input_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
 def _load(path: Path) -> dict[str, Any]:
-    # Read only a bounded prefix, including when the path is a network file.
-    with path.open("rb") as source:
-        raw = source.read(MAX_INPUT_BYTES + 1)
+    # External authority bytes are untrusted until the exact descriptor is bounded.
+    try:
+        before = path.stat()
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("tokenizer input must be a regular file")
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        with os.fdopen(os.open(path, flags), "rb") as source:
+            opened = os.fstat(source.fileno())
+            if not stat.S_ISREG(opened.st_mode):
+                raise ValueError("tokenizer input must be a regular file")
+            if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+                raise ValueError("tokenizer input changed between check and open")
+            if _input_stamp(before) != _input_stamp(opened):
+                raise ValueError("tokenizer input changed before open")
+            raw = source.read(MAX_INPUT_BYTES + 1)
+            if _input_stamp(os.fstat(source.fileno())) != _input_stamp(opened):
+                raise ValueError("tokenizer input changed during read")
+    except OSError:
+        raise ValueError("cannot read tokenizer authority input") from None
     if len(raw) > MAX_INPUT_BYTES:
         raise ValueError("tokenizer input exceeds byte limit")
     try:
@@ -61,11 +88,12 @@ def _load(path: Path) -> dict[str, Any]:
             object_pairs_hook=_pairs_without_duplicates,
             parse_constant=_reject_constant,
             parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
         )
     except RecursionError as exc:
         raise ValueError("tokenizer input JSON nesting limit exceeded") from exc
     if not isinstance(value, dict):
-        raise ValueError(f"{path} must contain one JSON object")
+        raise ValueError("tokenizer input must contain one JSON object")
 
     # The byte cap bounds parsing; the iterative walk bounds post-parse work.
     # Python's decoder may allow escaped lone surrogates: reject them explicitly.
