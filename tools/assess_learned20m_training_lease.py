@@ -70,13 +70,17 @@ def main(argv: list[str]) -> int:
         lease_path = Path(argv[2])
     if len(argv) == 5:
         if argv[3] != "--now":
-            return _print_contract_error("invalid arguments: expected --now before timestamp")
+            return _print_contract_error(
+                "invalid arguments: expected --now before timestamp"
+            )
         try:
             now = datetime.strptime(argv[4], "%Y-%m-%dT%H:%M:%SZ").replace(
                 tzinfo=timezone.utc
             )
         except ValueError:
-            return _print_contract_error("invalid --now timestamp; expected YYYY-MM-DDTHH:MM:SSZ")
+            return _print_contract_error(
+                "invalid --now timestamp; expected YYYY-MM-DDTHH:MM:SSZ"
+            )
 
     try:
         manifest = _read_object(manifest_path)
