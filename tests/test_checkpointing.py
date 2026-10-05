@@ -1282,6 +1282,130 @@ def test_direct_model_loader_descriptor_drift_rejected_before_apply(
     np.testing.assert_array_equal(target.weights, before)
 
 
+def test_direct_optimizer_loader_descriptor_is_bound_once_before_model_apply(
+    tmp_path: Path,
+) -> None:
+    source = NumpyModel(np.array([0.1, -0.2, 0.3]))
+    source_optimizer = MomentumSGD(source)
+    source_optimizer.velocity = np.array([0.4, 0.5, 0.6])
+    checkpoint = tmp_path / "optimizer-loader-bind-once"
+    save_checkpoint(
+        checkpoint,
+        model=source,
+        optimizer=source_optimizer,
+        trainer_state={},
+        identity=identity(step=0, tokens_seen=0),
+    )
+
+    class DescriptorOptimizer(MomentumSGD):
+        def __init__(self, model: NumpyModel, *, probe: bool = False) -> None:
+            super().__init__(model)
+            self.probe = probe
+            self.loader_lookups = 0
+            self.apply_calls = 0
+
+        def __deepcopy__(self, memo: dict[int, object]):
+            clone = type(self)(copy.deepcopy(self.model, memo), probe=True)
+            clone.lr = self.lr
+            clone.momentum = self.momentum
+            clone.velocity = self.velocity.copy()
+            return clone
+
+        @property
+        def load_state_dict(self):
+            if not self.probe:
+                self.loader_lookups += 1
+                if self.loader_lookups > 1:
+                    raise RuntimeError("late optimizer loader lookup after model apply")
+
+            def apply(state: dict[str, object]) -> None:
+                if not self.probe:
+                    self.apply_calls += 1
+                MomentumSGD.load_state_dict(self, state)
+
+            return apply
+
+    target = NumpyModel(np.array([9.0, 8.0, 7.0]))
+    target_optimizer = DescriptorOptimizer(target)
+
+    load_checkpoint(
+        checkpoint,
+        model=target,
+        optimizer=target_optimizer,
+        restore_rng=False,
+    )
+
+    assert target_optimizer.loader_lookups == 1
+    assert target_optimizer.apply_calls == 1
+    np.testing.assert_array_equal(target.weights, source.weights)
+    np.testing.assert_array_equal(target_optimizer.velocity, source_optimizer.velocity)
+
+
+def test_direct_scheduler_loader_descriptor_is_bound_once_before_model_apply(
+    tmp_path: Path,
+) -> None:
+    source = NumpyModel(np.array([0.1, -0.2, 0.3]))
+    source_optimizer = MomentumSGD(source)
+    source_scheduler = StepScheduler(source_optimizer)
+    source_scheduler.steps = 7
+    checkpoint = tmp_path / "scheduler-loader-bind-once"
+    save_checkpoint(
+        checkpoint,
+        model=source,
+        scheduler=source_scheduler,
+        trainer_state={},
+        identity=identity(step=0, tokens_seen=0),
+    )
+
+    class DescriptorScheduler(StepScheduler):
+        def __init__(
+            self,
+            optimizer: MomentumSGD,
+            *,
+            probe: bool = False,
+        ) -> None:
+            super().__init__(optimizer)
+            self.probe = probe
+            self.loader_lookups = 0
+            self.apply_calls = 0
+
+        def __deepcopy__(self, memo: dict[int, object]):
+            clone = type(self)(copy.deepcopy(self.optimizer, memo), probe=True)
+            clone.gamma = self.gamma
+            clone.steps = self.steps
+            return clone
+
+        @property
+        def load_state_dict(self):
+            if not self.probe:
+                self.loader_lookups += 1
+                if self.loader_lookups > 1:
+                    raise RuntimeError("late scheduler loader lookup after model apply")
+
+            def apply(state: dict[str, object]) -> None:
+                if not self.probe:
+                    self.apply_calls += 1
+                StepScheduler.load_state_dict(self, state)
+
+            return apply
+
+    target = NumpyModel(np.array([9.0, 8.0, 7.0]))
+    target_optimizer = MomentumSGD(target)
+    target_scheduler = DescriptorScheduler(target_optimizer)
+
+    load_checkpoint(
+        checkpoint,
+        model=target,
+        scheduler=target_scheduler,
+        restore_rng=False,
+    )
+
+    assert target_scheduler.loader_lookups == 1
+    assert target_scheduler.apply_calls == 1
+    assert target_scheduler.steps == source_scheduler.steps
+    np.testing.assert_array_equal(target.weights, source.weights)
+
+
 def test_direct_scheduler_preflight_does_not_call_live_state_dict(
     tmp_path: Path,
 ) -> None:
