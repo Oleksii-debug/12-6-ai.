@@ -1846,7 +1846,7 @@ def test_failed_materialization_restores_preapply_rng_and_policy(
     actual_prepare = loader._prepare_model_weights
 
     def prepare_draw_then_fail(*args: Any, **kwargs: Any) -> Any:
-        materialized = actual_prepare(*args, **kwargs)
+        actual_prepare(*args, **kwargs)
         random.random()
         np.random.random()
         torch.rand(1)
