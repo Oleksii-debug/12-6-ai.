@@ -57,8 +57,14 @@ PARENT_PROOF_IDENTITY_SHA256 = (
     "5f5fe9551692da2b8c037c20b1261bdbb3d707dbc7bfb13776429ab4e792b1bb"
 )
 FLASK_CTX_SOURCE_ID = "code.flask.3_1_3.03.src_flask_ctx_py"
+EXPECTED_FLASK_CTX_BYTES = 15_521
 EXPECTED_DELTA_OBJECTS = 18
-EXPECTED_DELTA_BYTES = 419_177
+EXPECTED_DELTA_BYTES = (
+    code4.EXPECTED_EXTENSION_BYTES
+    + reserve.RICH_EXPECTED_BYTES
+    + reserve.FASTAPI_EXPECTED_BYTES
+    + EXPECTED_FLASK_CTX_BYTES
+)
 CURRENT_POST_QP_CODE_BYTES = 3_664_247
 CODE_TARGET_BYTES = 4_000_000
 CODE_GAP_BYTES = CODE_TARGET_BYTES - CURRENT_POST_QP_CODE_BYTES
@@ -287,6 +293,15 @@ def acquire_delta_sources() -> tuple[
     flask_by_id = {row["source_id"]: row for row in flask_rows}
     require(FLASK_CTX_SOURCE_ID in flask_by_id, "Flask ctx source missing")
     require(FLASK_CTX_SOURCE_ID in flask_payloads, "Flask ctx payload missing")
+    require(
+        int(flask_by_id[FLASK_CTX_SOURCE_ID]["declared_capacity_bytes"])
+        == EXPECTED_FLASK_CTX_BYTES,
+        "Flask ctx declared byte count drift",
+    )
+    require(
+        len(flask_payloads[FLASK_CTX_SOURCE_ID]) == EXPECTED_FLASK_CTX_BYTES,
+        "Flask ctx physical byte count drift",
+    )
 
     rows = [*code4_rows, *reserve_rows, flask_by_id[FLASK_CTX_SOURCE_ID]]
     payloads = {
