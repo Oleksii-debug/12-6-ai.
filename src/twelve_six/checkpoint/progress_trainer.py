@@ -81,7 +81,16 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify/decode once and reject wrong progress/exposure before mutation."""
 
-    _bind_trainer_state_loader(trainer)
+    prebind_ambient = _core.capture_rng_state()
+    prebind_policy = _snapshot_torch_policy(prebind_ambient)
+    try:
+        load_trainer_state = _bind_trainer_state_loader(trainer)
+    finally:
+        _restore_preapply_process_state(
+            prebind_ambient,
+            prebind_policy,
+            trainer,
+        )
 
     _require_expected_sha256(
         expected_checkpoint_id,
@@ -218,7 +227,9 @@ def load_trainer_checkpoint(
         # Loader lookup/signature inspection can execute descriptors or proxies.
         # Bind both effectful restore interfaces before model materialization, then
         # revalidate the canonical target. No loader attribute is reopened later.
-        load_trainer_state = _bind_trainer_state_loader(trainer)
+        # The trainer loader was already bound once under process-state guard
+        # before checkpoint I/O. Reuse it so stateful descriptors cannot execute
+        # a second time between final target validation and application.
         model_apply = _bind_model_state_loader(model, strict_model)
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
