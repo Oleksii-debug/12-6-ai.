@@ -22,6 +22,7 @@ from .core import (
     LoadResult,
     capture_rng_state,
     _apply_model_weights,
+    _bind_model_state_loader,
     _decode_verified_state,
     _preflight_optimizer_state,
     _preflight_rng_state,
@@ -988,6 +989,12 @@ def load_trainer_checkpoint(
     # Binding can itself execute a descriptor/proxy on a custom adapter. Do it
     # before the final checks so lookup side effects cannot cross into apply.
     load_trainer_state = _bind_trainer_state_loader(trainer)
+    model_apply = _bind_model_state_loader(model, materialized, strict_model)
+    # Both late bindings above may execute descriptor/proxy code. Repeat the
+    # complete checkpoint-vs-live preflight after binding, then close with the
+    # cheap ownership/freshness guards before the first live model mutation.
+    _assert_trainer_model_binding(model, trainer)
+    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
     _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_target(trainer)
 
@@ -995,7 +1002,7 @@ def load_trainer_checkpoint(
     # Failed application may leave a mixed model/optimizer state, so canonical
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
-        _apply_model_weights(model, materialized, strict_model)
+        model_apply()
         load_trainer_state(trainer_state)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
