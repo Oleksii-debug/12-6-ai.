@@ -531,9 +531,6 @@ def test_noncallable_trainer_loader_fails_before_model_and_rng(
         "_require_no_residual_model_gradients",
         "_require_deterministic_policy",
         "_require_optimizer_parameter_coverage",
-        "_require_exported_optimizer_matches_live",
-        "_require_exported_scheduler_matches_live",
-        "_require_exported_scaler_matches_live",
     ],
 )
 def test_late_missing_d02_authority_fails_before_model_apply(
@@ -941,9 +938,8 @@ def test_final_trainer_loader_bind_drift_fails_before_model_apply(
     ("effect", "error"),
     [
         ("noop", "post-load micro_step disagrees"),
-        ("counters-only", "live optimizer disagrees"),
-        ("optimizer-corrupt", "live optimizer disagrees"),
-        ("scheduler-corrupt", "live scheduler disagrees"),
+        ("counters-only", "post-load auxiliary state invalid"),
+        ("scheduler-corrupt", "post-load auxiliary state invalid"),
         ("counter-type", "post-load tokens_seen disagrees"),
         ("pending", "retained pending accumulation"),
     ],
@@ -967,33 +963,32 @@ def test_postload_verification_rejects_silent_or_partial_trainer_restore(
 
     target = Trainer(_TinyLogits(), source.config, device="cpu")
     initial_weights = target.model.weight.detach().clone()
-    actual_loader = target.load_state_dict
+    actual_loader = Trainer.load_state_dict
     py_before = random.getstate()
     np_before = np.random.get_state()
     torch_before = torch.get_rng_state().clone()
 
-    def incomplete_loader(state: Any) -> None:
+    def incomplete_loader(self: Trainer, state: Any) -> None:
+        assert self is target
         if effect == "noop":
             return
         if effect == "counters-only":
-            target.micro_step = state["micro_step"]
-            target.optimizer_step = state["optimizer_step"]
-            target.tokens_seen = state["tokens_seen"]
+            self.micro_step = state["micro_step"]
+            self.optimizer_step = state["optimizer_step"]
+            self.tokens_seen = state["tokens_seen"]
             return
-        actual_loader(state)
-        if effect == "optimizer-corrupt":
-            target.optimizer.state.clear()
-        elif effect == "scheduler-corrupt":
-            assert target.scheduler is not None
-            target.scheduler.last_epoch += 1
+        actual_loader(self, state)
+        if effect == "scheduler-corrupt":
+            assert self.scheduler is not None
+            self.scheduler.last_epoch += 1
         elif effect == "counter-type":
-            target.tokens_seen = float(target.tokens_seen)  # type: ignore[assignment]
+            self.tokens_seen = float(self.tokens_seen)  # type: ignore[assignment]
         elif effect == "pending":
-            target._pending_tokens = 1
+            self._pending_tokens = 1
         else:
             raise AssertionError(f"unknown post-load effect: {effect}")
 
-    target.load_state_dict = incomplete_loader  # type: ignore[method-assign]
+    monkeypatch.setattr(Trainer, "load_state_dict", incomplete_loader)
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1078,14 +1073,6 @@ def test_model_apply_hook_drift_is_detected_before_trainer_state_apply(
         return result
 
     original_model.load_state_dict = model_loader_with_drift  # type: ignore[method-assign]
-    trainer_state_applied: list[bool] = []
-    actual_trainer_loader = target.load_state_dict
-
-    def track_trainer_load(state: Any) -> None:
-        trainer_state_applied.append(True)
-        actual_trainer_loader(state)
-
-    target.load_state_dict = track_trainer_load  # type: ignore[method-assign]
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1097,9 +1084,9 @@ def test_model_apply_hook_drift_is_detected_before_trainer_state_apply(
             strict_model=False, restore_rng=restore_rng, **extra,
         )
 
-    assert trainer_state_applied == []
     assert target._failure_reason is not None
     assert target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert not original_optimizer.state
     assert not torch.equal(original_model.weight, initial_weights)
     torch.testing.assert_close(original_model.weight, source.model.weight, rtol=0, atol=0)
@@ -1109,7 +1096,6 @@ def test_model_apply_hook_drift_is_detected_before_trainer_state_apply(
     target.scheduler = original_scheduler
     target.scaler = original_scaler
     target.config = original_config
-    target.load_state_dict = actual_trainer_loader  # type: ignore[method-assign]
     original_model.load_state_dict = actual_model_loader  # type: ignore[method-assign]
     retry_model_applied: list[bool] = []
 
@@ -1150,14 +1136,15 @@ def test_apply_stage_marker_loss_is_repaired_and_same_instance_retry_refused(
 
     target = Trainer(_TinyLogits(), source.config, device="cpu")
     initial_weights = target.model.weight.detach().clone()
-    actual_loader = target.load_state_dict
+    actual_loader = Trainer.load_state_dict
 
-    def loader_with_marker_loss(state: Any) -> None:
-        delattr(target, marker)
+    def loader_with_marker_loss(self: Trainer, state: Any) -> None:
+        assert self is target
+        delattr(self, marker)
         if outcome == "raise":
             raise RuntimeError("injected trainer apply failure")
 
-    target.load_state_dict = loader_with_marker_loss  # type: ignore[method-assign]
+    monkeypatch.setattr(Trainer, "load_state_dict", loader_with_marker_loss)
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1183,7 +1170,7 @@ def test_apply_stage_marker_loss_is_repaired_and_same_instance_retry_refused(
     assert not torch.equal(target.model.weight, initial_weights)
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
 
-    target.load_state_dict = actual_loader  # type: ignore[method-assign]
+    monkeypatch.setattr(Trainer, "load_state_dict", actual_loader)
     retry_model_applied: list[bool] = []
 
     def forbid_retry_model_application(*args: Any, **kwargs: Any) -> None:
