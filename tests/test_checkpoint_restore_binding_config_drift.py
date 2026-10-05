@@ -1261,6 +1261,13 @@ def test_native_checkpoint_save_rejects_subclass_export_auxiliary_mutation(
 @pytest.mark.parametrize(
     "authority",
     [
+        "_canonical_model_members",
+        "_canonical_optimizer_storage",
+        "_canonical_scheduler_storage",
+        "_canonical_scaler_storage",
+        "_canonical_scaler_live_state",
+        "_canonical_lambda_lr_live_state",
+        "_optimizer_live_fingerprint",
         "_model_export_fingerprint",
         "_checkpoint_auxiliary_fingerprint",
         "_require_exported_model_matches_live",
@@ -1294,6 +1301,15 @@ def test_native_checkpoint_save_rejects_subclass_safety_authority_override(
     class UnsafeAuthorityTrainer(Trainer):
         pass
 
+    # Construct with the canonical class first: several checkpoint authorities
+    # also participate in Trainer.__init__. The regression must exercise the
+    # checkpoint lineage gate rather than fail during target construction.
+    target = UnsafeAuthorityTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+
     if authority == "_exact_export_leaf_equal":
         setattr(
             UnsafeAuthorityTrainer,
@@ -1307,12 +1323,6 @@ def test_native_checkpoint_save_rejects_subclass_safety_authority_override(
         setattr(UnsafeAuthorityTrainer, authority, lambda self: "0" * 64)
     else:
         setattr(UnsafeAuthorityTrainer, authority, lambda self, exported: None)
-
-    target = UnsafeAuthorityTrainer(
-        _TinyLogits(),
-        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
-        device="cpu",
-    )
     checkpoint = tmp_path / f"unsafe-authority-{authority}"
 
     with pytest.raises(
@@ -1481,6 +1491,13 @@ def test_native_checkpoint_save_rejects_auxiliary_drift_from_model_export(
 @pytest.mark.parametrize(
     "authority",
     [
+        "_canonical_model_members",
+        "_canonical_optimizer_storage",
+        "_canonical_scheduler_storage",
+        "_canonical_scaler_storage",
+        "_canonical_scaler_live_state",
+        "_canonical_lambda_lr_live_state",
+        "_optimizer_live_fingerprint",
         "_model_export_fingerprint",
         "_checkpoint_auxiliary_fingerprint",
         "_require_exported_model_matches_live",
@@ -1516,6 +1533,15 @@ def test_native_checkpoint_load_rejects_subclass_safety_authority_before_io(
     class UnsafeAuthorityTrainer(Trainer):
         pass
 
+    # Construct with the canonical class first: several checkpoint authorities
+    # also participate in Trainer.__init__. The regression must exercise the
+    # checkpoint lineage gate rather than fail during target construction.
+    target = UnsafeAuthorityTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+
     if authority == "_exact_export_leaf_equal":
         setattr(
             UnsafeAuthorityTrainer,
@@ -1529,12 +1555,6 @@ def test_native_checkpoint_load_rejects_subclass_safety_authority_before_io(
         setattr(UnsafeAuthorityTrainer, authority, lambda self: "0" * 64)
     else:
         setattr(UnsafeAuthorityTrainer, authority, lambda self, exported: None)
-
-    target = UnsafeAuthorityTrainer(
-        _TinyLogits(),
-        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
-        device="cpu",
-    )
     checkpoint_reads: list[bool] = []
 
     def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
