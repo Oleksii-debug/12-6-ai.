@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -96,6 +99,127 @@ def test_strict_reader_requires_object_root(tmp_path: Path, raw: str) -> None:
     path = _write(tmp_path / "input.json", raw)
     with pytest.raises(ValueError, match="root must be an object"):
         cli._read_object(path)
+
+
+@pytest.mark.parametrize("role", ["manifest", "lease"])
+def test_non_object_root_redacts_secret_path_by_role(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    role: str,
+) -> None:
+    cli = _load_cli()
+    secret = "PRIVATE-LEASE-PATH-998877"
+    manifest = _write(tmp_path / "manifest.json", "{}")
+    lease = _write(tmp_path / "lease.json", "{}")
+    target = tmp_path / f"{secret}.json"
+    target.write_text("[]", encoding="utf-8")
+    if role == "manifest":
+        manifest = target
+    else:
+        lease = target
+    argv = ["assess_learned20m_training_lease.py", str(manifest)]
+    if role == "lease":
+        argv.append(str(lease))
+    assert cli.main(argv) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["error"] == f"{role} root must be an object"
+    assert secret not in captured.out
+
+
+@pytest.mark.parametrize("role", ["manifest", "lease"])
+def test_missing_input_path_is_redacted_by_role(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    role: str,
+) -> None:
+    cli = _load_cli()
+    manifest = _write(tmp_path / "manifest.json", "{}")
+    lease = _write(tmp_path / "lease.json", "{}")
+    secret = tmp_path / f"PRIVATE-{role.upper()}-SOURCE-998877.json"
+    if role == "manifest":
+        manifest = secret
+    else:
+        lease = secret
+    argv = ["assess_learned20m_training_lease.py", str(manifest)]
+    if role == "lease":
+        argv.append(str(lease))
+    assert cli.main(argv) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "contract_valid": False,
+        "error": f"cannot read {role}",
+    }
+    assert "PRIVATE-" not in captured.out
+
+
+@pytest.mark.parametrize("role", ["manifest", "lease"])
+def test_fifo_input_never_blocks(
+    tmp_path: Path,
+    role: str,
+) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    manifest = _write(tmp_path / "manifest.json", "{}")
+    lease = _write(tmp_path / "lease.json", "{}")
+    fifo = tmp_path / f"{role} FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    if role == "manifest":
+        manifest = fifo
+    else:
+        lease = fifo
+    tool = Path(__file__).parents[1] / "tools" / "assess_learned20m_training_lease.py"
+    argv = [sys.executable, str(tool), str(manifest)]
+    if role == "lease":
+        argv.append(str(lease))
+    result = subprocess.run(
+        argv,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert json.loads(result.stdout)["error"] == f"{role} must be a regular file"
+
+
+@pytest.mark.parametrize("role", ["manifest", "lease"])
+def test_reader_detects_regular_file_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    role: str,
+) -> None:
+    cli = _load_cli()
+    requested = _write(tmp_path / "requested.json", "{}")
+    substitute = _write(tmp_path / "substitute.json", "{}")
+    actual_open = cli.os.open
+
+    def open_substitute(_path: Path, flags: int) -> int:
+        return actual_open(substitute, flags)
+
+    monkeypatch.setattr(cli.os, "open", open_substitute)
+    with pytest.raises(ValueError, match=f"{role} changed between check and open"):
+        cli._read_object(requested, label=role)
+
+
+@pytest.mark.parametrize("negative", [False, True])
+def test_reader_bounds_integer_before_conversion(
+    tmp_path: Path,
+    negative: bool,
+) -> None:
+    cli = _load_cli()
+    literal = ("-" if negative else "") + "9" * 100_000
+    path = _write(tmp_path / "huge-int.json", '{"value":' + literal + "}")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            cli._read_object(path)
+    finally:
+        sys.set_int_max_str_digits(before)
 
 
 def test_cli_rejects_ambiguous_manifest_without_traceback(
