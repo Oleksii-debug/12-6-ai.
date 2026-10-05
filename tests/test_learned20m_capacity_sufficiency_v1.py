@@ -715,9 +715,24 @@ def test_rejects_nonfinite_direct_report_values(value: float) -> None:
 @pytest.mark.parametrize("surrogate", [0xD800, 0xDFFF])
 def test_rejects_unpaired_unicode_direct_report(surrogate: int) -> None:
     document = _report()
-    document["decision"]["untrusted_metadata"] = chr(surrogate)
-    with pytest.raises(CapacityReportError, match="invalid Unicode"):
+    secret = "PRIVATE-UNICODE-VALUE-998877" + chr(surrogate) + "-TAIL"
+    document["decision"]["untrusted_metadata"] = secret
+    with pytest.raises(CapacityReportError, match="invalid Unicode") as failure:
         validate_report(document)
+    assert "PRIVATE-UNICODE-VALUE" not in str(failure.value)
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
+
+
+def test_rejects_unpaired_unicode_key_without_retaining_private_cause() -> None:
+    document = _report()
+    secret = "PRIVATE-UNICODE-KEY-998877" + chr(0xD800) + "-TAIL"
+    document["decision"][secret] = 1
+    with pytest.raises(CapacityReportError, match="invalid Unicode") as failure:
+        validate_report(document)
+    assert "PRIVATE-UNICODE-KEY" not in str(failure.value)
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
 
 
 def test_rejects_escaped_unpaired_unicode_in_file(tmp_path: Path) -> None:
@@ -727,8 +742,10 @@ def test_rejects_escaped_unpaired_unicode_in_file(tmp_path: Path) -> None:
     path = tmp_path / "surrogate.json"
     replacement = '"claim_issue": ' + json.dumps(chr(0xD800))
     path.write_text(raw.replace(marker, replacement, 1), encoding="utf-8")
-    with pytest.raises(CapacityReportError, match="invalid Unicode"):
+    with pytest.raises(CapacityReportError, match="invalid Unicode") as failure:
         load_and_validate(path)
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
 
 
 def test_rejects_overlong_integer_literal_without_traceback(tmp_path: Path) -> None:
