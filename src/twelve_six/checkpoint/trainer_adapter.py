@@ -273,10 +273,8 @@ def _is_canonical_d02(trainer: Any) -> bool:
 
 
 def _is_native_d02(trainer: Any) -> bool:
-    """Recognize the real D02 Trainer lineage without marker descriptors."""
+    """Recognize the real D02 Trainer lineage without trusting recovery markers."""
 
-    if not _is_canonical_d02(trainer):
-        return False
     return _CanonicalTrainer in type(trainer).__mro__
 
 
@@ -412,11 +410,15 @@ def _snapshot_trainer_restore_bindings(
 ) -> tuple[bool, dict[str, Any]]:
     """Pin canonical restore component identities without descriptor dispatch."""
 
+    native_d02 = _is_native_d02(trainer)
     canonical_d02 = _is_canonical_d02(trainer)
+    if native_d02 and not canonical_d02:
+        raise CheckpointCompatibilityError(
+            "native D02 trainer recovery markers are unavailable"
+        )
     if not canonical_d02:
         return False, {}
     attrs = vars(trainer)
-    native_d02 = _is_native_d02(trainer)
     component_fields = ("model", "optimizer", "scheduler", "scaler", "config")
     if native_d02:
         binding_fields = (*component_fields, "device")
