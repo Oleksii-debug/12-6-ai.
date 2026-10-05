@@ -17,6 +17,9 @@ from twelve_six.portable_run_binding import bind_portable_run_packet
 DEFAULT_READINESS = Path("configs/research/r01_learned20m_launch_readiness_v1.json")
 DEFAULT_TEMPLATE = Path("configs/research/r01_portable_local_free_run_packet_v1.json")
 DEFAULT_OVERLAY = Path("configs/research/r01_portable_session_overlay_v1.json")
+MAX_PORTABLE_JSON_BYTES = 1_048_576
+MAX_PORTABLE_JSON_DEPTH = 64
+MAX_PORTABLE_JSON_NODES = 10_000
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -36,13 +39,22 @@ def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError("JSON number is not finite")
+    # Preserve the lexical distinction between zero and nonzero budgets:
+    # decoding 1e-9999 as 0.0 could incorrectly satisfy LOCAL_FREE checks.
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero JSON number underflowed to zero")
     return parsed
 
 
 def _load_object(path: Path) -> dict[str, Any]:
+    with path.open("rb") as source:
+        raw = source.read(MAX_PORTABLE_JSON_BYTES + 1)
+    if len(raw) > MAX_PORTABLE_JSON_BYTES:
+        raise ValueError("portable-run input JSON exceeds byte limit")
     try:
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_constant,
             parse_float=_parse_finite_float,
@@ -51,6 +63,22 @@ def _load_object(path: Path) -> dict[str, Any]:
         raise ValueError("portable-run input JSON nesting limit exceeded") from exc
     if not isinstance(value, dict):
         raise ValueError(f"{path}: JSON root must be an object")
+
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        current, depth = pending.pop()
+        nodes += 1
+        if nodes > MAX_PORTABLE_JSON_NODES or depth > MAX_PORTABLE_JSON_DEPTH:
+            raise ValueError("portable-run input JSON structure limit exceeded")
+        if isinstance(current, dict):
+            for key, child in current.items():
+                key.encode("utf-8")
+                pending.append((child, depth + 1))
+        elif isinstance(current, list):
+            pending.extend((child, depth + 1) for child in current)
+        elif isinstance(current, str):
+            current.encode("utf-8")
     return value
 
 
