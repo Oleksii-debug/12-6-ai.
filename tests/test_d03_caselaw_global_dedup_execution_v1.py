@@ -1096,6 +1096,100 @@ with TemporaryDirectory() as raw:
     )
 
 
+
+def test_publication_recovers_after_partial_postcommit_stage_cleanup() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+        (root / "evidence.json", {"kind": "evidence"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    for (_, payload), stage in zip(prepared, stages, strict=True):
+        mod._write_create_only_durable(stage, payload)
+    for (final_path, _), stage in zip(prepared, stages, strict=True):
+        mod._link_staged_output(stage, final_path)
+
+    mod._unlink_owned_path(marker, marker_identity, label="test marker")
+    first_stage_identity = mod._regular_file_identity(
+        stages[0], label="test first stage"
+    )
+    mod._unlink_owned_path(
+        stages[0],
+        first_stage_identity,
+        label="test first stage",
+    )
+    assert not stages[0].exists()
+    assert manifest.exists()
+
+    mod._publish_json_outputs(values)
+
+    assert not manifest.exists()
+    assert not any(stage.exists() for stage in stages)
+    assert all(path.exists() for path, _ in values)
+"""
+    )
+
+
+def test_committed_residue_rejects_changed_terminal_final() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    values = (
+        (root / "report.json", {"kind": "report"}),
+        (root / "survivors.json", {"kind": "survivors"}),
+    )
+    prepared = tuple(
+        (path, mod._canonical(dict(value)) + b"\\n") for path, value in values
+    )
+    marker, manifest, stages, pathset_id = mod._publication_control_paths(prepared)
+    _, manifest_payload = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+    marker_identity = mod._regular_file_identity(marker, label="test marker")
+    mod._write_create_only_durable(manifest, manifest_payload)
+    for (_, payload), stage in zip(prepared, stages, strict=True):
+        mod._write_create_only_durable(stage, payload)
+    for (final_path, _), stage in zip(prepared, stages, strict=True):
+        mod._link_staged_output(stage, final_path)
+    mod._unlink_owned_path(marker, marker_identity, label="test marker")
+
+    changed = b'{"kind":"changed"}\\n'
+    prepared[0][0].unlink()
+    prepared[0][0].write_bytes(changed)
+
+    try:
+        mod._publish_json_outputs(values)
+    except mod.CaselawGlobalDedupError as exc:
+        assert "final bytes or identity drift" in str(exc)
+    else:
+        raise AssertionError("changed committed final was accepted")
+
+    assert prepared[0][0].read_bytes() == changed
+    assert manifest.exists()
+    assert all(stage.exists() for stage in stages)
+"""
+    )
+
+
 def test_publication_rollback_preserves_substituted_final_and_control_evidence() -> None:
     _run_isolated(
         """
