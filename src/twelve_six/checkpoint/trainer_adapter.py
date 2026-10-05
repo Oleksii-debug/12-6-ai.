@@ -305,6 +305,7 @@ def _preflight_trainer_target(trainer: Any) -> None:
     # opens the application region.
     for authority, label in (
         ("_require_finite_auxiliary_state", "auxiliary-state"),
+        ("_require_safe_optimizer_hyperparameters", "optimizer-hyperparameter"),
         ("_require_finite_committed_update", "committed-update"),
         ("_require_no_residual_model_gradients", "gradient-cleanliness"),
         ("_require_deterministic_policy", "deterministic-policy"),
@@ -488,6 +489,23 @@ def _preflight_trainer_state_without_rng_guard(
                 raise CheckpointCompatibilityError(
                     f"checkpoint trainer {field} has non-finite or invalid numeric state"
                 ) from exc
+
+    # A finite optimizer group can still encode an invalid update contract
+    # (for example negative decay/LR, zero eps or beta outside [0, 1)).
+    safe_optimizer_check = getattr(
+        trainer, "_require_safe_optimizer_hyperparameters", None
+    )
+    if canonical_d02:
+        if not callable(safe_optimizer_check):
+            raise CheckpointCompatibilityError(
+                "canonical trainer optimizer-hyperparameter authority unavailable"
+            )
+        try:
+            safe_optimizer_check(state.get("optimizer"))
+        except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint trainer optimizer hyperparameters invalid"
+            ) from exc
 
     # Shared D02 authority must reject finite but forged scheduler state
     # BEFORE either D05 public loader can apply model weights or restore RNG.
