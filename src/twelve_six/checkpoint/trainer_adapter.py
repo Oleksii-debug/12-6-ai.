@@ -21,7 +21,6 @@ from .core import (
     CheckpointIdentity,
     LoadResult,
     capture_rng_state,
-    _apply_model_weights,
     _bind_model_state_loader,
     _decode_verified_state,
     _preflight_optimizer_state,
