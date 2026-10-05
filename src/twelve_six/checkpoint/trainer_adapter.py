@@ -416,14 +416,23 @@ def _snapshot_trainer_restore_bindings(
     if not canonical_d02:
         return False, {}
     attrs = vars(trainer)
-    bindings = {
-        field: attrs[field]
-        for field in ("model", "optimizer", "scheduler", "scaler", "config")
-        if field in attrs
-    }
     native_d02 = _is_native_d02(trainer)
-    if native_d02 and "device" in attrs:
-        bindings["device"] = attrs["device"]
+    component_fields = ("model", "optimizer", "scheduler", "scaler", "config")
+    if native_d02:
+        binding_fields = (*component_fields, "device")
+        missing_bindings = [field for field in binding_fields if field not in attrs]
+        if missing_bindings:
+            raise CheckpointCompatibilityError(
+                "native D02 trainer is missing restore binding fields: "
+                f"{missing_bindings}"
+            )
+        bindings = {field: attrs[field] for field in binding_fields}
+    else:
+        bindings = {
+            field: attrs[field]
+            for field in component_fields
+            if field in attrs
+        }
     policy_fields = (
         "_canonical_default_schedule",
         "_canonical_unscheduled_default_optimizer",
