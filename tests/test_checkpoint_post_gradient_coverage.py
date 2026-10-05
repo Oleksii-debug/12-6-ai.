@@ -275,7 +275,7 @@ def test_final_authority_lookup_cannot_change_canonical_restore_policy_before_ap
 
     with pytest.raises(
         core.CheckpointCompatibilityError,
-        match="_canonical_default_optimizer_options changed during preflight",
+        match="_canonical_default_optimizer_options policy changed during checkpoint restore",
     ):
         loader.load_trainer_checkpoint(
             checkpoint,
