@@ -326,10 +326,10 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
-    # Direct D02 load invokes these safety authorities only after live optimizer,
-    # counters, scheduler/scaler or gradients may already have been changed.
-    # An incompatible canonical object must therefore expose them before D05
-    # opens the application region.
+    # Bind every effectful authority/interface lookup before the final
+    # freshness snapshot. Descriptor/proxy lookup itself may execute user code;
+    # any such side effect must therefore be visible to the checks below.
+    authorities: dict[str, Any] = {}
     for authority, label in (
         ("_require_finite_auxiliary_state", "auxiliary-state"),
         ("_require_safe_optimizer_hyperparameters", "optimizer-hyperparameter"),
@@ -338,16 +338,52 @@ def _preflight_trainer_target(trainer: Any) -> None:
         ("_require_deterministic_policy", "deterministic-policy"),
         ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
     ):
-        if not callable(getattr(trainer, authority, None)):
+        bound = getattr(trainer, authority, None)
+        if not callable(bound):
             raise CheckpointCompatibilityError(
                 f"canonical trainer {label} authority unavailable"
             )
+        authorities[authority] = bound
+
+    model = getattr(trainer, "model", None)
+    parameters = getattr(model, "parameters", None)
+    optimizer = getattr(trainer, "optimizer", None)
+    zero_grad = getattr(optimizer, "zero_grad", None) if optimizer is not None else None
+    if optimizer is not None and not callable(zero_grad):
+        raise CheckpointCompatibilityError(
+            "canonical trainer optimizer zero_grad unavailable"
+        )
+
+    # D02 validates optimizer/model parameter ownership during its actual load.
+    # Invoke the already-bound authority before the final freshness snapshot so
+    # an effectful custom authority cannot mutate the target after that snapshot.
+    try:
+        authorities["_require_optimizer_parameter_coverage"]()
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires valid optimizer ownership of model parameters"
+        ) from exc
+
+    pending_gradient = bool(
+        callable(parameters)
+        and any(
+            getattr(parameter, "grad", None) is not None
+            for parameter in parameters()
+        )
+    )
+
     # Global deterministic mode is a pure target compatibility precondition.
-    # Reject drift before opening a model-scale checkpoint in either loader.
+    # Run it after the effectful bindings/calls above, then close with the
+    # freshness/identity checks that gate checkpoint I/O and model mutation.
     _assert_live_d02_determinism(trainer)
-    # D02 refuses restoration to a trainer which has already consumed data,
-    # has pending accumulation, or retains gradients. Check the same live
-    # conditions before opening a checkpoint or changing model weights.
+    if trainer._failure_reason is not None:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer; target trainer is poisoned"
+        )
+    if trainer._update_incomplete:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
+        )
     if any(
         getattr(trainer, field, 0) != 0
         for field in (
@@ -361,30 +397,17 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer with no consumed exposure"
         )
-    model = getattr(trainer, "model", None)
-    parameters = getattr(model, "parameters", None)
-    if callable(parameters) and any(
-        getattr(parameter, "grad", None) is not None for parameter in parameters()
-    ):
+    if getattr(trainer, "model", None) is not model:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore target model changed during preflight"
+        )
+    if getattr(trainer, "optimizer", None) is not optimizer:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore target optimizer changed during preflight"
+        )
+    if pending_gradient:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer with no pending gradients"
-        )
-
-    # D02 validates optimizer/model parameter ownership during its actual load.
-    # Reject a predictably invalid target before checkpoint I/O and weight mutation.
-    # Older D02 implementations do not expose this method; retain their API.
-    coverage_check = getattr(trainer, "_require_optimizer_parameter_coverage", None)
-    if callable(coverage_check):
-        try:
-            coverage_check()
-        except Exception as exc:
-            raise CheckpointCompatibilityError(
-                "checkpoint restore requires valid optimizer ownership of model parameters"
-            ) from exc
-    optimizer = getattr(trainer, "optimizer", None)
-    if optimizer is not None and not callable(getattr(optimizer, "zero_grad", None)):
-        raise CheckpointCompatibilityError(
-            "canonical trainer optimizer zero_grad unavailable"
         )
 
 
