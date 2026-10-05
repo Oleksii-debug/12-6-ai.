@@ -140,7 +140,11 @@ def test_resealed_invalid_scheduler_epoch_fails_before_both_public_model_loaders
         calls.append(True)
         raise AssertionError("invalid chronology reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -209,7 +213,11 @@ def test_resealed_finite_lr_inconsistency_rejected_before_model_apply(
         model_applied.append(True)
         raise AssertionError("invalid rate reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", fail_if_model_applied)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: fail_if_model_applied,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -266,7 +274,11 @@ def test_resealed_paired_finite_rate_forgery_rejected_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("paired finite-rate forgery reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", reject_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: reject_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -353,7 +365,11 @@ def test_resealed_unscheduled_default_rate_forgery_fails_before_model_apply(
         model_applied.append(True)
         raise AssertionError("invalid constant LR reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -429,7 +445,11 @@ def test_resealed_default_adamw_finite_decay_forgery_rejected_before_model_apply
         applied.append(True)
         raise AssertionError("invalid AdamW option reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -493,7 +513,11 @@ def test_noncallable_trainer_loader_fails_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("non-callable trainer loader reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -560,7 +584,11 @@ def test_late_missing_d02_authority_fails_before_model_apply(
         raise AssertionError("late missing D02 authority reached model application")
 
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_shadow)
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -615,7 +643,11 @@ def test_late_trainer_model_rebind_fails_before_model_apply(
         raise AssertionError("late trainer model rebind reached model application")
 
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_rebind)
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -685,7 +717,11 @@ def test_late_trainer_state_drift_fails_before_model_apply(
         raise AssertionError("late trainer-state drift reached model application")
 
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_drift)
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -760,7 +796,11 @@ def test_late_target_freshness_drift_fails_before_model_and_rng(
         raise AssertionError("late target freshness drift reached model application")
 
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_drift)
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -837,7 +877,11 @@ def test_late_stateful_preflight_hook_drift_is_rechecked_before_model_apply(
         raise AssertionError("stateful preflight hook drift reached model application")
 
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_arm_hook)
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -887,7 +931,11 @@ def test_late_noncallable_trainer_loader_fails_before_model_apply(
         raise AssertionError("late non-callable trainer loader reached model application")
 
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_disable)
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -971,7 +1019,11 @@ def test_resealed_invalid_optimizer_hyperparameters_fail_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("invalid optimizer hyperparameters reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1027,7 +1079,11 @@ def test_noncallable_optimizer_zero_grad_fails_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("non-callable optimizer zero_grad reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1088,7 +1144,11 @@ def test_noncallable_stateful_component_interface_fails_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("non-callable stateful interface reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1145,7 +1205,11 @@ def test_noncallable_optimizer_checkpoint_interface_fails_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("non-callable optimizer interface reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1221,7 +1285,11 @@ def test_canonical_d02_missing_mandatory_authority_fails_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("missing canonical authority reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1277,7 +1345,11 @@ def test_canonical_d02_missing_scaler_authority_fails_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("missing scaler authority reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1357,7 +1429,11 @@ def test_resealed_invalid_scaler_statistics_fail_before_model_and_rng(
         model_applied.append(True)
         raise AssertionError("invalid scaler reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -1556,7 +1632,11 @@ def test_late_trainer_loader_descriptor_effect_fails_before_model_apply(
         raise AssertionError("loader descriptor effect reached model application")
 
     monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_arm_descriptor)
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_application,
+    )
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
