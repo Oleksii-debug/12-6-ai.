@@ -1,0 +1,129 @@
+"""Exact optimizer export bits and counter claims; tiny synthetic CPU tests only."""
+
+from __future__ import annotations
+
+import random
+from typing import Any
+
+import numpy as np
+import pytest
+import torch
+
+from twelve_six.training import Trainer, TrainerConfig, TrainingStateInvalidError
+
+
+class _TinyLogits(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.tensor([0.1, -0.2, 0.3]))
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        return self.weight.reshape(1, 1, 3).expand(*input_ids.shape, 3)
+
+
+_BATCH = {
+    "input_ids": torch.tensor([[0, 1]], dtype=torch.long),
+    "target_ids": torch.tensor([[1, 2]], dtype=torch.long),
+}
+
+
+@pytest.fixture(autouse=True)
+def preserve_ambient_state():
+    python_before = random.getstate()
+    numpy_before = np.random.get_state()
+    torch_before = torch.get_rng_state()
+    cuda_before = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    try:
+        yield
+    finally:
+        random.setstate(python_before)
+        np.random.set_state(numpy_before)
+        torch.set_rng_state(torch_before)
+        if cuda_before is not None:
+            torch.cuda.set_rng_state_all(cuda_before)
+        torch.use_deterministic_algorithms(
+            policy_before[0], warn_only=policy_before[1],
+        )
+
+
+@pytest.mark.parametrize(
+    ("saved", "live"),
+    [
+        (torch.tensor([0.0]), torch.tensor([-0.0])),
+        (torch.tensor(0.0), torch.tensor(-0.0)),
+        (torch.tensor([0.0], dtype=torch.bfloat16),
+         torch.tensor([-0.0], dtype=torch.bfloat16)),
+        (torch.tensor([0.0 + 0.0j]), torch.tensor([-0.0 + 0.0j])),
+        (np.array([0.0], dtype=np.float32), np.array([-0.0], dtype=np.float32)),
+        (np.array([1.0, 0.0, 2.0])[::-1],
+         np.array([1.0, -0.0, 2.0])[::-1]),
+        (np.float32(0.0), np.float32(-0.0)),
+        (np.complex64(complex(0.0, 1.0)), np.complex64(complex(-0.0, 1.0))),
+        (0.0, -0.0),
+        (complex(0.0, 1.0), complex(-0.0, 1.0)),
+    ],
+    ids=[
+        "torch-fp32", "torch-scalar", "torch-bfloat16", "torch-complex",
+        "numpy-fp32", "numpy-strided", "numpy-scalar", "numpy-complex",
+        "python-float", "python-complex",
+    ],
+)
+def test_optimizer_export_rejects_numerically_equal_but_bitwise_different(
+    saved: Any, live: Any,
+) -> None:
+    assert not Trainer._exact_export_leaf_equal(saved, live)
+    assert Trainer._exact_export_leaf_equal(live, live)
+
+
+@pytest.mark.parametrize(
+    "leaf",
+    [
+        torch.tensor(0.0),
+        torch.zeros((2, 3), dtype=torch.float32),
+        np.float32(0.0),
+        np.array([1.0, -0.0, 2.0])[::-1],
+        0.0,
+        -0.0,
+        1 + 2j,
+        {"state": [torch.tensor(1.0), np.array([], dtype=np.float32)]},
+    ],
+)
+def test_exact_optimizer_export_still_accepts_identical_leaves(leaf: Any) -> None:
+    assert Trainer._exact_export_leaf_equal(leaf, leaf)
+
+
+def test_export_hook_cannot_forge_consistent_completed_steps_and_exposure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _TinyLogits()
+    trainer = Trainer(model, TrainerConfig(seed=703, max_steps=3), device="cpu")
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2)
+    original_export = trainer.optimizer.state_dict
+    real_weights = model.weight.detach().clone()
+    real_moment = trainer.optimizer.state[model.weight]["exp_avg"].detach().clone()
+
+    def forged_export() -> dict[str, Any]:
+        saved = original_export()
+        trainer.micro_step += 1
+        trainer.optimizer_step += 1
+        trainer.tokens_seen += 2
+        return saved
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", forged_export)
+    with pytest.raises(TrainingStateInvalidError, match="changed committed counters"):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    # No second AdamW step happened, and the forged exposure cannot be published.
+    assert trainer.optimizer.state[model.weight]["step"].item() == 1
+    torch.testing.assert_close(model.weight, real_weights, rtol=0, atol=0)
+    torch.testing.assert_close(
+        trainer.optimizer.state[model.weight]["exp_avg"], real_moment, rtol=0, atol=0,
+    )
+    assert model.weight.grad is None
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
