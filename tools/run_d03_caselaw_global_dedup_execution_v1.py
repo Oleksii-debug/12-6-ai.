@@ -1159,12 +1159,14 @@ def _recover_incomplete_publication(
                 )
             )
             _require(
-                final_identity == stage_owned_identity
-                and observed_final == payload
+                final_identity == stage_owned_identity,
+                f"incomplete publication final is not linked to its stable stage: {final_path}",
+            )
+            _require(
+                observed_final == payload
                 and observed_stage == payload
                 and _sha256(observed_stage) == expected_sha,
-                "incomplete publication final/stage ownership or bytes drift: "
-                f"{final_path}",
+                f"incomplete publication output digest mismatch: {final_path}",
             )
             _unlink_owned_path(
                 final_path,
@@ -1275,7 +1277,7 @@ def _recover_committed_publication_residue(
         )
         _require(
             observed == payload,
-            f"committed publication final bytes drift: {final_path}",
+            f"committed publication final bytes or identity drift: {final_path}",
         )
 
         if _path_entry_exists(stage_path):
