@@ -748,6 +748,7 @@ def test_postcreate_process_interrupt_preserves_recovery_state_and_rethrows(
     staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert len(staged) == 1 and staged[0].read_bytes() == expected
 
+
 def test_postcreate_interrupt_never_attempts_pathname_rollback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -775,6 +776,7 @@ def test_postcreate_interrupt_never_attempts_pathname_rollback(
     assert output.exists()
     staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert len(staged) == 1
+
 
 @pytest.mark.parametrize("phase", ["inspect", "verify", "cleanup"])
 @pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
@@ -1063,6 +1065,7 @@ def test_interrupt_never_enters_owned_unlink_hook(
     assert output.read_bytes() == expected
     staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert len(staged) == 1 and staged[0].read_bytes() == expected
+
 
 def test_same_size_staged_mutation_during_link_is_not_reported_committed(
     tmp_path: Path,
