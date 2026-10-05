@@ -40,12 +40,16 @@ def _parse_finite_float(value: str) -> float:
 
 
 def _load_json(path: Path) -> Any:
-    return json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=_reject_duplicate_object,
-        parse_constant=_reject_nonfinite_constant,
-        parse_float=_parse_finite_float,
-    )
+    try:
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        # Limit only untrusted JSON decoding; preserve genuine validator errors.
+        raise ValueError("JSON nesting exceeds decoder limit") from exc
 
 
 def _print_input_failure(label: str, exc: BaseException) -> int:
