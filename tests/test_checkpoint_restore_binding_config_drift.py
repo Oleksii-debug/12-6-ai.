@@ -5,7 +5,7 @@ Synthetic CPU coverage only; this grants no corpus, training, or learned-weight 
 from __future__ import annotations
 
 import random
-from dataclasses import asdict
+from dataclasses import asdict, fields, make_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -220,3 +220,59 @@ def test_entry_config_snapshot_refuses_effectful_slot_descriptor(
     assert target._failure_reason is None
     assert target._update_incomplete is False
 
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_entry_config_snapshot_requires_exact_native_config_type(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    ImpostorConfig = make_dataclass(
+        "TrainerConfig",
+        [(field.name, field.type) for field in fields(TrainerConfig)],
+        namespace={"__module__": "twelve_six.training.config"},
+        frozen=True,
+        slots=True,
+    )
+    target.config = ImpostorConfig(**asdict(target.config))
+    assert type(target.config).__module__ == "twelve_six.training.config"
+    assert type(target.config).__name__ == "TrainerConfig"
+
+    checkpoint_reads: list[bool] = []
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("spoofed native config reached checkpoint I/O")
+
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 0, "expected_tokens_seen": 0}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="must remain canonical TrainerConfig",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert checkpoint_reads == []
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
