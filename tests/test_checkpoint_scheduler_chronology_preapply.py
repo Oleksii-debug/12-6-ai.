@@ -2255,6 +2255,8 @@ def test_zero_grad_descriptor_side_effect_fails_before_checkpoint_apply(
                     target.scheduler = None
                 elif descriptor_effect == "scaler-rebind":
                     target.scaler = object()
+                elif descriptor_effect == "failure-marker":
+                    del vars(target)["_failure_reason"]
                 else:
                     raise AssertionError(
                         f"unknown descriptor effect: {descriptor_effect}"
@@ -2419,6 +2421,7 @@ def test_recovery_marker_descriptor_cannot_block_application_poison(
         ("micro-step", "fresh trainer with no consumed exposure"),
         ("config-rebind", "target config changed during preflight"),
         ("scaler-rebind", "target scaler changed during preflight"),
+        ("failure-marker", "safety classification changed"),
     ],
 )
 @pytest.mark.parametrize(
