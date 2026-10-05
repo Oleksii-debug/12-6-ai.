@@ -30,6 +30,12 @@ class _TinyLogits(torch.nn.Module):
         return self.weight.reshape(1, 1, 3).expand(*input_ids.shape, 3)
 
 
+_BATCH = {
+    "input_ids": torch.tensor([[0, 1]], dtype=torch.long),
+    "target_ids": torch.tensor([[1, 2]], dtype=torch.long),
+}
+
+
 @pytest.fixture
 def preserve_state():
     python_rng = random.getstate()
