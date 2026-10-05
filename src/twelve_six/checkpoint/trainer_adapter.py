@@ -18,6 +18,7 @@ from types import MemberDescriptorType
 from typing import Any
 
 from ..training.config import TrainerConfig as _CanonicalTrainerConfig
+from ..training.trainer import Trainer as _CanonicalTrainer
 from . import core as _core
 from .core import (
     CheckpointCompatibilityError,
@@ -276,11 +277,7 @@ def _is_native_d02(trainer: Any) -> bool:
 
     if not _is_canonical_d02(trainer):
         return False
-    return any(
-        base.__module__ == "twelve_six.training.trainer"
-        and base.__name__ == "Trainer"
-        for base in type(trainer).__mro__
-    )
+    return _CanonicalTrainer in type(trainer).__mro__
 
 
 def _poison_canonical_restore_failure(
