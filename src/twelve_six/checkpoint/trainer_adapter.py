@@ -1574,13 +1574,20 @@ def save_trainer_checkpoint(
             _assert_native_d02_model_training_mode(model, trainer)
             _assert_native_d02_postload_snapshot(trainer, state)
             _assert_live_d02_determinism(trainer)
-            if (
-                model_fingerprint is not None
-                and model_fingerprint() != sealed_model_fingerprint
-            ):
-                raise CheckpointCompatibilityError(
-                    "canonical trainer model changed during checkpoint publication"
-                )
+            if model_fingerprint is not None:
+                observed_model_fingerprint = model_fingerprint()
+                if observed_model_fingerprint != sealed_model_fingerprint:
+                    raise CheckpointCompatibilityError(
+                        "canonical trainer model changed during checkpoint publication"
+                    )
+                # The fingerprint authority traverses model parameter/buffer
+                # interfaces and is therefore itself effectful. Seal runtime
+                # ownership and committed state after that final model callout.
+                _assert_trainer_restore_bindings(trainer, save_bindings)
+                _assert_trainer_model_binding(model, trainer)
+                _assert_native_d02_model_training_mode(model, trainer)
+                _assert_native_d02_postload_snapshot(trainer, state)
+                _assert_live_d02_determinism(trainer)
         except BaseException as exc:
             _poison_canonical_restore_failure(
                 trainer,
