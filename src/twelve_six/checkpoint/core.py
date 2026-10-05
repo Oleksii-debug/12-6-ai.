@@ -1079,6 +1079,16 @@ def save_checkpoint(
                     "post_rng_prepublish_validator must be callable or None"
                 )
             post_rng_prepublish_validator()
+            # Final validation is allowed to execute arbitrary caller code.
+            # Keep successful checkpoint publication observational even when
+            # that callback itself consumes RNG or changes torch policy.
+            try:
+                _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
+            except BaseException as exc:  # noqa: BLE001
+                raise CheckpointError(
+                    "checkpoint save could not restore entry RNG state "
+                    "after final validation"
+                ) from exc
         rng_restored = True
 
         os.replace(temp_dir, destination)
