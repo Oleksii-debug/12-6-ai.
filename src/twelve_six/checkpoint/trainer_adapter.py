@@ -1172,8 +1172,13 @@ def _assert_live_d02_determinism(trainer: Any) -> bool | None:
     if not _is_canonical_d02(trainer):
         return None
     config = vars(trainer).get("config")
-    enabled = getattr(config, "deterministic_algorithms", None)
-    warn_only = getattr(config, "deterministic_warn_only", None)
+    if _is_native_d02(trainer):
+        config_state = _snapshot_native_d02_config(config)
+        enabled = config_state.get("deterministic_algorithms")
+        warn_only = config_state.get("deterministic_warn_only")
+    else:
+        enabled = getattr(config, "deterministic_algorithms", None)
+        warn_only = getattr(config, "deterministic_warn_only", None)
     if type(enabled) is not bool or type(warn_only) is not bool:
         return None
     torch = importlib.import_module("torch")
