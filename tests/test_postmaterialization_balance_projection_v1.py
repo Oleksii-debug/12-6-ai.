@@ -945,14 +945,13 @@ def test_strict_current_clean_json_rejects_nested_duplicate_keys() -> None:
         )
 
 
-
 @pytest.mark.parametrize("nested", [False, True])
 def test_strict_current_clean_json_duplicate_key_does_not_disclose_member_name(
     nested: bool,
 ) -> None:
     secret = "NEVER_EXPOSE_SOURCE_JSON_KEY_789"
     duplicate = f'{{"{secret}":1,"{secret}":2}}'
-    raw = ("{\\\"wrapper\\\":" + duplicate + "}" if nested else duplicate).encode()
+    raw = (f'{{"wrapper":{duplicate}}}' if nested else duplicate).encode()
     with pytest.raises(ProjectionError, match="duplicate JSON key") as failure:
         load_strict_json_object(raw, label="adversarial")
     assert secret not in str(failure.value)
@@ -976,16 +975,19 @@ def test_strict_current_clean_json_accepts_64_digit_integer(sign: str) -> None:
 
 def test_strict_current_clean_json_integer_bound_when_python_limit_disabled() -> None:
     root = Path(__file__).resolve().parents[1]
-    child = (
-        "from twelve_six.data.postmaterialization_balance_projection_v1 "
-        "import ProjectionError, load_strict_json_object\\n"
-        "raw = b'{\\\"count\\\":' + b'9' * 100_000 + b'}'\\n"
-        "try:\\n"
-        "    load_strict_json_object(raw, label='adversarial')\\n"
-        "except ProjectionError as error:\\n"
-        "    assert 'not strict JSON' in str(error)\\n"
-        "else:\\n"
-        "    raise AssertionError('oversized JSON integer was accepted')\\n"
+    child = "\\n".join(
+        [
+            "import json",
+            "from twelve_six.data.postmaterialization_balance_projection_v1 import "
+            "ProjectionError, load_strict_json_object",
+            "raw = b'{' + json.dumps('count').encode() + b':' + b'9' * 100_000 + b'}'",
+            "try:",
+            "    load_strict_json_object(raw, label='adversarial')",
+            "except ProjectionError as error:",
+            "    assert 'not strict JSON' in str(error)",
+            "else:",
+            "    raise AssertionError('oversized JSON integer was accepted')",
+        ]
     )
     completed = subprocess.run(
         [sys.executable, "-c", child],
@@ -997,8 +999,6 @@ def test_strict_current_clean_json_integer_bound_when_python_limit_disabled() ->
         },
     )
     assert completed.returncode == 0, completed.stderr
-
-
 
 
 @pytest.mark.parametrize("container", ["array", "object"])
