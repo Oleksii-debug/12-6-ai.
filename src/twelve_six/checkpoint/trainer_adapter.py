@@ -379,16 +379,25 @@ def _preflight_trainer_target(trainer: Any) -> None:
     # Run it after the effectful bindings/calls above, then close with the
     # freshness/identity checks that gate checkpoint I/O and model mutation.
     _assert_live_d02_determinism(trainer)
-    if trainer._failure_reason is not None:
+    # Canonical D02 stores its recovery flags, counters and restore components
+    # as instance attributes. Take one descriptor-free final snapshot so a
+    # late property/proxy read cannot mutate an earlier checked field.
+    try:
+        live_attrs = vars(trainer)
+    except TypeError as exc:
+        raise CheckpointCompatibilityError(
+            "canonical trainer does not expose instance recovery state"
+        ) from exc
+    if live_attrs.get("_failure_reason") is not None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer is poisoned"
         )
-    if trainer._update_incomplete:
+    if live_attrs.get("_update_incomplete"):
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
     if any(
-        getattr(trainer, field, 0) != 0
+        live_attrs.get(field, 0) != 0
         for field in (
             "micro_step",
             "optimizer_step",
@@ -400,10 +409,6 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer with no consumed exposure"
         )
-    # Canonical D02 stores these restore components as instance attributes.
-    # Inspect the instance dictionary directly so this final identity snapshot
-    # cannot itself execute another custom descriptor after the checks above.
-    live_attrs = vars(trainer)
     for name, expected in (
         ("model", model),
         ("optimizer", optimizer),
