@@ -445,7 +445,11 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "gradient scaler binding is not canonical"
             )
-        base_type = amp_type if isinstance(amp_type, type) and isinstance(scaler, amp_type) else cuda_type
+        base_type = (
+            amp_type
+            if isinstance(amp_type, type) and isinstance(scaler, amp_type)
+            else cuda_type
+        )
         if not isinstance(base_type, type):
             raise TrainingStateInvalidError(
                 "gradient scaler dictionary authority is unavailable"
