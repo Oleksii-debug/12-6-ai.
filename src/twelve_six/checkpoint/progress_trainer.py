@@ -98,6 +98,7 @@ def load_trainer_checkpoint(
             prebind_ambient,
             prebind_policy,
             trainer,
+            expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
 
@@ -165,6 +166,7 @@ def load_trainer_checkpoint(
             preio_ambient,
             preio_policy,
             trainer,
+            expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
     verified = prepare_checkpoint_load(directory)
@@ -282,6 +284,7 @@ def load_trainer_checkpoint(
             preapply_ambient,
             preapply_policy,
             trainer,
+            expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
 
