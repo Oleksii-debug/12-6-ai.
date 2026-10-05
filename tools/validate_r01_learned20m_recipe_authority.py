@@ -60,9 +60,18 @@ def _load_json(path: Path) -> Any:
 
 
 def _print_input_failure(label: str, exc: BaseException) -> int:
+    # OS exceptions may embed an untrusted authority filename (or directory).
+    # Key-set validator errors may embed attacker-controlled JSON member names.
+    # Keep the failure class/contract useful without publishing either value.
+    if isinstance(exc, OSError):
+        reason = f"authority input read failed ({type(exc).__name__})"
+    else:
+        reason = str(exc)
+        if " keys mismatch; missing=" in reason:
+            reason = reason.split(" keys mismatch; missing=", 1)[0] + " keys mismatch"
     print(
         json.dumps(
-            {"status": "FAIL", "error": f"invalid {label}: {exc}"},
+            {"status": "FAIL", "error": f"invalid {label}: {reason}"},
             sort_keys=True,
         )
     )
