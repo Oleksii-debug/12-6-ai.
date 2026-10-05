@@ -120,7 +120,11 @@ def test_sealed_nonfinite_optimizer_refused_before_apply_with_clean_valid_retry(
         applied.append(True)
         raise AssertionError("non-finite optimizer reached model application")
 
-    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_apply)
+    monkeypatch.setattr(
+        loader,
+        "_bind_model_state_loader",
+        lambda *args, **kwargs: forbid_model_apply,
+    )
     extra = {"expected_step": 1, "expected_tokens_seen": 2} if (
         loader is progress_trainer
     ) else {}
