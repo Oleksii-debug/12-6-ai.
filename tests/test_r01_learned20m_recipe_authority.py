@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -1008,3 +1009,51 @@ def test_recipe_cli_argument_dependencies_checked_before_any_file_read(
     assert expected in response["error"]
     assert "invalid policy JSON" not in response["error"]
     assert secret not in completed.stdout
+
+
+@pytest.mark.parametrize("sign", ["", "-"])
+def test_recipe_cli_integer_bound_is_independent_of_python_default(
+    tmp_path: Path, sign: str,
+) -> None:
+    tool = _load_tool()
+    digits = "9" * tool.MAX_AUTHORITY_JSON_INTEGER_DIGITS
+    path = _write_json(tmp_path, '{"number":' + sign + digits + "}")
+    assert tool._load_json(path) == {"number": int(sign + digits)}
+    path = _write_json(tmp_path, '{"number":' + sign + digits + "9}")
+    with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+        tool._load_json(path)
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_refuses_huge_integer_for_every_authority_role(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    bad = tmp_path / "huge-integer.json"
+    bad.write_text('{"number":' + "9" * 100_000 + "}", encoding="utf-8")
+    valid_bindings = bindings()
+    valid_trusted = trusted_authorities(valid_bindings)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(valid_bindings), encoding="utf-8")
+    trusted_path.write_text(json.dumps(valid_trusted), encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(bad)]
+    else:
+        command += [
+            "--bindings", str(bad if bad_role == "bindings" else bindings_path),
+            "--trusted-authorities",
+            str(bad if bad_role == "trusted-authorities" else trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(valid_trusted),
+        ]
+    completed = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8", env={**os.environ, "PYTHONINTMAXSTRDIGITS": "0"},
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert f"invalid {bad_role} JSON" in response["error"]
+    assert "JSON integer exceeds 64 digits" in response["error"]
