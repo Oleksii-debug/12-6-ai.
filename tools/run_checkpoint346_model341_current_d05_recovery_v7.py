@@ -44,6 +44,7 @@ EXPECTED_PARAMETERS = 20_613_440
 EXPECTED_MODEL_ID = "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441"
 EXPECTED_INIT_ID = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
 SEED = 346_341
+TREE_HASH_SCHEME = "sha256:length-prefixed-structural-v2"
 SYNTHETIC_DATASET_HASH = hashlib.sha256(
     b"checkpoint346-current-d05-synthetic-mechanics-only-dataset-v1"
 ).hexdigest()
@@ -130,45 +131,98 @@ def _linux_proc_memory_bytes() -> dict[str, int] | None:
 
 
 def _tree_hash(value: Any) -> str:
-    """Stable structural hash for tensors plus optimizer/trainer/RNG state."""
+    """Length-delimited structural SHA-256 for checkpoint and RNG state."""
     digest = hashlib.sha256()
+
+    def emit(tag: bytes, payload: bytes = b"") -> None:
+        digest.update(len(tag).to_bytes(2, "big"))
+        digest.update(tag)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
 
     def walk(obj: Any) -> None:
         if isinstance(obj, torch.Tensor):
             tensor = obj.detach().cpu().contiguous()
-            digest.update(b"T")
-            digest.update(str(tensor.dtype).encode())
-            digest.update(json.dumps(list(tensor.shape)).encode())
+            emit(b"tensor.dtype", str(tensor.dtype).encode("utf-8"))
+            emit(
+                b"tensor.shape",
+                json.dumps(
+                    list(tensor.shape),
+                    separators=(",", ":"),
+                ).encode("ascii"),
+            )
             if tensor.dtype == torch.bfloat16:
-                digest.update(tensor.view(torch.uint16).numpy().tobytes())
+                payload = tensor.view(torch.uint16).numpy().tobytes()
             else:
-                digest.update(tensor.numpy().tobytes())
+                payload = tensor.numpy().tobytes()
+            emit(b"tensor.data", payload)
             return
         if isinstance(obj, np.ndarray):
             array = np.ascontiguousarray(obj)
-            digest.update(b"N")
-            digest.update(str(array.dtype).encode())
-            digest.update(json.dumps(list(array.shape)).encode())
-            digest.update(array.tobytes())
+            emit(b"numpy.dtype", str(array.dtype).encode("utf-8"))
+            emit(
+                b"numpy.shape",
+                json.dumps(
+                    list(array.shape),
+                    separators=(",", ":"),
+                ).encode("ascii"),
+            )
+            emit(b"numpy.data", array.tobytes())
             return
         if isinstance(obj, dict):
-            digest.update(b"D")
-            for key in sorted(obj, key=lambda item: repr(item)):
+            emit(b"dict", len(obj).to_bytes(8, "big"))
+            keys = sorted(
+                obj,
+                key=lambda item: (
+                    type(item).__module__,
+                    type(item).__qualname__,
+                    _tree_hash(item),
+                ),
+            )
+            for key in keys:
                 walk(key)
                 walk(obj[key])
             return
-        if isinstance(obj, (list, tuple)):
-            digest.update(b"L" if isinstance(obj, list) else b"U")
+        if isinstance(obj, list):
+            emit(b"list", len(obj).to_bytes(8, "big"))
             for item in obj:
                 walk(item)
             return
-        digest.update(b"S")
-        digest.update(type(obj).__name__.encode())
-        digest.update(repr(obj).encode())
+        if isinstance(obj, tuple):
+            emit(b"tuple", len(obj).to_bytes(8, "big"))
+            for item in obj:
+                walk(item)
+            return
+        if isinstance(obj, bytes):
+            emit(b"bytes", obj)
+            return
+        emit(
+            (
+                "scalar:"
+                + type(obj).__module__
+                + "."
+                + type(obj).__qualname__
+            ).encode("utf-8"),
+            repr(obj).encode("utf-8"),
+        )
 
     walk(value)
     return digest.hexdigest()
 
+
+def _assert_tree_hash_domain_separation() -> None:
+    """Catch the exact nested-container ambiguity that existed in V7."""
+
+    collision_pairs = [
+        ([[], []], [[[]]]),
+        (((), ()), (((),),)),
+        ([(), []], [([],)]),
+    ]
+    for left, right in collision_pairs:
+        if _tree_hash(left) == _tree_hash(right):
+            raise AssertionError(
+                "structural hash failed nested-container domain separation"
+            )
 
 def _rng_probe_from_state(state: dict[str, Any]) -> dict[str, Any]:
     py = random.Random()
@@ -392,7 +446,124 @@ def _load_expected(
     )
 
 
+def _validate_report_contract(report: dict[str, Any]) -> None:
+    """Reject internally contradictory PASS reports before publication."""
+
+    if report.get("verdict") != "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS":
+        raise AssertionError("qualification report verdict is not PASS")
+
+    runtime = report["runtime"]
+    if runtime["product_pr"] != 2778 or runtime["git_sha"] != D05_RUNTIME_SHA:
+        raise AssertionError("qualification runtime binding is contradictory")
+    if runtime["public_save_api"] != "save_trainer_checkpoint":
+        raise AssertionError("qualification save API binding is contradictory")
+    if runtime["public_restore_api"] != "load_trainer_checkpoint":
+        raise AssertionError("qualification restore API binding is contradictory")
+
+    model341 = report["model341"]
+    if model341["carrier_git_sha"] != MODEL341_CARRIER_SHA:
+        raise AssertionError("MODEL-341 carrier binding is contradictory")
+    if model341["candidate_blob_sha"] != MODEL341_CANDIDATE_BLOB:
+        raise AssertionError("MODEL-341 candidate binding is contradictory")
+    if model341["parameter_count"] != EXPECTED_PARAMETERS:
+        raise AssertionError("MODEL-341 parameter count is contradictory")
+    if model341["model_identity_sha256"] != EXPECTED_MODEL_ID:
+        raise AssertionError("MODEL-341 model identity is contradictory")
+    if model341["init_identity_sha256"] != EXPECTED_INIT_ID:
+        raise AssertionError("MODEL-341 init identity is contradictory")
+    if model341["canonical_base"] != "random_init":
+        raise AssertionError("MODEL-341 canonical base is contradictory")
+
+    execution = report["execution"]
+    required_true = (
+        "local_free",
+        "synthetic_mechanics_only",
+        "fresh_process_distinct",
+        "same_next_step_equal",
+        "binding_mismatch_failed_closed",
+        "binding_mismatch_retry_same_target",
+        "exact_checkpoint_id_bound",
+        "exact_manifest_sha256_bound",
+        "exact_full_rng_state_equal",
+        "structural_hash_self_test",
+    )
+    if not all(execution[name] is True for name in required_true):
+        raise AssertionError("qualification execution flags contradict PASS")
+    if execution["state_hash_scheme"] != TREE_HASH_SCHEME:
+        raise AssertionError("qualification state-hash scheme is contradictory")
+    if (
+        execution["optimizer_updates_total"] != 3
+        or execution["parent_updates"] != 2
+        or execution["fresh_process_resumed_updates"] != 1
+    ):
+        raise AssertionError("qualification update-count boundary is contradictory")
+    if execution["rng_scope_restored"] != {
+        "numpy": True,
+        "python": True,
+        "torch_cpu": True,
+    }:
+        raise AssertionError("qualification RNG scope is contradictory")
+
+    baseline = report["baseline_step2"]
+    resumed = report["resumed_step2"]
+    if baseline != resumed:
+        raise AssertionError("PASS report contains unequal baseline/resumed state")
+    rng_hash = baseline.get("rng_state_sha256")
+    if not isinstance(rng_hash, str) or len(rng_hash) != 64:
+        raise AssertionError("PASS report lacks exact RNG-state identity")
+    if resumed.get("rng_state_sha256") != rng_hash:
+        raise AssertionError("PASS report RNG-state identity is contradictory")
+    if execution["full_rng_state_sha256"] != rng_hash:
+        raise AssertionError("execution RNG-state identity is contradictory")
+
+    checkpoint = report["checkpoint"]
+    identity = checkpoint["identity"]
+    if identity["git_sha"] != runtime["git_sha"]:
+        raise AssertionError("checkpoint/runtime git binding is contradictory")
+    if identity["model_spec_hash"] != model341["model_identity_sha256"]:
+        raise AssertionError("checkpoint/model identity binding is contradictory")
+    if identity["parameter_count"] != model341["parameter_count"]:
+        raise AssertionError("checkpoint parameter count is contradictory")
+    checkpoint_bytes = sum(
+        entry["bytes"] for entry in checkpoint["files"].values()
+    )
+    resources = report["resource_observation"]
+    if resources["checkpoint_total_bytes"] != checkpoint_bytes:
+        raise AssertionError("checkpoint byte accounting is contradictory")
+    if not str(resources["platform"]).startswith("linux"):
+        raise AssertionError("qualification resource platform is contradictory")
+    for name in ("parent_peak_rss_bytes", "fresh_child_peak_rss_bytes"):
+        if not isinstance(resources[name], int) or resources[name] <= 0:
+            raise AssertionError(f"{name} must be a positive integer")
+
+    expected_credit = {
+        "real_corpus_used": False,
+        "training_authorized_corpus_used": False,
+        "optimized_target_exposure": 0,
+        "model_training_credit": False,
+        "learned_weights_created": False,
+        "final_test_read": False,
+        "paid_compute_used": False,
+        "foreign_pretrained_weights": False,
+        "tokenizer_fit_authorized": False,
+        "scale_promotion_authorized": False,
+    }
+    if report["scientific_credit"] != expected_credit:
+        raise AssertionError("scientific-credit boundary is contradictory")
+
+    expected_limits = {
+        "maximum_optimizer_updates": 3,
+        "long_campaign": False,
+        "selection_or_recipe_tuning": False,
+        "learned20m_terminal_claim": False,
+        "model341_current_d05_recovery_mechanics_only": True,
+    }
+    if report["limits"] != expected_limits:
+        raise AssertionError("qualification limits are contradictory")
+
+
 def child_main(args: argparse.Namespace) -> int:
+    _assert_tree_hash_domain_separation()
     runtime_root = Path(args.runtime_root).resolve()
     model341_root = Path(args.model341_root).resolve()
     _assert_checkout_roots(runtime_root, model341_root)
@@ -474,6 +645,7 @@ def child_main(args: argparse.Namespace) -> int:
 
 
 def parent_main(args: argparse.Namespace) -> int:
+    _assert_tree_hash_domain_separation()
     runtime_root = Path(args.runtime_root).resolve()
     model341_root = Path(args.model341_root).resolve()
     if not runtime_root.is_dir():
@@ -673,6 +845,9 @@ def parent_main(args: argparse.Namespace) -> int:
                 "exact_full_rng_state_equal": (
                     baseline["rng_state_sha256"] == child["rng_state_sha256"]
                 ),
+                "full_rng_state_sha256": baseline["rng_state_sha256"],
+                "state_hash_scheme": TREE_HASH_SCHEME,
+                "structural_hash_self_test": True,
             },
             "resource_observation": {
                 "platform": sys.platform,
@@ -727,6 +902,7 @@ def parent_main(args: argparse.Namespace) -> int:
                 "model341_current_d05_recovery_mechanics_only": True,
             },
         }
+        _validate_report_contract(report)
         report_bytes = json.dumps(
             report,
             sort_keys=True,
