@@ -11,14 +11,16 @@ from typing import Any
 
 from twelve_six.portable_run_packet import assess_portable_run_packet
 
-DEFAULT_PATH = Path("configs/research/r01_portable_local_free_run_packet_v1.json")
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PATH = ROOT / "configs/research/r01_portable_local_free_run_packet_v1.json"
+MAX_INPUT_BYTES = 1_048_576
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate object member: {key}")
+            raise ValueError("duplicate object member")
         result[key] = value
     return result
 
@@ -36,8 +38,12 @@ def _parse_finite_float(value: str) -> float:
 
 def _load_packet(path: Path) -> dict[str, Any]:
     try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_INPUT_BYTES + 1)
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ValueError("run packet exceeds input byte limit")
         payload = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_constant,
             parse_float=_parse_finite_float,
@@ -50,6 +56,14 @@ def _load_packet(path: Path) -> dict[str, Any]:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) > 2:
+        print(
+            json.dumps(
+                {"contract_valid": False, "error": "invalid arguments: expected at most one packet path"},
+                sort_keys=True,
+            )
+        )
+        return 2
     path = Path(argv[1]) if len(argv) > 1 else DEFAULT_PATH
     try:
         payload = _load_packet(path)
