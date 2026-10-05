@@ -14,7 +14,7 @@ import inspect
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from types import MemberDescriptorType
+from types import FunctionType, MemberDescriptorType
 from typing import Any
 
 from ..training.config import TrainerConfig as _CanonicalTrainerConfig
@@ -565,40 +565,37 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
 
 
 def _bind_trainer_state_exporter(trainer: Any) -> Any:
-    """Bind one checkpoint exporter without allowing native instance shadows."""
+    """Bind one checkpoint exporter without executing native instance lookup."""
 
-    exporter = getattr(trainer, "state_dict", None)
-    if not callable(exporter):
-        raise TypeError("trainer must provide state_dict()")
     if _is_native_d02(trainer):
         class_exporter = inspect.getattr_static(
             type(trainer),
             "state_dict",
             None,
         )
-        if (
-            getattr(exporter, "__self__", None) is not trainer
-            or getattr(exporter, "__func__", None) is not class_exporter
-        ):
+        if not isinstance(class_exporter, FunctionType):
             raise CheckpointCompatibilityError(
                 "native D02 trainer state_dict must remain class-bound"
             )
+        exporter = class_exporter.__get__(trainer, type(trainer))
         try:
             inspect.signature(exporter).bind()
         except (TypeError, ValueError) as exc:
             raise CheckpointCompatibilityError(
                 "trainer state_dict cannot safely bind checkpoint export"
             ) from exc
+        return exporter
+
+    exporter = getattr(trainer, "state_dict", None)
+    if not callable(exporter):
+        raise TypeError("trainer must provide state_dict()")
     return exporter
 
 
 def _bind_trainer_state_loader(trainer: Any) -> Any:
-    loader = getattr(trainer, "load_state_dict", None)
-    if not callable(loader):
-        raise TypeError("trainer must provide load_state_dict()")
-
     # Canonical D02 must fail closed before model mutation when its restore
     # invocation cannot accept the one authoritative trainer-state payload.
+    # Native binding avoids executing an instance shadow or __getattribute__.
     # Generic adapters retain the historical permissive callable contract.
     canonical_d02 = _is_canonical_d02(trainer)
     if _is_native_d02(trainer):
@@ -607,13 +604,16 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
             "load_state_dict",
             None,
         )
-        if (
-            getattr(loader, "__self__", None) is not trainer
-            or getattr(loader, "__func__", None) is not class_loader
-        ):
+        if not isinstance(class_loader, FunctionType):
             raise CheckpointCompatibilityError(
                 "native D02 trainer load_state_dict must remain class-bound"
             )
+        loader = class_loader.__get__(trainer, type(trainer))
+    else:
+        loader = getattr(trainer, "load_state_dict", None)
+        if not callable(loader):
+            raise TypeError("trainer must provide load_state_dict()")
+
     if canonical_d02:
         try:
             signature = inspect.signature(loader)
