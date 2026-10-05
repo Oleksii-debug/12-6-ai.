@@ -386,6 +386,9 @@ def _preflight_trainer_target(trainer: Any) -> None:
         ("_require_no_residual_model_gradients", "gradient-cleanliness"),
         ("_require_deterministic_policy", "deterministic-policy"),
         ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
+        ("_require_exported_optimizer_matches_live", "optimizer-postload"),
+        ("_require_exported_scheduler_matches_live", "scheduler-postload"),
+        ("_require_exported_scaler_matches_live", "scaler-postload"),
     ):
         if not callable(getattr(trainer, authority, None)):
             raise CheckpointCompatibilityError(
@@ -474,6 +477,84 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer with no pending gradients"
         )
+
+
+def _postflight_trainer_state(trainer: Any, state: Any) -> None:
+    """Verify canonical live trainer state after its loader returns.
+
+    This deliberately uses D02's direct live-state authorities instead of a
+    second state_dict() export, which could allocate/copy model-scale optimizer
+    state or invoke another effectful serializer.
+    """
+
+    if not _is_canonical_d02_trainer(trainer):
+        return
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
+    if trainer._failure_reason is not None or trainer._update_incomplete:
+        raise CheckpointCompatibilityError(
+            "canonical trainer remained poisoned after checkpoint restore"
+        )
+    for field in ("micro_step", "optimizer_step", "tokens_seen"):
+        live = getattr(trainer, field, None)
+        expected = state.get(field)
+        if type(live) is not int or live != expected:
+            raise CheckpointCompatibilityError(
+                f"canonical trainer post-load {field} disagrees with checkpoint"
+            )
+    if (
+        getattr(trainer, "_pending_tokens", None) != 0
+        or getattr(trainer, "_pending_loss_sum", None) != 0.0
+    ):
+        raise CheckpointCompatibilityError(
+            "canonical trainer retained pending accumulation after checkpoint restore"
+        )
+
+    live_config = getattr(trainer, "config", None)
+    if is_dataclass(live_config) and not isinstance(live_config, type):
+        live_config = asdict(live_config)
+    elif hasattr(live_config, "model_dump"):
+        live_config = live_config.model_dump(mode="python")
+    if not _typed_config_equal(state.get("config"), live_config):
+        raise CheckpointCompatibilityError(
+            "canonical trainer post-load config disagrees with checkpoint"
+        )
+
+    for authority, field, label in (
+        ("_require_exported_optimizer_matches_live", "optimizer", "optimizer"),
+        ("_require_exported_scheduler_matches_live", "scheduler", "scheduler"),
+        ("_require_exported_scaler_matches_live", "scaler", "gradient scaler"),
+    ):
+        check = getattr(trainer, authority, None)
+        if not callable(check):
+            raise CheckpointCompatibilityError(
+                f"canonical trainer {label} post-load authority unavailable"
+            )
+        try:
+            check(state.get(field))
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                f"canonical trainer live {label} disagrees with checkpoint"
+            ) from exc
+
+    for authority, label in (
+        ("_require_optimizer_parameter_coverage", "optimizer coverage"),
+        ("_require_finite_auxiliary_state", "auxiliary state"),
+        ("_require_finite_committed_update", "committed update"),
+        ("_require_no_residual_model_gradients", "gradient cleanliness"),
+        ("_require_deterministic_policy", "deterministic policy"),
+    ):
+        check = getattr(trainer, authority, None)
+        if not callable(check):
+            raise CheckpointCompatibilityError(
+                f"canonical trainer post-load {label} authority unavailable"
+            )
+        try:
+            check()
+        except Exception as exc:
+            raise CheckpointCompatibilityError(
+                f"canonical trainer post-load {label} invalid"
+            ) from exc
 
 
 def _preflight_trainer_state_without_rng_guard(
@@ -1112,6 +1193,8 @@ def load_trainer_checkpoint(
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         load_trainer_state(trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
