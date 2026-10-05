@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from enum import Enum
-from types import FunctionType
+from types import FunctionType, GetSetDescriptorType
 from typing import Any
 
 import numpy as np
@@ -222,9 +222,133 @@ class Trainer:
             warn_only=config.deterministic_warn_only,
         )
 
+    @staticmethod
+    def _raw_instance_dict(
+        value: Any,
+        base_type: type,
+        *,
+        label: str,
+    ) -> dict[str, Any]:
+        """Read one trusted base instance dictionary without subclass dispatch."""
+
+        namespace = type.__getattribute__(base_type, "__dict__")
+        descriptor = namespace.get("__dict__")
+        if not isinstance(descriptor, GetSetDescriptorType):
+            raise TrainingStateInvalidError(
+                f"{label} instance dictionary authority is unavailable"
+            )
+        try:
+            attrs = descriptor.__get__(value, type(value))
+        except (AttributeError, TypeError) as exc:
+            raise TrainingStateInvalidError(
+                f"{label} instance storage is unavailable"
+            ) from exc
+        if type(attrs) is not dict:
+            raise TrainingStateInvalidError(
+                f"{label} instance storage must be a dictionary"
+            )
+        return attrs
+
+    def _canonical_model_members(
+        self,
+    ) -> tuple[list[tuple[str, nn.Parameter]], list[tuple[str, Tensor]]]:
+        """Enumerate registered model state without overridable Module iterators."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        model = trainer_attrs.get("model")
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "trainer model binding is not a torch module"
+            )
+
+        named_parameters: list[tuple[str, nn.Parameter]] = []
+        named_buffers: list[tuple[str, Tensor]] = []
+        seen_modules: set[int] = set()
+        active_modules: set[int] = set()
+        seen_parameters: set[int] = set()
+        seen_buffers: set[int] = set()
+
+        def walk(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            if module_id in active_modules:
+                raise TrainingStateInvalidError(
+                    "model module graph contains a cycle"
+                )
+            if module_id in seen_modules:
+                return
+            active_modules.add(module_id)
+            seen_modules.add(module_id)
+            try:
+                attrs = Trainer._raw_instance_dict(
+                    module,
+                    nn.Module,
+                    label="model module",
+                )
+                parameters = attrs.get("_parameters")
+                buffers = attrs.get("_buffers")
+                modules = attrs.get("_modules")
+                if not all(
+                    type(value) is dict
+                    for value in (parameters, buffers, modules)
+                ):
+                    raise TrainingStateInvalidError(
+                        "model module registries must remain canonical dictionaries"
+                    )
+
+                for name, parameter in parameters.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model parameter name is not canonical"
+                        )
+                    if parameter is None or id(parameter) in seen_parameters:
+                        continue
+                    if not isinstance(parameter, nn.Parameter):
+                        raise TrainingStateInvalidError(
+                            "model parameter binding is not canonical"
+                        )
+                    seen_parameters.add(id(parameter))
+                    named_parameters.append((f"{prefix}{name}", parameter))
+
+                for name, buffer in buffers.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model buffer name is not canonical"
+                        )
+                    if buffer is None or id(buffer) in seen_buffers:
+                        continue
+                    if not isinstance(buffer, Tensor):
+                        raise TrainingStateInvalidError(
+                            "model buffer binding is not canonical"
+                        )
+                    seen_buffers.add(id(buffer))
+                    named_buffers.append((f"{prefix}{name}", buffer))
+
+                for name, child in modules.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model child-module name is not canonical"
+                        )
+                    if child is None:
+                        continue
+                    if not isinstance(child, nn.Module):
+                        raise TrainingStateInvalidError(
+                            "model child binding is not a torch module"
+                        )
+                    walk(child, f"{prefix}{name}.")
+            finally:
+                active_modules.remove(module_id)
+
+        walk(model, "")
+        return named_parameters, named_buffers
+
     def _require_optimizer_parameter_coverage(self) -> None:
         """Require the optimizer to own every trainable model parameter exactly once."""
-        model_parameters = tuple(self.model.parameters())
+        named_parameters, _ = self._canonical_model_members()
+        model_parameters = tuple(parameter for _, parameter in named_parameters)
         model_ids = {id(parameter) for parameter in model_parameters}
         trainable_ids = {
             id(parameter) for parameter in model_parameters if parameter.requires_grad
@@ -248,7 +372,8 @@ class Trainer:
     def _optimizer_parameter_name_groups(self) -> list[list[str]]:
         """Bind optimizer slots to first canonical model names, including tied weights."""
         self._require_optimizer_parameter_coverage()
-        by_id = {id(parameter): name for name, parameter in self.model.named_parameters()}
+        named_parameters, _ = self._canonical_model_members()
+        by_id = {id(parameter): name for name, parameter in named_parameters}
         ordered: list[list[str]] = []
         for group in self.optimizer.param_groups:
             names: list[str] = []
@@ -314,12 +439,14 @@ class Trainer:
             raise ValueError("checkpoint optimizer state parameter ID is noncanonical")
 
     def _require_no_residual_model_gradients(self) -> None:
-        if any(parameter.grad is not None for parameter in self.model.parameters()):
+        named_parameters, _ = self._canonical_model_members()
+        if any(parameter.grad is not None for _, parameter in named_parameters):
             raise RuntimeError("completed optimizer step left residual model gradients")
 
     def _require_finite_committed_update(self) -> None:
         """Reject optimizer corruption before crediting an optimizer transition."""
-        for parameter in self.model.parameters():
+        named_parameters, named_buffers = self._canonical_model_members()
+        for _, parameter in named_parameters:
             if not torch.isfinite(parameter.detach()).all().item():
                 raise NonFiniteTrainingError(
                     f"optimizer produced non-finite model weights at micro_step={self.micro_step}"
@@ -327,7 +454,7 @@ class Trainer:
         # Buffers are durable model state too (for example normalization
         # statistics). They can be corrupted by forward/scheduler hooks even
         # when every optimizer-managed parameter and moment remains finite.
-        for buffer in self.model.buffers():
+        for _, buffer in named_buffers:
             if (buffer.is_floating_point() or buffer.is_complex()) and not (
                 torch.isfinite(buffer.detach()).all().item()
             ):
@@ -614,7 +741,8 @@ class Trainer:
             raise RuntimeError("optimizer update requires at least one valid target token")
         squared_norm = torch.zeros((), device=self.device)
         found = False
-        for parameter in self.model.parameters():
+        named_parameters, _ = self._canonical_model_members()
+        for _, parameter in named_parameters:
             if parameter.grad is None:
                 continue
             found = True
@@ -738,8 +866,9 @@ class Trainer:
                 update_loss = self._pending_loss_sum / self._pending_tokens
 
                 if self.config.gradient_clip_norm is not None:
+                    named_parameters, _ = self._canonical_model_members()
                     torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
+                        [parameter for _, parameter in named_parameters],
                         self.config.gradient_clip_norm,
                         error_if_nonfinite=True,
                     )
@@ -974,7 +1103,7 @@ class Trainer:
                 )
             active_modules.add(module_id)
             try:
-                attrs = object.__getattribute__(module, "__dict__")
+                attrs = Trainer._raw_instance_dict(module, nn.Module, label="model module")
             except (AttributeError, TypeError) as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint model module state is unavailable"
@@ -1036,7 +1165,7 @@ class Trainer:
                 active_modules.remove(module_id)
 
         try:
-            trainer_attrs = object.__getattribute__(self, "__dict__")
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             model = trainer_attrs["model"]
         except (AttributeError, KeyError, TypeError) as exc:
             raise TrainingStateInvalidError(
@@ -1184,7 +1313,7 @@ class Trainer:
                 return
             seen_modules.add(module_id)
             try:
-                attrs = object.__getattribute__(module, "__dict__")
+                attrs = Trainer._raw_instance_dict(module, nn.Module, label="model module")
             except (AttributeError, TypeError) as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint model module state is unavailable"
@@ -1249,7 +1378,7 @@ class Trainer:
                 walk(child, f"{prefix}{name}.")
 
         try:
-            trainer_attrs = object.__getattribute__(self, "__dict__")
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             model = trainer_attrs["model"]
         except (AttributeError, KeyError, TypeError) as exc:
             raise TrainingStateInvalidError(
@@ -1567,7 +1696,7 @@ class Trainer:
             )
 
         try:
-            trainer_attrs = object.__getattribute__(self, "__dict__")
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             optimizer = trainer_attrs["optimizer"]
             scheduler = trainer_attrs["scheduler"]
             scaler = trainer_attrs["scaler"]
@@ -2263,7 +2392,10 @@ class Trainer:
             or self.tokens_seen != 0
             or self._pending_tokens != 0
             or self._pending_loss_sum != 0.0
-            or any(parameter.grad is not None for parameter in self.model.parameters())
+            or any(
+                parameter.grad is not None
+                for _, parameter in self._canonical_model_members()[0]
+            )
         ):
             raise TrainingStateInvalidError(
                 "trainer state restore requires a fresh trainer with no consumed "
