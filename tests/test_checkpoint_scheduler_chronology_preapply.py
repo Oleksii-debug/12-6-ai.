@@ -609,3 +609,16 @@ def test_direct_d02_accepts_small_scaler_with_finite_float32_inverse() -> None:
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
     assert target.train_microbatch(_BATCH).optimizer_stepped
     assert bool(torch.isfinite(target.model.weight).all())
+
+def test_live_scaler_with_overflowing_inverse_cannot_publish_checkpoint() -> None:
+    source = _source()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    invalid = source.scaler.state_dict()
+    invalid["scale"] = 1e-40
+    source.scaler.load_state_dict(invalid)
+
+    with pytest.raises(ValueError, match="scaler checkpoint statistics invalid in float32"):
+        source.assert_checkpoint_safe()
+    assert source._failure_reason is not None
+    with pytest.raises(RuntimeError, match="restore a verified checkpoint"):
+        source.train_microbatch(_BATCH)
