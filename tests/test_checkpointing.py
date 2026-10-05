@@ -1179,6 +1179,7 @@ def test_direct_load_legacy_rng_preserves_live_torch_warn_only(
         ("deterministic_algorithms", "false"),
         ("deterministic_warn_only", 0),
         ("deterministic_warn_only", "true"),
+        ("deterministic_warn_only", None),
     ],
 )
 def test_torch_rng_policy_fields_require_exact_booleans(
