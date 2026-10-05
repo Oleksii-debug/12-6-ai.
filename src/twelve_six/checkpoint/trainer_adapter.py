@@ -286,6 +286,13 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
     )
 
 
+def _bind_trainer_state_loader(trainer: Any) -> Any:
+    loader = getattr(trainer, "load_state_dict", None)
+    if not callable(loader):
+        raise TypeError("trainer must provide load_state_dict()")
+    return loader
+
+
 def _preflight_trainer_target(trainer: Any) -> None:
     """Reject a D02 trainer target that its own loader would refuse after mutation."""
 
@@ -899,8 +906,7 @@ def load_trainer_checkpoint(
     No checkpoint artifact is reopened or decoded a second time before mutation.
     """
 
-    if not callable(getattr(trainer, "load_state_dict", None)):
-        raise TypeError("trainer must provide load_state_dict()")
+    _bind_trainer_state_loader(trainer)
 
     _validate_expected_core_identity(
         expected_git_sha=expected_git_sha,
@@ -974,12 +980,17 @@ def load_trainer_checkpoint(
     # the same checkpoint path scales from 20M toward 100M and 1B parameters.
     del arrays
 
+    # Bind the actual trainer-state loader at the last safe point before model
+    # mutation. A target interface that changed after preflight/materialization
+    # must fail before verified model weights are applied.
+    load_trainer_state = _bind_trainer_state_loader(trainer)
+
     # State loaders may draw from process RNG even when they succeed.
     # Failed application may leave a mixed model/optimizer state, so canonical
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
         _apply_model_weights(model, materialized, strict_model)
-        trainer.load_state_dict(trainer_state)
+        load_trainer_state(trainer_state)
         if restore_rng:
             _restore_checkpoint_rng_preserving_warn_only(
                 combined_state["rng"],
