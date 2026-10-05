@@ -559,6 +559,34 @@ def test_link_create_then_raise_is_reconciled_as_committed(
     assert not list(tmp_path.glob(f".{output.name}.*.tmp"))
 
 
+def test_same_size_staged_mutation_during_link_is_not_reported_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    actual_link = cli.os.link
+
+    def mutate_then_link(stage: Path, final: Path) -> None:
+        intended = stage.read_bytes()
+        assert intended.endswith(b"\n")
+        stage.write_bytes(intended[:-1] + b" ")
+        assert stage.stat().st_size == len(intended)
+        actual_link(stage, final)
+
+    monkeypatch.setattr(cli.os, "link", mutate_then_link)
+    with pytest.raises(
+        cli.PublicationIndeterminate,
+        match="output bytes differ from staged authority",
+    ) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and caught.value.staged == staged[0]
+    assert output.read_bytes() == staged[0].read_bytes()
+    output.unlink()
+    staged[0].unlink()
+
+
 def test_foreign_final_after_link_error_is_indeterminate_and_never_removed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
