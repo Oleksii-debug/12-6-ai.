@@ -980,9 +980,10 @@ def load_trainer_checkpoint(
     # the same checkpoint path scales from 20M toward 100M and 1B parameters.
     del arrays
 
-    # Revalidate the live target and bind the actual trainer-state loader at
-    # the last safe point before model mutation. Target freshness, deterministic
-    # policy and mandatory D02 authorities may have drifted during materialization.
+    # Revalidate ownership and the live target at the last safe point before
+    # model mutation. The trainer can be rebound while model-scale weights are
+    # materialized; never apply weights to a model the trainer no longer owns.
+    _assert_trainer_model_binding(model, trainer)
     _preflight_trainer_target(trainer)
     load_trainer_state = _bind_trainer_state_loader(trainer)
 
