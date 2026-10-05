@@ -29,7 +29,7 @@ jobs:
           python-version: "3.11"
       - name: Bind exact Product source
         env:
-          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+          PRODUCT_HEAD: 62f42831429f027c1be1878816f9621b778799f9
         run: |
           git cat-file -e "$PRODUCT_HEAD^{commit}"
           changed="$(git diff --name-only "$PRODUCT_HEAD"..HEAD)"
@@ -40,7 +40,7 @@ jobs:
           pip install -e .
       - name: Producer process - commit step one, seal checkpoint, run baseline step two
         env:
-          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+          PRODUCT_HEAD: 62f42831429f027c1be1878816f9621b778799f9
         run: |
           mkdir -p "/tmp/d05 fresh процес"
           python tools/execute_d05_fresh_process_resume.py produce \
@@ -50,7 +50,7 @@ jobs:
             --product-head "$PRODUCT_HEAD"
       - name: Fresh adapter process - restore then run real step two
         env:
-          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+          PRODUCT_HEAD: 62f42831429f027c1be1878816f9621b778799f9
         run: |
           python tools/execute_d05_fresh_process_resume.py resume \
             --loader adapter \
@@ -59,7 +59,7 @@ jobs:
             --product-head "$PRODUCT_HEAD"
       - name: Fresh progress process - restore then run real step two
         env:
-          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+          PRODUCT_HEAD: 62f42831429f027c1be1878816f9621b778799f9
         run: |
           python tools/execute_d05_fresh_process_resume.py resume \
             --loader progress \
@@ -73,7 +73,7 @@ jobs:
             --destination "/tmp/d05 fresh процес/checkpoint-corrupt"
       - name: Fresh adapter process - reject corrupt checkpoint without mutation
         env:
-          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+          PRODUCT_HEAD: 62f42831429f027c1be1878816f9621b778799f9
         run: |
           python tools/execute_d05_fresh_process_resume.py reject-corrupt \
             --loader adapter \
@@ -82,7 +82,7 @@ jobs:
             --product-head "$PRODUCT_HEAD"
       - name: Fresh progress process - reject corrupt checkpoint without mutation
         env:
-          PRODUCT_HEAD: 5325b92d87b2030ff4213749affff16c2ed18a8a
+          PRODUCT_HEAD: 62f42831429f027c1be1878816f9621b778799f9
         run: |
           python tools/execute_d05_fresh_process_resume.py reject-corrupt \
             --loader progress \

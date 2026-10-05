@@ -22,7 +22,7 @@ from twelve_six.checkpoint import CheckpointIdentity
 from twelve_six.checkpoint import core, progress_trainer, trainer_adapter
 from twelve_six.training import Trainer, TrainerConfig
 
-PRODUCT_HEAD = "5325b92d87b2030ff4213749affff16c2ed18a8a"
+PRODUCT_HEAD = "62f42831429f027c1be1878816f9621b778799f9"
 SEED = 703
 _BATCH = {
     "input_ids": torch.tensor([[0, 1]], dtype=torch.long),
