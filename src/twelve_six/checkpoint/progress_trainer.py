@@ -35,6 +35,7 @@ from .trainer_adapter import (
     _assert_bound_metadata,
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
+    _assert_native_d02_model_training_mode,
     _assert_trainer_model_binding,
     _assert_trainer_restore_bindings,
     _bind_trainer_state_loader,
@@ -306,10 +307,12 @@ def load_trainer_checkpoint(
         model_apply(materialized)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
+        _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_native_d02_model_training_mode(model, trainer)
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
         # torch RNG even on success. Restore the checkpoint streams last so
         # the first resumed batch sees the exact captured next draws.
