@@ -1094,6 +1094,14 @@ class Trainer:
             raise ValueError("scheduler state/config mismatch")
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
+        if (
+            not self.scaler.is_enabled()
+            and state.scaler is not None
+            and (not isinstance(state.scaler, Mapping) or bool(state.scaler))
+        ):
+            # Disabled GradScaler.load_state_dict silently ignores a payload.
+            # Reject it before optimizer mutation instead of losing state.
+            raise ValueError("disabled gradient scaler checkpoint state must be empty")
         # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
         # parameter identity. Reject missing/reordered names before mutation.
         self._require_optimizer_state_parameter_order(state.optimizer)
