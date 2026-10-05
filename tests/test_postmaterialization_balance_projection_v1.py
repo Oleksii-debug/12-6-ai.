@@ -975,7 +975,7 @@ def test_strict_current_clean_json_accepts_64_digit_integer(sign: str) -> None:
 
 def test_strict_current_clean_json_integer_bound_when_python_limit_disabled() -> None:
     root = Path(__file__).resolve().parents[1]
-    child = "\\n".join(
+    child = "\n".join(
         [
             "import json",
             "from twelve_six.data.postmaterialization_balance_projection_v1 import "
