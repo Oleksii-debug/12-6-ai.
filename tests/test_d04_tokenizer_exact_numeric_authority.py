@@ -635,3 +635,117 @@ def test_bind_rejects_runtime_module_tokenizer_export_replacement(
             application,
             **SHA,
         )
+
+
+def _clone_function_with_detached_globals(function):
+    from types import FunctionType
+
+    cloned = FunctionType(
+        function.__code__,
+        dict(function.__globals__),
+        function.__name__,
+        function.__defaults__,
+        function.__closure__,
+    )
+    cloned.__kwdefaults__ = (
+        None if function.__kwdefaults__ is None else dict(function.__kwdefaults__)
+    )
+    return cloned
+
+
+def test_bind_rejects_tokenizer_method_with_detached_globals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original = vars(authority.ByteTokenizer)["encode"]
+    replacement = _clone_function_with_detached_globals(original)
+    monkeypatch.setattr(authority.ByteTokenizer, "encode", replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: encode globals",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
+
+
+def test_bind_rejects_tokenizer_helper_with_detached_globals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original = byte_module.tokenizer_config_hash
+    replacement = _clone_function_with_detached_globals(original)
+    monkeypatch.setattr(byte_module, "tokenizer_config_hash", replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime module drift: tokenizer_config_hash",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
+
+
+def test_bind_rejects_added_instance_lookup_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    def passthrough_getattribute(self, name):
+        return object.__getattribute__(self, name)
+
+    monkeypatch.setattr(
+        authority.ByteTokenizer,
+        "__getattribute__",
+        passthrough_getattribute,
+        raising=False,
+    )
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: __getattribute__",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
