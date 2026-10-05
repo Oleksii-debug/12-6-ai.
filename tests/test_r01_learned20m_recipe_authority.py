@@ -717,3 +717,42 @@ def test_recipe_cli_loader_counts_utf8_bytes_not_characters(tmp_path: Path) -> N
     path.write_bytes(payload)
     with pytest.raises(ValueError, match="JSON input exceeds"):
         tool._load_json(path)
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_never_echoes_untrusted_duplicate_member_names(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    secret = "NEVER_LOG_SECRET_JSON_MEMBER_987"
+    path = tmp_path / "secret-duplicate.json"
+    path.write_text(json.dumps({secret: 1})[:-1] + f',"{secret}":2}}', encoding="utf-8")
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_text(json.dumps(load_policy()), encoding="utf-8")
+    valid_bindings = bindings()
+    valid_trusted = trusted_authorities(valid_bindings)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(valid_bindings), encoding="utf-8")
+    trusted_path.write_text(json.dumps(valid_trusted), encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable, str(TOOL_PATH),
+            "--policy", str(path if bad_role == "policy" else policy_path),
+            "--bindings", str(path if bad_role == "bindings" else bindings_path),
+            "--trusted-authorities",
+            str(path if bad_role == "trusted-authorities" else trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(valid_trusted),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "duplicate object member" in response["error"]
+    assert secret not in completed.stdout
