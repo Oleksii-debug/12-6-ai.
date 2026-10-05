@@ -83,6 +83,15 @@ _ZERO_CREDIT_BOUNDARY = {
     "final_test_outcomes_read": False,
     "authorized_optimized_target_exposure": 0,
 }
+_EXPECTED_TOKENIZER_RUNTIME_IDENTITY = {
+    "version": BYTE_TOKENIZER_VERSION,
+    "config_sha256": BYTE_TOKENIZER_HASH,
+    "vocab_sha256": BYTE_VOCAB_HASH,
+    "vocab_size": 256,
+    "normalization": "none",
+    "encoding": "utf-8",
+    "special_tokens": {},
+}
 
 
 class TokenizerDecisionError(ValueError):
@@ -140,6 +149,45 @@ def _verify_canonical_byte_tokenizer_implementation() -> str:
     if observed != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
         raise TokenizerDecisionError("canonical byte tokenizer implementation identity drift")
     return observed
+
+
+def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
+    """Bind the loaded runtime identity to the source-pinned byte baseline."""
+
+    implementation = _verify_canonical_byte_tokenizer_implementation()
+    tokenizer = ByteTokenizer().identity
+    for field in (
+        "version",
+        "config_sha256",
+        "vocab_sha256",
+        "vocab_size",
+        "normalization",
+        "encoding",
+    ):
+        expected = _EXPECTED_TOKENIZER_RUNTIME_IDENTITY[field]
+        observed = getattr(tokenizer, field)
+        if type(observed) is not type(expected) or observed != expected:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime identity drift: {field}"
+            )
+    special_tokens = tokenizer.special_tokens
+    if not isinstance(special_tokens, Mapping):
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime identity drift: special_tokens"
+        )
+    try:
+        normalized_special_tokens = dict(special_tokens)
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime identity drift: special_tokens"
+        ) from exc
+    if normalized_special_tokens != _EXPECTED_TOKENIZER_RUNTIME_IDENTITY[
+        "special_tokens"
+    ]:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime identity drift: special_tokens"
+        )
+    return implementation, tokenizer
 
 
 def _verify_selection(
@@ -340,14 +388,10 @@ def bind_byte_baseline_decision(
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
 
-    tokenizer_implementation_git_blob_sha1 = _verify_canonical_byte_tokenizer_implementation()
-    tokenizer = ByteTokenizer().identity
-    if tokenizer.version != BYTE_TOKENIZER_VERSION:
-        raise TokenizerDecisionError("canonical byte tokenizer version drift")
-    if tokenizer.config_sha256 != BYTE_TOKENIZER_HASH:
-        raise TokenizerDecisionError("canonical byte tokenizer config identity drift")
-    if tokenizer.vocab_sha256 != BYTE_VOCAB_HASH:
-        raise TokenizerDecisionError("canonical byte tokenizer vocab identity drift")
+    (
+        tokenizer_implementation_git_blob_sha1,
+        tokenizer,
+    ) = _verified_canonical_byte_tokenizer_identity()
 
     core: dict[str, Any] = {
         "schema": SCHEMA,
@@ -424,8 +468,10 @@ def verify_byte_baseline_decision(
     if report.get("canonical_split_git_blob_sha1") != CANONICAL_SPLIT_GIT_BLOB_SHA1:
         raise TokenizerDecisionError("report split mechanics identity drift")
 
-    tokenizer_implementation_git_blob_sha1 = _verify_canonical_byte_tokenizer_implementation()
-    tokenizer = ByteTokenizer().identity
+    (
+        tokenizer_implementation_git_blob_sha1,
+        tokenizer,
+    ) = _verified_canonical_byte_tokenizer_identity()
     expected_tokenizer = {
         "canonical_byte_tokenizer_git_blob_sha1": tokenizer_implementation_git_blob_sha1,
         "tokenizer_version": tokenizer.version,

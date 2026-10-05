@@ -151,6 +151,88 @@ def test_decision_report_rejects_resealed_numeric_type_aliases(
 
 
 @pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("version", "tampered-byte-v1"),
+        ("vocab_size", 257),
+        ("normalization", "NFC"),
+        ("encoding", "latin-1"),
+        ("special_tokens", {"unexpected": 1}),
+    ],
+)
+def test_bind_rejects_process_local_tokenizer_runtime_identity_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    monkeypatch.setattr(authority.ByteTokenizer, field, replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime identity drift: {field}",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("version", "tampered-byte-v1"),
+        ("vocab_size", 257),
+        ("normalization", "NFC"),
+        ("encoding", "latin-1"),
+        ("special_tokens", {"unexpected": 1}),
+    ],
+)
+def test_verify_rejects_process_local_tokenizer_runtime_identity_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    report = authority.bind_byte_baseline_decision(selection, application, **SHA)
+    monkeypatch.setattr(authority.ByteTokenizer, field, replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime identity drift: {field}",
+    ):
+        authority.verify_byte_baseline_decision(
+            report,
+            selection,
+            application,
+            **SHA,
+        )
+
+
+@pytest.mark.parametrize(
     ("field", "nested_key", "replacement"),
     [
         ("selected_record_count", None, 2.0),
