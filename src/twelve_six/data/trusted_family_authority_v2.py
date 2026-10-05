@@ -25,26 +25,32 @@ EXTENSION_AUTHORITY_SPECS: dict[str, dict[str, str]] = {
     "github:pydantic/pydantic": {
         "authority_path": "configs/data/next100_048_pydantic_code_rights_v1.json",
         "authority_git_blob_sha1": "504ef934145ed0711743f781dc9f47b07ad7accd",
+        "family_json_path": "source_family",
     },
     "code.scipy.project": {
         "authority_path": "configs/data/scipy_v118_source_authority_v1.json",
         "authority_git_blob_sha1": "8bd1b020e324d33fdbcdda8619fbae7e73224d7e",
+        "family_json_path": "source_family",
     },
     "github:pandas-dev/pandas": {
         "authority_path": "configs/data/next100_050_pandas_source_authority_v2.json",
         "authority_git_blob_sha1": "a97ccc1fcf097970abc84218e0fbd8088fa32887",
+        "family_json_path": "bounded_source.source_family",
     },
     "github:fastapi/typer": {
         "authority_path": "configs/data/next100_052_typer_source_authority_v2.json",
         "authority_git_blob_sha1": "fc9168f2752d46fae76092999f449f0897fe0ca7",
+        "family_json_path": "bounded_source.source_family",
     },
     "github:Textualize/rich": {
         "authority_path": "configs/data/next100_051_rich_code_rights_v1.json",
         "authority_git_blob_sha1": "4b4160814ddb97cb47bf45b4af2ed1b9ce8fef9e",
+        "family_json_path": "source_family",
     },
     "github:fastapi/fastapi": {
         "authority_path": "configs/data/next100_044_fastapi_code_rights_policy_v1.json",
         "authority_git_blob_sha1": "8ee76ccc2ca3ff40d7e3d6463670d99e49051b44",
+        "family_json_path": "upstream.canonical_family_id",
     },
 }
 
@@ -65,6 +71,35 @@ def _sha256(value: Any) -> str:
 def _git_blob_sha1(raw: bytes) -> str:
     header = f"blob {len(raw)}\0".encode("ascii")
     return hashlib.sha1(header + raw, usedforsecurity=False).hexdigest()  # noqa: S324
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, child in pairs:
+        if key in value:
+            raise ValueError(f"duplicate authority JSON member: {key}")
+        value[key] = child
+    return value
+
+
+def _authority_family(raw: bytes, json_path: str) -> str:
+    try:
+        document = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=_strict_object,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("trusted family authority is not strict JSON") from exc
+    if not isinstance(document, Mapping):
+        raise ValueError("trusted family authority root must be an object")
+    value: Any = document
+    for key in json_path.split("."):
+        if not isinstance(value, Mapping) or key not in value:
+            raise ValueError(f"trusted family authority path missing: {json_path}")
+        value = value[key]
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"trusted family authority family malformed: {json_path}")
+    return value
 
 
 def _extension_family_identity(
@@ -123,12 +158,21 @@ def verify_extension_authority_blobs(
     )
     observed: dict[str, str] = {}
     for family, authority in sorted(EXTENSION_AUTHORITY_SPECS.items()):
-        path = root / authority["authority_path"]
+        path = (root / authority["authority_path"]).resolve(strict=True)
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(
+                f"trusted family authority escaped repository root: {family}"
+            ) from exc
         raw = path.read_bytes()
         blob = _git_blob_sha1(raw)
         expected = authority["authority_git_blob_sha1"]
         if blob != expected:
             raise ValueError(f"trusted family authority blob drift: {family}")
+        observed_family = _authority_family(raw, authority["family_json_path"])
+        if observed_family != family:
+            raise ValueError(f"trusted family authority family drift: {family}")
         observed[family] = blob
     return observed
 
