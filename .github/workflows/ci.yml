@@ -608,7 +608,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      D05_RUNTIME_SHA: ${{ github.event.pull_request.base.sha }}
       MODEL341_SHA: f151c77a8ef8721f0f568509147b1a5f961ae6c7
       MODEL341_CANDIDATE_BLOB: 69e3cbd5f5c83c9d3d529a2a6376db3055979c40
 
@@ -624,7 +623,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: Oleksii-debug/12-6-ai.
-          ref: ${{ env.D05_RUNTIME_SHA }}
+          ref: ${{ github.base_ref }}
           path: d05-runtime
           persist-credentials: false
 
@@ -645,7 +644,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C d05-runtime rev-parse HEAD)" = "$D05_RUNTIME_SHA"
+          D05_RUNTIME_SHA="$(git -C d05-runtime rev-parse HEAD)"
+          test "${#D05_RUNTIME_SHA}" -eq 40
+          case "$D05_RUNTIME_SHA" in
+            *[!0-9a-f]*) exit 1 ;;
+          esac
+          echo "D05_RUNTIME_SHA=$D05_RUNTIME_SHA" >> "$GITHUB_ENV"
           test "$(git -C model341-carrier rev-parse HEAD)" = "$MODEL341_SHA"
           test "$(git -C model341-carrier hash-object configs/candidates/model341_20m_candidate_a.json)" = "$MODEL341_CANDIDATE_BLOB"
           # The exact PR base SHA is the immutable runtime authority.
