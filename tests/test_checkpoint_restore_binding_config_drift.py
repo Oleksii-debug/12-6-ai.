@@ -1055,6 +1055,49 @@ def test_native_checkpoint_save_rejects_subclass_export_model_mutation(
 
 
 @pytest.mark.parametrize(
+    "mutation",
+    ["optimizer", "scheduler"],
+)
+def test_native_checkpoint_save_rejects_subclass_export_auxiliary_mutation(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    class MutatingExporter(Trainer):
+        def state_dict(self) -> Any:
+            state = super().state_dict()
+            if mutation == "optimizer":
+                live_slot = next(iter(self.optimizer.state.values()))
+                live_slot["exp_avg"].add_(0.25)
+            else:
+                assert self.scheduler is not None
+                self.scheduler.last_epoch += 1
+            return state
+
+    target = MutatingExporter(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    checkpoint = tmp_path / f"subclass-export-{mutation}-drift-must-not-exist"
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="auxiliary state changed during checkpoint export",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            identity=_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
+
+
+@pytest.mark.parametrize(
     "authority",
     [
         "_model_export_fingerprint",
