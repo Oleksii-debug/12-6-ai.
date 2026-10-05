@@ -59,7 +59,10 @@ def main(argv: list[str]) -> int:
     if len(argv) > 2:
         print(
             json.dumps(
-                {"contract_valid": False, "error": "invalid arguments: expected at most one packet path"},
+                {
+                    "contract_valid": False,
+                    "error": "invalid arguments: expected at most one packet path",
+                },
                 sort_keys=True,
             )
         )
