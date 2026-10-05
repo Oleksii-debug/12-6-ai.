@@ -259,6 +259,16 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
     _semantic_stateful_probe(component, state, label=label)
 
 
+def _is_canonical_d02(trainer: Any) -> bool:
+    """Identify the D02 recovery protocol without executing custom descriptors."""
+
+    try:
+        attrs = vars(trainer)
+    except TypeError:
+        return False
+    return "_failure_reason" in attrs and "_update_incomplete" in attrs
+
+
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
     """Refuse mismatched D02 model/optimizer owners before saving or restoring."""
 
@@ -281,10 +291,7 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
     model, even when the caller explicitly requests strict_model=False.
     """
 
-    return strict_model or (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    )
+    return strict_model or _is_canonical_d02(trainer)
 
 
 def _bind_trainer_state_loader(trainer: Any) -> Any:
@@ -295,10 +302,7 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
     # Canonical D02 must fail closed before model mutation when its restore
     # invocation cannot accept the one authoritative trainer-state payload.
     # Generic adapters retain the historical permissive callable contract.
-    canonical_d02 = (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    )
+    canonical_d02 = _is_canonical_d02(trainer)
     if canonical_d02:
         try:
             signature = inspect.signature(loader)
@@ -313,10 +317,7 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
 def _preflight_trainer_target(trainer: Any) -> None:
     """Reject a D02 trainer target that its own loader would refuse after mutation."""
 
-    if not (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    ):
+    if not _is_canonical_d02(trainer):
         return
     if trainer._failure_reason is not None:
         raise CheckpointCompatibilityError(
@@ -453,10 +454,7 @@ def _preflight_trainer_state_without_rng_guard(
     # Canonical D02 Trainer and its scale subclasses construct TrainerState(**state)
     # during the real load. Extra keys therefore fail only at that final call unless
     # the adapter mirrors the exact schema now, before model/RNG mutation.
-    canonical_d02 = (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    )
+    canonical_d02 = _is_canonical_d02(trainer)
     if canonical_d02:
         actual_fields = set(state)
         if actual_fields != _CANONICAL_TRAINER_STATE_FIELDS:
@@ -712,7 +710,7 @@ def _preflight_trainer_state(
                         )
                         raise
         except BaseException:
-            if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+            if _is_canonical_d02(trainer):
                 if trainer._failure_reason is None:
                     trainer._failure_reason = "checkpoint_preflight_rng_rollback_failed"
                 trainer._update_incomplete = True
@@ -723,10 +721,7 @@ def _preflight_trainer_state(
 def _assert_live_d02_determinism(trainer: Any) -> bool | None:
     """Reject ambient torch policy drift before exporting or restoring D02."""
 
-    if not (
-        hasattr(trainer, "_failure_reason")
-        and hasattr(trainer, "_update_incomplete")
-    ):
+    if not _is_canonical_d02(trainer):
         return None
     config = getattr(trainer, "config", None)
     enabled = getattr(config, "deterministic_algorithms", None)
@@ -894,7 +889,7 @@ def _restore_preapply_process_state(
     except BaseException as exc:
         _restore_ambient_rng_after_failed_apply(ambient, exc)
         _restore_initial_torch_policy(policy, exc)
-        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+        if _is_canonical_d02(trainer):
             if trainer._failure_reason is None:
                 trainer._failure_reason = "checkpoint_preapply_rng_rollback_failed"
             trainer._update_incomplete = True
@@ -1106,7 +1101,7 @@ def load_trainer_checkpoint(
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
             _restore_initial_torch_policy(rollback_policy, exc)
-        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+        if _is_canonical_d02(trainer):
             if trainer._failure_reason is None:
                 trainer._failure_reason = "checkpoint_restore_apply_failed"
             trainer._update_incomplete = True
