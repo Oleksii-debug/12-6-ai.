@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -115,3 +118,105 @@ def test_main_reports_missing_file_without_traceback(
     response = json.loads(captured.out)
     assert response["error"].startswith("invalid launch packet:")
     assert captured.err == ""
+
+
+@pytest.mark.parametrize("token", ["1e-9999", "-1e-9999", "0.001e-9999"])
+def test_loader_rejects_nonzero_decimal_underflow(tmp_path: Path, token: str) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="nonzero JSON number underflowed to zero"):
+        tool._load_packet(_write(tmp_path, '{"maximum_cost_usd":' + token + '}'))
+
+
+@pytest.mark.parametrize("token", ["0e-9999", "-0.000e-9999", "0.0"])
+def test_loader_preserves_lexical_decimal_zero(tmp_path: Path, token: str) -> None:
+    tool = _load_tool()
+    assert tool._load_packet(_write(tmp_path, '{"value":' + token + '}')) == {
+        "value": 0.0
+    }
+
+
+@pytest.mark.parametrize(
+    ("raw", "error"),
+    [
+        pytest.param(b" " * 1_048_577, "input byte limit", id="oversized"),
+        pytest.param(
+            ('{"nested":' + "[" * 80 + "0" + "]" * 80 + "}").encode("utf-8"),
+            "JSON structure limit",
+            id="depth",
+        ),
+        pytest.param(
+            ('{"items":[' + ",".join(["0"] * 10_010) + "]}").encode("utf-8"),
+            "JSON structure limit",
+            id="nodes",
+        ),
+        pytest.param(br'{"\ud800":"bad"}', "surrogates not allowed", id="surrogate-key"),
+        pytest.param(br'{"value":"\ud800"}', "surrogates not allowed", id="surrogate-value"),
+        pytest.param(b'{"value":"\xff"}', "decode", id="invalid-utf8"),
+    ],
+)
+def test_loader_bounds_untrusted_json(
+    tmp_path: Path, raw: bytes, error: str,
+) -> None:
+    tool = _load_tool()
+    path = tmp_path / "зовнішній пакет із пробілами.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError, match=error):
+        tool._load_packet(path)
+
+
+def test_main_rejects_oversized_file_without_scientific_assessment(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    tool = _load_tool()
+    path = tmp_path / "пакет із пробілами.json"
+    path.write_bytes(b" " * (tool.MAX_INPUT_BYTES + 1))
+    assert tool.main(["assess", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    result = json.loads(captured.out)
+    assert "input byte limit" in result["error"]
+
+
+def test_loader_preserves_checked_in_readiness_packet() -> None:
+    tool = _load_tool()
+    path = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
+    assert tool._load_packet(path) == json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_real_cli_rejects_oversized_unicode_path_without_science(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "зовнішній пакет із пробілами.json"
+    path.write_bytes(b" " * 1_048_577)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(path)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert "input byte limit" in json.loads(completed.stdout)["error"]
+
+
+def test_real_cli_keeps_canonical_unready_state() -> None:
+    path = ROOT / "configs/research/r01_learned20m_launch_readiness_v1.json"
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(TOOL), str(path)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert completed.returncode == 1
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout)["material_training_authorized"] is False
