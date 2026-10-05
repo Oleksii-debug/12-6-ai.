@@ -47,7 +47,7 @@ jobs:
           test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
           test "$(git diff --name-only "$PARENT_HEAD"..HEAD)" =             ".github/workflows/d03_wikisource_exact_head_qualification_g8_140.yml"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
-          test "$(git hash-object src/twelve_six/data/wikisource_pd_api.py)" =             "a64029493bf54aaeb2d1d13bf1b26421708e0501"
+          test "$(git hash-object src/twelve_six/data/wikisource_pd_api.py)" =             "32a1a05c6cd3c1583e05f0cf90199ceca210c6e9"
           test "$(git hash-object src/twelve_six/data/wikisource_pd_contract.py)" =             "d7dead27e30b2716c77e05adbddf0c0638177ad3"
           test "$(git hash-object src/twelve_six/data/wikisource_pd_edition.py)" =             "cdc4d5e004ee93d2f2c8a414d4f43b19ca8f6ea2"
           test "$(git hash-object tools/materialize_d03_wikisource_lesia1892.py)" =             "f3d70bd9e16f11a0955a57c9eb677444474a6312"
