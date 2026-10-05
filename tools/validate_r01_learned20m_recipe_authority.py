@@ -69,17 +69,35 @@ def _print_input_failure(label: str, exc: BaseException) -> int:
     return 2
 
 
+class _StoreAuthorityOnce(argparse.Action):
+    """Reject ambiguous repeated authority flags, including --flag=value."""
+
+    def __call__(
+        self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
+        values: Any, option_string: str | None = None,
+    ) -> None:
+        marker = f"_r01_seen_{self.dest}"
+        if getattr(namespace, marker, False):
+            raise argparse.ArgumentError(self, "duplicate authority option")
+        setattr(namespace, marker, True)
+        setattr(namespace, self.dest, values)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
+    parser = argparse.ArgumentParser(exit_on_error=False)
+    parser.add_argument(
+        "--policy", type=Path, default=DEFAULT_POLICY, action=_StoreAuthorityOnce,
+    )
     parser.add_argument(
         "--bindings",
+        action=_StoreAuthorityOnce,
         type=Path,
         default=None,
         help="Optional terminal authority bindings JSON. Omit for checked-in blocked template.",
     )
     parser.add_argument(
         "--trusted-authorities",
+        action=_StoreAuthorityOnce,
         type=Path,
         default=None,
         help=(
@@ -89,6 +107,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--expected-trusted-authorities-identity-sha256",
+        action=_StoreAuthorityOnce,
         default=None,
         help=(
             "Externally pinned SHA-256 identity of the trusted-authorities document. "
@@ -96,7 +115,10 @@ def main() -> int:
             "either JSON input by this tool."
         ),
     )
-    args = parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except argparse.ArgumentError as exc:
+        return _print_input_failure("authority arguments", exc)
 
     try:
         policy = _load_json(args.policy)
