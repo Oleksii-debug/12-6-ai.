@@ -117,3 +117,52 @@ def test_extension_identity_binds_family_path_and_blob() -> None:
     assert baseline != v2._extension_family_identity(family, changed_blob)
     assert baseline != v2._extension_family_identity(family, changed_path)
     assert baseline != v2._extension_family_identity("github:other/project", spec)
+
+
+def test_extension_family_value_is_cross_bound_to_pinned_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "authority.json"
+    raw = b'{"source_family":"github:other/project"}\n'
+    path.write_bytes(raw)
+    family = "github:example/project"
+    monkeypatch.setattr(
+        v2,
+        "EXTENSION_AUTHORITY_SPECS",
+        {
+            family: {
+                "authority_path": "authority.json",
+                "authority_git_blob_sha1": v2._git_blob_sha1(raw),
+                "family_json_path": "source_family",
+            }
+        },
+    )
+    with pytest.raises(ValueError, match="authority family drift"):
+        v2.verify_extension_authority_blobs(tmp_path)
+
+
+def test_extension_authority_duplicate_json_member_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "authority.json"
+    raw = (
+        b'{"source_family":"github:example/project",'
+        b'"source_family":"github:example/project"}\n'
+    )
+    path.write_bytes(raw)
+    family = "github:example/project"
+    monkeypatch.setattr(
+        v2,
+        "EXTENSION_AUTHORITY_SPECS",
+        {
+            family: {
+                "authority_path": "authority.json",
+                "authority_git_blob_sha1": v2._git_blob_sha1(raw),
+                "family_json_path": "source_family",
+            }
+        },
+    )
+    with pytest.raises(ValueError, match="duplicate authority JSON member"):
+        v2.verify_extension_authority_blobs(tmp_path)
