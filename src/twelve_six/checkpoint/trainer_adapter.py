@@ -1070,10 +1070,13 @@ def _restore_preapply_process_state(
     ambient: Mapping[str, Any],
     policy: tuple[bool, bool] | None,
     trainer: Any,
+    *,
+    expected_canonical: bool | None = None,
 ) -> None:
     """Make effectful pre-application inspection observationally RNG-neutral."""
 
-    expected_canonical = _is_canonical_d02(trainer)
+    if expected_canonical is None:
+        expected_canonical = _is_canonical_d02(trainer)
     try:
         _core.restore_rng_state(ambient)
         if policy is not None:
@@ -1192,6 +1195,7 @@ def load_trainer_checkpoint(
             prebind_ambient,
             prebind_policy,
             trainer,
+            expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
 
@@ -1225,6 +1229,7 @@ def load_trainer_checkpoint(
             preio_ambient,
             preio_policy,
             trainer,
+            expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
     verified = prepare_checkpoint_load(directory)
@@ -1307,6 +1312,7 @@ def load_trainer_checkpoint(
             preapply_ambient,
             preapply_policy,
             trainer,
+            expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
 
