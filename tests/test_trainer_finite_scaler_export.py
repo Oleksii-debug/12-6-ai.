@@ -130,3 +130,28 @@ def test_ordinary_enabled_scaler_export_still_valid(preserve_state: Any) -> None
     saved = trainer.state_dict()
     assert saved.scaler == trainer.scaler.state_dict()
     assert trainer._failure_reason is None
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_missing_scaler_export_is_not_a_valid_none_snapshot(
+    monkeypatch: pytest.MonkeyPatch, preserve_state: Any, enabled: bool,
+) -> None:
+    trainer = _fresh_trainer()
+    if enabled:
+        trainer.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    original_export = trainer.scaler.state_dict
+    calls: list[int] = []
+
+    def missing_export() -> dict[str, Any] | None:
+        calls.append(1)
+        return None if len(calls) == 2 else original_export()
+
+    monkeypatch.setattr(trainer.scaler, "state_dict", missing_export)
+    with pytest.raises(TrainingStateInvalidError, match="gradient scaler export"):
+        trainer.state_dict()
+    assert len(calls) >= 2
+    assert trainer._failure_reason is not None
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (
+        0, 0, 0,
+    )
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
