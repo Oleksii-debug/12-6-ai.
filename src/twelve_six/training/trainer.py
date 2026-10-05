@@ -402,6 +402,27 @@ class Trainer:
             )
         return state, groups
 
+    def _canonical_scheduler_storage(self) -> dict[str, Any] | None:
+        """Read live scheduler storage without subclass attribute dispatch."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        scheduler = trainer_attrs.get("scheduler")
+        if scheduler is None:
+            return None
+        if not isinstance(scheduler, LRScheduler):
+            raise TrainingStateInvalidError(
+                "trainer scheduler binding is not a torch LRScheduler"
+            )
+        return Trainer._raw_instance_dict(
+            scheduler,
+            LRScheduler,
+            label="scheduler",
+        )
+
     def _require_optimizer_parameter_coverage(self) -> None:
         """Require the optimizer to own every trainable model parameter exactly once."""
         named_parameters, _ = self._canonical_model_members()
@@ -649,7 +670,8 @@ class Trainer:
         # Live scaler state must also be restorable: finite subnormal scales
         # can yield an infinite float32 inverse on the next unscale_.
         self._require_checkpoint_scaler_state(scaler_state)
-        if self.scheduler is not None:
+        scheduler_state = self._canonical_scheduler_storage()
+        if scheduler_state is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
             # The canonical LambdaLR advances exactly once per committed
             # optimizer step. Finite live corruption is not an exact-resume
@@ -657,13 +679,13 @@ class Trainer:
             if (
                 isinstance(self.scheduler, LambdaLR)
                 and (
-                    type(self.scheduler.last_epoch) is not int
-                    or self.scheduler.last_epoch != self.optimizer_step
+                    type(scheduler_state.get("last_epoch")) is not int
+                    or scheduler_state["last_epoch"] != self.optimizer_step
                     or (
                         type(self.scheduler) is LambdaLR
                         and (
-                            type(self.scheduler._step_count) is not int
-                            or self.scheduler._step_count != self.optimizer_step + 1
+                            type(scheduler_state.get("_step_count")) is not int
+                            or scheduler_state["_step_count"] != self.optimizer_step + 1
                         )
                     )
                 )
@@ -672,7 +694,8 @@ class Trainer:
                     "scheduler chronology differs from committed optimizer step"
                 )
             self._require_default_schedule_rates(
-                vars(self.scheduler), self.optimizer_step,
+                scheduler_state,
+                self.optimizer_step,
                 {"param_groups": live_groups},
             )
 
@@ -1129,7 +1152,9 @@ class Trainer:
         """Obtain the canonical built-in scheduler's state without invoking hooks."""
         if self.scheduler is None or type(self.scheduler) is not LambdaLR:
             return None
-        live = vars(self.scheduler)
+        live = self._canonical_scheduler_storage()
+        if live is None:
+            raise TrainingStateInvalidError("canonical LambdaLR storage is unavailable")
         functions = live.get("lr_lambdas")
         if not isinstance(functions, list) or any(
             not isinstance(fn, FunctionType) for fn in functions
@@ -2226,8 +2251,13 @@ class Trainer:
             # The direct checkpoint preflight uses ValueError for an invalid
             # saved payload. During training this is an invalid live state.
             try:
+                scheduler_state = self._canonical_scheduler_storage()
+                if scheduler_state is None:
+                    raise ValueError("default scheduler storage is unavailable")
                 self._require_checkpoint_scheduler_chronology(
-                    vars(self.scheduler), self.optimizer_step, groups,
+                    scheduler_state,
+                    self.optimizer_step,
+                    groups,
                 )
             except ValueError as exc:
                 raise TrainingStateInvalidError(
@@ -2310,26 +2340,36 @@ class Trainer:
             return
         if not isinstance(exported, Mapping):
             raise TrainingStateInvalidError("scheduler export is not canonical")
+        raw_live = self._canonical_scheduler_storage()
+        if raw_live is None:
+            raise TrainingStateInvalidError("scheduler live storage is unavailable")
         live = {
-            key: value for key, value in vars(scheduler).items()
+            key: value for key, value in raw_live.items()
             if key != "optimizer"
         }
         if isinstance(scheduler, LambdaLR):
-            live.pop("lr_lambdas", None)
+            live_lambdas = live.pop("lr_lambdas", None)
             if set(exported) != set(live) | {"lr_lambdas"}:
                 raise TrainingStateInvalidError("scheduler export fields differ")
             exported_lambdas = exported["lr_lambdas"]
             if (
                 not isinstance(exported_lambdas, list)
-                or len(exported_lambdas) != len(scheduler.lr_lambdas)
+                or not isinstance(live_lambdas, list)
+                or len(exported_lambdas) != len(live_lambdas)
             ):
                 raise TrainingStateInvalidError("scheduler export lambda count differs")
             for fn, saved in zip(
-                scheduler.lr_lambdas, exported_lambdas, strict=True,
+                live_lambdas, exported_lambdas, strict=True,
             ):
                 # Match PyTorch LambdaLR's own function-vs-callable-object
-                # serialization, but inspect the live object directly.
-                expected = None if isinstance(fn, FunctionType) else vars(fn)
+                # serialization, but inspect callable-object storage directly.
+                if isinstance(fn, FunctionType):
+                    expected = None
+                else:
+                    expected = Trainer._raw_instance_dict(
+                        fn,
+                        label="scheduler lambda",
+                    )
                 if not Trainer._exact_export_leaf_equal(saved, expected):
                     raise TrainingStateInvalidError("scheduler export lambda differs")
             exported = {
