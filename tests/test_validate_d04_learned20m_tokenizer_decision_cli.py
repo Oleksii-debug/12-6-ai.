@@ -623,11 +623,49 @@ def test_postlink_cleanup_denial_reports_committed_success(
     assert status["output_committed"] is True
     assert status["cleanup_pending"] is True
     assert "COMMITTED_AND_VERIFIED" in status["recovery"]
+    assert "do not delete or overwrite" in status["recovery"]
     expected = cli._serialize_report(report).encode("utf-8")
     assert output.read_bytes() == expected
     staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert len(staged) == 1 and staged[0].read_bytes() == expected
     real_unlink(staged[0])
+
+
+
+def test_postcommit_substituted_stage_gets_non_destructive_recovery_guidance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "decision.json"
+    moved = tmp_path / "owned-stage-moved-aside"
+    unrelated = b"UNRELATED_POSTCOMMIT_STAGE"
+    expected = cli._serialize_report(
+        {"schema": "test-only", "status": "zero-credit"}
+    ).encode("utf-8")
+    actual_unlink_owned = cli._unlink_owned_path
+
+    def substitute_before_cleanup(
+        candidate: Path,
+        identity: tuple[int, int],
+        *,
+        missing_ok: bool = False,
+    ) -> None:
+        if candidate.name.startswith(f".{output.name}."):
+            candidate.rename(moved)
+            candidate.write_bytes(unrelated)
+        actual_unlink_owned(candidate, identity, missing_ok=missing_ok)
+
+    monkeypatch.setattr(cli, "_unlink_owned_path", substitute_before_cleanup)
+    with pytest.raises(cli.PublicationCleanupPending) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+
+    assert "COMMITTED_AND_VERIFIED" in str(caught.value)
+    assert "do not delete or overwrite" in str(caught.value)
+    assert output.read_bytes() == expected
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == unrelated
+    assert moved.read_bytes() == expected
 
 
 def test_link_create_then_raise_is_reconciled_as_committed(
@@ -698,6 +736,118 @@ def test_postcreate_interrupt_with_rollback_denial_retains_stage(
     assert output.exists()
     actual_unlink(output)
     actual_unlink(staged[0])
+
+
+def test_staging_identity_failure_closes_descriptor_and_preserves_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "identity-failure.json"
+    actual_fstat = cli.os.fstat
+
+    def fail_fstat(_fd: int):
+        raise OSError("injected staging fstat failure")
+
+    monkeypatch.setattr(cli.os, "fstat", fail_fstat)
+    with pytest.raises(
+        cli.PublicationIndeterminate,
+        match="STAGING_IDENTITY_INDETERMINATE",
+    ) as caught:
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    monkeypatch.setattr(cli.os, "fstat", actual_fstat)
+
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and caught.value.staged == staged[0]
+    # The descriptor must already be closed, including on Windows sharing semantics.
+    with staged[0].open("ab") as handle:
+        handle.write(b"recovery-visible")
+    assert staged[0].read_bytes() == b"recovery-visible"
+    staged[0].unlink()
+
+
+def test_failed_link_cleanup_preserves_substituted_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "stage-swap.json"
+    moved = tmp_path / "owned-stage-moved-aside"
+    unrelated = b"UNRELATED_STAGE_REPLACEMENT"
+    expected = cli._serialize_report(
+        {"schema": "test-only", "status": "zero-credit"}
+    ).encode("utf-8")
+    actual_unlink_owned = cli._unlink_owned_path
+
+    def broken_link(*_args: object, **_kwargs: object) -> None:
+        raise OSError("injected link failure")
+
+    def substitute_before_cleanup(
+        candidate: Path,
+        identity: tuple[int, int],
+        *,
+        missing_ok: bool = False,
+    ) -> None:
+        if candidate.name.startswith(f".{output.name}."):
+            candidate.rename(moved)
+            candidate.write_bytes(unrelated)
+        actual_unlink_owned(candidate, identity, missing_ok=missing_ok)
+
+    monkeypatch.setattr(cli.os, "link", broken_link)
+    monkeypatch.setattr(cli, "_unlink_owned_path", substitute_before_cleanup)
+    with pytest.raises(
+        cli.PublicationIndeterminate,
+        match="STAGING_CLEANUP_INDETERMINATE",
+    ):
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == unrelated
+    assert moved.read_bytes() == expected
+    assert not output.exists()
+
+
+def test_interrupt_rollback_preserves_substituted_final(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    output = tmp_path / "rollback-swap.json"
+    moved = tmp_path / "owned-final-moved-aside"
+    unrelated = b"UNRELATED_FINAL_REPLACEMENT"
+    expected = cli._serialize_report(
+        {"schema": "test-only", "status": "zero-credit"}
+    ).encode("utf-8")
+    actual_link = cli.os.link
+    actual_unlink_owned = cli._unlink_owned_path
+
+    def link_then_interrupt(stage: Path, final: Path) -> None:
+        actual_link(stage, final)
+        raise KeyboardInterrupt("injected post-create interruption")
+
+    def substitute_before_rollback(
+        candidate: Path,
+        identity: tuple[int, int],
+        *,
+        missing_ok: bool = False,
+    ) -> None:
+        if candidate == output:
+            candidate.rename(moved)
+            candidate.write_bytes(unrelated)
+        actual_unlink_owned(candidate, identity, missing_ok=missing_ok)
+
+    monkeypatch.setattr(cli.os, "link", link_then_interrupt)
+    monkeypatch.setattr(cli, "_unlink_owned_path", substitute_before_rollback)
+    with pytest.raises(
+        cli.PublicationIndeterminate,
+        match="ROLLBACK_INDETERMINATE",
+    ):
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+
+    assert output.read_bytes() == unrelated
+    assert moved.read_bytes() == expected
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == expected
 
 
 def test_same_size_staged_mutation_during_link_is_not_reported_committed(

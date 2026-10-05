@@ -156,6 +156,25 @@ def _lstat_or_none(path: Path) -> os.stat_result | None:
         return None
 
 
+def _unlink_owned_path(
+    path: Path,
+    identity: tuple[int, int],
+    *,
+    missing_ok: bool = False,
+) -> None:
+    observed = _lstat_or_none(path)
+    if observed is None:
+        if missing_ok:
+            return
+        raise FileNotFoundError(path)
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or (observed.st_dev, observed.st_ino) != identity
+    ):
+        raise OSError(f"ownership changed before unlink: {path}")
+    path.unlink()
+
+
 def _final_bytes_match(
     path: Path,
     *,
@@ -203,6 +222,25 @@ def _write(path: Path, value: dict[str, Any]) -> None:
         suffix=".tmp",
     )
     temporary = Path(name)
+    try:
+        created = os.fstat(descriptor)
+        if not stat.S_ISREG(created.st_mode):
+            raise OSError("tokenizer report staging descriptor is not regular")
+    except OSError as identity_error:
+        try:
+            os.close(descriptor)
+        except OSError as close_error:
+            raise PublicationIndeterminate(
+                "STAGING_IDENTITY_INDETERMINATE: cannot bind tokenizer staging "
+                f"ownership or close its descriptor; retained stage {temporary}",
+                staged=temporary,
+            ) from close_error
+        raise PublicationIndeterminate(
+            "STAGING_IDENTITY_INDETERMINATE: cannot bind tokenizer staging "
+            f"ownership; retained stage {temporary}",
+            staged=temporary,
+        ) from identity_error
+    identity = (created.st_dev, created.st_ino)
     committed = False
     indeterminate = False
     primary: BaseException | None = None
@@ -214,9 +252,12 @@ def _write(path: Path, value: dict[str, Any]) -> None:
             os.fsync(handle.fileno())
 
         staged = temporary.stat(follow_symlinks=False)
-        if not stat.S_ISREG(staged.st_mode) or staged.st_size != len(payload):
+        if (
+            not stat.S_ISREG(staged.st_mode)
+            or (staged.st_dev, staged.st_ino) != identity
+            or staged.st_size != len(payload)
+        ):
             raise OSError("tokenizer report staging identity changed")
-        identity = (staged.st_dev, staged.st_ino)
 
         link_error: BaseException | None = None
         try:
@@ -246,7 +287,7 @@ def _write(path: Path, value: dict[str, Any]) -> None:
                 # Because final is proven to be our own hard link, roll back only
                 # that owned name while retaining the staged inode for retry.
                 try:
-                    path.unlink()
+                    _unlink_owned_path(path, identity)
                 except (OSError, KeyboardInterrupt, SystemExit) as rollback_error:
                     indeterminate = True
                     raise PublicationIndeterminate(
@@ -303,13 +344,15 @@ def _write(path: Path, value: dict[str, Any]) -> None:
             pass
         else:
             try:
-                temporary.unlink(missing_ok=True)
+                _unlink_owned_path(temporary, identity, missing_ok=True)
             except (OSError, KeyboardInterrupt, SystemExit) as cleanup_error:
                 if committed and primary is None:
                     raise PublicationCleanupPending(
-                        "tokenizer authority is COMMITTED_AND_VERIFIED; staged cleanup "
-                        f"is pending at {temporary}; remove only that staging alias "
-                        "after confirming the final output remains unchanged",
+                        "tokenizer authority is COMMITTED_AND_VERIFIED; automatic "
+                        f"staging cleanup could not prove safe removal at {temporary}; "
+                        "do not delete or overwrite that pathname unless independent "
+                        "ownership reconciliation proves it is the retained staging "
+                        "inode; the final output remains committed",
                         staged=temporary,
                     ) from cleanup_error
                 raise PublicationIndeterminate(
