@@ -165,7 +165,7 @@ jobs:
               ),
               "pre_dedup_source_objects": vector["pre_dedup_source_object_count"],
               "pre_dedup_payload_bytes": vector["pre_dedup_declared_capacity_bytes"],
-              "post_dedup_source_objects": vector["post_dedup_survivor_source_object_count"],
+              "post_dedup_source_objects": survivors["post_dedup_survivor_source_object_count"],
               "post_dedup_unique_bytes": vector["post_dedup_conservative_unique_bytes"],
               "duplicate_discount_bytes": vector["duplicate_discount_bytes"],
               "matcher_report_sha256": report["report_sha256"],
