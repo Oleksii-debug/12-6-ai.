@@ -869,13 +869,28 @@ def _bind_model_state_loader(model: Any, strict: bool) -> Any:
         parameter.kind == inspect.Parameter.VAR_KEYWORD
         for parameter in signature.parameters.values()
     ):
+        try:
+            signature.bind({}, strict=strict)
+        except TypeError as exc:
+            raise CheckpointCompatibilityError(
+                "model load_state_dict cannot safely bind checkpoint state/strict"
+            ) from exc
 
         def apply(materialized: Mapping[str, Any]) -> Any:
             return loader(materialized, strict=strict)
 
         return apply
 
-    # Generic legacy adapters accept only load_state_dict(state).
+    # Generic legacy adapters accept only load_state_dict(state). Validate that
+    # invocation shape now so a predictable TypeError cannot poison a fresh D02
+    # target after model application has started.
+    try:
+        signature.bind({})
+    except TypeError as exc:
+        raise CheckpointCompatibilityError(
+            "model load_state_dict cannot safely bind checkpoint state"
+        ) from exc
+
     def apply(materialized: Mapping[str, Any]) -> Any:
         return loader(materialized)
 
