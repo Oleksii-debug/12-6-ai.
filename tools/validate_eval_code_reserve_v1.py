@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import stat
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -86,7 +88,8 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> dict[str, object
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
+            # Authority member names are untrusted input; do not echo them to logs.
+            raise ValueError("duplicate_json_key")
         result[key] = value
     return result
 
@@ -138,13 +141,44 @@ def _require_finite_json_value(
 
 MAX_INPUT_BYTES = 1_048_576
 MAX_JSON_NODES = 10_000
+MAX_JSON_INTEGER_DIGITS = 64
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.removeprefix("-")) > MAX_JSON_INTEGER_DIGITS:
+        raise ValueError("JSON integer exceeds 64 digits")
+    return int(value)
+
+
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
 def _load_mapping(path: Path) -> dict[str, Any]:
-    # These two reservation authorities are small. Refuse resource-heavy
-    # untrusted input before JSON decoding or any scientific validation.
-    with path.open("rb") as source:
-        raw = source.read(MAX_INPUT_BYTES + 1)
+    # Bind untrusted authority bytes to one regular descriptor before parsing.
+    try:
+        before = path.stat()
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("EVAL647 authority must be a regular file")
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_BINARY", 0)
+        )
+        with os.fdopen(os.open(path, flags), "rb") as source:
+            opened = os.fstat(source.fileno())
+            if not stat.S_ISREG(opened.st_mode):
+                raise ValueError("EVAL647 authority must be a regular file")
+            if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+                raise ValueError("EVAL647 authority changed between check and open")
+            if _file_stamp(before) != _file_stamp(opened):
+                raise ValueError("EVAL647 authority changed before open")
+            raw = source.read(MAX_INPUT_BYTES + 1)
+            if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
+                raise ValueError("EVAL647 authority changed during read")
+    except OSError:
+        raise ValueError("cannot read EVAL647 authority") from None
+
     _require(len(raw) <= MAX_INPUT_BYTES, "EVAL647 authority exceeds byte limit")
     try:
         value = json.loads(
@@ -152,6 +186,7 @@ def _load_mapping(path: Path) -> dict[str, Any]:
             object_pairs_hook=_reject_duplicate_pairs,
             parse_constant=_reject_constant,
             parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
         )
     except RecursionError as exc:
         raise ValueError("JSON nesting exceeds decoder limit") from exc
