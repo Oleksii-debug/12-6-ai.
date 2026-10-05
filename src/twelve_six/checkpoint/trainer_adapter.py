@@ -568,6 +568,16 @@ def _bind_trainer_state_exporter(trainer: Any) -> Any:
     """Bind one checkpoint exporter without executing native instance lookup."""
 
     if _is_native_d02(trainer):
+        try:
+            instance_attrs = vars(trainer)
+        except TypeError as exc:
+            raise CheckpointCompatibilityError(
+                "native D02 trainer does not expose checkpoint exporter state"
+            ) from exc
+        if "state_dict" in instance_attrs:
+            raise CheckpointCompatibilityError(
+                "native D02 trainer state_dict must remain class-bound"
+            )
         class_exporter = inspect.getattr_static(
             type(trainer),
             "state_dict",
@@ -599,6 +609,16 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
     # Generic adapters retain the historical permissive callable contract.
     canonical_d02 = _is_canonical_d02(trainer)
     if _is_native_d02(trainer):
+        try:
+            instance_attrs = vars(trainer)
+        except TypeError as exc:
+            raise CheckpointCompatibilityError(
+                "native D02 trainer does not expose checkpoint loader state"
+            ) from exc
+        if "load_state_dict" in instance_attrs:
+            raise CheckpointCompatibilityError(
+                "native D02 trainer load_state_dict must remain class-bound"
+            )
         class_loader = inspect.getattr_static(
             type(trainer),
             "load_state_dict",
