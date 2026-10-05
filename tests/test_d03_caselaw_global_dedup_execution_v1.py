@@ -2120,7 +2120,6 @@ with TemporaryDirectory() as raw:
     )
 
 
-
 def test_postcommit_final_swap_preserves_recovery_residue() -> None:
     _run_isolated(
         """
