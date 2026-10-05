@@ -1,0 +1,603 @@
+name: D03 Franko1901 decontam G05 G06 two-clean
+
+on:
+  pull_request:
+    branches:
+      - execution/d03-current-plus-delta-balance-g6-115-20261005
+    paths:
+      - ".github/workflows/d03_franko_decontam_qp.yml"
+      - "tools/run_d03_franko_decontam_qp_v1.py"
+      - "tools/run_d03_code_delta_decontam_qp_v1.py"
+      - "tools/materialize_d03_franko1901.py"
+      - "src/twelve_six/data/franko1901_dedup_intake.py"
+      - "tools/run_d03_code4_rich_fastapi_flask_reserve_global_dedup_v1.py"
+      - "tools/run_d03_code4_rich_fastapi_reserve_global_dedup_v1.py"
+      - "tools/run_d03_code4_flask_global_dedup_v1.py"
+      - "tools/run_d03_four_code_sources_global_dedup_v1.py"
+      - "src/twelve_six/data/current_clean_execution_v1.py"
+      - "src/twelve_six/data/current_reserved_decontamination_v1.py"
+      - "src/twelve_six/data/eval647_reserved_decontamination_v1.py"
+      - "src/twelve_six/data/eval647_future_training_exclusion_v1.py"
+      - "src/twelve_six/data/quality_execution_authority.py"
+      - "src/twelve_six/data/privacy_execution_authority.py"
+      - "src/twelve_six/data/post_g05_g06_materialization_v1.py"
+      - "src/twelve_six/data/eval303_selection_payload_resolver_v1.py"
+      - "src/twelve_six/data/eval233_final_test_resolver_v1.py"
+      - "configs/evaluation/eval_code_reserve_v1.json"
+      - "evidence/eval647/code_selection_source_materialization_v1.json"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-franko-decontam-qp-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-franko-postqp-g6-116-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      D03_EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+      PARENT_ARTIFACT_ID: "11341482304"
+      PARENT_PROOF_ARTIFACT_ID: "11341042046"
+      PARENT_ARTIFACT_ZIP_SHA256: "60cd01afb53bbec2f0b2cb66dbe2b299ffec60592a8e9c5fe75a178476f803ac"
+      PARENT_PROOF_ZIP_SHA256: "76d364aed9ea14fdde2d3ca1c5ddd932582434d80955d6bc132321e7282ea39f"
+      PARENT_SURVIVORS_FILE_SHA256: "de2ff6f13ab138caa4ad4471326ab16b97abdb5167a95a48272963445e976839"
+      PARENT_EVIDENCE_FILE_SHA256: "6112dafe7839018fd96293d970843cb5d3c3547a90608face4506ae2e636fd3d"
+      PARENT_PROOF_FILE_SHA256: "db859857d483c0d77d1e1900ac48ee3064d014214e088556824549a7ebda18bc"
+      EXPECTED_SELECTION_ID: "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd"
+      EXPECTED_FINAL_ID: "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116"
+      EXPECTED_EVAL647_EVIDENCE_ID: "3401db10bad35fd1c6fac2839413fc6afffac58fa5f2135d2202b944bc2fda82"
+      EXPECTED_EVAL647_OBJECT_SET_ID: "0557410622403b411ac9d6d8fb01a57ef461617c19d06f112aa61dd57f670048"
+      EVAL290_HEAD_SHA: "029514654829cebc149cff6fc1fea2a8ba4fa566"
+      EVAL290_DATA_SHA256: "5400e37b8e8ddfdb9516a8b6eaa6fc01a8c5ec41811385d9f6907e6ef6d9614f"
+      EVAL290_MANIFEST_SHA256: "d0f8cf208724c80bda7b92aed54e10bea1492fa5bb3511a7e0fd828fc881e14a"
+      EVAL291_HEAD_SHA: "fb268061300127b62cc2a262664b30c614559dac"
+      EVAL291_DATA_SHA256: "df20e3d3ec75208399039a283487c3b8958c80ec3f119cee278fcc09948c6bfb"
+      EVAL291_AUTHORITY_SHA256: "493be56b8189325d122868ca778733676cc2143d24d121fb63f6b1b62a977177"
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact Franko current-clean executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$D03_EXECUTION_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile             tools/run_d03_franko_decontam_qp_v1.py             tools/run_d03_code_delta_decontam_qp_v1.py             tools/materialize_d03_franko1901.py             src/twelve_six/data/franko1901_dedup_intake.py             tools/run_d03_code4_rich_fastapi_flask_reserve_global_dedup_v1.py             tools/run_d03_code4_rich_fastapi_reserve_global_dedup_v1.py             tools/run_d03_code4_flask_global_dedup_v1.py             tools/run_d03_four_code_sources_global_dedup_v1.py             src/twelve_six/data/current_clean_execution_v1.py             src/twelve_six/data/current_reserved_decontamination_v1.py             src/twelve_six/data/quality_execution_authority.py             src/twelve_six/data/privacy_execution_authority.py
+
+      - name: Fetch exact Franko two-clean artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          parent="$RUNNER_TEMP/parent"
+          mkdir -p "$parent"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$parent/parent.zip"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PARENT_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$parent/parent.zip" | cut -d' ' -f1)" = "$PARENT_ARTIFACT_ZIP_SHA256"
+          unzip -q "$parent/parent.zip" -d "$parent/extracted"
+          test "$(sha256sum "$parent/extracted/survivors.json" | cut -d' ' -f1)" = "$PARENT_SURVIVORS_FILE_SHA256"
+          test "$(sha256sum "$parent/extracted/evidence.json" | cut -d' ' -f1)" = "$PARENT_EVIDENCE_FILE_SHA256"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$parent/proof.zip"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PARENT_PROOF_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$parent/proof.zip" | cut -d' ' -f1)" = "$PARENT_PROOF_ZIP_SHA256"
+          mkdir -p "$parent/proof"
+          unzip -q "$parent/proof.zip" -d "$parent/proof"
+          test "$(sha256sum "$parent/proof/franko1901-two-clean-proof.json" | cut -d' ' -f1)" = "$PARENT_PROOF_FILE_SHA256"
+
+      - name: Reconstruct immutable selection-validation payloads from exact heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval290_src="$RUNNER_TEMP/eval290-src"
+          eval290_out_a="$RUNNER_TEMP/eval290-out-a"
+          eval290_out_b="$RUNNER_TEMP/eval290-out-b"
+          eval290_lock="$RUNNER_TEMP/eval290-extra.lock.txt"
+          eval290_venv="$RUNNER_TEMP/eval290-venv"
+          eval290_environment="$RUNNER_TEMP/eval290-environment.json"
+          eval291_src="$RUNNER_TEMP/eval291-src"
+          eval291_venv="$RUNNER_TEMP/eval291-venv"
+          eval291_environment="$RUNNER_TEMP/eval291-environment.json"
+          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src" "$eval290_venv" "$eval291_venv"
+          rm -f "$eval290_environment" "$eval291_environment"
+
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL290_HEAD_SHA"
+          git worktree add --detach "$eval290_src" "$EVAL290_HEAD_SHA"
+          test "$(git -C "$eval290_src" rev-parse HEAD)" = "$EVAL290_HEAD_SHA"
+          git -C "$eval290_src" diff --quiet HEAD --
+          git -C "$eval290_src" diff --cached --quiet HEAD --
+
+          python "$eval290_src/tools/execution_bootstrap.py" bootstrap             --repo-root "$eval290_src"             --capabilities "runtime,tests"             --venv "$eval290_venv"             --manifest "$eval290_environment"             --command "python -m pytest -q tests/test_eval290_ua_selection.py"
+
+          git -C "$eval290_src" show             "$EVAL290_HEAD_SHA:requirements/locks/linux-x86_64/eval290-extra.lock.txt"             > "$eval290_lock"
+          "$eval290_venv/bin/python" -m pip install             --disable-pip-version-check             --require-hashes             --no-deps             -r "$eval290_lock"
+          "$eval290_venv/bin/python" -c 'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+          for out in "$eval290_out_a" "$eval290_out_b"; do
+            PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python"               -m twelve_six.eval290_ua_selection               build --repo-root "$eval290_src" --output-dir "$out"
+          done
+          diff -ru "$eval290_out_a" "$eval290_out_b"
+          PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python"             -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out_a"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
+
+          git fetch --no-tags origin refs/pull/395/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL291_HEAD_SHA"
+          git worktree add --detach "$eval291_src" "$EVAL291_HEAD_SHA"
+          test "$(git -C "$eval291_src" rev-parse HEAD)" = "$EVAL291_HEAD_SHA"
+          git -C "$eval291_src" diff --quiet HEAD --
+          git -C "$eval291_src" diff --cached --quiet HEAD --
+
+          python "$eval291_src/tools/execution_bootstrap.py" bootstrap             --repo-root "$eval291_src"             --capabilities "runtime,tests"             --venv "$eval291_venv"             --manifest "$eval291_environment"             --command "python -m pytest -q tests/test_eval291_en_selection_validation.py"
+
+          cp "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"             "$RUNNER_TEMP/eval291-en.jsonl"
+          cp "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"             "$RUNNER_TEMP/eval291-authority.json"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-en.jsonl" | cut -d' ' -f1)" = "$EVAL291_DATA_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-authority.json" | cut -d' ' -f1)" = "$EVAL291_AUTHORITY_SHA256"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python"             -m twelve_six.eval291_en_selection_validation             build --repo-root "$eval291_src"
+          cmp "$RUNNER_TEMP/eval291-en.jsonl"             "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"
+          cmp "$RUNNER_TEMP/eval291-authority.json"             "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python"             -m twelve_six.eval291_en_selection_validation             verify --repo-root "$eval291_src"
+
+      - name: Build complete ephemeral reserved-evaluation universe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.data.current_reserved_decontamination_v1 import (
+              build_reserved_payload_binding,
+          )
+          from twelve_six.data.eval233_final_test_resolver_v1 import (
+              DATA232_FINAL_TEST_ID,
+              resolve_eval233_final_test,
+          )
+          from twelve_six.data.eval303_selection_payload_resolver_v1 import (
+              EVAL303_SELECTION_ID,
+              resolve_eval303_selection_payloads_from_reconstructed,
+          )
+          from twelve_six.data.eval647_future_training_exclusion_v1 import (
+              build_eval647_auxiliary_reserved_set,
+              compose_eval647_future_training_exclusion,
+          )
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          tmp = Path(os.environ["RUNNER_TEMP"])
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("utf-8")
+
+          def write_json(path, value):
+              Path(path).write_bytes(canonical(value) + b"\n")
+
+          def write_jsonl(path, rows):
+              Path(path).write_bytes(
+                  b"".join(canonical(row) + b"\n" for row in rows)
+              )
+
+          selection_rows, selection_set, selection_evidence = (
+              resolve_eval303_selection_payloads_from_reconstructed(
+                  eval290_data_jsonl=(
+                      tmp
+                      / "eval290-out-a/eval290_ua_selection_validation_v1.jsonl"
+                  ),
+                  eval290_manifest_json=(
+                      tmp
+                      / "eval290-out-a/eval290_ua_selection_validation_manifest_v1.json"
+                  ),
+                  eval291_data_jsonl=tmp / "eval291-en.jsonl",
+                  eval291_authority_json=tmp / "eval291-authority.json",
+                  eval303_membership_jsonl=(
+                      root
+                      / "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
+                  ),
+              )
+          )
+          resolver_identity = selection_evidence.get("resolver_identity_sha256")
+          if not isinstance(resolver_identity, str) or len(resolver_identity) != 64:
+              raise RuntimeError("EVAL-303 resolver identity malformed")
+
+          final_rows, final_set, _ = resolve_eval233_final_test(root)
+          if EVAL303_SELECTION_ID != os.environ["EXPECTED_SELECTION_ID"]:
+              raise RuntimeError("selection identity drift")
+          if DATA232_FINAL_TEST_ID != os.environ["EXPECTED_FINAL_ID"]:
+              raise RuntimeError("final-test identity drift")
+
+          manifest = json.loads(
+              (root / "configs/evaluation/eval_code_reserve_v1.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          evidence = json.loads(
+              (
+                  root
+                  / "evidence/eval647/code_selection_source_materialization_v1.json"
+              ).read_text(encoding="utf-8")
+          )
+          if (
+              evidence["evidence_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_EVIDENCE_ID"]
+          ):
+              raise RuntimeError("EVAL-647 evidence identity drift")
+          if (
+              evidence["object_set_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_OBJECT_SET_ID"]
+          ):
+              raise RuntimeError("EVAL-647 object-set identity drift")
+
+          spec = importlib.util.spec_from_file_location(
+              "eval647_source_materializer",
+              root / "tools/materialize_eval_code_reserve_v1.py",
+          )
+          if spec is None or spec.loader is None:
+              raise RuntimeError("cannot load EVAL-647 materializer")
+          materializer = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(materializer)
+          observed = materializer.materialize(manifest, timeout=60)
+          if (
+              observed["object_set_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_OBJECT_SET_ID"]
+          ):
+              raise RuntimeError("fresh EVAL-647 materialization membership drift")
+
+          auxiliary = build_eval647_auxiliary_reserved_set(manifest, evidence)
+          member_by_source = {
+              member["source_id"]: member for member in auxiliary["members"]
+          }
+          eval647_rows = []
+          for obj in manifest["objects"]:
+              payload = materializer._fetch(materializer._raw_url(obj), 60)
+              if len(payload) != obj["expected_raw_bytes"]:
+                  raise RuntimeError("EVAL-647 raw byte count drift")
+              if hashlib.sha256(payload).hexdigest() != obj["raw_sha256"]:
+                  raise RuntimeError("EVAL-647 raw SHA drift")
+              source_id = f"{obj['repository']}@{obj['revision']}:{obj['path']}"
+              member = member_by_source[source_id]
+              if member["content_sha256"] != obj["raw_sha256"]:
+                  raise RuntimeError("EVAL-647 member/content binding drift")
+              eval647_rows.append(
+                  {
+                      "record_id": member["record_id"],
+                      "source_id": member["source_id"],
+                      "source_family": member["source_family"],
+                      "modality": "code",
+                      "text": payload.decode("utf-8", errors="strict"),
+                  }
+              )
+
+          base_binding = build_reserved_payload_binding([selection_set, final_set])
+          composed, _ = compose_eval647_future_training_exclusion(
+              base_binding,
+              manifest,
+              evidence,
+          )
+          expected_members = sum(
+              len(item["members"]) for item in composed["reserved_sets"]
+          )
+          evaluation_rows = [*selection_rows, *final_rows, *eval647_rows]
+          if len(evaluation_rows) != expected_members:
+              raise RuntimeError("reserved evaluation payload coverage drift")
+
+          write_json(tmp / "base_reserved_binding.json", base_binding)
+          write_jsonl(tmp / "evaluation_records.jsonl", evaluation_rows)
+          with (tmp / "execution.env").open("w", encoding="utf-8") as out:
+              values = {
+                  "BASE_BINDING_ID": base_binding["binding_identity_sha256"],
+                  "COMPOSED_BINDING_ID": composed["binding_identity_sha256"],
+              }
+              for key, value in values.items():
+                  if not isinstance(value, str) or len(value) != 64:
+                      raise RuntimeError(f"invalid derived identity: {key}")
+                  out.write(f"{key}={value}\n")
+
+          print(
+              json.dumps(
+                  {
+                      "base_binding_identity_sha256": (
+                          base_binding["binding_identity_sha256"]
+                      ),
+                      "composed_binding_identity_sha256": (
+                          composed["binding_identity_sha256"]
+                      ),
+                      "evaluation_records": len(evaluation_rows),
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+          cat "$RUNNER_TEMP/execution.env" >> "$GITHUB_ENV"
+
+      - name: Execute exact Franko survivors twice in fresh processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_once() {
+            out="$1"
+            franko_out="$2"
+            rm -rf "$out" "$franko_out"
+            mkdir -p "$out"
+            python tools/materialize_d03_franko1901.py --output-dir "$franko_out"
+            candidate="$franko_out/franko1901-candidate.jsonl"
+            test -s "$candidate"
+            test "$(sha256sum "$candidate" | cut -d' ' -f1)" = "9b00da2a2a5110cc4e384711fffbbbdaa917904462ddd133e7178e2d07dcb5ec"
+            test "$(wc -l < "$candidate" | tr -d ' ')" = "30660"
+            python tools/run_d03_franko_decontam_qp_v1.py \
+              --expected-execution-head "$D03_EXECUTION_SHA" \
+              --parent-survivors-json "$RUNNER_TEMP/parent/extracted/survivors.json" \
+              --parent-evidence-json "$RUNNER_TEMP/parent/extracted/evidence.json" \
+              --parent-proof-json "$RUNNER_TEMP/parent/proof/franko1901-two-clean-proof.json" \
+              --candidate-jsonl "$candidate" \
+              --historical-terminal-evidence-json configs/data/d03_franko1901_terminal_execution_v1.json \
+              --fresh-execution-authority-json configs/data/d03_franko1901_fresh_execution_authority_v1.json \
+              --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl" \
+              --base-reserved-binding-json "$RUNNER_TEMP/base_reserved_binding.json" \
+              --eval647-manifest-json configs/evaluation/eval_code_reserve_v1.json \
+              --eval647-materialization-evidence-json evidence/eval647/code_selection_source_materialization_v1.json \
+              --expected-base-reserved-binding-identity-sha256 "$BASE_BINDING_ID" \
+              --expected-composed-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID" \
+              --expected-eval647-materialization-evidence-identity-sha256 "$EXPECTED_EVAL647_EVIDENCE_ID" \
+              --expected-eval647-object-set-identity-sha256 "$EXPECTED_EVAL647_OBJECT_SET_ID" \
+              --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID" \
+              --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID" \
+              --output-evidence "$out/evidence.json"
+          }
+          run_once "$RUNNER_TEMP/output-a" "$RUNNER_TEMP/franko-a"
+          run_once "$RUNNER_TEMP/output-b" "$RUNNER_TEMP/franko-b"
+          cmp "$RUNNER_TEMP/output-a/evidence.json" "$RUNNER_TEMP/output-b/evidence.json"
+
+      - name: Qualify text-free Franko post-QP result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          a_raw = (tmp / "output-a/evidence.json").read_bytes()
+          b_raw = (tmp / "output-b/evidence.json").read_bytes()
+          if a_raw != b_raw:
+              raise RuntimeError("two fresh executions diverged")
+          evidence = json.loads(a_raw)
+          expected_fields = {
+              "schema_version",
+              "execution_profile",
+              "execution_head_sha",
+              "parent",
+              "franko_authority",
+              "gate_execution",
+              "survivor_inventory",
+              "capacity_projection",
+              "authority_blobs",
+              "content_boundary",
+              "truth_boundary",
+              "evidence_identity_sha256",
+          }
+          if set(evidence) != expected_fields:
+              raise RuntimeError("evidence fields are not closed-world")
+          if evidence["schema_version"] != "12-6.d03-franko1901-decontam-g05-g06-execution.v1":
+              raise RuntimeError("evidence schema drift")
+          if evidence["execution_profile"] != "LOCAL_FREE":
+              raise RuntimeError("execution profile drift")
+          if evidence["execution_head_sha"] != os.environ["D03_EXECUTION_SHA"]:
+              raise RuntimeError("execution head drift")
+
+          claimed = evidence["evidence_identity_sha256"]
+          if not isinstance(claimed, str) or len(claimed) != 64 or any(
+              ch not in "0123456789abcdef" for ch in claimed
+          ):
+              raise RuntimeError("evidence identity malformed")
+          core = dict(evidence)
+          core.pop("evidence_identity_sha256")
+          raw_core = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          if hashlib.sha256(raw_core).hexdigest() != claimed:
+              raise RuntimeError("evidence self-hash mismatch")
+
+          parent = evidence["parent"]
+          if parent["execution_head_sha"] != "5e9a9c27257824faf43915a8a75ef57f9ab6d341":
+              raise RuntimeError("parent head drift")
+          if parent["workflow_run_id"] != 37300292765:
+              raise RuntimeError("parent run drift")
+          if parent["artifact_id"] != 11341482304:
+              raise RuntimeError("parent artifact drift")
+          if parent["matcher_report_sha256"] != "f02573a77ab649d03a7fe14353da4d9d67cde28699fc94059d7553d35c51955f":
+              raise RuntimeError("parent matcher root drift")
+          if parent["survivor_authority_sha256"] != "2da8566250e168659c280e0261f8e3b42a07618c260835946438f7abeee8156a":
+              raise RuntimeError("parent survivor root drift")
+          if parent["two_clean_proof_identity_sha256"] != "258a447dec49b2bb54d22af7f85458a51f786efe4f37c688ded9ca309614006c":
+              raise RuntimeError("parent two-clean proof drift")
+          if parent["post_global_dedup_franko_objects"] != 30636:
+              raise RuntimeError("parent Franko survivor count drift")
+          if parent["post_global_dedup_franko_bytes"] != 1760562:
+              raise RuntimeError("parent Franko survivor bytes drift")
+
+          franko = evidence["franko_authority"]
+          if franko["source_family"] != "ua.verba.public-domain.franko1901":
+              raise RuntimeError("Franko family drift")
+          if franko["source_object_count"] != 30636:
+              raise RuntimeError("Franko object count drift")
+          if franko["pre_gate_payload_bytes"] != 1760562:
+              raise RuntimeError("Franko pre-gate bytes drift")
+
+          gate = evidence["gate_execution"]
+          survivor = gate["survivor_payload_bytes"]
+          loss = gate["later_gate_loss_bytes"]
+          if type(survivor) is not int or not (0 < survivor <= 1760562):
+              raise RuntimeError("Franko survivor bytes invalid")
+          if type(loss) is not int or loss != 1760562 - survivor:
+              raise RuntimeError("Franko gate loss arithmetic drift")
+          if gate["input_records"] != 30636:
+              raise RuntimeError("Franko input record count drift")
+
+          inventory = evidence["survivor_inventory"]
+          if inventory["schema_version"] != "12-6.data526-record-inventory.v1":
+              raise RuntimeError("survivor inventory schema drift")
+          records = inventory["records"]
+          if inventory["record_count"] != len(records) or inventory["record_count"] != gate["survivor_records"]:
+              raise RuntimeError("survivor inventory count drift")
+          if inventory["total_payload_bytes"] != survivor:
+              raise RuntimeError("survivor inventory bytes drift")
+          ids = [row.get("record_id") for row in records if isinstance(row, dict)]
+          if len(ids) != len(records) or ids != sorted(ids) or len(ids) != len(set(ids)):
+              raise RuntimeError("survivor inventory ID/order drift")
+          required = {"record_id","source_id","family","modality","payload_sha256","payload_bytes"}
+          if any(not isinstance(row, dict) or set(row) != required for row in records):
+              raise RuntimeError("survivor inventory row schema drift")
+          if any(row["modality"] != "uk" for row in records):
+              raise RuntimeError("non-UK row crossed Franko survivor inventory")
+          if any(row["family"] != "ua.verba.public-domain.franko1901" for row in records):
+              raise RuntimeError("foreign family crossed Franko survivor inventory")
+          if sum(row["payload_bytes"] for row in records) != survivor:
+              raise RuntimeError("survivor byte arithmetic drift")
+          canonical_records = json.dumps(
+              records, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+          ).encode("utf-8")
+          if hashlib.sha256(canonical_records).hexdigest() != inventory["record_inventory_digest_sha256"]:
+              raise RuntimeError("record inventory digest drift")
+          payload_projection = [
+              {"record_id": row["record_id"], "payload_sha256": row["payload_sha256"], "payload_bytes": row["payload_bytes"]}
+              for row in records
+          ]
+          payload_raw = json.dumps(
+              payload_projection, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+          ).encode("utf-8")
+          if hashlib.sha256(payload_raw).hexdigest() != inventory["payload_inventory_digest_sha256"]:
+              raise RuntimeError("payload inventory digest drift")
+
+          cap = evidence["capacity_projection"]
+          if cap["current_post_qp_ua_bytes_reference"] != 10632:
+              raise RuntimeError("UA reference drift")
+          if cap["ua_target_bytes"] != 9000000 or cap["pre_gate_ua_gap_bytes"] != 8989368:
+              raise RuntimeError("UA target/gap drift")
+          if cap["qualified_franko_survivor_bytes"] != survivor:
+              raise RuntimeError("qualified Franko bytes drift")
+          if cap["projected_post_qp_ua_bytes"] != 10632 + survivor:
+              raise RuntimeError("projected UA arithmetic drift")
+          if cap["projected_ua_gap_after_decontam_g05_g06"] != max(
+              9000000 - cap["projected_post_qp_ua_bytes"], 0
+          ):
+              raise RuntimeError("projected UA gap arithmetic drift")
+
+          expected_truth = {
+              "global_cross_source_dedup_complete_for_franko": True,
+              "reserved_evaluation_decontamination_complete_for_franko": True,
+              "canonical_quality_privacy_complete_for_franko": True,
+              "balance_diversity_retest_complete": False,
+              "family_caps_complete": False,
+              "cluster_safe_split_complete": False,
+              "deterministic_pack_two_clean_complete": False,
+              "positive_exact_unique_loss_ledger": False,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "foreign_pretrained_weights_used": False,
+          }
+          if evidence["truth_boundary"] != expected_truth:
+              raise RuntimeError("truth boundary drift")
+          expected_content = {
+              "raw_training_text_persisted": False,
+              "raw_evaluation_text_persisted": False,
+              "raw_survivor_text_persisted": False,
+              "durable_output_text_free": True,
+          }
+          if evidence["content_boundary"] != expected_content:
+              raise RuntimeError("content boundary drift")
+
+          forbidden = {"text","raw_text","source_text","normalized_payload","payload_text"}
+          def walk(value):
+              if isinstance(value, dict):
+                  overlap = forbidden.intersection(value)
+                  if overlap:
+                      raise RuntimeError("durable evidence contains raw-text key")
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(evidence)
+
+          evidence_file_sha = hashlib.sha256(a_raw).hexdigest()
+          proof_core = {
+              "schema_version": "12-6.d03-franko1901-decontam-g05-g06-two-clean.v1",
+              "execution_head_sha": os.environ["D03_EXECUTION_SHA"],
+              "parent_execution_head_sha": parent["execution_head_sha"],
+              "parent_survivor_authority_sha256": parent["survivor_authority_sha256"],
+              "parent_two_clean_proof_identity_sha256": parent["two_clean_proof_identity_sha256"],
+              "evidence_file_sha256": evidence_file_sha,
+              "evidence_identity_sha256": evidence["evidence_identity_sha256"],
+              "two_fresh_processes_byte_identical": True,
+              "franko_input_objects": 30636,
+              "franko_pre_gate_payload_bytes": 1760562,
+              "franko_survivor_payload_bytes": survivor,
+              "later_gate_loss_bytes": loss,
+              "projected_post_qp_ua_bytes": cap["projected_post_qp_ua_bytes"],
+              "projected_ua_gap_after_decontam_g05_g06": cap["projected_ua_gap_after_decontam_g05_g06"],
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          proof_raw = json.dumps(proof_core, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          proof = {**proof_core, "proof_identity_sha256": hashlib.sha256(proof_raw).hexdigest()}
+          (tmp / "franko-post-qp-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload text-free Franko post-QP evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-franko-decontam-qp-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/output-a/evidence.json
+            ${{ runner.temp }}/franko-post-qp-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
