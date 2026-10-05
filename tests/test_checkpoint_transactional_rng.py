@@ -141,3 +141,44 @@ def test_transactional_rng_rollback_failure_preserves_primary_interrupt(
         "secondary rollback failure" in note
         for note in getattr(raised.value, "__notes__", ())
     )
+
+def test_transactional_rng_restore_rolls_back_torch_warn_only_policy() -> None:
+    torch = pytest.importorskip("torch")
+    ambient = capture_rng_state()
+    old_policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    try:
+        torch.manual_seed(731)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        before_rng = torch.get_rng_state().clone()
+        target = capture_rng_state()
+        real_restore = restore_rng_state
+
+        def fail_after_policy_drift(state: Mapping[str, Any]) -> dict[str, Any]:
+            if state is target:
+                torch.rand(1)
+                torch.use_deterministic_algorithms(False, warn_only=False)
+                raise RuntimeError("simulated Torch policy drift before restore failure")
+            return real_restore(state)
+
+        with pytest.raises(
+            CheckpointCompatibilityError,
+            match="restored transactionally",
+        ):
+            _transactional_restore(
+                __import__("twelve_six.checkpoint", fromlist=["checkpoint"]),
+                fail_after_policy_drift,
+                target,
+            )
+
+        torch.testing.assert_close(torch.get_rng_state(), before_rng, rtol=0, atol=0)
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(
+            old_policy[0],
+            warn_only=old_policy[1],
+        )
