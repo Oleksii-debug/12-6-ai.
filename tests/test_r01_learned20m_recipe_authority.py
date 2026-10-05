@@ -656,3 +656,64 @@ def test_recipe_cli_valid_terminal_binding_stays_recipe_only(tmp_path: Path) -> 
     assert response["compute_authorized"] is False
     assert response["authorized_optimized_targets"] == 0
     assert response["optimizer_updates_executed"] == 0
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_rejects_oversized_authority_before_decoding(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    tool = _load_tool()
+    oversized = tmp_path / "oversized.json"
+    oversized.write_bytes(b" " * (tool.MAX_AUTHORITY_JSON_BYTES + 1))
+    data = bindings()
+    trusted = trusted_authorities(data)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(data), encoding="utf-8")
+    trusted_path.write_text(json.dumps(trusted), encoding="utf-8")
+    args = ["--policy", str(oversized)] if bad_role == "policy" else [
+        "--bindings",
+        str(oversized if bad_role == "bindings" else bindings_path),
+        "--trusted-authorities",
+        str(oversized if bad_role == "trusted-authorities" else trusted_path),
+        "--expected-trusted-authorities-identity-sha256",
+        identity_sha256(trusted),
+    ]
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), *args],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    label = "trusted-authorities" if bad_role == "trusted-authorities" else bad_role
+    assert f"invalid {label} JSON" in response["error"]
+    assert "JSON input exceeds" in response["error"]
+
+
+def test_recipe_cli_loader_accepts_exact_byte_limit(tmp_path: Path) -> None:
+    tool = _load_tool()
+    policy = load_policy()
+    raw = json.dumps(policy).encode("utf-8")
+    assert len(raw) < tool.MAX_AUTHORITY_JSON_BYTES
+    exact = raw + b" " * (tool.MAX_AUTHORITY_JSON_BYTES - len(raw))
+    path = tmp_path / "exact_limit.json"
+    path.write_bytes(exact)
+    assert tool._load_json(path) == policy
+
+
+def test_recipe_cli_loader_counts_utf8_bytes_not_characters(tmp_path: Path) -> None:
+    tool = _load_tool()
+    payload = b'{"text":"' + "ї".encode("utf-8") * (
+        tool.MAX_AUTHORITY_JSON_BYTES // 2
+    ) + b'"}'
+    assert len(payload) > tool.MAX_AUTHORITY_JSON_BYTES
+    path = tmp_path / "multibyte.json"
+    path.write_bytes(payload)
+    with pytest.raises(ValueError, match="JSON input exceeds"):
+        tool._load_json(path)
