@@ -172,3 +172,54 @@ def test_resealed_invalid_scheduler_epoch_fails_before_both_public_model_loaders
     assert source.train_microbatch(_BATCH).optimizer_stepped
     assert target.train_microbatch(_BATCH).optimizer_stepped
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+
+def test_live_finite_optimizer_lr_drift_refused_before_checkpoint_credit() -> None:
+    source = _source()
+    assert source.scheduler is not None
+    original_lr = source.scheduler.get_last_lr()[0]
+    source.optimizer.param_groups[0]["lr"] = original_lr + 0.01
+    with pytest.raises(
+        RuntimeError, match="scheduler learning rate differs from live optimizer",
+    ):
+        source.state_dict()
+    assert source._failure_reason is not None
+    assert (source.micro_step, source.optimizer_step, source.tokens_seen) == (1, 1, 2)
+
+
+@pytest.mark.parametrize("field", ["optimizer_lr", "scheduler_last_lr"])
+@pytest.mark.parametrize("loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"])
+def test_resealed_finite_lr_inconsistency_rejected_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, loader: Any,
+) -> None:
+    source = _source()
+    payload = asdict(source.state_dict())
+    if field == "optimizer_lr":
+        payload["optimizer"]["param_groups"][0]["lr"] += 0.01
+    else:
+        payload["scheduler"]["_last_lr"][0] += 0.01
+    path = tmp_path / "inconsistent-rate-дані з пробілами"
+    core.save_checkpoint(path, model=source.model, trainer_state=payload, identity=_identity())
+    core.verify_checkpoint(path)
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    model_applied: list[bool] = []
+
+    def fail_if_model_applied(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("invalid rate reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", fail_if_model_applied)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    with pytest.raises(CheckpointCompatibilityError, match="scheduler chronology"):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=False, **extra,
+        )
+    assert not model_applied and not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)

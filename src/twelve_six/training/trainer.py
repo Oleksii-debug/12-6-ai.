@@ -394,6 +394,24 @@ class Trainer:
         self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
         if self.scheduler is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
+            if isinstance(self.scheduler, LambdaLR):
+                observed_lrs = self.scheduler.get_last_lr()
+                groups = self.optimizer.param_groups
+                if (
+                    not isinstance(observed_lrs, list)
+                    or len(observed_lrs) != len(groups)
+                    or any(
+                        not self._exact_export_leaf_equal(
+                            group["lr"], observed_lr,
+                        )
+                        for group, observed_lr in zip(
+                            groups, observed_lrs, strict=True,
+                        )
+                    )
+                ):
+                    raise TrainingStateInvalidError(
+                        "scheduler learning rate differs from live optimizer"
+                    )
             # The canonical LambdaLR advances exactly once per committed
             # optimizer step. Finite live corruption is not an exact-resume
             # chronology, even if state_dict accurately exports that corruption.
@@ -925,7 +943,7 @@ class Trainer:
             raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
 
     def _require_checkpoint_scheduler_chronology(
-        self, scheduler_state: Any, optimizer_step: int,
+        self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
     ) -> None:
         """Validate canonical LambdaLR progress before checkpoint state applies.
 
@@ -943,6 +961,25 @@ class Trainer:
         ):
             raise ValueError(
                 "checkpoint scheduler chronology differs from optimizer step"
+            )
+        last_lrs = scheduler_state.get("_last_lr")
+        groups = (
+            optimizer_state.get("param_groups")
+            if isinstance(optimizer_state, Mapping) else None
+        )
+        if (
+            not isinstance(last_lrs, list)
+            or not isinstance(groups, list)
+            or len(last_lrs) != len(groups)
+            or any(
+                not isinstance(group, Mapping)
+                or "lr" not in group
+                or not self._exact_export_leaf_equal(group["lr"], last_lr)
+                for group, last_lr in zip(groups, last_lrs, strict=True)
+            )
+        ):
+            raise ValueError(
+                "checkpoint scheduler learning rate differs from optimizer"
             )
 
     def _require_exported_scaler_matches_live(self, exported: Any) -> None:
@@ -1114,7 +1151,7 @@ class Trainer:
         if (state.scheduler is None) != (self.scheduler is None):
             raise ValueError("scheduler state/config mismatch")
         self._require_checkpoint_scheduler_chronology(
-            state.scheduler, state.optimizer_step,
+            state.scheduler, state.optimizer_step, state.optimizer,
         )
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")

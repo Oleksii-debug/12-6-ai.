@@ -473,7 +473,10 @@ def _preflight_trainer_state_without_rng_guard(
     chronology_check = getattr(trainer, "_require_checkpoint_scheduler_chronology", None)
     if canonical_d02 and callable(chronology_check):
         try:
-            chronology_check(state.get("scheduler"), state["optimizer_step"])
+            chronology_check(
+                state.get("scheduler"), state["optimizer_step"],
+                state.get("optimizer"),
+            )
         except (ValueError, TypeError) as exc:
             raise CheckpointCompatibilityError(
                 "checkpoint trainer scheduler chronology mismatch"
