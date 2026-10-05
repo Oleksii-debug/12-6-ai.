@@ -31,7 +31,7 @@ CONFIGS = {
 EXPECTED = {
     "pydantic": {
         "repository": "pydantic/pydantic",
-        "commit": "cf67d4b3193cfe43ede18612ed62785eee11382",
+        "commit": "cf67d4b3193c3fe43ede18612ed62785eee11382",
         "family": "github:pydantic/pydantic",
         "license": ("LICENSE", "488c6260c10f2e88fa1fae58a63fccec8d600cd1", "MIT"),
         "files": (
