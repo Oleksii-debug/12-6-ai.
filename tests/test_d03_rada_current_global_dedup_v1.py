@@ -340,6 +340,53 @@ def test_terminal_summary_rejects_bool_alias_and_bad_arithmetic(
         mod._validated_terminal_summary(changed)
 
 
+def test_survivor_projection_rejects_count_and_cluster_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mod = _load()
+    monkeypatch.setattr(mod, "EXPECTED_COMBINED_OBJECTS", 2)
+    monkeypatch.setattr(mod, "EXPECTED_COMBINED_BYTES", 15)
+    report = {
+        "report_sha256": "1" * 64,
+        "source_count": 2,
+        "terminal_candidates": {
+            "declared_capacity_bytes_before": 15,
+            "conservative_unique_capacity_bytes_after": 15,
+            "duplicate_discount_bytes": 0,
+            "duplicate_cluster_count": 0,
+        },
+    }
+    core = {
+        "schema_version": mod.v9_semantics.SURVIVOR_SCHEMA,
+        "matcher_report_sha256": "1" * 64,
+        "pre_dedup_source_object_count": 2,
+        "post_dedup_survivor_source_object_count": 2,
+        "pre_dedup_declared_capacity_bytes": 15,
+        "post_dedup_declared_capacity_bytes": 15,
+        "duplicate_discount_bytes": 0,
+        "duplicate_cluster_count": 0,
+        "duplicate_clusters": [],
+        "survivor_source_ids": ["base:a", "rada:a"],
+    }
+
+    for field, bad, message in (
+        ("post_dedup_survivor_source_object_count", True, "object count drift"),
+        ("duplicate_cluster_count", False, "cluster count drift"),
+    ):
+        changed = deepcopy(core)
+        changed[field] = bad
+        changed["survivor_authority_sha256"] = mod._sha256(
+            mod._canonical(changed)
+        )
+        unhashed = dict(changed)
+        unhashed.pop("survivor_authority_sha256")
+        changed["survivor_authority_sha256"] = mod._sha256(
+            mod._canonical(unhashed)
+        )
+        with pytest.raises(mod.RadaCurrentGlobalDedupError, match=message):
+            mod._validate_survivor_projection(report, changed)
+
+
 def test_outer_survivor_authority_keeps_rights_and_training_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
