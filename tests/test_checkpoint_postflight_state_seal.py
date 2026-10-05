@@ -400,6 +400,62 @@ def test_post_rng_exact_seal_does_not_reenter_effectful_tensor_comparator(
     "mutation",
     ["model", "optimizer", "gradient", "policy"],
 )
+def test_final_save_rng_restore_cannot_hide_exact_state_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    target = _source()
+    checkpoint = tmp_path / f"final-save-rng-{mutation}-дані з пробілами"
+    original_restore = core._restore_checkpoint_save_rng
+    restore_calls = 0
+
+    def restore_then_mutate(*args: Any, **kwargs: Any) -> None:
+        nonlocal restore_calls
+        original_restore(*args, **kwargs)
+        restore_calls += 1
+        if mutation == "model":
+            with torch.no_grad():
+                target.model.weight.add_(0.25)
+        elif mutation == "optimizer":
+            target.optimizer.param_groups[0]["lr"] *= 0.5
+        elif mutation == "gradient":
+            target.model.weight.grad = torch.full_like(target.model.weight, 0.25)
+        else:
+            torch.use_deterministic_algorithms(
+                torch.are_deterministic_algorithms_enabled(),
+                warn_only=not torch.is_deterministic_algorithms_warn_only_enabled(),
+            )
+
+    monkeypatch.setattr(core, "_restore_checkpoint_save_rng", restore_then_mutate)
+    expected = (
+        "auxiliary state changed during final checkpoint publication seal"
+        if mutation == "optimizer"
+        else (
+            "live torch deterministic policy disagrees"
+            if mutation == "policy"
+            else "model changed during final checkpoint publication seal"
+        )
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=expected):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            identity=_identity(),
+        )
+
+    assert restore_calls == 1
+    assert not checkpoint.exists()
+    assert vars(target)["_failure_reason"] == "checkpoint_export_state_drift"
+    assert vars(target)["_update_incomplete"] is True
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["model", "optimizer", "gradient", "policy"],
+)
 def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
