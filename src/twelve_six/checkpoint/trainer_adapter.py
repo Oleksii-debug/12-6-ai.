@@ -265,6 +265,18 @@ def _is_canonical_d02_trainer(trainer: Any) -> bool:
     )
 
 
+def _is_native_d02_trainer(trainer: Any) -> bool:
+    """Distinguish the real D02 Trainer lineage from marker-only adapters."""
+
+    if not _is_canonical_d02_trainer(trainer):
+        return False
+    return any(
+        base.__module__ == "twelve_six.training.trainer"
+        and base.__name__ == "Trainer"
+        for base in type(trainer).__mro__
+    )
+
+
 def _snapshot_trainer_restore_bindings(
     trainer: Any,
 ) -> tuple[bool, dict[str, Any]]:
@@ -379,21 +391,22 @@ def _preflight_trainer_target(trainer: Any) -> None:
     # counters, scheduler/scaler or gradients may already have been changed.
     # An incompatible canonical object must therefore expose them before D05
     # opens the application region.
-    for authority, label in (
-        ("_require_finite_auxiliary_state", "auxiliary-state"),
-        ("_require_safe_optimizer_hyperparameters", "optimizer-hyperparameter"),
-        ("_require_finite_committed_update", "committed-update"),
-        ("_require_no_residual_model_gradients", "gradient-cleanliness"),
-        ("_require_deterministic_policy", "deterministic-policy"),
-        ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
-        ("_require_exported_optimizer_matches_live", "optimizer-postload"),
-        ("_require_exported_scheduler_matches_live", "scheduler-postload"),
-        ("_require_exported_scaler_matches_live", "scaler-postload"),
-    ):
-        if not callable(getattr(trainer, authority, None)):
-            raise CheckpointCompatibilityError(
-                f"canonical trainer {label} authority unavailable"
-            )
+    if _is_native_d02_trainer(trainer):
+        for authority, label in (
+            ("_require_finite_auxiliary_state", "auxiliary-state"),
+            ("_require_safe_optimizer_hyperparameters", "optimizer-hyperparameter"),
+            ("_require_finite_committed_update", "committed-update"),
+            ("_require_no_residual_model_gradients", "gradient-cleanliness"),
+            ("_require_deterministic_policy", "deterministic-policy"),
+            ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
+            ("_require_exported_optimizer_matches_live", "optimizer-postload"),
+            ("_require_exported_scheduler_matches_live", "scheduler-postload"),
+            ("_require_exported_scaler_matches_live", "scaler-postload"),
+        ):
+            if not callable(getattr(trainer, authority, None)):
+                raise CheckpointCompatibilityError(
+                    f"canonical trainer {label} authority unavailable"
+                )
     # Global deterministic mode is a pure target compatibility precondition.
     # Reject drift before opening a model-scale checkpoint in either loader.
     _assert_live_d02_determinism(trainer)
@@ -487,7 +500,7 @@ def _postflight_trainer_state(trainer: Any, state: Any) -> None:
     state or invoke another effectful serializer.
     """
 
-    if not _is_canonical_d02_trainer(trainer):
+    if not _is_native_d02_trainer(trainer):
         return
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
@@ -585,6 +598,7 @@ def _preflight_trainer_state_without_rng_guard(
     # during the real load. Extra keys therefore fail only at that final call unless
     # the adapter mirrors the exact schema now, before model/RNG mutation.
     canonical_d02 = _is_canonical_d02_trainer(trainer)
+    native_d02 = _is_native_d02_trainer(trainer)
     if canonical_d02:
         actual_fields = set(state)
         if actual_fields != _CANONICAL_TRAINER_STATE_FIELDS:
@@ -670,7 +684,7 @@ def _preflight_trainer_state_without_rng_guard(
     # loading them. Reject poisoned tensor leaves here, while the live model,
     # optimizer, counters and RNG are still untouched. Use D02's own recursive
     # numerical contract rather than introducing a different finiteness policy.
-    if canonical_d02:
+    if native_d02:
         require_finite = getattr(trainer, "_require_finite_state_tree", None)
         if not callable(require_finite):
             raise CheckpointCompatibilityError(
@@ -689,7 +703,7 @@ def _preflight_trainer_state_without_rng_guard(
     safe_optimizer_check = getattr(
         trainer, "_require_safe_optimizer_hyperparameters", None
     )
-    if canonical_d02:
+    if native_d02:
         if not callable(safe_optimizer_check):
             raise CheckpointCompatibilityError(
                 "canonical trainer optimizer-hyperparameter authority unavailable"
@@ -705,7 +719,7 @@ def _preflight_trainer_state_without_rng_guard(
     # BEFORE either D05 public loader can apply model weights or restore RNG.
     # Generic third-party trainer adapters retain their original semantics.
     chronology_check = getattr(trainer, "_require_checkpoint_scheduler_chronology", None)
-    if canonical_d02:
+    if native_d02:
         if not callable(chronology_check):
             raise CheckpointCompatibilityError(
                 "canonical trainer scheduler authority unavailable"
@@ -721,7 +735,7 @@ def _preflight_trainer_state_without_rng_guard(
 
     # Native GradScaler accepts finite but invalid statistics in a detached
     # load probe. Mirror D02's single authority before model/RNG application.
-    if canonical_d02:
+    if native_d02:
         scaler_check = getattr(trainer, "_require_checkpoint_scaler_state", None)
         if not callable(scaler_check):
             raise CheckpointCompatibilityError(
@@ -750,7 +764,7 @@ def _preflight_trainer_state_without_rng_guard(
     # D02's authoritative names bind serialized optimizer slots to live
     # parameters before model weights or optimizer moments can be applied.
     order_check = getattr(trainer, "_require_optimizer_state_parameter_order", None)
-    if canonical_d02 and not callable(order_check):
+    if native_d02 and not callable(order_check):
         raise CheckpointCompatibilityError(
             "canonical trainer optimizer-order authority unavailable"
         )
