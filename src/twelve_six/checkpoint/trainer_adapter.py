@@ -934,6 +934,29 @@ def _assert_native_d02_postload_snapshot(trainer: Any, state: Any) -> None:
         )
 
 
+def _assert_native_d02_inert_determinism(trainer: Any) -> None:
+    """Verify native D02 torch policy without dispatching trainer safety hooks."""
+
+    if not _is_native_d02(trainer):
+        return
+    attrs = vars(trainer)
+    config_state = _snapshot_native_d02_config(attrs.get("config"))
+    enabled = config_state.get("deterministic_algorithms")
+    warn_only = config_state.get("deterministic_warn_only")
+    if type(enabled) is not bool or type(warn_only) is not bool:
+        raise CheckpointCompatibilityError(
+            "native D02 deterministic policy configuration is invalid"
+        )
+    torch = importlib.import_module("torch")
+    if (
+        torch.are_deterministic_algorithms_enabled() != enabled
+        or torch.is_deterministic_algorithms_warn_only_enabled() != warn_only
+    ):
+        raise CheckpointCompatibilityError(
+            "live torch deterministic policy disagrees with canonical trainer configuration"
+        )
+
+
 def _assert_native_d02_inert_live_state(
     trainer: Any,
     state: Any,
@@ -958,6 +981,7 @@ def _assert_native_d02_inert_live_state(
             "native D02 inert exact-state authority is unavailable"
         )
     _assert_native_d02_postload_snapshot(trainer, state)
+    _assert_native_d02_inert_determinism(trainer)
     if model_fingerprint() != sealed_model_fingerprint:
         raise CheckpointCompatibilityError(
             f"canonical trainer model changed during {phase}"
@@ -966,6 +990,7 @@ def _assert_native_d02_inert_live_state(
         raise CheckpointCompatibilityError(
             f"canonical trainer auxiliary state changed during {phase}"
         )
+    _assert_native_d02_inert_determinism(trainer)
     _assert_native_d02_postload_snapshot(trainer, state)
 
 
