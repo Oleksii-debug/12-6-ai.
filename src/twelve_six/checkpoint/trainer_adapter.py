@@ -1024,8 +1024,17 @@ def load_trainer_checkpoint(
         expected_environment_lock_hash=expected_environment_lock_hash,
         expected_seed=expected_seed,
     )
-    _assert_trainer_model_binding(model, trainer)
-    _preflight_trainer_target(trainer)
+    preio_ambient = capture_rng_state()
+    preio_policy = _snapshot_torch_policy(preio_ambient)
+    try:
+        _assert_trainer_model_binding(model, trainer)
+        _preflight_trainer_target(trainer)
+    finally:
+        _restore_preapply_process_state(
+            preio_ambient,
+            preio_policy,
+            trainer,
+        )
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
     _assert_bound_metadata(
