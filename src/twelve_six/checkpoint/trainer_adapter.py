@@ -458,20 +458,27 @@ def _preflight_trainer_state_without_rng_guard(
     # numerical contract rather than introducing a different finiteness policy.
     if canonical_d02:
         require_finite = getattr(trainer, "_require_finite_state_tree", None)
-        if callable(require_finite):
-            for field in ("optimizer", "scheduler", "scaler"):
-                try:
-                    require_finite(state.get(field), f"checkpoint {field}")
-                except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
-                    raise CheckpointCompatibilityError(
-                        f"checkpoint trainer {field} has non-finite or invalid numeric state"
-                    ) from exc
+        if not callable(require_finite):
+            raise CheckpointCompatibilityError(
+                "canonical trainer numeric-state authority unavailable"
+            )
+        for field in ("optimizer", "scheduler", "scaler"):
+            try:
+                require_finite(state.get(field), f"checkpoint {field}")
+            except (ArithmeticError, RuntimeError, TypeError, ValueError) as exc:
+                raise CheckpointCompatibilityError(
+                    f"checkpoint trainer {field} has non-finite or invalid numeric state"
+                ) from exc
 
     # Shared D02 authority must reject finite but forged scheduler state
     # BEFORE either D05 public loader can apply model weights or restore RNG.
     # Generic third-party trainer adapters retain their original semantics.
     chronology_check = getattr(trainer, "_require_checkpoint_scheduler_chronology", None)
-    if canonical_d02 and callable(chronology_check):
+    if canonical_d02:
+        if not callable(chronology_check):
+            raise CheckpointCompatibilityError(
+                "canonical trainer scheduler authority unavailable"
+            )
         try:
             chronology_check(
                 state.get("scheduler"), state["optimizer_step"], state.get("optimizer"),
@@ -485,13 +492,16 @@ def _preflight_trainer_state_without_rng_guard(
     # load probe. Mirror D02's single authority before model/RNG application.
     if canonical_d02:
         scaler_check = getattr(trainer, "_require_checkpoint_scaler_state", None)
-        if callable(scaler_check):
-            try:
-                scaler_check(state.get("scaler"))
-            except (ArithmeticError, ValueError, TypeError, RuntimeError) as exc:
-                raise CheckpointCompatibilityError(
-                    "checkpoint trainer scaler statistics invalid"
-                ) from exc
+        if not callable(scaler_check):
+            raise CheckpointCompatibilityError(
+                "canonical trainer scaler authority unavailable"
+            )
+        try:
+            scaler_check(state.get("scaler"))
+        except (ArithmeticError, ValueError, TypeError, RuntimeError) as exc:
+            raise CheckpointCompatibilityError(
+                "checkpoint trainer scaler statistics invalid"
+            ) from exc
 
     optimizer = getattr(trainer, "optimizer", None)
     if optimizer is None:
@@ -509,6 +519,10 @@ def _preflight_trainer_state_without_rng_guard(
     # D02's authoritative names bind serialized optimizer slots to live
     # parameters before model weights or optimizer moments can be applied.
     order_check = getattr(trainer, "_require_optimizer_state_parameter_order", None)
+    if canonical_d02 and not callable(order_check):
+        raise CheckpointCompatibilityError(
+            "canonical trainer optimizer-order authority unavailable"
+        )
     if callable(order_check):
         try:
             order_check(state.get("optimizer"))
