@@ -157,3 +157,67 @@ def test_preflight_rng_and_policy_double_fault_recovers_mode(
     finally:
         original_restore(ambient)
         original_use(before_enabled, warn_only=before_warn_only)
+
+@pytest.mark.parametrize("interruption", [OSError, KeyboardInterrupt, SystemExit])
+def test_outer_preapply_rng_rollback_failure_poison_and_recovers(
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+) -> None:
+    ambient = core.capture_rng_state()
+    before_enabled = torch.are_deterministic_algorithms_enabled()
+    before_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    original_restore = core.restore_rng_state
+    original_use = torch.use_deterministic_algorithms
+    target = _FreshTarget()
+    primary = interruption("outer preapply RNG rollback interrupted")
+    attempts = 0
+    try:
+        random.random()
+        np.random.random_sample()
+        torch.rand(())
+        drifted = core.capture_rng_state()
+
+        def fail_first_restore(state: Any) -> Any:
+            nonlocal attempts
+            attempts += 1
+            result = original_restore(state)
+            if attempts == 1:
+                raise primary
+            return result
+
+        with monkeypatch.context() as patch:
+            patch.setattr(trainer_adapter._core, "restore_rng_state", fail_first_restore)
+            with pytest.raises(interruption, match="outer preapply RNG") as got:
+                trainer_adapter._restore_preapply_process_state(
+                    ambient,
+                    (before_enabled, before_warn_only),
+                    target,
+                )
+
+        assert got.value is primary
+        assert attempts >= 2
+        assert target._failure_reason == "checkpoint_preapply_rng_rollback_failed"
+        assert target._update_incomplete is True
+        assert random.getstate() == ambient["python"]
+        np_after = np.random.get_state()
+        np_before = ambient["numpy"]
+        assert np_after[0] == np_before[0]
+        np.testing.assert_array_equal(np_after[1], np_before[1])
+        assert np_after[2:] == np_before[2:]
+        torch_state = ambient["torch"]
+        assert torch_state is not None
+        torch.testing.assert_close(
+            torch.get_rng_state(),
+            torch_state["cpu"],
+            rtol=0,
+            atol=0,
+        )
+        assert (
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        ) == (before_enabled, before_warn_only)
+        assert drifted != ambient
+    finally:
+        original_restore(ambient)
+        original_use(before_enabled, warn_only=before_warn_only)
+
