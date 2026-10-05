@@ -705,6 +705,86 @@ def test_late_trainer_state_drift_fails_before_model_apply(
 
 
 @pytest.mark.parametrize(
+    ("drift", "error"),
+    [
+        ("micro-step", "fresh trainer with no consumed exposure"),
+        ("pending-tokens", "fresh trainer with no consumed exposure"),
+        ("gradient", "fresh trainer with no pending gradients"),
+        ("policy", "live torch deterministic policy disagrees"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_target_freshness_drift_fails_before_model_and_rng(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    drift: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-target-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+
+    def prepare_then_drift(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        if drift == "micro-step":
+            target.micro_step = 1
+        elif drift == "pending-tokens":
+            target._pending_tokens = 1
+        elif drift == "gradient":
+            target.model.weight.grad = torch.ones_like(target.model.weight)
+        elif drift == "policy":
+            torch.use_deterministic_algorithms(
+                not target.config.deterministic_algorithms,
+                warn_only=target.config.deterministic_warn_only,
+            )
+        else:
+            raise AssertionError(f"unknown target drift fixture: {drift}")
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("late target freshness drift reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_drift)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer],
     ids=["adapter", "progress"],
 )
