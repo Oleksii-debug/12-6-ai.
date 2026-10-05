@@ -103,24 +103,18 @@ class _MetaclassAdamW(torch.optim.AdamW, metaclass=_TypeIdentityMeta):
 
 
 class _ArmedSchedulerDictLambdaLR(torch.optim.lr_scheduler.LambdaLR):
+    armed = False
+    fake_dict: dict[str, Any] = {}
     dict_reads: list[str] = []
-
-    def __init__(self, optimizer: torch.optim.Optimizer) -> None:
-        super().__init__(optimizer, lr_lambda=lambda _: 1.0)
-        raw = torch.optim.lr_scheduler.LRScheduler.__dict__["__dict__"].__get__(
-            self,
-            type(self),
-        )
-        raw["_dict_spoof_armed"] = False
 
     @property
     def __dict__(self) -> dict[str, Any]:
         descriptor = torch.optim.lr_scheduler.LRScheduler.__dict__["__dict__"]
         real = descriptor.__get__(self, type(self))
-        if not real.get("_dict_spoof_armed", False):
+        if not type(self).armed:
             return real
         type(self).dict_reads.append("__dict__")
-        return real["_fake_dict"]
+        return type(self).fake_dict
 
 
 class _ArmedOptimizerViewAdamW(torch.optim.AdamW):
@@ -259,6 +253,8 @@ def test_optimizer_hyperparameters_ignore_forged_param_groups_view() -> None:
 
 
 def test_exported_scheduler_validation_ignores_forged_dict_view() -> None:
+    _ArmedSchedulerDictLambdaLR.armed = False
+    _ArmedSchedulerDictLambdaLR.fake_dict = {}
     _ArmedSchedulerDictLambdaLR.dict_reads.clear()
     model = _TwoParameters()
     optimizer = torch.optim.AdamW(
@@ -278,9 +274,9 @@ def test_exported_scheduler_validation_ignores_forged_dict_view() -> None:
         scheduler,
         type(scheduler),
     )
-    raw["_fake_dict"] = dict(raw)
+    _ArmedSchedulerDictLambdaLR.fake_dict = dict(raw)
     raw["last_epoch"] = int(raw["last_epoch"]) + 1
-    raw["_dict_spoof_armed"] = True
+    _ArmedSchedulerDictLambdaLR.armed = True
 
     with pytest.raises(
         TrainingStateInvalidError,
