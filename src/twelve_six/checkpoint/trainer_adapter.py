@@ -346,6 +346,19 @@ def _preflight_trainer_target(trainer: Any) -> None:
     config = initial_attrs.get("config")
     scheduler = initial_attrs.get("scheduler")
     scaler = initial_attrs.get("scaler")
+    # These small constructor-owned fields change how direct D02 validates a
+    # checkpoint before component mutation. Preserve their values across all
+    # effectful target inspection so D05 and the later bound D02 loader cannot
+    # disagree about the canonical optimizer/scheduler contract.
+    restore_policy = {
+        name: copy.deepcopy(initial_attrs[name])
+        for name in (
+            "_canonical_default_schedule",
+            "_canonical_unscheduled_default_optimizer",
+            "_canonical_default_optimizer_options",
+        )
+        if name in initial_attrs
+    }
 
     # Bind every effectful authority/interface lookup before the final
     # freshness snapshot. Descriptor/proxy lookup itself may execute user code;
@@ -446,6 +459,11 @@ def _preflight_trainer_target(trainer: Any) -> None:
         ("scaler", scaler),
     ):
         if live_attrs.get(name) is not expected:
+            raise CheckpointCompatibilityError(
+                f"checkpoint restore target {name} changed during preflight"
+            )
+    for name, expected in restore_policy.items():
+        if name not in live_attrs or not _typed_config_equal(live_attrs[name], expected):
             raise CheckpointCompatibilityError(
                 f"checkpoint restore target {name} changed during preflight"
             )
