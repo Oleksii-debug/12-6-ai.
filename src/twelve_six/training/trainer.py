@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import math
 import random
+import struct
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
@@ -173,6 +174,11 @@ class Trainer:
         self._require_optimizer_parameter_coverage()
         self.scheduler = (
             scheduler if scheduler is not None else build_scheduler(self.optimizer, config)
+        )
+        # Only the unmodified first-party optimizer/scheduler pair has a
+        # configuration-derived rate oracle. Do not call arbitrary callbacks.
+        self._canonical_default_schedule = (
+            optimizer is None and scheduler is None and type(self.scheduler) is LambdaLR
         )
         self.scaler = self._build_scaler()
 
@@ -414,6 +420,10 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "scheduler chronology differs from committed optimizer step"
                 )
+            self._require_default_schedule_rates(
+                vars(self.scheduler), self.optimizer_step,
+                {"param_groups": self.optimizer.param_groups},
+            )
 
     def _build_scaler(self):
         enabled = self.config.precision == "fp16" and self.device.type == "cuda"
@@ -931,6 +941,59 @@ class Trainer:
         if any(type(k) is not int for k in saved_state) or set(saved_state) != present:
             raise TrainingStateInvalidError("optimizer export contains noncanonical state IDs")
 
+    def _require_default_schedule_rates(
+        self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
+    ) -> None:
+        """Bind default LambdaLR rates to immutable config and committed step.
+
+        A pair of forged finite optimizer/scheduler rates can agree with each
+        other while changing the next update. Only the first-party optimizer
+        and its first-party LambdaLR have a safe configuration-derived oracle.
+        Injected optimizers/schedulers retain their existing authority.
+        """
+        if not self._canonical_default_schedule:
+            return
+        groups = (
+            optimizer_state.get("param_groups")
+            if isinstance(optimizer_state, Mapping) else None
+        )
+        if (
+            not isinstance(scheduler_state, Mapping)
+            or not isinstance(groups, list)
+            or not isinstance(scheduler_state.get("base_lrs"), list)
+            or not isinstance(scheduler_state.get("_last_lr"), list)
+            or type(optimizer_step) is not int
+            or optimizer_step < 0
+            or len(groups) != len(scheduler_state["base_lrs"])
+            or len(groups) != len(scheduler_state["_last_lr"])
+        ):
+            raise TrainingStateInvalidError("default scheduler rate authority is malformed")
+        base = self.config.learning_rate
+        rate = base * _lr_lambda(self.config)(optimizer_step)
+
+        def bits_equal(actual: Any, expected: Any) -> bool:
+            return (
+                isinstance(actual, (int, float))
+                and not isinstance(actual, bool)
+                and math.isfinite(actual)
+                and struct.pack("!d", float(actual)) == struct.pack("!d", float(expected))
+            )
+
+        for group, base_rate, last_rate in zip(
+            groups, scheduler_state["base_lrs"], scheduler_state["_last_lr"],
+            strict=True,
+        ):
+            if (
+                not isinstance(group, Mapping)
+                or not bits_equal(group.get("initial_lr"), base)
+                or not bits_equal(base_rate, base)
+                or not bits_equal(group.get("lr"), rate)
+                or not bits_equal(last_rate, rate)
+            ):
+                raise TrainingStateInvalidError(
+                    "default scheduler rate differs from configured committed schedule"
+                )
+
     def _require_exported_scaler_matches_live(self, exported: Any) -> None:
         """Refuse finite, detached GradScaler statistics that cannot replay."""
         scaler = self.scaler
@@ -1138,6 +1201,9 @@ class Trainer:
                 raise ValueError(
                     "checkpoint scheduler last LR differs from checkpoint optimizer"
                 )
+        self._require_default_schedule_rates(
+            state.scheduler, state.optimizer_step, state.optimizer,
+        )
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
         if self.scaler.is_enabled():
