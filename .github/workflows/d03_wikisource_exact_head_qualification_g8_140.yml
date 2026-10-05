@@ -1,0 +1,79 @@
+name: D03 Wikisource exact-head qualification
+
+on:
+  pull_request:
+    branches:
+      - repair/2728-wikisource-ruff-self-g8-140-20261005
+    paths:
+      - ".github/workflows/d03_wikisource_exact_head_qualification_g8_140.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-wikisource-exact-head-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  full-static-and-tests:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2793-wikisource-focused-qualification-g8-140-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PARENT_HEAD: 774dcfdad408cf7f9d924a69edf516547fc98560
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Checkout exact child head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+          cache: pip
+
+      - name: Bind exact parent-relative closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          test "$(git diff --name-only "$PARENT_HEAD"..HEAD)" =             ".github/workflows/d03_wikisource_exact_head_qualification_g8_140.yml"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test "$(git hash-object src/twelve_six/data/wikisource_pd_api.py)" =             "32a1a05c6cd3c1583e05f0cf90199ceca210c6e9"
+          test "$(git hash-object src/twelve_six/data/wikisource_pd_contract.py)" =             "d7dead27e30b2716c77e05adbddf0c0638177ad3"
+          test "$(git hash-object src/twelve_six/data/wikisource_pd_edition.py)" =             "cdc4d5e004ee93d2f2c8a414d4f43b19ca8f6ea2"
+          test "$(git hash-object tools/materialize_d03_wikisource_lesia1892.py)" =             "f3d70bd9e16f11a0955a57c9eb677444474a6312"
+
+      - name: Install exact project test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check -e '.[dev]'
+
+      - name: Run shared static gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check src tests
+
+      - name: Run complete test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q
+
+      - name: Re-run focused Wikisource regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_wikisource_pd_edition.py
+          python -m py_compile             src/twelve_six/data/wikisource_pd_api.py             src/twelve_six/data/wikisource_pd_contract.py             src/twelve_six/data/wikisource_pd_edition.py             tools/materialize_d03_wikisource_lesia1892.py
