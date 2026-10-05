@@ -713,7 +713,7 @@ def test_rejects_overlong_integer_literal_without_traceback(tmp_path: Path) -> N
     path = tmp_path / "overlong-integer.json"
     path.write_text(raw.replace(marker, replacement, 1), encoding="utf-8")
     with pytest.raises(
-        CapacityReportError, match="integer exceeds limit|invalid capacity report JSON"
+        CapacityReportError, match="integer token exceeds bounded limit"
     ):
         load_and_validate(path)
 
