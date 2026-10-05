@@ -1102,6 +1102,26 @@ class Trainer:
             raise ValueError(
                 "checkpoint scheduler chronology differs from committed optimizer step"
             )
+        if type(self.scheduler) is LambdaLR:
+            saved_groups = (
+                state.optimizer.get("param_groups")
+                if isinstance(state.optimizer, Mapping) else None
+            )
+            last_rates = state.scheduler.get("_last_lr")
+            if (
+                not isinstance(saved_groups, list)
+                or not isinstance(last_rates, list)
+                or len(saved_groups) != len(last_rates)
+                or any(
+                    not isinstance(group, Mapping)
+                    or "lr" not in group
+                    or not self._exact_export_leaf_equal(rate, group["lr"])
+                    for rate, group in zip(last_rates, saved_groups, strict=True)
+                )
+            ):
+                raise ValueError(
+                    "checkpoint scheduler last LR differs from checkpoint optimizer"
+                )
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
         if (
