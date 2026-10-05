@@ -1,0 +1,189 @@
+{
+  "schema": "12-6.checkpoint346-model341-current-d05-qualification-evidence.v3",
+  "source": {
+    "qualification_pr": 2805,
+    "qualification_head": "93533eedf1a6e0a8e9e1140ca29aadf1ca518384",
+    "workflow_run_id": 37379693467,
+    "workflow_run_conclusion": "cancelled_after_dedicated_job_success",
+    "workflow_job_id": 111998164742,
+    "workflow_job_name": "checkpoint346-current-d05-model341-structural-v2",
+    "workflow_job_conclusion": "success",
+    "artifact_id": 11373766112,
+    "artifact_name": "checkpoint346-current-d05-model341-v7-structural-v2",
+    "artifact_zip_sha256": "c0550f8e1404d8fba0c2e67c8fbb86d893f3785bb95d9a3092646501e63a6d44",
+    "artifact_created_at": "2026-10-05T22:01:52Z",
+    "artifact_expires_at": "2026-11-04T22:01:51Z",
+    "result_identity_sha256": "40e0e94c10a5b9cbd452b37234fa170b5e40401ce534b59ed290cc14bbc2e6d7",
+    "environment_identity_sha256": "9e1cfb549bdb19e3a0bfbf3fe9a2b8a7473e49d00bb629dde1e0266cfa0eacb6",
+    "supersedes_run": 37379084398,
+    "supersedes_reason": "Retains full captured RNG-state comparison but replaces the V7 ambiguous nested-container structural hash with length-prefixed structural-v2 and executes explicit collision vectors plus contradictory-PASS fail-closed checks."
+  },
+  "runtime": {
+    "product_pr": 2778,
+    "git_sha": "d13004de780759c88fe7e0039b2d0e8fd0b3b5c7",
+    "model_blob_sha": "c3879fe0ba9193d5a8176c284e1942f058ef7885",
+    "trainer_blob_sha": "866ddd80eeebe642a2c68d0b3025fc7432927d2a",
+    "checkpoint_core_blob_sha": "e28491467e1756446234ca746274b802ae6e7dd4",
+    "trainer_adapter_blob_sha": "ed8a56fe3ac8b944075f0c975e5c1edb734a57e5",
+    "progress_trainer_blob_sha": "81f19519f7a3a82bd1f8bfcd6bbf570794b12e82",
+    "public_save_api": "save_trainer_checkpoint",
+    "public_restore_api": "load_trainer_checkpoint"
+  },
+  "model341": {
+    "carrier_pr": 802,
+    "carrier_git_sha": "f151c77a8ef8721f0f568509147b1a5f961ae6c7",
+    "candidate_blob_sha": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "parameter_count": 20613440,
+    "canonical_base": "random_init"
+  },
+  "verdict": "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS",
+  "execution": {
+    "local_free": true,
+    "synthetic_mechanics_only": true,
+    "device": "cpu",
+    "precision": "fp32",
+    "optimizer_updates_total": 3,
+    "parent_updates": 2,
+    "fresh_process_resumed_updates": 1,
+    "fresh_process_distinct": true,
+    "same_next_step_equal": true,
+    "binding_mismatch_failed_closed": true,
+    "binding_mismatch_retry_same_target": true,
+    "exact_checkpoint_id_bound": true,
+    "exact_manifest_sha256_bound": true,
+    "exact_full_rng_state_equal": true,
+    "full_rng_state_sha256": "1477812827e09bc759e56f909decc7934c05d2131f031c5b6015df7055b42827",
+    "state_hash_scheme": "sha256:length-prefixed-structural-v2",
+    "structural_hash_self_test": true,
+    "collision_vectors_rejected": [
+      "[[],[]] != [[[]]]",
+      "((),()) != (((),),)",
+      "[(),[]] != [([],)]"
+    ],
+    "contradictory_pass_reports_rejected": [
+      "same_next_step_equal=false",
+      "resumed RNG-state hash mismatch"
+    ],
+    "rng_scope_restored": {
+      "python": true,
+      "numpy": true,
+      "torch_cpu": true
+    }
+  },
+  "same_next_step": {
+    "loss": 2.29952073097229,
+    "update_loss": 2.29952073097229,
+    "optimizer_step": 2,
+    "micro_step": 2,
+    "tokens_seen": 2,
+    "model_state_sha256": "2a0d718d4fabb75dc5b9b8aa68bac9b7a203d2266dfefd32718e0d655aed9134",
+    "optimizer_state_sha256": "10d1766ad4c278e17e75f8eedac56b18c5a5b24631fd85d5295d165534c67a96",
+    "trainer_state_sha256": "878e7908a74cf8b75cb06a75dd954db45732c7c8d775d7be27b791dfb43f16c3",
+    "rng_state_sha256": "1477812827e09bc759e56f909decc7934c05d2131f031c5b6015df7055b42827"
+  },
+  "checkpoint": {
+    "checkpoint_id": "f7cc09f76fa743d7b80d333eb1a8badb721024b080ea1bfdfe065f23faed6019",
+    "manifest_sha256": "1191d549c882b32547e23f38c7b958a0899a42b68f4e6d901e947348f0189f29",
+    "total_bytes": 247810234,
+    "files": {
+      "MANIFEST.sha256": {
+        "bytes": 80,
+        "sha256": "2f92c199dfd02714126603f4dd65e4876a383424588996576c7955481d3bf84b"
+      },
+      "manifest.json": {
+        "bytes": 2645,
+        "sha256": "1191d549c882b32547e23f38c7b958a0899a42b68f4e6d901e947348f0189f29"
+      },
+      "state.json": {
+        "bytes": 58693,
+        "sha256": "29e556f94f8deb47459aee5322ec6e267fcd7aff32cf559055b9b108930f74fc"
+      },
+      "state.safetensors": {
+        "bytes": 164952936,
+        "sha256": "dc3b29a09579e6ea5b2110cd8e474a3fc296a2bb008096057ea286905153a2fb"
+      },
+      "weights.safetensors": {
+        "bytes": 82795880,
+        "sha256": "e951b385447f10c5c269c963c1f039ed3b0672ce8cd298eea00f141caac08ac1"
+      }
+    }
+  },
+  "resource_observation": {
+    "platform": "linux",
+    "parent_peak_rss_bytes": 1241440256,
+    "fresh_child_peak_rss_bytes": 1241440256,
+    "concurrent_process_peak_rss_upper_bound_bytes": 2482880512,
+    "fresh_child_before_load": {
+      "current_rss_bytes": 400158720,
+      "peak_rss_bytes": 647426048
+    },
+    "fresh_child_after_load": {
+      "current_rss_bytes": 815198208,
+      "peak_rss_bytes": 1059344384
+    },
+    "fresh_child_after_resumed_step": {
+      "current_rss_bytes": 824860672,
+      "peak_rss_bytes": 1059344384
+    },
+    "fresh_child_resume_current_rss_delta_bytes": 415039488,
+    "fresh_child_resume_hwm_growth_bytes": 411918336,
+    "save_trainer_checkpoint_seconds": 3.338808524000001,
+    "load_trainer_checkpoint_seconds": 1.2058673220000031,
+    "baseline_step2_seconds": 0.18477376999999962,
+    "scope": "single Ubuntu runner observation; not a 200M/1B feasibility claim"
+  },
+  "reproducibility": {
+    "python": "3.11.16",
+    "torch": "2.13.0+cpu",
+    "numpy": "2.4.6",
+    "safetensors": "0.8.0",
+    "environment_manifest_identity_sha256": "9e1cfb549bdb19e3a0bfbf3fe9a2b8a7473e49d00bb629dde1e0266cfa0eacb6",
+    "execution_plan_identity_sha256": "f835a6095d261076287e29294b95fe964b107155a83c5c60b981be8e8ab10151",
+    "execution_locks": [
+      {
+        "path": "requirements/locks/linux-x86_64/toolchain.lock.txt",
+        "sha256": "06b3f872e648e0b7f3cc33a92bd8b04709dea5d9a9821df4f2e8141f646cdcf3",
+        "role": "toolchain",
+        "package_count": 4
+      },
+      {
+        "path": "requirements/execution/linux-x86_64/cpu-runtime.lock.txt",
+        "sha256": "03e08dd06ff446651dcc6950d0f433325bb32261d3e2406b34506cd00e1be52a",
+        "role": "cpu_runtime",
+        "package_count": 12
+      }
+    ]
+  },
+  "scientific_credit": {
+    "real_corpus_used": false,
+    "training_authorized_corpus_used": false,
+    "optimized_target_exposure": 0,
+    "model_training_credit": false,
+    "learned_weights_created": false,
+    "final_test_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false,
+    "tokenizer_fit_authorized": false,
+    "scale_promotion_authorized": false
+  },
+  "limits": {
+    "maximum_optimizer_updates": 3,
+    "long_campaign": false,
+    "selection_or_recipe_tuning": false,
+    "learned20m_terminal_claim": false,
+    "cuda_rng_content_validation": false,
+    "real_cuda_checkpoint_memory": false,
+    "windows_qualification": false
+  },
+  "acceptance": {
+    "dedicated_job_success": true,
+    "artifact_digest_independently_recomputed": true,
+    "result_identity_independently_recomputed": true,
+    "environment_identity_independently_recomputed": true,
+    "shared_workflow_terminal_green": false,
+    "shared_workflow_note": "run 37379693467 was cancelled after the dedicated structural-v2 job had completed SUCCESS; bootstrap/shared CI remains a separate unresolved gate",
+    "different_worker_audit": false
+  }
+}
