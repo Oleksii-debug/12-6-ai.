@@ -1049,11 +1049,23 @@ def _assert_native_d02_inert_live_state(
         )
     _assert_native_d02_postload_snapshot(trainer, state)
     _assert_native_d02_inert_determinism(trainer)
-    if model_fingerprint() != sealed_model_fingerprint:
+    try:
+        current_model_fingerprint = model_fingerprint()
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer model changed during {phase}"
+        ) from exc
+    if current_model_fingerprint != sealed_model_fingerprint:
         raise CheckpointCompatibilityError(
             f"canonical trainer model changed during {phase}"
         )
-    if auxiliary_fingerprint() != sealed_auxiliary_fingerprint:
+    try:
+        current_auxiliary_fingerprint = auxiliary_fingerprint()
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer auxiliary state changed during {phase}"
+        ) from exc
+    if current_auxiliary_fingerprint != sealed_auxiliary_fingerprint:
         raise CheckpointCompatibilityError(
             f"canonical trainer auxiliary state changed during {phase}"
         )
