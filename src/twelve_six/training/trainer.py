@@ -180,6 +180,21 @@ class Trainer:
         self._canonical_default_schedule = (
             optimizer is None and scheduler is None and type(self.scheduler) is LambdaLR
         )
+        # The default constant/no-warmup path has no LambdaLR object, but
+        # its AdamW LR is still an immutable part of the training contract.
+        self._canonical_unscheduled_default_optimizer = (
+            optimizer is None and scheduler is None and self.scheduler is None
+        )
+        # Freeze small constructor-owned AdamW options before external hooks
+        # can change otherwise finite optimizer behavior at a resume boundary.
+        self._canonical_default_optimizer_options = (
+            {
+                key: copy.deepcopy(value)
+                for key, value in self.optimizer.param_groups[0].items()
+                if key not in ("params", "lr", "initial_lr", "param_names")
+            }
+            if optimizer is None and scheduler is None else None
+        )
         self.scaler = self._build_scaler()
 
         self.micro_step = 0
@@ -397,6 +412,10 @@ class Trainer:
         # pre-backward check; a completed step must remain checkpoint-safe.
         self._require_optimizer_parameter_coverage()
         self._require_safe_optimizer_hyperparameters()
+        self._require_default_optimizer_options(
+            {"param_groups": self.optimizer.param_groups},
+        )
+        self._require_constant_default_rate({"param_groups": self.optimizer.param_groups})
         self._require_finite_state_tree(self.scaler.state_dict(), "gradient scaler")
         if self.scheduler is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
@@ -1026,6 +1045,8 @@ class Trainer:
         self._require_default_schedule_rates(
             scheduler_state, optimizer_step, optimizer_state,
         )
+        self._require_constant_default_rate(optimizer_state)
+        self._require_default_optimizer_options(optimizer_state)
 
     def _require_default_schedule_rates(
         self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
@@ -1083,6 +1104,87 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "default scheduler rate differs from configured committed schedule"
                 )
+
+    def _require_default_optimizer_options(self, optimizer_state: Any) -> None:
+        """Pin first-party AdamW non-LR options before export or state application.
+
+        LambdaLR owns the dynamic LR, but cannot justify a saved change to
+        AdamW's betas, eps, decay or constructor feature switches. Exclude
+        injected optimizers and schedulers from this first-party contract.
+        """
+        expected = self._canonical_default_optimizer_options
+        if expected is None:
+            return
+        groups = (
+            optimizer_state.get("param_groups")
+            if isinstance(optimizer_state, Mapping) else None
+        )
+        if (
+            not isinstance(groups, list)
+            or len(groups) != 1
+            or not isinstance(groups[0], Mapping)
+        ):
+            raise TrainingStateInvalidError("default AdamW option groups are malformed")
+        actual = {
+            key: value for key, value in groups[0].items()
+            if key not in ("params", "lr", "initial_lr", "param_names")
+        }
+
+        def equal(left: Any, right: Any) -> bool:
+            if type(left) is not type(right):
+                return False
+            if type(left) is float:
+                return struct.pack("!d", left) == struct.pack("!d", right)
+            if isinstance(left, (list, tuple)):
+                return len(left) == len(right) and all(
+                    equal(a, b) for a, b in zip(left, right, strict=True)
+                )
+            if isinstance(left, Mapping):
+                return left.keys() == right.keys() and all(
+                    equal(value, right[key]) for key, value in left.items()
+                )
+            return bool(left == right)
+
+        if not equal(actual, expected):
+            raise TrainingStateInvalidError(
+                "default AdamW options differ from configured constructor"
+            )
+
+    def _require_constant_default_rate(self, optimizer_state: Any) -> None:
+        """Reject forged finite LR on the default AdamW path without a scheduler.
+
+        This first-party constant/no-warmup path has no LambdaLR state for
+        the configured-rate oracle to inspect. Check both live publication
+        and saved state before direct or D05 model/optimizer application.
+        Custom/injected optimizers keep their existing rate policy.
+        """
+        if not self._canonical_unscheduled_default_optimizer:
+            return
+        groups = (
+            optimizer_state.get("param_groups")
+            if isinstance(optimizer_state, Mapping) else None
+        )
+        if (
+            not isinstance(groups, list)
+            or len(groups) != 1
+            or not isinstance(groups[0], Mapping)
+            or type(groups[0].get("lr")) not in (int, float)
+        ):
+            raise TrainingStateInvalidError("default constant optimizer rate is malformed")
+        try:
+            observed = float(groups[0]["lr"])
+        except (OverflowError, ValueError) as exc:
+            raise TrainingStateInvalidError(
+                "default constant optimizer rate is malformed"
+            ) from exc
+        expected = float(self.config.learning_rate)
+        if (
+            not math.isfinite(observed)
+            or struct.pack("!d", observed) != struct.pack("!d", expected)
+        ):
+            raise TrainingStateInvalidError(
+                "default constant optimizer rate differs from configured learning rate"
+            )
 
     def _require_exported_scaler_matches_live(self, exported: Any) -> None:
         """Refuse finite, detached GradScaler statistics that cannot replay."""
