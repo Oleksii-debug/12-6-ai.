@@ -626,6 +626,71 @@ def test_checkpoint_prepublish_validator_is_rng_neutral(
 
 
 
+@pytest.mark.parametrize(
+    "fail",
+    [False, True],
+    ids=["success", "failure"],
+)
+def test_post_rng_prepublish_validator_runs_after_rng_restore(
+    tmp_path: Path,
+    fail: bool,
+) -> None:
+    random.seed(1705)
+    np.random.seed(1705)
+    model = NumpyModel(np.array([0.1, -0.2, 0.3]))
+    python_before = copy.deepcopy(random.getstate())
+    numpy_before = copy.deepcopy(np.random.get_state())
+    checkpoint = tmp_path / f"post-rng-validator-{fail}"
+    pre_calls: list[bool] = []
+    post_calls: list[bool] = []
+
+    def pre_validator() -> None:
+        pre_calls.append(True)
+        random.random()
+        np.random.random()
+
+    def post_validator() -> None:
+        post_calls.append(True)
+        assert random.getstate() == python_before
+        numpy_live = np.random.get_state()
+        assert numpy_live[0] == numpy_before[0]
+        np.testing.assert_array_equal(numpy_live[1], numpy_before[1])
+        assert numpy_live[2:] == numpy_before[2:]
+        if fail:
+            raise RuntimeError("injected post-RNG rejection")
+
+    if fail:
+        with pytest.raises(RuntimeError, match="injected post-RNG rejection"):
+            save_checkpoint(
+                checkpoint,
+                model=model,
+                trainer_state={},
+                identity=identity(step=0, tokens_seen=0),
+                prepublish_validator=pre_validator,
+                post_rng_prepublish_validator=post_validator,
+            )
+        assert not checkpoint.exists()
+    else:
+        save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=identity(step=0, tokens_seen=0),
+            prepublish_validator=pre_validator,
+            post_rng_prepublish_validator=post_validator,
+        )
+        assert checkpoint.is_dir()
+        verify_checkpoint(checkpoint)
+
+    assert pre_calls == [True]
+    assert post_calls == [True]
+    assert random.getstate() == python_before
+    numpy_after = np.random.get_state()
+    assert numpy_after[0] == numpy_before[0]
+    np.testing.assert_array_equal(numpy_after[1], numpy_before[1])
+    assert numpy_after[2:] == numpy_before[2:]
+
+
 def test_canonical_bound_identity_accepts_normalized_string_metadata(
     tmp_path: Path,
 ) -> None:
