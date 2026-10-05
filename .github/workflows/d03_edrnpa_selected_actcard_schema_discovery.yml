@@ -22,6 +22,8 @@ jobs:
       PROBE_BLOB: 09bdf8ba7f561ea66b60e2b17acffe4de361f701
       POLICY_BLOB: 5f42cd3c20edad4b513857249f2c52d9efd4d82d
       POLICY_VERIFIER_BLOB: 95b52b98421e3e7861216a4f1f50c840aaed310c
+      DISCOVERY_RUNNER_BLOB: 73b0caa52b620a4bcc7db7b1630d91898220371e
+      DISCOVERY_TEST_BLOB: 0a99866d822a76b5d41110b6c71bc33c26613aa6
       SOURCE_BYTES: "611865397"
       SOURCE_MD5: 0ea96e1582e5584ced79be1027f0ae55
       SOURCE_SHA256: a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431
@@ -47,8 +49,12 @@ jobs:
           test "$(git hash-object tools/probe_d03_edrnpa_open_data_v1.py)" = "$PROBE_BLOB"
           test "$(git hash-object configs/data/d03_edrnpa_rights_provenance_source_policy_v1.json)" = "$POLICY_BLOB"
           test "$(git hash-object tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py)" = "$POLICY_VERIFIER_BLOB"
-          python -m py_compile             tools/probe_d03_edrnpa_open_data_v1.py             tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py             tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py
+          test "$(git hash-object tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py)" = "$DISCOVERY_RUNNER_BLOB"
+          test "$(git hash-object tests/test_d03_edrnpa_selected_actcard_schema_discovery_v1.py)" = "$DISCOVERY_TEST_BLOB"
+          python -m py_compile             tools/probe_d03_edrnpa_open_data_v1.py             tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py             tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py \
+            tests/test_d03_edrnpa_selected_actcard_schema_discovery_v1.py
           PYTHONPATH=. python tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py
+          PYTHONPATH=. pytest -q tests/test_d03_edrnpa_selected_actcard_schema_discovery_v1.py
 
       - name: Enforce execution-only diff boundary
         shell: bash
@@ -59,6 +65,7 @@ jobs:
           mapfile -t changed < <(git diff --name-only "$EXECUTION_BASE...$EXECUTION_HEAD" | sort)
           expected=(
             ".github/workflows/d03_edrnpa_selected_actcard_schema_discovery.yml"
+            "tests/test_d03_edrnpa_selected_actcard_schema_discovery_v1.py"
             "tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py"
           )
           if [ "${changed[*]}" != "${expected[*]}" ]; then
