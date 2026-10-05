@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import math
 import random
+import struct
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
@@ -782,21 +783,56 @@ class Trainer:
 
     @staticmethod
     def _exact_export_leaf_equal(saved: Any, live: Any) -> bool:
-        """Compare serialized optimizer values without invoking export hooks again."""
+        """Compare exact stored bits; numerical equality loses signed-zero identity."""
         if isinstance(saved, Tensor) or isinstance(live, Tensor):
-            return (
+            if not (
                 isinstance(saved, Tensor)
                 and isinstance(live, Tensor)
                 and saved.dtype == live.dtype
                 and saved.device == live.device
-                and torch.equal(saved, live)
-            )
+                and saved.shape == live.shape
+                and saved.layout == live.layout == torch.strided
+                and saved.is_contiguous()
+                and live.is_contiguous()
+            ):
+                # Never create an unbounded contiguous copy of model-scale state.
+                return False
+            return bool(torch.equal(
+                saved.reshape(-1).view(torch.uint8),
+                live.reshape(-1).view(torch.uint8),
+            ))
         if isinstance(saved, np.ndarray) or isinstance(live, np.ndarray):
-            return (
+            if not (
                 isinstance(saved, np.ndarray)
                 and isinstance(live, np.ndarray)
                 and saved.dtype == live.dtype
-                and np.array_equal(saved, live)
+                and saved.shape == live.shape
+                and not saved.dtype.hasobject
+            ):
+                return False
+            # Buffered external loops bound temporary memory for strided arrays.
+            for left, right in np.nditer(
+                [saved, live],
+                flags=["external_loop", "buffered", "zerosize_ok"],
+                op_flags=[["readonly"], ["readonly"]],
+                order="C",
+                buffersize=262_144,
+            ):
+                if left.view(np.uint8).tobytes() != right.view(np.uint8).tobytes():
+                    return False
+            return True
+        if isinstance(saved, np.generic) or isinstance(live, np.generic):
+            return (
+                isinstance(saved, np.generic)
+                and isinstance(live, np.generic)
+                and saved.dtype == live.dtype
+                and saved.tobytes() == live.tobytes()
+            )
+        if type(saved) is float and type(live) is float:
+            return struct.pack("!d", saved) == struct.pack("!d", live)
+        if type(saved) is complex and type(live) is complex:
+            return struct.pack("!dd", saved.real, saved.imag) == struct.pack(
+                "!dd", live.real, live.imag,
             )
         if isinstance(saved, Mapping) and isinstance(live, Mapping):
             return (
@@ -860,7 +896,13 @@ class Trainer:
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
         self.assert_checkpoint_safe()
+        if not _typed_state_equal(
+            committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+        ):
+            self._mark_failed("checkpoint preflight changed committed counters")
+            raise TrainingStateInvalidError("checkpoint export changed committed counters")
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
@@ -898,6 +940,10 @@ class Trainer:
                 self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
+            if not _typed_state_equal(
+                committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+            ):
+                raise TrainingStateInvalidError("checkpoint export changed committed counters")
         except BaseException:
             self._mark_failed("checkpoint state extraction failed after possible mutation")
             raise
