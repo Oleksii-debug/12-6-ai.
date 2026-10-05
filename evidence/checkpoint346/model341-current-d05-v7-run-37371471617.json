@@ -1,0 +1,116 @@
+{
+  "schema": "12-6.checkpoint346-model341-current-d05-qualification-evidence.v1",
+  "source": {
+    "qualification_pr": 2805,
+    "qualification_head": "683afdec0c2288212ddfb0b06b5325a1dae79cf3",
+    "workflow_run_id": 37371471617,
+    "workflow_job_id": 111969409374,
+    "workflow_job_conclusion": "success",
+    "artifact_id": 11372396489,
+    "artifact_name": "checkpoint346-current-d05-model341-v7",
+    "artifact_zip_sha256": "24b651c4fb8b0d091aea8f28f844805c02b5c7b7a4aa9dfda641990dd649636e",
+    "artifact_created_at": "2026-10-05T21:35:42Z"
+  },
+  "runtime": {
+    "product_pr": 2778,
+    "git_sha": "d13004de780759c88fe7e0039b2d0e8fd0b3b5c7",
+    "model_blob_sha": "c3879fe0ba9193d5a8176c284e1942f058ef7885",
+    "trainer_blob_sha": "866ddd80eeebe642a2c68d0b3025fc7432927d2a",
+    "checkpoint_core_blob_sha": "e28491467e1756446234ca746274b802ae6e7dd4",
+    "trainer_adapter_blob_sha": "ed8a56fe3ac8b944075f0c975e5c1edb734a57e5",
+    "progress_trainer_blob_sha": "81f19519f7a3a82bd1f8bfcd6bbf570794b12e82",
+    "public_save_api": "save_trainer_checkpoint",
+    "public_restore_api": "load_trainer_checkpoint"
+  },
+  "model341": {
+    "carrier_pr": 802,
+    "carrier_git_sha": "f151c77a8ef8721f0f568509147b1a5f961ae6c7",
+    "candidate_blob_sha": "69e3cbd5f5c83c9d3d529a2a6376db3055979c40",
+    "model_identity_sha256": "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441",
+    "init_identity_sha256": "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5",
+    "parameter_count": 20613440,
+    "canonical_base": "random_init"
+  },
+  "verdict": "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS",
+  "result_identity_sha256": "9fd3395334ef4806645afdeaa168cd5152e3c99b00ca8813a2a90afa7e619b17",
+  "execution": {
+    "local_free": true,
+    "synthetic_mechanics_only": true,
+    "device": "cpu",
+    "precision": "fp32",
+    "optimizer_updates_total": 3,
+    "parent_updates": 2,
+    "fresh_process_resumed_updates": 1,
+    "fresh_process_distinct": true,
+    "same_next_step_equal": true,
+    "binding_mismatch_failed_closed": true,
+    "binding_mismatch_retry_same_target": true,
+    "exact_checkpoint_id_bound": true,
+    "exact_manifest_sha256_bound": true,
+    "rng_scope_restored": {
+      "python": true,
+      "numpy": true,
+      "torch_cpu": true
+    }
+  },
+  "checkpoint": {
+    "checkpoint_id": "7cdc53890c66cd142115fe6c435fc02b0ec825b10e7fa19647438300c3e4292c",
+    "manifest_sha256": "b8101a990f514b433836747e0f1e8db03da6f9a54e0d5de094fb526a8a8d5006",
+    "total_bytes": 247810234,
+    "state_safetensors_bytes": 164952936,
+    "weights_safetensors_bytes": 82795880
+  },
+  "resource_observation": {
+    "platform": "linux",
+    "parent_peak_rss_bytes": 1240809472,
+    "fresh_child_peak_rss_bytes": 1240809472,
+    "concurrent_process_peak_rss_upper_bound_bytes": 2481618944,
+    "fresh_child_before_load": {
+      "current_rss_bytes": 399704064,
+      "peak_rss_bytes": 646832128
+    },
+    "fresh_child_after_load": {
+      "current_rss_bytes": 814579712,
+      "peak_rss_bytes": 1058873344
+    },
+    "fresh_child_after_resumed_step": {
+      "current_rss_bytes": 824143872,
+      "peak_rss_bytes": 1058873344
+    },
+    "fresh_child_resume_current_rss_delta_bytes": 414875648,
+    "fresh_child_resume_hwm_growth_bytes": 412041216,
+    "save_trainer_checkpoint_seconds": 3.3465721160000044,
+    "load_trainer_checkpoint_seconds": 1.808429302999997,
+    "baseline_step2_seconds": 0.3128030489999958,
+    "scope": "single Ubuntu runner observation; not a 200M/1B feasibility claim"
+  },
+  "reproducibility": {
+    "python": "3.11.16",
+    "torch": "2.13.0+cpu",
+    "numpy": "2.4.6",
+    "safetensors": "0.8.0",
+    "environment_manifest_identity_sha256": "9e1cfb549bdb19e3a0bfbf3fe9a2b8a7473e49d00bb629dde1e0266cfa0eacb6",
+    "execution_plan_identity_sha256": "f835a6095d261076287e29294b95fe964b107155a83c5c60b981be8e8ab10151"
+  },
+  "scientific_credit": {
+    "real_corpus_used": false,
+    "training_authorized_corpus_used": false,
+    "optimized_target_exposure": 0,
+    "model_training_credit": false,
+    "learned_weights_created": false,
+    "final_test_read": false,
+    "paid_compute_used": false,
+    "foreign_pretrained_weights": false,
+    "tokenizer_fit_authorized": false,
+    "scale_promotion_authorized": false
+  },
+  "limits": {
+    "maximum_optimizer_updates": 3,
+    "long_campaign": false,
+    "selection_or_recipe_tuning": false,
+    "learned20m_terminal_claim": false,
+    "cuda_rng_content_validation": false,
+    "real_cuda_checkpoint_memory": false,
+    "windows_qualification": false
+  }
+}
