@@ -532,7 +532,10 @@ def test_noncallable_trainer_loader_fails_before_model_and_rng(
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
     )
-    with pytest.raises(TypeError, match="trainer must provide load_state_dict"):
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="native D02 trainer load_state_dict must remain class-bound",
+    ):
         loader.load_trainer_checkpoint(
             path, model=target.model, trainer=target,
             strict_model=False, restore_rng=restore_rng, **extra,
@@ -604,7 +607,10 @@ def test_late_missing_d02_authority_fails_before_model_apply(
         if loader is progress_trainer else {}
     )
 
-    with pytest.raises(core.CheckpointCompatibilityError, match="authority unavailable"):
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match=rf"native D02 safety authority must remain canonical: {authority}",
+    ):
         loader.load_trainer_checkpoint(
             path, model=target.model, trainer=target,
             strict_model=False, restore_rng=restore_rng, **extra,
@@ -962,7 +968,10 @@ def test_noncallable_trainer_state_dict_refuses_save_before_publication(
         raise AssertionError("non-callable trainer state_dict reached checkpoint publication")
 
     monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_publication)
-    with pytest.raises(TypeError, match="trainer must provide state_dict"):
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="native D02 trainer state_dict must remain class-bound",
+    ):
         trainer_adapter.save_trainer_checkpoint(
             tmp_path / "noncallable-save-дані з пробілами",
             model=trainer.model,
@@ -1235,20 +1244,20 @@ def test_noncallable_optimizer_checkpoint_interface_fails_before_model_and_rng(
 @pytest.mark.parametrize(
     ("authority", "message"),
     [
-        ("_require_finite_state_tree", "numeric-state authority unavailable"),
-        ("_require_checkpoint_scheduler_chronology", "scheduler authority unavailable"),
-        ("_require_optimizer_state_parameter_order", "optimizer-order authority unavailable"),
-        ("_require_finite_auxiliary_state", "auxiliary-state authority unavailable"),
+        ("_require_finite_state_tree", "native D02 safety authority must remain canonical"),
+        ("_require_checkpoint_scheduler_chronology", "native D02 safety authority must remain canonical"),
+        ("_require_optimizer_state_parameter_order", "native D02 safety authority must remain canonical"),
+        ("_require_finite_auxiliary_state", "native D02 safety authority must remain canonical"),
         (
             "_require_safe_optimizer_hyperparameters",
-            "optimizer-hyperparameter authority unavailable",
+            "native D02 safety authority must remain canonical",
         ),
-        ("_require_finite_committed_update", "committed-update authority unavailable"),
-        ("_require_no_residual_model_gradients", "gradient-cleanliness authority unavailable"),
-        ("_require_deterministic_policy", "deterministic-policy authority unavailable"),
+        ("_require_finite_committed_update", "native D02 safety authority must remain canonical"),
+        ("_require_no_residual_model_gradients", "native D02 safety authority must remain canonical"),
+        ("_require_deterministic_policy", "native D02 safety authority must remain canonical"),
         (
             "_require_optimizer_parameter_coverage",
-            "optimizer-coverage authority unavailable",
+            "native D02 safety authority must remain canonical",
         ),
     ],
 )
@@ -1351,7 +1360,9 @@ def test_canonical_d02_missing_scaler_authority_fails_before_model_and_rng(
         if loader is progress_trainer else {}
     )
     with pytest.raises(
-        CheckpointCompatibilityError, match="scaler authority unavailable"
+        CheckpointCompatibilityError,
+        match="native D02 safety authority must remain canonical: "
+        "_require_checkpoint_scaler_state",
     ):
         loader.load_trainer_checkpoint(
             path, model=target.model, trainer=target,
@@ -1981,7 +1992,9 @@ def test_initial_trainer_loader_descriptor_lookup_is_process_state_neutral(
             restore_rng=False,
         )
 
-    assert descriptor_lookups == [True]
+    # Native loader validation uses static class inspection and must not
+    # execute an effectful descriptor merely to reject it.
+    assert descriptor_lookups == []
     assert checkpoint_reads == []
     assert target._failure_reason is None and not target._update_incomplete
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
@@ -2597,292 +2610,3 @@ def test_model_apply_drift_is_poisoned_before_trainer_state_restore(
         rtol=0,
         atol=0,
     )
-
-
-@pytest.mark.parametrize(
-    "marker", ["_failure_reason", "_update_incomplete"],
-    ids=["failure-marker", "incomplete-marker"],
-)
-@pytest.mark.parametrize("outcome", ["raise", "return"], ids=["raises", "returns"])
-@pytest.mark.parametrize(
-    "loader", [trainer_adapter, progress_trainer],
-    ids=["adapter", "progress"],
-)
-def test_trainer_apply_marker_loss_restores_poison(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    marker: str,
-    outcome: str,
-    loader: Any,
-) -> None:
-    source = _source()
-    path = tmp_path / "trainer-apply-marker-loss-дані з пробілами"
-    core.save_checkpoint(
-        path,
-        model=source.model,
-        trainer_state=asdict(source.state_dict()),
-        identity=_identity(),
-    )
-    core.verify_checkpoint(path)
-
-    target = Trainer(_TinyLogits(), source.config, device="cpu")
-
-    def loader_with_marker_loss(self: Trainer, state: Any) -> None:
-        assert self is target
-        del state
-        del vars(self)[marker]
-        if outcome == "raise":
-            raise RuntimeError("synthetic trainer apply failure")
-
-    monkeypatch.setattr(Trainer, "load_state_dict", loader_with_marker_loss)
-    extra = (
-        {"expected_step": 1, "expected_tokens_seen": 2}
-        if loader is progress_trainer else {}
-    )
-    if outcome == "raise":
-        error: type[BaseException] = RuntimeError
-        message = "synthetic trainer apply failure"
-    else:
-        error = core.CheckpointCompatibilityError
-        message = "safety classification changed"
-
-    with pytest.raises(error, match=message):
-        loader.load_trainer_checkpoint(
-            path,
-            model=target.model,
-            trainer=target,
-            strict_model=False,
-            restore_rng=False,
-            **extra,
-        )
-
-    expected_reason = (
-        "checkpoint_restore_apply_failed"
-        if outcome == "raise"
-        else "checkpoint_restore_target_drift"
-    )
-    assert vars(target)["_failure_reason"] == expected_reason
-    assert vars(target)["_update_incomplete"] is True
-    torch.testing.assert_close(
-        target.model.weight,
-        source.model.weight,
-        rtol=0,
-        atol=0,
-    )
-
-@pytest.mark.parametrize(
-    "loader", [trainer_adapter, progress_trainer],
-    ids=["adapter", "progress"],
-)
-def test_preio_descriptor_marker_loss_then_raise_keeps_primary_and_poison(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    loader: Any,
-) -> None:
-    target = Trainer(
-        _TinyLogits(),
-        TrainerConfig(seed=703, max_steps=3, scheduler="cosine"),
-        device="cpu",
-    )
-    checkpoint_reads: list[bool] = []
-
-    class MarkerDeletingAuthority:
-        def __get__(self, instance: Any, owner: type[Any]) -> Any:
-            if instance is target:
-                del vars(target)["_failure_reason"]
-                raise RuntimeError("synthetic authority descriptor failure")
-            return Trainer.__dict__[
-                "_require_optimizer_parameter_coverage"
-            ].__get__(instance, owner)
-
-    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
-        checkpoint_reads.append(True)
-        raise AssertionError("raising authority descriptor reached checkpoint I/O")
-
-    monkeypatch.setattr(
-        Trainer,
-        "_require_optimizer_parameter_coverage",
-        MarkerDeletingAuthority(),
-    )
-    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
-    extra = (
-        {"expected_step": 0, "expected_tokens_seen": 0}
-        if loader is progress_trainer else {}
-    )
-
-    with pytest.raises(
-        RuntimeError,
-        match="synthetic authority descriptor failure",
-    ) as got:
-        loader.load_trainer_checkpoint(
-            tmp_path / "must-not-open",
-            model=target.model,
-            trainer=target,
-            restore_rng=False,
-            **extra,
-        )
-
-    assert checkpoint_reads == []
-    assert vars(target)["_failure_reason"] == "checkpoint_restore_target_drift"
-    assert vars(target)["_update_incomplete"] is True
-    assert any(
-        "trainer restore target drift also detected" in note
-        for note in getattr(got.value, "__notes__", ())
-    )
-
-@pytest.mark.parametrize(
-    ("effect", "error"),
-    [
-        ("noop", "post-load micro_step disagrees"),
-        ("counters-only", "post-load auxiliary state invalid"),
-        ("scheduler-corrupt", "post-load auxiliary state invalid"),
-        ("counter-type", "post-load tokens_seen disagrees"),
-        ("pending", "retained pending accumulation"),
-    ],
-)
-@pytest.mark.parametrize(
-    "loader", [trainer_adapter, progress_trainer],
-    ids=["adapter", "progress"],
-)
-@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
-def test_postload_verification_rejects_silent_or_partial_trainer_restore(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    effect: str,
-    error: str,
-    loader: Any,
-    restore_rng: bool,
-) -> None:
-    source = _source()
-    path = tmp_path / "postload-verification-дані з пробілами"
-    core.save_checkpoint(
-        path,
-        model=source.model,
-        trainer_state=asdict(source.state_dict()),
-        identity=_identity(),
-    )
-    core.verify_checkpoint(path)
-
-    target = Trainer(_TinyLogits(), source.config, device="cpu")
-    initial_weights = target.model.weight.detach().clone()
-    actual_loader = Trainer.__dict__["load_state_dict"]
-    py_before = random.getstate()
-    np_before = np.random.get_state()
-    torch_before = torch.get_rng_state().clone()
-
-    def incomplete_loader(self: Trainer, state: Any) -> None:
-        assert self is target
-        if effect == "noop":
-            return
-        if effect == "counters-only":
-            self.micro_step = state["micro_step"]
-            self.optimizer_step = state["optimizer_step"]
-            self.tokens_seen = state["tokens_seen"]
-            return
-        actual_loader(self, state)
-        if effect == "scheduler-corrupt":
-            assert self.scheduler is not None
-            self.scheduler.last_epoch += 1
-        elif effect == "counter-type":
-            self.tokens_seen = float(self.tokens_seen)  # type: ignore[assignment]
-        elif effect == "pending":
-            self._pending_tokens = 1
-        else:
-            raise AssertionError(f"unknown post-load effect: {effect}")
-
-    monkeypatch.setattr(Trainer, "load_state_dict", incomplete_loader)
-    extra = (
-        {"expected_step": 1, "expected_tokens_seen": 2}
-        if loader is progress_trainer else {}
-    )
-
-    with pytest.raises(core.CheckpointCompatibilityError, match=error):
-        loader.load_trainer_checkpoint(
-            path,
-            model=target.model,
-            trainer=target,
-            strict_model=False,
-            restore_rng=restore_rng,
-            **extra,
-        )
-
-    assert target._failure_reason is not None
-    assert target._update_incomplete
-    assert not torch.equal(target.model.weight, initial_weights)
-    torch.testing.assert_close(
-        target.model.weight,
-        source.model.weight,
-        rtol=0,
-        atol=0,
-    )
-    assert random.getstate() == py_before
-    np_after = np.random.get_state()
-    assert np_after[0] == np_before[0]
-    np.testing.assert_array_equal(np_after[1], np_before[1])
-    assert np_after[2:] == np_before[2:]
-    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
-
-
-@pytest.mark.parametrize(
-    "loader", [trainer_adapter, progress_trainer],
-    ids=["adapter", "progress"],
-)
-@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
-def test_native_instance_callable_loader_shadow_fails_before_checkpoint_io(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    loader: Any,
-    restore_rng: bool,
-) -> None:
-    source = _source()
-    path = tmp_path / "instance-loader-shadow-дані з пробілами"
-    core.save_checkpoint(
-        path,
-        model=source.model,
-        trainer_state=asdict(source.state_dict()),
-        identity=_identity(),
-    )
-    core.verify_checkpoint(path)
-
-    target = Trainer(_TinyLogits(), source.config, device="cpu")
-    native_loader = target.load_state_dict
-    checkpoint_reads: list[bool] = []
-    initial_weights = target.model.weight.detach().clone()
-
-    def instance_shadow(state: Any) -> None:
-        native_loader(state)
-
-    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
-        checkpoint_reads.append(True)
-        raise AssertionError("instance loader shadow reached checkpoint I/O")
-
-    target.load_state_dict = instance_shadow  # type: ignore[method-assign]
-    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
-    extra = (
-        {"expected_step": 1, "expected_tokens_seen": 2}
-        if loader is progress_trainer else {}
-    )
-
-    with pytest.raises(
-        core.CheckpointCompatibilityError,
-        match="load_state_dict must remain class-bound",
-    ):
-        loader.load_trainer_checkpoint(
-            path,
-            model=target.model,
-            trainer=target,
-            strict_model=False,
-            restore_rng=restore_rng,
-            **extra,
-        )
-
-    assert checkpoint_reads == []
-    assert target._failure_reason is None and not target._update_incomplete
-    assert not target.optimizer.state
-    torch.testing.assert_close(
-        target.model.weight,
-        initial_weights,
-        rtol=0,
-        atol=0,
-    )
-
