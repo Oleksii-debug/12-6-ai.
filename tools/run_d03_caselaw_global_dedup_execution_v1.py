@@ -441,6 +441,12 @@ def _preflight_attested_lineage_warmup(matcher: Any) -> None:
                      and match.get("capacity_collapsing") is True
                      for match in matches),
                  "terminal V3 lineage warmup authority drift")
+    # The result dictionaries hold V3's literal float score=1.0 by identity.
+    # CPython 3.11 marshal v4 records reference-table flags based on refcount;
+    # retaining the last result can change _code_digest without changing code.
+    # Release ONLY synthetic results before the UNCHANGED second attestation.
+    # The first attestation, 10 semantic probes, and second refusal remain.
+    del matches
     try:
         indexed.attest_incumbent_runtime(matcher)
     except indexed.IndexedExecutionError as exc:
