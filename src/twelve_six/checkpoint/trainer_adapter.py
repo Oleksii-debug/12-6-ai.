@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+import inspect
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -290,6 +291,13 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
     loader = getattr(trainer, "load_state_dict", None)
     if not callable(loader):
         raise TypeError("trainer must provide load_state_dict()")
+    try:
+        signature = inspect.signature(loader)
+        signature.bind({})
+    except (TypeError, ValueError) as exc:
+        raise CheckpointCompatibilityError(
+            "trainer load_state_dict cannot safely bind checkpoint state"
+        ) from exc
     return loader
 
 
