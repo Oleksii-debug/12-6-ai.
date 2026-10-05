@@ -379,3 +379,10 @@ def test_resealed_invalid_scaler_statistics_fail_before_model_and_rng(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
     assert target.scaler.state_dict() == source.scaler.state_dict()
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+    # The verified retry must also preserve the next real synthetic AdamW
+    # update and enabled CPU scaler growth chronology after restoration.
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert source.optimizer_step == target.optimizer_step == 2
+    assert source.scaler.state_dict() == target.scaler.state_dict()
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
