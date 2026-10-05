@@ -789,6 +789,8 @@ def test_late_target_freshness_drift_fails_before_model_and_rng(
     [
         ("model-rebind", "owns a different model"),
         ("micro-step", "fresh trainer with no consumed exposure"),
+        ("scheduler-rebind", "scheduler binding changed"),
+        ("config-rebind", "config binding changed"),
     ],
 )
 @pytest.mark.parametrize(
@@ -825,6 +827,10 @@ def test_late_stateful_preflight_hook_drift_is_rechecked_before_model_apply(
                 target.model = _TinyLogits()
             elif hook_effect == "micro-step":
                 target.micro_step = 1
+            elif hook_effect == "scheduler-rebind":
+                target.scheduler = None
+            elif hook_effect == "config-rebind":
+                target.config = replace(target.config)
             else:
                 raise AssertionError(f"unknown hook effect: {hook_effect}")
             return state
@@ -852,6 +858,79 @@ def test_late_stateful_preflight_hook_drift_is_rechecked_before_model_apply(
     assert model_applied == []
     assert not target.optimizer.state
     assert target._failure_reason is None and not target._update_incomplete
+    torch.testing.assert_close(original_model.weight, initial_weights, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("hook_effect", "error"),
+    [
+        ("micro-step", "fresh trainer with no consumed exposure"),
+        ("scheduler-rebind", "scheduler binding changed"),
+        ("drop-failure-marker", "safety classification changed"),
+        ("drop-incomplete-marker", "safety classification changed"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_final_trainer_loader_bind_drift_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    hook_effect: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-loader-bind-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    initial_weights = original_model.weight.detach().clone()
+    actual_bind = loader._bind_trainer_state_loader
+    bind_calls = 0
+    model_applied: list[bool] = []
+
+    def bind_then_drift(trainer: Any) -> Any:
+        nonlocal bind_calls
+        bound = actual_bind(trainer)
+        bind_calls += 1
+        if bind_calls == 2:
+            if hook_effect == "micro-step":
+                target.micro_step = 1
+            elif hook_effect == "scheduler-rebind":
+                target.scheduler = None
+            elif hook_effect == "drop-failure-marker":
+                del target._failure_reason
+            elif hook_effect == "drop-incomplete-marker":
+                del target._update_incomplete
+            else:
+                raise AssertionError(f"unknown bind hook effect: {hook_effect}")
+        return bound
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("final trainer-loader bind drift reached model application")
+
+    monkeypatch.setattr(loader, "_bind_trainer_state_loader", bind_then_drift)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert bind_calls == 2
+    assert model_applied == []
+    assert not target.optimizer.state
     torch.testing.assert_close(original_model.weight, initial_weights, rtol=0, atol=0)
 
 
