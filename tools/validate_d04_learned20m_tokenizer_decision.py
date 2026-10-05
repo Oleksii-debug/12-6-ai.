@@ -35,13 +35,28 @@ def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError(f"non_finite_json_number:{value}")
+    # A lexically nonzero external number must not silently become zero.
+    # Preserve genuine positive/negative JSON zero, including 0e-9999.
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError(f"nonzero_json_number_underflowed_to_zero:{value}")
     return parsed
 
 
+MAX_INPUT_BYTES = 1_048_576
+MAX_JSON_DEPTH = 64
+MAX_JSON_NODES = 10_000
+
+
 def _load(path: Path) -> dict[str, Any]:
+    # Read only a bounded prefix, including when the path is a network file.
+    with path.open("rb") as source:
+        raw = source.read(MAX_INPUT_BYTES + 1)
+    if len(raw) > MAX_INPUT_BYTES:
+        raise ValueError("tokenizer input exceeds byte limit")
     try:
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            raw.decode("utf-8"),
             object_pairs_hook=_pairs_without_duplicates,
             parse_constant=_reject_constant,
             parse_float=_parse_finite_float,
@@ -50,22 +65,40 @@ def _load(path: Path) -> dict[str, Any]:
         raise ValueError("tokenizer input JSON nesting limit exceeded") from exc
     if not isinstance(value, dict):
         raise ValueError(f"{path} must contain one JSON object")
+
+    # The byte cap bounds parsing; the iterative walk bounds post-parse work.
+    # Python's decoder may allow escaped lone surrogates: reject them explicitly.
+    pending: list[tuple[Any, int]] = [(value, 0)]
+    nodes = 0
+    while pending:
+        current, depth = pending.pop()
+        nodes += 1
+        if depth > MAX_JSON_DEPTH or nodes > MAX_JSON_NODES:
+            raise ValueError("tokenizer input exceeds JSON structure limit")
+        if isinstance(current, dict):
+            for key, child in current.items():
+                key.encode("utf-8")
+                pending.append((child, depth + 1))
+        elif isinstance(current, list):
+            pending.extend((child, depth + 1) for child in current)
+        elif isinstance(current, str):
+            current.encode("utf-8")
     return value
 
 
 def _serialize_report(value: dict[str, Any]) -> str:
-    """One strict finite JSON contract for both file and stdout reports."""
+    """One strict finite UTF-8 JSON contract for file and stdout reports."""
     try:
-        return (
-            json.dumps(
-                value,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-                allow_nan=False,
-            )
-            + "\n"
+        rendered = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
         )
+        # A JSON-escaped lone surrogate must not reach stdout or disk.
+        rendered.encode("utf-8")
+        return rendered + "\n"
     except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError("tokenizer report is not strict finite JSON") from exc
 
@@ -85,7 +118,8 @@ def _write(path: Path, value: dict[str, Any]) -> None:
     temporary = Path(name)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            handle.write(payload)
+            if handle.write(payload) != len(payload):
+                raise OSError("incomplete tokenizer report staging write")
             handle.flush()
             os.fsync(handle.fileno())
         # Same-directory hard link atomically fails if the target already exists.
@@ -150,7 +184,7 @@ def main() -> int:
         verified_report = (
             _load(args.verify_report) if args.verify_report is not None else None
         )
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         _emit_input_error(exc)
         return 2
 

@@ -91,9 +91,15 @@ class TokenizerDecisionError(ValueError):
 
 def _canonical_json(value: Mapping[str, Any]) -> str:
     try:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    except (TypeError, ValueError) as exc:
-        raise TokenizerDecisionError("authority must be canonical-JSON serializable") from exc
+        rendered = json.dumps(
+            value, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        )
+        # UTF-8 is the identity encoding; lone surrogates are not valid evidence.
+        rendered.encode("utf-8")
+        return rendered
+    except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
+        raise TokenizerDecisionError("authority must be strict UTF-8 JSON") from exc
 
 
 def authority_sha256(value: Mapping[str, Any]) -> str:
@@ -235,7 +241,15 @@ def _verify_split_application(
         raise TokenizerDecisionError(
             "split application does not bind canonical split spec authority"
         )
-    if application.get("claim_boundary") != _ZERO_CREDIT_BOUNDARY:
+    boundary = application.get("claim_boundary")
+    if (
+        type(boundary) is not dict
+        or set(boundary) != set(_ZERO_CREDIT_BOUNDARY)
+        or any(
+            type(boundary[key]) is not type(expected) or boundary[key] != expected
+            for key, expected in _ZERO_CREDIT_BOUNDARY.items()
+        )
+    ):
         raise TokenizerDecisionError("split application truth boundary widened")
     accounting = {
         "selected_record_count": "record_count",
@@ -244,7 +258,22 @@ def _verify_split_application(
         "selected_stratum_source_bytes": "stratum_source_bytes",
     }
     for application_field, totals_field in accounting.items():
-        if application.get(application_field) != totals.get(totals_field):
+        observed = application.get(application_field)
+        expected = totals.get(totals_field)
+        if type(expected) is int:
+            valid = type(observed) is int and observed == expected
+        elif isinstance(expected, Mapping):
+            valid = (
+                type(observed) is dict
+                and set(observed) == set(expected)
+                and all(
+                    type(observed[key]) is int and observed[key] == expected[key]
+                    for key in expected
+                )
+            )
+        else:
+            valid = False
+        if not valid:
             raise TokenizerDecisionError(f"split application {application_field} drift")
     return claimed_application
 
@@ -407,7 +436,8 @@ def verify_byte_baseline_decision(
         "encoding": tokenizer.encoding,
     }
     for key, expected in expected_tokenizer.items():
-        if report.get(key) != expected:
+        observed = report.get(key)
+        if type(observed) is not type(expected) or observed != expected:
             raise TokenizerDecisionError(f"report {key} drift")
     if report.get("tokenizer_fit_executed") is not False:
         raise TokenizerDecisionError("byte-baseline decision cannot claim tokenizer fitting")
@@ -416,7 +446,7 @@ def verify_byte_baseline_decision(
     if report.get("compute_authorized_by_this_report") is not False:
         raise TokenizerDecisionError("tokenizer decision cannot authorize compute")
     exposure = report.get("authorized_optimized_target_exposure")
-    if isinstance(exposure, bool) or exposure != 0:
+    if type(exposure) is not int or exposure != 0:
         raise TokenizerDecisionError("tokenizer decision cannot authorize exposure")
 
     supplied_identity = _require_sha256(
