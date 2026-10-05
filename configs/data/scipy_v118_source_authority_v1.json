@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "authority_id": "scipy-v1.18.0-bounded-first-party-v1",
+  "authority_sha256": "a9ddc66c826f32299cb9e69aa64d3e7e7526869391e3e2ab3162abf43cf886a9",
+  "source_family": "code.scipy.project",
+  "upstream": {
+    "repository": "scipy/scipy",
+    "tag": "v1.18.0",
+    "annotated_tag_sha": "7adb8c972443f664b9395a0e6e8e0283e9b4faff",
+    "commit_sha": "54ef5423f2e4376230ec3bfda6912a07a50958e3",
+    "tree_sha": "efc619e51d474a41624a09f4b73241b43dc1fc2a"
+  },
+  "license": {
+    "root_spdx": "BSD-3-Clause",
+    "root_path": "LICENSE.txt",
+    "bundled_license_path": "LICENSES_bundled.txt",
+    "whole_repository_credit_forbidden": true
+  },
+  "purpose": {
+    "training_allowed": true,
+    "evaluation_allowed": false
+  },
+  "allowlist": [
+    {
+      "path": "scipy/optimize/_constraints.py",
+      "git_blob_sha1": "75f81735dfd0feaff3865025467c859fd3b98ff6",
+      "raw_bytes": 25257,
+      "raw_url": "https://raw.githubusercontent.com/scipy/scipy/54ef5423f2e4376230ec3bfda6912a07a50958e3/scipy/optimize/_constraints.py"
+    },
+    {
+      "path": "scipy/optimize/_minimize.py",
+      "git_blob_sha1": "91d736990aaebe2dc119c26b59782466fa314fde",
+      "raw_bytes": 53050,
+      "raw_url": "https://raw.githubusercontent.com/scipy/scipy/54ef5423f2e4376230ec3bfda6912a07a50958e3/scipy/optimize/_minimize.py"
+    }
+  ],
+  "capacity": {
+    "candidate_raw_bytes": 78307,
+    "canonical_credit_bytes": 0,
+    "basis": "raw_bytes_pre_normalization_pre_global_dedup",
+    "materialization_status": "not_materialized"
+  },
+  "gates": {
+    "requires_materialization": true,
+    "requires_materialized_license_scan": true,
+    "requires_normalization": true,
+    "requires_global_cross_source_dedup": true,
+    "requires_balance_diversity_retest": true,
+    "requires_decontamination_before_training": true
+  }
+}
