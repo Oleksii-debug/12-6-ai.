@@ -1,0 +1,145 @@
+name: D03 four-source code capacity physical verification
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_code_capacity_four_source_physical.yml"
+      - "configs/data/next100_048_pydantic_code_rights_v1.json"
+      - "configs/data/scipy_v118_source_authority_v1.json"
+      - "configs/data/next100_050_pandas_source_authority_v2.json"
+      - "configs/data/next100_052_typer_source_authority_v2.json"
+      - "tools/materialize_d03_code_capacity_four_source_v1.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-code4-physical-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  materialize-four-source:
+    name: materialize exact four-source candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact execution head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      - name: Compile physical verifier
+        run: python -m py_compile tools/materialize_d03_code_capacity_four_source_v1.py
+
+      - name: Fetch and verify exact pinned source and license blobs
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p /tmp/d03-code4
+          python tools/materialize_d03_code_capacity_four_source_v1.py \
+            --source-head "$EXPECTED_HEAD" \
+            --output /tmp/d03-code4/physical-report.json
+
+      - name: Enforce text-free physical evidence boundary
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("/tmp/d03-code4/physical-report.json")
+          raw = path.read_bytes()
+          report = json.loads(raw.decode("utf-8"))
+          assert report["schema_version"] == "12-6.d03-code4-physical-materialization.v1"
+          assert report["source_head_sha"] == os.environ["EXPECTED_HEAD"]
+          assert report["execution_profile"] == "LOCAL_FREE"
+          assert report["physical_source_family_count"] == 4
+          assert report["physical_source_file_count"] == 8
+          assert report["physical_raw_candidate_bytes"] == 336947
+          assert report["cross_four_exact_duplicate_count"] == 0
+          assert [row["name"] for row in report["families"]] == [
+              "pydantic",
+              "scipy",
+              "pandas",
+              "typer",
+          ]
+          assert [row["raw_candidate_bytes"] for row in report["families"]] == [
+              235204,
+              78307,
+              15837,
+              7599,
+          ]
+          claim = report["claim_boundary"]
+          assert claim["canonical_capacity_credit_bytes"] == 0
+          assert claim["canonical_family_credit"] == 0
+          assert claim["current_whole_graph_global_dedup_complete"] is False
+          assert claim["current_reserved_evaluation_decontamination_complete"] is False
+          assert claim["post_composition_quality_privacy_complete"] is False
+          assert claim["balance_and_family_caps_complete"] is False
+          assert claim["cluster_safe_split_complete"] is False
+          assert claim["deterministic_pack_two_clean_complete"] is False
+          assert claim["positive_exact_unique_loss_ledger"] is False
+          assert claim["tokenizer_fit_authorized"] is False
+          assert claim["authorized_optimized_target_exposure"] == 0
+          assert claim["optimizer_updates_executed_on_real_targets"] == 0
+          assert claim["training_executed"] is False
+          assert claim["learned_weights_created"] is False
+          assert claim["final_test_outcomes_read"] is False
+          assert claim["paid_compute_used"] is False
+
+          core = dict(report)
+          supplied = core.pop("report_sha256")
+          canonical = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          assert hashlib.sha256(canonical).hexdigest() == supplied
+
+          forbidden = {"text", "content", "source_text", "raw_text"}
+          def walk(value):
+              if isinstance(value, dict):
+                  assert not forbidden.intersection(value)
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(report)
+          print(
+              "D03_CODE4_TEXT_FREE_EVIDENCE "
+              f"report_sha256={supplied} "
+              f"bytes={report['physical_raw_candidate_bytes']}"
+          )
+          PY
+
+      - name: Ensure physical verification did not mutate tracked repository
+        run: test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload text-free physical report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: d03-code4-physical-${{ github.event.pull_request.head.sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: /tmp/d03-code4/physical-report.json
