@@ -352,6 +352,11 @@ def _preflight_trainer_target(trainer: Any) -> None:
             raise CheckpointCompatibilityError(
                 "checkpoint restore requires valid optimizer ownership of model parameters"
             ) from exc
+    optimizer = getattr(trainer, "optimizer", None)
+    if optimizer is not None and not callable(getattr(optimizer, "zero_grad", None)):
+        raise CheckpointCompatibilityError(
+            "canonical trainer optimizer zero_grad unavailable"
+        )
 
 
 def _preflight_trainer_state_without_rng_guard(
