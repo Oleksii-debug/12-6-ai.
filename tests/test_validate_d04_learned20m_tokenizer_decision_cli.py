@@ -776,6 +776,60 @@ def test_postcreate_interrupt_never_attempts_pathname_rollback(
     staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
     assert len(staged) == 1
 
+@pytest.mark.parametrize("phase", ["inspect", "verify", "cleanup"])
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_process_interrupts_propagate_across_postlink_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    interruption: type[BaseException],
+) -> None:
+    cli = _module()
+    output = tmp_path / f"{phase}-interrupted.json"
+    report = {"schema": "test-only", "status": "zero-credit"}
+    expected = cli._serialize_report(report).encode("utf-8")
+
+    def raise_interruption() -> None:
+        raise interruption(f"injected {phase} interruption")
+
+    if phase == "inspect":
+        actual_lstat = cli._lstat_or_none
+
+        def interrupt_inspect(candidate: Path):
+            if candidate == output:
+                raise_interruption()
+            return actual_lstat(candidate)
+
+        monkeypatch.setattr(cli, "_lstat_or_none", interrupt_inspect)
+    elif phase == "verify":
+        def interrupt_verify(*_args: object, **_kwargs: object) -> bool:
+            raise_interruption()
+            return False
+
+        monkeypatch.setattr(cli, "_final_bytes_match", interrupt_verify)
+    else:
+        actual_unlink_owned = cli._unlink_owned_path
+
+        def interrupt_cleanup(
+            candidate: Path,
+            identity: tuple[int, int],
+            *,
+            missing_ok: bool = False,
+        ) -> None:
+            if candidate.name.startswith(f".{output.name}."):
+                raise_interruption()
+            actual_unlink_owned(candidate, identity, missing_ok=missing_ok)
+
+        monkeypatch.setattr(cli, "_unlink_owned_path", interrupt_cleanup)
+
+    with pytest.raises(interruption, match=f"injected {phase} interruption"):
+        cli._write(output, report)
+
+    assert output.read_bytes() == expected
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == expected
+
+
 def test_staging_identity_failure_closes_descriptor_and_preserves_residue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
