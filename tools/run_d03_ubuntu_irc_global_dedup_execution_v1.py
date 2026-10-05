@@ -400,6 +400,7 @@ def execute(
         type(base_report_sha256) is str and len(base_report_sha256) == 64,
         "base report identity invalid",
     )
+    base_report_bytes = incumbent._canonical(dict(base_report))
     del base_report
 
     indexed.attest_incumbent_runtime(matcher)
@@ -500,9 +501,27 @@ def execute(
         **evidence_core,
         "evidence_identity_sha256": _sha256(_canonical(evidence_core)),
     }
+
+    # Reconstruct publication data only after the final strict runtime attestation.
+    # JSON decoding creates a value-equivalent report without retaining references
+    # to V3 code-object literal constants. Re-canonicalization must reproduce the
+    # exact verified bytes frozen above before the atomic publisher can consume it.
+    try:
+        published_base_report = json.loads(base_report_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise UbuntuGlobalDedupError("frozen base report is not strict UTF-8 JSON") from exc
+    _require(type(published_base_report) is dict, "frozen base report root invalid")
+    _require(
+        incumbent._canonical(dict(published_base_report)) == base_report_bytes,
+        "frozen base report canonical bytes drift",
+    )
+    _require(
+        published_base_report.get("report_sha256") == base_report_sha256,
+        "frozen base report identity drift",
+    )
     incumbent._publish_json_outputs(
         (
-            (output_base_report, base_report),
+            (output_base_report, published_base_report),
             (output_combined_report, combined_report),
             (output_survivors, survivors),
             (output_evidence, evidence),
