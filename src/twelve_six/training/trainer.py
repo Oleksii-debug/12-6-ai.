@@ -2145,6 +2145,12 @@ class Trainer:
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        # Reject an already-poisoned trainer before any fingerprint traversal.
+        # Fingerprints intentionally inspect optimizer/model ownership deeply; on
+        # a failed transition those structures may themselves be malformed and
+        # must not replace the authoritative recovery-required diagnostic with a
+        # lower-level ValueError/TypeError.
+        Trainer._assert_trainable(self)
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
         model_before = self._model_export_fingerprint()
         optimizer_before = self._optimizer_live_fingerprint()
