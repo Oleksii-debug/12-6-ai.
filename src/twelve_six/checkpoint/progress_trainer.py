@@ -15,7 +15,6 @@ from typing import Any
 from . import core as _core
 from .core import (
     LoadResult,
-    _apply_model_weights,
     _bind_model_state_loader,
     _decode_verified_state,
     _preflight_rng_state,
