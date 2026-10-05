@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "component_id": "PLAYWRIGHT_BROWSER_RUNTIME_V1",
+  "rights_state": "SOFTWARE_CODE_CLEARED_CANDIDATE_BINARY_NOTICE_PENDING",
+  "software": {
+    "repository": "https://github.com/microsoft/playwright",
+    "tag": "v1.62.0",
+    "commit": "e3950d9c140d007bd52853b45813c6274b24e36f",
+    "license": "Apache-2.0",
+    "license_blob_sha1": "df112373eb2e23e459bf93ec412be1764dc5a38b",
+    "notice_blob_sha1": "814ec1696f7ad36c1b524fb6adeef14b4b367fec",
+    "notice_summary": "Playwright NOTICE identifies code derived from the Puppeteer project under Apache-2.0."
+  },
+  "runtime_artifacts": {
+    "python_package": "playwright==1.62.0",
+    "python_package_license": "Apache-2.0",
+    "browser_binaries": "third-party/runtime artifacts managed by Playwright; binary-level notice/license audit is required before ADOPTED"
+  },
+  "not_applicable": {"dataset_rights": true, "model_weight_rights": true, "training_corpus_rights": true},
+  "promotion_rule": "No ADOPTED state until Python package, browser runtime artifacts and applicable third-party notices are identity-bound and reviewed."
+}
