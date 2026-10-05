@@ -2342,3 +2342,74 @@ def test_recovery_marker_descriptor_cannot_block_application_poison(
     assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
     assert vars(target)["_update_incomplete"] is True
 
+@pytest.mark.parametrize(
+    ("descriptor_effect", "error"),
+    [
+        ("micro-step", "fresh trainer with no consumed exposure"),
+        ("config-rebind", "target config changed during preflight"),
+        ("scaler-rebind", "target scaler changed during preflight"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_authority_descriptor_rebind_fails_before_checkpoint_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    descriptor_effect: str,
+    error: str,
+    loader: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=703, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    original_authority = Trainer.__dict__["_require_optimizer_parameter_coverage"]
+    checkpoint_reads: list[bool] = []
+
+    class EffectfulAuthority:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            if instance is target:
+                if descriptor_effect == "micro-step":
+                    target.micro_step = 1
+                elif descriptor_effect == "config-rebind":
+                    target.config = replace(
+                        target.config,
+                        max_steps=target.config.max_steps + 1,
+                    )
+                elif descriptor_effect == "scaler-rebind":
+                    target.scaler = object()
+                else:
+                    raise AssertionError(
+                        f"unknown descriptor effect: {descriptor_effect}"
+                    )
+            return original_authority.__get__(instance, owner)
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("authority descriptor rebind reached checkpoint I/O")
+
+    monkeypatch.setattr(
+        Trainer,
+        "_require_optimizer_parameter_coverage",
+        EffectfulAuthority(),
+    )
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 0, "expected_tokens_seen": 0}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert checkpoint_reads == []
+
