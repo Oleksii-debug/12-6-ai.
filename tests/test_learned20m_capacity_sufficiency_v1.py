@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
 from twelve_six.learned20m_capacity_sufficiency_v1 import (
     CapacityReportError,
+    _int,
     load_and_validate,
     validate_report,
 )
@@ -335,6 +337,60 @@ def test_rejects_nonfinite_json_numbers(tmp_path: Path, number: str) -> None:
     path.write_text(raw, encoding="utf-8")
     with pytest.raises(CapacityReportError, match="nonfinite JSON number"):
         load_and_validate(path)
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_rejects_duplicate_json_key_without_disclosing_source_name(
+    tmp_path: Path, nested: bool
+) -> None:
+    secret = "PRIVATE_SOURCE_METADATA_KEY_998877"
+    duplicate = f'{{"{secret}":1,"{secret}":2}}'
+    raw = f'{{"outer":{duplicate}}}' if nested else duplicate
+    path = tmp_path / "duplicate-private.json"
+    path.write_text(raw, encoding="utf-8")
+    with pytest.raises(CapacityReportError, match="duplicate JSON key") as failure:
+        load_and_validate(path)
+    assert secret not in str(failure.value)
+
+
+@pytest.mark.parametrize(
+    ("number", "secret"),
+    [
+        ("NaN", "NaN"),
+        ("-Infinity", "-Infinity"),
+        ("1e99887766554433221100", "99887766554433221100"),
+    ],
+)
+def test_rejects_nonfinite_json_without_disclosing_untrusted_literal(
+    tmp_path: Path, number: str, secret: str
+) -> None:
+    path = tmp_path / "secret-float.json"
+    path.write_text('{"claim_issue":' + number + "}", encoding="utf-8")
+    with pytest.raises(CapacityReportError, match="nonfinite JSON number") as failure:
+        load_and_validate(path)
+    assert secret not in str(failure.value)
+
+
+@pytest.mark.parametrize("negative", [False, True])
+def test_capacity_json_integer_parser_keeps_valid_64_digits(negative: bool) -> None:
+    literal = ("-" if negative else "") + "9" * 64
+    assert _int(literal) == int(literal)
+
+
+@pytest.mark.parametrize("negative", [False, True])
+def test_rejects_huge_json_integer_with_python_digit_limit_disabled(
+    tmp_path: Path, negative: bool
+) -> None:
+    path = tmp_path / "oversized-integer-token.json"
+    number = ("-" if negative else "") + "9" * 100_000
+    path.write_text('{"claim_issue":' + number + "}", encoding="utf-8")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(CapacityReportError, match="integer token exceeds bounded"):
+            load_and_validate(path)
+    finally:
+        sys.set_int_max_str_digits(before)
 
 
 def test_rejects_unknown_top_level_key() -> None:
