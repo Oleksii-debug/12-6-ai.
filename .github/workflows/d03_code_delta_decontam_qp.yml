@@ -422,6 +422,16 @@ jobs:
               raise RuntimeError("delta byte count drift")
 
           gate = evidence["gate_execution"]
+          if gate["input_records"] != 18:
+              raise RuntimeError("delta gate input record count drift")
+          if not (
+              18
+              >= gate["post_decontamination_records"]
+              >= gate["post_quality_records"]
+              >= gate["survivor_records"]
+              > 0
+          ):
+              raise RuntimeError("delta gate record count chronology drift")
           survivor = gate["survivor_payload_bytes"]
           loss = gate["later_gate_loss_bytes"]
           if type(survivor) is not int or not (0 < survivor <= 418487):
