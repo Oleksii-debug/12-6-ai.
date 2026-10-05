@@ -33,7 +33,11 @@ from typing import Any
 import numpy as np
 import torch
 
-D05_RUNTIME_SHA = "c0cb107c731e6e0a245eec8a626e3790af24b1f3"
+D05_RUNTIME_SHA = os.environ.get("D05_RUNTIME_SHA", "")
+if len(D05_RUNTIME_SHA) != 40 or any(
+    character not in "0123456789abcdef" for character in D05_RUNTIME_SHA
+):
+    raise RuntimeError("D05_RUNTIME_SHA must be an exact lowercase 40-hex commit SHA")
 MODEL341_CARRIER_SHA = "f151c77a8ef8721f0f568509147b1a5f961ae6c7"
 MODEL341_CANDIDATE_BLOB = "69e3cbd5f5c83c9d3d529a2a6376db3055979c40"
 EXPECTED_PARAMETERS = 20_613_440
