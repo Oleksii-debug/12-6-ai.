@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import importlib
+import importlib.machinery
 import json
 import subprocess
 import sys
@@ -119,13 +120,16 @@ def _require_historical_module(
     source = getattr(module, "__file__", None)
     if not isinstance(source, str) or not source:
         raise ExpandedDedupError(f"historical project module has no source: {name}")
+    raw_path = Path(source)
+    if raw_path.is_symlink():
+        raise ExpandedDedupError(f"historical project module source is a symlink: {name}")
     try:
-        path = Path(source).resolve(strict=True)
+        path = raw_path.resolve(strict=True)
     except OSError as exc:
         raise ExpandedDedupError(
             f"historical project module source cannot be resolved: {name}"
         ) from exc
-    if path.is_symlink() or source_root not in path.parents:
+    if source_root not in path.parents:
         raise ExpandedDedupError(f"historical project module escaped V7 source: {name}")
 
 
@@ -133,9 +137,15 @@ def _require_historical_module(
 def _isolated_historical_v7_imports(v7_root: Path) -> Iterator[None]:
     """Temporarily replace cached project packages with the exact V7 source tree."""
 
-    source_root = (v7_root / "src").resolve(strict=True)
-    if not source_root.is_dir() or source_root.is_symlink():
-        raise ExpandedDedupError("historical V7 source root must be a regular directory")
+    raw_source_root = v7_root / "src"
+    if raw_source_root.is_symlink():
+        raise ExpandedDedupError("historical V7 source root must not be a symlink")
+    source_root = raw_source_root.resolve(strict=True)
+    if not source_root.is_dir():
+        raise ExpandedDedupError("historical V7 source root must be a directory")
+    package_root = source_root / "twelve_six"
+    if package_root.is_symlink() or not package_root.is_dir():
+        raise ExpandedDedupError("historical V7 package root must be a regular directory")
 
     previous_modules = {
         name: module
@@ -153,6 +163,16 @@ def _isolated_historical_v7_imports(v7_root: Path) -> Iterator[None]:
             source_text,
             *(entry for entry in previous_path if entry != source_text),
         ]
+        package = ModuleType("twelve_six")
+        package.__package__ = "twelve_six"
+        package.__path__ = [str(package_root)]
+        package.__spec__ = importlib.machinery.ModuleSpec(
+            "twelve_six",
+            loader=None,
+            is_package=True,
+        )
+        package.__spec__.submodule_search_locations = [str(package_root)]
+        sys.modules["twelve_six"] = package
         sys.dont_write_bytecode = True
         yield
         _validate_historical_namespace(source_root)

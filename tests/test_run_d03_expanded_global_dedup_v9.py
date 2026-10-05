@@ -16,7 +16,10 @@ def _historical_tree(root: Path) -> Path:
     package = source / "twelve_six"
     data = package / "data"
     data.mkdir(parents=True)
-    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__init__.py").write_text(
+        'raise RuntimeError("historical package initializer must never execute")\n',
+        encoding="utf-8",
+    )
     (data / "__init__.py").write_text("", encoding="utf-8")
     (data / "cross_source_capacity_audit_v7.py").write_text(
         'MARKER = "historical-v7"\n',
@@ -59,6 +62,9 @@ def test_historical_namespace_bypasses_preloaded_current_package_cache(
         )
         assert historical.MARKER == "historical-v7"
         assert source.resolve() in Path(historical.__file__).resolve().parents
+        package = sys.modules["twelve_six"]
+        assert getattr(package, "__file__", None) is None
+        assert list(package.__path__) == [str(source.resolve() / "twelve_six")]
         for name, module in before.items():
             assert sys.modules.get(name) is not module
 
@@ -165,3 +171,20 @@ def test_reconstruct_captures_v7_in_isolation_then_restores_current_runtime(
     assert inventory["sources"] == [{"source_id": "v7"}, {"source_id": "bulk"}]
     assert payloads == {"v7": b"v7", "bulk": b"bulk"}
     _assert_snapshot_restored(before)
+
+
+def test_historical_namespace_rejects_symlink_source_root(tmp_path: Path) -> None:
+    actual = tmp_path / "actual"
+    _historical_tree(actual)
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(actual, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(
+        runner.ExpandedDedupError,
+        match="historical V7 source root must not be a symlink",
+    ):
+        with runner._isolated_historical_v7_imports(linked):
+            pytest.fail("symlinked historical root was accepted")
