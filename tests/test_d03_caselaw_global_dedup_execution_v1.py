@@ -1828,7 +1828,6 @@ assert fetch_module.fetch_exact_source is original_fetch
     )
 
 
-
 def test_incomplete_recovery_rejects_foreign_stage_without_final() -> None:
     _run_isolated(
         """
@@ -1989,5 +1988,64 @@ with TemporaryDirectory() as raw:
     assert moved.read_bytes() == payload
     assert stages[0].read_bytes() == payload
     assert manifest.exists()
+"""
+    )
+
+
+
+def test_incomplete_recovery_rejects_resealed_foreign_target_paths_before_effects() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    final = root / "report.json"
+    payload = b'{"kind":"report"}\\n'
+    prepared = ((final, payload),)
+    marker, manifest_path, stages, pathset_id = mod._publication_control_paths(
+        prepared
+    )
+    manifest, _ = mod._publication_manifest(prepared, stages, pathset_id)
+    mod._write_create_only_durable(
+        marker, mod._publication_marker_payload(pathset_id)
+    )
+
+    foreign_final = root / "foreign-final"
+    foreign_stage = root / "foreign-stage"
+    foreign_final.write_bytes(payload)
+    foreign_stage.write_bytes(payload)
+    manifest["targets"][0]["path"] = str(foreign_final.resolve())
+    manifest["targets"][0]["stage_path"] = str(foreign_stage.resolve())
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key != "manifest_identity_sha256"
+    }
+    manifest["manifest_identity_sha256"] = mod._sha256(mod._canonical(core))
+    mod._write_create_only_durable(
+        manifest_path,
+        mod._canonical(manifest) + b"\\n",
+    )
+
+    try:
+        mod._recover_incomplete_publication(
+            marker,
+            manifest_path,
+            prepared,
+            stages,
+            pathset_id,
+        )
+    except mod.CaselawGlobalDedupError as exc:
+        assert "target paths do not match requested outputs" in str(exc)
+    else:
+        raise AssertionError("resealed foreign target paths were accepted")
+
+    assert foreign_final.read_bytes() == payload
+    assert foreign_stage.read_bytes() == payload
+    assert not final.exists()
+    assert not stages[0].exists()
+    assert marker.exists()
+    assert manifest_path.exists()
 """
     )
