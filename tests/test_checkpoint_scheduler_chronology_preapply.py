@@ -1492,6 +1492,7 @@ def test_d05_accepts_small_scaler_with_finite_float32_inverse(
     assert target.train_microbatch(_BATCH).optimizer_stepped
     assert bool(torch.isfinite(target.model.weight).all())
 
+
 @pytest.mark.parametrize(
     ("descriptor_effect", "error"),
     [
