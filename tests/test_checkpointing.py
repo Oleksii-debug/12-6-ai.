@@ -14,6 +14,7 @@ from twelve_six.checkpoint import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     CheckpointIntegrityError,
+    core,
     hash_json,
     load_checkpoint,
     save_checkpoint,
@@ -1063,3 +1064,133 @@ def test_checkpoint_validator_cannot_rewrite_canonical_metadata_bytes(
         )
 
     assert not checkpoint.exists()
+
+
+def test_direct_load_replays_exact_torch_warn_only_policy(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    ambient = core.capture_rng_state()
+    original_policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    try:
+        torch.manual_seed(1710)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        model = torch.nn.Linear(3, 2)
+        checkpoint = tmp_path / "direct-warn-only"
+        torch_identity = CheckpointIdentity(
+            git_sha="e" * 40,
+            model_spec={"kind": "warn-only-torch-linear", "in": 3, "out": 2},
+            parameter_count=sum(parameter.numel() for parameter in model.parameters()),
+            tokenizer_hash="1" * 64,
+            tokenizer_vocab_hash="2" * 64,
+            dataset_manifest_hash="3" * 64,
+            run_manifest_hash="4" * 64,
+            training_config={"steps": 0},
+            seed=1710,
+            precision="float32",
+            step=0,
+            tokens_seen=0,
+            optimizer={"name": "none"},
+            scheduler=None,
+        )
+        save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=torch_identity,
+        )
+        torch.use_deterministic_algorithms(True, warn_only=False)
+
+        load_checkpoint(checkpoint, model=model, restore_rng=True)
+
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(
+            original_policy[0],
+            warn_only=original_policy[1],
+        )
+
+
+def test_direct_load_legacy_rng_preserves_live_torch_warn_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    torch = pytest.importorskip("torch")
+    ambient = core.capture_rng_state()
+    original_policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    try:
+        torch.manual_seed(1711)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        legacy_rng = core.capture_rng_state()
+        legacy_torch = dict(legacy_rng["torch"])
+        legacy_torch.pop("deterministic_warn_only")
+        legacy_rng = dict(legacy_rng)
+        legacy_rng["torch"] = legacy_torch
+        model = torch.nn.Linear(3, 2)
+        checkpoint = tmp_path / "legacy-warn-only"
+        torch_identity = CheckpointIdentity(
+            git_sha="e" * 40,
+            model_spec={"kind": "legacy-warn-only-linear", "in": 3, "out": 2},
+            parameter_count=sum(parameter.numel() for parameter in model.parameters()),
+            tokenizer_hash="1" * 64,
+            tokenizer_vocab_hash="2" * 64,
+            dataset_manifest_hash="3" * 64,
+            run_manifest_hash="4" * 64,
+            training_config={"steps": 0},
+            seed=1711,
+            precision="float32",
+            step=0,
+            tokens_seen=0,
+            optimizer={"name": "none"},
+            scheduler=None,
+        )
+        with monkeypatch.context() as patch:
+            patch.setattr(core, "capture_rng_state", lambda: copy.deepcopy(legacy_rng))
+            save_checkpoint(
+                checkpoint,
+                model=model,
+                trainer_state={},
+                identity=torch_identity,
+            )
+
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        load_checkpoint(checkpoint, model=model, restore_rng=True)
+
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        core.restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(
+            original_policy[0],
+            warn_only=original_policy[1],
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("deterministic_algorithms", 1),
+        ("deterministic_algorithms", "false"),
+        ("deterministic_warn_only", 0),
+        ("deterministic_warn_only", "true"),
+    ],
+)
+def test_torch_rng_policy_fields_require_exact_booleans(
+    field: str,
+    bad_value: object,
+) -> None:
+    pytest.importorskip("torch")
+    state = core.capture_rng_state()
+    torch_state = dict(state["torch"])
+    torch_state[field] = bad_value
+    state = dict(state)
+    state["torch"] = torch_state
+
+    with pytest.raises(CheckpointCompatibilityError, match=field):
+        core._preflight_rng_state(state)
