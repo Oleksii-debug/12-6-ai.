@@ -474,3 +474,39 @@ def test_relative_policy_still_respects_explicit_repo_root(tmp_path: Path) -> No
     assert result.returncode == 0
     assert result.stderr == ""
     assert json.loads(result.stdout)["status"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (["--pol", str(POLICY)], "unrecognized arguments"),
+        (["--repo-r", str(ROOT)], "unrecognized arguments"),
+        (
+            ["--policy", str(POLICY), "--policy", str(POLICY)],
+            "argument --policy: may not be repeated",
+        ),
+        (
+            [f"--policy={POLICY}", f"--policy={POLICY}"],
+            "argument --policy: may not be repeated",
+        ),
+        (
+            ["--repo-root", str(ROOT), "--repo-root", str(ROOT)],
+            "argument --repo-root: may not be repeated",
+        ),
+    ],
+)
+def test_cli_rejects_abbreviated_or_repeated_authority_options(
+    args: list[str],
+    expected: str,
+) -> None:
+    result = subprocess.run(
+        [sys.executable, str(TOOL), *args],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert expected in result.stderr
