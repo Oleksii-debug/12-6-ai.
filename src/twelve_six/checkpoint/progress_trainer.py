@@ -249,6 +249,10 @@ def load_trainer_checkpoint(
     # in-place retry; avoid copying model-scale weights to attempt rollback.
     try:
         _apply_model_weights(model, materialized, strict_model)
+        # Model application is an effectful callout. Do not let it rebind the
+        # canonical trainer before optimizer/counter restore.
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_trainer_model_binding(model, trainer)
         load_trainer_state(trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
