@@ -17,8 +17,9 @@ from twelve_six.checkpoint import core, trainer_adapter
 
 
 class _FreshTarget:
-    _failure_reason: str | None = None
-    _update_incomplete: bool = False
+    def __init__(self) -> None:
+        self._failure_reason: str | None = None
+        self._update_incomplete = False
 
 
 @pytest.mark.parametrize("interruption", [OSError, KeyboardInterrupt, SystemExit])
