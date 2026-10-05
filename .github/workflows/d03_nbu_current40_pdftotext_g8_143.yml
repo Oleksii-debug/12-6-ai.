@@ -378,7 +378,7 @@ jobs:
           summary = {
               "schema": "12-6.d03-ua-nbu-pdftotext-real-execution-summary.v1",
               "status": "REAL_TEXT_MATERIALIZED_ZERO_CREDIT",
-              "git_sha": os.environ["GITHUB_SHA"],
+              "git_sha": os.environ["EXECUTION_HEAD"],
               "parent_head_sha": os.environ["PARENT_HEAD"],
               "recent_generation_8_140_discovery_evidence_sha256": os.environ["RECENT_DISCOVERY_EVIDENCE_SHA256"],
               "recent_generation_8_140_pdf_pin_evidence_sha256": os.environ["RECENT_PDF_PIN_EVIDENCE_SHA256"],
@@ -425,7 +425,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: d03-nbu-pdftotext-real-execution-${{ github.sha }}
+          name: d03-nbu-pdftotext-real-execution-${{ github.event.pull_request.head.sha }}
           if-no-files-found: warn
           retention-days: 14
           path: |
