@@ -129,7 +129,7 @@ def _strict_json_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ProjectionError(f"duplicate JSON key: {key}")
+            raise ProjectionError("duplicate JSON key")
         result[key] = value
     return result
 
@@ -141,11 +141,19 @@ def _strict_json_constant(value: str) -> Any:
 def _strict_json_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
-        raise ProjectionError(f"nonfinite JSON number is forbidden: {value}")
+        raise ProjectionError("nonfinite JSON number is forbidden")
     significand = value.split("e", 1)[0].split("E", 1)[0]
     if parsed == 0.0 and any(digit in "123456789" for digit in significand):
         raise ProjectionError("nonzero JSON number underflowed to zero")
     return parsed
+
+
+def _strict_json_int(value: str) -> int:
+    # Bound untrusted conversion even when Python's interpreter-level
+    # integer-string digit limit is disabled by its environment.
+    if len(value.removeprefix("-")) > 64:
+        raise ValueError("JSON integer digit limit exceeded")
+    return int(value)
 
 
 def load_strict_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
@@ -163,6 +171,7 @@ def load_strict_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
             object_pairs_hook=_strict_json_pairs,
             parse_constant=_strict_json_constant,
             parse_float=_strict_json_float,
+            parse_int=_strict_json_int,
         )
     except ProjectionError:
         raise
