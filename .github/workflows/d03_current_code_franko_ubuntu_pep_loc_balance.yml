@@ -1,0 +1,404 @@
+name: D03 current code Franko Ubuntu PEP LoC canonical balance
+
+on:
+  pull_request:
+    branches:
+      - execution/d03-current-code-franko-ubuntu-balance-g8-136-20261005
+    paths:
+      - ".github/workflows/d03_current_code_franko_ubuntu_pep_loc_balance.yml"
+      - "tools/run_d03_current_code_franko_ubuntu_pep_loc_balance_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-current-code-franko-ubuntu-pep-loc-balance-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-canonical-balance:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-current-code-franko-ubuntu-pep-loc-balance-g8-140-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+
+      BASE_HEAD: ce30dd256e5b583ed6920d78930ee4b1a20429c5
+      BASE_ARTIFACT_ID: "11352392420"
+      BASE_ARTIFACT_NAME: d03-current-code-franko-ubuntu-balance-ce30dd256e5b583ed6920d78930ee4b1a20429c5
+      BASE_ARTIFACT_SHA256: 4a0ce08cf969be414827bcd94aa2063dec1b1feb47a7139773ed8e988612a44c
+      BASE_COMPOSITION_FILE_SHA256: 06dd1d8d8ef35eb9a8e7b7f9a1830e8289b20cb592ab7575dfe8fab00a74d39e
+      BASE_RECEIPT_FILE_SHA256: d8b5d6eada44ab4e866158f0cc55cb215f800a34b4ff759eff14c0a5f68506a7
+
+      PEP_LOC_HEAD: 0aeddc6c32917dee110a669ffea55d55a399c1c9
+      PEP_LOC_ARTIFACT_ID: "11359730581"
+      PEP_LOC_ARTIFACT_NAME: d03-pep-loc-post-qp-0aeddc6c32917dee110a669ffea55d55a399c1c9
+      PEP_LOC_ARTIFACT_SHA256: aabb3b4e167c7bad739e39c64b29af7e9a56c1bfb72e88016f05b02ccb0fcd67
+      PEP_LOC_EVIDENCE_FILE_SHA256: e535ef7525abd591dd27fd4397ce2fd160569797daba4759eeddaa3b7d3102be
+
+      RUNNER_BLOB: d3092b07f8d17b2e004b7bc274d3f9103bd8f7ed
+      GATE_BLOB: ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5
+      POLICY_BLOB: b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f
+      PEP_CONFIG_BLOB: 0fe71942aa1f61c870a290f23a4d9b2bbb405d70
+      LOC_CONFIG_BLOB: 958339654703f3aab4ea9cc3686e4e4fd44a7e09
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact parent-relative execution closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$BASE_HEAD" HEAD)" = "$BASE_HEAD"
+          mapfile -t changed < <(git diff --name-only "$BASE_HEAD"..HEAD | sort)
+          expected=(
+            ".github/workflows/d03_current_code_franko_ubuntu_pep_loc_balance.yml"
+            "tools/run_d03_current_code_franko_ubuntu_pep_loc_balance_v1.py"
+          )
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          test "${#changed[@]}" -eq "${#wanted[@]}"
+          for i in "${!wanted[@]}"; do
+            test "${changed[$i]}" = "${wanted[$i]}"
+          done
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          python -m py_compile             tools/run_d03_current_code_franko_ubuntu_pep_loc_balance_v1.py             tools/next100_106_balance_gate.py
+          test "$(git hash-object tools/run_d03_current_code_franko_ubuntu_pep_loc_balance_v1.py)" = "$RUNNER_BLOB"
+          test "$(git hash-object tools/next100_106_balance_gate.py)" = "$GATE_BLOB"
+          test "$(git hash-object configs/data/next100_106_balance_gate_policy_v1.json)" = "$POLICY_BLOB"
+          test "$(git hash-object configs/data/d03_pep_public_domain_intake_v1.json)" = "$PEP_CONFIG_BLOB"
+          test "$(git hash-object configs/data/d03_common_pile_loc_intake_v1.json)" = "$LOC_CONFIG_BLOB"
+          PYTHONPATH=. python tools/next100_106_balance_gate.py validate-policy
+
+      - name: Fetch exact qualified physical artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          fetch_artifact() {
+            kind="$1"
+            artifact_id="$2"
+            expected_name="$3"
+            expected_digest="$4"
+            expected_head="$5"
+
+            curl --fail --silent --show-error --retry 5 --retry-all-errors               -H "Authorization: Bearer $GITHUB_TOKEN"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}"               -o "$RUNNER_TEMP/${kind}-metadata.json"
+
+            KIND="$kind" EXPECTED_NAME="$expected_name" EXPECTED_DIGEST="$expected_digest" EXPECTED_HEAD="$expected_head"             python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          kind = os.environ["KIND"]
+          meta = json.loads((Path(os.environ["RUNNER_TEMP"]) / f"{kind}-metadata.json").read_text(encoding="utf-8"))
+          if meta.get("name") != os.environ["EXPECTED_NAME"]:
+              raise SystemExit(f"{kind}: artifact name drift")
+          if meta.get("expired") is not False:
+              raise SystemExit(f"{kind}: artifact expired")
+          if meta.get("digest") != "sha256:" + os.environ["EXPECTED_DIGEST"]:
+              raise SystemExit(f"{kind}: artifact digest drift")
+          workflow = meta.get("workflow_run")
+          if not isinstance(workflow, dict) or workflow.get("head_sha") != os.environ["EXPECTED_HEAD"]:
+              raise SystemExit(f"{kind}: workflow head drift")
+          PY
+
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors               -H "Authorization: Bearer $GITHUB_TOKEN"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip"               -o "$RUNNER_TEMP/${kind}.zip"
+            test "$(sha256sum "$RUNNER_TEMP/${kind}.zip" | cut -d' ' -f1)" = "$expected_digest"
+          }
+
+          fetch_artifact base "$BASE_ARTIFACT_ID" "$BASE_ARTIFACT_NAME" "$BASE_ARTIFACT_SHA256" "$BASE_HEAD"
+          fetch_artifact pep-loc "$PEP_LOC_ARTIFACT_ID" "$PEP_LOC_ARTIFACT_NAME" "$PEP_LOC_ARTIFACT_SHA256" "$PEP_LOC_HEAD"
+
+      - name: Extract allowlisted text-free authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/inputs"
+          python - <<'PY'
+          import hashlib
+          import os
+          import stat
+          import zipfile
+          from pathlib import Path
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          out = tmp / "inputs"
+          specs = {
+              "base": {
+                  "expected": {
+                      "combined-dedup-proof.json",
+                      "composition.json",
+                      "execution-receipt.json",
+                      "balance-result.json",
+                      "next100-input.json",
+                  },
+                  "wanted": {
+                      "composition.json": ("base-composition.json", os.environ["BASE_COMPOSITION_FILE_SHA256"]),
+                      "execution-receipt.json": ("base-receipt.json", os.environ["BASE_RECEIPT_FILE_SHA256"]),
+                  },
+              },
+              "pep-loc": {
+                  "expected": {
+                      "output-a/evidence.json",
+                      "pep-loc-post-qp-two-clean-proof.json",
+                  },
+                  "wanted": {
+                      "output-a/evidence.json": ("pep-loc-evidence.json", os.environ["PEP_LOC_EVIDENCE_FILE_SHA256"]),
+                  },
+              },
+          }
+          for kind, spec in specs.items():
+              with zipfile.ZipFile(tmp / f"{kind}.zip") as bundle:
+                  infos = bundle.infolist()
+                  names = [info.filename for info in infos]
+                  if len(names) != len(set(names)) or set(names) != spec["expected"]:
+                      raise SystemExit(f"{kind}: artifact member allowlist drift")
+                  by_name = {}
+                  for info in infos:
+                      path = Path(info.filename)
+                      mode = (info.external_attr >> 16) & 0o170000
+                      if (
+                          info.is_dir()
+                          or "\\" in info.filename
+                          or info.filename.startswith("/")
+                          or ".." in path.parts
+                          or mode == stat.S_IFLNK
+                      ):
+                          raise SystemExit(f"{kind}: unsafe artifact member")
+                      by_name[info.filename] = info
+                  for source, (dest, digest) in spec["wanted"].items():
+                      raw = bundle.read(by_name[source])
+                      if hashlib.sha256(raw).hexdigest() != digest:
+                          raise SystemExit(f"{kind}: member digest drift")
+                      (out / dest).write_bytes(raw)
+          PY
+
+      - name: Prove independently pinned PEP LoC authority rejects coherent reseal
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$RUNNER_TEMP/inputs/pep-loc-evidence.json" "$RUNNER_TEMP/mutated-pep-loc.json"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "mutated-pep-loc.json"
+          value = json.loads(path.read_text(encoding="utf-8"))
+          value["truth_boundary"]["training_executed"] = True
+          core = dict(value)
+          core.pop("evidence_identity_sha256")
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          value["evidence_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          path.write_text(
+              json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          if PYTHONPATH=. python tools/run_d03_current_code_franko_ubuntu_pep_loc_balance_v1.py             --base-composition-json "$RUNNER_TEMP/inputs/base-composition.json"             --base-receipt-json "$RUNNER_TEMP/inputs/base-receipt.json"             --pep-loc-evidence-json "$RUNNER_TEMP/mutated-pep-loc.json"             --execution-head "$EXECUTION_HEAD"             --output-dir "$RUNNER_TEMP/mutated-output"; then
+            echo "coherently resealed mutated PEP+LoC evidence was accepted" >&2
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/mutated-output"
+
+      - name: Execute canonical composition and balance twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suffix in a b; do
+            out="$RUNNER_TEMP/output-${suffix}"
+            rm -rf "$out"
+            PYTHONPATH=. python tools/run_d03_current_code_franko_ubuntu_pep_loc_balance_v1.py               --base-composition-json "$RUNNER_TEMP/inputs/base-composition.json"               --base-receipt-json "$RUNNER_TEMP/inputs/base-receipt.json"               --pep-loc-evidence-json "$RUNNER_TEMP/inputs/pep-loc-evidence.json"               --execution-head "$EXECUTION_HEAD"               --output-dir "$out"
+          done
+          for name in family-authority-extension combined-dedup-proof composition next100-input balance-result execution-receipt; do
+            cmp "$RUNNER_TEMP/output-a/${name}.json" "$RUNNER_TEMP/output-b/${name}.json"
+          done
+
+      - name: Qualify exact result and text-free boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "output-a"
+          names = {
+              "family-authority-extension",
+              "combined-dedup-proof",
+              "composition",
+              "next100-input",
+              "balance-result",
+              "execution-receipt",
+          }
+          docs = {
+              name: json.loads((root / f"{name}.json").read_text(encoding="utf-8"))
+              for name in names
+          }
+          receipt = docs["execution-receipt"]
+          composition = docs["composition"]
+          proof = docs["combined-dedup-proof"]
+          balance = docs["balance-result"]
+          extension = docs["family-authority-extension"]
+
+          expected_receipt = {
+              "execution_head_sha": os.environ["EXECUTION_HEAD"],
+              "discounted_exact_replay_records": 254,
+              "discounted_exact_replay_payload_bytes": 5428358,
+              "novel_pep_loc_records": 178,
+              "novel_pep_loc_payload_bytes": 9077110,
+              "combined_record_count": 2711,
+              "combined_source_object_count": 2630,
+              "combined_total_payload_bytes": 19769910,
+              "raw_capacity_by_stratum": {"ua": 205315, "en": 15481867, "code": 4082728},
+              "maximum_feasible_total_source_bytes": 53100,
+              "maximum_feasible_stratum_bytes": {"ua": 23895, "en": 18585, "code": 10620},
+              "raw_gap_to_target_by_stratum": {"ua": 8794685, "en": 0, "code": 0},
+              "balance_status": "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA",
+              "next_scientific_gate": "ACQUIRE_MORE_DIVERSE_LAWFUL_UA_SOURCE_CAPACITY",
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          for field, expected in expected_receipt.items():
+              observed = receipt.get(field)
+              if type(observed) is not type(expected) or observed != expected:
+                  raise SystemExit(f"receipt drift: {field}")
+
+          if receipt.get("family_minimum") != {
+              "required_per_stratum": 2,
+              "observed": {"ua": 3, "en": 7, "code": 18},
+              "pass": True,
+          }:
+              raise SystemExit("family minimum drift")
+
+          if proof.get("terminal_verdict") != "PASS":
+              raise SystemExit("dedup proof is not terminal")
+          if proof.get("discounted_exact_replay_records") != 254:
+              raise SystemExit("dedup replay discount drift")
+          if proof.get("novel_pep_loc_records") != 178:
+              raise SystemExit("dedup novel record drift")
+          for field in (
+              "cross_inventory_record_id_collision_free_for_novel_rows",
+              "cross_inventory_source_id_collision_free_for_novel_rows",
+              "combined_exact_payload_collision_free",
+          ):
+              if proof.get(field) is not True:
+                  raise SystemExit(f"collision proof drift: {field}")
+
+          inventory = composition.get("combined_inventory")
+          rows = inventory.get("records")
+          if len(rows) != 2711:
+              raise SystemExit("combined inventory record drift")
+          if len({row["record_id"] for row in rows}) != 2711:
+              raise SystemExit("combined record IDs are not unique")
+          if len({row["payload_sha256"] for row in rows}) != 2711:
+              raise SystemExit("combined payload hashes are not unique")
+          if len({row["source_id"] for row in rows}) != 2630:
+              raise SystemExit("combined source-object drift")
+          if sum(row["payload_bytes"] for row in rows) != 19769910:
+              raise SystemExit("combined payload-byte arithmetic drift")
+
+          canonical = lambda value: json.dumps(
+              value,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          payload_projection = [
+              {
+                  "record_id": row["record_id"],
+                  "payload_sha256": row["payload_sha256"],
+                  "payload_bytes": row["payload_bytes"],
+              }
+              for row in rows
+          ]
+          if hashlib.sha256(canonical(rows)).hexdigest() != inventory.get("record_inventory_digest_sha256"):
+              raise SystemExit("combined record root drift")
+          if hashlib.sha256(canonical(payload_projection)).hexdigest() != inventory.get("payload_inventory_digest_sha256"):
+              raise SystemExit("combined payload root drift")
+
+          self_hashes = {
+              "family-authority-extension": "authority_root_sha256",
+              "combined-dedup-proof": "evidence_identity_sha256",
+              "composition": "composition_identity_sha256",
+              "balance-result": "result_identity_sha256",
+              "execution-receipt": "receipt_identity_sha256",
+          }
+          for name, identity_field in self_hashes.items():
+              value = dict(docs[name])
+              claimed = value.pop(identity_field)
+              if hashlib.sha256(canonical(value)).hexdigest() != claimed:
+                  raise SystemExit(f"{name}: self-hash mismatch")
+
+          if balance.get("raw_gap_to_target_by_stratum") != {"ua": 8794685, "en": 0, "code": 0}:
+              raise SystemExit("balance raw gap drift")
+          added = extension.get("added_families")
+          if not isinstance(added, list) or {row.get("family") for row in added} != {
+              "en.python.peps.public-domain",
+              "en.loc.selected-digitized-books",
+          }:
+              raise SystemExit("family extension drift")
+
+          forbidden = {"text", "raw_text", "content", "payload", "evaluation_payload", "training_text"}
+          def walk(value):
+              if isinstance(value, dict):
+                  overlap = forbidden & set(value)
+                  if overlap:
+                      raise SystemExit("raw-content key persisted: " + ",".join(sorted(overlap)))
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          for value in docs.values():
+              walk(value)
+
+          print("D03_PEP_LOC_COMBINED_BALANCE_QUALIFIED")
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+
+      - name: Upload text-free combined balance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-current-code-franko-ubuntu-pep-loc-balance-${{ env.EXECUTION_HEAD }}
+          path: |
+            ${{ runner.temp }}/output-a/family-authority-extension.json
+            ${{ runner.temp }}/output-a/combined-dedup-proof.json
+            ${{ runner.temp }}/output-a/composition.json
+            ${{ runner.temp }}/output-a/next100-input.json
+            ${{ runner.temp }}/output-a/balance-result.json
+            ${{ runner.temp }}/output-a/execution-receipt.json
+          if-no-files-found: error
+          retention-days: 90
