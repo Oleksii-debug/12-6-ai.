@@ -1182,6 +1182,25 @@ def _validate_bound_training_identity(identity: Mapping[str, Any]) -> None:
             "identity.training_config run manifest hash disagrees with identity"
         )
 
+    def require_text(parent: Mapping[str, Any], key: str, *, path: str) -> str:
+        value = parent.get(key)
+        if not isinstance(value, str) or not value.strip() or value == "UNRESOLVED":
+            raise CheckpointIntegrityError(
+                f"{path}.{key} must be resolved non-empty text"
+            )
+        return value
+
+    for key in ("run_id", "stage", "run_kind"):
+        require_text(training_config, key, path="identity.training_config")
+    try:
+        _require_exact_hex(
+            training_config.get("init_spec_sha256"),
+            field="identity.training_config.init_spec_sha256",
+            lengths={64},
+        )
+    except ValueError as exc:
+        raise CheckpointIntegrityError(str(exc)) from exc
+
     training = training_config.get("training")
     data = training_config.get("data")
     environment = training_config.get("environment")
@@ -1239,7 +1258,24 @@ def _validate_bound_training_identity(identity: Mapping[str, Any]) -> None:
             raise CheckpointIntegrityError(
                 f"identity.training_config.data.{nested_field} disagrees with identity"
             )
-    if environment.get("lock_sha256") != identity.get("environment_lock_hash"):
+
+    require_text(data, "split_identity", path="identity.training_config.data")
+    require_text(data, "tokenizer_version", path="identity.training_config.data")
+    require_text(data, "packing_version", path="identity.training_config.data")
+    try:
+        _require_exact_hex(
+            data.get("packing_sha256"),
+            field="identity.training_config.data.packing_sha256",
+            lengths={64},
+        )
+        lock_hash = _require_exact_hex(
+            environment.get("lock_sha256"),
+            field="identity.training_config.environment.lock_sha256",
+            lengths={64},
+        )
+    except ValueError as exc:
+        raise CheckpointIntegrityError(str(exc)) from exc
+    if lock_hash != identity.get("environment_lock_hash"):
         raise CheckpointIntegrityError(
             "identity.training_config environment lock disagrees with identity"
         )
