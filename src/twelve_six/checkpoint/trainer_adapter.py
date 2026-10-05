@@ -997,16 +997,39 @@ def load_trainer_checkpoint(
     else:
         _assert_live_d02_determinism(trainer)
     strict_model = _effective_strict_model(trainer, strict_model)
-    # Loader lookup/signature inspection can execute descriptors or proxies.
-    # Bind both effectful restore interfaces before model materialization, then
-    # revalidate the canonical target. No loader attribute is reopened later.
-    load_trainer_state = _bind_trainer_state_loader(trainer)
-    model_apply = _bind_model_state_loader(model, strict_model)
-    _assert_trainer_model_binding(model, trainer)
-    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
-    _assert_trainer_model_binding(model, trainer)
-    _preflight_trainer_target(trainer)
-    materialized = _prepare_model_weights(model, arrays, strict_model)
+    preapply_ambient = capture_rng_state()
+    preapply_policy = _snapshot_torch_policy(preapply_ambient)
+    try:
+        # Loader lookup/signature inspection can execute descriptors or proxies.
+        # Bind both effectful restore interfaces before model materialization, then
+        # revalidate the canonical target. No loader attribute is reopened later.
+        load_trainer_state = _bind_trainer_state_loader(trainer)
+        model_apply = _bind_model_state_loader(model, strict_model)
+        _assert_trainer_model_binding(model, trainer)
+        _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+        _assert_trainer_model_binding(model, trainer)
+        _preflight_trainer_target(trainer)
+        materialized = _prepare_model_weights(model, arrays, strict_model)
+
+        # The decoded source weights are no longer needed after target
+        # materialization. Release them before the first live mutation so peak
+        # resume memory stays bounded as checkpoint scale increases.
+        del arrays
+
+        # Materialization can execute model.state_dict() and custom tensor/device
+        # conversion hooks. Revalidate the live target, but never reopen either
+        # already-bound restore interface.
+        _assert_trainer_model_binding(model, trainer)
+        _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
+        _assert_trainer_model_binding(model, trainer)
+        _preflight_trainer_target(trainer)
+    finally:
+        _restore_preapply_process_state(
+            preapply_ambient,
+            preapply_policy,
+            trainer,
+        )
+
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = capture_rng_state()
     # An integrity-valid opt-out snapshot may omit torch; failure rollback
@@ -1016,22 +1039,6 @@ def load_trainer_checkpoint(
         if policy_before_apply is not None
         else _snapshot_torch_policy(ambient_before_apply)
     )
-
-    # The decoded source weights are no longer needed after target materialization.
-    # Releasing them before the first mutation keeps resume peak memory bounded as
-    # the same checkpoint path scales from 20M toward 100M and 1B parameters.
-    del arrays
-
-    # Revalidate ownership and the live target at the last safe point before
-    # model mutation. The trainer can be rebound while model-scale weights are
-    # materialized; never apply weights to a model the trainer no longer owns.
-    _assert_trainer_model_binding(model, trainer)
-    _preflight_trainer_state(trainer, trainer_state, manifest=manifest)
-    # Materialization can execute model.state_dict() and custom tensor/device
-    # conversion hooks. Recheck the live target once more, but never reopen the
-    # already-bound trainer/model loader interfaces.
-    _assert_trainer_model_binding(model, trainer)
-    _preflight_trainer_target(trainer)
 
     # State loaders may draw from process RNG even when they succeed.
     # Failed application may leave a mixed model/optimizer state, so canonical
