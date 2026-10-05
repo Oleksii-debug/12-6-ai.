@@ -1789,6 +1789,142 @@ def test_d05_model_loader_is_looked_up_once_before_apply(
     ids=["adapter", "progress"],
 )
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_failed_materialization_restores_preapply_rng_and_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "materialization-rng-failure-дані з пробілами"
+    core.save_checkpoint(
+        path,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    actual_prepare = loader._prepare_model_weights
+
+    def prepare_draw_then_fail(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        random.random()
+        np.random.random()
+        torch.rand(1)
+        torch.use_deterministic_algorithms(
+            not policy_before[0],
+            warn_only=not policy_before[1],
+        )
+        raise core.CheckpointCompatibilityError(
+            "synthetic preapply materialization failure"
+        )
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_draw_then_fail)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="synthetic preapply materialization failure",
+    ):
+        loader.load_trainer_checkpoint(
+            path,
+            model=target.model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=restore_rng,
+            **extra,
+        )
+
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    ) == policy_before
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_successful_optout_materialization_does_not_consume_preapply_rng(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    source = _source()
+    path = tmp_path / "materialization-rng-success-дані з пробілами"
+    core.save_checkpoint(
+        path,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    actual_prepare = loader._prepare_model_weights
+
+    def prepare_with_rng_draws(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        random.random()
+        np.random.random()
+        torch.rand(1)
+        return materialized
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_with_rng_draws)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    loader.load_trainer_checkpoint(
+        path,
+        model=target.model,
+        trainer=target,
+        strict_model=False,
+        restore_rng=False,
+        **extra,
+    )
+
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
 def test_incompatible_trainer_loader_signature_fails_before_mutation_and_retries(
     tmp_path: Path,
     loader: Any,
