@@ -17,12 +17,7 @@ from twelve_six.data.balanced_split_application_v1 import (
     verify_balanced_selection,
 )
 
-from .byte import (
-    BYTE_TOKENIZER_HASH,
-    BYTE_TOKENIZER_VERSION,
-    BYTE_VOCAB_HASH,
-    ByteTokenizer,
-)
+from .byte import ByteTokenizer
 
 SCHEMA = "12-6.d04-learned20m-tokenizer-decision.v1"
 DECISION = "RETAIN_BYTE_BASELINE"
@@ -83,10 +78,14 @@ _ZERO_CREDIT_BOUNDARY = {
     "final_test_outcomes_read": False,
     "authorized_optimized_target_exposure": 0,
 }
+# These values are intentionally literal and independent of the already-loaded
+# byte module. The checked source blob is one authority; mutable Python module
+# globals must not be able to redefine the expected runtime baseline before
+# this module is imported or reloaded.
 _EXPECTED_TOKENIZER_RUNTIME_IDENTITY = {
-    "version": BYTE_TOKENIZER_VERSION,
-    "config_sha256": BYTE_TOKENIZER_HASH,
-    "vocab_sha256": BYTE_VOCAB_HASH,
+    "version": "s0-byte-v1",
+    "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
+    "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
     "vocab_size": 256,
     "normalization": "none",
     "encoding": "utf-8",
