@@ -4,10 +4,12 @@ Synthetic CPU coverage only; this grants no corpus, training, or learned-weight 
 """
 from __future__ import annotations
 
+import random
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 import torch
 
@@ -29,6 +31,30 @@ _BATCH = {
     "input_ids": torch.tensor([[0, 1]], dtype=torch.long),
     "target_ids": torch.tensor([[1, 2]], dtype=torch.long),
 }
+
+
+@pytest.fixture(autouse=True)
+def preserve_process_state():
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    cuda_before = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    policy_before = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    try:
+        yield
+    finally:
+        random.setstate(py_before)
+        np.random.set_state(np_before)
+        torch.set_rng_state(torch_before)
+        if cuda_before is not None:
+            torch.cuda.set_rng_state_all(cuda_before)
+        torch.use_deterministic_algorithms(
+            policy_before[0],
+            warn_only=policy_before[1],
+        )
 
 
 def _identity() -> CheckpointIdentity:
