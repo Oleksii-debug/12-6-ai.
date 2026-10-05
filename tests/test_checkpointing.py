@@ -935,3 +935,38 @@ def test_post_rng_validator_restores_torch_rng_and_warn_only(
             original_policy[0],
             warn_only=original_policy[1],
         )
+
+
+@pytest.mark.parametrize("phase", ["pre", "post"])
+def test_checkpoint_validator_cannot_publish_tampered_staging_bytes(
+    tmp_path: Path,
+    phase: str,
+) -> None:
+    checkpoint = tmp_path / f"tampered-staging-{phase}"
+    model = NumpyModel(np.array([0.1, -0.2, 0.3]))
+
+    def tamper_staging() -> None:
+        candidates = [
+            path
+            for path in tmp_path.rglob("weights.safetensors")
+            if path.is_file()
+        ]
+        assert len(candidates) == 1
+        weights = candidates[0]
+        weights.write_bytes(weights.read_bytes() + b"tampered-after-verification")
+
+    validators = (
+        {"prepublish_validator": tamper_staging}
+        if phase == "pre"
+        else {"post_rng_prepublish_validator": tamper_staging}
+    )
+    with pytest.raises(CheckpointIntegrityError, match="mismatch"):
+        save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=identity(step=0, tokens_seen=0),
+            **validators,
+        )
+
+    assert not checkpoint.exists()
