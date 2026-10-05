@@ -1573,3 +1573,88 @@ def test_generic_preflight_does_not_dispatch_native_only_authorities() -> None:
     )
 
     assert descriptor_calls == []
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_native_checkpoint_load_rejects_attribute_lookup_override_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    class LookupHookTrainer(Trainer):
+        def __getattribute__(self, name: str) -> Any:
+            if name == "_require_optimizer_parameter_coverage":
+                return lambda: None
+            return super().__getattribute__(name)
+
+    target = LookupHookTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    checkpoint_reads: list[bool] = []
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("unsafe native lookup hook reached checkpoint I/O")
+
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="safety authority must remain canonical: __getattribute__",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+        )
+
+    assert checkpoint_reads == []
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+def test_native_checkpoint_save_rejects_attribute_lookup_override_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class LookupHookTrainer(Trainer):
+        def __getattribute__(self, name: str) -> Any:
+            if name == "_require_optimizer_parameter_coverage":
+                return lambda: None
+            return super().__getattribute__(name)
+
+    target = LookupHookTrainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    save_calls: list[bool] = []
+
+    def forbid_save(*args: Any, **kwargs: Any) -> Any:
+        save_calls.append(True)
+        raise AssertionError("unsafe native lookup hook reached checkpoint publication")
+
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_save)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="safety authority must remain canonical: __getattribute__",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / "must-not-write",
+            model=target.model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
+
+    assert save_calls == []
+    assert not (tmp_path / "must-not-write").exists()
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
