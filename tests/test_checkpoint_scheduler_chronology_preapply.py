@@ -1956,15 +1956,18 @@ def test_initial_trainer_loader_descriptor_lookup_is_process_state_neutral(
             )
             return original_loader.__get__(instance, owner)
 
-    def stop_before_checkpoint(*args: Any, **kwargs: Any) -> Any:
-        raise RuntimeError("synthetic stop after guarded trainer-loader bind")
+    checkpoint_reads: list[bool] = []
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("shadowed native trainer loader reached checkpoint I/O")
 
     monkeypatch.setattr(Trainer, "load_state_dict", EffectfulInitialLoader())
-    monkeypatch.setattr(loader, "prepare_checkpoint_load", stop_before_checkpoint)
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
 
     with pytest.raises(
-        RuntimeError,
-        match="synthetic stop after guarded trainer-loader bind",
+        core.CheckpointCompatibilityError,
+        match="load_state_dict must remain class-bound",
     ):
         loader.load_trainer_checkpoint(
             tmp_path / "must-not-open",
@@ -1974,6 +1977,7 @@ def test_initial_trainer_loader_descriptor_lookup_is_process_state_neutral(
         )
 
     assert descriptor_lookups == [True]
+    assert checkpoint_reads == []
     assert target._failure_reason is None and not target._update_incomplete
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert random.getstate() == py_before
@@ -1995,6 +1999,7 @@ def test_initial_trainer_loader_descriptor_lookup_is_process_state_neutral(
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
 def test_incompatible_trainer_loader_signature_fails_before_mutation_and_retries(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     loader: Any,
     restore_rng: bool,
 ) -> None:
@@ -2009,16 +2014,20 @@ def test_incompatible_trainer_loader_signature_fails_before_mutation_and_retries
     core.verify_checkpoint(path)
 
     target = Trainer(_TinyLogits(), source.config, device="cpu")
-    original_loader = target.load_state_dict
+    original_loader = Trainer.__dict__["load_state_dict"]
     initial_weights = target.model.weight.detach().clone()
     py_before = random.getstate()
     np_before = np.random.get_state()
     torch_before = torch.get_rng_state().clone()
 
-    def incompatible_loader(state: Any, required: Any) -> None:
-        raise AssertionError((state, required))
+    def incompatible_loader(
+        self: Trainer,
+        state: Any,
+        required: Any,
+    ) -> None:
+        raise AssertionError((self, state, required))
 
-    target.load_state_dict = incompatible_loader  # type: ignore[method-assign]
+    monkeypatch.setattr(Trainer, "load_state_dict", incompatible_loader)
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -2048,7 +2057,7 @@ def test_incompatible_trainer_loader_signature_fails_before_mutation_and_retries
     assert np_after[2:] == np_before[2:]
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
 
-    target.load_state_dict = original_loader  # type: ignore[method-assign]
+    monkeypatch.setattr(Trainer, "load_state_dict", original_loader)
     loader.load_trainer_checkpoint(
         path,
         model=target.model,
@@ -2531,9 +2540,6 @@ def test_model_apply_drift_is_poisoned_before_trainer_state_restore(
     target = Trainer(_TinyLogits(), source.config, device="cpu")
     original_model = target.model
     actual_model_loader = original_model.load_state_dict
-    trainer_state_calls: list[bool] = []
-    actual_trainer_loader = target.load_state_dict
-
     def model_loader_with_drift(
         state: Any,
         *,
@@ -2556,12 +2562,7 @@ def test_model_apply_drift_is_poisoned_before_trainer_state_restore(
             raise AssertionError(f"unknown model-loader attack: {attack}")
         return result
 
-    def tracked_trainer_loader(state: Any) -> None:
-        trainer_state_calls.append(True)
-        actual_trainer_loader(state)
-
     original_model.load_state_dict = model_loader_with_drift  # type: ignore[method-assign]
-    target.load_state_dict = tracked_trainer_loader  # type: ignore[method-assign]
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
@@ -2577,7 +2578,7 @@ def test_model_apply_drift_is_poisoned_before_trainer_state_restore(
             **extra,
         )
 
-    assert trainer_state_calls == []
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     expected_reason = (
         "checkpoint_restore_target_drift"
         if attack == "failure-marker"
@@ -2604,6 +2605,7 @@ def test_model_apply_drift_is_poisoned_before_trainer_state_restore(
 )
 def test_trainer_apply_marker_loss_restores_poison(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     marker: str,
     outcome: str,
     loader: Any,
@@ -2620,13 +2622,14 @@ def test_trainer_apply_marker_loss_restores_poison(
 
     target = Trainer(_TinyLogits(), source.config, device="cpu")
 
-    def loader_with_marker_loss(state: Any) -> None:
+    def loader_with_marker_loss(self: Trainer, state: Any) -> None:
+        assert self is target
         del state
-        del vars(target)[marker]
+        del vars(self)[marker]
         if outcome == "raise":
             raise RuntimeError("synthetic trainer apply failure")
 
-    target.load_state_dict = loader_with_marker_loss  # type: ignore[method-assign]
+    monkeypatch.setattr(Trainer, "load_state_dict", loader_with_marker_loss)
     extra = (
         {"expected_step": 1, "expected_tokens_seen": 2}
         if loader is progress_trainer else {}
