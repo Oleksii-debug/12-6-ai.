@@ -1069,7 +1069,7 @@ def save_checkpoint(
         # before the checkpoint becomes visible, and persist that same RNG state.
         try:
             _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             raise CheckpointError(
                 "checkpoint save could not restore entry RNG state before publication"
             ) from exc
@@ -1083,11 +1083,11 @@ def save_checkpoint(
 
         os.replace(temp_dir, destination)
         return manifest
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001
         if not rng_restored:
             try:
                 _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
-            except BaseException as rollback_exc:
+            except BaseException as rollback_exc:  # noqa: BLE001
                 exc.add_note(
                     "checkpoint save RNG rollback also failed: "
                     f"{rollback_exc!r}"
