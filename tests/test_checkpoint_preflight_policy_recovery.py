@@ -17,8 +17,9 @@ from twelve_six.checkpoint import core, trainer_adapter
 
 
 class _FreshTarget:
-    _failure_reason: str | None = None
-    _update_incomplete: bool = False
+    def __init__(self) -> None:
+        self._failure_reason: str | None = None
+        self._update_incomplete = False
 
 
 @pytest.mark.parametrize("interruption", [OSError, KeyboardInterrupt, SystemExit])
@@ -218,4 +219,50 @@ def test_outer_preapply_rng_rollback_failure_poison_and_recovers(
     finally:
         original_restore(ambient)
         original_use(before_enabled, warn_only=before_warn_only)
+
+@pytest.mark.parametrize(
+    "marker", ["_failure_reason", "_update_incomplete"],
+    ids=["failure-marker", "incomplete-marker"],
+)
+def test_preapply_rollback_marker_loss_still_poisoned(
+    monkeypatch: pytest.MonkeyPatch,
+    marker: str,
+) -> None:
+    ambient = core.capture_rng_state()
+    policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    target = _FreshTarget()
+    original_restore = core.restore_rng_state
+    attempts = 0
+
+    def fail_first_restore(state: Any) -> None:
+        nonlocal attempts
+        attempts += 1
+        result = original_restore(state)
+        if attempts == 1:
+            del vars(target)[marker]
+            raise RuntimeError("synthetic preapply rollback failure")
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            trainer_adapter._core,
+            "restore_rng_state",
+            fail_first_restore,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="synthetic preapply rollback failure",
+        ):
+            trainer_adapter._restore_preapply_process_state(
+                ambient,
+                policy,
+                target,
+            )
+
+    assert attempts >= 2
+    assert vars(target)["_failure_reason"] == "checkpoint_preapply_rng_rollback_failed"
+    assert vars(target)["_update_incomplete"] is True
 
