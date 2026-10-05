@@ -252,7 +252,7 @@ def _write(path: Path, value: dict[str, Any]) -> None:
                 indeterminate = True
                 raise PublicationIndeterminate(
                     "PUBLICATION_INDETERMINATE: tokenizer output bytes differ "
-                    f"from staged authority; retained stage {temporary}",
+                    f"from intended authority; retained stage {temporary}",
                     staged=temporary,
                 ) from link_error
             # This also resolves wrappers that create the hard link and then raise,
