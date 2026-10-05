@@ -18,6 +18,7 @@ from twelve_six.learned20m_recipe import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_POLICY = ROOT / "configs/research/r01_learned20m_recipe_authority_v1.json"
 MAX_AUTHORITY_JSON_BYTES = 8 * 1024 * 1024
+MAX_AUTHORITY_JSON_INTEGER_DIGITS = 64
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -40,6 +41,13 @@ def _parse_finite_float(value: str) -> float:
     return parsed
 
 
+def _parse_bounded_int(value: str) -> int:
+    # Keep work bounded even if the interpreter's integer-string limit is disabled.
+    if len(value.removeprefix("-")) > MAX_AUTHORITY_JSON_INTEGER_DIGITS:
+        raise ValueError("JSON integer exceeds 64 digits")
+    return int(value)
+
+
 def _load_json(path: Path) -> Any:
     try:
         # A local authority file is untrusted until its identity and schema pass.
@@ -53,6 +61,7 @@ def _load_json(path: Path) -> Any:
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_constant,
             parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
         )
     except RecursionError as exc:
         # Limit only untrusted JSON decoding; preserve genuine validator errors.
