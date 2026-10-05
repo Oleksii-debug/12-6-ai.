@@ -1023,3 +1023,68 @@ def test_native_checkpoint_save_seals_state_after_final_model_fingerprint(
         assert target.tokens_seen == 1
     else:
         assert model.training is False
+
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["optimizer", "scheduler"],
+)
+def test_native_checkpoint_save_rejects_auxiliary_drift_from_model_export(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    class AuxiliaryDriftModel(_TinyLogits):
+        def __init__(self) -> None:
+            super().__init__()
+            self.armed = False
+            self.owner: Trainer | None = None
+
+        def state_dict(self, *args: Any, **kwargs: Any) -> Any:
+            state = super().state_dict(*args, **kwargs)
+            if not self.armed:
+                return state
+            assert self.owner is not None
+            if mutation == "optimizer":
+                self.owner.optimizer.param_groups[0]["lr"] *= 0.5
+            else:
+                assert self.owner.scheduler is not None
+                self.owner.scheduler.last_epoch += 1
+            return state
+
+    class ArmAfterTrainerExport(Trainer):
+        def state_dict(self) -> Any:
+            state = super().state_dict()
+            self.model.armed = True
+            return state
+
+    model = AuxiliaryDriftModel()
+    target = ArmAfterTrainerExport(
+        model,
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    model.owner = target
+    original_lr = target.optimizer.param_groups[0]["lr"]
+    original_epoch = target.scheduler.last_epoch if target.scheduler is not None else None
+    checkpoint = tmp_path / f"auxiliary-{mutation}-must-not-exist"
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="auxiliary state changed during checkpoint publication",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
+    if mutation == "optimizer":
+        assert target.optimizer.param_groups[0]["lr"] == original_lr * 0.5
+    else:
+        assert target.scheduler is not None
+        assert target.scheduler.last_epoch == original_epoch + 1
