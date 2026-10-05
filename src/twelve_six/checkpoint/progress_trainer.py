@@ -42,6 +42,7 @@ from .trainer_adapter import (
     _preflight_trainer_state,
     _preflight_trainer_target,
     _poison_canonical_restore_failure,
+    _postflight_trainer_state,
     _restore_ambient_rng_after_failed_apply,
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
@@ -254,6 +255,8 @@ def load_trainer_checkpoint(
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         load_trainer_state(trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
         # torch RNG even on success. Restore the checkpoint streams last so
