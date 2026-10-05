@@ -40,6 +40,10 @@ def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError("JSON number is not finite")
+    # The binary float zero must not erase a syntactically nonzero JSON value.
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero JSON number underflowed to zero")
     return parsed
 
 
@@ -48,6 +52,11 @@ def _parse_bounded_int(value: str) -> int:
     if len(value.removeprefix("-")) > MAX_AUTHORITY_JSON_INTEGER_DIGITS:
         raise ValueError("JSON integer exceeds 64 digits")
     return int(value)
+
+
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    # Atime can change during a legitimate read; size/mtime/ctime must not.
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
 def _load_json(path: Path) -> Any:
@@ -68,7 +77,11 @@ def _load_json(path: Path) -> Any:
             # after a pathname swap; pin the actual prechecked file identity.
             if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
                 raise ValueError("authority input changed between check and open")
+            if _file_stamp(before) != _file_stamp(opened):
+                raise ValueError("authority input changed before open")
             raw = source.read(MAX_AUTHORITY_JSON_BYTES + 1)
+            if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
+                raise ValueError("authority input changed during read")
         if len(raw) > MAX_AUTHORITY_JSON_BYTES:
             raise ValueError("authority JSON exceeds 8 MiB input limit")
         return json.loads(

@@ -1163,3 +1163,89 @@ def test_recipe_cli_preserves_regular_file_symlink_input(tmp_path: Path) -> None
     alias = tmp_path / "authority-alias.json"
     alias.symlink_to(selected)
     assert tool._load_json(alias) == {"ok": True}
+
+
+@pytest.mark.parametrize("number", ["1e-4000", "-1e-4000", "0.0001e-4000"])
+def test_recipe_cli_strict_loader_rejects_float_underflow(
+    tmp_path: Path, number: str,
+) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="nonzero JSON number underflowed to zero"):
+        tool._load_json(_write_json(tmp_path, '{"value":' + number + "}"))
+
+
+@pytest.mark.parametrize("number", ["0e-4000", "-0.0e-4000", "0.000e4000"])
+def test_recipe_cli_strict_loader_preserves_exact_numeric_zero(
+    tmp_path: Path, number: str,
+) -> None:
+    tool = _load_tool()
+    assert tool._load_json(_write_json(tmp_path, '{"value":' + number + "}"))["value"] == 0.0
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_rejects_underflow_for_each_authority_role(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    invalid = tmp_path / "underflow.json"
+    invalid.write_text('{"value":1e-4000}', encoding="utf-8")
+    valid_policy = tmp_path / "policy.json"
+    valid_policy.write_text(json.dumps(load_policy()), encoding="utf-8")
+    empty = tmp_path / "empty.json"
+    empty.write_text("{}", encoding="utf-8")
+    args = [sys.executable, str(TOOL_PATH), "--policy", str(
+        invalid if bad_role == "policy" else valid_policy
+    )]
+    if bad_role != "policy":
+        args += [
+            "--bindings", str(invalid if bad_role == "bindings" else empty),
+            "--trusted-authorities", str(
+                invalid if bad_role == "trusted-authorities" else empty
+            ),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    completed = subprocess.run(
+        args, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8", timeout=10,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    result = json.loads(completed.stdout)
+    assert result["status"] == "FAIL"
+    assert f"invalid {bad_role} JSON" in result["error"]
+    assert "nonzero JSON number underflowed to zero" in result["error"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows may lock an open input for writing")
+def test_recipe_cli_rejects_inplace_mutation_during_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = _load_tool()
+    selected = tmp_path / "in-place-authority.json"
+    selected.write_text('{"original":true}', encoding="utf-8")
+    original_inode = selected.stat().st_ino
+    original_fdopen = os.fdopen
+
+    class MutatingSource:
+        def __init__(self, source):
+            self.source = source
+
+        def __enter__(self):
+            self.source.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.source.__exit__(*args)
+
+        def fileno(self):
+            return self.source.fileno()
+
+        def read(self, bound):
+            selected.write_text('{"modified":true}', encoding="utf-8")
+            assert selected.stat().st_ino == original_inode
+            return self.source.read(bound)
+
+    monkeypatch.setattr(tool.os, "fdopen", lambda fd, mode: MutatingSource(
+        original_fdopen(fd, mode)
+    ))
+    with pytest.raises(ValueError, match="authority input changed during read"):
+        tool._load_json(selected)
