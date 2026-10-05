@@ -1195,3 +1195,41 @@ def test_torch_rng_policy_fields_require_exact_booleans(
 
     with pytest.raises(CheckpointCompatibilityError, match=field):
         core._preflight_rng_state(state)
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("torch", {}),
+        ("cuda", None),
+        ("cuda", ()),
+        ("cuda", ""),
+        ("cuda", 0),
+    ],
+)
+def test_torch_rng_explicit_scope_shapes_fail_closed(
+    field: str,
+    bad_value: object,
+) -> None:
+    pytest.importorskip("torch")
+    state = core.capture_rng_state()
+    if field == "torch":
+        state = dict(state)
+        state["torch"] = bad_value
+        match = "torch RNG state"
+    else:
+        state = dict(state)
+        torch_state = dict(state["torch"])
+        torch_state[field] = bad_value
+        state["torch"] = torch_state
+        match = "CUDA RNG states"
+
+    with pytest.raises(CheckpointCompatibilityError, match=match):
+        core._preflight_rng_state(state)
+
+
+def test_torch_rng_explicit_null_remains_legacy_compatible() -> None:
+    state = core.capture_rng_state()
+    state = dict(state)
+    state["torch"] = None
+
+    core._preflight_rng_state(state)
