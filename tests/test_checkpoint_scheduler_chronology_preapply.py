@@ -935,6 +935,115 @@ def test_final_trainer_loader_bind_drift_fails_before_model_apply(
 
 
 @pytest.mark.parametrize(
+    ("attack", "error"),
+    [
+        ("model", "model binding changed"),
+        ("optimizer", "optimizer binding changed"),
+        ("scheduler", "scheduler binding changed"),
+        ("scaler", "scaler binding changed"),
+        ("config", "config binding changed"),
+        ("failure-marker", "safety classification changed"),
+        ("incomplete-marker", "safety classification changed"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_model_apply_hook_drift_is_detected_before_trainer_state_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    attack: str, error: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "model-apply-hook-drift-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    original_optimizer = target.optimizer
+    original_scheduler = target.scheduler
+    original_scaler = target.scaler
+    original_config = target.config
+    initial_weights = original_model.weight.detach().clone()
+    actual_model_loader = original_model.load_state_dict
+
+    def model_loader_with_drift(
+        state: Any, *, strict: bool = True,
+    ) -> Any:
+        result = actual_model_loader(state, strict=strict)
+        if attack == "model":
+            target.model = _TinyLogits()
+        elif attack == "optimizer":
+            target.optimizer = object()  # type: ignore[assignment]
+        elif attack == "scheduler":
+            target.scheduler = object()  # type: ignore[assignment]
+        elif attack == "scaler":
+            target.scaler = object()  # type: ignore[assignment]
+        elif attack == "config":
+            target.config = replace(target.config)
+        elif attack == "failure-marker":
+            del target._failure_reason
+        elif attack == "incomplete-marker":
+            del target._update_incomplete
+        else:
+            raise AssertionError(f"unknown model-loader hook attack: {attack}")
+        return result
+
+    original_model.load_state_dict = model_loader_with_drift  # type: ignore[method-assign]
+    trainer_state_applied: list[bool] = []
+    actual_trainer_loader = target.load_state_dict
+
+    def track_trainer_load(state: Any) -> None:
+        trainer_state_applied.append(True)
+        actual_trainer_loader(state)
+
+    target.load_state_dict = track_trainer_load  # type: ignore[method-assign]
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert trainer_state_applied == []
+    assert target._failure_reason is not None
+    assert target._update_incomplete
+    assert not original_optimizer.state
+    assert not torch.equal(original_model.weight, initial_weights)
+    torch.testing.assert_close(original_model.weight, source.model.weight, rtol=0, atol=0)
+
+    target.model = original_model
+    target.optimizer = original_optimizer
+    target.scheduler = original_scheduler
+    target.scaler = original_scaler
+    target.config = original_config
+    target.load_state_dict = actual_trainer_loader  # type: ignore[method-assign]
+    original_model.load_state_dict = actual_model_loader  # type: ignore[method-assign]
+    retry_model_applied: list[bool] = []
+
+    def forbid_retry_model_application(*args: Any, **kwargs: Any) -> None:
+        retry_model_applied.append(True)
+        raise AssertionError("poisoned model-hook retry reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_retry_model_application)
+    with pytest.raises(core.CheckpointCompatibilityError, match="target trainer is poisoned"):
+        loader.load_trainer_checkpoint(
+            path, model=original_model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+    assert retry_model_applied == []
+
+
+@pytest.mark.parametrize(
     "marker", ["_failure_reason", "_update_incomplete"],
     ids=["failure-marker", "incomplete-marker"],
 )
