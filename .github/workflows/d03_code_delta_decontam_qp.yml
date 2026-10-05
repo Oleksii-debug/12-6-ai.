@@ -386,6 +386,45 @@ jobs:
           if type(loss) is not int or loss != 418487 - survivor:
               raise RuntimeError("gate loss accounting drift")
 
+          inventory = evidence["survivor_inventory"]
+          if inventory["schema_version"] != "12-6.data526-record-inventory.v1":
+              raise RuntimeError("survivor inventory schema drift")
+          if inventory["record_count"] != survivor:
+              # This line is intentionally corrected below: record_count is a count,
+              # not a byte total. Keeping the checks separate prevents unit confusion.
+              pass
+          records = inventory["records"]
+          if inventory["record_count"] != len(records):
+              raise RuntimeError("survivor inventory record count drift")
+          if inventory["record_count"] != gate["survivor_records"]:
+              raise RuntimeError("survivor inventory/gate record count drift")
+          if inventory["total_payload_bytes"] != survivor:
+              raise RuntimeError("survivor inventory/gate byte count drift")
+          if inventory["record_inventory_digest_sha256"] != (
+              gate["survivor_record_inventory_digest_sha256"]
+          ):
+              raise RuntimeError("survivor inventory record root drift")
+          if inventory["payload_inventory_digest_sha256"] != (
+              gate["survivor_payload_inventory_digest_sha256"]
+          ):
+              raise RuntimeError("survivor inventory payload root drift")
+          required_record_fields = {
+              "record_id",
+              "source_id",
+              "family",
+              "modality",
+              "payload_sha256",
+              "payload_bytes",
+          }
+          if any(set(row) != required_record_fields for row in records):
+              raise RuntimeError("survivor inventory record schema drift")
+          if any(row["modality"] != "code" for row in records):
+              raise RuntimeError("non-code record crossed code-delta survivor inventory")
+          if sum(row["payload_bytes"] for row in records) != survivor:
+              raise RuntimeError("survivor inventory byte arithmetic drift")
+          if len({row["source_id"] for row in records}) != gate["survivor_source_objects"]:
+              raise RuntimeError("survivor inventory source-object count drift")
+
           cap = evidence["capacity_projection"]
           if cap["current_post_qp_code_bytes_reference"] != 3664247:
               raise RuntimeError("post-QP reference drift")
