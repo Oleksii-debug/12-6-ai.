@@ -517,6 +517,57 @@ def test_noncallable_trainer_loader_fails_before_model_and_rng(
     torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
 
 
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_late_noncallable_trainer_loader_fails_before_model_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "late-noncallable-loader-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    initial_weights = target.model.weight.detach().clone()
+    actual_prepare = loader._prepare_model_weights
+    model_applied: list[bool] = []
+
+    def prepare_then_disable(*args: Any, **kwargs: Any) -> Any:
+        materialized = actual_prepare(*args, **kwargs)
+        target.load_state_dict = None  # type: ignore[method-assign]
+        return materialized
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("late non-callable trainer loader reached model application")
+
+    monkeypatch.setattr(loader, "_prepare_model_weights", prepare_then_disable)
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(TypeError, match="trainer must provide load_state_dict"):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+
 def test_noncallable_trainer_state_dict_refuses_save_before_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
