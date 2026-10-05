@@ -69,7 +69,6 @@ EXPECTED_SOURCE_URLS = {
 }
 
 
-
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -107,6 +106,7 @@ def _load_campaign(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("campaign root must be an object")
     return data
+
 
 def _expect(errors: list[str], condition: bool, message: str) -> None:
     if not condition:
