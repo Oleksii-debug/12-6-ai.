@@ -488,3 +488,150 @@ def test_bind_rejects_runtime_method_default_drift(
             application,
             **SHA,
         )
+
+
+@pytest.mark.parametrize(
+    "helper_name",
+    [
+        "canonical_config_json",
+        "tokenizer_config_hash",
+        "canonical_vocab_json",
+        "vocab_hash",
+    ],
+)
+def test_bind_rejects_runtime_byte_helper_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+    helper_name: str,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original = getattr(byte_module, helper_name)
+
+    def wrapped(*args, **kwargs):
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(byte_module, helper_name, wrapped)
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime module drift: {helper_name}",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
+
+
+def test_bind_rejects_runtime_config_drift_even_when_hash_check_is_bypassed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    monkeypatch.setitem(byte_module._CONFIG, "encoding", "latin-1")
+    monkeypatch.setattr(
+        byte_module,
+        "tokenizer_config_hash",
+        lambda: authority._EXPECTED_TOKENIZER_RUNTIME_IDENTITY["config_sha256"],
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime module drift: _CONFIG",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
+
+
+def test_bind_rejects_runtime_tokenizer_identity_factory_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original = byte_module.TokenizerIdentity
+    monkeypatch.setattr(
+        byte_module,
+        "TokenizerIdentity",
+        lambda **kwargs: original(**kwargs),
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime module drift: TokenizerIdentity",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
+
+
+def test_bind_rejects_runtime_module_tokenizer_export_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    class ReplacementTokenizer(authority.ByteTokenizer):
+        pass
+
+    monkeypatch.setattr(byte_module, "ByteTokenizer", ReplacementTokenizer)
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime module drift: ByteTokenizer",
+    ):
+        authority.bind_byte_baseline_decision(
+            selection,
+            application,
+            **SHA,
+        )
