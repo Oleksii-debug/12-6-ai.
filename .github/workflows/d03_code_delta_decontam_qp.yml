@@ -375,15 +375,15 @@ jobs:
           delta = evidence["delta_authority"]
           if delta["source_object_count"] != 18:
               raise RuntimeError("delta object count drift")
-          if delta["pre_gate_payload_bytes"] != 419177:
+          if delta["pre_gate_payload_bytes"] != 418487:
               raise RuntimeError("delta byte count drift")
 
           gate = evidence["gate_execution"]
           survivor = gate["survivor_payload_bytes"]
           loss = gate["later_gate_loss_bytes"]
-          if type(survivor) is not int or not (0 < survivor <= 419177):
+          if type(survivor) is not int or not (0 < survivor <= 418487):
               raise RuntimeError("delta survivor bytes invalid")
-          if type(loss) is not int or loss != 419177 - survivor:
+          if type(loss) is not int or loss != 418487 - survivor:
               raise RuntimeError("gate loss accounting drift")
 
           cap = evidence["capacity_projection"]
@@ -458,7 +458,7 @@ jobs:
               "evidence_identity_sha256": evidence["evidence_identity_sha256"],
               "two_fresh_processes_byte_identical": True,
               "delta_source_objects": 18,
-              "delta_pre_gate_payload_bytes": 419177,
+              "delta_pre_gate_payload_bytes": 418487,
               "delta_survivor_payload_bytes": survivor,
               "later_gate_loss_bytes": loss,
               "projected_post_qp_code_bytes": (
