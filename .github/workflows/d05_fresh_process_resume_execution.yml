@@ -131,6 +131,20 @@ jobs:
                       "D05_FRESH_PROCESS_MISMATCH "
                       f"loader={name} count={len(paths)} paths={','.join(paths[:64])}"
                   )
+                  baseline_groups = baseline["optimizer"]["items"][0][1]["items"]
+                  replay_groups = replay["optimizer"]["items"][0][1]["items"]
+                  baseline_keys = sorted(
+                      pair[0] for pair in baseline_groups[0]["items"]
+                  )
+                  replay_keys = sorted(
+                      pair[0] for pair in replay_groups[0]["items"]
+                  )
+                  print(
+                      "D05_OPTIMIZER_GROUP_KEYSET "
+                      f"loader={name} "
+                      f"baseline_only={','.join(str(k) for k in baseline_keys if k not in replay_keys)} "
+                      f"replay_only={','.join(str(k) for k in replay_keys if k not in baseline_keys)}"
+                  )
               else:
                   print(f"D05_FRESH_PROCESS_MATCH loader={name}")
           if failed:
