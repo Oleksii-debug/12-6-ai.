@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import argparse
 import copy
+import importlib
 import json
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, Iterator
 
 TOOLS = Path(__file__).resolve().parent
 ROOT = TOOLS.parent
@@ -97,6 +100,71 @@ def validate_v7_checkout(v7_root: Path) -> Path:
     return root
 
 
+def _is_twelve_six_module(name: str) -> bool:
+    return name == "twelve_six" or name.startswith("twelve_six.")
+
+
+def _validate_historical_namespace(source_root: Path) -> None:
+    for name, module in tuple(sys.modules.items()):
+        if not _is_twelve_six_module(name):
+            continue
+        _require_historical_module(module, name, source_root)
+
+
+def _require_historical_module(
+    module: ModuleType,
+    name: str,
+    source_root: Path,
+) -> None:
+    source = getattr(module, "__file__", None)
+    if not isinstance(source, str) or not source:
+        raise ExpandedDedupError(f"historical project module has no source: {name}")
+    try:
+        path = Path(source).resolve(strict=True)
+    except OSError as exc:
+        raise ExpandedDedupError(
+            f"historical project module source cannot be resolved: {name}"
+        ) from exc
+    if path.is_symlink() or source_root not in path.parents:
+        raise ExpandedDedupError(f"historical project module escaped V7 source: {name}")
+
+
+@contextmanager
+def _isolated_historical_v7_imports(v7_root: Path) -> Iterator[None]:
+    """Temporarily replace cached project packages with the exact V7 source tree."""
+
+    source_root = (v7_root / "src").resolve(strict=True)
+    if not source_root.is_dir() or source_root.is_symlink():
+        raise ExpandedDedupError("historical V7 source root must be a regular directory")
+
+    previous_modules = {
+        name: module
+        for name, module in tuple(sys.modules.items())
+        if _is_twelve_six_module(name)
+    }
+    previous_path = list(sys.path)
+    previous_dont_write_bytecode = sys.dont_write_bytecode
+    source_text = str(source_root)
+    try:
+        for name in tuple(sys.modules):
+            if _is_twelve_six_module(name):
+                sys.modules.pop(name, None)
+        sys.path[:] = [
+            source_text,
+            *(entry for entry in previous_path if entry != source_text),
+        ]
+        sys.dont_write_bytecode = True
+        yield
+        _validate_historical_namespace(source_root)
+    finally:
+        for name in tuple(sys.modules):
+            if _is_twelve_six_module(name):
+                sys.modules.pop(name, None)
+        sys.modules.update(previous_modules)
+        sys.path[:] = previous_path
+        sys.dont_write_bytecode = previous_dont_write_bytecode
+
+
 def read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -126,9 +194,12 @@ def reconstruct_v8_source_inputs(
     v7_root: Path,
     bulk_workspace: Path,
     v8_config: dict[str, Any],
-) -> tuple[Any, dict[str, Any], dict[str, bytes]]:
+) -> tuple[dict[str, Any], dict[str, bytes]]:
     exact_v7_root = validate_v7_checkout(v7_root)
-    v7, _, inventory, payloads = v8._capture_terminal_v7(exact_v7_root, v8_config)
+    with _isolated_historical_v7_imports(exact_v7_root):
+        _, _, inventory, payloads = v8._capture_terminal_v7(exact_v7_root, v8_config)
+    validate_v7_checkout(exact_v7_root)
+
     _, bulk_rows, bulk_payloads = v8._materialize_bulk(ROOT, bulk_workspace, v8_config)
     combined_inventory = copy.deepcopy(inventory)
     existing = {str(row["source_id"]) for row in combined_inventory.get("sources", [])}
@@ -142,7 +213,7 @@ def reconstruct_v8_source_inputs(
     )
     combined_payloads = dict(payloads)
     combined_payloads.update(bulk_payloads)
-    return v7.v6.v3, combined_inventory, combined_payloads
+    return combined_inventory, combined_payloads
 
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
@@ -211,27 +282,33 @@ def main() -> int:
         v8_report = read_json(args.v8_report)
         v8_survivors = read_json(args.v8_survivors)
         data526.validate_v8_inputs(v8_report, v8_survivors, data526_config)
-        matcher, v8_inventory, v8_payloads = reconstruct_v8_source_inputs(
+        v8_inventory, v8_payloads = reconstruct_v8_source_inputs(
             v7_root=args.v7_root,
             bulk_workspace=args.bulk_workspace,
             v8_config=v8_config,
         )
         rada_rows, rada_raw = read_jsonl(args.rada_quality_privacy_jsonl)
-        report, survivors = run_expanded_dedup(
-            matcher_audit=matcher.audit_payloads,
-            matcher_verify=matcher.verify_report,
-            reconstructed_v8_inventory=v8_inventory,
-            reconstructed_v8_payloads=v8_payloads,
-            v8_survivor_authority=v8_survivors,
-            data526_evidence=read_json(args.data526_evidence),
-            data526_record_inventory=read_json(args.data526_record_inventory),
-            rada_language_report=read_json(args.rada_language_report),
-            rada_quality_privacy_report=read_json(args.rada_quality_privacy_report),
-            expected_rada_report_sha256=args.expected_rada_report_sha256,
-            rada_rows=rada_rows,
-            rada_raw_jsonl=rada_raw,
-            matcher_execution_backend=args.matcher_execution_backend,
-        )
+        exact_v7_root = validate_v7_checkout(args.v7_root)
+        with _isolated_historical_v7_imports(exact_v7_root):
+            matcher = importlib.import_module(
+                "twelve_six.data.cross_source_capacity_audit_v3"
+            )
+            report, survivors = run_expanded_dedup(
+                matcher_audit=matcher.audit_payloads,
+                matcher_verify=matcher.verify_report,
+                reconstructed_v8_inventory=v8_inventory,
+                reconstructed_v8_payloads=v8_payloads,
+                v8_survivor_authority=v8_survivors,
+                data526_evidence=read_json(args.data526_evidence),
+                data526_record_inventory=read_json(args.data526_record_inventory),
+                rada_language_report=read_json(args.rada_language_report),
+                rada_quality_privacy_report=read_json(args.rada_quality_privacy_report),
+                expected_rada_report_sha256=args.expected_rada_report_sha256,
+                rada_rows=rada_rows,
+                rada_raw_jsonl=rada_raw,
+                matcher_execution_backend=args.matcher_execution_backend,
+            )
+        validate_v7_checkout(exact_v7_root)
         write_json(args.output_report, report)
         write_json(args.output_survivors, survivors)
     except (ExpandedDedupError, data526.Data526V8Error, v8.V8Error, OSError, ValueError) as exc:
