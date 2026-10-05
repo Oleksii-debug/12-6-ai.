@@ -278,6 +278,17 @@ def _is_native_d02(trainer: Any) -> bool:
     return _CanonicalTrainer in type(trainer).__mro__
 
 
+def _require_canonical_d02_markers(trainer: Any) -> bool:
+    """Prevent a real Trainer from downgrading into generic adapter semantics."""
+
+    canonical_d02 = _is_canonical_d02(trainer)
+    if _is_native_d02(trainer) and not canonical_d02:
+        raise CheckpointCompatibilityError(
+            "native D02 trainer recovery markers are unavailable"
+        )
+    return canonical_d02
+
+
 def _poison_canonical_restore_failure(
     trainer: Any,
     *,
@@ -411,11 +422,7 @@ def _snapshot_trainer_restore_bindings(
     """Pin canonical restore component identities without descriptor dispatch."""
 
     native_d02 = _is_native_d02(trainer)
-    canonical_d02 = _is_canonical_d02(trainer)
-    if native_d02 and not canonical_d02:
-        raise CheckpointCompatibilityError(
-            "native D02 trainer recovery markers are unavailable"
-        )
+    canonical_d02 = _require_canonical_d02_markers(trainer)
     if not canonical_d02:
         return False, {}
     attrs = vars(trainer)
@@ -560,7 +567,7 @@ def _assert_native_d02_model_training_mode(model: Any, trainer: Any) -> None:
 def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
     """Refuse mismatched D02 model owners without executing custom descriptors."""
 
-    if not _is_canonical_d02(trainer):
+    if not _require_canonical_d02_markers(trainer):
         return
     attrs = vars(trainer)
     if "model" in attrs and attrs["model"] is not model:
@@ -577,7 +584,7 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
     model, even when the caller explicitly requests strict_model=False.
     """
 
-    return strict_model or _is_canonical_d02(trainer)
+    return strict_model or _is_native_d02(trainer) or _is_canonical_d02(trainer)
 
 
 def _bind_trainer_state_exporter(trainer: Any) -> Any:
@@ -623,7 +630,7 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
     # invocation cannot accept the one authoritative trainer-state payload.
     # Native binding avoids executing an instance shadow or __getattribute__.
     # Generic adapters retain the historical permissive callable contract.
-    canonical_d02 = _is_canonical_d02(trainer)
+    canonical_d02 = _require_canonical_d02_markers(trainer)
     if _is_native_d02(trainer):
         try:
             instance_attrs = vars(trainer)
@@ -664,7 +671,7 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
 def _preflight_trainer_target(trainer: Any) -> None:
     """Reject a D02 trainer target that its own loader would refuse after mutation."""
 
-    if not _is_canonical_d02(trainer):
+    if not _require_canonical_d02_markers(trainer):
         return
     initial_attrs = vars(trainer)
     if initial_attrs.get("_failure_reason") is not None:
@@ -905,7 +912,7 @@ def _preflight_trainer_state_without_rng_guard(
     # Canonical D02 Trainer and its scale subclasses construct TrainerState(**state)
     # during the real load. Extra keys therefore fail only at that final call unless
     # the adapter mirrors the exact schema now, before model/RNG mutation.
-    canonical_d02 = _is_canonical_d02(trainer)
+    canonical_d02 = _require_canonical_d02_markers(trainer)
     native_d02 = _is_native_d02(trainer)
     if canonical_d02:
         actual_fields = set(state)
@@ -1185,7 +1192,7 @@ def _preflight_trainer_state(
 def _assert_live_d02_determinism(trainer: Any) -> bool | None:
     """Reject ambient torch policy drift before exporting or restoring D02."""
 
-    if not _is_canonical_d02(trainer):
+    if not _require_canonical_d02_markers(trainer):
         return None
     config = vars(trainer).get("config")
     if _is_native_d02(trainer):
@@ -1350,7 +1357,7 @@ def _restore_preapply_process_state(
     """Make effectful pre-application inspection observationally RNG-neutral."""
 
     if expected_canonical is None:
-        expected_canonical = _is_canonical_d02(trainer)
+        expected_canonical = _is_canonical_d02(trainer) or _is_native_d02(trainer)
     try:
         _core.restore_rng_state(ambient)
         if policy is not None:
