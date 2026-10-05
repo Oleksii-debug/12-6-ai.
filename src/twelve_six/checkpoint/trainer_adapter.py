@@ -659,6 +659,16 @@ def _bind_native_model_export_fingerprint(trainer: Any) -> Any | None:
     )
 
 
+def _bind_native_auxiliary_fingerprint(trainer: Any) -> Any | None:
+    """Bind the exact first-party inert auxiliary fingerprint authority."""
+
+    return _bind_exact_native_d02_authority(
+        trainer,
+        "_checkpoint_auxiliary_fingerprint",
+        positional_args=0,
+    )
+
+
 def _bind_trainer_state_exporter(trainer: Any) -> Any:
     """Bind one checkpoint exporter without executing native instance lookup."""
 
@@ -930,6 +940,8 @@ def _assert_native_d02_exact_live_state(
     *,
     model_fingerprint: Any | None,
     sealed_model_fingerprint: str | None,
+    auxiliary_fingerprint: Any | None,
+    sealed_auxiliary_fingerprint: str | None,
     export_live_authorities: Mapping[str, Any],
     phase: str,
 ) -> None:
@@ -937,7 +949,12 @@ def _assert_native_d02_exact_live_state(
 
     if not _is_native_d02(trainer):
         return
-    if model_fingerprint is None or sealed_model_fingerprint is None:
+    if (
+        model_fingerprint is None
+        or sealed_model_fingerprint is None
+        or auxiliary_fingerprint is None
+        or sealed_auxiliary_fingerprint is None
+    ):
         raise CheckpointCompatibilityError(
             "native D02 exact-state authority is unavailable"
         )
@@ -969,6 +986,10 @@ def _assert_native_d02_exact_live_state(
     if model_fingerprint() != sealed_model_fingerprint:
         raise CheckpointCompatibilityError(
             f"canonical trainer model changed during {phase}"
+        )
+    if auxiliary_fingerprint() != sealed_auxiliary_fingerprint:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer auxiliary state changed during {phase}"
         )
     _assert_native_d02_postload_snapshot(trainer, state)
 
@@ -1634,6 +1655,7 @@ def save_trainer_checkpoint(
     save_bindings = _snapshot_trainer_restore_bindings(trainer)
     export_trainer_state = _bind_trainer_state_exporter(trainer)
     model_fingerprint = _bind_native_model_export_fingerprint(trainer)
+    auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
     export_live_authorities = _bind_native_export_live_authorities(trainer)
     _assert_trainer_model_binding(model, trainer)
     _assert_native_d02_model_training_mode(model, trainer)
@@ -1643,30 +1665,47 @@ def save_trainer_checkpoint(
     if save_bindings[0]:
         export_ambient = capture_rng_state()
         export_policy = _snapshot_torch_policy(export_ambient)
+        export_started = False
         try:
             entry_model_fingerprint = (
                 model_fingerprint()
                 if model_fingerprint is not None
                 else None
             )
+            entry_auxiliary_fingerprint = (
+                auxiliary_fingerprint()
+                if auxiliary_fingerprint is not None
+                else None
+            )
+            export_started = True
             state = _trainer_state_as_mapping(export_trainer_state())
             sealed_model_fingerprint = (
                 model_fingerprint()
                 if model_fingerprint is not None
                 else None
             )
+            sealed_auxiliary_fingerprint = (
+                auxiliary_fingerprint()
+                if auxiliary_fingerprint is not None
+                else None
+            )
             if sealed_model_fingerprint != entry_model_fingerprint:
                 raise CheckpointCompatibilityError(
                     "canonical trainer model changed during checkpoint export"
                 )
+            if sealed_auxiliary_fingerprint != entry_auxiliary_fingerprint:
+                raise CheckpointCompatibilityError(
+                    "canonical trainer auxiliary state changed during checkpoint export"
+                )
         except BaseException as exc:
             _note_restore_binding_drift(trainer, save_bindings, exc)
-            _poison_canonical_restore_failure(
-                trainer,
-                expected_canonical=save_bindings[0],
-                reason="checkpoint_export_state_drift",
-                exc=exc,
-            )
+            if export_started:
+                _poison_canonical_restore_failure(
+                    trainer,
+                    expected_canonical=save_bindings[0],
+                    reason="checkpoint_export_state_drift",
+                    exc=exc,
+                )
             raise
         finally:
             _restore_preapply_process_state(
@@ -1692,6 +1731,7 @@ def save_trainer_checkpoint(
     else:
         state = _trainer_state_as_mapping(export_trainer_state())
         sealed_model_fingerprint = None
+        sealed_auxiliary_fingerprint = None
 
     _assert_trainer_restore_bindings(trainer, save_bindings)
     _assert_native_checkpoint_save_progress(trainer, state, identity)
@@ -1715,6 +1755,8 @@ def save_trainer_checkpoint(
                 state,
                 model_fingerprint=model_fingerprint,
                 sealed_model_fingerprint=sealed_model_fingerprint,
+                auxiliary_fingerprint=auxiliary_fingerprint,
+                sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
                 export_live_authorities=export_live_authorities,
                 phase="checkpoint publication",
             )
@@ -1775,6 +1817,7 @@ def load_trainer_checkpoint(
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
         model_fingerprint = _bind_native_model_export_fingerprint(trainer)
+        auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
     except BaseException as exc:
         _note_restore_binding_drift(trainer, restore_bindings, exc)
@@ -1929,6 +1972,11 @@ def load_trainer_checkpoint(
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
+        sealed_auxiliary_fingerprint = (
+            auxiliary_fingerprint()
+            if auxiliary_fingerprint is not None
+            else None
+        )
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_native_d02_model_training_mode(model, trainer)
         _postflight_trainer_state(trainer, trainer_state)
@@ -1939,6 +1987,8 @@ def load_trainer_checkpoint(
             trainer_state,
             model_fingerprint=model_fingerprint,
             sealed_model_fingerprint=sealed_model_fingerprint,
+            auxiliary_fingerprint=auxiliary_fingerprint,
+            sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             export_live_authorities=restore_live_authorities,
             phase="checkpoint restore",
         )
@@ -1963,6 +2013,8 @@ def load_trainer_checkpoint(
             trainer_state,
             model_fingerprint=model_fingerprint,
             sealed_model_fingerprint=sealed_model_fingerprint,
+            auxiliary_fingerprint=auxiliary_fingerprint,
+            sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             export_live_authorities=restore_live_authorities,
             phase="final checkpoint restore seal",
         )
