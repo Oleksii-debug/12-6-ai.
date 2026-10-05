@@ -104,9 +104,9 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PARENT_ARTIFACT_ID}/zip"
           test "$(sha256sum "$parent/parent.zip" | cut -d' ' -f1)" = "$PARENT_ARTIFACT_ZIP_SHA256"
           unzip -q "$parent/parent.zip" -d "$parent/extracted"
-          test "$(sha256sum "$parent/extracted/survivors.json" | cut -d' ' -f1)" = "$PARENT_SURVIVORS_FILE_SHA256"
-          test "$(sha256sum "$parent/extracted/evidence.json" | cut -d' ' -f1)" = "$PARENT_EVIDENCE_FILE_SHA256"
-          test "$(sha256sum "$parent/extracted/ubuntu-irc-two-clean-proof.json" | cut -d' ' -f1)" = "$PARENT_PROOF_FILE_SHA256"
+          test "$(sha256sum "$parent/extracted/_temp/pass-1/survivors.json" | cut -d' ' -f1)" = "$PARENT_SURVIVORS_FILE_SHA256"
+          test "$(sha256sum "$parent/extracted/_temp/pass-1/evidence.json" | cut -d' ' -f1)" = "$PARENT_EVIDENCE_FILE_SHA256"
+          test "$(sha256sum "$parent/extracted/12-6-ai./12-6-ai./ubuntu-irc-two-clean-proof.json" | cut -d' ' -f1)" = "$PARENT_PROOF_FILE_SHA256"
 
       - name: Reconstruct immutable selection-validation payloads from exact heads
         shell: bash
@@ -360,9 +360,9 @@ jobs:
             test "$(wc -l < "$candidate" | tr -d ' ')" = "972"
             python tools/run_d03_ubuntu_irc_decontam_qp_v1.py \
               --expected-execution-head "$D03_EXECUTION_SHA" \
-              --parent-survivors-json "$RUNNER_TEMP/parent/extracted/survivors.json" \
-              --parent-evidence-json "$RUNNER_TEMP/parent/extracted/evidence.json" \
-              --parent-proof-json "$RUNNER_TEMP/parent/extracted/ubuntu-irc-two-clean-proof.json" \
+              --parent-survivors-json "$RUNNER_TEMP/parent/extracted/_temp/pass-1/survivors.json" \
+              --parent-evidence-json "$RUNNER_TEMP/parent/extracted/_temp/pass-1/evidence.json" \
+              --parent-proof-json "$RUNNER_TEMP/parent/extracted/12-6-ai./12-6-ai./ubuntu-irc-two-clean-proof.json" \
               --candidate-jsonl "$candidate" \
               --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl" \
               --base-reserved-binding-json "$RUNNER_TEMP/base_reserved_binding.json" \
