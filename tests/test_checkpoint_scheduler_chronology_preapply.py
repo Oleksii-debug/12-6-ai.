@@ -2484,3 +2484,149 @@ def test_authority_descriptor_rebind_fails_before_checkpoint_io(
 
     assert checkpoint_reads == []
 
+@pytest.mark.parametrize(
+    ("attack", "error"),
+    [
+        ("optimizer", "optimizer binding changed"),
+        ("config", "config binding changed"),
+        ("failure-marker", "safety classification changed"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_model_apply_drift_is_poisoned_before_trainer_state_restore(
+    tmp_path: Path,
+    attack: str,
+    error: str,
+    loader: Any,
+) -> None:
+    source = _source()
+    path = tmp_path / "model-apply-binding-drift-дані з пробілами"
+    core.save_checkpoint(
+        path,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    original_model = target.model
+    actual_model_loader = original_model.load_state_dict
+    trainer_state_calls: list[bool] = []
+    actual_trainer_loader = target.load_state_dict
+
+    def model_loader_with_drift(
+        state: Any,
+        *,
+        strict: bool = True,
+    ) -> Any:
+        result = actual_model_loader(state, strict=strict)
+        if attack == "optimizer":
+            target.optimizer = object()  # type: ignore[assignment]
+        elif attack == "config":
+            target.config = replace(target.config)
+        elif attack == "failure-marker":
+            del vars(target)["_failure_reason"]
+        else:
+            raise AssertionError(f"unknown model-loader attack: {attack}")
+        return result
+
+    def tracked_trainer_loader(state: Any) -> None:
+        trainer_state_calls.append(True)
+        actual_trainer_loader(state)
+
+    original_model.load_state_dict = model_loader_with_drift  # type: ignore[method-assign]
+    target.load_state_dict = tracked_trainer_loader  # type: ignore[method-assign]
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=error):
+        loader.load_trainer_checkpoint(
+            path,
+            model=original_model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert trainer_state_calls == []
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
+    assert vars(target)["_update_incomplete"] is True
+    torch.testing.assert_close(
+        original_model.weight,
+        source.model.weight,
+        rtol=0,
+        atol=0,
+    )
+
+
+@pytest.mark.parametrize(
+    "marker", ["_failure_reason", "_update_incomplete"],
+    ids=["failure-marker", "incomplete-marker"],
+)
+@pytest.mark.parametrize("outcome", ["raise", "return"], ids=["raises", "returns"])
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_trainer_apply_marker_loss_restores_poison(
+    tmp_path: Path,
+    marker: str,
+    outcome: str,
+    loader: Any,
+) -> None:
+    source = _source()
+    path = tmp_path / "trainer-apply-marker-loss-дані з пробілами"
+    core.save_checkpoint(
+        path,
+        model=source.model,
+        trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+
+    def loader_with_marker_loss(state: Any) -> None:
+        del state
+        del vars(target)[marker]
+        if outcome == "raise":
+            raise RuntimeError("synthetic trainer apply failure")
+
+    target.load_state_dict = loader_with_marker_loss  # type: ignore[method-assign]
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    if outcome == "raise":
+        error: type[BaseException] = RuntimeError
+        message = "synthetic trainer apply failure"
+    else:
+        error = core.CheckpointCompatibilityError
+        message = "safety classification changed"
+
+    with pytest.raises(error, match=message):
+        loader.load_trainer_checkpoint(
+            path,
+            model=target.model,
+            trainer=target,
+            strict_model=False,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
+    assert vars(target)["_update_incomplete"] is True
+    torch.testing.assert_close(
+        target.model.weight,
+        source.model.weight,
+        rtol=0,
+        atol=0,
+    )
+
