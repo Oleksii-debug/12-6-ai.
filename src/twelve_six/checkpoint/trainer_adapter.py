@@ -564,6 +564,34 @@ def _effective_strict_model(trainer: Any, strict_model: bool) -> bool:
     return strict_model or _is_canonical_d02(trainer)
 
 
+def _bind_trainer_state_exporter(trainer: Any) -> Any:
+    """Bind one checkpoint exporter without allowing native instance shadows."""
+
+    exporter = getattr(trainer, "state_dict", None)
+    if not callable(exporter):
+        raise TypeError("trainer must provide state_dict()")
+    if _is_native_d02(trainer):
+        class_exporter = inspect.getattr_static(
+            type(trainer),
+            "state_dict",
+            None,
+        )
+        if (
+            getattr(exporter, "__self__", None) is not trainer
+            or getattr(exporter, "__func__", None) is not class_exporter
+        ):
+            raise CheckpointCompatibilityError(
+                "native D02 trainer state_dict must remain class-bound"
+            )
+        try:
+            inspect.signature(exporter).bind()
+        except (TypeError, ValueError) as exc:
+            raise CheckpointCompatibilityError(
+                "trainer state_dict cannot safely bind checkpoint export"
+            ) from exc
+    return exporter
+
+
 def _bind_trainer_state_loader(trainer: Any) -> Any:
     loader = getattr(trainer, "load_state_dict", None)
     if not callable(loader):
@@ -1343,11 +1371,10 @@ def save_trainer_checkpoint(
 ) -> dict[str, Any]:
     """Save model + trainer-owned optimizer/scheduler/scaler/counter state."""
 
-    if not callable(getattr(trainer, "state_dict", None)):
-        raise TypeError("trainer must provide state_dict()")
+    export_trainer_state = _bind_trainer_state_exporter(trainer)
     _assert_trainer_model_binding(model, trainer)
     _assert_native_d02_model_training_mode(model, trainer)
-    state = _trainer_state_as_mapping(trainer.state_dict())
+    state = _trainer_state_as_mapping(export_trainer_state())
     # A canonical D02 checkpoint should never be produced under a different
     # ambient PyTorch policy than the validated trainer configuration.
     _assert_live_d02_determinism(trainer)
