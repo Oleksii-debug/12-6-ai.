@@ -934,6 +934,41 @@ def _assert_native_d02_postload_snapshot(trainer: Any, state: Any) -> None:
         )
 
 
+def _assert_native_d02_inert_live_state(
+    trainer: Any,
+    state: Any,
+    *,
+    model_fingerprint: Any | None,
+    sealed_model_fingerprint: str | None,
+    auxiliary_fingerprint: Any | None,
+    sealed_auxiliary_fingerprint: str | None,
+    phase: str,
+) -> None:
+    """Seal native committed state using only descriptor-free/raw observers."""
+
+    if not _is_native_d02(trainer):
+        return
+    if (
+        model_fingerprint is None
+        or sealed_model_fingerprint is None
+        or auxiliary_fingerprint is None
+        or sealed_auxiliary_fingerprint is None
+    ):
+        raise CheckpointCompatibilityError(
+            "native D02 inert exact-state authority is unavailable"
+        )
+    _assert_native_d02_postload_snapshot(trainer, state)
+    if model_fingerprint() != sealed_model_fingerprint:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer model changed during {phase}"
+        )
+    if auxiliary_fingerprint() != sealed_auxiliary_fingerprint:
+        raise CheckpointCompatibilityError(
+            f"canonical trainer auxiliary state changed during {phase}"
+        )
+    _assert_native_d02_postload_snapshot(trainer, state)
+
+
 def _assert_native_d02_exact_live_state(
     trainer: Any,
     state: Any,
@@ -959,12 +994,15 @@ def _assert_native_d02_exact_live_state(
             "native D02 exact-state authority is unavailable"
         )
 
-    _assert_native_d02_postload_snapshot(trainer, state)
-    observed_model = model_fingerprint()
-    if observed_model != sealed_model_fingerprint:
-        raise CheckpointCompatibilityError(
-            f"canonical trainer model changed during {phase}"
-        )
+    _assert_native_d02_inert_live_state(
+        trainer,
+        state,
+        model_fingerprint=model_fingerprint,
+        sealed_model_fingerprint=sealed_model_fingerprint,
+        auxiliary_fingerprint=auxiliary_fingerprint,
+        sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
+        phase=phase,
+    )
     try:
         export_live_authorities[
             "_require_exported_scheduler_matches_live"
@@ -980,18 +1018,16 @@ def _assert_native_d02_exact_live_state(
             f"canonical trainer auxiliary state changed during {phase}"
         ) from exc
 
-    # Auxiliary observers run before this final model digest. The digest itself
-    # is descriptor-free for native torch Module registries, so no overridable
-    # model iterator can mutate state after being observed.
-    if model_fingerprint() != sealed_model_fingerprint:
-        raise CheckpointCompatibilityError(
-            f"canonical trainer model changed during {phase}"
-        )
-    if auxiliary_fingerprint() != sealed_auxiliary_fingerprint:
-        raise CheckpointCompatibilityError(
-            f"canonical trainer auxiliary state changed during {phase}"
-        )
-    _assert_native_d02_postload_snapshot(trainer, state)
+    # Close the effectful comparison chain with raw observers only.
+    _assert_native_d02_inert_live_state(
+        trainer,
+        state,
+        model_fingerprint=model_fingerprint,
+        sealed_model_fingerprint=sealed_model_fingerprint,
+        auxiliary_fingerprint=auxiliary_fingerprint,
+        sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
+        phase=phase,
+    )
 
 
 def _postflight_trainer_state(trainer: Any, state: Any) -> None:
@@ -2008,14 +2044,13 @@ def load_trainer_checkpoint(
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
-        _assert_native_d02_exact_live_state(
+        _assert_native_d02_inert_live_state(
             trainer,
             trainer_state,
             model_fingerprint=model_fingerprint,
             sealed_model_fingerprint=sealed_model_fingerprint,
             auxiliary_fingerprint=auxiliary_fingerprint,
             sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
-            export_live_authorities=restore_live_authorities,
             phase="final checkpoint restore seal",
         )
     except BaseException as exc:
