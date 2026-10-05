@@ -382,3 +382,124 @@ def test_resume_lambda_internal_step_count_preflight_is_retryable(
     torch.testing.assert_close(
         target.model.weight, source.model.weight, rtol=0, atol=0,
     )
+
+
+@pytest.mark.parametrize("mode", ["paired-rate", "all-rate-fields"])
+def test_default_schedule_cannot_restore_paired_finite_lr_forgery(
+    preserve_state: Any, mode: str,
+) -> None:
+    source = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=703, max_steps=4, scheduler="cosine", warmup_steps=2),
+        device="cpu",
+    )
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    saved = source.state_dict()
+    corrupt = copy.deepcopy(saved)
+    optimizer_state = copy.deepcopy(corrupt.optimizer)
+    scheduler_state = copy.deepcopy(corrupt.scheduler)
+    assert scheduler_state is not None
+    optimizer_state["param_groups"][0]["lr"] += 0.01
+    scheduler_state["_last_lr"][0] += 0.01
+    if mode == "all-rate-fields":
+        optimizer_state["param_groups"][0]["initial_lr"] *= 2
+        scheduler_state["base_lrs"][0] *= 2
+    corrupt = replace(corrupt, optimizer=optimizer_state, scheduler=scheduler_state)
+    # The simpler cross-field equality test accepts this internally
+    # consistent but unfaithful rate: config/step are authoritative.
+    assert optimizer_state["param_groups"][0]["lr"] == scheduler_state["_last_lr"][0]
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    with pytest.raises(
+        TrainingStateInvalidError, match="default scheduler rate differs",
+    ):
+        target.load_state_dict(corrupt)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (
+        0, 0, 0,
+    )
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert target.optimizer_step == 1
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert target.optimizer_step == source.optimizer_step == 2
+    assert target.scheduler is not None and source.scheduler is not None
+    assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("mode", ["paired-rate", "all-rate-fields"])
+def test_default_schedule_cannot_publish_paired_finite_live_lr_drift(
+    preserve_state: Any, mode: str,
+) -> None:
+    trainer = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    assert trainer.scheduler is not None
+    trainer.optimizer.param_groups[0]["lr"] += 0.01
+    trainer.scheduler._last_lr[0] += 0.01
+    if mode == "all-rate-fields":
+        trainer.optimizer.param_groups[0]["initial_lr"] *= 2
+        trainer.scheduler.base_lrs[0] *= 2
+    assert trainer.optimizer.param_groups[0]["lr"] == trainer.scheduler.get_last_lr()[0]
+    with pytest.raises(
+        TrainingStateInvalidError, match="default scheduler rate differs",
+    ):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert trainer.optimizer_step == 1
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+@pytest.mark.parametrize(
+    ("kind", "warmup"),
+    [("cosine", 0), ("cosine", 2), ("linear_warmup", 2), ("constant", 2)],
+)
+@pytest.mark.parametrize("completed", [0, 1, 2])
+def test_default_schedule_authority_accepts_valid_replay_and_next_step(
+    preserve_state: Any, kind: str, warmup: int, completed: int,
+) -> None:
+    config = TrainerConfig(
+        seed=703, max_steps=4, scheduler=kind, warmup_steps=warmup,
+    )
+    source = Trainer(_TinyLogits(), config, device="cpu")
+    for _ in range(completed):
+        assert source.train_microbatch(_BATCH).optimizer_stepped
+    saved = source.state_dict()
+    target = Trainer(_TinyLogits(), config, device="cpu")
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert target.optimizer_step == completed
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert target.scheduler is not None and source.scheduler is not None
+    assert target.scheduler.last_epoch == source.scheduler.last_epoch
+    assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+
+def test_injected_optimizer_does_not_inherit_default_schedule_rate_oracle(
+    preserve_state: Any,
+) -> None:
+    config = TrainerConfig(seed=703, max_steps=4, scheduler="cosine")
+    model = _TinyLogits()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.002)
+    source = Trainer(model, config, optimizer=optimizer, device="cpu")
+    assert not source._canonical_default_schedule
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    saved = source.state_dict()
+    target_model = _TinyLogits()
+    target_optimizer = torch.optim.AdamW(target_model.parameters(), lr=0.002)
+    target = Trainer(target_model, config, optimizer=target_optimizer, device="cpu")
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(saved)
+    assert target.optimizer_step == 1
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
