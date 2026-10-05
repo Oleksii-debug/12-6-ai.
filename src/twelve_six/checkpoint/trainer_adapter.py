@@ -391,6 +391,19 @@ def _preflight_trainer_target(trainer: Any) -> None:
         )
     )
 
+    # model.parameters() is itself an overridable/effectful interface. A
+    # custom implementation can change optimizer parameter ownership while the
+    # pending-gradient scan is iterating, after the first coverage check has
+    # already succeeded. Re-run the already-bound D02 ownership authority after
+    # that final model-parameter traversal so such drift cannot survive until
+    # Trainer.load_state_dict(), which runs only after model weights are applied.
+    try:
+        authorities["_require_optimizer_parameter_coverage"]()
+    except Exception as exc:
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires stable optimizer ownership of model parameters"
+        ) from exc
+
     # Global deterministic mode is a pure target compatibility precondition.
     # Run it after the effectful bindings/calls above, then close with the
     # freshness/identity checks that gate checkpoint I/O and model mutation.
