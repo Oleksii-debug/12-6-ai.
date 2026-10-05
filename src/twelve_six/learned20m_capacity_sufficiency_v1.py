@@ -543,20 +543,29 @@ def _duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            fail(f"duplicate JSON key: {key}")
+            # JSON member names are untrusted and may contain private source text.
+            fail("duplicate JSON key")
         result[key] = value
     return result
 
 
 def _nonfinite(value: str) -> None:
-    fail(f"nonfinite JSON number: {value}")
+    fail("nonfinite JSON number")
 
 
 def _float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
-        fail(f"nonfinite JSON number: {value}")
+        fail("nonfinite JSON number")
     return parsed
+
+
+def _int(value: str) -> int:
+    # Reject oversized tokens before conversion, even when the interpreter's
+    # global integer-string digit limit is disabled by its environment.
+    if len(value.removeprefix("-")) > 64:
+        fail("JSON integer token exceeds bounded limit")
+    return int(value)
 
 
 def load_and_validate(path: str | Path, *, expected_main_sha: str | None = None) -> dict[str, Any]:
@@ -573,6 +582,7 @@ def load_and_validate(path: str | Path, *, expected_main_sha: str | None = None)
             object_pairs_hook=_duplicates,
             parse_constant=_nonfinite,
             parse_float=_float,
+            parse_int=_int,
         )
     except CapacityReportError:
         raise
