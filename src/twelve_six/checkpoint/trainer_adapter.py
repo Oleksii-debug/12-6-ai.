@@ -1106,6 +1106,11 @@ def load_trainer_checkpoint(
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
         _apply_model_weights(model, materialized, strict_model)
+        # Model loaders are application-stage callouts too. Before restoring
+        # optimizer/counters, reject any ownership/classification/component
+        # drift they caused and poison the already-mutated canonical target.
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_trainer_model_binding(model, trainer)
         load_trainer_state(trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         if restore_rng:
