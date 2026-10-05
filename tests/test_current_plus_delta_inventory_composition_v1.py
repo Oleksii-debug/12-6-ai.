@@ -287,6 +287,24 @@ def test_coherently_resealed_delta_cannot_replace_external_identity() -> None:
         )
 
 
+def test_resealed_delta_cannot_drop_pre_gate_input_record() -> None:
+    base = _base()
+    delta = _delta()
+    delta["gate_execution"]["input_records"] = (
+        compose.EXPECTED_DELTA_PRE_GATE_OBJECTS - 1
+    )
+    delta["evidence_identity_sha256"] = _sha256(
+        {
+            key: value
+            for key, value in delta.items()
+            if key != "evidence_identity_sha256"
+        }
+    )
+
+    with pytest.raises(ProjectionError, match="input record count drift"):
+        _compose(base, delta)
+
+
 def test_record_id_collision_fails_closed() -> None:
     base = _base()
     delta = _delta(record_id="base-01")
