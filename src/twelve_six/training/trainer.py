@@ -1033,6 +1033,15 @@ class Trainer:
                     )
                 seen_parameters.add(id(value))
                 hash_member("parameter", f"{prefix}{name}", value)
+                gradient = value.grad
+                if gradient is None:
+                    digest.update(b"gradient:none\\0")
+                else:
+                    if type(gradient) is not Tensor:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model gradient is not a canonical tensor"
+                        )
+                    hash_member("gradient", f"{prefix}{name}.grad", gradient)
 
             for name, value in buffers.items():
                 if type(name) is not str:
