@@ -289,3 +289,55 @@ def test_canonical_authority_hash_preserves_finite_identity() -> None:
     value = {"b": 2, "a": 1, "fraction": 0.25}
     expected = hashlib.sha256(b'{"a":1,"b":2,"fraction":0.25}').hexdigest()
     assert authority.authority_sha256(value) == expected
+
+
+@pytest.mark.parametrize(
+    "surface",
+    ["version", "config_sha256", "vocab_sha256"],
+)
+def test_reloaded_authority_does_not_trust_mutated_byte_module_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    import importlib
+
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    tampered_hash = "a" * 64
+
+    try:
+        with monkeypatch.context() as patch:
+            if surface == "version":
+                patch.setattr(byte_module, "BYTE_TOKENIZER_VERSION", "tampered-byte-v1")
+                patch.setattr(byte_module.ByteTokenizer, "version", "tampered-byte-v1")
+            elif surface == "config_sha256":
+                patch.setattr(byte_module, "BYTE_TOKENIZER_HASH", tampered_hash)
+                patch.setattr(byte_module, "tokenizer_config_hash", lambda: tampered_hash)
+            else:
+                patch.setattr(byte_module, "BYTE_VOCAB_HASH", tampered_hash)
+                patch.setattr(byte_module, "vocab_hash", lambda: tampered_hash)
+
+            reloaded = importlib.reload(authority)
+            patch.setattr(
+                reloaded,
+                "_bind_upstreams",
+                lambda *_args, **_kwargs: (
+                    SHA["expected_selection_identity_sha256"],
+                    SHA["expected_application_identity_sha256"],
+                ),
+            )
+            with pytest.raises(
+                reloaded.TokenizerDecisionError,
+                match=f"runtime identity drift: {surface}",
+            ):
+                reloaded.bind_byte_baseline_decision(
+                    selection,
+                    application,
+                    **SHA,
+                )
+    finally:
+        importlib.reload(authority)
