@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import random
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -161,3 +162,31 @@ def test_missing_scaler_export_is_not_a_valid_none_snapshot(
     )
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
         trainer.train_microbatch(_BATCH)
+
+
+@pytest.mark.parametrize("bad_export", [{"scale": 65536.0}, [], 0])
+def test_disabled_scaler_restore_rejects_ignored_payload(
+    preserve_state: Any, bad_export: Any,
+) -> None:
+    source = _fresh_trainer()
+    saved = replace(source.state_dict(), scaler=bad_export)
+    target = _fresh_trainer()
+    before = target.state_dict()
+    with pytest.raises(ValueError, match="disabled gradient scaler checkpoint state must be empty"):
+        target.load_state_dict(saved)
+    # Preflight failure must not poison or partially apply to a fresh target.
+    assert target._failure_reason is None
+    assert not target._update_incomplete
+    assert target.state_dict() == before
+
+
+def test_disabled_scaler_restore_allows_legacy_missing_payload(
+    preserve_state: Any,
+) -> None:
+    source = _fresh_trainer()
+    saved = replace(source.state_dict(), scaler=None)
+    target = _fresh_trainer()
+    target.load_state_dict(saved)
+    assert target._failure_reason is None
+    assert not target._update_incomplete
+    assert target.state_dict().scaler == {}
