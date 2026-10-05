@@ -316,10 +316,18 @@ def _assert_trainer_restore_bindings(
     """Reject safety classification or restore-component identity drift."""
 
     expected_canonical, bindings = snapshot
-    if _is_canonical_d02(trainer) != expected_canonical:
-        raise CheckpointCompatibilityError(
+    current_canonical = _is_canonical_d02(trainer)
+    if current_canonical != expected_canonical:
+        exc = CheckpointCompatibilityError(
             "trainer safety classification changed during checkpoint restore"
         )
+        _poison_canonical_restore_failure(
+            trainer,
+            expected_canonical=expected_canonical,
+            reason="checkpoint_restore_target_drift",
+            exc=exc,
+        )
+        raise exc
     if not expected_canonical:
         return
     try:
