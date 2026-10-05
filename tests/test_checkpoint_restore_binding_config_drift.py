@@ -5,7 +5,7 @@ Synthetic CPU coverage only; this grants no corpus, training, or learned-weight 
 from __future__ import annotations
 
 import random
-from dataclasses import asdict, fields, make_dataclass
+from dataclasses import asdict, fields, make_dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +51,10 @@ def _identity() -> CheckpointIdentity:
         scheduler={"name": "cosine"},
         environment_lock_hash="f" * 64,
     )
+
+
+def _fresh_identity() -> CheckpointIdentity:
+    return replace(_identity(), step=0, tokens_seen=0)
 
 
 def _source() -> Trainer:
@@ -383,7 +387,7 @@ def test_native_checkpoint_save_restores_export_process_state(
         tmp_path / "observed-only",
         model=target.model,
         trainer=target,
-        identity=_identity(),
+        identity=_fresh_identity(),
     )
 
     assert result == {"sealed": True}
@@ -786,7 +790,7 @@ def test_native_checkpoint_save_rejects_model_export_drift_before_publication(
             checkpoint,
             model=model,
             trainer=target,
-            identity=_identity(),
+            identity=_fresh_identity(),
         )
 
     assert not checkpoint.exists()
@@ -798,3 +802,50 @@ def test_native_checkpoint_save_rejects_model_export_drift_before_publication(
         assert target.tokens_seen == 1
     else:
         assert model.training is False
+
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("step", 1),
+        ("tokens_seen", 2),
+        ("step", True),
+        ("tokens_seen", False),
+    ],
+)
+def test_native_checkpoint_save_rejects_progress_identity_mismatch_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    bad_value: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    identity = replace(_fresh_identity(), **{field: bad_value})
+    save_calls: list[bool] = []
+
+    def forbid_save(*args: Any, **kwargs: Any) -> Any:
+        save_calls.append(True)
+        raise AssertionError("mismatched progress identity reached checkpoint I/O")
+
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_save)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="checkpoint save progress identity mismatch",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / f"bad-{field}",
+            model=target.model,
+            trainer=target,
+            identity=identity,
+        )
+
+    assert save_calls == []
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
