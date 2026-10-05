@@ -40,6 +40,7 @@ from .trainer_adapter import (
     _effective_strict_model,
     _preflight_trainer_state,
     _preflight_trainer_target,
+    _poison_canonical_d02,
     _restore_ambient_rng_after_failed_apply,
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
@@ -273,12 +274,10 @@ def load_trainer_checkpoint(
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
             _restore_initial_torch_policy(rollback_policy, exc)
-        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
-            # D02 may already have recorded a more specific partial-load error
-            # (including a second gradient-cleanup failure). Preserve it.
-            if trainer._failure_reason is None:
-                trainer._failure_reason = "checkpoint_restore_apply_failed"
-            trainer._update_incomplete = True
+        _poison_canonical_d02(
+            trainer,
+            "checkpoint_restore_apply_failed",
+        )
         raise
     return LoadResult(
         manifest=copy.deepcopy(manifest),
