@@ -290,3 +290,44 @@ def test_native_d02_detection_requires_exact_trainer_lineage() -> None:
 
     assert trainer_adapter._is_canonical_d02(target)
     assert not trainer_adapter._is_native_d02(target)
+
+
+def test_native_checkpoint_save_rejects_instance_state_export_shadow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    shadow_calls: list[bool] = []
+    save_calls: list[bool] = []
+
+    def shadow_state_dict() -> Any:
+        shadow_calls.append(True)
+        return target.__class__.state_dict(target)
+
+    def forbid_save(*args: Any, **kwargs: Any) -> Any:
+        save_calls.append(True)
+        raise AssertionError("instance-shadowed trainer export reached checkpoint I/O")
+
+    monkeypatch.setattr(target, "state_dict", shadow_state_dict)
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_save)
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="state_dict must remain class-bound",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / "must-not-write",
+            model=target.model,
+            trainer=target,
+            identity=_identity(),
+        )
+
+    assert shadow_calls == []
+    assert save_calls == []
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
