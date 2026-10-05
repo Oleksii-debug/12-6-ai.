@@ -21,10 +21,12 @@ import marshal
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from types import FunctionType, ModuleType
+from types import CodeType, FunctionType, ModuleType
 from typing import Any
 
 from twelve_six.data import _expanded_global_dedup_v9_impl as _impl
+from twelve_six.data import _incumbent_dedup_indexed_execution_core as _indexed_core
+from twelve_six.data import incumbent_dedup_indexed_execution as _indexed
 
 # Preserve the incumbent implementation/API surface.  Hardened definitions below
 # intentionally override only the trust-boundary entry points.
@@ -51,6 +53,20 @@ _EXPECTED_MATCHER_BLOBS = {
     "twelve_six.data.cross_source_capacity_audit": "84cdf00b2d468d2709a542ac3ee2ea372aae5716",
     "twelve_six.data._data232_decontamination_matching": "dab5da98dfc43133aa8f3c2e3c78c809252b741b",
 }
+_CANONICAL_EXECUTION_BACKEND = "canonical_all_pairs_v3"
+_INDEXED_EXECUTION_BACKEND = "incumbent_indexed_v1"
+_EXPECTED_INDEXED_BACKEND_BLOBS = {
+    "twelve_six.data.incumbent_dedup_indexed_execution": "f75336008839198b6d46bea4954f120e2d81613c",
+    "twelve_six.data._incumbent_dedup_indexed_execution_core": "af7be7909501ea9d76604ebed084cec32fbd9456",
+}
+_INDEXED_MAX_CANDIDATE_PAIRS = 5_000_000
+_INDEXED_MAX_INDEX_POSTINGS = 100_000_000
+_INDEXED_MAX_PAIR_EXPANSIONS = 100_000_000
+_INDEXED_FACADE_RUNTIME_FUNCTIONS = (
+    "_attest_loader_frozen_runtime_dependencies",
+    "_neutralize_verified_re_cache",
+    "attest_incumbent_runtime",
+)
 _V3_RUNTIME_FUNCTIONS = (
     "_validate_inventory",
     "_as_v1_inventory",
@@ -203,6 +219,46 @@ def _verify_runtime_functions(
             and current.__kwdefaults__ == expected.__kwdefaults__,
             f"{label} runtime function defaults replaced: {name}",
         )
+
+
+_INDEXED_FACADE_RUNTIME_CODE_IDENTITIES = {
+    name: _runtime_code_identity(getattr(_indexed, name))
+    for name in _INDEXED_FACADE_RUNTIME_FUNCTIONS
+}
+
+
+def _referenced_runtime_global_names(code: CodeType) -> set[str]:
+    names = set(code.co_names)
+    for value in code.co_consts:
+        if isinstance(value, CodeType):
+            names.update(_referenced_runtime_global_names(value))
+    return names
+
+
+def _runtime_function_dependency_closure(
+    module: ModuleType,
+    roots: Sequence[FunctionType],
+) -> tuple[str, ...]:
+    pending = list(roots)
+    names: set[str] = set()
+    while pending:
+        function = pending.pop()
+        for name in _referenced_runtime_global_names(function.__code__):
+            candidate = getattr(module, name, None)
+            if (
+                isinstance(candidate, FunctionType)
+                and candidate.__globals__ is module.__dict__
+                and candidate.__module__ == module.__name__
+                and name not in names
+            ):
+                names.add(name)
+                pending.append(candidate)
+    for root in roots:
+        for name, candidate in vars(module).items():
+            if candidate is root:
+                names.add(name)
+                break
+    return tuple(sorted(names))
 
 
 def _exact_builtin_value_equal(current: Any, expected: Any) -> bool:
@@ -551,6 +607,148 @@ def _restrict_lineage_to_survivors(
     return prepared
 
 
+def _verify_indexed_execution_backend(
+    matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
+) -> tuple[ModuleType, FunctionType]:
+    """Bind the scalable executor to the integrated, independently qualified implementation."""
+
+    for module, expected_blob in (
+        (
+            _indexed,
+            _EXPECTED_INDEXED_BACKEND_BLOBS[
+                "twelve_six.data.incumbent_dedup_indexed_execution"
+            ],
+        ),
+        (
+            _indexed_core,
+            _EXPECTED_INDEXED_BACKEND_BLOBS[
+                "twelve_six.data._incumbent_dedup_indexed_execution_core"
+            ],
+        ),
+    ):
+        _require(
+            _module_source_blob(module) == expected_blob,
+            f"indexed execution backend source drift: {module.__name__}",
+        )
+
+    indexed_audit = getattr(_indexed, "audit_payloads_indexed", None)
+    _require(
+        isinstance(indexed_audit, FunctionType)
+        and indexed_audit is getattr(_indexed_core, "audit_payloads_indexed", None)
+        and indexed_audit.__globals__ is _indexed_core.__dict__
+        and indexed_audit.__module__ == _indexed_core.__name__,
+        "indexed execution callback identity drift",
+    )
+    indexed_attest = getattr(_indexed, "attest_incumbent_runtime", None)
+    _require(
+        isinstance(indexed_attest, FunctionType)
+        and indexed_attest is getattr(_indexed_core, "attest_incumbent_runtime", None)
+        and indexed_attest.__globals__ is _indexed.__dict__
+        and indexed_attest.__module__ == _indexed.__name__,
+        "indexed execution runtime attester identity drift",
+    )
+    for name, expected_code in _INDEXED_FACADE_RUNTIME_CODE_IDENTITIES.items():
+        current = getattr(_indexed, name, None)
+        _require(
+            isinstance(current, FunctionType)
+            and current.__globals__ is _indexed.__dict__
+            and current.__module__ == _indexed.__name__
+            and _runtime_code_identity(current) == expected_code,
+            f"indexed execution facade runtime drift: {name}",
+        )
+
+    reference_core = _load_reference_module(_indexed_core, label="indexed_core")
+    core_closure = _runtime_function_dependency_closure(
+        _indexed_core,
+        (indexed_audit,),
+    )
+    _verify_runtime_functions(
+        _indexed_core,
+        reference_core,
+        core_closure,
+        label="indexed execution core",
+    )
+
+    module_name = getattr(matcher_audit, "__module__", None)
+    v3 = sys.modules.get(str(module_name))
+    _require(isinstance(v3, ModuleType), "indexed execution terminal V3 module unavailable")
+    try:
+        indexed_attest(v3)
+    except Exception as exc:
+        if isinstance(exc, ExpandedDedupError):
+            raise
+        raise ExpandedDedupError(f"indexed execution runtime attestation failed: {exc}") from exc
+    return v3, indexed_audit
+
+
+def _execute_indexed_backend(
+    matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+) -> Mapping[str, Any]:
+    # Re-attest at the final execution boundary so validation callbacks cannot create
+    # a time-of-check/time-of-use window between backend qualification and matching.
+    v3, indexed_audit = _verify_indexed_execution_backend(matcher_audit)
+    try:
+        return indexed_audit(
+            v3,
+            inventory,
+            payloads,
+            max_candidate_pairs=_INDEXED_MAX_CANDIDATE_PAIRS,
+            max_index_postings=_INDEXED_MAX_INDEX_POSTINGS,
+            max_pair_expansions=_INDEXED_MAX_PAIR_EXPANSIONS,
+        )
+    except Exception as exc:
+        if isinstance(exc, ExpandedDedupError):
+            raise
+        raise ExpandedDedupError(f"indexed execution backend failed closed: {exc}") from exc
+
+
+def _resolve_matcher_execution_backend(
+    matcher_execution_backend: str,
+    matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
+) -> tuple[
+    Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
+    dict[str, Any] | None,
+]:
+    _require(
+        type(matcher_execution_backend) is str,
+        "matcher execution backend must be an exact string",
+    )
+    if matcher_execution_backend == _CANONICAL_EXECUTION_BACKEND:
+        return matcher_audit, None
+    _require(
+        matcher_execution_backend == _INDEXED_EXECUTION_BACKEND,
+        f"unsupported matcher execution backend: {matcher_execution_backend}",
+    )
+    # Fail before the large expanded graph is assembled/executed, then attest again
+    # inside the returned closure immediately before the actual indexed call.
+    _verify_indexed_execution_backend(matcher_audit)
+
+    def execute(
+        inventory: Mapping[str, Any],
+        payloads: Mapping[str, bytes],
+    ) -> Mapping[str, Any]:
+        return _execute_indexed_backend(matcher_audit, inventory, payloads)
+
+    authority = {
+        "name": _INDEXED_EXECUTION_BACKEND,
+        "semantic_authority": "terminal_pr824_v3_canonical_callbacks",
+        "canonical_v8_preflight_redirected": False,
+        "canonical_report_verifier_required": True,
+        "facade_git_blob_sha1": _EXPECTED_INDEXED_BACKEND_BLOBS[
+            "twelve_six.data.incumbent_dedup_indexed_execution"
+        ],
+        "core_git_blob_sha1": _EXPECTED_INDEXED_BACKEND_BLOBS[
+            "twelve_six.data._incumbent_dedup_indexed_execution_core"
+        ],
+        "max_candidate_pairs": _INDEXED_MAX_CANDIDATE_PAIRS,
+        "max_index_postings": _INDEXED_MAX_INDEX_POSTINGS,
+        "max_pair_expansions": _INDEXED_MAX_PAIR_EXPANSIONS,
+    }
+    return execute, authority
+
+
 def run_expanded_dedup(
     *,
     matcher_audit: Callable[[Mapping[str, Any], Mapping[str, bytes]], Mapping[str, Any]],
@@ -565,6 +763,7 @@ def run_expanded_dedup(
     expected_rada_report_sha256: str,
     rada_rows: Sequence[Mapping[str, Any]],
     rada_raw_jsonl: bytes,
+    matcher_execution_backend: str = _CANONICAL_EXECUTION_BACKEND,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Hardened V9 entry point; no expanded matcher call occurs before authority proof."""
 
@@ -595,8 +794,12 @@ def run_expanded_dedup(
         reconstructed_v8_inventory,
         v8_survivor_authority,
     )
+    matcher_execute, execution_backend_authority = _resolve_matcher_execution_backend(
+        matcher_execution_backend,
+        matcher_audit,
+    )
     report, survivors = _LEGACY_RUN_EXPANDED_DEDUP(
-        matcher_audit=matcher_audit,
+        matcher_audit=matcher_execute,
         matcher_verify=matcher_verify,
         reconstructed_v8_inventory=prepared_inventory,
         reconstructed_v8_payloads=reconstructed_v8_payloads,
@@ -613,7 +816,7 @@ def run_expanded_dedup(
     # Durable outer evidence now states the exact semantic authorities enforced by
     # this facade; this does not grant any additional corpus or training credit.
     report = copy.deepcopy(report)
-    report["matcher_execution_authority"] = {
+    matcher_execution_authority = {
         "terminal_v7_head_sha": "d3333ec1b4a508df232a5aefccd6686adda745fb",
         "nested_v3_report_sha256": V8_NESTED_V3_SHA256,
         "v3_git_blob_sha1": _EXPECTED_MATCHER_BLOBS[
@@ -628,6 +831,9 @@ def run_expanded_dedup(
         "authenticated_rada_rows_only": True,
         "sealed_v8_semantic_preflight_required": True,
     }
+    if execution_backend_authority is not None:
+        matcher_execution_authority["execution_backend"] = execution_backend_authority
+    report["matcher_execution_authority"] = matcher_execution_authority
     core = dict(report)
     core.pop("report_sha256", None)
     report["report_sha256"] = _sha256(_canonical(core))
