@@ -529,6 +529,12 @@ def test_canonical_d02_missing_scaler_authority_fails_before_model_and_rng(
         ("growth_interval", 0),
         ("_growth_tracker", -1),
         ("_growth_tracker", 2000),
+        ("scale", 1e-300),
+        ("scale", 1e300),
+        ("growth_factor", 1.000000000000001),
+        ("growth_factor", 1e300),
+        ("backoff_factor", 1e-300),
+        ("backoff_factor", 0.999999999999999),
     ],
 )
 @pytest.mark.parametrize(
@@ -603,4 +609,45 @@ def test_resealed_invalid_scaler_statistics_fail_before_model_and_rng(
     assert target.train_microbatch(_BATCH).optimizer_stepped
     assert source.optimizer_step == target.optimizer_step == 2
     assert source.scaler.state_dict() == target.scaler.state_dict()
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"), [
+        ("scale", 1e-300),
+        ("scale", 1e300),
+        ("growth_factor", 1.000000000000001),
+        ("growth_factor", 1e300),
+        ("backoff_factor", 1e-300),
+        ("backoff_factor", 0.999999999999999),
+    ],
+)
+def test_direct_d02_rejects_float32_invalid_scaler_before_optimizer_mutation(
+    field: str, bad_value: float,
+) -> None:
+    source = _source()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    valid = asdict(source.state_dict())
+    bad = copy.deepcopy(valid)
+    bad["scaler"][field] = bad_value
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    target.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    before_weights = target.model.weight.detach().clone()
+    with pytest.raises(
+        ValueError, match="scaler checkpoint statistics invalid in float32"
+    ):
+        target.load_state_dict(bad)
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, before_weights, rtol=0, atol=0)
+
+    target.model.load_state_dict(source.model.state_dict())
+    target.load_state_dict(valid)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    assert target.scaler.state_dict() == source.scaler.state_dict()
+    assert source.train_microbatch(_BATCH).optimizer_stepped
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert source.optimizer_step == target.optimizer_step == 2
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
