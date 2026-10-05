@@ -1224,3 +1224,42 @@ assert indexed_bytes == reference_bytes
 assert indexed_report["report_sha256"] == reference_hash
 """
     )
+
+
+def test_convergence_v7_interrupt_after_eof_restores_hook_without_retrying_again() -> None:
+    _run_isolated(
+        """
+import ssl
+from types import SimpleNamespace
+from urllib.error import URLError
+
+url = "https://source.example.invalid/pinned"
+calls = []
+sleeps = []
+interrupted = KeyboardInterrupt("operator stop")
+mod.time.sleep = lambda delay: sleeps.append(delay)
+
+def original_fetch(candidate):
+    calls.append(candidate)
+    if len(calls) == 1:
+        raise URLError(ssl.SSLEOFError(8, "temporary EOF"))
+    raise interrupted
+
+fetch_module = SimpleNamespace(fetch_exact_source=original_fetch)
+v7 = SimpleNamespace(v6=SimpleNamespace(v5=SimpleNamespace(v1=fetch_module)))
+mod.v8._load_v7 = lambda _root: v7
+mod.v8._capture_terminal_v7 = (
+    lambda _root, _config: fetch_module.fetch_exact_source(url)
+)
+try:
+    mod._capture_terminal_v7_with_fetch_context(Path("."), {})
+except KeyboardInterrupt as exc:
+    assert exc is interrupted
+    assert not hasattr(exc, "__notes__")
+else:
+    raise AssertionError("interruption was swallowed")
+assert calls == [url, url]
+assert sleeps == [0.25]
+assert fetch_module.fetch_exact_source is original_fetch
+"""
+    )
