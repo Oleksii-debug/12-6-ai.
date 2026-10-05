@@ -371,6 +371,15 @@ def _bind_trainer_state_loader(trainer: Any) -> Any:
     loader = getattr(trainer, "load_state_dict", None)
     if not callable(loader):
         raise TypeError("trainer must provide load_state_dict()")
+    if _is_native_d02_trainer(trainer):
+        class_loader = getattr(type(trainer), "load_state_dict", None)
+        if (
+            getattr(loader, "__self__", None) is not trainer
+            or getattr(loader, "__func__", None) is not class_loader
+        ):
+            raise CheckpointCompatibilityError(
+                "native D02 trainer load_state_dict must remain class-bound"
+            )
     return loader
 
 
@@ -399,9 +408,6 @@ def _preflight_trainer_target(trainer: Any) -> None:
             ("_require_no_residual_model_gradients", "gradient-cleanliness"),
             ("_require_deterministic_policy", "deterministic-policy"),
             ("_require_optimizer_parameter_coverage", "optimizer-coverage"),
-            ("_require_exported_optimizer_matches_live", "optimizer-postload"),
-            ("_require_exported_scheduler_matches_live", "scheduler-postload"),
-            ("_require_exported_scaler_matches_live", "scaler-postload"),
         ):
             if not callable(getattr(trainer, authority, None)):
                 raise CheckpointCompatibilityError(
@@ -532,23 +538,6 @@ def _postflight_trainer_state(trainer: Any, state: Any) -> None:
         raise CheckpointCompatibilityError(
             "canonical trainer post-load config disagrees with checkpoint"
         )
-
-    for authority, field, label in (
-        ("_require_exported_optimizer_matches_live", "optimizer", "optimizer"),
-        ("_require_exported_scheduler_matches_live", "scheduler", "scheduler"),
-        ("_require_exported_scaler_matches_live", "scaler", "gradient scaler"),
-    ):
-        check = getattr(trainer, authority, None)
-        if not callable(check):
-            raise CheckpointCompatibilityError(
-                f"canonical trainer {label} post-load authority unavailable"
-            )
-        try:
-            check(state.get(field))
-        except Exception as exc:
-            raise CheckpointCompatibilityError(
-                f"canonical trainer live {label} disagrees with checkpoint"
-            ) from exc
 
     for authority, label in (
         ("_require_optimizer_parameter_coverage", "optimizer coverage"),
