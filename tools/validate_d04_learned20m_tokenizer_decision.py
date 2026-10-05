@@ -268,7 +268,10 @@ def _write(path: Path, value: dict[str, Any]) -> None:
 
         try:
             final = _lstat_or_none(path)
-        except (OSError, KeyboardInterrupt, SystemExit) as inspect_error:
+        except (KeyboardInterrupt, SystemExit):
+            indeterminate = True
+            raise
+        except OSError as inspect_error:
             indeterminate = True
             raise PublicationIndeterminate(
                 "PUBLICATION_INDETERMINATE: cannot inspect tokenizer output after "
@@ -295,7 +298,10 @@ def _write(path: Path, value: dict[str, Any]) -> None:
                     identity=identity,
                     payload=payload,
                 )
-            except (OSError, KeyboardInterrupt, SystemExit) as verify_error:
+            except (KeyboardInterrupt, SystemExit):
+                indeterminate = True
+                raise
+            except OSError as verify_error:
                 indeterminate = True
                 raise PublicationIndeterminate(
                     "PUBLICATION_INDETERMINATE: cannot verify exact tokenizer "
@@ -342,7 +348,9 @@ def _write(path: Path, value: dict[str, Any]) -> None:
         else:
             try:
                 _unlink_owned_path(temporary, identity, missing_ok=True)
-            except (OSError, KeyboardInterrupt, SystemExit) as cleanup_error:
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except OSError as cleanup_error:
                 if committed and primary is None:
                     raise PublicationCleanupPending(
                         "tokenizer authority is COMMITTED_AND_VERIFIED; automatic "
