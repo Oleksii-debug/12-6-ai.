@@ -1620,7 +1620,7 @@ def test_late_model_loader_descriptor_effect_fails_before_model_apply(
     py_before = random.getstate()
     np_before = np.random.get_state()
     torch_before = torch.get_rng_state().clone()
-    original_loader = _TinyLogits.__dict__["load_state_dict"]
+    original_loader = torch.nn.Module.__dict__["load_state_dict"]
     model_applied: list[bool] = []
 
     class EffectfulModelLoader:
@@ -1698,7 +1698,7 @@ def test_d05_model_loader_is_looked_up_once_before_apply(
 
     target = Trainer(_TinyLogits(), source.config, device="cpu")
     original_model = target.model
-    original_loader = _TinyLogits.__dict__["load_state_dict"]
+    original_loader = torch.nn.Module.__dict__["load_state_dict"]
     lookups: list[bool] = []
     applications: list[bool] = []
 
