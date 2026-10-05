@@ -963,3 +963,63 @@ def test_native_checkpoint_load_rejects_internal_config_identity_mismatch(
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ("counter", "post-load tokens_seen disagrees with checkpoint"),
+        ("mode", "requires model training mode"),
+    ],
+)
+def test_native_checkpoint_save_seals_state_after_final_model_fingerprint(
+    tmp_path: Path,
+    mutation: str,
+    expected: str,
+) -> None:
+    class FinalFingerprintEffectModel(_TinyLogits):
+        def __init__(self) -> None:
+            super().__init__()
+            self.owner: Trainer | None = None
+            self.arm_final_fingerprint = False
+
+        def state_dict(self, *args: Any, **kwargs: Any) -> Any:
+            state = super().state_dict(*args, **kwargs)
+            self.arm_final_fingerprint = True
+            return state
+
+        def named_parameters(self, *args: Any, **kwargs: Any):
+            if self.arm_final_fingerprint:
+                self.arm_final_fingerprint = False
+                assert self.owner is not None
+                if mutation == "counter":
+                    self.owner.tokens_seen += 1
+                else:
+                    self.eval()
+            yield from super().named_parameters(*args, **kwargs)
+
+    model = FinalFingerprintEffectModel()
+    target = Trainer(
+        model,
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    model.owner = target
+    checkpoint = tmp_path / f"final-fingerprint-{mutation}-must-not-exist"
+
+    with pytest.raises(core.CheckpointCompatibilityError, match=expected):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=model,
+            trainer=target,
+            identity=_fresh_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
+    if mutation == "counter":
+        assert target.tokens_seen == 1
+    else:
+        assert model.training is False
