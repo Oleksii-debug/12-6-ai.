@@ -206,7 +206,22 @@ def _write(path: Path, value: dict[str, Any]) -> None:
             and (final.st_dev, final.st_ino) == identity
             and final.st_size == len(payload)
         ):
-            # This also resolves wrappers that create the hard link and then raise.
+            if isinstance(link_error, (KeyboardInterrupt, SystemExit)):
+                # An operator/process interrupt is not a successful CLI return.
+                # Because final is proven to be our own hard link, roll back only
+                # that owned name while retaining the staged inode for retry.
+                try:
+                    path.unlink()
+                except (OSError, KeyboardInterrupt, SystemExit) as rollback_error:
+                    indeterminate = True
+                    raise PublicationIndeterminate(
+                        "ROLLBACK_INDETERMINATE: tokenizer output was created by "
+                        f"this operation but could not be removed; retained stage "
+                        f"{temporary}",
+                        staged=temporary,
+                    ) from rollback_error
+                raise link_error
+            # Ordinary post-create OSError is reconciled as committed.
             committed = True
         elif link_error is not None and final is None:
             raise link_error
