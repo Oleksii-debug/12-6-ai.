@@ -611,17 +611,17 @@ def _reject_manifest_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate publication manifest key: {key}")
+            raise ValueError("duplicate publication manifest key")
         result[key] = value
     return result
 
 
-def _reject_manifest_constant(value: str) -> Any:
-    raise ValueError(f"non-finite publication manifest constant: {value}")
+def _reject_manifest_constant(_value: str) -> Any:
+    raise ValueError("non-finite publication manifest constant")
 
 
-def _reject_manifest_float(value: str) -> Any:
-    raise ValueError(f"publication manifest float is forbidden: {value}")
+def _reject_manifest_float(_value: str) -> Any:
+    raise ValueError("publication manifest float is forbidden")
 
 
 def _is_sha256_hex(value: Any) -> bool:
@@ -643,6 +643,105 @@ def _regular_file_identity(path: Path, *, label: str) -> tuple[int, int]:
         raise CaselawGlobalDedupError(f"cannot inspect {label}: {path}") from exc
     _require(stat.S_ISREG(info.st_mode), f"{label} is not a regular file: {path}")
     return (info.st_dev, info.st_ino)
+
+
+def _read_bounded_regular_file_with_identity(
+    path: Path,
+    max_bytes: int,
+    *,
+    label: str,
+) -> tuple[bytes, tuple[int, int]]:
+    """Read one stable regular file and return its descriptor-bound identity."""
+    _require(
+        type(max_bytes) is int and max_bytes >= 0,
+        "bounded control-file read limit must be a nonnegative exact int",
+    )
+    identity_before = _regular_file_identity(path, label=label)
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise CaselawGlobalDedupError(f"cannot open {label}: {path}") from exc
+
+    primary: BaseException | None = None
+    try:
+        info_before = os.fstat(descriptor)
+        _require(
+            stat.S_ISREG(info_before.st_mode),
+            f"{label} opened object is not a regular file: {path}",
+        )
+        opened_identity = (info_before.st_dev, info_before.st_ino)
+        opened_stamp = (
+            info_before.st_size,
+            info_before.st_mtime_ns,
+            info_before.st_ctime_ns,
+        )
+        _require(
+            opened_identity == identity_before,
+            f"{label} identity changed before read: {path}",
+        )
+        chunks: list[bytes] = []
+        remaining = max_bytes + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        info_after = os.fstat(descriptor)
+        _require(
+            (info_after.st_dev, info_after.st_ino) == opened_identity,
+            f"{label} descriptor identity changed while reading: {path}",
+        )
+        _require(
+            (
+                info_after.st_size,
+                info_after.st_mtime_ns,
+                info_after.st_ctime_ns,
+            )
+            == opened_stamp,
+            f"{label} changed while reading: {path}",
+        )
+    except OSError as exc:
+        primary = exc
+        raise CaselawGlobalDedupError(f"cannot read {label}: {path}") from exc
+    except BaseException as exc:
+        primary = exc
+        raise
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError as exc:
+            if primary is None:
+                raise CaselawGlobalDedupError(
+                    f"cannot close {label}: {path}"
+                ) from exc
+            if hasattr(primary, "add_note"):
+                primary.add_note(f"also failed to close {label} descriptor")
+    identity_after = _regular_file_identity(path, label=label)
+    _require(
+        identity_after == opened_identity,
+        f"{label} pathname identity changed while reading: {path}",
+    )
+    return raw, opened_identity
+
+
+def _read_bounded_regular_file(
+    path: Path,
+    max_bytes: int,
+    *,
+    label: str,
+) -> bytes:
+    """Read one control file from a stable, nonblocking regular-file descriptor."""
+    raw, _ = _read_bounded_regular_file_with_identity(
+        path,
+        max_bytes,
+        label=label,
+    )
+    return raw
 
 
 def _unlink_owned_path(
@@ -790,8 +889,11 @@ def _validate_publication_marker(
         marker_path, label="incomplete publication marker"
     )
     try:
-        with marker_path.open("rb") as handle:
-            raw = handle.read(PUBLICATION_MARKER_MAX_BYTES + 1)
+        raw = _read_bounded_regular_file(
+            marker_path,
+            PUBLICATION_MARKER_MAX_BYTES,
+            label="incomplete publication marker",
+        )
         if len(raw) > PUBLICATION_MARKER_MAX_BYTES:
             raise ValueError("publication marker exceeds bounded size")
         value = json.loads(
@@ -863,13 +965,12 @@ def _publication_manifest(
 
 
 def _load_publication_manifest(manifest_path: Path) -> dict[str, Any]:
-    _require(
-        not manifest_path.is_symlink() and manifest_path.is_file(),
-        "incomplete publication manifest is not a regular file",
-    )
     try:
-        with manifest_path.open("rb") as handle:
-            raw = handle.read(PUBLICATION_MANIFEST_MAX_BYTES + 1)
+        raw = _read_bounded_regular_file(
+            manifest_path,
+            PUBLICATION_MANIFEST_MAX_BYTES,
+            label="publication manifest",
+        )
         if len(raw) > PUBLICATION_MANIFEST_MAX_BYTES:
             raise ValueError("publication manifest exceeds bounded size")
         value = json.loads(
@@ -983,9 +1084,16 @@ def _recover_incomplete_publication(
         manifest.get("publication_pathset_sha256") == pathset_id,
         "incomplete publication path-set identity mismatch",
     )
+    _require(
+        len(targets) == len(prepared) == len(stages),
+        "incomplete publication target count mismatch",
+    )
     marker_final_paths: list[str] = []
     marker_stage_paths: list[str] = []
-    for row in targets:
+    validated_targets: list[tuple[Path, Path, str, bytes]] = []
+    for row, (expected_final_path, payload), expected_stage_path in zip(
+        targets, prepared, stages, strict=True
+    ):
         _require(type(row) is dict, "publication manifest target invalid")
         _require(
             set(row) == _PUBLICATION_TARGET_KEYS,
@@ -1004,17 +1112,31 @@ def _recover_incomplete_publication(
         )
         marker_final_paths.append(final_value)
         marker_stage_paths.append(stage_value)
+        expected_final_value = str(expected_final_path.resolve(strict=False))
+        expected_stage_value = str(expected_stage_path.resolve(strict=False))
+        _require(
+            final_value == expected_final_value
+            and stage_value == expected_stage_value,
+            "incomplete publication target paths do not match requested outputs",
+        )
+        _require(
+            expected_sha == _sha256(payload),
+            f"incomplete publication intended digest mismatch: {expected_final_path}",
+        )
+        validated_targets.append(
+            (expected_final_path, expected_stage_path, expected_sha, payload)
+        )
+
     _require(
         marker_final_paths == expected_final_paths
         and marker_stage_paths == expected_stage_paths,
         "incomplete publication manifest targets do not match requested outputs",
     )
 
+    # Complete manifest validation precedes every recovery read or unlink. This
+    # prevents a later forged row from causing effects on earlier valid rows.
     touched_dirs: set[Path] = set()
-    for row in targets:
-        final_path = Path(row["path"])
-        stage_path = Path(row["stage_path"])
-        expected_sha = row["sha256"]
+    for final_path, stage_path, expected_sha, payload in validated_targets:
         final_exists = _path_entry_exists(final_path)
         stage_exists = _path_entry_exists(stage_path)
         stage_owned_identity: tuple[int, int] | None = None
@@ -1024,37 +1146,27 @@ def _recover_incomplete_publication(
                 stage_exists,
                 f"incomplete final output has no owning stage: {final_path}",
             )
-            _require(
-                not final_path.is_symlink()
-                and final_path.is_file()
-                and not stage_path.is_symlink()
-                and stage_path.is_file(),
-                "incomplete publication payload path is not regular",
+            observed_final, final_identity = _read_bounded_regular_file_with_identity(
+                final_path,
+                len(payload),
+                label="incomplete publication final",
             )
-            final_identity = _regular_file_identity(
-                final_path, label="incomplete publication final"
-            )
-            stage_identity_before = _regular_file_identity(
-                stage_path, label="incomplete publication stage"
-            )
-            try:
-                same_file = os.path.samefile(final_path, stage_path)
-                observed = stage_path.read_bytes()
-            except OSError as exc:
-                raise CaselawGlobalDedupError(
-                    f"cannot verify incomplete publication ownership: {final_path}"
-                ) from exc
-            stage_owned_identity = _regular_file_identity(
-                stage_path, label="incomplete publication stage"
+            observed_stage, stage_owned_identity = (
+                _read_bounded_regular_file_with_identity(
+                    stage_path,
+                    len(payload),
+                    label="incomplete publication stage",
+                )
             )
             _require(
-                same_file
-                and final_identity == stage_owned_identity
-                and stage_identity_before == stage_owned_identity,
-                f"incomplete publication final is not linked to its stable stage: {final_path}",
+                final_identity == stage_owned_identity,
+                "incomplete publication final is not linked to its stable stage: "
+                f"{final_path}",
             )
             _require(
-                _sha256(observed) == expected_sha,
+                observed_final == payload
+                and observed_stage == payload
+                and _sha256(observed_stage) == expected_sha,
                 f"incomplete publication output digest mismatch: {final_path}",
             )
             _unlink_owned_path(
@@ -1066,8 +1178,17 @@ def _recover_incomplete_publication(
 
         if stage_exists:
             if stage_owned_identity is None:
-                stage_owned_identity = _regular_file_identity(
-                    stage_path, label="incomplete publication stage"
+                observed_stage, stage_owned_identity = (
+                    _read_bounded_regular_file_with_identity(
+                        stage_path,
+                        len(payload),
+                        label="incomplete publication stage",
+                    )
+                )
+                _require(
+                    observed_stage == payload
+                    and _sha256(observed_stage) == expected_sha,
+                    f"incomplete publication stage bytes drift: {stage_path}",
                 )
             _unlink_owned_path(
                 stage_path,
@@ -1126,6 +1247,7 @@ def _recover_committed_publication_residue(
 
     marker_final_paths: list[str] = []
     marker_stage_paths: list[str] = []
+    final_identities: list[tuple[Path, tuple[int, int]]] = []
     stage_identities: list[tuple[Path, tuple[int, int]]] = []
     for row, (final_path, payload), stage_path in zip(
         targets, prepared, stages, strict=True
@@ -1150,41 +1272,25 @@ def _recover_committed_publication_residue(
             expected_sha == _sha256(payload),
             f"committed publication residue intended digest mismatch: {final_path}",
         )
-        final_identity_before = _regular_file_identity(
-            final_path, label="committed publication final"
-        )
-        try:
-            observed = final_path.read_bytes()
-        except OSError as exc:
-            raise CaselawGlobalDedupError(
-                f"cannot inspect committed publication final: {final_path}"
-            ) from exc
-        final_identity_after = _regular_file_identity(
-            final_path, label="committed publication final"
+        observed, final_identity_after = _read_bounded_regular_file_with_identity(
+            final_path,
+            len(payload),
+            label="committed publication final",
         )
         _require(
-            final_identity_before == final_identity_after and observed == payload,
+            observed == payload,
             f"committed publication final bytes or identity drift: {final_path}",
         )
+        final_identities.append((final_path, final_identity_after))
 
         if _path_entry_exists(stage_path):
-            stage_identity_before = _regular_file_identity(
-                stage_path, label="committed publication stage"
-            )
-            try:
-                same_file = os.path.samefile(final_path, stage_path)
-                staged = stage_path.read_bytes()
-            except OSError as exc:
-                raise CaselawGlobalDedupError(
-                    f"cannot inspect committed publication stage: {stage_path}"
-                ) from exc
-            stage_identity_after = _regular_file_identity(
-                stage_path, label="committed publication stage"
+            staged, stage_identity_after = _read_bounded_regular_file_with_identity(
+                stage_path,
+                len(payload),
+                label="committed publication stage",
             )
             _require(
-                same_file
-                and stage_identity_before == stage_identity_after
-                and stage_identity_after == final_identity_after
+                stage_identity_after == final_identity_after
                 and staged == payload,
                 f"committed publication stage ownership drift: {stage_path}",
             )
@@ -1196,6 +1302,7 @@ def _recover_committed_publication_residue(
         "committed publication residue targets do not match requested outputs",
     )
 
+    _verify_committed_finals_before_cleanup(prepared, final_identities)
     _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
@@ -1339,6 +1446,67 @@ def _cleanup_committed_publication_residue(
             return
 
 
+def _verify_linked_finals_before_commit(
+    prepared: tuple[tuple[Path, bytes], ...],
+    linked_finals: list[tuple[Path, tuple[int, int]]],
+) -> None:
+    """Require exact linked final bytes before the marker commit point."""
+    _require(
+        len(prepared) == len(linked_finals),
+        "publication final count drift before commit",
+    )
+    for (final_path, payload), (linked_path, expected_identity) in zip(
+        prepared, linked_finals, strict=True
+    ):
+        _require(
+            final_path == linked_path,
+            "publication final ordering drift before commit",
+        )
+        observed, observed_identity = _read_bounded_regular_file_with_identity(
+            final_path,
+            len(payload),
+            label="publication final before commit",
+        )
+        _require(
+            observed_identity == expected_identity and observed == payload,
+            f"publication final bytes or ownership drift before commit: {final_path}",
+        )
+
+
+def _verify_committed_finals_before_cleanup(
+    prepared: tuple[tuple[Path, bytes], ...],
+    linked_finals: list[tuple[Path, tuple[int, int]]],
+) -> None:
+    """Rebind committed finals before discarding the remaining recovery evidence."""
+    _require(
+        len(prepared) == len(linked_finals),
+        "committed publication final count drift before cleanup",
+    )
+    for (final_path, payload), (linked_path, expected_identity) in zip(
+        prepared, linked_finals, strict=True
+    ):
+        _require(
+            final_path == linked_path,
+            "committed publication final ordering drift before cleanup",
+        )
+        try:
+            observed, observed_identity = _read_bounded_regular_file_with_identity(
+                final_path,
+                len(payload),
+                label="committed publication final",
+            )
+        except CaselawGlobalDedupError as exc:
+            raise CaselawGlobalDedupError(
+                "publication is COMMITTED but terminal final cannot be verified; "
+                f"recovery residue retained: {final_path}"
+            ) from exc
+        _require(
+            observed_identity == expected_identity and observed == payload,
+            "publication is COMMITTED but terminal final bytes or ownership drifted; "
+            f"recovery residue retained: {final_path}",
+        )
+
+
 def _publish_json_outputs(
     outputs: tuple[tuple[Path, Mapping[str, Any]], ...],
 ) -> None:
@@ -1442,6 +1610,8 @@ def _publish_json_outputs(
             )
             _fsync_directory(final_path.parent)
 
+        _verify_linked_finals_before_commit(prepared, linked_finals)
+
         # Marker removal is the sole terminal commit point.  Stages and manifest
         # deliberately remain present until after this durable state transition
         # so an interrupted pre-commit run can prove final-path ownership.
@@ -1481,13 +1651,12 @@ def _publish_json_outputs(
         raise CaselawGlobalDedupError(
             "publication manifest identity missing after commit point"
         )
+    _verify_committed_finals_before_cleanup(prepared, linked_finals)
     _cleanup_committed_publication_residue(
         manifest_path,
         manifest_identity,
         created_stages,
     )
-
-
 
 
 def execute(
