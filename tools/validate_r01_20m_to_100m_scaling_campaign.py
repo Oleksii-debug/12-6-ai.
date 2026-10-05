@@ -4,9 +4,14 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PATH = ROOT / "configs/research/r01_20m_to_100m_scaling_campaign_v1.json"
+MAX_INPUT_BYTES = 1_048_576
 
 EXPECTED_AUTHORITY = {
     "main_sha_at_claim": "23b258d8599aa2c5381b735fdb58a6d0b4a8deb8",
@@ -63,6 +68,45 @@ EXPECTED_SOURCE_URLS = {
     "https://arxiv.org/abs/2502.02737",
 }
 
+
+
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate object member")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("JSON number is not finite")
+    return parsed
+
+
+def _load_campaign(path: Path) -> dict[str, Any]:
+    try:
+        with path.open("rb") as source:
+            raw = source.read(MAX_INPUT_BYTES + 1)
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ValueError("scaling campaign exceeds input byte limit")
+        data = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        raise ValueError("scaling campaign JSON nesting limit exceeded") from exc
+    if not isinstance(data, dict):
+        raise ValueError("campaign root must be an object")
+    return data
 
 def _expect(errors: list[str], condition: bool, message: str) -> None:
     if not condition:
@@ -183,17 +227,19 @@ def validate_campaign(data: dict[str, Any]) -> list[str]:
 
 
 def validate_path(path: Path) -> list[str]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return ["campaign root must be an object"]
-    return validate_campaign(data)
+    return validate_campaign(_load_campaign(path))
 
 
 def main(argv: list[str]) -> int:
-    path = Path(argv[1]) if len(argv) > 1 else Path(
-        "configs/research/r01_20m_to_100m_scaling_campaign_v1.json"
-    )
-    errors = validate_path(path)
+    if len(argv) > 2:
+        print("FAIL: invalid arguments: expected at most one campaign path")
+        return 2
+    path = Path(argv[1]) if len(argv) > 1 else DEFAULT_PATH
+    try:
+        errors = validate_path(path)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        print(f"FAIL: invalid scaling campaign input: {exc}")
+        return 2
     if errors:
         for error in errors:
             print(f"FAIL: {error}")
