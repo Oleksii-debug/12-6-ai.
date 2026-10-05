@@ -627,8 +627,17 @@ def _validate_survivor_projection(
         and len(survivor_ids) == len(set(survivor_ids)),
         "survivor source ids invalid",
     )
+    post_count = projection.get("post_dedup_survivor_source_object_count")
     _require(
-        projection.get("pre_dedup_source_object_count") == EXPECTED_COMBINED_OBJECTS,
+        type(post_count) is int
+        and 0 < post_count <= EXPECTED_COMBINED_OBJECTS
+        and post_count == len(survivor_ids),
+        "survivor post-dedup object count drift",
+    )
+    _require(
+        type(projection.get("pre_dedup_source_object_count")) is int
+        and projection.get("pre_dedup_source_object_count")
+        == EXPECTED_COMBINED_OBJECTS,
         "survivor pre-dedup object count drift",
     )
     _require(
@@ -642,9 +651,19 @@ def _validate_survivor_projection(
         "survivor post-dedup bytes drift",
     )
     _require(
-        projection.get("duplicate_discount_bytes")
+        type(projection.get("duplicate_discount_bytes")) is int
+        and projection.get("duplicate_discount_bytes")
         == terminal.get("duplicate_discount_bytes"),
         "survivor duplicate discount drift",
+    )
+    clusters = projection.get("duplicate_clusters")
+    cluster_count = projection.get("duplicate_cluster_count")
+    _require(type(clusters) is list, "survivor duplicate clusters missing")
+    _require(
+        type(cluster_count) is int
+        and cluster_count == len(clusters)
+        and cluster_count == terminal.get("duplicate_cluster_count"),
+        "survivor duplicate cluster count drift",
     )
 
 
