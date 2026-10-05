@@ -830,6 +830,54 @@ def test_process_interrupts_propagate_across_postlink_phases(
     assert len(staged) == 1 and staged[0].read_bytes() == expected
 
 
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_staging_identity_process_interrupt_closes_descriptor_and_preserves_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+) -> None:
+    cli = _module()
+    output = tmp_path / "identity-interrupted.json"
+    actual_fstat = cli.os.fstat
+
+    def interrupt_fstat(_fd: int):
+        raise interruption("injected staging identity interruption")
+
+    monkeypatch.setattr(cli.os, "fstat", interrupt_fstat)
+    with pytest.raises(interruption, match="staging identity interruption"):
+        cli._write(output, {"schema": "test-only", "status": "zero-credit"})
+    monkeypatch.setattr(cli.os, "fstat", actual_fstat)
+
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1
+    with staged[0].open("ab") as handle:
+        handle.write(b"descriptor-closed")
+    assert staged[0].read_bytes() == b"descriptor-closed"
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_staging_fsync_process_interrupt_preserves_written_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+) -> None:
+    cli = _module()
+    output = tmp_path / "fsync-interrupted.json"
+    report = {"schema": "test-only", "status": "zero-credit"}
+    expected = cli._serialize_report(report).encode("utf-8")
+
+    def interrupt_fsync(_fd: int) -> None:
+        raise interruption("injected staging fsync interruption")
+
+    monkeypatch.setattr(cli.os, "fsync", interrupt_fsync)
+    with pytest.raises(interruption, match="staging fsync interruption"):
+        cli._write(output, report)
+
+    assert not output.exists()
+    staged = list(tmp_path.glob(f".{output.name}.*.tmp"))
+    assert len(staged) == 1 and staged[0].read_bytes() == expected
+
+
 def test_staging_identity_failure_closes_descriptor_and_preserves_residue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
