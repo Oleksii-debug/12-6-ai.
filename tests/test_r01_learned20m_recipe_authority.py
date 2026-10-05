@@ -625,3 +625,34 @@ def test_recipe_cli_semantic_trusted_authority_failure_is_machine_readable(
     assert response["status"] == "FAIL"
     assert "invalid terminal authority bindings" in response["error"]
     assert "terminal must be true" in response["error"]
+
+
+def test_recipe_cli_valid_terminal_binding_stays_recipe_only(tmp_path: Path) -> None:
+    data = bindings()
+    trusted = trusted_authorities(data)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(data), encoding="utf-8")
+    trusted_path.write_text(json.dumps(trusted), encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable, str(TOOL_PATH),
+            "--bindings", str(bindings_path),
+            "--trusted-authorities", str(trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(trusted),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 0
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "QUALIFIED_RECIPE_ONLY"
+    assert response["training_authorized"] is False
+    assert response["compute_authorized"] is False
+    assert response["authorized_optimized_targets"] == 0
+    assert response["optimizer_updates_executed"] == 0
