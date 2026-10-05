@@ -294,9 +294,11 @@ def _is_canonical_d02(trainer: Any) -> bool:
 
 
 def _is_native_d02(trainer: Any) -> bool:
-    """Recognize the real D02 Trainer lineage without trusting recovery markers."""
+    """Recognize real D02 lineage without dispatching a custom metaclass."""
 
-    return _CanonicalTrainer in type(trainer).__mro__
+    trainer_type = type(trainer)
+    mro = type.__getattribute__(trainer_type, "__mro__")
+    return _CanonicalTrainer in mro
 
 
 def _require_canonical_d02_markers(trainer: Any) -> bool:
