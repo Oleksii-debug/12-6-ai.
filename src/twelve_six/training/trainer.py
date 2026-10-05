@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from enum import Enum
-from types import FunctionType
+from types import FunctionType, GetSetDescriptorType
 from typing import Any
 
 import numpy as np
@@ -190,10 +190,11 @@ class Trainer:
         )
         # Freeze small constructor-owned AdamW options before external hooks
         # can change otherwise finite optimizer behavior at a resume boundary.
+        _, initial_optimizer_groups = self._canonical_optimizer_storage()
         self._canonical_default_optimizer_options = (
             {
                 key: copy.deepcopy(value)
-                for key, value in self.optimizer.param_groups[0].items()
+                for key, value in initial_optimizer_groups[0].items()
                 if key not in ("params", "lr", "initial_lr", "param_names")
             }
             if optimizer is None and scheduler is None else None
@@ -222,17 +223,198 @@ class Trainer:
             warn_only=config.deterministic_warn_only,
         )
 
+    @staticmethod
+    def _type_identity(value: Any) -> str:
+        """Return class identity without instance or custom-metaclass dispatch."""
+
+        value_type = type(value)
+        module = type.__getattribute__(value_type, "__module__")
+        qualname = type.__getattribute__(value_type, "__qualname__")
+        if type(module) is not str or type(qualname) is not str:
+            raise TrainingStateInvalidError("runtime type identity is not canonical")
+        return f"{module}.{qualname}"
+
+    @staticmethod
+    def _raw_instance_dict(
+        value: Any,
+        base_type: type | None = None,
+        *,
+        label: str,
+    ) -> dict[str, Any]:
+        """Read instance storage through a real getset descriptor, never a property."""
+
+        descriptor = None
+        if base_type is not None:
+            namespace = type.__getattribute__(base_type, "__dict__")
+            candidate = namespace.get("__dict__")
+            if isinstance(candidate, GetSetDescriptorType):
+                descriptor = candidate
+        else:
+            value_type = type(value)
+            mro = type.__getattribute__(value_type, "__mro__")
+            for candidate_type in mro:
+                namespace = type.__getattribute__(candidate_type, "__dict__")
+                candidate = namespace.get("__dict__")
+                if isinstance(candidate, GetSetDescriptorType):
+                    descriptor = candidate
+                    break
+        if descriptor is None:
+            raise TrainingStateInvalidError(
+                f"{label} instance dictionary authority is unavailable"
+            )
+        try:
+            attrs = descriptor.__get__(value, type(value))
+        except (AttributeError, TypeError) as exc:
+            raise TrainingStateInvalidError(
+                f"{label} instance storage is unavailable"
+            ) from exc
+        if type(attrs) is not dict:
+            raise TrainingStateInvalidError(
+                f"{label} instance storage must be a dictionary"
+            )
+        return attrs
+
+    def _canonical_model_members(
+        self,
+    ) -> tuple[list[tuple[str, nn.Parameter]], list[tuple[str, Tensor]]]:
+        """Enumerate registered model state without overridable Module iterators."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        model = trainer_attrs.get("model")
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "trainer model binding is not a torch module"
+            )
+
+        named_parameters: list[tuple[str, nn.Parameter]] = []
+        named_buffers: list[tuple[str, Tensor]] = []
+        seen_modules: set[int] = set()
+        active_modules: set[int] = set()
+        seen_parameters: set[int] = set()
+        seen_buffers: set[int] = set()
+
+        def walk(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            if module_id in active_modules:
+                raise TrainingStateInvalidError(
+                    "model module graph contains a cycle"
+                )
+            if module_id in seen_modules:
+                return
+            active_modules.add(module_id)
+            seen_modules.add(module_id)
+            try:
+                attrs = Trainer._raw_instance_dict(
+                    module,
+                    nn.Module,
+                    label="model module",
+                )
+                parameters = attrs.get("_parameters")
+                buffers = attrs.get("_buffers")
+                modules = attrs.get("_modules")
+                if not all(
+                    type(value) is dict
+                    for value in (parameters, buffers, modules)
+                ):
+                    raise TrainingStateInvalidError(
+                        "model module registries must remain canonical dictionaries"
+                    )
+
+                for name, parameter in parameters.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model parameter name is not canonical"
+                        )
+                    if parameter is None or id(parameter) in seen_parameters:
+                        continue
+                    if not isinstance(parameter, nn.Parameter):
+                        raise TrainingStateInvalidError(
+                            "model parameter binding is not canonical"
+                        )
+                    seen_parameters.add(id(parameter))
+                    named_parameters.append((f"{prefix}{name}", parameter))
+
+                for name, buffer in buffers.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model buffer name is not canonical"
+                        )
+                    if buffer is None or id(buffer) in seen_buffers:
+                        continue
+                    if not isinstance(buffer, Tensor):
+                        raise TrainingStateInvalidError(
+                            "model buffer binding is not canonical"
+                        )
+                    seen_buffers.add(id(buffer))
+                    named_buffers.append((f"{prefix}{name}", buffer))
+
+                for name, child in modules.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model child-module name is not canonical"
+                        )
+                    if child is None:
+                        continue
+                    if not isinstance(child, nn.Module):
+                        raise TrainingStateInvalidError(
+                            "model child binding is not a torch module"
+                        )
+                    walk(child, f"{prefix}{name}.")
+            finally:
+                active_modules.remove(module_id)
+
+        walk(model, "")
+        return named_parameters, named_buffers
+
+    def _canonical_optimizer_storage(
+        self,
+    ) -> tuple[dict[Any, Any] | defaultdict[Any, Any], list[dict[str, Any]]]:
+        """Read live Optimizer storage without subclass attribute dispatch."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        optimizer = trainer_attrs.get("optimizer")
+        if not isinstance(optimizer, Optimizer):
+            raise TrainingStateInvalidError(
+                "trainer optimizer binding is not a torch Optimizer"
+            )
+        attrs = Trainer._raw_instance_dict(
+            optimizer,
+            Optimizer,
+            label="optimizer",
+        )
+        state = attrs.get("state")
+        groups = attrs.get("param_groups")
+        if type(state) not in {dict, defaultdict} or type(groups) is not list:
+            raise TrainingStateInvalidError(
+                "optimizer live storage is not canonical"
+            )
+        if any(type(group) is not dict for group in groups):
+            raise TrainingStateInvalidError(
+                "optimizer parameter groups are not canonical dictionaries"
+            )
+        return state, groups
+
     def _require_optimizer_parameter_coverage(self) -> None:
         """Require the optimizer to own every trainable model parameter exactly once."""
-        model_parameters = tuple(self.model.parameters())
+        named_parameters, _ = self._canonical_model_members()
+        model_parameters = tuple(parameter for _, parameter in named_parameters)
         model_ids = {id(parameter) for parameter in model_parameters}
         trainable_ids = {
             id(parameter) for parameter in model_parameters if parameter.requires_grad
         }
         if not trainable_ids:
             raise ValueError("model has no trainable parameters for optimizer")
+        _, live_groups = self._canonical_optimizer_storage()
         optimizer_ids: list[int] = []
-        for group in self.optimizer.param_groups:
+        for group in live_groups:
             parameters = group.get("params")
             if not isinstance(parameters, (list, tuple)):
                 raise TypeError("optimizer group must contain a concrete parameter sequence")
@@ -248,9 +430,11 @@ class Trainer:
     def _optimizer_parameter_name_groups(self) -> list[list[str]]:
         """Bind optimizer slots to first canonical model names, including tied weights."""
         self._require_optimizer_parameter_coverage()
-        by_id = {id(parameter): name for name, parameter in self.model.named_parameters()}
+        named_parameters, _ = self._canonical_model_members()
+        by_id = {id(parameter): name for name, parameter in named_parameters}
+        _, live_groups = self._canonical_optimizer_storage()
         ordered: list[list[str]] = []
-        for group in self.optimizer.param_groups:
+        for group in live_groups:
             names: list[str] = []
             for parameter in group["params"]:
                 name = by_id.get(id(parameter))
@@ -314,12 +498,14 @@ class Trainer:
             raise ValueError("checkpoint optimizer state parameter ID is noncanonical")
 
     def _require_no_residual_model_gradients(self) -> None:
-        if any(parameter.grad is not None for parameter in self.model.parameters()):
+        named_parameters, _ = self._canonical_model_members()
+        if any(parameter.grad is not None for _, parameter in named_parameters):
             raise RuntimeError("completed optimizer step left residual model gradients")
 
     def _require_finite_committed_update(self) -> None:
         """Reject optimizer corruption before crediting an optimizer transition."""
-        for parameter in self.model.parameters():
+        named_parameters, named_buffers = self._canonical_model_members()
+        for _, parameter in named_parameters:
             if not torch.isfinite(parameter.detach()).all().item():
                 raise NonFiniteTrainingError(
                     f"optimizer produced non-finite model weights at micro_step={self.micro_step}"
@@ -327,14 +513,15 @@ class Trainer:
         # Buffers are durable model state too (for example normalization
         # statistics). They can be corrupted by forward/scheduler hooks even
         # when every optimizer-managed parameter and moment remains finite.
-        for buffer in self.model.buffers():
+        for _, buffer in named_buffers:
             if (buffer.is_floating_point() or buffer.is_complex()) and not (
                 torch.isfinite(buffer.detach()).all().item()
             ):
                 raise NonFiniteTrainingError(
                     f"model contains non-finite buffer at micro_step={self.micro_step}"
                 )
-        for state in self.optimizer.state.values():
+        optimizer_state, _ = self._canonical_optimizer_storage()
+        for state in optimizer_state.values():
             for value in state.values():
                 if isinstance(value, Tensor):
                     if not torch.isfinite(value).all().item():
@@ -355,7 +542,7 @@ class Trainer:
         self, optimizer_state: Any | None = None,
     ) -> None:
         """Validate live or checkpoint group hyperparameters before use."""
-        live_groups = self.optimizer.param_groups
+        _, live_groups = self._canonical_optimizer_storage()
         groups = live_groups
         compare_checkpoint_types = optimizer_state is not None
         if optimizer_state is not None:
@@ -452,10 +639,11 @@ class Trainer:
         # pre-backward check; a completed step must remain checkpoint-safe.
         self._require_optimizer_parameter_coverage()
         self._require_safe_optimizer_hyperparameters()
+        _, live_groups = self._canonical_optimizer_storage()
         self._require_default_optimizer_options(
-            {"param_groups": self.optimizer.param_groups},
+            {"param_groups": live_groups},
         )
-        self._require_constant_default_rate({"param_groups": self.optimizer.param_groups})
+        self._require_constant_default_rate({"param_groups": live_groups})
         scaler_state = self.scaler.state_dict()
         self._require_finite_state_tree(scaler_state, "gradient scaler")
         # Live scaler state must also be restorable: finite subnormal scales
@@ -485,7 +673,7 @@ class Trainer:
                 )
             self._require_default_schedule_rates(
                 vars(self.scheduler), self.optimizer_step,
-                {"param_groups": self.optimizer.param_groups},
+                {"param_groups": live_groups},
             )
 
     def _build_scaler(self):
@@ -614,7 +802,8 @@ class Trainer:
             raise RuntimeError("optimizer update requires at least one valid target token")
         squared_norm = torch.zeros((), device=self.device)
         found = False
-        for parameter in self.model.parameters():
+        named_parameters, _ = self._canonical_model_members()
+        for _, parameter in named_parameters:
             if parameter.grad is None:
                 continue
             found = True
@@ -715,7 +904,8 @@ class Trainer:
             update_loss: float | None = None
             # A custom optimizer can have distinct schedules per group. Never
             # validate only the first group while another can write NaN weights.
-            learning_rate = float(self.optimizer.param_groups[0]["lr"])
+            _, live_groups = self._canonical_optimizer_storage()
+            learning_rate = float(live_groups[0]["lr"])
             self._require_safe_optimizer_hyperparameters()
             # Forward/backward hooks may change otherwise finite AdamW options
             # or rates. Refuse before scaler/optimizer.step can mutate weights.
@@ -738,8 +928,9 @@ class Trainer:
                 update_loss = self._pending_loss_sum / self._pending_tokens
 
                 if self.config.gradient_clip_norm is not None:
+                    named_parameters, _ = self._canonical_model_members()
                     torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
+                        [parameter for _, parameter in named_parameters],
                         self.config.gradient_clip_norm,
                         error_if_nonfinite=True,
                     )
@@ -974,7 +1165,7 @@ class Trainer:
                 )
             active_modules.add(module_id)
             try:
-                attrs = object.__getattribute__(module, "__dict__")
+                attrs = Trainer._raw_instance_dict(module, nn.Module, label="model module")
             except (AttributeError, TypeError) as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint model module state is unavailable"
@@ -1036,7 +1227,7 @@ class Trainer:
                 active_modules.remove(module_id)
 
         try:
-            trainer_attrs = object.__getattribute__(self, "__dict__")
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             model = trainer_attrs["model"]
         except (AttributeError, KeyError, TypeError) as exc:
             raise TrainingStateInvalidError(
@@ -1175,8 +1366,7 @@ class Trainer:
                         "module",
                         prefix,
                         module_id,
-                        type(module).__module__,
-                        type(module).__qualname__,
+                        Trainer._type_identity(module),
                     )
                 ).encode("utf-8")
             )
@@ -1184,7 +1374,7 @@ class Trainer:
                 return
             seen_modules.add(module_id)
             try:
-                attrs = object.__getattribute__(module, "__dict__")
+                attrs = Trainer._raw_instance_dict(module, nn.Module, label="model module")
             except (AttributeError, TypeError) as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint model module state is unavailable"
@@ -1249,7 +1439,7 @@ class Trainer:
                 walk(child, f"{prefix}{name}.")
 
         try:
-            trainer_attrs = object.__getattribute__(self, "__dict__")
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             model = trainer_attrs["model"]
         except (AttributeError, KeyError, TypeError) as exc:
             raise TrainingStateInvalidError(
@@ -1264,16 +1454,16 @@ class Trainer:
 
     def _optimizer_live_fingerprint(self) -> str | None:
         """Bind first-party Torch optimizer groups and moments without export hooks."""
-        if not self.optimizer.__class__.__module__.startswith("torch.optim"):
+        optimizer_type = type(self.optimizer)
+        optimizer_module = type.__getattribute__(optimizer_type, "__module__")
+        if type(optimizer_module) is not str or not optimizer_module.startswith("torch.optim"):
             return None
-        if not isinstance(self.optimizer.state, Mapping):
-            raise TrainingStateInvalidError("optimizer live state is not a mapping")
+        optimizer_state, live_groups = self._canonical_optimizer_storage()
 
         digest = hashlib.sha256()
 
         def update(value: Any) -> None:
-            kind = f"{type(value).__module__}.{type(value).__qualname__}"
-            digest.update(kind.encode("utf-8") + b"\0")
+            digest.update(Trainer._type_identity(value).encode("utf-8") + b"\0")
             if isinstance(value, Tensor):
                 if value.layout != torch.strided:
                     raise TrainingStateInvalidError(
@@ -1362,16 +1552,10 @@ class Trainer:
             )
 
         name_groups = self._optimizer_parameter_name_groups()
-        digest.update(
-            (
-                self.optimizer.__class__.__module__
-                + "."
-                + self.optimizer.__class__.__qualname__
-            ).encode("utf-8")
-        )
+        digest.update(Trainer._type_identity(self.optimizer).encode("utf-8"))
         live_parameter_ids: set[int] = set()
         for group_index, (group, names) in enumerate(
-            zip(self.optimizer.param_groups, name_groups, strict=True)
+            zip(live_groups, name_groups, strict=True)
         ):
             if not isinstance(group, Mapping):
                 raise TrainingStateInvalidError(
@@ -1394,12 +1578,12 @@ class Trainer:
             for parameter, name in zip(parameters, names, strict=True):
                 live_parameter_ids.add(id(parameter))
                 update(name)
-                if parameter in self.optimizer.state:
+                if parameter in optimizer_state:
                     digest.update(b"state-present\0")
-                    update(self.optimizer.state[parameter])
+                    update(optimizer_state[parameter])
                 else:
                     digest.update(b"state-absent\0")
-        if any(id(parameter) not in live_parameter_ids for parameter in self.optimizer.state):
+        if any(id(parameter) not in live_parameter_ids for parameter in optimizer_state):
             raise TrainingStateInvalidError(
                 "optimizer live state contains foreign parameter state"
             )
@@ -1412,8 +1596,7 @@ class Trainer:
         active_objects: set[int] = set()
 
         def label(value: Any) -> None:
-            kind = f"{type(value).__module__}.{type(value).__qualname__}"
-            digest.update(kind.encode("utf-8") + b"\0")
+            digest.update(Trainer._type_identity(value).encode("utf-8") + b"\0")
 
         def update_tensor(value: Tensor) -> None:
             if type(value) not in {Tensor, nn.Parameter}:
@@ -1494,12 +1677,13 @@ class Trainer:
                 return
             if isinstance(value, Enum):
                 digest.update(
-                    f"{type(value).__module__}.{type(value).__qualname__}:{value.name}".encode(
-                        "utf-8"
-                    )
+                    f"{Trainer._type_identity(value)}:{value.name}".encode("utf-8")
                 )
                 return
-            if type(value).__module__ == "torch" and type(value).__name__ in {
+            value_type = type(value)
+            value_module = type.__getattribute__(value_type, "__module__")
+            value_name = type.__getattribute__(value_type, "__name__")
+            if value_module == "torch" and value_name in {
                 "device",
                 "dtype",
                 "layout",
@@ -1546,8 +1730,11 @@ class Trainer:
                     active_objects.remove(object_id)
                 return
             try:
-                raw_attrs = object.__getattribute__(value, "__dict__")
-            except (AttributeError, TypeError):
+                raw_attrs = Trainer._raw_instance_dict(
+                    value,
+                    label="checkpoint auxiliary object",
+                )
+            except TrainingStateInvalidError:
                 raw_attrs = None
             if type(raw_attrs) is dict:
                 object_id = id(value)
@@ -1567,11 +1754,15 @@ class Trainer:
             )
 
         try:
-            trainer_attrs = object.__getattribute__(self, "__dict__")
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             optimizer = trainer_attrs["optimizer"]
             scheduler = trainer_attrs["scheduler"]
             scaler = trainer_attrs["scaler"]
-            optimizer_attrs = object.__getattribute__(optimizer, "__dict__")
+            optimizer_attrs = Trainer._raw_instance_dict(
+                optimizer,
+                Optimizer,
+                label="optimizer",
+            )
         except (AttributeError, KeyError, TypeError) as exc:
             raise TrainingStateInvalidError(
                 "checkpoint auxiliary bindings are unavailable"
@@ -1590,9 +1781,7 @@ class Trainer:
         digest.update(b"optimizer\0")
         digest.update(
             (
-                type(optimizer).__module__
-                + "."
-                + type(optimizer).__qualname__
+                Trainer._type_identity(optimizer)
             ).encode("utf-8")
         )
         digest.update(str(len(groups)).encode("ascii") + b"\0")
@@ -1637,8 +1826,12 @@ class Trainer:
             digest.update(b"none\0")
         else:
             try:
-                scheduler_attrs = object.__getattribute__(scheduler, "__dict__")
-            except (AttributeError, TypeError) as exc:
+                scheduler_attrs = Trainer._raw_instance_dict(
+                    scheduler,
+                    LRScheduler,
+                    label="scheduler",
+                )
+            except TrainingStateInvalidError as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint scheduler storage is unavailable"
                 ) from exc
@@ -1648,9 +1841,7 @@ class Trainer:
                 )
             digest.update(
                 (
-                    type(scheduler).__module__
-                    + "."
-                    + type(scheduler).__qualname__
+                    Trainer._type_identity(scheduler)
                 ).encode("utf-8")
             )
             update(
@@ -1666,8 +1857,11 @@ class Trainer:
             digest.update(b"none\0")
         else:
             try:
-                scaler_attrs = object.__getattribute__(scaler, "__dict__")
-            except (AttributeError, TypeError) as exc:
+                scaler_attrs = Trainer._raw_instance_dict(
+                    scaler,
+                    label="gradient scaler",
+                )
+            except TrainingStateInvalidError as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint scaler storage is unavailable"
                 ) from exc
@@ -1677,9 +1871,7 @@ class Trainer:
                 )
             digest.update(
                 (
-                    type(scaler).__module__
-                    + "."
-                    + type(scaler).__qualname__
+                    Trainer._type_identity(scaler)
                 ).encode("utf-8")
             )
             update(scaler_attrs)
@@ -1757,12 +1949,13 @@ class Trainer:
         saved_groups = exported.get("param_groups") if isinstance(exported, Mapping) else None
         if not isinstance(saved_state, Mapping) or not isinstance(saved_groups, list):
             raise TrainingStateInvalidError("optimizer export is not canonical")
-        if len(saved_groups) != len(self.optimizer.param_groups):
+        live_state, live_groups = self._canonical_optimizer_storage()
+        if len(saved_groups) != len(live_groups):
             raise TrainingStateInvalidError("optimizer export group count differs")
         present: set[int] = set()
         ordinal = 0
         for saved_group, live_group in zip(
-            saved_groups, self.optimizer.param_groups, strict=True,
+            saved_groups, live_groups, strict=True,
         ):
             live_params = live_group["params"]
             expected_ids = list(range(ordinal, ordinal + len(live_params)))
@@ -1784,7 +1977,7 @@ class Trainer:
             if not Trainer._exact_export_leaf_equal(saved_options, live_options):
                 raise TrainingStateInvalidError("optimizer export hyperparameters differ")
             for parameter in live_params:
-                live_slot = self.optimizer.state.get(parameter)
+                live_slot = live_state.get(parameter)
                 saved_slot = saved_state.get(ordinal)
                 if live_slot is None:
                     if ordinal in saved_state:
@@ -2024,7 +2217,8 @@ class Trainer:
 
     def _require_first_party_optimizer_contract(self) -> None:
         """Check the live first-party step contract without invoking state_dict hooks."""
-        groups = {"param_groups": self.optimizer.param_groups}
+        _, live_groups = self._canonical_optimizer_storage()
+        groups = {"param_groups": live_groups}
         self._require_default_optimizer_options(groups)
         self._require_constant_default_rate(groups)
         if self._canonical_default_schedule:
@@ -2263,7 +2457,10 @@ class Trainer:
             or self.tokens_seen != 0
             or self._pending_tokens != 0
             or self._pending_loss_sum != 0.0
-            or any(parameter.grad is not None for parameter in self.model.parameters())
+            or any(
+                parameter.grad is not None
+                for _, parameter in self._canonical_model_members()[0]
+            )
         ):
             raise TrainingStateInvalidError(
                 "trainer state restore requires a fresh trainer with no consumed "
