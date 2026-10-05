@@ -600,3 +600,271 @@ jobs:
             ${{ runner.temp }}/rada-probe-b.json
           if-no-files-found: warn
           retention-days: 30
+
+  franko1901-global-dedup:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2394-franko1901-two-clean-g8-122-20261005'
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pass_id: [1, 2]
+    env:
+      FRANKO_EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      FRANKO_CANDIDATE_SHA256: 9b00da2a2a5110cc4e384711fffbbbdaa917904462ddd133e7178e2d07dcb5ec
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact Franko physical checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FRANKO_EXECUTION_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile \
+            tools/materialize_d03_franko1901.py \
+            tools/run_d03_franko1901_global_dedup_execution_v1.py
+          git cat-file -e "$V7_HEAD^{commit}"
+
+      - name: Reconstruct exact V7 and fresh Franko candidate
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/franko-pass-$PASS_ID"
+          v7_root="$run_root/v7"
+          mkdir -p "$run_root"
+          git worktree add --detach "$v7_root" "$V7_HEAD"
+          test "$(git -C "$v7_root" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$v7_root" status --porcelain=v1 --untracked-files=all)"
+
+          python tools/materialize_d03_franko1901.py \
+            --output-dir "$run_root/franko"
+
+          candidate="$run_root/franko/franko1901-candidate.jsonl"
+          test -s "$candidate"
+          test "$(sha256sum "$candidate" | cut -d' ' -f1)" = "$FRANKO_CANDIDATE_SHA256"
+          test "$(wc -l < "$candidate" | tr -d ' ')" = "30660"
+
+      - name: Execute incumbent indexed global dedup
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/franko-pass-$PASS_ID"
+          python tools/run_d03_franko1901_global_dedup_execution_v1.py \
+            --v7-root "$run_root/v7" \
+            --bulk-workspace "$run_root/bulk" \
+            --candidate-jsonl "$run_root/franko/franko1901-candidate.jsonl" \
+            --historical-terminal-evidence-json \
+              configs/data/d03_franko1901_terminal_execution_v1.json \
+            --fresh-execution-authority-json \
+              configs/data/d03_franko1901_fresh_execution_authority_v1.json \
+            --expected-execution-head "$FRANKO_EXECUTION_SHA" \
+            --output-report "$run_root/global-dedup-report.json" \
+            --output-survivors "$run_root/survivors.json" \
+            --output-evidence "$run_root/evidence.json"
+
+          test -s "$run_root/global-dedup-report.json"
+          test -s "$run_root/survivors.json"
+          test -s "$run_root/evidence.json"
+
+      - name: Verify text-free zero-credit output boundary
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/franko-pass-$PASS_ID"
+          python - "$run_root" "$FRANKO_EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+          evidence = json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+          report = json.loads(
+              (root / "global-dedup-report.json").read_text(encoding="utf-8")
+          )
+          survivors = json.loads((root / "survivors.json").read_text(encoding="utf-8"))
+
+          assert evidence["execution_head_sha"] == head
+          assert evidence["franko1901"]["candidate_sha256"] == (
+              "9b00da2a2a5110cc4e384711fffbbbdaa917904462ddd133e7178e2d07dcb5ec"
+          )
+          assert evidence["franko1901"]["source_object_count"] == 30660
+          assert evidence["franko1901"]["declared_capacity_bytes"] == 1762005
+          assert evidence["combined"]["indexed_report_sha256"] == report["report_sha256"]
+          assert evidence["survivor_authority_sha256"] == (
+              survivors["survivor_authority_sha256"]
+          )
+          assert evidence["content_boundary"] == {
+              "raw_text_emitted": False,
+              "raw_candidate_written_to_durable_evidence": False,
+              "payload_artifact_required": False,
+              "dedup_report_text_free": True,
+              "survivor_authority_text_free": True,
+          }
+          truth = evidence["truth_boundary"]
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_unique_loss_positions"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates_executed_on_real_targets"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          assert truth["foreign_pretrained_weights_used"] is False
+          assert truth["whole_corpus_external_llm_cleanliness_claimed"] is False
+          PY
+
+      - name: Upload Franko text-free pass evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: franko1901-global-dedup-pass-${{ matrix.pass_id }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/franko-pass-${{ matrix.pass_id }}/global-dedup-report.json
+            ${{ runner.temp }}/franko-pass-${{ matrix.pass_id }}/survivors.json
+            ${{ runner.temp }}/franko-pass-${{ matrix.pass_id }}/evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+  franko1901-two-clean-compare:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2394-franko1901-two-clean-g8-122-20261005'
+    needs: franko1901-global-dedup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Download pass 1
+        uses: actions/download-artifact@v4
+        with:
+          name: franko1901-global-dedup-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@v4
+        with:
+          name: franko1901-global-dedup-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require two-clean deterministic authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp artifacts/pass-1/global-dedup-report.json \
+              artifacts/pass-2/global-dedup-report.json
+          cmp artifacts/pass-1/survivors.json artifacts/pass-2/survivors.json
+          python - "$HEAD_SHA" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          head = sys.argv[1]
+          roots = [Path("artifacts/pass-1"), Path("artifacts/pass-2")]
+          evidences = [
+              json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+              for root in roots
+          ]
+          reports = [
+              json.loads(
+                  (root / "global-dedup-report.json").read_text(encoding="utf-8")
+              )
+              for root in roots
+          ]
+          survivors = [
+              json.loads((root / "survivors.json").read_text(encoding="utf-8"))
+              for root in roots
+          ]
+
+          report_ids = [item["report_sha256"] for item in reports]
+          survivor_ids = [item["survivor_authority_sha256"] for item in survivors]
+          assert len(set(report_ids)) == 1
+          assert len(set(survivor_ids)) == 1
+          for evidence, report_id, survivor_id in zip(
+              evidences, report_ids, survivor_ids, strict=True
+          ):
+              assert evidence["execution_head_sha"] == head
+              assert evidence["combined"]["indexed_report_sha256"] == report_id
+              assert evidence["survivor_authority_sha256"] == survivor_id
+              assert evidence["truth_boundary"]["canonical_capacity_credited"] == 0
+              assert (
+                  evidence["truth_boundary"]["authorized_optimized_target_exposure"]
+                  == 0
+              )
+              assert evidence["truth_boundary"]["training_executed"] is False
+
+          proof = {
+              "schema_version": "12-6.d03-franko1901-global-dedup-two-clean-proof.v1",
+              "execution_head_sha": head,
+              "candidate_sha256": (
+                  "9b00da2a2a5110cc4e384711fffbbbdaa917904462ddd133e7178e2d07dcb5ec"
+              ),
+              "candidate_records": 30660,
+              "candidate_text_utf8_bytes": 1762005,
+              "matcher_report_sha256": report_ids[0],
+              "survivor_authority_sha256": survivor_ids[0],
+              "two_fresh_executions_converged": True,
+              "raw_text_retained": False,
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              proof,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          Path("franko1901-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload Franko two-clean proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: franko1901-two-clean-proof-${{ github.event.pull_request.head.sha }}
+          path: franko1901-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
