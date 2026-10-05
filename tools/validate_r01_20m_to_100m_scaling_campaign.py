@@ -14,6 +14,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PATH = ROOT / "configs/research/r01_20m_to_100m_scaling_campaign_v1.json"
 MAX_INPUT_BYTES = 1_048_576
+MAX_JSON_INTEGER_DIGITS = 64
 
 EXPECTED_AUTHORITY = {
     "main_sha_at_claim": "23b258d8599aa2c5381b735fdb58a6d0b4a8deb8",
@@ -88,7 +89,20 @@ def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError("JSON number is not finite")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero JSON number underflowed to zero")
     return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.removeprefix("-")) > MAX_JSON_INTEGER_DIGITS:
+        raise ValueError("JSON integer exceeds 64 digits")
+    return int(value)
+
+
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
 def _load_campaign(path: Path) -> dict[str, Any]:
@@ -96,11 +110,14 @@ def _load_campaign(path: Path) -> dict[str, Any]:
     try:
         flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
         descriptor = os.open(path, flags)
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
             raise ValueError("scaling campaign must be a regular file")
         with os.fdopen(descriptor, "rb") as source:
             descriptor = None
             raw = source.read(MAX_INPUT_BYTES + 1)
+            if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
+                raise ValueError("scaling campaign changed during read")
     except OSError:
         raise ValueError("cannot read scaling campaign") from None
     finally:
@@ -115,6 +132,7 @@ def _load_campaign(path: Path) -> dict[str, Any]:
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_constant,
             parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
         )
     except RecursionError as exc:
         raise ValueError("scaling campaign JSON nesting limit exceeded") from exc
