@@ -226,6 +226,12 @@ def _write(path: Path, value: dict[str, Any]) -> None:
         created = os.fstat(descriptor)
         if not stat.S_ISREG(created.st_mode):
             raise OSError("tokenizer report staging descriptor is not regular")
+    except (KeyboardInterrupt, SystemExit):
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
     except OSError as identity_error:
         try:
             os.close(descriptor)
@@ -339,6 +345,10 @@ def _write(path: Path, value: dict[str, Any]) -> None:
                 f"output; retained stage {temporary}",
                 staged=temporary,
             ) from link_error
+    except (KeyboardInterrupt, SystemExit) as exc:
+        primary = exc
+        indeterminate = True
+        raise
     except BaseException as exc:
         primary = exc
         raise
