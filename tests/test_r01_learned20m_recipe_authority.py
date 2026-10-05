@@ -804,3 +804,50 @@ def test_recipe_cli_missing_authority_arguments_are_machine_readable(
     assert response["status"] == "FAIL"
     assert "invalid authority arguments" in response["error"]
     assert expected in response["error"]
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("--policy", "policy"),
+        ("--bindings", "bindings"),
+        ("--trusted-authorities", "trusted"),
+        ("--expected-trusted-authorities-identity-sha256", "identity"),
+    ],
+)
+def test_recipe_cli_refuses_repeated_authority_options_before_read(
+    tmp_path: Path, option: str, value: str,
+) -> None:
+    path = tmp_path / "valid.json"
+    path.write_text("{}", encoding="utf-8")
+    argument = "0" * 64 if value == "identity" else str(path)
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), f"{option}={argument}", option, argument],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+    assert "duplicate authority option" in response["error"]
+
+
+def test_recipe_cli_missing_authority_option_value_is_structured() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), "--bindings"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
