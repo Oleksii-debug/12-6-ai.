@@ -401,7 +401,7 @@ def _snapshot_trainer_restore_bindings(
     attrs = vars(trainer)
     bindings = {
         field: attrs[field]
-        for field in ("model", "optimizer", "scheduler", "scaler", "config")
+        for field in ("model", "optimizer", "scheduler", "scaler", "config", "device")
         if field in attrs
     }
     policies = (
