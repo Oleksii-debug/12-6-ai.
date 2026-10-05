@@ -268,7 +268,14 @@ def test_source_authority_family_value_drift_fails_closed(
     altered = copy.deepcopy(SOURCE_AUTHORITY_FILES[family])
     altered["blob_sha1"] = _git_blob_sha1(raw)
     monkeypatch.setitem(SOURCE_AUTHORITY_FILES, family, altered)
-    monkeypatch.setattr(current, "_read_authority_bytes", lambda _path: raw)
+    original_read = current._read_authority_bytes
+
+    def read_one(relative_path: str) -> bytes:
+        if relative_path == altered["path"]:
+            return raw
+        return original_read(relative_path)
+
+    monkeypatch.setattr(current, "_read_authority_bytes", read_one)
     with pytest.raises(ValueError, match="authority family drift"):
         trusted_family_projection([family])
 
@@ -284,7 +291,14 @@ def test_source_authority_duplicate_json_member_fails_closed(
     altered = copy.deepcopy(SOURCE_AUTHORITY_FILES[family])
     altered["blob_sha1"] = _git_blob_sha1(raw)
     monkeypatch.setitem(SOURCE_AUTHORITY_FILES, family, altered)
-    monkeypatch.setattr(current, "_read_authority_bytes", lambda _path: raw)
+    original_read = current._read_authority_bytes
+
+    def read_one(relative_path: str) -> bytes:
+        if relative_path == altered["path"]:
+            return raw
+        return original_read(relative_path)
+
+    monkeypatch.setattr(current, "_read_authority_bytes", read_one)
     with pytest.raises(ValueError, match="duplicate trusted authority JSON member"):
         trusted_family_projection([family])
 
