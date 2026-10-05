@@ -40,31 +40,37 @@ SOURCE_AUTHORITY_FILES: dict[str, dict[str, str]] = {
         "path": "configs/data/next100_048_pydantic_code_rights_v1.json",
         "blob_sha1": "504ef934145ed0711743f781dc9f47b07ad7accd",
         "stratum": "code",
+        "family_field": "source_family",
     },
     "code.scipy.project": {
         "path": "configs/data/scipy_v118_source_authority_v1.json",
         "blob_sha1": "8bd1b020e324d33fdbcdda8619fbae7e73224d7e",
         "stratum": "code",
+        "family_field": "source_family",
     },
     "github:pandas-dev/pandas": {
         "path": "configs/data/next100_050_pandas_source_authority_v2.json",
         "blob_sha1": "a97ccc1fcf097970abc84218e0fbd8088fa32887",
         "stratum": "code",
+        "family_field": "bounded_source.source_family",
     },
     "github:fastapi/typer": {
         "path": "configs/data/next100_052_typer_source_authority_v2.json",
         "blob_sha1": "fc9168f2752d46fae76092999f449f0897fe0ca7",
         "stratum": "code",
+        "family_field": "bounded_source.source_family",
     },
     "github:Textualize/rich": {
         "path": "configs/data/next100_051_rich_code_rights_v1.json",
         "blob_sha1": "4b4160814ddb97cb47bf45b4af2ed1b9ce8fef9e",
         "stratum": "code",
+        "family_field": "source_family",
     },
     "github:fastapi/fastapi": {
         "path": "configs/data/next100_044_fastapi_code_rights_policy_v1.json",
         "blob_sha1": "8ee76ccc2ca3ff40d7e3d6463670d99e49051b44",
         "stratum": "code",
+        "family_field": "upstream.canonical_family_id",
     },
 }
 
@@ -108,10 +114,35 @@ def _read_authority_bytes(relative_path: str) -> bytes:
     return raw
 
 
-def _verify_git_blob(relative_path: str, expected_blob_sha1: str) -> None:
-    actual = _git_blob_sha1(_read_authority_bytes(relative_path))
+def _verify_git_blob(relative_path: str, expected_blob_sha1: str) -> bytes:
+    raw = _read_authority_bytes(relative_path)
+    actual = _git_blob_sha1(raw)
     if actual != expected_blob_sha1:
         raise ValueError(f"trusted source authority Git blob drift: {relative_path}")
+    return raw
+
+
+def _declared_family(raw: bytes, field_path: str, relative_path: str) -> str:
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"trusted source authority JSON invalid: {relative_path}"
+        ) from exc
+    if not isinstance(document, Mapping):
+        raise ValueError(f"trusted source authority root invalid: {relative_path}")
+    value: Any = document
+    for field in field_path.split("."):
+        if not isinstance(value, Mapping) or field not in value:
+            raise ValueError(
+                f"trusted source authority family field missing: {relative_path}"
+            )
+        value = value[field]
+    if not isinstance(value, str) or not value:
+        raise ValueError(
+            f"trusted source authority family field invalid: {relative_path}"
+        )
+    return value
 
 
 def _source_family_identity(family: str, meta: Mapping[str, str]) -> str:
@@ -167,6 +198,7 @@ CURRENT_AUTHORITY_CHAIN: dict[str, Any] = {
             "path": meta["path"],
             "blob_sha1": meta["blob_sha1"],
             "stratum": meta["stratum"],
+            "family_field": meta["family_field"],
         }
         for family, meta in sorted(SOURCE_AUTHORITY_FILES.items())
     },
@@ -182,7 +214,12 @@ def _verify_extended_authority_files(families: set[str]) -> None:
     _verify_git_blob(parent_path, PARENT_V1_MODULE_BLOB_SHA1)
     for family in sorted(added):
         meta = SOURCE_AUTHORITY_FILES[family]
-        _verify_git_blob(meta["path"], meta["blob_sha1"])
+        raw = _verify_git_blob(meta["path"], meta["blob_sha1"])
+        declared = _declared_family(raw, meta["family_field"], meta["path"])
+        if declared != family:
+            raise ValueError(
+                f"trusted source authority family declaration drift: {meta['path']}"
+            )
 
 
 def trusted_family_projection(families: Iterable[str]) -> list[dict[str, Any]]:
