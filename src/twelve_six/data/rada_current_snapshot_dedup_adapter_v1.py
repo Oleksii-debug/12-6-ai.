@@ -265,6 +265,11 @@ def _read_candidate(
             stat.S_ISREG(descriptor.st_mode),
             "candidate descriptor is not a regular file",
         )
+        _require(
+            metadata.st_dev == descriptor.st_dev
+            and metadata.st_ino == descriptor.st_ino,
+            "candidate path changed before descriptor lock",
+        )
         for line_number, line in enumerate(handle, 1):
             transport_hasher.update(line)
             transport_bytes += len(line)
