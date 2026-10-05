@@ -408,10 +408,30 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
     _verify_runtime_byte_tokenizer_module_state()
 
     # TokenizerIdentity intentionally omits several class-level protocol fields.
-    # Inspect the class dictionary directly so a derived/spoofed identity cannot
-    # hide process-local drift in byte/special-token semantics.
-    class_state = vars(ByteTokenizer)
-    for hook in ("__getattribute__", "__getattr__", "__setattr__", "__delattr__"):
+    # Constructor dispatch is part of the tokenizer runtime contract too. Both
+    # module aliases are mutable, so comparing them to each other is insufficient:
+    # a replacement class could preserve every checked method object while a
+    # custom metaclass, local __new__, or inherited constructor returns a forged
+    # instance. Pin the canonical construction path before any instantiation.
+    if type(ByteTokenizer) is not type:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime implementation drift: metaclass"
+        )
+    if (
+        type.__getattribute__(ByteTokenizer, "__bases__") != (object,)
+        or type.__getattribute__(ByteTokenizer, "__mro__") != (ByteTokenizer, object)
+    ):
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime implementation drift: bases"
+        )
+    class_state = type.__getattribute__(ByteTokenizer, "__dict__")
+    for hook in (
+        "__new__",
+        "__getattribute__",
+        "__getattr__",
+        "__setattr__",
+        "__delattr__",
+    ):
         if hook in class_state:
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime implementation drift: {hook}"

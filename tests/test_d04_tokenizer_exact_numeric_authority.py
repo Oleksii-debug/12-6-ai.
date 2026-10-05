@@ -832,3 +832,142 @@ def test_bind_rejects_runtime_config_numeric_type_alias_with_hash_bypass(
             application,
             **SHA,
         )
+
+
+def _replacement_tokenizer_namespace() -> dict[str, object]:
+    """Clone the checked class surface without generated storage descriptors."""
+
+    return {
+        name: value
+        for name, value in vars(authority.ByteTokenizer).items()
+        if name not in {"__dict__", "__weakref__"}
+    }
+
+
+def test_bind_rejects_dual_alias_custom_tokenizer_metaclass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    canonical_identity = authority.ByteTokenizer().identity
+
+    class DivergentTokenizer:
+        identity = canonical_identity
+
+        def encode(self, _text: str) -> list[int]:
+            return [255]
+
+    class ConstructorMeta(type):
+        def __call__(cls, *_args, **_kwargs):
+            return DivergentTokenizer()
+
+    replacement = ConstructorMeta(
+        "ByteTokenizer",
+        (object,),
+        _replacement_tokenizer_namespace(),
+    )
+    monkeypatch.setattr(authority, "ByteTokenizer", replacement)
+    monkeypatch.setattr(byte_module, "ByteTokenizer", replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: metaclass",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+
+def test_bind_rejects_dual_alias_local_new_constructor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    canonical_identity = authority.ByteTokenizer().identity
+
+    class DivergentTokenizer:
+        identity = canonical_identity
+
+        def encode(self, _text: str) -> list[int]:
+            return [254]
+
+    def divergent_new(_cls):
+        return DivergentTokenizer()
+
+    namespace = _replacement_tokenizer_namespace()
+    namespace["__new__"] = staticmethod(divergent_new)
+    replacement = type("ByteTokenizer", (object,), namespace)
+    monkeypatch.setattr(authority, "ByteTokenizer", replacement)
+    monkeypatch.setattr(byte_module, "ByteTokenizer", replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: __new__",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+
+def test_bind_rejects_dual_alias_inherited_constructor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    canonical_identity = authority.ByteTokenizer().identity
+
+    class DivergentTokenizer:
+        identity = canonical_identity
+
+        def encode(self, _text: str) -> list[int]:
+            return [253]
+
+    class ConstructorBase:
+        def __new__(cls):
+            return DivergentTokenizer()
+
+    replacement = type(
+        "ByteTokenizer",
+        (ConstructorBase,),
+        _replacement_tokenizer_namespace(),
+    )
+    monkeypatch.setattr(authority, "ByteTokenizer", replacement)
+    monkeypatch.setattr(byte_module, "ByteTokenizer", replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: bases",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
