@@ -851,3 +851,33 @@ def test_recipe_cli_missing_authority_option_value_is_structured() -> None:
     response = json.loads(completed.stdout)
     assert response["status"] == "FAIL"
     assert "invalid authority arguments" in response["error"]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--unexpected=NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET"],
+        ["--pol=NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET"],
+        ["NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET"],
+        ["--policy", "nonexistent.json", "--unexpected", "NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET"],
+    ],
+)
+def test_recipe_cli_rejects_unknown_abbreviated_and_positional_arguments(
+    argv: list[str],
+) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), *argv],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert "NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET" not in completed.stdout
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+    assert "unrecognized authority option or argument" in response["error"]
+    assert "invalid policy JSON" not in response["error"]
