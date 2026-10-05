@@ -1629,6 +1629,13 @@ class Trainer:
             if snapshot.scaler is not None:
                 self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
             self._require_exported_scaler_matches_live(snapshot.scaler)
+            if (
+                optimizer_before is not None
+                and self._optimizer_live_fingerprint() != optimizer_before
+            ):
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed optimizer state"
+                )
             # Freeze the accepted count/weights across ALL effectful serializers;
             # a valid-looking detached optimizer snapshot is not enough.
             if not _typed_state_equal(

@@ -235,6 +235,51 @@ def test_preflight_auxiliary_export_cannot_redefine_committed_optimizer_state(
         trainer.state_dict()
 
 
+@pytest.mark.parametrize("attack", ["moment-bytes", "equal-byte-replacement"])
+def test_optimizer_export_hook_cannot_redefine_committed_optimizer_state(
+    monkeypatch: pytest.MonkeyPatch,
+    attack: str,
+) -> None:
+    model = _TinyLogits()
+    trainer = Trainer(model, TrainerConfig(seed=703, max_steps=3), device="cpu")
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    moment = trainer.optimizer.state[model.weight]["exp_avg"]
+    before_moment = moment.detach().clone()
+    before_ptr = moment.data_ptr()
+    before_fingerprint = trainer._optimizer_live_fingerprint()
+    assert before_fingerprint is not None
+    native_export = trainer.optimizer.state_dict
+    calls: list[int] = []
+
+    def mutate_during_optimizer_export() -> dict[str, Any]:
+        calls.append(1)
+        slot = trainer.optimizer.state[model.weight]
+        if attack == "moment-bytes":
+            slot["exp_avg"].add_(0.125)
+        else:
+            slot["exp_avg"] = slot["exp_avg"].clone()
+        return native_export()
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", mutate_during_optimizer_export)
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint export changed optimizer state",
+    ):
+        trainer.state_dict()
+    assert calls == [1]
+    assert trainer._failure_reason is not None
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2)
+    assert trainer._optimizer_live_fingerprint() != before_fingerprint
+    current = trainer.optimizer.state[model.weight]["exp_avg"]
+    if attack == "moment-bytes":
+        assert not torch.equal(current, before_moment)
+    else:
+        assert torch.equal(current, before_moment)
+        assert current.data_ptr() != before_ptr
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+
+
 def test_canonical_lambda_lr_positive_export_matches_live_state() -> None:
     model = _TinyLogits()
     trainer = Trainer(
