@@ -960,7 +960,7 @@ class Trainer:
             or scheduler_state["last_epoch"] != optimizer_step
         ):
             raise ValueError(
-                "checkpoint scheduler chronology differs from optimizer step"
+                "checkpoint scheduler chronology differs from committed optimizer step"
             )
         last_lrs = scheduler_state.get("_last_lr")
         groups = (
