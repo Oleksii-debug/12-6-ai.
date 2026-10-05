@@ -1249,15 +1249,24 @@ def test_noncallable_optimizer_checkpoint_interface_fails_before_model_and_rng(
     ("authority", "message"),
     [
         ("_require_finite_state_tree", "native D02 safety authority must remain canonical"),
-        ("_require_checkpoint_scheduler_chronology", "native D02 safety authority must remain canonical"),
-        ("_require_optimizer_state_parameter_order", "native D02 safety authority must remain canonical"),
+        (
+            "_require_checkpoint_scheduler_chronology",
+            "native D02 safety authority must remain canonical",
+        ),
+        (
+            "_require_optimizer_state_parameter_order",
+            "native D02 safety authority must remain canonical",
+        ),
         ("_require_finite_auxiliary_state", "native D02 safety authority must remain canonical"),
         (
             "_require_safe_optimizer_hyperparameters",
             "native D02 safety authority must remain canonical",
         ),
         ("_require_finite_committed_update", "native D02 safety authority must remain canonical"),
-        ("_require_no_residual_model_gradients", "native D02 safety authority must remain canonical"),
+        (
+            "_require_no_residual_model_gradients",
+            "native D02 safety authority must remain canonical",
+        ),
         ("_require_deterministic_policy", "native D02 safety authority must remain canonical"),
         (
             "_require_optimizer_parameter_coverage",
