@@ -330,6 +330,7 @@ def _verify_runtime_byte_tokenizer_module_state() -> None:
         if (
             type(function) is not FunctionType
             or function.__code__ != expected_code
+            or function.__globals__ is not module_state
             or function.__defaults__ is not None
             or function.__kwdefaults__ is not None
         ):
@@ -410,6 +411,11 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
     # Inspect the class dictionary directly so a derived/spoofed identity cannot
     # hide process-local drift in byte/special-token semantics.
     class_state = vars(ByteTokenizer)
+    for hook in ("__getattribute__", "__getattr__", "__setattr__", "__delattr__"):
+        if hook in class_state:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime implementation drift: {hook}"
+            )
     sentinel = object()
     for field, expected in _EXPECTED_TOKENIZER_CLASS_STATE.items():
         observed = class_state.get(field, sentinel)
@@ -432,6 +438,10 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
         if runtime_method.__code__ != expected_code:
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime implementation drift: {name}"
+            )
+        if runtime_method.__globals__ is not vars(byte_module):
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime implementation drift: {name} globals"
             )
         _verify_runtime_byte_tokenizer_method_defaults(name, runtime_method)
 
