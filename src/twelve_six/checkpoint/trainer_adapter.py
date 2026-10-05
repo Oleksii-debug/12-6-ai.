@@ -1449,7 +1449,7 @@ def _assert_native_checkpoint_save_progress(
     mismatches = {
         field: {"identity": expected, "trainer": actual}
         for field, (expected, actual) in checks.items()
-        if type(actual) is not int or actual != expected
+        if type(expected) is not int or type(actual) is not int or actual != expected
     }
     if mismatches:
         raise CheckpointCompatibilityError(
