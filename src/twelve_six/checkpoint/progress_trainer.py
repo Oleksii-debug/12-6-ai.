@@ -39,7 +39,9 @@ from .trainer_adapter import (
     _assert_trainer_restore_bindings,
     _bind_trainer_state_loader,
     _effective_strict_model,
+    _note_restore_binding_drift,
     _poison_canonical_restore_failure,
+    _postflight_trainer_state,
     _preflight_trainer_state,
     _preflight_trainer_target,
     _restore_ambient_rng_after_failed_apply,
@@ -88,6 +90,9 @@ def load_trainer_checkpoint(
     prebind_policy = _snapshot_torch_policy(prebind_ambient)
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
+    except BaseException as exc:
+        _note_restore_binding_drift(trainer, restore_bindings, exc)
+        raise
     finally:
         _restore_preapply_process_state(
             prebind_ambient,
@@ -152,6 +157,9 @@ def load_trainer_checkpoint(
         # potentially model-scale checkpoint; post-decode preflight repeats this
         # guard before mutation in case the target state changed meanwhile.
         _preflight_trainer_target(trainer)
+    except BaseException as exc:
+        _note_restore_binding_drift(trainer, restore_bindings, exc)
+        raise
     finally:
         _restore_preapply_process_state(
             preio_ambient,
@@ -266,6 +274,9 @@ def load_trainer_checkpoint(
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
+    except BaseException as exc:
+        _note_restore_binding_drift(trainer, restore_bindings, exc)
+        raise
     finally:
         _restore_preapply_process_state(
             preapply_ambient,
@@ -293,6 +304,8 @@ def load_trainer_checkpoint(
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_trainer_model_binding(model, trainer)
         load_trainer_state(trainer_state)
+        _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
         # torch RNG even on success. Restore the checkpoint streams last so
