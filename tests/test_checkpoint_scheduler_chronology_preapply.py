@@ -301,6 +301,7 @@ def test_resealed_paired_finite_rate_forgery_rejected_before_model_and_rng(
     assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
 
+
 @pytest.mark.parametrize(
     ("field", "bad_value"),
     [
