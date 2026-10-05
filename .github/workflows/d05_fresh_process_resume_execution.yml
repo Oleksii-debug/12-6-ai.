@@ -91,8 +91,51 @@ jobs:
             --product-head "$PRODUCT_HEAD"
       - name: Require bit-identical baseline and both fresh-process replays
         run: |
-          cmp -s "/tmp/d05 fresh процес/baseline.json" "/tmp/d05 fresh процес/adapter.json"
-          cmp -s "/tmp/d05 fresh процес/baseline.json" "/tmp/d05 fresh процес/progress.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("/tmp/d05 fresh процес")
+          baseline = json.loads(root.joinpath("baseline.json").read_text(encoding="utf-8"))
+
+          def mismatch_paths(left, right, path=""):
+              if type(left) is not type(right):
+                  return [path or "/"]
+              if isinstance(left, dict):
+                  paths = []
+                  for key in sorted(set(left) | set(right)):
+                      child = f"{path}/{key}"
+                      if key not in left or key not in right:
+                          paths.append(child)
+                      else:
+                          paths.extend(mismatch_paths(left[key], right[key], child))
+                  return paths
+              if isinstance(left, list):
+                  if len(left) != len(right):
+                      return [f"{path}/length"]
+                  paths = []
+                  for index, (a, b) in enumerate(zip(left, right)):
+                      paths.extend(mismatch_paths(a, b, f"{path}/{index}"))
+                  return paths
+              return [] if left == right else [path or "/"]
+
+          failed = False
+          for name in ("adapter", "progress"):
+              replay = json.loads(
+                  root.joinpath(f"{name}.json").read_text(encoding="utf-8")
+              )
+              paths = mismatch_paths(baseline, replay)
+              if paths:
+                  failed = True
+                  print(
+                      "D05_FRESH_PROCESS_MISMATCH "
+                      f"loader={name} count={len(paths)} paths={','.join(paths[:64])}"
+                  )
+              else:
+                  print(f"D05_FRESH_PROCESS_MATCH loader={name}")
+          if failed:
+              raise SystemExit(1)
+          PY
       - name: Validate corrupt refusal and emit text-free evidence
         run: |
           python - <<'PY'
