@@ -10,21 +10,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: d03-ubuntu-irc-dedicated-${{ github.event.pull_request.head.sha || github.sha }}
+  group: d03-ubuntu-irc-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
-  ubuntu-irc-global-dedup:
+  ubuntu-irc-two-clean:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.head_ref == 'execution/ubuntu-irc-global-dedup-g8-132-20261005'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        pass_id: [1, 2]
     env:
       EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
       PARENT_SHA: e0bbcbce07a480651be0d16f3be8c1782fc699ca
@@ -32,8 +28,6 @@ jobs:
       POPPLER_VERSION: "25.06.0"
       POPPLER_TARBALL_SHA256: 8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83
       CANDIDATE_SHA256: d6a0eaea27313e0d5146bc2a0624104541923ef06b12f01c22b3ccf6956eb6c2
-      CANDIDATE_RECORDS: "972"
-      CANDIDATE_TEXT_BYTES: "4799981"
       PYTHONPATH: src
       TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
 
@@ -50,96 +44,131 @@ jobs:
         with:
           python-version: "3.11.16"
 
-      - name: Bind parent and executable closure
+      - name: Bind branch and syntax
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
           test "$(git merge-base "$PARENT_SHA" HEAD)" = "$PARENT_SHA"
           mapfile -t changed < <(git diff --name-only "$PARENT_SHA"..HEAD | sort)
-          expected=(
-            ".github/workflows/d03_ubuntu_irc_dedicated_two_clean.yml"
-            "tools/run_d03_ubuntu_irc_global_dedup_execution_v1.py"
-          )
-          test "${#changed[@]}" -eq "${#expected[@]}"
-          test "${changed[0]}" = "${expected[0]}"
-          test "${changed[1]}" = "${expected[1]}"
+          test "@@BASH#changed[@]@@" -eq 2
+          test "${changed[0]}" = ".github/workflows/d03_ubuntu_irc_dedicated_two_clean.yml"
+          test "${changed[1]}" = "tools/run_d03_ubuntu_irc_global_dedup_execution_v1.py"
           git diff --quiet HEAD --
           git diff --cached --quiet HEAD --
           git cat-file -e "$V7_HEAD^{commit}"
-          python -m py_compile \
-            tools/materialize_d03_common_pile_ubuntu_irc_v1.py \
-            tools/run_d03_ubuntu_irc_global_dedup_execution_v1.py \
-            src/twelve_six/data/ubuntu_irc_v9_intake.py
+          python -m py_compile             tools/materialize_d03_common_pile_ubuntu_irc_v1.py             tools/run_d03_ubuntu_irc_global_dedup_execution_v1.py             src/twelve_six/data/ubuntu_irc_v9_intake.py
 
-      - name: Install canonical runtime and Poppler build dependencies
+      - name: Install runtime and exact Poppler
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check --upgrade pip
           python -m pip install --disable-pip-version-check -e .
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential ca-certificates cmake curl libfontconfig1-dev \
-            libfreetype6-dev libharfbuzz-dev libjpeg-dev liblcms2-dev \
-            libopenjp2-7-dev libpng-dev libtiff-dev ninja-build pkg-config zlib1g-dev
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             build-essential ca-certificates cmake curl libfontconfig1-dev             libfreetype6-dev libharfbuzz-dev libjpeg-dev liblcms2-dev             libopenjp2-7-dev libpng-dev libtiff-dev ninja-build pkg-config zlib1g-dev
+          curl --fail --location --retry 3 --retry-delay 2             "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz"             --output /tmp/poppler.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" -B /tmp/poppler-build -G Ninja             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local             -DENABLE_UTILS=ON -DENABLE_CPP=OFF -DENABLE_GLIB=OFF             -DENABLE_QT5=OFF -DENABLE_QT6=OFF -DENABLE_BOOST=OFF             -DENABLE_LIBCURL=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF             -DBUILD_GTK_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF             -DBUILD_CPP_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-build --parallel 2
+          sudo cmake --install /tmp/poppler-build
+          sudo ldconfig
+          pdftotext -v 2>&1 | tee "$RUNNER_TEMP/pdftotext-version.txt"
+          grep -F "pdftotext version ${POPPLER_VERSION}" "$RUNNER_TEMP/pdftotext-version.txt"
 
-      - name: Build exact pinned Poppler pdftotext
+      - name: Execute two fresh materialization and dedup passes
         shell: bash
-        env:
-          PASS_ID: ${{ matrix.pass_id }}
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --retry-delay 2 \
-            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
-            --output /tmp/poppler.tar.xz
-          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | \
-            sha256sum --check --strict
-          tar -C /tmp -xf /tmp/poppler.tar.xz
-         ÛXZÙHTÈÝ\ÜÜ\IÔÔTÕTÒSÓHPÝ\ÜÜ\XZ[QÈ[HQÓPRÑWÐRSÕTOT[X\ÙHQÓPRÑWÒSÕSÔQVKÝ\ÜÛØØ[QSPWÕUSÏSÓQSPWÐÔSÑQSPWÑÓPSÑQSPWÔUOSÑQSPWÔUSÑQSPWÐÓÔÕSÑQSPWÓPÕTSÑQSPWÓÔÌÏSÑQSPWÑÔÓQOSÑQRSÑÕ×ÕTÕÏSÑQRSÔUWÕTÕÏSÑQRSÔUÕTÕÏSÑQRSÐÔÕTÕÏSÑQRSÓPSPSÕTÕÏSÑÛXZÙHKXZ[Ý\ÜÜ\XZ[K\\[[ÝYÈÛXZÙHKZ[Ý[Ý\ÜÜ\XZ[ÝYÈÛÛYÂ[ÜÛÝHSTÕSTÝX[K\\ÜËITÔ×ÒQZÙ\\[ÜÛÝÝ^]HYH[ÜÛÝÜÝ^]\Ú[ÛÜ\QÝ^\Ú[Û	ÔÔTÕTÒSÓH[ÜÛÝÜÝ^]\Ú[ÛH[YNXÛÛÝXÝÈ[[\[[HX]\X[^HX[HTÂÚ[\Ú[TÔ×ÒQ	ÞÈX]^\Ü×ÚY_B[Ù]Y][È\YZ[[ÜÛÝHSTÕSTÝX[K\\ÜËITÔ×ÒQ×ÜÛÝH[ÜÛÝÝÈZÙ\\[ÜÛÝÚ]ÛÜÝYHYKY]XÚ×ÜÛÝ×ÒPQ\Ý
-Ú]PÈ×ÜÛÝ]\\ÙHPQ
-HH×ÒPQ\Ý^
-Ú]PÈ×ÜÛÝÝ]\ÈK\ÜÙ[Z[]HK][XÚÙYY[\ÏX[
-H]ÛÛÛËÛX]\X[^WÙ×ØÛÛ[[ÛÜ[WÝX[WÚ\×ÝKHK\Ú\[ÜÛÝÝX[K\ÛÝ\ÙKÛÛÞK[Ý]]ZÛÛ[ÜÛÝÝX[KXØ[Y]KÛÛK\\Ü[ÜÛÝÛX]\X[^][Û\\ÜÛÛKYÝÛØY\Ý\È[ÜÛÝÝX[KXØ[Y]KÛÛ\Ý
-ÚLMÝ[H[ÜÛÝÝX[KXØ[Y]KÛÛÝ]Y	È	ÈYJHHÐSQUWÔÒLM\Ý
-ØÈ[[ÜÛÝÝX[KXØ[Y]KÛÛY	È	ÊHHÐSQUWÔPÓÔÈ]ÛH[ÜÛÝÝX[KXØ[Y]KÛÛÐSQUWÕVÐUTÈ	ÔIÂ[\ÜÛÛ[\ÜÞ\ÂÛH]X[\Ü]]H]
-Þ\Ë\ÝÌWJB^XÝYH[
-Þ\Ë\ÝÌJBÝ[HÚ]]Ü[[ÛÙ[ÏH]NH\È[NÜ[H[[NÝÈHÛÛØYÊ[JBÝ[
-ÏHÝÖÈÜX[^YØ]\ÈB\ÜÙ\Ý[OH^XÝY
-Ý[^XÝY
-B[
-ÜX[^YÝ]Ø]\Ï^ÝÝ[HBBH[YN^XÝ]H[Ý[X[[^YÛØ[Y\Ú[\Ú[TÔ×ÒQ	ÞÈX]^\Ü×ÚY_B[Ù]Y][È\YZ[[ÜÛÝHSTÕSTÝX[K\\ÜËITÔ×ÒQ]ÛÛÛËÜ[Ù×ÝX[WÚ\×ÙÛØ[ÙY\Ù^XÝ][ÛÝKHK]Ë\ÛÝ[ÜÛÝÝÈKX[Ë]ÛÜÜÜXÙH[ÜÛÝØ[ÈKXØ[Y]KZÛÛ[ÜÛÝÝX[KXØ[Y]KÛÛKY^XÝYY^XÝ][ÛZXYVPÕUSÓÔÒHK[Ý]]X\ÙK\\Ü[ÜÛÝØ\ÙK\\ÜÛÛK[Ý]]XÛÛX[Y\\Ü[ÜÛÝØÛÛX[Y\\ÜÛÛK[Ý]]\Ý\]ÜÈ[ÜÛÝÜÝ\]ÜËÛÛK[Ý]]Y]Y[ÙH[ÜÛÝÙ]Y[ÙKÛÛH[YN\YH^YYH\ËXÜY]]Y[ÙBÚ[\Ú[TÔ×ÒQ	ÞÈX]^\Ü×ÚY_B[Ù]Y][È\YZ[[ÜÛÝHSTÕSTÝX[K\\ÜËITÔ×ÒQ]ÛH[ÜÛÝVPÕUSÓÔÒHÐSQUWÔÒLM	ÔIÂÛH×Ù]\W×È[\Ü[Ý][ÛÂ[\Ü\ÚX[\ÜÛÛ[\ÜÞ\ÂÛH]X[\Ü]ÛÝH]
-Þ\Ë\ÝÌWJBXYHÞ\Ë\ÝÌBØ[Y]WÜÚHHÞ\Ë\ÝÌ×B]Y[ÙHHÛÛØYÊ
-ÛÝÈ]Y[ÙKÛÛKXYÝ^
-[ÛÙ[ÏH]NJB\ÙHHÛÛØYÊ
-ÛÝÈ\ÙK\\ÜÛÛKXYÝ^
-[ÛÙ[ÏH]NJBÛÛX[YHÛÛØYÊ
-ÛÝÈÛÛX[Y\\ÜÛÛKXYÝ^
-[ÛÙ[ÏH]NB
-BÝ\]ÜÈHÛÛØYÊ
-ÛÝÈÝ\]ÜËÛÛKXYÝ^
-[ÛÙ[ÏH]NJB\ÜÙ\]Y[ÙVÈ^XÝ][ÛÚXYÜÚHHOHXY\ÜÙ\]Y[ÙVÈX[WÚ\ÈVÈØ[Y]WÜÚLMHOHØ[Y]WÜÚB\ÜÙ\]Y[ÙVÈX[WÚ\ÈVÈØ[Y]WÜÛÝ\ÙWÛØXÝØÛÝ[HOHMÌ\ÜÙ\]Y[ÙVÈX[WÚ\ÈVÈØ[Y]WÛÜX[^YÝ]Ø]\ÈHOHÍÎNWÎNB\ÜÙ\]Y[ÙVÈ\ÙHVÈ\ÜÜÚLMHOH\ÙVÈ\ÜÜÚLMB\ÜÙ\]Y[ÙVÈÛÛX[YVÈ\ÜÜÚLMHOHÛÛX[YÈ\ÜÜÚLMB\ÜÙ\]Y[ÙVÈÝ\]ÜØ]]Ü]WÜÚLMHOH
-Ý\]ÜÖÈÝ\]ÜØ]]Ü]WÜÚLMB
-BX\Ú[[H]Y[ÙVÈX[WÚ\ÈVÈX\Ú[[ÙÛØ[Ý[\]YWØØ\XÚ]WØ]\ÈB\ÜÙ\\JX\Ú[[
-H\È[[HX\Ú[[HÍÎNWÎNB\ÜÙ\]Y[ÙVÈÛÛ[ØÝ[\HHOHÂØ[Y]WÜ^[ØYÝ\ØYY[ÙK\XWÜÛÝ\ÙWÝ^Ù[Z]Y[ÙK\Ü×Ý^ÙYHYKÝ\]ÜØ]]Ü]WÝ^ÙYHYKB]H]Y[ÙVÈ]ØÝ[\HB\ÜÙ\]ÈØ[ÛXØ[ØØ\XÚ]WØÜY]YHOH\ÜÙ\]ÈZ[[×Ø]]Ü^YØ]\ÈHOH\ÜÙ\]È]]Ü^YÛÜ[Z^YÝ\Ù]Ù^ÜÝ\HHOH\ÜÙ\]ÈÚÙ[^\Ù]Ø]]Ü^YH\È[ÙB\ÜÙ\]È[Ù[ÝZ[[×Ø]]Ü^YH\È[ÙB\ÜÙ\]ÈÜ[Z^\Ý\]\ÈHOH\ÜÙ\]ÈZ[[×Ù^XÝ]YH\È[ÙB\ÜÙ\]ÈX\YÝÙZYÚ×ØÜX]YH\È[ÙB\ÜÙ\]È[[Ý\ÝÛÝ]ÛÛY\×ÜXYH\È[ÙB\ÜÙ\]ÈZYØÛÛ\]WÝ\ÙYH\È[ÙBÛÜHHXÝ
-]Y[ÙJBÛZ[YYHÛÜKÜ
-]Y[ÙWÚY[]WÜÚLMB]ÈHÛÛ[\ÊÛÜK[Ý\WØ\ØÚZOQ[ÙKÛÜÚÙ^\ÏUYKÙ\\]ÜÏJK[Ý×Û[Q[ÙK
-K[ÛÙJ]NB\ÜÙ\\ÚXÚLM]ÊK^YÙ\Ý
+          for pass_id in 1 2; do
+            root="$RUNNER_TEMP/pass-$pass_id"
+            mkdir -p "$root"
+            git worktree add --detach "$root/v7" "$V7_HEAD"
+            test -z "$(git -C "$root/v7" status --porcelain=v1 --untracked-files=all)"
+            python tools/materialize_d03_common_pile_ubuntu_irc_v1.py               --shard "$root/source.jsonl.gz"               --output-jsonl "$root/candidate.jsonl"               --report "$root/materialization.json"               --download
+            test "$(sha256sum "$root/candidate.jsonl" | cut -d' ' -f1)" = "$CANDIDATE_SHA256"
+            test "$(wc -l < "$root/candidate.jsonl" | tr -d ' ')" = 972
+            python tools/run_d03_ubuntu_irc_global_dedup_execution_v1.py               --v7-root "$root/v7"               --bulk-workspace "$root/bulk"               --candidate-jsonl "$root/candidate.jsonl"               --expected-execution-head "$EXECUTION_SHA"               --output-base-report "$root/base.json"               --output-combined-report "$root/combined.json"               --output-survivors "$root/survivors.json"               --output-evidence "$root/evidence.json"
+            rm -f "$root/candidate.jsonl" "$root/source.jsonl.gz"
+          done
 
-HOHÛZ[YY[
-ÛÛ[\ÊÈ]X[YYYYKX\Ú[[Ø]\ÈX\Ú[[JJBBH[YN\ØY^YYH\ÜÈ]Y[ÙB\Ù\ÎXÝ[ÛËÝ\ØYX\YXÝXLMYXMÍXMYNLÍÙLÚ][YNX[KZ\ËYYXØ]Y\\ÜËIÞÈX]^\Ü×ÚY_KIÞÈÚ]X][[Ü\]Y\ÝXYÚH_B]	ÞÈ[\[\_KÝX[K\\ÜËIÞÈX]^\Ü×ÚY_KØ\ÙK\\ÜÛÛ	ÞÈ[\[\_KÝX[K\\ÜËIÞÈX]^\Ü×ÚY_KØÛÛX[Y\\ÜÛÛ	ÞÈ[\[\_KÝX[K\\ÜËIÞÈX]^\Ü×ÚY_KÜÝ\]ÜËÛÛ	ÞÈ[\[\_KÝX[K\\ÜËIÞÈX]^\Ü×ÚY_KÙ]Y[ÙKÛÛ	ÞÈ[\[\_KÝX[K\\ÜËIÞÈX]^\Ü×ÚY_KÛX]\X[^][Û\\ÜÛÛ	ÞÈ[\[\_KÝX[K\\ÜËIÞÈX]^\Ü×ÚY_KÜÝ^]\Ú[ÛY[ËY[\ËYÝ[\Ü][[ÛY^\ÎLX[KZ\Ë]ÛËXÛX[XÛÛ\\NYBÚ]X][Û[YHOH	Ü[Ü\]Y\Ý	È	Ú]X][[Ü\]Y\ÝXY\Ë[Û[YHOHÚ]X\ÜÚ]ÜH	Ú]XXYÜYOH	Ù^XÝ][ÛÝX[KZ\ËYÛØ[YY\YÎLLÌLLIÂYYÎX[KZ\ËYÛØ[YY\[Ë[ÛX[KL[Y[Ý][Z[]\ÎMB[PQÔÒN	ÞÈÚ]X][[Ü\]Y\ÝXYÚH_BÝ\ÎH[YNÙ]^XÝÔ]Û\Ù\ÎXÝ[ÛËÜÙ]\\]ÛYLØMXMXNLLNXLÍNMNØÌÎMLÙMMÂÚ]]Û]\Ú[ÛËLKMH[YNÝÛØY\ÜÈB\Ù\ÎXÝ[ÛËÙÝÛØYX\YXÝÙLLLXÍXMÍMMÎLXÎLÂÚ][YNX[KZ\ËYYXØ]Y\\ÜËLKIÞÈÚ]X][[Ü\]Y\ÝXYÚH_B]\YXÝËÜ\ÜËLBH[YNÝÛØY\ÜÈ\Ù\ÎXÝ[ÛËÙÝÛØYX\YXÝÙLLLXÍXMÍMMÎLXÎLÂÚ][YNX[KZ\ËYYXØ]Y\\ÜËLIÞÈÚ]X][[Ü\]Y\ÝXYÚH_B]\YXÝËÜ\ÜËLH[YN\]Z\H]\Z[\ÝXÈÛËXÛX[]]Ü]Y\ÂÚ[\Ú[Ù]Y][È\YZ[Ü[H[\ÙK\\ÜÛÛÛÛX[Y\\ÜÛÛÝ\]ÜËÛÛ]Y[ÙKÛÛX]\X[^][Û\\ÜÛÛÝ^]\Ú[ÛÈÂÛ\\YXÝËÜ\ÜËLKÉ[H\YXÝËÜ\ÜËLÉ[HÛB]ÛHPQÔÒH	ÔIÂÛH×Ù]\W×È[\Ü[Ý][ÛÂ[\Ü\ÚX[\ÜÛÛ[\ÜÞ\ÂÛH]X[\Ü]XYHÞ\Ë\ÝÌWBÛÝH]
-\YXÝËÜ\ÜËLHB]Y[ÙHHÛÛØYÊ
-ÛÝÈ]Y[ÙKÛÛKXYÝ^
-[ÛÙ[ÏH]NJBÛÙHÂØÚ[XWÝ\Ú[ÛLMË]X[KZ\ËYÛØ[YY\]ÛËXÛX[\ÛÙH^XÝ][ÛÚXYÜÚHXY\[ØÛÛ\Ù[ÙWÚXYÜÚH
-LØÙLØMLXLMØNÌMÎÍNXØH
-KØ[Y]WÜÚLM
-LXYXLÌÌLÙLLMÌLLMNLÙYLXÌØØÙMMXÌ
-KØ[Y]WÜXÛÜÈMÌØ[Y]WÛÜX[^YÝ]Ø]\ÈÍÎNWÎNK\ÙWÜ\ÜÜÚLM]Y[ÙVÈ\ÙHVÈ\ÜÜÚLMKÛÛX[YÜ\ÜÜÚLM]Y[ÙVÈÛÛX[YVÈ\ÜÜÚLMKÝ\]ÜØ]]Ü]WÜÚLM]Y[ÙVÈÝ\]ÜØ]]Ü]WÜÚLMKX\Ú[[ÙÛØ[Ý[\]YWØØ\XÚ]WØ]\È]Y[ÙVÈX[WÚ\ÈVÂX\Ú[[ÙÛØ[Ý[\]YWØØ\XÚ]WØ]\ÈKÛ×Ù\ÚÙ^XÝ][Û×ØÛÛ\ÙYYK]×ØØ[Y]WÜ]Z[Y[ÙKØ[ÛXØ[ØØ\XÚ]WØÜY]Y]]Ü^YÛÜ[Z^YÝ\Ù]Ù^ÜÝ\HÚÙ[^\Ù]Ø]]Ü^Y[ÙKZ[[×Ù^XÝ]Y[ÙK[[Ý\ÝÛÝ]ÛÛY\×ÜXY[ÙKZYØÛÛ\]WÝ\ÙY[ÙKB]ÈHÛÛ[\ÊÛÙ[Ý\WØ\ØÚZOQ[ÙKÛÜÚÙ^\ÏUYKÙ\\]ÜÏJK
-K[ÛÙJ]NBÛÙÈÛÙÚY[]WÜÚLMHH\ÚXÚLM]ÊK^YÙ\Ý
+      - name: Require deterministic text-free two-clean result
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in materialization.json base.json combined.json survivors.json evidence.json; do
+            cmp "$RUNNER_TEMP/pass-1/$file" "$RUNNER_TEMP/pass-2/$file"
+          done
+          python - "$RUNNER_TEMP/pass-1" "$EXECUTION_SHA" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
 
-B]
-X[KZ\Ë]ÛËXÛX[\ÛÙÛÛKÜ]WÝ^
-ÛÛ[\ÊÛÙÛÜÚÙ^\ÏUYKÙ\\]ÜÏJJH
-È[ÛÙ[ÏH]N
-B[
-ÛÛ[\ÊÛÙÛÜÚÙ^\ÏUYJJBBH[YN\ØYX[HTÈÛËXÛX[ÛÙ\Ù\ÎXÝ[ÛËÝ\ØYX\YXÝXLMYXMÍXMYNLÍÙLÚ][YNX[KZ\ËYYXØ]Y]ÛËXÛX[\ÛÙIÞÈÚ]X][[Ü\]Y\ÝXYÚH_B]X[KZ\Ë]ÛËXÛX[\ÛÙÛÛY[ËY[\ËYÝ[\Ü][[ÛY^\ÎL
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+          evidence = json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+          assert evidence["execution_head_sha"] == head
+          assert evidence["ubuntu_irc"]["candidate_sha256"] == (
+              "d6a0eaea27313e0d5146bc2a0624104541923ef06b12f01c22b3ccf6956eb6c2"
+          )
+          assert evidence["ubuntu_irc"]["candidate_source_object_count"] == 972
+          assert evidence["ubuntu_irc"]["candidate_normalized_utf8_bytes"] == 4_799_981
+          marginal = evidence["ubuntu_irc"]["marginal_global_unique_capacity_bytes"]
+          assert type(marginal) is int and 0 <= marginal <= 4_799_981
+          truth = evidence["truth_boundary"]
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["model_training_authorized"] is False
+          assert truth["optimizer_updates"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+          proof = {
+              "schema_version": "12-6.d03-ubuntu-irc-global-dedup-two-clean-proof.v1",
+              "execution_head_sha": head,
+              "parent_convergence_head_sha": evidence["parent_convergence_head_sha"],
+              "candidate_sha256": evidence["ubuntu_irc"]["candidate_sha256"],
+              "candidate_records": 972,
+              "candidate_normalized_utf8_bytes": 4_799_981,
+              "base_report_sha256": evidence["base"]["report_sha256"],
+              "combined_report_sha256": evidence["combined"]["report_sha256"],
+              "survivor_authority_sha256": evidence["survivor_authority_sha256"],
+              "marginal_global_unique_capacity_bytes": marginal,
+              "two_fresh_executions_converged": True,
+              "raw_candidate_retained": False,
+              "canonical_capacity_credited": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              proof, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+          ).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          Path("ubuntu-irc-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "
+",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload text-free authorities
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ubuntu-irc-two-clean-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/pass-1/materialization.json
+            ${{ runner.temp }}/pass-1/base.json
+            ${{ runner.temp }}/pass-1/combined.json
+            ${{ runner.temp }}/pass-1/survivors.json
+            ${{ runner.temp }}/pass-1/evidence.json
+            ${{ runner.temp }}/pdftotext-version.txt
+            ubuntu-irc-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
