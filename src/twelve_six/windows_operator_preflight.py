@@ -36,6 +36,9 @@ PACKET_ID = "R01-LEARNED20M-PORTABLE-RUN-PACKET-V1"
 EXIT_OK = 0
 EXIT_BLOCKED = 2
 EXIT_ERROR = 3
+MAX_OPERATOR_JSON_BYTES = 1024 * 1024
+MAX_OPERATOR_JSON_DEPTH = 64
+MAX_OPERATOR_JSON_NODES = 10_000
 
 # Leaf-local facts only. Corpus/source provenance is deliberately not asserted
 # by this machine/operator preflight.
@@ -91,6 +94,11 @@ def _json_finite_float(token: str) -> float:
     value = float(token)
     if not math.isfinite(value):
         raise ValueError(f"non_finite_number:{token}")
+    # Do not turn a nonzero budget (or other evidence) into exact zero via
+    # IEEE-754 underflow before the LOCAL_FREE policy checks its JSON value.
+    significand = token.split("e", 1)[0].split("E", 1)[0]
+    if value == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero_number_underflowed_to_zero")
     return value
 
 
@@ -99,19 +107,38 @@ def _json_reject_constant(token: str) -> Any:
 
 
 def _strict_json_loads(raw: str) -> Any:
-    return json.loads(
+    value = json.loads(
         raw,
         object_pairs_hook=_json_object_no_duplicates,
         parse_float=_json_finite_float,
         parse_constant=_json_reject_constant,
     )
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        current, depth = pending.pop()
+        nodes += 1
+        if nodes > MAX_OPERATOR_JSON_NODES or depth > MAX_OPERATOR_JSON_DEPTH:
+            raise ValueError("operator_json_structure_limit_exceeded")
+        if isinstance(current, dict):
+            for key, child in current.items():
+                key.encode("utf-8")
+                pending.append((child, depth + 1))
+        elif isinstance(current, list):
+            pending.extend((child, depth + 1) for child in current)
+        elif isinstance(current, str):
+            current.encode("utf-8")
+    return value
 
 
 def _read_json_file(path: Path) -> tuple[dict[str, Any], str]:
     try:
-        raw = path.read_bytes()
+        with path.open("rb") as source:
+            raw = source.read(MAX_OPERATOR_JSON_BYTES + 1)
+        if len(raw) > MAX_OPERATOR_JSON_BYTES:
+            raise ValueError("operator_json_byte_limit_exceeded")
         value = _strict_json_loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise OperatorPreflightError(f"invalid_or_unreadable_json:{path}:{exc}") from exc
     if not isinstance(value, dict):
         raise OperatorPreflightError(f"json_root_must_be_object:{path}")
@@ -188,7 +215,7 @@ def validate_operator_profile(
     cost = resource.get("maximum_cost_usd")
     _expect(
         errors,
-        type(cost) in (int, float) and math.isfinite(float(cost)) and cost == 0,
+        type(cost) in (int, float) and cost == 0,
         "packet_maximum_cost_must_be_zero",
     )
 
@@ -586,8 +613,12 @@ def read_stop_status(
             "errors": ["safe_stop_marker_must_be_regular_file"],
         }
     try:
-        marker = _strict_json_loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        with marker_path.open("rb") as source:
+            raw = source.read(MAX_OPERATOR_JSON_BYTES + 1)
+        if len(raw) > MAX_OPERATOR_JSON_BYTES:
+            raise ValueError("operator_json_byte_limit_exceeded")
+        marker = _strict_json_loads(raw.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, RecursionError):
         return {
             "status": "INVALID",
             "marker": None,
@@ -734,11 +765,23 @@ def _render_text(result: Mapping[str, Any]) -> str:
 
 
 def _print_result(result: Mapping[str, Any], *, as_json: bool) -> None:
-    print(
-        json.dumps(result, sort_keys=True, ensure_ascii=False)
-        if as_json
-        else _render_text(result)
-    )
+    if as_json:
+        rendered = json.dumps(result, sort_keys=True, ensure_ascii=False)
+        # A rejected duplicate JSON member can contain an unpaired surrogate.
+        # Escape only unencodable characters; retain valid Ukrainian text.
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        rendered = rendered.encode(encoding, errors="backslashreplace").decode(
+            encoding
+        )
+    else:
+        rendered = _render_text(result)
+        # Redirected Windows consoles may not support Ukrainian in their
+        # active code page. Keep a deterministic one-line ASCII fallback.
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        rendered = rendered.encode(encoding, errors="backslashreplace").decode(
+            encoding
+        )
+    print(rendered)
 
 
 def main(argv: list[str] | None = None) -> int:
