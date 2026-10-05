@@ -266,3 +266,34 @@ def test_preapply_rollback_marker_loss_still_poisoned(
     assert vars(target)["_failure_reason"] == "checkpoint_preapply_rng_rollback_failed"
     assert vars(target)["_update_incomplete"] is True
 
+def test_preflight_marker_loss_then_raise_preserves_primary_and_poison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _FreshTarget()
+
+    def fail_after_marker_loss(*_args: Any, **_kwargs: Any) -> None:
+        del vars(target)["_failure_reason"]
+        raise RuntimeError("synthetic semantic preflight failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            trainer_adapter,
+            "_preflight_trainer_state_without_rng_guard",
+            fail_after_marker_loss,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="synthetic semantic preflight failure",
+        ) as got:
+            trainer_adapter._preflight_trainer_state(
+                target,
+                {"probe": True},
+            )
+
+    assert vars(target)["_failure_reason"] == "checkpoint_restore_target_drift"
+    assert vars(target)["_update_incomplete"] is True
+    assert any(
+        "trainer restore target drift also detected" in note
+        for note in getattr(got.value, "__notes__", ())
+    )
+
