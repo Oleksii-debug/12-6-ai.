@@ -170,7 +170,8 @@ def test_fifo_input_never_blocks(
         manifest = fifo
     else:
         lease = fifo
-    argv = [sys.executable, str(Path(__file__).parents[1] / "tools" / "assess_learned20m_training_lease.py"), str(manifest)]
+    tool = Path(__file__).parents[1] / "tools" / "assess_learned20m_training_lease.py"
+    argv = [sys.executable, str(tool), str(manifest)]
     if role == "lease":
         argv.append(str(lease))
     result = subprocess.run(
