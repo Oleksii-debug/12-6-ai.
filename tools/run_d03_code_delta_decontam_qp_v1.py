@@ -686,6 +686,7 @@ def execute(
             "privacy_detector_counts": receipt["privacy_detector_counts"],
             "later_gate_loss_bytes": gate_loss_bytes,
         },
+        "survivor_inventory": survivor_inventory,
         "capacity_projection": {
             "current_post_qp_code_bytes_reference": CURRENT_POST_QP_CODE_BYTES,
             "code_target_bytes": CODE_TARGET_BYTES,
