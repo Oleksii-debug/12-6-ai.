@@ -124,6 +124,55 @@ _EXPECTED_TRUTH_BOUNDARY = {
     "foreign_pretrained_weights_used": False,
 }
 
+_COMPOSITION_KEYS = {
+    "schema",
+    "status",
+    "source_git_sha",
+    "base",
+    "delta",
+    "combined_inventory",
+    "cross_inventory_record_id_collision_free",
+    "cross_inventory_source_id_collision_free",
+    "cross_inventory_exact_payload_collision_free",
+    "record_membership_sha256",
+    "trusted_family_authority_root_sha256",
+    "families",
+    "stratum_capacity_bytes",
+    "stratum_family_counts",
+    "next_gate",
+    "canonical_capacity_credited",
+    "training_authorized_bytes",
+    "authorized_unique_loss_positions",
+    "authorized_optimized_target_exposure",
+    "tokenizer_fit_authorized",
+    "model_training_authorized",
+    "training_executed",
+    "learned_weights_created",
+    "final_test_outcomes_read",
+    "paid_compute_used",
+    "composition_identity_sha256",
+}
+_BASE_KEYS = {
+    "physical_authority_identity_sha256",
+    "record_inventory_digest_sha256",
+    "payload_inventory_digest_sha256",
+    "record_count",
+    "total_payload_bytes",
+    "source_object_count",
+}
+_DELTA_LINEAGE_KEYS = {
+    "execution_head_sha",
+    "evidence_identity_sha256",
+    "parent_execution_head_sha",
+    "parent_survivor_authority_sha256",
+    "parent_two_clean_proof_identity_sha256",
+    "record_inventory_digest_sha256",
+    "payload_inventory_digest_sha256",
+    "record_count",
+    "total_payload_bytes",
+    "source_object_count",
+}
+
 
 def _canonical(value: Any) -> bytes:
     return json.dumps(
@@ -680,6 +729,7 @@ def verify_current_clean_and_delta_composition(
     *,
     expected_composition_identity_sha256: str | None = None,
 ) -> str:
+    _require(set(document) == _COMPOSITION_KEYS, "composition fields are not closed-world")
     _require(document.get("schema") == COMPOSITION_SCHEMA, "composition schema drift")
     _require(
         document.get("status") == "COMPOSED_ZERO_CREDIT_PENDING_BALANCE",
@@ -700,6 +750,45 @@ def verify_current_clean_and_delta_composition(
             "composition identity is not independently expected",
         )
     _git(document.get("source_git_sha"), "composition source_git_sha")
+
+    base = document.get("base")
+    delta = document.get("delta")
+    _require(isinstance(base, Mapping) and set(base) == _BASE_KEYS, "composition base fields drift")
+    _require(
+        isinstance(delta, Mapping) and set(delta) == _DELTA_LINEAGE_KEYS,
+        "composition delta lineage fields drift",
+    )
+    _sha(base.get("physical_authority_identity_sha256"), "base physical authority identity")
+    _sha(base.get("record_inventory_digest_sha256"), "base record inventory root")
+    _sha(base.get("payload_inventory_digest_sha256"), "base payload inventory root")
+    base_records = _positive(base.get("record_count"), "base record count")
+    base_bytes = _positive(base.get("total_payload_bytes"), "base total bytes")
+    base_sources = _positive(base.get("source_object_count"), "base source object count")
+    _require(base_sources <= base_records, "base source object count exceeds record count")
+
+    _git(delta.get("execution_head_sha"), "delta execution head")
+    _sha(delta.get("evidence_identity_sha256"), "delta evidence identity")
+    _require(
+        delta.get("parent_execution_head_sha") == EXPECTED_DELTA_PARENT_HEAD,
+        "composition delta parent head drift",
+    )
+    _require(
+        delta.get("parent_survivor_authority_sha256")
+        == EXPECTED_DELTA_PARENT_SURVIVOR_AUTHORITY_SHA256,
+        "composition delta parent survivor authority drift",
+    )
+    _require(
+        delta.get("parent_two_clean_proof_identity_sha256")
+        == EXPECTED_DELTA_PARENT_PROOF_IDENTITY_SHA256,
+        "composition delta parent proof drift",
+    )
+    _sha(delta.get("record_inventory_digest_sha256"), "delta record inventory root")
+    _sha(delta.get("payload_inventory_digest_sha256"), "delta payload inventory root")
+    delta_records = _positive(delta.get("record_count"), "delta record count")
+    delta_bytes = _positive(delta.get("total_payload_bytes"), "delta total bytes")
+    delta_sources = _positive(delta.get("source_object_count"), "delta source object count")
+    _require(delta_sources <= delta_records, "delta source object count exceeds record count")
+
     for field in (
         "cross_inventory_record_id_collision_free",
         "cross_inventory_source_id_collision_free",
@@ -711,7 +800,10 @@ def verify_current_clean_and_delta_composition(
         document.get("trusted_family_authority_root_sha256"),
         "composition trusted family authority root",
     )
-    _require(document.get("next_gate") == "NEXT100-106_BALANCE_FAMILY_CAP", "composition next gate drift")
+    _require(
+        document.get("next_gate") == "NEXT100-106_BALANCE_FAMILY_CAP",
+        "composition next gate drift",
+    )
     exact_zero = {
         "canonical_capacity_credited": 0,
         "training_authorized_bytes": 0,
@@ -729,24 +821,31 @@ def verify_current_clean_and_delta_composition(
             type(document.get(field)) is type(expected) and document.get(field) == expected,
             f"composition authority widened: {field}",
         )
+
     inventory = document.get("combined_inventory")
     _require(isinstance(inventory, Mapping), "combined inventory missing")
+    combined_records = base_records + delta_records
+    combined_bytes = base_bytes + delta_bytes
+    combined_sources = base_sources + delta_sources
     rows = _inventory_rows(
         inventory,
         label="combined inventory",
-        expected_record_count=_positive(inventory.get("record_count"), "combined record count"),
-        expected_total_payload_bytes=_positive(
-            inventory.get("total_payload_bytes"), "combined total bytes"
-        ),
-        expected_source_object_count=len(
-            {row["source_id"] for row in inventory.get("records", [])}
-        ),
+        expected_record_count=combined_records,
+        expected_total_payload_bytes=combined_bytes,
+        expected_source_object_count=combined_sources,
         expected_record_inventory_digest_sha256=inventory.get(
             "record_inventory_digest_sha256"
         ),
         expected_payload_inventory_digest_sha256=inventory.get(
             "payload_inventory_digest_sha256"
         ),
+    )
+    _require(
+        not (
+            {row["record_id"] for row in rows[:base_records]}
+            & {row["record_id"] for row in rows[base_records:]}
+        ),
+        "combined inventory record collision proof drift",
     )
     family = _family_projection(rows)
     _require(document.get("families") == family["families"], "composition family rows drift")
@@ -768,3 +867,4 @@ def verify_current_clean_and_delta_composition(
         "composition trusted family root drift",
     )
     return claimed
+
