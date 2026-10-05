@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
+from typing import Any
 
 from twelve_six.learned20m_recipe import (
     bind_terminal_authorities,
@@ -15,6 +17,49 @@ from twelve_six.learned20m_recipe import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_POLICY = ROOT / "configs/research/r01_learned20m_recipe_authority_v1.json"
+
+
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate object member: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(value: str) -> Any:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("JSON number is not finite")
+    return parsed
+
+
+def _load_json(path: Path) -> Any:
+    try:
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        # Limit only untrusted JSON decoding; preserve genuine validator errors.
+        raise ValueError("JSON nesting exceeds decoder limit") from exc
+
+
+def _print_input_failure(label: str, exc: BaseException) -> int:
+    print(
+        json.dumps(
+            {"status": "FAIL", "error": f"invalid {label}: {exc}"},
+            sort_keys=True,
+        )
+    )
+    return 2
 
 
 def main() -> int:
@@ -46,7 +91,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    policy = json.loads(args.policy.read_text(encoding="utf-8"))
+    try:
+        policy = _load_json(args.policy)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return _print_input_failure("policy JSON", exc)
     validate_policy(policy)
     if args.bindings is None:
         if args.trusted_authorities is not None:
@@ -63,10 +111,14 @@ def main() -> int:
             parser.error(
                 "--expected-trusted-authorities-identity-sha256 is required with --bindings"
             )
-        bindings = json.loads(args.bindings.read_text(encoding="utf-8"))
-        trusted_authorities = json.loads(
-            args.trusted_authorities.read_text(encoding="utf-8")
-        )
+        try:
+            bindings = _load_json(args.bindings)
+        except (OSError, UnicodeError, ValueError) as exc:
+            return _print_input_failure("bindings JSON", exc)
+        try:
+            trusted_authorities = _load_json(args.trusted_authorities)
+        except (OSError, UnicodeError, ValueError) as exc:
+            return _print_input_failure("trusted-authorities JSON", exc)
         result = bind_terminal_authorities(
             policy,
             bindings,

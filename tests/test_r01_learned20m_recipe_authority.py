@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,6 +22,24 @@ from twelve_six.packing.core import DEFAULT_SEQUENCE_LENGTH, PACKING_CONFIG_HASH
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "configs/research/r01_learned20m_recipe_authority_v1.json"
+
+
+TOOL_PATH = ROOT / "tools/validate_r01_learned20m_recipe_authority.py"
+
+
+def _load_tool():
+    spec = importlib.util.spec_from_file_location("r01_recipe_authority_cli", TOOL_PATH)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _write_json(tmp_path: Path, raw: str) -> Path:
+    path = tmp_path / "authority.json"
+    path.write_text(raw, encoding="utf-8")
+    return path
 
 
 def load_policy():
@@ -356,3 +377,163 @@ def test_readiness_fragment_rejects_session_self_authorization():
     session["training_authorized"] = True
     with pytest.raises(RecipeValidationError, match="session identity drift"):
         readiness_fragment(session, authority("e"))
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"role":"first","role":"second"}',
+        '{"outer":{"role":"first","role":"second"}}',
+    ],
+)
+def test_recipe_cli_strict_loader_rejects_duplicate_object_members(
+    tmp_path: Path, raw: str
+) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="duplicate object member"):
+        tool._load_json(_write_json(tmp_path, raw))
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_recipe_cli_strict_loader_rejects_nonstandard_nonfinite_constants(
+    tmp_path: Path, constant: str
+) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="non-finite JSON constant"):
+        tool._load_json(_write_json(tmp_path, '{"value":' + constant + "}"))
+
+
+@pytest.mark.parametrize("number", ["1e400", "-1e400"])
+def test_recipe_cli_strict_loader_rejects_float_overflow(
+    tmp_path: Path, number: str
+) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="JSON number is not finite"):
+        tool._load_json(_write_json(tmp_path, '{"value":' + number + "}"))
+
+
+def test_recipe_cli_strict_loader_preserves_valid_finite_json(tmp_path: Path) -> None:
+    tool = _load_tool()
+    path = _write_json(
+        tmp_path,
+        '{"small":1.25,"large":1e20,"nested":{"count":3},"flag":false}',
+    )
+    assert tool._load_json(path) == {
+        "small": 1.25,
+        "large": 1e20,
+        "nested": {"count": 3},
+        "flag": False,
+    }
+
+
+def test_recipe_cli_routes_all_authority_inputs_through_one_strict_loader() -> None:
+    source = TOOL_PATH.read_text(encoding="utf-8")
+    assert source.count("_load_json(args.") == 3
+    assert "json.loads(args.policy.read_text" not in source
+    assert "json.loads(args.bindings.read_text" not in source
+    assert "args.trusted_authorities.read_text" not in source
+
+
+@pytest.mark.parametrize(
+    ("bad_role", "bad_raw"),
+    [
+        ("policy", '{"schema_version":1,"schema_version":1}'),
+        ("bindings", '{"code":{},"code":{}}'),
+        ("trusted", '{"tokenizer":{},"tokenizer":{}}'),
+    ],
+)
+def test_recipe_cli_reports_malformed_authority_json_without_traceback(
+    tmp_path: Path, bad_role: str, bad_raw: str
+) -> None:
+    bad = tmp_path / f"{bad_role}.json"
+    bad.write_text(bad_raw, encoding="utf-8")
+    valid_empty = tmp_path / "empty.json"
+    valid_empty.write_text("{}", encoding="utf-8")
+
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(bad)]
+    elif bad_role == "bindings":
+        command += [
+            "--bindings",
+            str(bad),
+            "--trusted-authorities",
+            str(valid_empty),
+            "--expected-trusted-authorities-identity-sha256",
+            "0" * 64,
+        ]
+    else:
+        command += [
+            "--bindings",
+            str(valid_empty),
+            "--trusted-authorities",
+            str(bad),
+            "--expected-trusted-authorities-identity-sha256",
+            "0" * 64,
+        ]
+
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    expected_label = bad_role if bad_role != "trusted" else "trusted-authorities"
+    assert f"invalid {expected_label}" in response["error"]
+    assert "duplicate object member" in response["error"]
+
+
+@pytest.mark.parametrize("kind", ["array", "object"])
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted"])
+def test_recipe_cli_depth_rejection_is_scoped_to_untrusted_json(
+    tmp_path: Path, kind: str, bad_role: str,
+) -> None:
+    tool = _load_tool()
+    depth = 10_000
+    raw = (
+        "[" * depth + "0" + "]" * depth
+        if kind == "array"
+        else '{"item":' * depth + "0" + "}" * depth
+    )
+    path = _write_json(tmp_path, raw)
+    with pytest.raises(ValueError, match="JSON nesting exceeds decoder limit"):
+        tool._load_json(path)
+
+    valid_empty = tmp_path / "empty.json"
+    valid_empty.write_text("{}", encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(path)]
+    elif bad_role == "bindings":
+        command += [
+            "--bindings", str(path),
+            "--trusted-authorities", str(valid_empty),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    else:
+        command += [
+            "--bindings", str(valid_empty),
+            "--trusted-authorities", str(path),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    result = json.loads(completed.stdout)
+    assert result["status"] == "FAIL"
+    label = "trusted-authorities" if bad_role == "trusted" else bad_role
+    assert f"invalid {label} JSON" in result["error"]
+    assert "JSON nesting exceeds decoder limit" in result["error"]
