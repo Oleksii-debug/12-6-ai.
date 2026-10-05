@@ -2500,7 +2500,10 @@ def test_authority_descriptor_rebind_fails_before_checkpoint_io(
 @pytest.mark.parametrize(
     ("attack", "error"),
     [
+        ("model", "model binding changed"),
         ("optimizer", "optimizer binding changed"),
+        ("scheduler", "scheduler binding changed"),
+        ("scaler", "scaler binding changed"),
         ("config", "config binding changed"),
         ("failure-marker", "safety classification changed"),
     ],
@@ -2537,8 +2540,14 @@ def test_model_apply_drift_is_poisoned_before_trainer_state_restore(
         strict: bool = True,
     ) -> Any:
         result = actual_model_loader(state, strict=strict)
-        if attack == "optimizer":
+        if attack == "model":
+            target.model = _TinyLogits()
+        elif attack == "optimizer":
             target.optimizer = object()  # type: ignore[assignment]
+        elif attack == "scheduler":
+            target.scheduler = object()  # type: ignore[assignment]
+        elif attack == "scaler":
+            target.scaler = object()  # type: ignore[assignment]
         elif attack == "config":
             target.config = replace(target.config)
         elif attack == "failure-marker":
