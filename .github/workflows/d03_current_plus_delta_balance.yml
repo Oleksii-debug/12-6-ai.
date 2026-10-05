@@ -1,0 +1,339 @@
+name: D03 current plus delta canonical balance
+
+on:
+  pull_request:
+    branches:
+      - hardening/2756-bind-gate-input-count-g6-115-20261005
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  execute-current-plus-delta-balance:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      BASE_AUTHORITY_COMMIT: 1b6bcb08486f1f4fc5c47a6419631b636837d50d
+      BASE_AUTHORITY_BLOB: abd35eedaedfb21d09ad283f183774f95179409a
+      BASE_ARTIFACT_ID: "11181030848"
+      BASE_ARTIFACT_NAME: d03-2023-current-clean-physical-d232e2003d18627534d5436a55ea919322c0a08f
+      BASE_ARTIFACT_SHA256: 3eef740b52e9db962b01b63a0a48474f735694dca4c3848e3e9c53d8cd7f1988
+      BASE_EXECUTION_HEAD: d232e2003d18627534d5436a55ea919322c0a08f
+      BASE_SURVIVOR_INVENTORY_FILE_SHA256: 22be58df07aa1997ee5591b5c1a1cbbda472e5fc2ed00f5359a6eb9178674bd5
+      DELTA_ARTIFACT_ID: "11339155095"
+      DELTA_ARTIFACT_NAME: d03-code-delta-decontam-qp-62dc9f487e0b3dd9eb2a8367a01061f8f55799ef
+      DELTA_ARTIFACT_SHA256: 2de7f5b5cace0691eee50e707120f95a28d12cf56f8211d4cfe3f1ebc5902a37
+      DELTA_EXECUTION_HEAD: 62dc9f487e0b3dd9eb2a8367a01061f8f55799ef
+      DELTA_EVIDENCE_FILE_SHA256: 214fbaedb50858b1276043a12ea8f2c403fbebc93f8790a229ce487f67490ad4
+      DELTA_EVIDENCE_IDENTITY_SHA256: 4ef571e9703f432d95272ebd20ac03e4ec253fba5164371d33d64ddc76c1f45f
+      POLICY_IDENTITY_SHA256: 9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7
+      COMPOSITION_BLOB: 5bcc7b5298c8a4bfe80cdb6899e1b40ffbc15d95
+      FAMILY_AUTHORITY_BLOB: faa23fb0802d99465835748cf8db0f173ef6abeb
+      BALANCE_GATE_BLOB: ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5
+      BALANCE_POLICY_BLOB: b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 1
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git hash-object src/twelve_six/data/current_plus_delta_inventory_composition_v1.py)" = "$COMPOSITION_BLOB"
+          test "$(git hash-object src/twelve_six/data/trusted_family_authority_current.py)" = "$FAMILY_AUTHORITY_BLOB"
+          test "$(git hash-object tools/next100_106_balance_gate.py)" = "$BALANCE_GATE_BLOB"
+          test "$(git hash-object configs/data/next100_106_balance_gate_policy_v1.json)" = "$BALANCE_POLICY_BLOB"
+          python -m py_compile \
+            tools/run_d03_current_plus_delta_balance_v1.py \
+            tools/next100_106_balance_gate.py \
+            src/twelve_six/data/current_plus_delta_inventory_composition_v1.py \
+            src/twelve_six/data/trusted_family_authority_current.py
+          PYTHONPATH=src:. python tools/next100_106_balance_gate.py validate-policy
+
+      - name: Recover independently qualified base authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_AUTHORITY_COMMIT"
+          git show "$BASE_AUTHORITY_COMMIT:reports/d03/clean_post_g05_g06_balance_authority_v1.json" > /tmp/base-authority.json
+          test "$(git hash-object /tmp/base-authority.json)" = "$BASE_AUTHORITY_BLOB"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          authority = json.loads(Path("/tmp/base-authority.json").read_text(encoding="utf-8"))
+          if authority["composition_artifact_id"] != int(os.environ["BASE_ARTIFACT_ID"]):
+              raise SystemExit("base artifact id drift")
+          if authority["artifact_digest_sha256"] != os.environ["BASE_ARTIFACT_SHA256"]:
+              raise SystemExit("base artifact digest drift")
+          if authority["expected_execution_head_sha"] != os.environ["BASE_EXECUTION_HEAD"]:
+              raise SystemExit("base execution head drift")
+          if authority["survivor_inventory_json_sha256"] != os.environ["BASE_SURVIVOR_INVENTORY_FILE_SHA256"]:
+              raise SystemExit("base survivor inventory file digest drift")
+          if authority["status"] != "AUTHORIZED_FOR_REAL_BALANCE_EXECUTION":
+              raise SystemExit("base authority status drift")
+          if authority["independent_qualification_verdict"] != "PASS":
+              raise SystemExit("base authority qualification drift")
+          PY
+
+      - name: Download and authenticate physical artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for kind in base delta; do
+            if [ "$kind" = base ]; then
+              artifact_id="$BASE_ARTIFACT_ID"
+              expected_name="$BASE_ARTIFACT_NAME"
+              expected_digest="$BASE_ARTIFACT_SHA256"
+              expected_head="$BASE_EXECUTION_HEAD"
+            else
+              artifact_id="$DELTA_ARTIFACT_ID"
+              expected_name="$DELTA_ARTIFACT_NAME"
+              expected_digest="$DELTA_ARTIFACT_SHA256"
+              expected_head="$DELTA_EXECUTION_HEAD"
+            fi
+
+            curl --fail --silent --show-error --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}" \
+              -o "/tmp/${kind}-artifact.json"
+
+            KIND="$kind" EXPECTED_NAME="$expected_name" EXPECTED_DIGEST="$expected_digest" EXPECTED_HEAD="$expected_head" \
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          kind = os.environ["KIND"]
+          metadata = json.loads(
+              Path(f"/tmp/{kind}-artifact.json").read_text(encoding="utf-8")
+          )
+          if metadata.get("name") != os.environ["EXPECTED_NAME"]:
+              raise SystemExit(f"{kind} artifact name drift")
+          if metadata.get("expired") is not False:
+              raise SystemExit(f"{kind} artifact expired")
+          if metadata.get("digest") != "sha256:" + os.environ["EXPECTED_DIGEST"]:
+              raise SystemExit(f"{kind} artifact server digest drift")
+          workflow = metadata.get("workflow_run")
+          if not isinstance(workflow, dict):
+              raise SystemExit(f"{kind} workflow metadata missing")
+          if workflow.get("head_sha") != os.environ["EXPECTED_HEAD"]:
+              raise SystemExit(f"{kind} artifact execution-head drift")
+          PY
+
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+              -o "/tmp/${kind}.zip"
+            test "$(sha256sum "/tmp/${kind}.zip" | cut -d' ' -f1)" = "$expected_digest"
+          done
+
+      - name: Extract only text-free authority inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/physical-input
+          mkdir -p /tmp/physical-input
+          python - <<'PY'
+          import hashlib
+          import os
+          import stat
+          import zipfile
+          from pathlib import Path
+
+          def extract_one(archive_path, target_name, destination, expected_sha, exact_names=None):
+              with zipfile.ZipFile(archive_path) as bundle:
+                  infos = bundle.infolist()
+                  names = [info.filename for info in infos]
+                  if len(names) != len(set(names)):
+                      raise SystemExit(f"duplicate ZIP member in {archive_path}")
+                  if exact_names is not None and set(names) != set(exact_names):
+                      raise SystemExit(
+                          f"artifact member allowlist drift: {sorted(names)}"
+                      )
+                  target = None
+                  for info in infos:
+                      mode = (info.external_attr >> 16) & 0o170000
+                      if info.is_dir() or "\\" in info.filename or info.filename.startswith("/"):
+                          raise SystemExit(f"unsafe artifact member: {info.filename}")
+                      parts = Path(info.filename).parts
+                      if ".." in parts or mode == stat.S_IFLNK:
+                          raise SystemExit(f"unsafe artifact member: {info.filename}")
+                      if info.filename == target_name:
+                          target = info
+                  if target is None:
+                      raise SystemExit(f"missing artifact member: {target_name}")
+                  payload = bundle.read(target)
+              if hashlib.sha256(payload).hexdigest() != expected_sha:
+                  raise SystemExit(f"{target_name} raw SHA-256 mismatch")
+              Path(destination).write_bytes(payload)
+
+          extract_one(
+              "/tmp/base.zip",
+              "survivor_inventory.json",
+              "/tmp/physical-input/base-survivor-inventory.json",
+              os.environ["BASE_SURVIVOR_INVENTORY_FILE_SHA256"],
+              exact_names={
+                  "composition_receipt.json",
+                  "data232_report.json",
+                  "decontamination_execution.json",
+                  "eval647_execution_receipt.json",
+                  "privacy_execution.json",
+                  "quality_execution.json",
+                  "repeat_proof.json",
+                  "survivor_inventory.json",
+                  "survivor_records.jsonl",
+              },
+          )
+          extract_one(
+              "/tmp/delta.zip",
+              "output-a/evidence.json",
+              "/tmp/physical-input/delta-evidence.json",
+              os.environ["DELTA_EVIDENCE_FILE_SHA256"],
+              exact_names={
+                  "output-a/evidence.json",
+                  "two-clean-proof.json",
+              },
+          )
+          PY
+
+      - name: Execute canonical balance twice in fresh processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/balance-a /tmp/balance-b
+          for out in /tmp/balance-a /tmp/balance-b; do
+            PYTHONPATH=src:. python tools/run_d03_current_plus_delta_balance_v1.py \
+              --base-authority-json /tmp/base-authority.json \
+              --base-inventory-json /tmp/physical-input/base-survivor-inventory.json \
+              --delta-evidence-json /tmp/physical-input/delta-evidence.json \
+              --expected-delta-evidence-identity-sha256 "$DELTA_EVIDENCE_IDENTITY_SHA256" \
+              --expected-delta-execution-head-sha "$DELTA_EXECUTION_HEAD" \
+              --expected-policy-identity-sha256 "$POLICY_IDENTITY_SHA256" \
+              --source-git-sha "$EXECUTION_HEAD" \
+              --output-dir "$out"
+          done
+
+          for name in composition combined-dedup-proof next100-input balance-result execution-receipt; do
+            cmp "/tmp/balance-a/${name}.json" "/tmp/balance-b/${name}.json"
+          done
+
+      - name: Qualify text-free balance evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("/tmp/balance-a")
+          values = {
+              path.stem: json.loads(path.read_text(encoding="utf-8"))
+              for path in root.glob("*.json")
+          }
+          receipt = values["execution-receipt"]
+          balance = values["balance-result"]
+          composition = values["composition"]
+          proof = values["combined-dedup-proof"]
+
+          if receipt["schema"] != "12-6.d03-current-plus-delta-balance-execution.v1":
+              raise SystemExit("receipt schema drift")
+          if receipt["execution_head_sha"] != os.environ["EXECUTION_HEAD"]:
+              raise SystemExit("receipt execution-head drift")
+          if receipt["balance_policy_identity_sha256"] != os.environ["POLICY_IDENTITY_SHA256"]:
+              raise SystemExit("balance policy identity drift")
+          if receipt["delta_evidence_identity_sha256"] != os.environ["DELTA_EVIDENCE_IDENTITY_SHA256"]:
+              raise SystemExit("delta evidence identity drift")
+          if receipt["combined_total_payload_bytes"] != 5_846_839:
+              raise SystemExit("combined physical byte arithmetic drift")
+          if composition["base"]["total_payload_bytes"] != 5_428_358:
+              raise SystemExit("base physical byte count drift")
+          if composition["delta"]["total_payload_bytes"] != 418_481:
+              raise SystemExit("delta physical byte count drift")
+          if proof["terminal_verdict"] != "PASS":
+              raise SystemExit("combined dedup proof is nonterminal")
+          if balance["result_identity_sha256"] != receipt["balance_result_identity_sha256"]:
+              raise SystemExit("balance result identity cross-bind drift")
+
+          exact_zero = {
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          for field, expected in exact_zero.items():
+              observed = receipt[field]
+              if type(observed) is not type(expected) or observed != expected:
+                  raise SystemExit(f"receipt truth widened: {field}")
+
+          core = dict(receipt)
+          claimed = core.pop("receipt_identity_sha256")
+          canonical = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          if hashlib.sha256(canonical).hexdigest() != claimed:
+              raise SystemExit("receipt self-hash mismatch")
+
+          forbidden = {
+              "normalized_payload",
+              "raw_payload",
+              "source_text",
+              "document_text",
+          }
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      if key in forbidden:
+                          raise SystemExit(f"raw-text key persisted: {key}")
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(values)
+
+          print("D03_CURRENT_PLUS_DELTA_BALANCE_QUALIFIED")
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+
+      - name: Upload text-free balance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-current-plus-delta-balance-${{ env.EXECUTION_HEAD }}
+          path: /tmp/balance-a
+          if-no-files-found: error
+          retention-days: 90
