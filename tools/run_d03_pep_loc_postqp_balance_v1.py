@@ -57,6 +57,18 @@ GLOBAL_DEDUP_SURVIVOR_AUTHORITY_SHA256 = (
 GLOBAL_DEDUP_TWO_CLEAN_PROOF_SHA256 = (
     "bb0a65d958791b05df2ba47b5b108c93f39ccf59f8bf8115c00fb1f9b90d4b6c"
 )
+GLOBAL_DEDUP_MATCHER_REPORT_SHA256 = (
+    "cf7e4b4f1758510a6f01068ac30aebb0696623664d38e13ab2290b63a6da9de0"
+)
+GLOBAL_DEDUP_WORKFLOW_RUN_ID = 37338684311
+GLOBAL_DEDUP_PASS_ARTIFACT_ID = 11357173588
+GLOBAL_DEDUP_PASS_ARTIFACT_ZIP_SHA256 = (
+    "379a7984b86afde8ea3bf0d55ee9f3c19a045799b0ee106e8bb19bf4680054d5"
+)
+GLOBAL_DEDUP_PROOF_ARTIFACT_ID = 11357043314
+GLOBAL_DEDUP_PROOF_ARTIFACT_ZIP_SHA256 = (
+    "befa277e2c624b7719295907c863db383a8bc2f206271b073447f2e4d95a254c"
+)
 
 EXPECTED_RECORDS = 432
 EXPECTED_SOURCE_OBJECTS = 364
@@ -477,6 +489,20 @@ def _verify_evidence(
         == GLOBAL_DEDUP_TWO_CLEAN_PROOF_SHA256,
         "parent two-clean proof drift",
     )
+    expected_parent = {
+        "workflow_run_id": GLOBAL_DEDUP_WORKFLOW_RUN_ID,
+        "pass_artifact_id": GLOBAL_DEDUP_PASS_ARTIFACT_ID,
+        "pass_artifact_zip_sha256": GLOBAL_DEDUP_PASS_ARTIFACT_ZIP_SHA256,
+        "proof_artifact_id": GLOBAL_DEDUP_PROOF_ARTIFACT_ID,
+        "proof_artifact_zip_sha256": GLOBAL_DEDUP_PROOF_ARTIFACT_ZIP_SHA256,
+        "matcher_report_sha256": GLOBAL_DEDUP_MATCHER_REPORT_SHA256,
+    }
+    for field, wanted in expected_parent.items():
+        observed = parent.get(field)
+        _require(
+            type(observed) is type(wanted) and observed == wanted,
+            f"parent lineage drift: {field}",
+        )
     _require(
         parent.get("post_global_dedup_objects") == 370,
         "parent object count drift",
