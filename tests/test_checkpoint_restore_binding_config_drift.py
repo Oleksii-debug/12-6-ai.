@@ -67,7 +67,6 @@ def _source() -> Trainer:
     return source
 
 
-
 @pytest.mark.parametrize(
     "loader",
     [trainer_adapter, progress_trainer],
