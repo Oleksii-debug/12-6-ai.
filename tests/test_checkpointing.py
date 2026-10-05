@@ -1196,6 +1196,7 @@ def test_torch_rng_policy_fields_require_exact_booleans(
     with pytest.raises(CheckpointCompatibilityError, match=field):
         core._preflight_rng_state(state)
 
+
 @pytest.mark.parametrize(
     ("field", "bad_value"),
     [
@@ -1255,6 +1256,56 @@ def test_torch_rng_preflight_rejects_invalid_per_device_cuda_state(
         match="CUDA RNG state for device 0 is invalid",
     ):
         core._preflight_rng_state(state)
+
+
+def test_direct_load_rejects_invalid_cuda_rng_before_model_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    torch = pytest.importorskip("torch")
+    source = NumpyModel(np.array([0.1, -0.2, 0.3]))
+    checkpoint = tmp_path / "invalid-cuda-rng-preapply"
+    captured = core.capture_rng_state()
+    forged = copy.deepcopy(captured)
+    forged["torch"] = dict(forged["torch"])
+    forged["torch"]["cuda"] = [forged["torch"]["cpu"].clone()]
+
+    # Build an integrity-valid legacy-style fixture on a CPU runner without
+    # asking the production writer to apply the intentionally invalid CUDA RNG.
+    with monkeypatch.context() as patch:
+        patch.setattr(core, "capture_rng_state", lambda: copy.deepcopy(forged))
+        patch.setattr(core, "restore_rng_state", lambda _state: {})
+        save_checkpoint(
+            checkpoint,
+            model=source,
+            trainer_state={},
+            identity=identity(step=0, tokens_seen=0),
+        )
+    verify_checkpoint(checkpoint)
+
+    target = NumpyModel(np.array([9.0, 8.0, 7.0]))
+    before = target.weights.copy()
+
+    class ProbeGenerator:
+        def __init__(self, *, device: str) -> None:
+            self.device = device
+
+        def set_state(self, value: object) -> None:
+            del value
+            if self.device.startswith("cuda:"):
+                raise RuntimeError("simulated invalid CUDA RNG state")
+
+    monkeypatch.setattr(torch, "Generator", ProbeGenerator)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="CUDA RNG state for device 0 is invalid",
+    ):
+        load_checkpoint(checkpoint, model=target, restore_rng=True)
+
+    np.testing.assert_array_equal(target.weights, before)
 
 
 def test_torch_rng_explicit_null_remains_legacy_compatible() -> None:
