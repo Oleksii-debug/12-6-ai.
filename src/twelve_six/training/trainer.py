@@ -945,45 +945,45 @@ class Trainer:
         self, scheduler_state: Any, optimizer_step: int, optimizer_state: Any,
     ) -> None:
         """Pure D02 chronology and configured-rate authority for direct/D05 preflight."""
-            if type(self.scheduler) is LambdaLR and (
-                not isinstance(scheduler_state, Mapping)
-                or type(scheduler_state.get("last_epoch")) is not int
-                or scheduler_state["last_epoch"] != optimizer_step
+        if type(self.scheduler) is LambdaLR and (
+            not isinstance(scheduler_state, Mapping)
+            or type(scheduler_state.get("last_epoch")) is not int
+            or scheduler_state["last_epoch"] != optimizer_step
+        ):
+            # Refuse a known impossible committed history before optimizer or
+            # scheduler load. A fresh target can retry a verified checkpoint.
+            raise ValueError(
+                "checkpoint scheduler chronology differs from committed optimizer step"
+            )
+        if type(self.scheduler) is LambdaLR and (
+            type(scheduler_state.get("_step_count")) is not int
+            or scheduler_state["_step_count"] != optimizer_step + 1
+        ):
+            # PyTorch LambdaLR starts at internal scheduler step 1 and moves
+            # exactly once per successful optimizer update.
+            raise ValueError(
+                "checkpoint scheduler step count differs from committed optimizer step"
+            )
+        if type(self.scheduler) is LambdaLR:
+            saved_groups = (
+                optimizer_state.get("param_groups")
+                if isinstance(optimizer_state, Mapping) else None
+            )
+            last_rates = scheduler_state.get("_last_lr")
+            if (
+                not isinstance(saved_groups, list)
+                or not isinstance(last_rates, list)
+                or len(saved_groups) != len(last_rates)
+                or any(
+                    not isinstance(group, Mapping)
+                    or "lr" not in group
+                    or not self._exact_export_leaf_equal(rate, group["lr"])
+                    for rate, group in zip(last_rates, saved_groups, strict=True)
+                )
             ):
-                # Refuse a known impossible committed history before optimizer or
-                # scheduler load. A fresh target can retry a verified checkpoint.
                 raise ValueError(
-                    "checkpoint scheduler chronology differs from committed optimizer step"
+                    "checkpoint scheduler last LR differs from checkpoint optimizer"
                 )
-            if type(self.scheduler) is LambdaLR and (
-                type(scheduler_state.get("_step_count")) is not int
-                or scheduler_state["_step_count"] != optimizer_step + 1
-            ):
-                # PyTorch LambdaLR starts at internal scheduler step 1 and moves
-                # exactly once per successful optimizer update.
-                raise ValueError(
-                    "checkpoint scheduler step count differs from committed optimizer step"
-                )
-            if type(self.scheduler) is LambdaLR:
-                saved_groups = (
-                    optimizer_state.get("param_groups")
-                    if isinstance(optimizer_state, Mapping) else None
-                )
-                last_rates = scheduler_state.get("_last_lr")
-                if (
-                    not isinstance(saved_groups, list)
-                    or not isinstance(last_rates, list)
-                    or len(saved_groups) != len(last_rates)
-                    or any(
-                        not isinstance(group, Mapping)
-                        or "lr" not in group
-                        or not self._exact_export_leaf_equal(rate, group["lr"])
-                        for rate, group in zip(last_rates, saved_groups, strict=True)
-                    )
-                ):
-                    raise ValueError(
-                        "checkpoint scheduler last LR differs from checkpoint optimizer"
-                    )
         self._require_default_schedule_rates(
             scheduler_state, optimizer_step, optimizer_state,
         )
