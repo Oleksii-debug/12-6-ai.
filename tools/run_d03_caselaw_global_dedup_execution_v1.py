@@ -1048,10 +1048,19 @@ def _remove_control_without_payload(
     marker_path: Path,
     manifest_path: Path,
     marker_identity: tuple[int, int],
+    pathset_id: str,
 ) -> None:
     _require(
         not _path_entry_exists(manifest_path),
         "publication manifest appeared during marker-only recovery",
+    )
+    _require(
+        _validate_publication_marker(marker_path, pathset_id) == marker_identity,
+        "incomplete publication marker changed before marker-only cleanup",
+    )
+    _require(
+        not _path_entry_exists(manifest_path),
+        "publication manifest appeared during marker-only cleanup",
     )
     _unlink_owned_path(
         marker_path,
@@ -1082,6 +1091,7 @@ def _recover_incomplete_publication(
             marker_path,
             manifest_path,
             marker_identity,
+            pathset_id,
         )
         return
 
