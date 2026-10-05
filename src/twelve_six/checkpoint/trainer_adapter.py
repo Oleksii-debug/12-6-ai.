@@ -518,6 +518,57 @@ def _snapshot_native_d02_config(config: Any) -> dict[str, Any]:
     return snapshot
 
 
+def _snapshot_native_d02_model_trainability(
+    trainer: Any,
+) -> tuple[tuple[str, int, bool], ...]:
+    """Pin raw parameter identity/name/trainability across restore callouts."""
+
+    canonical = inspect.getattr_static(
+        _CanonicalTrainer,
+        "_canonical_model_members",
+        None,
+    )
+    if not isinstance(canonical, FunctionType):
+        raise CheckpointCompatibilityError(
+            "native D02 model-member authority is unavailable"
+        )
+    try:
+        named_parameters, _ = canonical.__get__(trainer, type(trainer))()
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        raise CheckpointCompatibilityError(
+            "native D02 model trainability snapshot is unavailable"
+        ) from exc
+
+    torch = importlib.import_module("torch")
+    requires_grad_descriptor = inspect.getattr_static(
+        torch.Tensor,
+        "requires_grad",
+        None,
+    )
+    if not isinstance(requires_grad_descriptor, GetSetDescriptorType):
+        raise CheckpointCompatibilityError(
+            "native D02 tensor trainability authority is unavailable"
+        )
+
+    snapshot: list[tuple[str, int, bool]] = []
+    for name, parameter in named_parameters:
+        try:
+            requires_grad = requires_grad_descriptor.__get__(
+                parameter,
+                type(parameter),
+            )
+        except (AttributeError, RuntimeError, TypeError) as exc:
+            raise CheckpointCompatibilityError(
+                f"native D02 parameter trainability is unavailable: {name}"
+            ) from exc
+        if type(requires_grad) is not bool:
+            raise CheckpointCompatibilityError(
+                f"native D02 parameter trainability is invalid: {name}"
+            )
+        snapshot.append((name, id(parameter), requires_grad))
+    return tuple(snapshot)
+
+
 def _snapshot_trainer_restore_bindings(
     trainer: Any,
 ) -> tuple[bool, dict[str, Any]]:
@@ -572,11 +623,17 @@ def _snapshot_trainer_restore_bindings(
         if native_d02 and "config" in bindings
         else None
     )
+    model_trainability = (
+        _snapshot_native_d02_model_trainability(trainer)
+        if native_d02
+        else None
+    )
     return True, {
         "native_d02": native_d02,
         "bindings": bindings,
         "policies": policies,
         "config": config,
+        "model_trainability": model_trainability,
     }
 
 
@@ -639,6 +696,13 @@ def _assert_trainer_restore_bindings(
         if not _restore_contract_equal(current_config, expected_config):
             raise CheckpointCompatibilityError(
                 "canonical trainer config changed during checkpoint restore"
+            )
+    expected_trainability = snapshot_state["model_trainability"]
+    if expected_trainability is not None:
+        current_trainability = _snapshot_native_d02_model_trainability(trainer)
+        if not _restore_contract_equal(current_trainability, expected_trainability):
+            raise CheckpointCompatibilityError(
+                "canonical trainer model trainability changed during checkpoint restore"
             )
     for field, expected in snapshot_state["policies"].items():
         if (
