@@ -300,3 +300,81 @@ def test_resealed_paired_finite_rate_forgery_rejected_before_model_and_rng(
     assert target.scheduler.last_epoch == source.scheduler.last_epoch == 2
     assert target.scheduler.get_last_lr() == source.scheduler.get_last_lr()
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("scale", -1.0),
+        ("growth_factor", 1.0),
+        ("backoff_factor", 0.0),
+        ("growth_interval", 0),
+        ("_growth_tracker", -1),
+        ("_growth_tracker", 2000),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_resealed_invalid_scaler_statistics_fail_before_model_and_rng(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    field: str, bad_value: Any, loader: Any, restore_rng: bool,
+) -> None:
+    # Enabled CPU scaler exposes GradScaler's real serialized schema without
+    # claiming CUDA fp16 or any real learned-model training.
+    source = _source()
+    source.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    valid = asdict(source.state_dict())
+    invalid = copy.deepcopy(valid)
+    invalid["scaler"][field] = bad_value
+    bad_path = tmp_path / "bad-scaler-дані з пробілами"
+    good_path = tmp_path / "good-scaler-дані з пробілами"
+    for path, payload in ((bad_path, invalid), (good_path, valid)):
+        core.save_checkpoint(
+            path, model=source.model, trainer_state=payload, identity=_identity(),
+        )
+        core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    target.scaler = torch.amp.GradScaler("cpu", enabled=True)
+    initial_weights = target.model.weight.detach().clone()
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    model_applied: list[bool] = []
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("invalid scaler reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    with pytest.raises(CheckpointCompatibilityError, match="scaler statistics invalid"):
+        loader.load_trainer_checkpoint(
+            bad_path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+    monkeypatch.undo()
+    loader.load_trainer_checkpoint(
+        good_path, model=target.model, trainer=target,
+        strict_model=False, restore_rng=restore_rng, **extra,
+    )
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (1, 1, 2)
+    assert target.scaler.state_dict() == source.scaler.state_dict()
+    torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
