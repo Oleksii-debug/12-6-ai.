@@ -141,3 +141,29 @@ def test_normal_lambda_scheduler_export_keeps_resume_state(
     assert saved.scheduler["_last_lr"] == trainer.scheduler.get_last_lr()
     assert saved.scheduler["lr_lambdas"] == [None]
     assert trainer._failure_reason is None
+
+
+@pytest.mark.parametrize("forged_epoch", [0, 3, False, 1.0])
+def test_finite_live_scheduler_chronology_cannot_be_saved(
+    preserve_state: Any, forged_epoch: Any,
+) -> None:
+    trainer = Trainer(
+        _TinyLogits(), TrainerConfig(seed=703, max_steps=4, scheduler="cosine"),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    assert trainer.optimizer_step == 1
+    scheduler = trainer.scheduler
+    assert scheduler is not None and scheduler.last_epoch == 1
+    scheduler.last_epoch = forged_epoch
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="scheduler chronology differs from committed optimizer step",
+    ):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (
+        1, 1, 2,
+    )
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
