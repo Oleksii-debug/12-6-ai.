@@ -136,7 +136,9 @@ def test_live_default_lambda_chronology_drift_refused_before_next_batch(
     before = (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen)
     before_weights = trainer.model.weight.detach().clone()
     setattr(trainer.scheduler, field, 99)
-    with pytest.raises(ValueError, match="checkpoint scheduler"):
+    with pytest.raises(
+        TrainingStateInvalidError, match="live default scheduler chronology or rate",
+    ):
         trainer.train_microbatch(_BATCH)
     assert trainer._failure_reason is not None
     assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == before
@@ -243,7 +245,9 @@ def test_forward_hook_forged_default_scheduler_never_reaches_optimizer(
 
     handle = model.register_forward_hook(forge_scheduler)
     try:
-        with pytest.raises(ValueError, match="checkpoint scheduler"):
+        with pytest.raises(
+        TrainingStateInvalidError, match="live default scheduler chronology or rate",
+    ):
             trainer.train_microbatch(_BATCH)
     finally:
         handle.remove()
