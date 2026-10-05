@@ -489,6 +489,8 @@ def execute(
     expected_selection_validation_identity_sha256: str,
     expected_final_test_identity_sha256: str,
     output_evidence: Path,
+    output_composition_receipt: Path,
+    output_survivor_inventory: Path,
 ) -> dict[str, Any]:
     authority_blobs = verify_local_authority(expected_execution_head)
     _parent_survivors, parent_evidence = verify_parent_artifact(
@@ -618,6 +620,20 @@ def execute(
         "final survivor count drift",
     )
 
+    composition_receipt_raw = canonical(receipt) + b"\n"
+    survivor_inventory_raw = canonical(survivor_inventory) + b"\n"
+    durable_authority = {
+        "composition_receipt_json_sha256": sha256(composition_receipt_raw),
+        "survivor_inventory_json_sha256": sha256(survivor_inventory_raw),
+        "composition_receipt_identity_sha256": receipt["receipt_identity_sha256"],
+        "survivor_record_inventory_digest_sha256": receipt[
+            "survivor_record_inventory_digest_sha256"
+        ],
+        "survivor_payload_inventory_digest_sha256": receipt[
+            "survivor_payload_inventory_digest_sha256"
+        ],
+    }
+
     evidence_core = {
         "schema_version": SCHEMA,
         "execution_profile": "LOCAL_FREE",
@@ -698,6 +714,7 @@ def execute(
             ),
         },
         "authority_blobs": authority_blobs,
+        "durable_authority": durable_authority,
         "content_boundary": {
             "raw_training_text_persisted": False,
             "raw_evaluation_text_persisted": False,
@@ -730,8 +747,15 @@ def execute(
         **evidence_core,
         "evidence_identity_sha256": sha256(canonical(evidence_core)),
     }
-    output_evidence.parent.mkdir(parents=True, exist_ok=True)
+    for output in (
+        output_evidence,
+        output_composition_receipt,
+        output_survivor_inventory,
+    ):
+        output.parent.mkdir(parents=True, exist_ok=True)
     output_evidence.write_bytes(canonical(evidence) + b"\n")
+    output_composition_receipt.write_bytes(composition_receipt_raw)
+    output_survivor_inventory.write_bytes(survivor_inventory_raw)
     return evidence
 
 
@@ -770,6 +794,8 @@ def main() -> int:
     )
     parser.add_argument("--expected-final-test-identity-sha256", required=True)
     parser.add_argument("--output-evidence", type=Path, required=True)
+    parser.add_argument("--output-composition-receipt", type=Path, required=True)
+    parser.add_argument("--output-survivor-inventory", type=Path, required=True)
     args = parser.parse_args()
 
     try:
@@ -802,6 +828,8 @@ def main() -> int:
                 args.expected_final_test_identity_sha256
             ),
             output_evidence=args.output_evidence,
+            output_composition_receipt=args.output_composition_receipt,
+            output_survivor_inventory=args.output_survivor_inventory,
         )
     except (
         CodeDeltaCleanExecutionError,
