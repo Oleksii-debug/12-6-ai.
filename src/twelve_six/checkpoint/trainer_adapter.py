@@ -1433,6 +1433,30 @@ def _restore_checkpoint_rng_preserving_warn_only(
         raise
 
 
+def _assert_native_checkpoint_save_progress(
+    trainer: Any,
+    state: Mapping[str, Any],
+    identity: CheckpointIdentity,
+) -> None:
+    """Bind native trainer counters to the manifest identity before file I/O."""
+
+    if not _is_native_d02(trainer):
+        return
+    checks = {
+        "step": (identity.step, state.get("optimizer_step")),
+        "tokens_seen": (identity.tokens_seen, state.get("tokens_seen")),
+    }
+    mismatches = {
+        field: {"identity": expected, "trainer": actual}
+        for field, (expected, actual) in checks.items()
+        if type(actual) is not int or actual != expected
+    }
+    if mismatches:
+        raise CheckpointCompatibilityError(
+            f"checkpoint save progress identity mismatch: {mismatches}"
+        )
+
+
 def save_trainer_checkpoint(
     directory: str | Path,
     *,
@@ -1490,6 +1514,7 @@ def save_trainer_checkpoint(
         sealed_model_fingerprint = None
 
     _assert_trainer_restore_bindings(trainer, save_bindings)
+    _assert_native_checkpoint_save_progress(trainer, state, identity)
 
     def prepublish_validator() -> None:
         if not save_bindings[0]:
