@@ -16,7 +16,7 @@ The format was hardened before any canonical S0 checkpoint existed, so the pre-r
 
 ## Save/load invariants
 
-`save_checkpoint` stages into a sibling temporary directory, verifies the completed bundle, and only then renames it into place. Checkpoint-v1 destinations are immutable after publication: saving to an existing destination fails closed even when the historical `overwrite=True` argument is passed. That argument remains accepted only for source compatibility and does not authorize replacing an existing checkpoint.
+`save_checkpoint` stages into a sibling temporary directory and verifies the completed bundle before any publication callback runs. After all prepublication validators and exact RNG/policy rollback, it verifies the staged bundle again, requires the reverified manifest to equal the manifest constructed by this save transaction, and requires the canonical `manifest.json` / `MANIFEST.sha256` bytes to remain unchanged before the final atomic rename. Checkpoint-v1 destinations are immutable after publication: saving to an existing destination fails closed even when the historical `overwrite=True` argument is passed. That argument remains accepted only for source compatibility and does not authorize replacing an existing checkpoint.
 
 `CheckpointIdentity.validate()` rejects abbreviated Git identities and placeholder/non-hash lineage strings. Required candidate/tokenizer/dataset/run hashes must be exact lowercase hexadecimal values of the documented width. This applies even when callers construct `CheckpointIdentity` directly rather than going through the C01 run-manifest binder.
 
@@ -24,7 +24,7 @@ The format was hardened before any canonical S0 checkpoint existed, so the pre-r
 
 The state-tree codec preserves mappings with non-string keys, tuples, lists, bytes, NumPy scalars/arrays, and PyTorch tensors when PyTorch is installed. Unknown Python objects fail closed rather than being pickled.
 
-RNG capture covers Python and NumPy. When PyTorch is installed it also records CPU RNG, available CUDA RNG states, and the deterministic-algorithms flag. CUDA RNG restoration fails closed if the runtime device count differs; callers may explicitly load with `restore_rng=False` instead of receiving a false determinism claim.
+RNG capture covers Python and NumPy. When PyTorch is installed it also records CPU RNG, available CUDA RNG states, the deterministic-algorithms flag, and the deterministic warn-only policy. Current writers require exact Boolean policy values. Legacy checkpoint-v1 snapshots may omit the warn-only field; direct low-level replay preserves the live warn-only setting in that compatibility case rather than silently forcing `False`. Canonical D02 restore additionally binds any recorded warn-only value to the validated Trainer configuration. CUDA RNG restoration fails closed if the runtime device count differs; callers may explicitly load with `restore_rng=False` instead of receiving a false determinism claim.
 
 ## Current evidence boundary
 
