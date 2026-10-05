@@ -428,6 +428,10 @@ def _verify_delta_evidence(
     ):
         _sha(gate.get(field), f"delta gate.{field}")
     input_records = _positive(gate.get("input_records"), "delta gate input_records")
+    _require(
+        input_records == EXPECTED_DELTA_PRE_GATE_OBJECTS,
+        "delta gate input record count drift",
+    )
     post_decontam = _positive(
         gate.get("post_decontamination_records"),
         "delta gate post_decontamination_records",
