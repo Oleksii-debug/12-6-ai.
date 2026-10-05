@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -60,7 +62,7 @@ def test_load_rejects_recursive_duplicate_members(tmp_path: Path) -> None:
     path = tmp_path / "duplicate.json"
     path.write_text('{"outer":{"same":1,"same":2}}', encoding="utf-8")
 
-    with pytest.raises(ValueError, match="duplicate_json_key:same"):
+    with pytest.raises(ValueError, match=r"^duplicate_json_key$"):
         _module()._load(path)
 
 
@@ -80,6 +82,106 @@ def test_load_rejects_float_overflow(tmp_path: Path, value: str) -> None:
 
     with pytest.raises(ValueError, match="non_finite_json_number"):
         _module()._load(path)
+
+
+def test_load_redacts_secret_duplicate_member(tmp_path: Path) -> None:
+    cli = _module()
+    secret = "PRIVATE_TOKENIZER_SOURCE_KEY_998877"
+    path = tmp_path / "duplicate-secret.json"
+    path.write_text(
+        '{"' + secret + '":1,"' + secret + '":2}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=r"^duplicate_json_key$") as caught:
+        cli._load(path)
+    assert secret not in str(caught.value)
+
+
+@pytest.mark.parametrize("negative", [False, True])
+def test_load_bounds_integer_before_python_conversion(
+    tmp_path: Path,
+    negative: bool,
+) -> None:
+    cli = _module()
+    path = tmp_path / "huge-int.json"
+    digits = ("-" if negative else "") + "9" * 100_000
+    path.write_text('{"value":' + digits + "}", encoding="utf-8")
+    before = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(0)
+        with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+            cli._load(path)
+    finally:
+        sys.set_int_max_str_digits(before)
+
+
+def test_load_missing_secret_path_is_redacted(tmp_path: Path) -> None:
+    cli = _module()
+    secret = "PRIVATE-TOKENIZER-PATH-998877"
+    with pytest.raises(
+        ValueError, match=r"^cannot read tokenizer authority input$"
+    ) as caught:
+        cli._load(tmp_path / f"{secret}.json")
+    assert secret not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__suppress_context__ is True
+
+
+def test_load_fifo_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "tokenizer FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    program = (
+        "import importlib.util,sys\n"
+        f"p={str(TOOL)!r}\n"
+        "s=importlib.util.spec_from_file_location('tok_cli',p)\n"
+        "m=importlib.util.module_from_spec(s);s.loader.exec_module(m)\n"
+        "try:\n"
+        " m._load(m.Path(sys.argv[1]))\n"
+        "except ValueError as e:\n"
+        " assert str(e) == 'tokenizer input must be a regular file'\n"
+        "else:\n"
+        " raise AssertionError('FIFO accepted')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program, str(fifo)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_load_rejects_regular_file_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _module()
+    requested = tmp_path / "requested.json"
+    substitute = tmp_path / "substitute.json"
+    requested.write_text("{}", encoding="utf-8")
+    substitute.write_text("{}", encoding="utf-8")
+    actual_open = cli.os.open
+
+    def open_substitute(_path: Path, flags: int) -> int:
+        return actual_open(substitute, flags)
+
+    monkeypatch.setattr(cli.os, "open", open_substitute)
+    with pytest.raises(ValueError, match="changed between check and open"):
+        cli._load(requested)
+
+
+def test_load_valid_regular_symlink_is_supported(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    source = tmp_path / "source.json"
+    source.write_text('{"safe":1}', encoding="utf-8")
+    linked = tmp_path / "linked.json"
+    linked.symlink_to(source.resolve())
+    assert _module()._load(linked) == {"safe": 1}
 
 
 def test_load_rejects_non_object_root(tmp_path: Path) -> None:
