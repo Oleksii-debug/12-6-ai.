@@ -1170,6 +1170,56 @@ def test_native_checkpoint_save_rejects_auxiliary_drift_from_model_export(
 
 
 
+def test_native_checkpoint_prepublish_closes_after_auxiliary_observer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ArmAfterExport(Trainer):
+        observer_armed = False
+
+        def state_dict(self) -> Any:
+            state = super().state_dict()
+            self.observer_armed = True
+            return state
+
+    target = ArmAfterExport(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    assert target.train_microbatch(_BATCH).optimizer_stepped
+    assert target.scheduler is not None
+    original_epoch = target.scheduler.last_epoch
+    original_equal = torch.equal
+
+    def equal_then_mutate(left: Any, right: Any) -> bool:
+        result = original_equal(left, right)
+        if target.observer_armed:
+            target.observer_armed = False
+            assert target.scheduler is not None
+            target.scheduler.last_epoch += 1
+        return result
+
+    monkeypatch.setattr(torch, "equal", equal_then_mutate)
+    checkpoint = tmp_path / "auxiliary-observer-drift-must-not-exist"
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="auxiliary state changed during checkpoint publication",
+    ):
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=target.model,
+            trainer=target,
+            identity=_identity(),
+        )
+
+    assert not checkpoint.exists()
+    assert target.scheduler.last_epoch == original_epoch + 1
+    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._update_incomplete is True
+
+
 def test_generic_preflight_does_not_dispatch_native_only_authorities() -> None:
     descriptor_calls: list[str] = []
 
