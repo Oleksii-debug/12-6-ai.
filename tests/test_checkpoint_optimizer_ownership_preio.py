@@ -12,8 +12,11 @@ from typing import Any
 import pytest
 import torch
 
-from twelve_six.checkpoint import CheckpointCompatibilityError
-from twelve_six.checkpoint import progress_trainer, trainer_adapter
+from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
+    progress_trainer,
+    trainer_adapter,
+)
 from twelve_six.training.config import TrainerConfig
 from twelve_six.training.trainer import Trainer
 
