@@ -11,7 +11,9 @@
     "artifact_zip_sha256": "24b651c4fb8b0d091aea8f28f844805c02b5c7b7a4aa9dfda641990dd649636e",
     "artifact_created_at": "2026-10-05T21:35:42Z",
     "clean_qualification_head_before_evidence_expansion": "07a21719c59f79d76846f1b56369d8a76f82221c",
-    "artifact_expires_at": "2026-11-04T21:35:41Z"
+    "artifact_expires_at": "2026-11-04T21:35:41Z",
+    "superseded_for_exact_rng_state_claim": true,
+    "superseded_reason": "Run 37371471617 compared deterministic RNG probes but did not hash-compare the complete captured Python/NumPy/Torch-CPU RNG state. It remains evidence for save/load, fail-closed binding, target immutability, deterministic next-step state, and resource measurements, but it is not terminal evidence for exact full RNG-state equality."
   },
   "runtime": {
     "product_pr": 2778,
@@ -67,7 +69,9 @@
       "scaler",
       "scheduler",
       "update_incomplete"
-    ]
+    ],
+    "rng_probe_equal": true,
+    "exact_full_rng_state_equal": null
   },
   "checkpoint": {
     "checkpoint_id": "7cdc53890c66cd142115fe6c435fc02b0ec825b10e7fa19647438300c3e4292c",
@@ -169,7 +173,8 @@
     "learned20m_terminal_claim": false,
     "cuda_rng_content_validation": false,
     "real_cuda_checkpoint_memory": false,
-    "windows_qualification": false
+    "windows_qualification": false,
+    "full_rng_state_hash_compared": false
   },
   "same_next_step": {
     "baseline": {
