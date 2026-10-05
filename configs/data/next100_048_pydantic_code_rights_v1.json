@@ -1,0 +1,93 @@
+{
+  "schema_version": "12-6.next100-048-pydantic-code-rights.v1",
+  "worker_id": "NEXT100-048-CODE-PYDANTIC",
+  "policy_ref": "policy://12-6/data/explicit-model-training-evidence-v1",
+  "reviewed_at": "2026-08-26",
+  "decision_rule": "Approve only the exact pinned Pydantic implementation objects below after Git-blob, MIT-license, syntax, secret/privacy, generated-material, and dedup gates pass. Public availability alone is not authority.",
+  "source_family": "github:pydantic/pydantic",
+  "upstream_tag": "v2.13.4",
+  "upstream_commit": "cf67d4b3193c3fe43ede18612ed62785eee11382",
+  "upstream_tag_object": "07b73712023f052c7c008c4a9c5121b4894e44ec",
+  "tag_signature_status": "UNSIGNED",
+  "license": {
+    "license_id": "MIT",
+    "path": "LICENSE",
+    "blob_sha1": "488c6260c10f2e88fa1fae58a63fccec8d600cd1",
+    "url": "https://raw.githubusercontent.com/pydantic/pydantic/cf67d4b3193c3fe43ede18612ed62785eee11382/LICENSE",
+    "redistribution_conditions": "Include the copyright notice and MIT permission notice in all copies or substantial portions of the Software.",
+    "rights_basis": "Reviewed MIT text grants permission to deal in the Software without restriction, including use, copy, modification, publication, distribution, sublicensing and sale. Under the project purpose-specific rights policy, that grant authorizes model-training use and derivative processing of these exact pinned objects; redistribution remains subject to the notice condition. The decision is not inferred from public accessibility or SPDX metadata."
+  },
+  "decisions": [
+    {
+      "source_id": "code.pydantic.pydantic.main",
+      "source_family": "github:pydantic/pydantic",
+      "provider": "Pydantic Services Inc. and individual contributors",
+      "repository_url": "https://github.com/pydantic/pydantic",
+      "commit": "cf67d4b3193c3fe43ede18612ed62785eee11382",
+      "path": "pydantic/main.py",
+      "blob_sha1": "2ed62e5f3eded5d1e6b0052130e8d5f8627a60c6",
+      "size_bytes": 85334,
+      "raw_url": "https://raw.githubusercontent.com/pydantic/pydantic/cf67d4b3193c3fe43ede18612ed62785eee11382/pydantic/main.py",
+      "language": "python",
+      "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+      "capacity_counted": true
+    },
+    {
+      "source_id": "code.pydantic.pydantic.fields",
+      "source_family": "github:pydantic/pydantic",
+      "provider": "Pydantic Services Inc. and individual contributors",
+      "repository_url": "https://github.com/pydantic/pydantic",
+      "commit": "cf67d4b3193c3fe43ede18612ed62785eee11382",
+      "path": "pydantic/fields.py",
+      "blob_sha1": "ede966fa8010c070fede69d8f048b618a1b38f17",
+      "size_bytes": 82023,
+      "raw_url": "https://raw.githubusercontent.com/pydantic/pydantic/cf67d4b3193c3fe43ede18612ed62785eee11382/pydantic/fields.py",
+      "language": "python",
+      "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+      "capacity_counted": true
+    },
+    {
+      "source_id": "code.pydantic.pydantic.type_adapter",
+      "source_family": "github:pydantic/pydantic",
+      "provider": "Pydantic Services Inc. and individual contributors",
+      "repository_url": "https://github.com/pydantic/pydantic",
+      "commit": "cf67d4b3193c3fe43ede18612ed62785eee11382",
+      "path": "pydantic/type_adapter.py",
+      "blob_sha1": "d962305f2c923a6046b8234a334bdca0e644b159",
+      "size_bytes": 36123,
+      "raw_url": "https://raw.githubusercontent.com/pydantic/pydantic/cf67d4b3193c3fe43ede18612ed62785eee11382/pydantic/type_adapter.py",
+      "language": "python",
+      "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+      "capacity_counted": true
+    },
+    {
+      "source_id": "code.pydantic.pydantic.functional_validators",
+      "source_family": "github:pydantic/pydantic",
+      "provider": "Pydantic Services Inc. and individual contributors",
+      "repository_url": "https://github.com/pydantic/pydantic",
+      "commit": "cf67d4b3193c3fe43ede18612ed62785eee11382",
+      "path": "pydantic/functional_validators.py",
+      "blob_sha1": "558e99c1e7a09e3c894d769c96cb28e25dc537ca",
+      "size_bytes": 31724,
+      "raw_url": "https://raw.githubusercontent.com/pydantic/pydantic/cf67d4b3193c3fe43ede18612ed62785eee11382/pydantic/functional_validators.py",
+      "language": "python",
+      "authorship_class": "UPSTREAM_AUTHORED_IMPLEMENTATION",
+      "capacity_counted": true
+    }
+  ],
+  "excluded_capacity": {
+    "generated_material": "SEPARATE_BUCKET_NOT_COUNTED",
+    "legacy_compatibility_subtree": "pydantic/v1/** excluded from this bounded family snapshot",
+    "compatibility_reexport_stubs": "excluded",
+    "docs_tests_examples": "excluded",
+    "pydantic_core_dependency": "separate upstream source family; not counted here"
+  },
+  "uses": {
+    "acquisition": "ALLOWED",
+    "storage": "ALLOWED",
+    "analysis": "ALLOWED",
+    "model_training": "ALLOWED",
+    "derivatives": "ALLOWED",
+    "redistribution": "ALLOWED_WITH_MIT_NOTICE"
+  }
+}
