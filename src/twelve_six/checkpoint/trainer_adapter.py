@@ -269,17 +269,6 @@ def _is_canonical_d02(trainer: Any) -> bool:
     return "_failure_reason" in attrs and "_update_incomplete" in attrs
 
 
-def _poison_canonical_d02(trainer: Any, reason: str) -> None:
-    """Record fail-closed recovery state without invoking custom descriptors."""
-
-    if not _is_canonical_d02(trainer):
-        return
-    attrs = vars(trainer)
-    if attrs.get("_failure_reason") is None:
-        attrs["_failure_reason"] = reason
-    attrs["_update_incomplete"] = True
-
-
 def _poison_canonical_restore_failure(
     trainer: Any,
     *,
