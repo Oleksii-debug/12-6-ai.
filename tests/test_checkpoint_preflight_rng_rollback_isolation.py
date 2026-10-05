@@ -18,8 +18,10 @@ from twelve_six.checkpoint import core, trainer_adapter
 
 
 class _FreshCanonicalTarget:
-    _failure_reason: str | None = None
-    _update_incomplete: bool = False
+    def __init__(self) -> None:
+        # Recovery markers are instance-owned in the hardened D02 contract.
+        self._failure_reason: str | None = None
+        self._update_incomplete = False
 
 
 @pytest.mark.parametrize("failed_family", ["python", "numpy", "torch_cpu"])
@@ -83,13 +85,41 @@ def test_failed_preflight_rollback_recovers_other_rng_families(
             else:
                 original_setter = torch.set_rng_state
                 patch.setattr(torch, "set_rng_state", one_shot_failure)
-            with pytest.raises(interruption, match="injected .* RNG setter failure") as raised:
+            expected_exception: type[BaseException]
+            if issubclass(interruption, Exception):
+                expected_exception = (
+                    core.CheckpointError
+                    if persistent_failure
+                    else core.CheckpointCompatibilityError
+                )
+            else:
+                expected_exception = interruption
+            with pytest.raises(expected_exception) as raised:
                 trainer_adapter._preflight_trainer_state(target, {"probe": True})
 
-        assert raised.value is original_error
+        if issubclass(interruption, Exception):
+            # Production RNG restore is transactionally wrapped. Ordinary
+            # backend exceptions are normalized after rollback instead of
+            # leaking the raw setter failure as the public checkpoint error.
+            assert raised.value is not original_error
+            current: BaseException | None = raised.value
+            seen: set[int] = set()
+            found_original = False
+            while current is not None and id(current) not in seen:
+                seen.add(id(current))
+                if current is original_error:
+                    found_original = True
+                    break
+                current = current.__cause__ or current.__context__
+            assert found_original
+        else:
+            # KeyboardInterrupt/SystemExit are deliberately not normalized by
+            # transactional_rng; the outer preflight still restores state and
+            # poisons the canonical target before re-raising the same object.
+            assert raised.value is original_error
         if probe_rejects:
-            assert isinstance(raised.value.__context__, ValueError)
-            assert "semantic preflight rejection" in str(raised.value.__context__)
+            assert isinstance(original_error.__context__, ValueError)
+            assert "semantic preflight rejection" in str(original_error.__context__)
         assert setter_calls >= 1
         assert target._failure_reason == "checkpoint_preflight_rng_rollback_failed"
         assert target._update_incomplete is True
