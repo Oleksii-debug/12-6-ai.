@@ -730,6 +730,8 @@ def _preflight_trainer_target(trainer: Any) -> None:
 def _assert_native_d02_postload_snapshot(trainer: Any, state: Any) -> None:
     """Verify descriptor-free committed D02 state after effectful post-load work."""
 
+    if not _is_native_d02(trainer):
+        return
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
     attrs = vars(trainer)
