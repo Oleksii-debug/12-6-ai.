@@ -104,7 +104,11 @@ def canonical_bound_identity() -> CheckpointIdentity:
         dataset_manifest_hash="b" * 64,
         run_manifest_hash=run_hash,
         training_config={
+            "run_id": "canonical-test-run",
             "run_manifest_sha256": run_hash,
+            "stage": "TEST",
+            "run_kind": "integrated_training",
+            "init_spec_sha256": "1" * 64,
             "training": {
                 "seed": 17,
                 "precision": "float64-test",
@@ -113,8 +117,12 @@ def canonical_bound_identity() -> CheckpointIdentity:
             },
             "data": {
                 "dataset_manifest_sha256": "b" * 64,
+                "split_identity": "canonical-test:train",
                 "tokenizer_sha256": "a" * 64,
                 "tokenizer_vocab_sha256": "d" * 64,
+                "tokenizer_version": "test-tokenizer-v1",
+                "packing_sha256": "2" * 64,
+                "packing_version": "test-pack-v1",
             },
             "environment": {"lock_sha256": "c" * 64},
         },
@@ -710,3 +718,70 @@ def test_resealed_canonical_bound_contradiction_is_rejected_on_load(
         match="training seed disagrees with top-level seed",
     ):
         verify_checkpoint(checkpoint)
+
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "run_id",
+        "stage",
+        "run_kind",
+        "init_spec_sha256",
+        "data.split_identity",
+        "data.tokenizer_version",
+        "data.packing_sha256",
+        "data.packing_version",
+        "environment.lock_sha256",
+    ],
+)
+def test_canonical_bound_identity_requires_complete_provenance(
+    tmp_path: Path,
+    path: str,
+) -> None:
+    identity_value = canonical_bound_identity()
+    training_config = copy.deepcopy(dict(identity_value.training_config))
+    parts = path.split(".")
+    target = training_config
+    for part in parts[:-1]:
+        target = target[part]
+    target.pop(parts[-1], None)
+    bad_identity = replace(identity_value, training_config=training_config)
+    checkpoint = tmp_path / f"missing-{path.replace('.', '-')}"
+
+    with pytest.raises(CheckpointIntegrityError):
+        save_checkpoint(
+            checkpoint,
+            model=NumpyModel(np.array([0.1, -0.2, 0.3])),
+            trainer_state={},
+            identity=bad_identity,
+        )
+
+    assert not checkpoint.exists()
+
+
+def test_canonical_bound_identity_cannot_drop_environment_lock_as_legacy_optional(
+    tmp_path: Path,
+) -> None:
+    identity_value = canonical_bound_identity()
+    training_config = copy.deepcopy(dict(identity_value.training_config))
+    training_config["environment"]["lock_sha256"] = None
+    bad_identity = replace(
+        identity_value,
+        training_config=training_config,
+        environment_lock_hash=None,
+    )
+    checkpoint = tmp_path / "missing-canonical-environment-lock"
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="environment.lock_sha256",
+    ):
+        save_checkpoint(
+            checkpoint,
+            model=NumpyModel(np.array([0.1, -0.2, 0.3])),
+            trainer_state={},
+            identity=bad_identity,
+        )
+
+    assert not checkpoint.exists()
