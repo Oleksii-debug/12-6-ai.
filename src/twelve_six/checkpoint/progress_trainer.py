@@ -36,6 +36,7 @@ from .trainer_adapter import (
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
     _assert_trainer_model_binding,
+    _bind_trainer_state_loader,
     _effective_strict_model,
     _preflight_trainer_state,
     _preflight_trainer_target,
@@ -78,8 +79,7 @@ def load_trainer_checkpoint(
 ) -> LoadResult:
     """Verify/decode once and reject wrong progress/exposure before mutation."""
 
-    if not callable(getattr(trainer, "load_state_dict", None)):
-        raise TypeError("trainer must provide load_state_dict()")
+    _bind_trainer_state_loader(trainer)
 
     _require_expected_sha256(
         expected_checkpoint_id,
@@ -222,13 +222,17 @@ def load_trainer_checkpoint(
     )
     del arrays
 
+    # Rebind the actual loader after all checkpoint decoding/materialization
+    # and immediately before the first live model mutation.
+    load_trainer_state = _bind_trainer_state_loader(trainer)
+
     # Preflight prevents known incompatibilities, but an application-time
     # model/RNG/optimizer failure can leave a mixed, non-replayable state.
     # Canonical D02 trainers must then refuse any further optimizer step or
     # in-place retry; avoid copying model-scale weights to attempt rollback.
     try:
         _apply_model_weights(model, materialized, strict_model)
-        trainer.load_state_dict(trainer_state)
+        load_trainer_state(trainer_state)
         # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
         # torch RNG even on success. Restore the checkpoint streams last so
         # the first resumed batch sees the exact captured next draws.
