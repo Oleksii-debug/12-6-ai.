@@ -310,6 +310,7 @@ def load_trainer_checkpoint(
         _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_native_d02_model_training_mode(model, trainer)
         _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_native_d02_model_training_mode(model, trainer)
