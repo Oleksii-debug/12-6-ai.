@@ -194,5 +194,8 @@ jobs:
           test "$A_BYTES" = "336947" && test "$A_BYTES" = "$B_BYTES"
           test "$A_OBJECT_COUNT" = "8" && test "$A_OBJECT_COUNT" = "$B_OBJECT_COUNT"
           test "$A_FAMILY_COUNT" = "4" && test "$A_FAMILY_COUNT" = "$B_FAMILY_COUNT"
-          printf 'DETERMINISTIC_PHYSICAL_CODE_SOURCE_EVIDENCE summary_sha256=%s object_set_sha256=%s license_set_sha256=%s candidate_raw_bytes=%s object_count=%s family_count=%s canonical_credit=0\n' \
-            "$A_SUMMARY" "$A_OBJECTS" "$A_LICENSES" "$A_BYTES" "$A_OBJECT_COUNT" "$A_FAMILY_COUNT"
+          printf '%s\n' \
+            "DETERMINISTIC_PHYSICAL_CODE_SOURCE_EVIDENCE" \
+            "summary_sha256=$A_SUMMARY object_set_sha256=$A_OBJECTS" \
+            "license_set_sha256=$A_LICENSES candidate_raw_bytes=$A_BYTES" \
+            "object_count=$A_OBJECT_COUNT family_count=$A_FAMILY_COUNT canonical_credit=0"
