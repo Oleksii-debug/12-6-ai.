@@ -62,6 +62,8 @@ _NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES = (
     "_require_optimizer_state_parameter_order",
     "_optimizer_parameter_name_groups",
     "_require_exported_model_matches_live",
+    "_model_state_value_fingerprint",
+    "_live_model_state_value_fingerprint",
     "_mark_failed",
 )
 
@@ -770,6 +772,28 @@ def _bind_native_model_export_fingerprint(trainer: Any) -> Any | None:
     return _bind_exact_native_d02_authority(
         trainer,
         "_model_export_fingerprint",
+        positional_args=0,
+    )
+
+
+def _bind_native_model_state_value_fingerprint(trainer: Any) -> Any | None:
+    """Bind the exact authority for pre-apply checkpoint model values."""
+
+    return _bind_exact_native_d02_authority(
+        trainer,
+        "_model_state_value_fingerprint",
+        positional_args=1,
+    )
+
+
+def _bind_native_live_model_state_value_fingerprint(
+    trainer: Any,
+) -> Any | None:
+    """Bind the exact authority for post-apply raw live model values."""
+
+    return _bind_exact_native_d02_authority(
+        trainer,
+        "_live_model_state_value_fingerprint",
         positional_args=0,
     )
 
@@ -2057,6 +2081,12 @@ def load_trainer_checkpoint(
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
         model_fingerprint = _bind_native_model_export_fingerprint(trainer)
+        model_state_value_fingerprint = _bind_native_model_state_value_fingerprint(
+            trainer,
+        )
+        live_model_state_value_fingerprint = (
+            _bind_native_live_model_state_value_fingerprint(trainer)
+        )
         auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
     except BaseException as exc:  # noqa: BLE001
@@ -2160,6 +2190,11 @@ def load_trainer_checkpoint(
         _preflight_trainer_target(trainer)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         materialized = _prepare_model_weights(model, arrays, strict_model)
+        expected_model_value_fingerprint = (
+            model_state_value_fingerprint(materialized)
+            if model_state_value_fingerprint is not None
+            else None
+        )
         _assert_trainer_restore_bindings(trainer, restore_bindings)
 
         # The decoded source weights are no longer needed after target
@@ -2203,6 +2238,12 @@ def load_trainer_checkpoint(
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
         model_apply(materialized)
+        if live_model_state_value_fingerprint is not None:
+            live_model_value_fingerprint = live_model_state_value_fingerprint()
+            if live_model_value_fingerprint != expected_model_value_fingerprint:
+                raise CheckpointCompatibilityError(
+                    "checkpoint model apply did not restore verified model values"
+                )
         sealed_model_fingerprint = (
             model_fingerprint()
             if model_fingerprint is not None
