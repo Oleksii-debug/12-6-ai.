@@ -712,6 +712,56 @@ def test_two_clean_report_hash_uses_real_lf_byte() -> None:
     assert incorrect not in workflow
 
 
+def test_failed_durable_create_preserves_substituted_path() -> None:
+    _run_isolated(
+        """
+from tempfile import TemporaryDirectory
+
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    target = root / "stage.json"
+    owned = root / "owned-stage-moved-aside"
+    unrelated = b"UNRELATED_REPLACEMENT_BYTES"
+    actual_unlink_owned = mod._unlink_owned_path
+    actual_fsync = mod.os.fsync
+    cleanup_calls = []
+
+    def fail_fsync(_fd):
+        raise OSError("simulated durable-create fsync failure")
+
+    def substitute_before_cleanup(path, identity, *, label, missing_ok=False):
+        cleanup_calls.append((path, identity, label, missing_ok))
+        path.rename(owned)
+        path.write_bytes(unrelated)
+        return actual_unlink_owned(
+            path,
+            identity,
+            label=label,
+            missing_ok=missing_ok,
+        )
+
+    mod.os.fsync = fail_fsync
+    mod._unlink_owned_path = substitute_before_cleanup
+    try:
+        try:
+            mod._write_create_only_durable(target, b'{"kind":"owned"}\\n')
+        except mod.PublicationWriteCleanupError as exc:
+            assert "cleanup failed" in str(exc)
+            assert "ownership changed before unlink" in str(exc)
+        else:
+            raise AssertionError("substituted durable-create path was accepted")
+    finally:
+        mod.os.fsync = actual_fsync
+        mod._unlink_owned_path = actual_unlink_owned
+
+    assert len(cleanup_calls) == 1
+    assert cleanup_calls[0][2] == "failed durable create"
+    assert target.read_bytes() == unrelated
+    assert owned.read_bytes() == b'{"kind":"owned"}\\n'
+"""
+    )
+
+
 def test_publication_success_is_create_only_and_cleans_controls() -> None:
     _run_isolated(
         """
