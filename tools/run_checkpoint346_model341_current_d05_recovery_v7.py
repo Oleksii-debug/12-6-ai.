@@ -441,6 +441,7 @@ def child_main(args: argparse.Namespace) -> int:
         raise AssertionError("restored canonical trainer counters differ from step-1 checkpoint")
 
     restored_rng = rt["capture_rng_state"]()
+    restored_rng_sha256 = _tree_hash(restored_rng)
     probe = _rng_probe_from_state(restored_rng)
     metrics = trainer.train_microbatch(_batch())
     memory_after_resumed_step = _linux_proc_memory_bytes()
@@ -460,6 +461,7 @@ def child_main(args: argparse.Namespace) -> int:
                     and "cpu" in loaded.rng_state["torch"]
                 ),
             },
+            "rng_state_sha256": restored_rng_sha256,
             "load_trainer_checkpoint_seconds": load_seconds,
             "peak_rss_bytes": _peak_rss_bytes(),
             "memory_before_load": memory_before_load,
@@ -507,10 +509,12 @@ def parent_main(args: argparse.Namespace) -> int:
 
         parent_rng = rt["capture_rng_state"]()
         rng_probe = _rng_probe_from_state(parent_rng)
+        baseline_rng_sha256 = _tree_hash(parent_rng)
         baseline_step_started = time.perf_counter()
         second = trainer.train_microbatch(_batch())
         baseline_step_seconds = time.perf_counter() - baseline_step_started
         baseline = _summary(trainer, second, rng_probe)
+        baseline["rng_state_sha256"] = baseline_rng_sha256
         parent_peak_rss_bytes = _peak_rss_bytes()
 
         command = [
@@ -548,6 +552,7 @@ def parent_main(args: argparse.Namespace) -> int:
             "optimizer_state_sha256",
             "trainer_state_sha256",
             "rng_probe_before_step",
+            "rng_state_sha256",
         ]
         mismatches = {
             key: {"baseline": baseline[key], "resumed": child[key]}
@@ -665,6 +670,9 @@ def parent_main(args: argparse.Namespace) -> int:
                 "exact_checkpoint_id_bound": True,
                 "exact_manifest_sha256_bound": True,
                 "rng_scope_restored": child["restored_rng_scope"],
+                "exact_full_rng_state_equal": (
+                    baseline["rng_state_sha256"] == child["rng_state_sha256"]
+                ),
             },
             "resource_observation": {
                 "platform": sys.platform,
@@ -735,6 +743,7 @@ def parent_main(args: argparse.Namespace) -> int:
                     "optimizer_updates_total": 3,
                     "same_next_step_equal": True,
                     "binding_mismatch_failed_closed": True,
+                    "exact_full_rng_state_equal": True,
                     "public_d05_save_restore": True,
                     "checkpoint_total_bytes": checkpoint_total_bytes,
                     "parent_peak_rss_bytes": parent_peak,
