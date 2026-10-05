@@ -618,6 +618,21 @@ def _bind_native_export_live_authorities(trainer: Any) -> dict[str, Any]:
 
     if not _is_native_d02(trainer):
         return {}
+    canonical_leaf_equal = inspect.getattr_static(
+        _CanonicalTrainer,
+        "_exact_export_leaf_equal",
+        None,
+    )
+    resolved_leaf_equal = inspect.getattr_static(
+        type(trainer),
+        "_exact_export_leaf_equal",
+        None,
+    )
+    if resolved_leaf_equal is not canonical_leaf_equal:
+        raise CheckpointCompatibilityError(
+            "native D02 safety authority must remain canonical: "
+            "_exact_export_leaf_equal"
+        )
     authorities: dict[str, Any] = {}
     for name in (
         "_require_exported_scheduler_matches_live",
