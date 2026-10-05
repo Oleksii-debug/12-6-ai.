@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,29 @@ def _optimizer_exp_avg(state: Any) -> torch.Tensor:
         if isinstance(slot, dict) and isinstance(slot.get("exp_avg"), torch.Tensor):
             return slot["exp_avg"]
     raise AssertionError("AdamW exp_avg state unavailable")
+
+
+def test_trainer_load_state_dict_owns_mutable_component_payloads() -> None:
+    source = _source()
+    state = asdict(source.state_dict())
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    target.load_state_dict(state)
+
+    supplied_exp_avg = _optimizer_exp_avg(state["optimizer"])
+    live_exp_avg = next(iter(target.optimizer.state.values()))["exp_avg"]
+    live_exp_avg_before = live_exp_avg.detach().clone()
+    assert supplied_exp_avg.data_ptr() != live_exp_avg.data_ptr()
+
+    supplied_exp_avg.mul_(0)
+    torch.testing.assert_close(live_exp_avg, live_exp_avg_before, rtol=0, atol=0)
+
+    supplied_scheduler = state["scheduler"]
+    assert isinstance(supplied_scheduler, dict)
+    supplied_last_lr = supplied_scheduler["_last_lr"]
+    assert isinstance(supplied_last_lr, list)
+    live_last_lr_before = list(target.scheduler._last_lr)
+    supplied_last_lr[0] = float(supplied_last_lr[0]) + 321.0
+    assert target.scheduler._last_lr == live_last_lr_before
 
 
 @pytest.mark.parametrize(
