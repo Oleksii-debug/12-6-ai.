@@ -940,6 +940,29 @@ def test_trainer_loader_disabled_during_materialization_uses_bound_loader(
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
 
 
+def test_noncallable_trainer_state_dict_refuses_save_before_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trainer = Trainer(_TinyLogits(), TrainerConfig(max_steps=1, seed=703), device="cpu")
+    trainer.state_dict = None  # type: ignore[method-assign]
+    published: list[bool] = []
+
+    def forbid_publication(*args: Any, **kwargs: Any) -> None:
+        published.append(True)
+        raise AssertionError("non-callable trainer state_dict reached checkpoint publication")
+
+    monkeypatch.setattr(trainer_adapter, "save_checkpoint", forbid_publication)
+    with pytest.raises(TypeError, match="trainer must provide state_dict"):
+        trainer_adapter.save_trainer_checkpoint(
+            tmp_path / "noncallable-save-дані з пробілами",
+            model=trainer.model,
+            trainer=trainer,
+            identity=_identity(),
+        )
+
+    assert published == []
+
+
 @pytest.mark.parametrize(
     ("field", "bad_value"),
     [
