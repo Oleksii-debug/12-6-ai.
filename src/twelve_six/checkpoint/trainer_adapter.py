@@ -1110,6 +1110,7 @@ def load_trainer_checkpoint(
             preio_policy,
             trainer,
         )
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
     _assert_bound_metadata(
@@ -1188,6 +1189,7 @@ def load_trainer_checkpoint(
             preapply_policy,
             trainer,
         )
+    _assert_trainer_restore_bindings(trainer, restore_bindings)
 
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = capture_rng_state()
