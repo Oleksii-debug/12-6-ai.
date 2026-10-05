@@ -317,3 +317,72 @@ def test_committed_boundary_fingerprint_failure_poisons_trainer(
         trainer.state_dict()
     assert trainer._failure_reason is not None
     assert "checkpoint boundary has invalid optimizer" in trainer._failure_reason
+
+def test_committed_boundary_preflight_failure_poisons_trainer(
+    preserve_process_state: Any,
+) -> None:
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2, deterministic_warn_only=True),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+
+    # Simulate committed-state corruption that is discovered by checkpoint
+    # preflight after the retryable accumulation-boundary guard has passed.
+    trainer._pending_tokens = 1
+    with pytest.raises(RuntimeError, match="pending accumulation statistics"):
+        trainer.state_dict()
+
+    assert trainer._failure_reason is not None
+    assert "checkpoint preflight failed after committed boundary" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
+
+
+@pytest.mark.parametrize(
+    ("observer", "attribute"),
+    [
+        ("model", "_model_export_fingerprint"),
+        ("optimizer", "_optimizer_live_fingerprint"),
+        ("scheduler", "_canonical_lambda_lr_live_state"),
+    ],
+)
+def test_committed_boundary_recheck_failure_poisons_trainer(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+    observer: str,
+    attribute: str,
+) -> None:
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(
+            seed=703,
+            max_steps=2,
+            scheduler="cosine",
+            warmup_steps=1,
+            deterministic_warn_only=True,
+        ),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+
+    original = getattr(trainer, attribute)
+    calls = 0
+
+    def fail_on_second_observation() -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ValueError(f"injected {observer} recheck failure")
+        return original()
+
+    monkeypatch.setattr(trainer, attribute, fail_on_second_observation)
+    with pytest.raises(ValueError, match=f"injected {observer} recheck failure"):
+        trainer.state_dict()
+
+    assert calls == 2
+    assert trainer._failure_reason is not None
+    assert "checkpoint preflight failed after committed boundary" in trainer._failure_reason
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.train_microbatch(_BATCH)
