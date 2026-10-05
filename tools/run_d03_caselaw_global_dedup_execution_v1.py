@@ -523,6 +523,9 @@ def _preflight_attested_reference_sample(
     sample_payloads = {row["source_id"]: payloads[row["source_id"]] for row in selected}
     sample_report = matcher.audit_payloads(sample_inventory, sample_payloads)
     matcher.verify_report(sample_report)
+    # A verified report owns match dicts with V3 literal score=1.0. Keep no
+    # synthetic report alive while the unchanged post-reference attester runs.
+    del sample_report
     indexed.attest_incumbent_runtime(matcher)
 
 
@@ -1264,6 +1267,12 @@ def execute(
     reference = matcher.audit_payloads(inventory, payloads)
     reference_seconds = time.perf_counter() - reference_started
     matcher.verify_report(reference)
+    # Freeze the verified canonical bytes and self-hash BEFORE dropping the
+    # all-pairs report. Its match dicts otherwise retain V3's literal score
+    # and can falsely change the strict marshal digest inside indexed replay.
+    reference_hash = reference["report_sha256"]
+    reference_bytes = matcher.v1._canonical_bytes(reference)
+    del reference
 
     indexed_started = time.perf_counter()
     indexed_report = indexed.audit_payloads_indexed(
@@ -1277,7 +1286,6 @@ def execute(
     indexed_seconds = time.perf_counter() - indexed_started
     matcher.verify_report(indexed_report)
 
-    reference_bytes = matcher.v1._canonical_bytes(reference)
     indexed_bytes = matcher.v1._canonical_bytes(indexed_report)
     _require(reference_bytes == indexed_bytes, "indexed report differs from incumbent all-pairs report")
 
@@ -1348,7 +1356,7 @@ def execute(
             "payload_bytes_semantics": PAYLOAD_BYTES_SEMANTICS,
             "declared_capacity_bytes": EXPECTED_COMBINED_BYTES,
             "comparison_payload_bytes": combined_comparison_payload_bytes,
-            "reference_report_sha256": reference["report_sha256"],
+            "reference_report_sha256": reference_hash,
             "indexed_report_sha256": indexed_report["report_sha256"],
             "reports_byte_identical": True,
             "post_dedup_conservative_unique_bytes": terminal.get(
