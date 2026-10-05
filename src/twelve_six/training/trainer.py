@@ -2545,10 +2545,27 @@ class Trainer:
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        # Preserve the authoritative recovery contract before deep observation.
+        # A poisoned/ambiguous trainer may already contain malformed model or
+        # optimizer state, so fingerprint traversal must not mask the required
+        # fresh-trainer + verified-checkpoint diagnostic.
+        Trainer._assert_trainable(self)
+        # A normal incomplete accumulation is retryable. Reject it before
+        # fingerprinting legitimate pending gradients or other transient state.
+        Trainer.assert_accumulation_boundary(self)
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
-        model_before = self._model_export_fingerprint()
-        optimizer_before = self._optimizer_live_fingerprint()
-        scheduler_before = self._canonical_lambda_lr_live_state()
+        try:
+            model_before = self._model_export_fingerprint()
+            optimizer_before = self._optimizer_live_fingerprint()
+            scheduler_before = self._canonical_lambda_lr_live_state()
+        except BaseException:  # noqa: BLE001
+            # At a committed boundary, a failed canonical observation makes the
+            # checkpoint boundary ambiguous and therefore requires recovery.
+            Trainer._mark_failed(
+                self,
+                "checkpoint boundary has invalid optimizer or residual gradients",
+            )
+            raise
         self.assert_checkpoint_safe()
         if not _typed_state_equal(
             committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
