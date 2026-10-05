@@ -11,10 +11,14 @@ import argparse
 import copy
 import hashlib
 import json
+import ssl
 import sys
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 for location in (str(ROOT / "tools"), str(ROOT / "src")):
@@ -76,6 +80,70 @@ def _canonical(value: object) -> bytes:
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _reconstruct_v8_with_bounded_tls_retry(
+    *,
+    v7_root: Path,
+    bulk_workspace: Path,
+    config: Mapping[str, Any],
+) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    """Replay exact V7 with only bounded same-URL TLS-EOF transport retry.
+
+    The historical fetcher, HTTPS certificate validation, acquisition URL, later
+    source hashes and rights checks remain unchanged. The temporary capture hook
+    is restored on every exit path.
+    """
+    original_capture = v8._capture_terminal_v7
+
+    def capture_with_retry(
+        historical_root: Path,
+        historical_config: Mapping[str, Any],
+    ) -> tuple[Any, dict[str, Any], dict[str, Any], dict[str, bytes]]:
+        historical_v7 = v8._load_v7(historical_root)
+        fetch_module = historical_v7.v6.v5.v1
+        original_fetch = fetch_module.fetch_exact_source
+
+        def retry_fetch(url: str) -> bytes:
+            for attempt in range(1, 4):
+                try:
+                    return original_fetch(url)
+                except OSError as exc:
+                    retryable = (
+                        isinstance(exc, URLError)
+                        and isinstance(exc.reason, ssl.SSLEOFError)
+                    )
+                    if retryable and attempt < 3:
+                        time.sleep(0.25 * attempt)
+                        continue
+                    try:
+                        host = urlsplit(url).hostname or "unknown"
+                    except ValueError:
+                        host = "invalid-url"
+                    url_sha256 = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                    exc.add_note(
+                        "historical V7 source fetch failed: "
+                        f"host={host}; acquisition_url_sha256={url_sha256}; "
+                        f"attempts={attempt}"
+                    )
+                    raise
+            raise AssertionError("unreachable historical fetch attempt state")
+
+        fetch_module.fetch_exact_source = retry_fetch
+        try:
+            return original_capture(historical_root, historical_config)
+        finally:
+            fetch_module.fetch_exact_source = original_fetch
+
+    v8._capture_terminal_v7 = capture_with_retry
+    try:
+        return incumbent._reconstruct_v8_with_historical_namespace(
+            v7_root=v7_root,
+            bulk_workspace=bulk_workspace,
+            config=config,
+        )
+    finally:
+        v8._capture_terminal_v7 = original_capture
 
 
 def _verify_authority_paths() -> dict[str, str]:
@@ -314,7 +382,7 @@ def execute(
     verified_v7_head = incumbent._verify_v7_worktree(v7_root)
     config = v8.load_config(ROOT / "configs/data/next100_065f_global_dedup_v8.json")
     matcher, base_inventory, base_payloads, removal = (
-        incumbent._reconstruct_v8_with_historical_namespace(
+        _reconstruct_v8_with_bounded_tls_retry(
             v7_root=v7_root,
             bulk_workspace=bulk_workspace,
             config=config,
