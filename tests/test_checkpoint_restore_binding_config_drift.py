@@ -4,10 +4,12 @@ Synthetic CPU coverage only; this grants no corpus, training, or learned-weight 
 """
 from __future__ import annotations
 
+import random
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 import torch
 
@@ -152,3 +154,69 @@ def test_final_process_state_rollback_cannot_redefine_native_config_before_apply
     assert target.config.max_steps == initial_max_steps + 1
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+
+@pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_entry_config_snapshot_refuses_effectful_slot_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    loader: Any,
+) -> None:
+    target = Trainer(
+        _TinyLogits(),
+        TrainerConfig(seed=919, max_steps=3, scheduler="cosine"),
+        device="cpu",
+    )
+    original_slot = TrainerConfig.__dict__["max_steps"]
+    hook_calls: list[bool] = []
+    checkpoint_reads: list[bool] = []
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+
+    class EffectfulSlot:
+        def __get__(self, instance: Any, owner: type[Any]) -> Any:
+            hook_calls.append(True)
+            random.random()
+            np.random.random()
+            torch.rand(1)
+            return original_slot.__get__(instance, owner)
+
+    def forbid_checkpoint_read(*args: Any, **kwargs: Any) -> Any:
+        checkpoint_reads.append(True)
+        raise AssertionError("effectful config descriptor reached checkpoint I/O")
+
+    monkeypatch.setattr(TrainerConfig, "max_steps", EffectfulSlot())
+    monkeypatch.setattr(loader, "prepare_checkpoint_load", forbid_checkpoint_read)
+    extra = (
+        {"expected_step": 0, "expected_tokens_seen": 0}
+        if loader is progress_trainer else {}
+    )
+
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="config fields must remain inert slots",
+    ):
+        loader.load_trainer_checkpoint(
+            tmp_path / "must-not-open",
+            model=target.model,
+            trainer=target,
+            restore_rng=False,
+            **extra,
+        )
+
+    assert hook_calls == []
+    assert checkpoint_reads == []
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
