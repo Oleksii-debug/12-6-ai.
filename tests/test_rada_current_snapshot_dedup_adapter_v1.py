@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -319,3 +321,29 @@ def test_candidate_is_opened_once_and_authenticated_from_same_descriptor(
     monkeypatch.setattr(Path, "open", counted_open)
     adapter._read_candidate(candidate, binding, retain_payloads=True)
     assert open_count == 1
+
+
+def test_candidate_path_swap_before_descriptor_lock_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [_row("d100.htm", 0, "Український юридичний текст.")]
+    candidate, binding = _write_candidate(tmp_path, rows)
+    real_lstat = os.lstat
+
+    def substituted_lstat(path: Path):
+        observed = real_lstat(path)
+        if path == candidate:
+            return SimpleNamespace(
+                st_mode=observed.st_mode,
+                st_dev=observed.st_dev + 1,
+                st_ino=observed.st_ino,
+            )
+        return observed
+
+    monkeypatch.setattr(os, "lstat", substituted_lstat)
+    with pytest.raises(
+        adapter.RadaCurrentSnapshotDedupAdapterError,
+        match="path changed before descriptor lock",
+    ):
+        adapter._read_candidate(candidate, binding, retain_payloads=True)
