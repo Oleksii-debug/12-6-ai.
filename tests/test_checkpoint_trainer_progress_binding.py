@@ -550,6 +550,7 @@ def test_loader_rng_draws_are_rewound_only_when_requested(
     """The first resumed draw must use checkpoint, not state-loader, RNG."""
 
     import random
+
     import torch
 
     from twelve_six.checkpoint import core
