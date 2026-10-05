@@ -1,0 +1,331 @@
+name: D03 four code sources incumbent global dedup
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_four_code_sources_global_dedup.yml"
+      - "tools/run_d03_four_code_sources_global_dedup_v1.py"
+      - "tools/execute_d03_four_code_sources_materialization.py"
+      - "configs/data/next100_048_pydantic_code_rights_v1.json"
+      - "configs/data/scipy_v118_source_authority_v1.json"
+      - "configs/data/next100_050_pandas_source_authority_v2.json"
+      - "configs/data/next100_052_typer_source_authority_v2.json"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d03-code4-global-dedup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-code4-global-dedup-g8-122-20261005'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pass_id: [1, 2]
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+      V7_HEAD: d3333ec1b4a508df232a5aefccd6686adda745fb
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact head and executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile             tools/execute_d03_four_code_sources_materialization.py             tools/run_d03_four_code_sources_global_dedup_v1.py
+          git cat-file -e "$V7_HEAD^{commit}"
+
+      - name: Reconstruct exact V7 and execute incumbent global dedup
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/code4-global-dedup-$PASS_ID"
+          v7_root="$run_root/v7"
+          mkdir -p "$run_root"
+          git worktree add --detach "$v7_root" "$V7_HEAD"
+          test "$(git -C "$v7_root" rev-parse HEAD)" = "$V7_HEAD"
+          test -z "$(git -C "$v7_root" status --porcelain=v1 --untracked-files=all)"
+
+          python tools/run_d03_four_code_sources_global_dedup_v1.py             --v7-root "$v7_root"             --bulk-workspace "$run_root/bulk"             --expected-execution-head "$EXECUTION_SHA"             --output-base-report "$run_root/base-global-dedup-report.json"             --output-combined-report "$run_root/combined-global-dedup-report.json"             --output-survivors "$run_root/survivors.json"             --output-evidence "$run_root/evidence.json"
+
+          test -s "$run_root/base-global-dedup-report.json"
+          test -s "$run_root/combined-global-dedup-report.json"
+          test -s "$run_root/survivors.json"
+          test -s "$run_root/evidence.json"
+
+      - name: Verify zero-credit text-free evidence
+        shell: bash
+        env:
+          PASS_ID: ${{ matrix.pass_id }}
+        run: |
+          set -euo pipefail
+          run_root="$RUNNER_TEMP/code4-global-dedup-$PASS_ID"
+          python - "$run_root" "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+          base = json.loads(
+              (root / "base-global-dedup-report.json").read_text(encoding="utf-8")
+          )
+          combined = json.loads(
+              (root / "combined-global-dedup-report.json").read_text(encoding="utf-8")
+          )
+          survivors = json.loads((root / "survivors.json").read_text(encoding="utf-8"))
+          evidence = json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+
+          assert evidence["execution_head_sha"] == head
+          physical = evidence["physical_source_authority"]
+          assert physical["dedicated_run_id"] == 37269452704
+          assert physical["candidate_raw_bytes"] == 336947
+          assert physical["object_count"] == 8
+          assert physical["source_family_count"] == 4
+          assert physical["summary_sha256"] == (
+              "39fef69fea9b65bc1f6957c606de951fb0c93e790e8538e0a08bb9f6f3381031"
+          )
+          assert physical["object_set_sha256"] == (
+              "5947436cd926c13576fd14e34459ffb2f6e2e290cca79bead7327cf7e13f4d91"
+          )
+          assert physical["license_set_sha256"] == (
+              "0d43b619d24210e51a6e7bc3e9c28a264b6bb5c2b473f820a0c46e2eb2fb29b0"
+          )
+
+          assert evidence["incumbent_base"]["matcher_report_sha256"] == base["report_sha256"]
+          assert evidence["combined"]["matcher_report_sha256"] == combined["report_sha256"]
+          assert evidence["combined"]["survivor_authority_sha256"] == (
+              survivors["survivor_authority_sha256"]
+          )
+          delta = evidence["four_source_delta"]
+          marginal = delta["marginal_global_unique_capacity_bytes"]
+          assert type(marginal) is int
+          assert marginal <= 336947
+          assert delta["global_dedup_loss_vs_raw_candidate_bytes"] == 336947 - marginal
+          assert delta["minimum_marginal_bytes_needed_before_later_gates"] == 335753
+          if delta["global_dedup_preserves_enough_to_keep_target_possible"]:
+              assert marginal >= 335753
+              assert delta["later_gate_loss_budget_if_target_still_possible"] == (
+                  marginal - 335753
+              )
+              assert delta["shortfall_already_proven_after_global_dedup"] == 0
+          else:
+              assert marginal < 335753
+              assert delta["later_gate_loss_budget_if_target_still_possible"] == 0
+              assert delta["shortfall_already_proven_after_global_dedup"] == (
+                  335753 - marginal
+              )
+
+          truth = evidence["truth_boundary"]
+          assert truth["global_cross_source_dedup_executed_for_exact_candidate"] is True
+          assert truth["reserved_evaluation_decontamination_complete"] is False
+          assert truth["canonical_quality_privacy_complete"] is False
+          assert truth["balance_diversity_retest_complete"] is False
+          assert truth["canonical_capacity_credited"] == 0
+          assert truth["training_authorized_bytes"] == 0
+          assert truth["authorized_unique_loss_positions"] == 0
+          assert truth["authorized_optimized_target_exposure"] == 0
+          assert truth["tokenizer_fit_authorized"] is False
+          assert truth["optimizer_updates_executed_on_real_targets"] == 0
+          assert truth["training_executed"] is False
+          assert truth["learned_weights_created"] is False
+          assert truth["final_test_outcomes_read"] is False
+          assert truth["paid_compute_used"] is False
+
+          forbidden = {"text", "raw_text", "source_text", "normalized_payload"}
+          def walk(value):
+              if isinstance(value, dict):
+                  assert not forbidden.intersection(value)
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+
+          walk(base)
+          walk(combined)
+          walk(survivors)
+          walk(evidence)
+          print(
+              "D03_CODE4_GLOBAL_DEDUP_TEXT_FREE "
+              f"marginal={marginal} "
+              "possible="
+              + str(delta["global_dedup_preserves_enough_to_keep_target_possible"]).lower()
+          )
+          PY
+
+      - name: Upload text-free pass evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code4-global-dedup-pass-${{ matrix.pass_id }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/code4-global-dedup-${{ matrix.pass_id }}/base-global-dedup-report.json
+            ${{ runner.temp }}/code4-global-dedup-${{ matrix.pass_id }}/combined-global-dedup-report.json
+            ${{ runner.temp }}/code4-global-dedup-${{ matrix.pass_id }}/survivors.json
+            ${{ runner.temp }}/code4-global-dedup-${{ matrix.pass_id }}/evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+  compare-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/d03-code4-global-dedup-g8-122-20261005'
+    needs: execute
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXECUTION_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Download pass 1
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-code4-global-dedup-pass-1-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-1
+
+      - name: Download pass 2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: d03-code4-global-dedup-pass-2-${{ github.event.pull_request.head.sha }}
+          path: artifacts/pass-2
+
+      - name: Require deterministic matcher and survivor authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp artifacts/pass-1/base-global-dedup-report.json               artifacts/pass-2/base-global-dedup-report.json
+          cmp artifacts/pass-1/combined-global-dedup-report.json               artifacts/pass-2/combined-global-dedup-report.json
+          cmp artifacts/pass-1/survivors.json artifacts/pass-2/survivors.json
+
+          python - "$EXECUTION_SHA" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          head = sys.argv[1]
+          roots = [Path("artifacts/pass-1"), Path("artifacts/pass-2")]
+          evidences = [
+              json.loads((root / "evidence.json").read_text(encoding="utf-8"))
+              for root in roots
+          ]
+          base_reports = [
+              json.loads(
+                  (root / "base-global-dedup-report.json").read_text(encoding="utf-8")
+              )
+              for root in roots
+          ]
+          combined_reports = [
+              json.loads(
+                  (root / "combined-global-dedup-report.json").read_text(encoding="utf-8")
+              )
+              for root in roots
+          ]
+          survivors = [
+              json.loads((root / "survivors.json").read_text(encoding="utf-8"))
+              for root in roots
+          ]
+
+          base_ids = [report["report_sha256"] for report in base_reports]
+          combined_ids = [report["report_sha256"] for report in combined_reports]
+          survivor_ids = [item["survivor_authority_sha256"] for item in survivors]
+          assert len(set(base_ids)) == 1
+          assert len(set(combined_ids)) == 1
+          assert len(set(survivor_ids)) == 1
+          assert evidences[0]["four_source_delta"] == evidences[1]["four_source_delta"]
+
+          for evidence, base_id, combined_id, survivor_id in zip(
+              evidences,
+              base_ids,
+              combined_ids,
+              survivor_ids,
+              strict=True,
+          ):
+              assert evidence["execution_head_sha"] == head
+              assert evidence["incumbent_base"]["matcher_report_sha256"] == base_id
+              assert evidence["combined"]["matcher_report_sha256"] == combined_id
+              assert evidence["combined"]["survivor_authority_sha256"] == survivor_id
+              assert evidence["truth_boundary"]["canonical_capacity_credited"] == 0
+              assert evidence["truth_boundary"]["authorized_optimized_target_exposure"] == 0
+              assert evidence["truth_boundary"]["training_executed"] is False
+
+          delta = evidences[0]["four_source_delta"]
+          proof = {
+              "schema_version": "12-6.d03-four-code-source-global-dedup-two-clean.v1",
+              "execution_head_sha": head,
+              "physical_run_id": 37269452704,
+              "candidate_raw_bytes": 336947,
+              "base_matcher_report_sha256": base_ids[0],
+              "combined_matcher_report_sha256": combined_ids[0],
+              "survivor_authority_sha256": survivor_ids[0],
+              "marginal_global_unique_capacity_bytes": (
+                  delta["marginal_global_unique_capacity_bytes"]
+              ),
+              "global_dedup_loss_vs_raw_candidate_bytes": (
+                  delta["global_dedup_loss_vs_raw_candidate_bytes"]
+              ),
+              "minimum_marginal_bytes_needed_before_later_gates": 335753,
+              "global_dedup_preserves_enough_to_keep_target_possible": (
+                  delta["global_dedup_preserves_enough_to_keep_target_possible"]
+              ),
+              "two_fresh_executions_converged": True,
+              "raw_source_bytes_retained": False,
+              "canonical_capacity_credited": 0,
+              "tokenizer_fit_authorized": False,
+              "authorized_optimized_target_exposure": 0,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+          }
+          raw = json.dumps(
+              proof,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          proof["proof_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          Path("d03-code4-global-dedup-two-clean-proof.json").write_text(
+              json.dumps(proof, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(proof, sort_keys=True))
+          PY
+
+      - name: Upload two-clean proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code4-global-dedup-two-clean-${{ github.event.pull_request.head.sha }}
+          path: d03-code4-global-dedup-two-clean-proof.json
+          if-no-files-found: error
+          retention-days: 90
