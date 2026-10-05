@@ -704,11 +704,9 @@ def _preflight_trainer_target(trainer: Any) -> None:
         )
 
 
-def _postflight_trainer_state(trainer: Any, state: Any) -> None:
-    """Verify native D02 live state after its loader returns."""
+def _assert_native_d02_postload_snapshot(trainer: Any, state: Any) -> None:
+    """Verify descriptor-free committed D02 state after effectful post-load work."""
 
-    if not _is_native_d02(trainer):
-        return
     if not isinstance(state, Mapping):
         raise CheckpointCompatibilityError("checkpoint trainer state must be a mapping")
     attrs = vars(trainer)
@@ -734,15 +732,19 @@ def _postflight_trainer_state(trainer: Any, state: Any) -> None:
             "canonical trainer retained pending accumulation after checkpoint restore"
         )
 
-    live_config = attrs.get("config")
-    if is_dataclass(live_config) and not isinstance(live_config, type):
-        live_config = asdict(live_config)
-    elif hasattr(live_config, "model_dump"):
-        live_config = live_config.model_dump(mode="python")
+    live_config = _snapshot_native_d02_config(attrs.get("config"))
     if not _typed_config_equal(state.get("config"), live_config):
         raise CheckpointCompatibilityError(
             "canonical trainer post-load config disagrees with checkpoint"
         )
+
+
+def _postflight_trainer_state(trainer: Any, state: Any) -> None:
+    """Verify native D02 live state across effectful post-load authorities."""
+
+    if not _is_native_d02(trainer):
+        return
+    _assert_native_d02_postload_snapshot(trainer, state)
 
     for authority, label in (
         ("_require_optimizer_parameter_coverage", "optimizer coverage"),
@@ -752,6 +754,9 @@ def _postflight_trainer_state(trainer: Any, state: Any) -> None:
         ("_require_deterministic_policy", "deterministic policy"),
     ):
         check = getattr(trainer, authority, None)
+        # Descriptor lookup itself can execute arbitrary code. Recheck the
+        # committed state before invoking the returned authority.
+        _assert_native_d02_postload_snapshot(trainer, state)
         if not callable(check):
             raise CheckpointCompatibilityError(
                 f"canonical trainer post-load {label} authority unavailable"
@@ -762,6 +767,9 @@ def _postflight_trainer_state(trainer: Any, state: Any) -> None:
             raise CheckpointCompatibilityError(
                 f"canonical trainer post-load {label} invalid"
             ) from exc
+        # The authority can also mutate counters/config/pending accounting while
+        # returning success. Never report a clean resume after such drift.
+        _assert_native_d02_postload_snapshot(trainer, state)
 
 
 def _preflight_trainer_state_without_rng_guard(
@@ -1492,6 +1500,7 @@ def load_trainer_checkpoint(
         _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
+        _assert_native_d02_model_training_mode(model, trainer)
         _postflight_trainer_state(trainer, trainer_state)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
         _assert_native_d02_model_training_mode(model, trainer)
