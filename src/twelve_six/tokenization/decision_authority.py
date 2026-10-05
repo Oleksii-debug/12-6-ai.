@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from types import MappingProxyType
+from types import CodeType, FunctionType, MappingProxyType
 from typing import Any
 
 from twelve_six.data.balanced_split_application_v1 import (
@@ -161,6 +161,91 @@ def _verify_canonical_byte_tokenizer_implementation() -> str:
     return observed
 
 
+def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
+    """Compile the pinned source without executing it and bind live method code."""
+
+    try:
+        payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
+    except OSError as exc:
+        raise TokenizerDecisionError(
+            "cannot read canonical byte tokenizer implementation"
+        ) from exc
+    if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer implementation identity drift"
+        )
+    try:
+        module_code = compile(
+            payload,
+            str(_BYTE_TOKENIZER_SOURCE_PATH),
+            "exec",
+            dont_inherit=True,
+        )
+    except (SyntaxError, ValueError, TypeError) as exc:
+        raise TokenizerDecisionError(
+            "cannot compile canonical byte tokenizer implementation"
+        ) from exc
+    class_codes = [
+        value
+        for value in module_code.co_consts
+        if isinstance(value, CodeType) and value.co_name == "ByteTokenizer"
+    ]
+    if len(class_codes) != 1:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer class code identity unavailable"
+        )
+    expected_names = {
+        "__init__",
+        "identity",
+        "encode",
+        "decode",
+        "oov_count",
+        "fertility",
+    }
+    methods = {
+        value.co_name: value
+        for value in class_codes[0].co_consts
+        if isinstance(value, CodeType) and value.co_name in expected_names
+    }
+    if set(methods) != expected_names:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer method code identity unavailable"
+        )
+    return methods
+
+
+def _runtime_byte_tokenizer_method_code(
+    class_state: Mapping[str, Any],
+    name: str,
+) -> CodeType:
+    """Read one live class method without invoking descriptor binding."""
+
+    raw = class_state.get(name)
+    if name == "identity":
+        if type(raw) is not property or raw.fget is None:
+            raise TokenizerDecisionError(
+                "canonical byte tokenizer runtime implementation drift: identity"
+            )
+        function = raw.fget
+    elif name == "oov_count":
+        if type(raw) is not staticmethod:
+            raise TokenizerDecisionError(
+                "canonical byte tokenizer runtime implementation drift: oov_count"
+            )
+        function = raw.__func__
+    else:
+        if type(raw) is not FunctionType:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime implementation drift: {name}"
+            )
+        function = raw
+    if type(function) is not FunctionType:
+        raise TokenizerDecisionError(
+            f"canonical byte tokenizer runtime implementation drift: {name}"
+        )
+    return function.__code__
+
+
 def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
     """Bind the loaded runtime identity to the source-pinned byte baseline."""
 
@@ -185,6 +270,13 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime identity drift: special_tokens"
         )
+
+    expected_method_codes = _verified_canonical_byte_tokenizer_method_codes()
+    for name, expected_code in expected_method_codes.items():
+        if _runtime_byte_tokenizer_method_code(class_state, name) != expected_code:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime implementation drift: {name}"
+            )
 
     tokenizer = ByteTokenizer().identity
     for field in (
