@@ -182,3 +182,54 @@ def test_transactional_rng_restore_rolls_back_torch_warn_only_policy() -> None:
             old_policy[0],
             warn_only=old_policy[1],
         )
+
+def test_rng_state_roundtrip_restores_torch_warn_only_policy() -> None:
+    torch = pytest.importorskip("torch")
+    ambient = capture_rng_state()
+    old_policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        state = capture_rng_state()
+        assert state["torch"]["deterministic_warn_only"] is True
+
+        torch.use_deterministic_algorithms(False, warn_only=False)
+        restore_rng_state(state)
+
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(
+            old_policy[0],
+            warn_only=old_policy[1],
+        )
+
+
+def test_legacy_rng_state_preserves_live_torch_warn_only_policy() -> None:
+    torch = pytest.importorskip("torch")
+    ambient = capture_rng_state()
+    old_policy = (
+        torch.are_deterministic_algorithms_enabled(),
+        torch.is_deterministic_algorithms_warn_only_enabled(),
+    )
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=False)
+        legacy = capture_rng_state()
+        legacy = dict(legacy)
+        legacy["torch"] = dict(legacy["torch"])
+        legacy["torch"].pop("deterministic_warn_only")
+
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        restore_rng_state(legacy)
+
+        assert torch.are_deterministic_algorithms_enabled()
+        assert torch.is_deterministic_algorithms_warn_only_enabled()
+    finally:
+        restore_rng_state(ambient)
+        torch.use_deterministic_algorithms(
+            old_policy[0],
+            warn_only=old_policy[1],
+        )
