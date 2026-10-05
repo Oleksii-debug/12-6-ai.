@@ -7,9 +7,11 @@ import hashlib
 import math
 import random
 import struct
+from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
+from enum import Enum
 from types import FunctionType
 from typing import Any
 
@@ -1059,7 +1061,18 @@ class Trainer:
                     )
                 walk(child, f"{prefix}{name}.")
 
-        walk(self.model, "")
+        try:
+            trainer_attrs = object.__getattribute__(self, "__dict__")
+            model = trainer_attrs["model"]
+        except (AttributeError, KeyError, TypeError) as exc:
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is unavailable"
+            ) from exc
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is not a torch module"
+            )
+        walk(model, "")
         return digest.hexdigest()
 
     def _optimizer_live_fingerprint(self) -> str | None:
@@ -1203,6 +1216,287 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "optimizer live state contains foreign parameter state"
             )
+        return digest.hexdigest()
+
+    def _checkpoint_auxiliary_fingerprint(self) -> str:
+        """Hash live optimizer/scheduler/scaler state without export or subclass hooks."""
+
+        digest = hashlib.sha256()
+        active_objects: set[int] = set()
+
+        def label(value: Any) -> None:
+            kind = f"{type(value).__module__}.{type(value).__qualname__}"
+            digest.update(kind.encode("utf-8") + b"\0")
+
+        def update_tensor(value: Tensor) -> None:
+            if type(value) not in {Tensor, nn.Parameter}:
+                raise TrainingStateInvalidError(
+                    "checkpoint auxiliary state contains a tensor subclass"
+                )
+            if value.layout != torch.strided:
+                raise TrainingStateInvalidError(
+                    "checkpoint auxiliary state contains non-strided tensor"
+                )
+            digest.update(
+                repr(
+                    (
+                        str(value.dtype),
+                        str(value.device),
+                        tuple(value.shape),
+                        tuple(value.stride()),
+                        value.storage_offset(),
+                        value.data_ptr(),
+                        value.requires_grad,
+                    )
+                ).encode("utf-8")
+            )
+            detached = value.detach()
+            if detached.is_contiguous():
+                flat = detached.reshape(-1)
+                for index in range(0, flat.numel(), 262_144):
+                    raw = (
+                        flat[index:index + 262_144]
+                        .to(device="cpu")
+                        .contiguous()
+                        .view(torch.uint8)
+                    )
+                    digest.update(raw.numpy().tobytes())
+            elif detached.numel() <= 262_144:
+                raw = detached.to(device="cpu").contiguous().reshape(-1)
+                digest.update(raw.view(torch.uint8).numpy().tobytes())
+            elif detached.ndim == 1:
+                for index in range(0, detached.numel(), 262_144):
+                    update_tensor(detached[index:index + 262_144])
+            else:
+                for child in detached.unbind(0):
+                    update_tensor(child)
+
+        def update(value: Any) -> None:
+            label(value)
+            if isinstance(value, Tensor):
+                update_tensor(value)
+                return
+            if isinstance(value, np.ndarray):
+                if type(value) is not np.ndarray or value.dtype.hasobject:
+                    raise TrainingStateInvalidError(
+                        "checkpoint auxiliary NumPy state is not canonical"
+                    )
+                digest.update(
+                    repr((value.dtype.str, value.shape, value.strides)).encode("utf-8")
+                )
+                for block in np.nditer(
+                    value,
+                    flags=["external_loop", "buffered", "zerosize_ok"],
+                    op_flags=[["readonly"]],
+                    order="C",
+                    buffersize=262_144,
+                ):
+                    digest.update(block.tobytes(order="C"))
+                return
+            if isinstance(value, np.generic):
+                digest.update(value.dtype.str.encode("ascii") + b"\0" + value.tobytes())
+                return
+            if type(value) is float:
+                digest.update(struct.pack("!d", value))
+                return
+            if type(value) is complex:
+                digest.update(struct.pack("!dd", value.real, value.imag))
+                return
+            if value is None or type(value) in {bool, int, str, bytes}:
+                digest.update(repr(value).encode("utf-8"))
+                return
+            if isinstance(value, Enum):
+                digest.update(
+                    f"{type(value).__module__}.{type(value).__qualname__}:{value.name}".encode(
+                        "utf-8"
+                    )
+                )
+                return
+            if type(value).__module__ == "torch" and type(value).__name__ in {
+                "device",
+                "dtype",
+                "layout",
+                "memory_format",
+            }:
+                digest.update(str(value).encode("utf-8"))
+                return
+            if isinstance(value, FunctionType):
+                digest.update(
+                    f"{value.__module__}.{value.__qualname__}:{id(value)}".encode("utf-8")
+                )
+                return
+            if type(value) in {dict, defaultdict, OrderedDict}:
+                object_id = id(value)
+                if object_id in active_objects:
+                    raise TrainingStateInvalidError(
+                        "checkpoint auxiliary state contains a container cycle"
+                    )
+                active_objects.add(object_id)
+                try:
+                    digest.update(str(len(value)).encode("ascii") + b"\0")
+                    for key, child in value.items():
+                        if type(key) not in {str, int, bool}:
+                            raise TrainingStateInvalidError(
+                                "checkpoint auxiliary mapping key is not canonical"
+                            )
+                        update(key)
+                        update(child)
+                finally:
+                    active_objects.remove(object_id)
+                return
+            if type(value) in {list, tuple}:
+                object_id = id(value)
+                if object_id in active_objects:
+                    raise TrainingStateInvalidError(
+                        "checkpoint auxiliary state contains a container cycle"
+                    )
+                active_objects.add(object_id)
+                try:
+                    digest.update(str(len(value)).encode("ascii") + b"\0")
+                    for child in value:
+                        update(child)
+                finally:
+                    active_objects.remove(object_id)
+                return
+            try:
+                raw_attrs = object.__getattribute__(value, "__dict__")
+            except (AttributeError, TypeError):
+                raw_attrs = None
+            if type(raw_attrs) is dict:
+                object_id = id(value)
+                if object_id in active_objects:
+                    raise TrainingStateInvalidError(
+                        "checkpoint auxiliary state contains an object cycle"
+                    )
+                active_objects.add(object_id)
+                try:
+                    digest.update(str(id(value)).encode("ascii") + b"\0")
+                    update(raw_attrs)
+                finally:
+                    active_objects.remove(object_id)
+                return
+            raise TrainingStateInvalidError(
+                "checkpoint auxiliary state contains unsupported exact-resume value"
+            )
+
+        try:
+            trainer_attrs = object.__getattribute__(self, "__dict__")
+            optimizer = trainer_attrs["optimizer"]
+            scheduler = trainer_attrs["scheduler"]
+            scaler = trainer_attrs["scaler"]
+            optimizer_attrs = object.__getattribute__(optimizer, "__dict__")
+        except (AttributeError, KeyError, TypeError) as exc:
+            raise TrainingStateInvalidError(
+                "checkpoint auxiliary bindings are unavailable"
+            ) from exc
+        if type(optimizer_attrs) is not dict:
+            raise TrainingStateInvalidError(
+                "checkpoint optimizer storage is not canonical"
+            )
+        state = optimizer_attrs.get("state")
+        groups = optimizer_attrs.get("param_groups")
+        if type(state) not in {dict, defaultdict} or type(groups) is not list:
+            raise TrainingStateInvalidError(
+                "checkpoint optimizer live state is not canonical"
+            )
+
+        digest.update(b"optimizer\0")
+        digest.update(
+            (
+                type(optimizer).__module__
+                + "."
+                + type(optimizer).__qualname__
+            ).encode("utf-8")
+        )
+        digest.update(str(len(groups)).encode("ascii") + b"\0")
+        live_parameters: set[int] = set()
+        for group in groups:
+            if type(group) is not dict:
+                raise TrainingStateInvalidError(
+                    "checkpoint optimizer parameter group is not canonical"
+                )
+            parameters = group.get("params")
+            if type(parameters) not in {list, tuple}:
+                raise TrainingStateInvalidError(
+                    "checkpoint optimizer parameters are not a canonical sequence"
+                )
+            digest.update(str(len(parameters)).encode("ascii") + b"\0")
+            for parameter in parameters:
+                if type(parameter) is not nn.Parameter:
+                    raise TrainingStateInvalidError(
+                        "checkpoint optimizer parameter binding is not canonical"
+                    )
+                live_parameters.add(id(parameter))
+                digest.update(str(id(parameter)).encode("ascii") + b"\0")
+            update(
+                {
+                    key: value
+                    for key, value in group.items()
+                    if key not in ("params", "param_names")
+                }
+            )
+
+        digest.update(str(len(state)).encode("ascii") + b"\0")
+        for parameter, slot in state.items():
+            if type(parameter) is not nn.Parameter or id(parameter) not in live_parameters:
+                raise TrainingStateInvalidError(
+                    "checkpoint optimizer state has a foreign parameter key"
+                )
+            digest.update(str(id(parameter)).encode("ascii") + b"\0")
+            update(slot)
+
+        digest.update(b"scheduler\0")
+        if scheduler is None:
+            digest.update(b"none\0")
+        else:
+            try:
+                scheduler_attrs = object.__getattribute__(scheduler, "__dict__")
+            except (AttributeError, TypeError) as exc:
+                raise TrainingStateInvalidError(
+                    "checkpoint scheduler storage is unavailable"
+                ) from exc
+            if type(scheduler_attrs) is not dict:
+                raise TrainingStateInvalidError(
+                    "checkpoint scheduler storage is not canonical"
+                )
+            digest.update(
+                (
+                    type(scheduler).__module__
+                    + "."
+                    + type(scheduler).__qualname__
+                ).encode("utf-8")
+            )
+            update(
+                {
+                    key: value
+                    for key, value in scheduler_attrs.items()
+                    if key != "optimizer"
+                }
+            )
+
+        digest.update(b"scaler\0")
+        if scaler is None:
+            digest.update(b"none\0")
+        else:
+            try:
+                scaler_attrs = object.__getattribute__(scaler, "__dict__")
+            except (AttributeError, TypeError) as exc:
+                raise TrainingStateInvalidError(
+                    "checkpoint scaler storage is unavailable"
+                ) from exc
+            if type(scaler_attrs) is not dict:
+                raise TrainingStateInvalidError(
+                    "checkpoint scaler storage is not canonical"
+                )
+            digest.update(
+                (
+                    type(scaler).__module__
+                    + "."
+                    + type(scaler).__qualname__
+                ).encode("utf-8")
+            )
+            update(scaler_attrs)
+
         return digest.hexdigest()
 
     @staticmethod
