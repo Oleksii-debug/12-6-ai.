@@ -305,13 +305,22 @@ def test_partial_restore_poison_prevents_in_place_retry(
     model = NumpyModel([9.0, 9.0, 9.0])
     trainer = CanonicalTarget()
     if failed_stage == "model":
-        original_apply = progress_trainer._apply_model_weights
+        original_bind = progress_trainer._bind_model_state_loader
 
-        def broken_apply(*args: object, **kwargs: object) -> None:
-            original_apply(*args, **kwargs)
-            raise RuntimeError("model apply failed after mutation")
+        def bind_broken_apply(model: object, strict: bool):
+            apply = original_bind(model, strict)
 
-        monkeypatch.setattr(progress_trainer, "_apply_model_weights", broken_apply)
+            def broken_apply(materialized: object) -> None:
+                apply(materialized)
+                raise RuntimeError("model apply failed after mutation")
+
+            return broken_apply
+
+        monkeypatch.setattr(
+            progress_trainer,
+            "_bind_model_state_loader",
+            bind_broken_apply,
+        )
     elif failed_stage == "trainer":
         original_load = CanonicalTarget.load_state_dict
 
@@ -463,18 +472,25 @@ def test_fresh_target_recovers_after_partial_model_apply_failure(
         trainer=GenericTrainer(),
         identity=identity(),
     )
-    original_apply = progress_trainer._apply_model_weights
+    original_bind = progress_trainer._bind_model_state_loader
     call_count = 0
 
-    def fail_only_first_application(*args: object, **kwargs: object) -> None:
-        nonlocal call_count
-        call_count += 1
-        original_apply(*args, **kwargs)
-        if call_count == 1:
-            raise RuntimeError("first model apply failed after mutation")
+    def bind_fail_only_first(model: object, strict: bool):
+        apply = original_bind(model, strict)
+
+        def fail_only_first_application(materialized: object) -> None:
+            nonlocal call_count
+            call_count += 1
+            apply(materialized)
+            if call_count == 1:
+                raise RuntimeError("first model apply failed after mutation")
+
+        return fail_only_first_application
 
     monkeypatch.setattr(
-        progress_trainer, "_apply_model_weights", fail_only_first_application,
+        progress_trainer,
+        "_bind_model_state_loader",
+        bind_fail_only_first,
     )
     poisoned = CanonicalTarget()
     with pytest.raises(RuntimeError, match="first model apply failed"):
