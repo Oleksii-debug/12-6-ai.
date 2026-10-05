@@ -1930,8 +1930,28 @@ def save_trainer_checkpoint(
         if model_export_authority is None:
             return
         try:
+            _assert_trainer_restore_bindings(trainer, save_bindings)
+            _assert_trainer_model_binding(model, trainer)
+            _assert_native_d02_model_training_mode(model, trainer)
+            _assert_native_d02_inert_live_state(
+                trainer,
+                state,
+                model_fingerprint=model_fingerprint,
+                sealed_model_fingerprint=sealed_model_fingerprint,
+                auxiliary_fingerprint=auxiliary_fingerprint,
+                sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
+                phase="checkpoint model serialization",
+            )
             model_export_authority(exported)
-        except Exception as exc:
+        except BaseException as exc:
+            _poison_canonical_restore_failure(
+                trainer,
+                expected_canonical=save_bindings[0],
+                reason="checkpoint_export_state_drift",
+                exc=exc,
+            )
+            if isinstance(exc, CheckpointCompatibilityError):
+                raise
             raise CheckpointCompatibilityError(
                 "checkpoint staged model export differs from live model state"
             ) from exc
