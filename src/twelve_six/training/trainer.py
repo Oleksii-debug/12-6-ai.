@@ -1201,9 +1201,6 @@ class Trainer:
                 raise ValueError(
                     "checkpoint scheduler last LR differs from checkpoint optimizer"
                 )
-        self._require_default_schedule_rates(
-            state.scheduler, state.optimizer_step, state.optimizer,
-        )
         if self.scaler.is_enabled() and not state.scaler:
             raise ValueError("enabled gradient scaler checkpoint state missing")
         if self.scaler.is_enabled():
@@ -1239,6 +1236,9 @@ class Trainer:
         # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
         # parameter identity. Reject missing/reordered names before mutation.
         self._require_optimizer_state_parameter_order(state.optimizer)
+        self._require_default_schedule_rates(
+            state.scheduler, state.optimizer_step, state.optimizer,
+        )
 
         # From the first component load onward a failure may leave optimizer,
         # scheduler, scaler or counters partially applied. No same-instance
