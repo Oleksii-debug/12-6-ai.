@@ -464,6 +464,67 @@ def test_resealed_default_adamw_finite_decay_forgery_rejected_before_model_apply
     torch.testing.assert_close(target.model.weight, source.model.weight, rtol=0, atol=0)
 
 @pytest.mark.parametrize(
+    ("authority", "message"),
+    [
+        ("_require_finite_state_tree", "numeric-state authority unavailable"),
+        ("_require_checkpoint_scheduler_chronology", "scheduler authority unavailable"),
+        ("_require_optimizer_state_parameter_order", "optimizer-order authority unavailable"),
+    ],
+)
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "exact-rng"])
+def test_canonical_d02_missing_mandatory_authority_fails_before_model_and_rng(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    authority: str, message: str, loader: Any, restore_rng: bool,
+) -> None:
+    source = _source()
+    path = tmp_path / "missing-canonical-authority-дані з пробілами"
+    core.save_checkpoint(
+        path, model=source.model, trainer_state=asdict(source.state_dict()),
+        identity=_identity(),
+    )
+    core.verify_checkpoint(path)
+
+    target = Trainer(_TinyLogits(), source.config, device="cpu")
+    setattr(target, authority, None)
+    initial_weights = target.model.weight.detach().clone()
+    py_before = random.getstate()
+    np_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    model_applied: list[bool] = []
+
+    def forbid_model_application(*args: Any, **kwargs: Any) -> None:
+        model_applied.append(True)
+        raise AssertionError("missing canonical authority reached model application")
+
+    monkeypatch.setattr(loader, "_apply_model_weights", forbid_model_application)
+    extra = (
+        {"expected_step": 1, "expected_tokens_seen": 2}
+        if loader is progress_trainer else {}
+    )
+    with pytest.raises(CheckpointCompatibilityError, match=message):
+        loader.load_trainer_checkpoint(
+            path, model=target.model, trainer=target,
+            strict_model=False, restore_rng=restore_rng, **extra,
+        )
+
+    assert model_applied == []
+    assert not target.optimizer.state
+    assert target._failure_reason is None and not target._update_incomplete
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    torch.testing.assert_close(target.model.weight, initial_weights, rtol=0, atol=0)
+    assert random.getstate() == py_before
+    np_after = np.random.get_state()
+    assert np_after[0] == np_before[0]
+    np.testing.assert_array_equal(np_after[1], np_before[1])
+    assert np_after[2:] == np_before[2:]
+    torch.testing.assert_close(torch.get_rng_state(), torch_before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer],
     ids=["adapter", "progress"],
 )
