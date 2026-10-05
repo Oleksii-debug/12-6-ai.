@@ -149,6 +149,141 @@ def test_validator_rejects_extra_arguments(capsys: pytest.CaptureFixture[str]) -
     )
 
 
+def _write_campaign(tmp_path: Path, data: dict) -> Path:
+    path = tmp_path / "campaign.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (lambda data: data["experiment_matrix"][0].__setitem__("id", []), "experiment id"),
+        (lambda data: data.__setitem__("promotion_gates", [{}]), "promotion_gates"),
+        (
+            lambda data: data["metric_contract"].__setitem__("required", [{}]),
+            "metric_contract.required",
+        ),
+        (
+            lambda data: data["research_sources"][0].__setitem__("url", []),
+            "research source url",
+        ),
+    ],
+)
+def test_unhashable_nested_shapes_fail_closed_without_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mutator,
+    message: str,
+) -> None:
+    data = _load()
+    mutator(data)
+    errors = validator.validate_campaign(data)
+    assert any(error.startswith("input shape: ") and message in error for error in errors)
+
+    path = _write_campaign(tmp_path, data)
+    assert validator.main(["validate", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "FAIL: input shape:" in captured.out
+    assert message in captured.out
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (lambda data: data.__setitem__("schema_version", True), "schema_version"),
+        (
+            lambda data: data["experiment_matrix"][0].__setitem__(
+                "parameters", 20_613_440.0
+            ),
+            "R01-E00",
+        ),
+        (
+            lambda data: data["experiment_matrix"][-1].__setitem__(
+                "parameter_targets", [20_000_000.0, 50_000_000, 100_000_000]
+            ),
+            "target ladder",
+        ),
+        (
+            lambda data: data["baseline_model"].__setitem__("n_layers", 16.0),
+            "baseline_model.n_layers",
+        ),
+    ],
+)
+def test_frozen_numeric_authority_rejects_python_equality_aliases(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mutator,
+    message: str,
+) -> None:
+    data = _load()
+    mutator(data)
+    errors = validator.validate_campaign(data)
+    assert any(message in error for error in errors)
+
+    path = _write_campaign(tmp_path, data)
+    assert validator.main(["validate", str(path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert message in captured.out
+
+
+def test_scaling_campaign_missing_path_is_redacted(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    private_path = tmp_path / "PRIVATE-SOURCE-IDENTITY-998877.json"
+    assert validator.main(["validate", str(private_path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out.strip() == (
+        "FAIL: invalid scaling campaign input: cannot read scaling campaign"
+    )
+    assert "PRIVATE-SOURCE-IDENTITY" not in captured.out
+
+
+def test_scaling_campaign_directory_is_refused(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert validator.main(["validate", str(tmp_path)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    if os.name == "nt":
+        assert "cannot read scaling campaign" in captured.out
+    else:
+        assert "scaling campaign must be a regular file" in captured.out
+
+
+def test_scaling_campaign_valid_symlink_is_supported(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation may require additional privileges")
+    linked = tmp_path / "campaign link.json"
+    linked.symlink_to(CONFIG_PATH.resolve())
+    assert validator.validate_path(linked) == []
+
+
+def test_scaling_campaign_fifo_never_blocks(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"):
+        pytest.skip("POSIX nonblocking FIFO support required")
+    fifo = tmp_path / "campaign FIFO із пробілами.pipe"
+    os.mkfifo(fifo)
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR_PATH), str(fifo)],
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert completed.stdout.strip() == (
+        "FAIL: invalid scaling campaign input: "
+        "scaling campaign must be a regular file"
+    )
+
+
 def test_default_campaign_works_outside_repository_cwd(tmp_path: Path) -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
