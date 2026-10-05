@@ -6,23 +6,96 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import os
+import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "configs/data/next100_106_balance_gate_policy_v1.json"
 
 INPUT_SCHEMA = "12-6.next100-106-post-dedup-family-vector.v1"
 STRATA = ("ua", "en", "code")
+MAX_BALANCE_JSON_BYTES = 1_048_576
+MAX_BALANCE_JSON_DEPTH = 64
+MAX_BALANCE_JSON_NODES = 10_000
+MAX_BALANCE_INT_DIGITS = 64
+EXPECTED_POLICY_IDENTITY_SHA256 = (
+    "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
+)
 
 
 class GateError(ValueError):
     """Raised when an input cannot be trusted for balance evaluation."""
 
 
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise GateError(f"duplicate JSON object member: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(value: str) -> Any:
+    raise GateError(f"non-finite JSON constant: {value}")
+
+
+def _parse_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise GateError("JSON number is not finite")
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise GateError("nonzero JSON number underflowed to zero")
+    return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    if len(value.lstrip("-")) > MAX_BALANCE_INT_DIGITS:
+        raise GateError("JSON integer exceeds digit limit")
+    return int(value)
+
+
 def load_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    """Bound and strictly decode policy or external family-vector evidence."""
+    with path.open("rb") as source:
+        raw = source.read(MAX_BALANCE_JSON_BYTES + 1)
+    if len(raw) > MAX_BALANCE_JSON_BYTES:
+        raise GateError("balance JSON exceeds byte limit")
+
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
+        )
+        pending = [(value, 0)]
+        nodes = 0
+        while pending:
+            current, depth = pending.pop()
+            nodes += 1
+            if nodes > MAX_BALANCE_JSON_NODES or depth > MAX_BALANCE_JSON_DEPTH:
+                raise GateError("balance JSON structure limit exceeded")
+            if isinstance(current, dict):
+                for key, child in current.items():
+                    key.encode("utf-8")
+                    pending.append((child, depth + 1))
+            elif isinstance(current, list):
+                pending.extend((child, depth + 1) for child in current)
+            elif isinstance(current, str):
+                current.encode("utf-8")
+    except RecursionError as exc:
+        raise GateError("balance JSON nesting limit exceeded") from exc
+    except (UnicodeError, ValueError) as exc:
+        raise GateError(f"invalid balance JSON: {exc}") from exc
+
     if not isinstance(value, dict):
         raise GateError(f"expected JSON object: {path}")
     return value
@@ -57,6 +130,11 @@ def _hex(value: Any, length: int, field: str) -> str:
     return value
 
 
+def _require_exact_policy_int(value: Any, expected: int, field: str) -> None:
+    if type(value) is not int or value != expected:
+        raise GateError(f"{field} drift or invalid integer type")
+
+
 def validate_policy(policy: dict[str, Any]) -> None:
     if policy.get("schema_version") != "12-6.next100-106-balance-gate-policy.v1":
         raise GateError("unexpected policy schema")
@@ -69,38 +147,69 @@ def validate_policy(policy: dict[str, Any]) -> None:
     ):
         raise GateError("policy identity mismatch")
 
-    cfg = policy["policy"]
-    if cfg["target_total_source_bytes"] != 20_000_000:
-        raise GateError("20M source-byte planning target drift")
-    if cfg["minimum_independent_families_per_stratum"] != 2:
-        raise GateError("minimum family count drift")
-    if cfg["budget_quantum_bytes"] != 100:
-        raise GateError("budget quantum drift")
+    cfg = policy.get("policy")
+    expected_cfg_keys = {
+        "target_total_source_bytes",
+        "strata",
+        "minimum_independent_families_per_stratum",
+        "max_family_fraction_total",
+        "max_family_fraction_own_stratum",
+        "budget_quantum_bytes",
+        "replay_or_duplication_to_meet_quota",
+        "model_result_guided_mixture_retuning",
+    }
+    if not isinstance(cfg, dict) or set(cfg) != expected_cfg_keys:
+        raise GateError("balance policy fields drift")
+    _require_exact_policy_int(
+        cfg.get("target_total_source_bytes"), 20_000_000, "20M source-byte planning target"
+    )
+    _require_exact_policy_int(
+        cfg.get("minimum_independent_families_per_stratum"), 2, "minimum family count"
+    )
+    _require_exact_policy_int(cfg.get("budget_quantum_bytes"), 100, "budget quantum")
     if cfg["replay_or_duplication_to_meet_quota"] is not False:
         raise GateError("replay must remain forbidden")
     if cfg["model_result_guided_mixture_retuning"] is not False:
         raise GateError("model-result-guided mixture retuning must remain forbidden")
 
-    expected = {"ua": (9, 20), "en": (7, 20), "code": (1, 5)}
-    observed = {
-        key: (
-            cfg["strata"][key]["target_numerator"],
-            cfg["strata"][key]["target_denominator"],
-        )
-        for key in STRATA
-    }
-    if observed != expected:
+    strata = cfg.get("strata")
+    if not isinstance(strata, dict) or set(strata) != set(STRATA):
         raise GateError("45/35/20 mixture drift")
-    if cfg["max_family_fraction_total"] != {"numerator": 1, "denominator": 4}:
-        raise GateError("global family cap drift")
-    if cfg["max_family_fraction_own_stratum"] != {
-        "numerator": 3,
-        "denominator": 5,
-    }:
-        raise GateError("within-stratum family cap drift")
+    for stratum, (numerator, denominator) in {
+        "ua": (9, 20),
+        "en": (7, 20),
+        "code": (1, 5),
+    }.items():
+        row = strata[stratum]
+        if not isinstance(row, dict) or set(row) != {
+            "target_numerator", "target_denominator"
+        }:
+            raise GateError("45/35/20 mixture drift")
+        _require_exact_policy_int(
+            row["target_numerator"], numerator, f"{stratum} mixture numerator"
+        )
+        _require_exact_policy_int(
+            row["target_denominator"], denominator, f"{stratum} mixture denominator"
+        )
 
-    boundary = policy["claim_boundary"]
-    if boundary != {
+    for key, numerator, denominator, label in (
+        ("max_family_fraction_total", 1, 4, "global family cap"),
+        ("max_family_fraction_own_stratum", 3, 5, "within-stratum family cap"),
+    ):
+        fraction = cfg.get(key)
+        if not isinstance(fraction, dict) or set(fraction) != {
+            "numerator", "denominator"
+        }:
+            raise GateError(f"{label} drift")
+        _require_exact_policy_int(
+            fraction["numerator"], numerator, f"{label} numerator"
+        )
+        _require_exact_policy_int(
+            fraction["denominator"], denominator, f"{label} denominator"
+        )
+
+    boundary = policy.get("claim_boundary")
+    expected_boundary = {
         "computes_source_mixture_feasibility_only": True,
         "creates_corpus_identity": False,
         "creates_shard_identity": False,
@@ -108,8 +217,16 @@ def validate_policy(policy: dict[str, Any]) -> None:
         "authorizes_model_training": False,
         "authorizes_paid_compute": False,
         "relabels_source_bytes_as_loss_positions": False,
-    }:
+    }
+    if not isinstance(boundary, dict) or set(boundary) != set(expected_boundary):
         raise GateError("claim boundary drift")
+    if any(
+        type(boundary[key]) is not bool or boundary[key] is not expected
+        for key, expected in expected_boundary.items()
+    ):
+        raise GateError("claim boundary drift")
+    if policy.get("policy_identity_sha256") != EXPECTED_POLICY_IDENTITY_SHA256:
+        raise GateError("policy identity differs from pinned authority")
 
 
 def validate_vector(vector: dict[str, Any]) -> list[dict[str, Any]]:
@@ -170,9 +287,27 @@ def validate_vector(vector: dict[str, Any]) -> list[dict[str, Any]]:
         by_stratum.values()
     ):
         raise GateError("declared total_unique_bytes mismatch")
-    if declared.get("by_stratum") != {key: by_stratum[key] for key in STRATA}:
+    by_stratum_claim = declared.get("by_stratum")
+    if (
+        not isinstance(by_stratum_claim, dict)
+        or set(by_stratum_claim) != set(STRATA)
+        or any(
+            type(by_stratum_claim[key]) is not int
+            or by_stratum_claim[key] != by_stratum[key]
+            for key in STRATA
+        )
+    ):
         raise GateError("declared by_stratum totals mismatch")
-    if declared.get("family_count") != {key: counts[key] for key in STRATA}:
+    family_count_claim = declared.get("family_count")
+    if (
+        not isinstance(family_count_claim, dict)
+        or set(family_count_claim) != set(STRATA)
+        or any(
+            type(family_count_claim[key]) is not int
+            or family_count_claim[key] != counts[key]
+            for key in STRATA
+        )
+    ):
         raise GateError("declared family_count mismatch")
 
     return sorted(normalized, key=lambda item: item["family_id"])
@@ -386,26 +521,151 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def _write_staged_bytes(destination: BinaryIO, payload: bytes) -> None:
+    if destination.write(payload) != len(payload):
+        raise OSError("incomplete staged balance output write")
+    destination.flush()
+    os.fsync(destination.fileno())
+
+
+def _same_inode(path: Path, identity: tuple[int, int]) -> bool:
+    try:
+        info = path.stat(follow_symlinks=False)
+    except OSError:
+        return False
+    return (info.st_dev, info.st_ino) == identity
+
+
+def _payload_matches(path: Path, identity: tuple[int, int], payload: bytes) -> bool:
+    if not _same_inode(path, identity):
+        return False
+    try:
+        with path.open("rb") as source:
+            info = os.fstat(source.fileno())
+            return (
+                (info.st_dev, info.st_ino) == identity
+                and source.read(len(payload) + 1) == payload
+            )
+    except OSError:
+        return False
+
+
+def _write_new_output(path: Path, payload: bytes, *, input_path: Path) -> None:
+    """Publish complete bytes once; require a trusted and stable parent directory.
+
+    Portable checks cannot protect against hostile simultaneous same-user writers
+    or ancestor renames. Native Windows/NTFS validation remains outstanding.
+    """
+    if path.exists() or path.is_symlink():
+        raise GateError(f"refusing to overwrite existing balance output: {path}")
+    try:
+        parent = path.parent.absolute()
+        if parent != parent.resolve(strict=True):
+            raise GateError("balance output parent must have no symlink aliases")
+        final = parent / path.name
+        protected = {POLICY_PATH.resolve(), input_path.resolve()}
+        if final in protected:
+            raise GateError("balance output must not alias policy or input")
+    except (OSError, RuntimeError) as exc:
+        raise GateError("balance output path cannot be resolved safely") from exc
+
+    staged_path: Path | None = None
+    identity: tuple[int, int] | None = None
+    linked = False
+    verified = False
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w+b", prefix=f".{path.name}.", suffix=".tmp",
+            dir=parent, delete=False,
+        ) as destination:
+            staged_path = Path(destination.name)
+            stat = os.fstat(destination.fileno())
+            identity = (stat.st_dev, stat.st_ino)
+            if not identity[1]:
+                raise OSError("filesystem has no stable staged file identity")
+            _write_staged_bytes(destination, payload)
+        if not _payload_matches(staged_path, identity, payload):
+            raise GateError("staged balance output failed byte verification")
+        os.link(staged_path, final)  # Create-only; never replace a concurrent result.
+        linked = True
+        if (
+            not _payload_matches(final, identity, payload)
+            or not _payload_matches(staged_path, identity, payload)
+            or parent != path.parent.absolute()
+            or parent != path.parent.resolve(strict=True)
+        ):
+            raise GateError("published balance output failed byte/path verification")
+        verified = True
+    except FileExistsError as exc:
+        raise GateError(f"refusing to overwrite existing balance output: {path}") from exc
+    finally:
+        rollback_error: OSError | None = None
+        cleanup_error: OSError | None = None
+        if linked and not verified and identity is not None and _same_inode(final, identity):
+            try:
+                final.unlink()
+            except OSError as exc:
+                rollback_error = exc
+        if staged_path is not None and identity is not None and _same_inode(staged_path, identity):
+            try:
+                staged_path.unlink()
+            except OSError as exc:
+                cleanup_error = exc
+        if rollback_error is not None:
+            raise GateError(
+                f"ROLLBACK_INCOMPLETE: invalid balance output may remain: {final}"
+            ) from rollback_error
+        if cleanup_error is not None:
+            if verified:
+                # The final report was byte-verified and is already committed.
+                print(
+                    "OUTPUT_COMMITTED_CLEANUP_PENDING: "
+                    + json.dumps(
+                        {"output": str(final), "stage": str(staged_path)},
+                        ensure_ascii=True, sort_keys=True,
+                    ),
+                    file=sys.stderr,
+                )
+            else:
+                raise GateError(
+                    f"STAGING_CLEANUP_INCOMPLETE: unpublished stage may remain: "
+                    f"{staged_path}"
+                ) from cleanup_error
+
+
+def main() -> int:
     args = parse_args()
-    policy = load_json(POLICY_PATH)
-    validate_policy(policy)
+    try:
+        policy = load_json(POLICY_PATH)
+        validate_policy(policy)
 
-    if args.command == "validate-policy":
-        print(
-            "NEXT100-106 policy PASS "
-            f"identity={policy['policy_identity_sha256']}"
+        if args.command == "validate-policy":
+            print(
+                "NEXT100-106 policy PASS "
+                f"identity={policy['policy_identity_sha256']}"
+            )
+            return 0
+
+        vector = load_json(args.input)
+        result = evaluate(policy, vector)
+        payload = (
+            json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+            + "\n"
         )
-        return
-
-    vector = load_json(args.input)
-    result = evaluate(policy, vector)
-    payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-    if args.output:
-        args.output.write_text(payload, encoding="utf-8")
-    else:
-        print(payload, end="")
+        if args.output:
+            _write_new_output(
+                args.output, payload.encode("utf-8"), input_path=args.input
+            )
+        else:
+            print(payload, end="")
+        return 0
+    except (
+        OSError, ValueError, TypeError, UnicodeError, RecursionError,
+        OverflowError, RuntimeError,
+    ) as exc:
+        print(json.dumps({"status": "BLOCKED_INVALID_INPUT", "error": str(exc)}, sort_keys=True))
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
