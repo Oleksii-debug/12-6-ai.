@@ -1067,13 +1067,13 @@ def save_checkpoint(
             raise CheckpointError(
                 "checkpoint save could not restore entry RNG state before publication"
             ) from exc
-        rng_restored = True
         if post_rng_prepublish_validator is not None:
             if not callable(post_rng_prepublish_validator):
                 raise TypeError(
                     "post_rng_prepublish_validator must be callable or None"
                 )
             post_rng_prepublish_validator()
+        rng_restored = True
 
         os.replace(temp_dir, destination)
         return manifest
