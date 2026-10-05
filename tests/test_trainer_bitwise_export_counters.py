@@ -181,3 +181,63 @@ def test_model_fingerprint_hashes_strided_buffers_and_signed_zero() -> None:
     with torch.no_grad():
         model.view[0, 0] = -0.0
     assert original != trainer._model_export_fingerprint()
+
+
+def test_canonical_lambda_lr_positive_export_matches_live_state() -> None:
+    model = _TinyLogits()
+    trainer = Trainer(
+        model, TrainerConfig(seed=703, max_steps=3, scheduler="cosine", warmup_steps=1),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    snapshot = trainer.state_dict()
+    assert trainer.scheduler is not None and snapshot.scheduler is not None
+    assert snapshot.scheduler["last_epoch"] == trainer.scheduler.last_epoch
+    assert snapshot.scheduler["_last_lr"] == trainer.scheduler.get_last_lr()
+    assert trainer._failure_reason is None
+
+
+@pytest.mark.parametrize(
+    "attack", ["detached-epoch", "detached-last-lr", "live-epoch"],
+)
+def test_finite_scheduler_snapshot_or_live_epoch_forgery_refused(
+    monkeypatch: pytest.MonkeyPatch, attack: str,
+) -> None:
+    import copy
+
+    model = _TinyLogits()
+    trainer = Trainer(
+        model, TrainerConfig(seed=703, max_steps=3, scheduler="cosine", warmup_steps=1),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    assert trainer.scheduler is not None
+    scheduler = trainer.scheduler
+    committed_epoch = scheduler.last_epoch
+    weights = model.weight.detach().clone()
+    original = scheduler.state_dict
+    calls: list[int] = []
+
+    def untrusted_scheduler_snapshot() -> dict[str, Any]:
+        calls.append(1)
+        saved = copy.deepcopy(original())
+        if attack == "live-epoch" and len(calls) == 1:
+            scheduler.last_epoch += 1
+        elif attack == "detached-epoch" and len(calls) == 2:
+            saved["last_epoch"] += 1
+        elif attack == "detached-last-lr" and len(calls) == 2:
+            saved["_last_lr"][0] *= 0.5
+        return saved
+
+    monkeypatch.setattr(scheduler, "state_dict", untrusted_scheduler_snapshot)
+    with pytest.raises(TrainingStateInvalidError, match="scheduler"):
+        trainer.state_dict()
+    assert trainer._failure_reason is not None
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == (1, 1, 2)
+    if attack != "live-epoch":
+        assert scheduler.last_epoch == committed_epoch
+    torch.testing.assert_close(model.weight, weights, rtol=0, atol=0)
+    assert model.weight.grad is None
+    assert len(calls) >= 1
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
