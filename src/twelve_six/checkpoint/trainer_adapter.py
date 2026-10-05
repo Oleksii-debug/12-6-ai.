@@ -299,6 +299,20 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
+    # Direct D02 load invokes these safety authorities only after live optimizer,
+    # counters, scheduler/scaler or gradients may already have been changed.
+    # An incompatible canonical object must therefore expose them before D05
+    # opens the application region.
+    for authority, label in (
+        ("_require_finite_auxiliary_state", "auxiliary-state"),
+        ("_require_finite_committed_update", "committed-update"),
+        ("_require_no_residual_model_gradients", "gradient-cleanliness"),
+        ("_require_deterministic_policy", "deterministic-policy"),
+    ):
+        if not callable(getattr(trainer, authority, None)):
+            raise CheckpointCompatibilityError(
+                f"canonical trainer {label} authority unavailable"
+            )
     # Global deterministic mode is a pure target compatibility precondition.
     # Reject drift before opening a model-scale checkpoint in either loader.
     _assert_live_d02_determinism(trainer)
