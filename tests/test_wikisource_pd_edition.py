@@ -6,6 +6,7 @@ import json
 import sys
 import unicodedata
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -52,7 +53,7 @@ class _FakeResponse:
         self.payload = payload
         self.read_sizes: list[int] = []
 
-    def __enter__(self) -> "_FakeResponse":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_args: object) -> None:
