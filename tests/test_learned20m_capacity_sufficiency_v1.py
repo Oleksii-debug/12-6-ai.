@@ -445,6 +445,77 @@ def test_capacity_report_fifo_with_no_writer_never_blocks(tmp_path: Path) -> Non
     assert result.returncode == 0, result.stderr
 
 
+def test_rejects_nonzero_float_underflow_without_disclosing_literal(
+    tmp_path: Path,
+) -> None:
+    secret = "99887766554433221100"
+    path = tmp_path / "private-underflow.json"
+    path.write_text('{"claim_issue":1e-' + secret + "}", encoding="utf-8")
+    with pytest.raises(CapacityReportError, match="underflowed to zero") as failure:
+        load_and_validate(path)
+    assert secret not in str(failure.value)
+
+
+def test_capacity_report_rejects_regular_file_swap_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "capacity.json"
+    replacement = tmp_path / "replacement.json"
+    target.write_bytes(REPORT.read_bytes())
+    replacement.write_bytes(REPORT.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swapping_open(path: str | os.PathLike[str], flags: int) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == target:
+            target.unlink()
+            replacement.replace(target)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swapping_open)
+    with pytest.raises(CapacityReportError, match="changed between check and open"):
+        load_and_validate(target)
+
+
+def test_capacity_report_rejects_inplace_change_during_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "capacity.json"
+    target.write_bytes(REPORT.read_bytes())
+    real_fdopen = os.fdopen
+
+    class MutatingReader:
+        def __init__(self, source: object) -> None:
+            self.source = source
+
+        def __enter__(self) -> "MutatingReader":
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            self.source.close()
+
+        def fileno(self) -> int:
+            return self.source.fileno()
+
+        def read(self, size: int = -1) -> bytes:
+            raw = self.source.read(size)
+            info = target.stat()
+            os.utime(
+                target,
+                ns=(info.st_atime_ns, info.st_mtime_ns + 2_000_000_000),
+            )
+            return raw
+
+    def mutating_fdopen(fd: int, mode: str) -> MutatingReader:
+        return MutatingReader(real_fdopen(fd, mode))
+
+    monkeypatch.setattr(os, "fdopen", mutating_fdopen)
+    with pytest.raises(CapacityReportError, match="changed during read"):
+        load_and_validate(target)
+
+
 def test_rejects_unknown_top_level_key() -> None:
     document = _report()
     document["future_credit"] = 1
