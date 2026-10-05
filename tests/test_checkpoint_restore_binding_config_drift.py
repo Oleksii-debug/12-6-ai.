@@ -102,7 +102,7 @@ def test_native_checkpoint_rejects_dispatch_hook_override(hook: str) -> None:
         trainer_adapter._snapshot_trainer_restore_bindings(target)
 
 
-def test_native_snapshot_ignores_subclass_dict_descriptor() -> None:
+def test_native_checkpoint_rejects_subclass_dict_descriptor_without_dispatch() -> None:
     observed: list[str] = []
 
     class DictSpoofTrainer(Trainer):
@@ -120,10 +120,11 @@ def test_native_snapshot_ignores_subclass_dict_descriptor() -> None:
         device="cpu",
     )
 
-    canonical, snapshot = trainer_adapter._snapshot_trainer_restore_bindings(target)
-    assert canonical is True
-    assert snapshot["native_d02"] is True
-    assert snapshot["bindings"]["model"] is target.model
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match="native D02 safety authority must remain canonical: __dict__",
+    ):
+        trainer_adapter._snapshot_trainer_restore_bindings(target)
     assert observed == []
 
 
