@@ -756,3 +756,52 @@ def test_recipe_cli_never_echoes_untrusted_duplicate_member_names(
     assert response["status"] == "FAIL"
     assert "duplicate object member" in response["error"]
     assert secret not in completed.stdout
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("orphan_trusted", "--trusted-authorities requires --bindings"),
+        (
+            "orphan_identity",
+            "--expected-trusted-authorities-identity-sha256 requires --bindings",
+        ),
+        ("missing_trusted", "--trusted-authorities is required with --bindings"),
+        (
+            "missing_identity",
+            "--expected-trusted-authorities-identity-sha256 is required with --bindings",
+        ),
+    ],
+)
+def test_recipe_cli_missing_authority_arguments_are_machine_readable(
+    tmp_path: Path, case: str, expected: str,
+) -> None:
+    path = tmp_path / "valid.json"
+    path.write_text("{}", encoding="utf-8")
+    args = {
+        "orphan_trusted": ["--trusted-authorities", str(path)],
+        "orphan_identity": [
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ],
+        "missing_trusted": [
+            "--bindings", str(path),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ],
+        "missing_identity": [
+            "--bindings", str(path), "--trusted-authorities", str(path),
+        ],
+    }
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), *args[case]],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+    assert expected in response["error"]
