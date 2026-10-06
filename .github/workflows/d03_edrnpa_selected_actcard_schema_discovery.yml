@@ -40,6 +40,13 @@ jobs:
         with:
           python-version: "3.11.16"
 
+      - name: Install exact focused-test dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "pytest==8.4.2"
+          test "$(python -m pytest --version)" = "pytest 8.4.2"
+
       - name: Bind exact zero-credit executable closure
         shell: bash
         run: |
@@ -54,7 +61,7 @@ jobs:
           python -m py_compile             tools/probe_d03_edrnpa_open_data_v1.py             tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py             tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py \
             tests/test_d03_edrnpa_selected_actcard_schema_discovery_v1.py
           PYTHONPATH=. python tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py
-          PYTHONPATH=. pytest -q tests/test_d03_edrnpa_selected_actcard_schema_discovery_v1.py
+          PYTHONPATH=. python -m pytest -q tests/test_d03_edrnpa_selected_actcard_schema_discovery_v1.py
 
       - name: Enforce execution-only diff boundary
         shell: bash
