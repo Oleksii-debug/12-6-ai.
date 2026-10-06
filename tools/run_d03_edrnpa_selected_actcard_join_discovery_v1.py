@@ -37,6 +37,9 @@ EXPECTED_INVENTORY_IDENTITY = (
 EXPECTED_REPORT_IDENTITY = (
     "f5668ad4ddb3ce7ed0cd0130377f803ddbcebfb5b547c6757176efa8043122a6"
 )
+EXPECTED_SELECTED_PAYLOAD_IDENTITY = (
+    "9b1c7b65a71f36ebd3c99273abf3e9f4c3c1885c96432d65761275e37e0b4435"
+)
 PARENT_DISCOVERY_HEAD = "66c812a5345e707f59424b2562502943ddf7a33f"
 PARENT_DISCOVERY_RUN = 37456392095
 PARENT_DISCOVERY_ARTIFACT = 11410515967
@@ -71,6 +74,15 @@ def _canonical(value: Any) -> bytes:
 
 def _identity(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(_canonical(dict(value))).hexdigest()
+
+
+def _selected_payload_identity(rows: list[dict[str, Any]]) -> str:
+    """Reproduce the exact historical physical selected-payload identity."""
+
+    hasher = hashlib.sha256()
+    for row in rows:
+        hasher.update(probe.cjson(row))
+    return hasher.hexdigest()
 
 
 def _require(condition: bool, message: str) -> None:
@@ -464,6 +476,15 @@ def execute(
         policy["admission_policy"]["payload_source_admission_executed"] is False,
         "source policy unexpectedly admits payload",
     )
+    _require(
+        policy["admission_policy"]["requires_selected_payload_identity"] is True,
+        "source policy no longer requires selected-payload identity",
+    )
+    _require(
+        policy["candidate_binding"]["selected_payload_identity_sha256"]
+        == EXPECTED_SELECTED_PAYLOAD_IDENTITY,
+        "source-policy selected-payload identity drift",
+    )
 
     with tempfile.TemporaryDirectory(prefix="edrnpa-actcard-join-") as tmp:
         root = Path(tmp)
@@ -496,6 +517,11 @@ def execute(
         _require(
             report["report_identity_sha256"] == EXPECTED_REPORT_IDENTITY,
             "candidate report identity drift",
+        )
+        selected_payload_identity = _selected_payload_identity(rows)
+        _require(
+            selected_payload_identity == EXPECTED_SELECTED_PAYLOAD_IDENTITY,
+            "candidate selected-payload identity drift",
         )
         _require(
             all(row["training_eligible"] is False for row in rows),
@@ -570,6 +596,7 @@ def execute(
             "selected_objects": EXPECTED_SELECTED_OBJECTS,
             "selected_bytes": EXPECTED_SELECTED_BYTES,
             "inventory_identity_sha256": EXPECTED_INVENTORY_IDENTITY,
+            "selected_payload_identity_sha256": selected_payload_identity,
             "report_identity_sha256": EXPECTED_REPORT_IDENTITY,
         },
         "parent_discovery_binding": {
@@ -621,6 +648,7 @@ def execute(
         "execution_head_sha": execution_head_sha,
         "source_sha256": source_sha,
         "candidate_inventory_identity_sha256": EXPECTED_INVENTORY_IDENTITY,
+        "candidate_selected_payload_identity_sha256": selected_payload_identity,
         "candidate_report_identity_sha256": EXPECTED_REPORT_IDENTITY,
         "parent_discovery_identity_sha256": PARENT_DISCOVERY_IDENTITY,
         "discovery_identity_sha256": discovery["discovery_identity_sha256"],
