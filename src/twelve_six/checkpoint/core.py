@@ -1308,7 +1308,7 @@ def save_checkpoint(
             # that callback itself consumes RNG or changes torch policy.
             try:
                 _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 raise CheckpointError(
                     "checkpoint save could not restore entry RNG state "
                     "after final validation"
