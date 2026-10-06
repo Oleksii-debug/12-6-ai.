@@ -1008,3 +1008,135 @@ def test_bind_rejects_dual_alias_destructor_side_effect(
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
     assert destructor_called is False
+
+
+def _clone_function_with_captured_builtins(function, captured_builtins):
+    from types import FunctionType
+
+    globals_state = function.__globals__
+    missing = object()
+    previous = globals_state.get("__builtins__", missing)
+    globals_state["__builtins__"] = captured_builtins
+    try:
+        cloned = FunctionType(
+            function.__code__,
+            globals_state,
+            function.__name__,
+            function.__defaults__,
+            function.__closure__,
+        )
+    finally:
+        if previous is missing:
+            del globals_state["__builtins__"]
+        else:
+            globals_state["__builtins__"] = previous
+    cloned.__kwdefaults__ = (
+        None if function.__kwdefaults__ is None else dict(function.__kwdefaults__)
+    )
+    return cloned
+
+
+def test_bind_rejects_dual_alias_encode_with_detached_captured_builtins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    original = vars(authority.ByteTokenizer)["encode"]
+    assert type(original) is type(lambda: None)
+    canonical_builtins = original.__builtins__
+    assert isinstance(canonical_builtins, dict)
+    divergent_builtins = dict(canonical_builtins)
+    divergent_builtins["list"] = lambda _value: [999]
+    replacement_encode = _clone_function_with_captured_builtins(
+        original,
+        divergent_builtins,
+    )
+    assert replacement_encode.__code__ is original.__code__
+    assert replacement_encode.__globals__ is original.__globals__
+    assert replacement_encode.__builtins__ is divergent_builtins
+
+    namespace = _replacement_tokenizer_namespace()
+    namespace["encode"] = replacement_encode
+    replacement = type("ByteTokenizer", (object,), namespace)
+    monkeypatch.setattr(authority, "ByteTokenizer", replacement)
+    monkeypatch.setattr(byte_module, "ByteTokenizer", replacement)
+
+    assert replacement().identity == authority._CanonicalTokenizerIdentity(
+        version="s0-byte-v1",
+        config_sha256=(
+            "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1"
+        ),
+        vocab_sha256=(
+            "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571"
+        ),
+        vocab_size=256,
+        normalization="none",
+        encoding="utf-8",
+        special_tokens={},
+    )
+    assert replacement().encode("A") == [999]
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: encode builtins",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+
+@pytest.mark.parametrize(
+    "helper_name",
+    [
+        "canonical_config_json",
+        "tokenizer_config_hash",
+        "canonical_vocab_json",
+        "vocab_hash",
+    ],
+)
+def test_bind_rejects_byte_helper_with_detached_captured_builtins(
+    monkeypatch: pytest.MonkeyPatch,
+    helper_name: str,
+) -> None:
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    original = getattr(byte_module, helper_name)
+    detached_builtins = dict(original.__builtins__)
+    replacement = _clone_function_with_captured_builtins(
+        original,
+        detached_builtins,
+    )
+    assert replacement.__code__ is original.__code__
+    assert replacement.__globals__ is original.__globals__
+    assert replacement.__builtins__ is detached_builtins
+    monkeypatch.setattr(byte_module, helper_name, replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"runtime module drift: {helper_name} builtins",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
