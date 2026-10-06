@@ -20,7 +20,6 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
-    capture_rng_state,
     _apply_model_weights,
     _decode_verified_state,
     _preflight_optimizer_state,
@@ -28,6 +27,7 @@ from .core import (
     _prepare_model_weights,
     _semantic_stateful_probe,
     assert_identity,
+    capture_rng_state,
     prepare_checkpoint_load,
     restore_rng_state,
     save_checkpoint,
@@ -559,7 +559,7 @@ def _preflight_trainer_state(
                             bool(torch_state["deterministic_algorithms"]),
                             warn_only=warn_only,
                         )
-                    except BaseException as mode_exc:
+                    except BaseException as mode_exc:  # noqa: BLE001
                         rng_exc.add_note(
                             "PyTorch preflight-mode rollback also failed: "
                             f"{mode_exc!r}"
@@ -695,7 +695,7 @@ def _restore_initial_torch_policy(
         torch.use_deterministic_algorithms(
             initial_policy[0], warn_only=initial_policy[1],
         )
-    except BaseException as mode_exc:
+    except BaseException as mode_exc:  # noqa: BLE001
         exc.add_note(f"PyTorch deterministic-mode rollback also failed: {mode_exc!r}")
 
 
@@ -707,7 +707,7 @@ def _restore_ambient_rng_after_failed_apply(
     try:
         _core.restore_rng_state(ambient)
         return
-    except BaseException as rng_exc:
+    except BaseException as rng_exc:  # noqa: BLE001
         exc.add_note(f"Ambient RNG rollback also failed: {rng_exc!r}")
 
     # core.restore_rng_state stops at its first failed setter. Retry each
@@ -716,12 +716,12 @@ def _restore_ambient_rng_after_failed_apply(
     if "python" in ambient:
         try:
             _core.random.setstate(ambient["python"])
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(f"Python RNG rollback also failed: {rollback_exc!r}")
     if "numpy" in ambient:
         try:
             _core.np.random.set_state(ambient["numpy"])
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(f"NumPy RNG rollback also failed: {rollback_exc!r}")
 
     torch_state = ambient.get("torch")
@@ -729,18 +729,18 @@ def _restore_ambient_rng_after_failed_apply(
         return
     try:
         torch = importlib.import_module("torch")
-    except BaseException as rollback_exc:
+    except BaseException as rollback_exc:  # noqa: BLE001
         exc.add_note(f"PyTorch RNG rollback unavailable: {rollback_exc!r}")
         return
     if "cpu" in torch_state:
         try:
             torch.set_rng_state(torch_state["cpu"].cpu())
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(f"PyTorch CPU RNG rollback also failed: {rollback_exc!r}")
     for index, cuda_state in enumerate(torch_state.get("cuda", ())):
         try:
             torch.cuda.set_rng_state(cuda_state.cpu(), device=index)
-        except BaseException as rollback_exc:
+        except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(
                 f"PyTorch CUDA RNG rollback on device {index} also failed: "
                 f"{rollback_exc!r}"

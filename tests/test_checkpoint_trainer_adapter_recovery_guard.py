@@ -9,8 +9,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from twelve_six.checkpoint import CheckpointCompatibilityError, CheckpointIdentity
-from twelve_six.checkpoint import core, progress_trainer, trainer_adapter
+from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
+    CheckpointIdentity,
+    core,
+    progress_trainer,
+    trainer_adapter,
+)
 
 
 class Model:
@@ -617,12 +622,12 @@ def test_real_d02_trainer_refuses_training_after_failed_probe_rng_rollback(
 ) -> None:
     """An unrecoverable preflight RNG fault must poison the actual D02 runtime."""
 
+    from dataclasses import replace
+
     import torch
 
     from twelve_six.training.config import TrainerConfig
     from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
-
-    from dataclasses import replace
 
     checkpoint = tmp_path / "real-d02-rollback"
     ambient = core.capture_rng_state()
@@ -845,6 +850,7 @@ def test_real_d02_partial_final_rng_failure_poisons_and_preserves_torch_mode(
     from dataclasses import replace
 
     import torch
+
     from twelve_six.training.config import TrainerConfig
     from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
 

@@ -52,7 +52,7 @@ class _DetachedTensorModel(torch.nn.Module):
 
 
 class _NumpyStateModel:
-    def __init__(self, *, dtype: str, value: complex | float) -> None:
+    def __init__(self, *, dtype: str, value: complex) -> None:
         self.array = np.asarray([value, 1], dtype=np.dtype(dtype))
 
     def state_dict(self):
@@ -100,7 +100,7 @@ def test_detached_nonfinite_model_tensor_rejected_before_any_checkpoint_publicat
     ],
 )
 def test_nonfinite_numpy_model_state_rejected(
-    tmp_path: Path, dtype: str, value: complex | float,
+    tmp_path: Path, dtype: str, value: complex,
 ) -> None:
     model = _NumpyStateModel(dtype=dtype, value=value)
     target = tmp_path / "nonfinite-array"
