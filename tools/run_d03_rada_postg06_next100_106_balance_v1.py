@@ -748,6 +748,12 @@ def write_output_dir(path: Path, values: Mapping[str, Mapping[str, Any]]) -> Non
         allow_interrupted_temps=True,
         require_complete=False,
     )
+    if (path / "execution-receipt.json").exists():
+        _verify_output_directory(
+            path,
+            allow_interrupted_temps=False,
+            require_complete=True,
+        )
 
     # Commit child artifacts first and the bound receipt last. This permits
     # deterministic restart after an interrupted partial bundle without ever
