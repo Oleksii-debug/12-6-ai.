@@ -63,8 +63,13 @@ PYTHONPATH=src python tools/build_200m_feasibility_packet.py build \
 
 The build command requires `--external-identities`. A successful CLI build
 therefore always has an independently retained identity-map destination; stdout
-alone is not treated as sufficient retention. The identity map is published
-before the packet, so an identity-publication failure cannot expose a new packet.
+alone is not treated as sufficient retention. Both destinations are preflighted
+before publication. The identity map is published before the packet; if packet
+publication then fails in-process, the previous identity map is restored (or the
+new identity map is removed when none existed), so the previous packet/identity
+pair remains usable. Multi-file power-loss atomicity is not claimed; any crash
+window still fails closed because packet verification requires the independently
+retained identities to match.
 
 The build input must contain exactly:
 
