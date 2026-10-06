@@ -245,9 +245,7 @@ def _require_buildable_roadmap(roadmap: Any) -> None:
     except Exception as exc:
         raise FeasibilityPacketError("roadmap_contract_validation_failed") from exc
     if contract_errors:
-        raise FeasibilityPacketError(
-            "roadmap_contract_invalid:" + ",".join(sorted(set(contract_errors)))
-        )
+        raise FeasibilityPacketError("roadmap_contract_invalid")
     try:
         assessment = r01.assess_roadmap(roadmap)
     except Exception as exc:
