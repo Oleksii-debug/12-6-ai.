@@ -3111,6 +3111,11 @@ class Trainer:
                 Trainer._mark_failed(self, drift_reason)
             raise
 
+        drift_reason = _restore_preapply_drift_reason("loader lookup")
+        if drift_reason is not None:
+            Trainer._mark_failed(self, drift_reason)
+            raise TrainingStateInvalidError(drift_reason)
+
         if not callable(optimizer_loader):
             raise TrainingStateInvalidError(
                 "trainer optimizer must provide load_state_dict()"
@@ -3127,10 +3132,6 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "trainer gradient scaler must provide load_state_dict()"
             )
-        drift_reason = _restore_preapply_drift_reason("loader lookup")
-        if drift_reason is not None:
-            Trainer._mark_failed(self, drift_reason)
-            raise TrainingStateInvalidError(drift_reason)
 
         checkpoint_counters = (
             state.micro_step,
