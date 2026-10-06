@@ -1189,6 +1189,7 @@ def test_bind_rejects_shared_builtin_member_drift_with_same_captured_mapping(
     ("dependency_name", "replacement"),
     [
         ("json.dumps", lambda *_args, **_kwargs: "{}"),
+        ("json.loads", lambda *_args, **_kwargs: {}),
         ("hashlib.sha1", lambda *_args, **_kwargs: object()),
         ("hashlib.sha256", lambda *_args, **_kwargs: object()),
     ],
@@ -1840,3 +1841,35 @@ def test_bind_source_read_bypasses_path_instance_dispatch(
         report["canonical_byte_tokenizer_git_blob_sha1"]
         == authority.CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1
     )
+
+
+def test_bind_upstreams_deep_detaches_nested_selection_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = {
+        "nested": {
+            "family_source_bytes": {"ua": 100},
+        },
+    }
+    application = {"sentinel": "application"}
+
+    def verify_selection(snapshot, **_kwargs):
+        selection["nested"]["family_source_bytes"]["ua"] = 999
+        assert snapshot["nested"]["family_source_bytes"]["ua"] == 100
+        return SHA["expected_selection_identity_sha256"], {}
+
+    def verify_application(_snapshot, selection_snapshot, _totals, **_kwargs):
+        assert selection_snapshot["nested"]["family_source_bytes"]["ua"] == 100
+        return SHA["expected_application_identity_sha256"]
+
+    monkeypatch.setattr(authority, "_verify_selection", verify_selection)
+    monkeypatch.setattr(
+        authority,
+        "_verify_split_application",
+        verify_application,
+    )
+    assert authority._bind_upstreams(selection, application, **SHA) == (
+        SHA["expected_selection_identity_sha256"],
+        SHA["expected_application_identity_sha256"],
+    )
+    assert selection["nested"]["family_source_bytes"]["ua"] == 999
