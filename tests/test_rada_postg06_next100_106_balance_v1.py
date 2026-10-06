@@ -735,3 +735,72 @@ def test_compare_outputs_rejects_cross_binding_policy_drift(
     ):
         target.compare_outputs(a, b, tmp_path / "proof-policy.json")
 
+def test_compare_outputs_enforces_checkout_provenance_before_proof_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    a = tmp_path / "a-provenance"
+    b = tmp_path / "b-provenance"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        target,
+        "verify_dependency_blobs",
+        lambda: calls.append("dependencies"),
+    )
+
+    def reject_head(value: str) -> str:
+        calls.append(f"head:{value}")
+        raise target.RadaPostG06BalanceError("execution HEAD drift")
+
+    monkeypatch.setattr(target, "verify_source_head", reject_head)
+    proof = tmp_path / "proof-provenance.json"
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="execution HEAD drift",
+    ):
+        target.compare_outputs(
+            a,
+            b,
+            proof,
+            enforce_checkout_provenance=True,
+        )
+
+    assert calls == ["dependencies", "head:" + "c" * 40]
+    assert not proof.exists()
+
+
+def test_compare_outputs_accepts_bound_checkout_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    a = tmp_path / "a-provenance-ok"
+    b = tmp_path / "b-provenance-ok"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        target,
+        "verify_dependency_blobs",
+        lambda: calls.append("dependencies"),
+    )
+
+    def accept_head(value: str) -> str:
+        calls.append(f"head:{value}")
+        return value
+
+    monkeypatch.setattr(target, "verify_source_head", accept_head)
+    proof_path = tmp_path / "proof-provenance-ok.json"
+    proof = target.compare_outputs(
+        a,
+        b,
+        proof_path,
+        enforce_checkout_provenance=True,
+    )
+
+    assert calls == ["dependencies", "head:" + "c" * 40]
+    assert proof_path.exists()
+    assert proof["execution_head_sha"] == "c" * 40
+
