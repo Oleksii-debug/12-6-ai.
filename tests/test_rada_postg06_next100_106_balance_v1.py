@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -868,4 +869,34 @@ def test_write_output_dir_rejects_receipt_before_children(tmp_path: Path) -> Non
     assert sorted(path.name for path in output.iterdir()) == [
         "execution-receipt.json"
     ]
+
+def test_git_helper_maps_called_process_error_to_domain_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*args, **kwargs):
+        raise subprocess.CalledProcessError(128, ["git", "rev-parse"])
+
+    monkeypatch.setattr(target.subprocess, "check_output", fail)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="git rev-parse failed",
+    ):
+        target._git("rev-parse", "HEAD")
+
+
+def test_verify_source_head_maps_git_launch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = "c" * 40
+    monkeypatch.setattr(target, "_git", lambda *args: expected)
+
+    def fail_run(*args, **kwargs):
+        raise FileNotFoundError("git unavailable")
+
+    monkeypatch.setattr(target.subprocess, "run", fail_run)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="git merge-base failed",
+    ):
+        target.verify_source_head(expected)
 
