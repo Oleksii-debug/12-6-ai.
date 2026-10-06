@@ -145,7 +145,7 @@ def test_selected_context_rejects_resealed_materializer_head_substitution(
 
 
 def test_materialize_fragment_accepts_exact_source_payload() -> None:
-    payload = "Привіт".encode("utf-8")
+    payload = "Привіт".encode()
     selected = {
         "record-a": authority_row(
             record_id="record-a",
