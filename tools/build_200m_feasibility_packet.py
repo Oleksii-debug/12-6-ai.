@@ -162,19 +162,24 @@ def _render_json(value: Any) -> bytes:
     return (rendered + "\n").encode("utf-8")
 
 
+def _preflight_json_destination(path: Path, *, label: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError:
+        raise ValueError(f"{label}_write_failed") from None
+    if not stat.S_ISREG(existing.st_mode):
+        raise ValueError(f"{label}_destination_not_regular_file")
+
+
 def _write_json(path: Path, value: Any, *, label: str) -> None:
     payload = _render_json(value)
     temporary: Path | None = None
     descriptor = -1
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            existing = path.lstat()
-        except FileNotFoundError:
-            existing = None
-        if existing is not None and not stat.S_ISREG(existing.st_mode):
-            raise ValueError(f"{label}_destination_not_regular_file")
-
+        _preflight_json_destination(path, label=label)
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{path.name}.",
             suffix=".tmp",
@@ -203,6 +208,106 @@ def _write_json(path: Path, value: Any, *, label: str) -> None:
                 pass
 
 
+def _backup_existing_destination(path: Path, *, label: str) -> Path | None:
+    try:
+        existing = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        raise ValueError(f"{label}_backup_failed") from None
+    if not stat.S_ISREG(existing.st_mode):
+        raise ValueError(f"{label}_destination_not_regular_file")
+
+    descriptor = -1
+    backup: Path | None = None
+    try:
+        descriptor, backup_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".rollback",
+            dir=path.parent,
+        )
+        os.close(descriptor)
+        descriptor = -1
+        backup = Path(backup_name)
+        os.replace(path, backup)
+        return backup
+    except OSError:
+        if backup is not None:
+            try:
+                backup.unlink()
+            except OSError:
+                pass
+        raise ValueError(f"{label}_backup_failed") from None
+    finally:
+        if descriptor != -1:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _restore_destination(
+    path: Path,
+    backup: Path | None,
+    *,
+    label: str,
+) -> None:
+    try:
+        if backup is None:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        else:
+            os.replace(backup, path)
+    except OSError:
+        raise ValueError(f"{label}_rollback_failed") from None
+
+
+def _discard_backup(backup: Path | None) -> None:
+    if backup is None:
+        return
+    try:
+        backup.unlink()
+    except OSError:
+        pass
+
+
+def _publish_build_outputs(
+    *,
+    packet_path: Path,
+    packet: Any,
+    external_identities_path: Path,
+    external_identities: Any,
+) -> None:
+    _preflight_json_destination(
+        external_identities_path,
+        label="external_identities",
+    )
+    _preflight_json_destination(packet_path, label="output")
+    backup = _backup_existing_destination(
+        external_identities_path,
+        label="external_identities",
+    )
+    published = False
+    try:
+        _write_json(
+            external_identities_path,
+            external_identities,
+            label="external_identities",
+        )
+        _write_json(packet_path, packet, label="output")
+        published = True
+    finally:
+        if not published:
+            _restore_destination(
+                external_identities_path,
+                backup,
+                label="external_identities",
+            )
+        _discard_backup(backup)
+
+
 def _build(args: argparse.Namespace) -> int:
     _require_distinct_paths(
         [
@@ -227,12 +332,12 @@ def _build(args: argparse.Namespace) -> int:
         decision=request["decision"],
     )
     retained_identities = retained_identities_for_built_packet(packet)
-    _write_json(
-        args.external_identities,
-        retained_identities,
-        label="external_identities",
+    _publish_build_outputs(
+        packet_path=args.output,
+        packet=packet,
+        external_identities_path=args.external_identities,
+        external_identities=retained_identities,
     )
-    _write_json(args.output, packet, label="output")
     print(packet["packet_sha256"])
     return 0
 
