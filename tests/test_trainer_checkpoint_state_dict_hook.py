@@ -327,6 +327,44 @@ def test_checkpoint_preflight_cannot_drift_config_contract(
     )
 
 
+@pytest.mark.parametrize("nested", [False, True])
+def test_direct_state_export_requires_training_mode_and_allows_retry(
+    preserve_process_state: Any,
+    nested: bool,
+) -> None:
+    del preserve_process_state
+    if nested:
+        model = torch.nn.Sequential(
+            torch.nn.Linear(3, 3),
+            torch.nn.Dropout(p=0.1),
+        )
+        model[1].eval()
+    else:
+        model = _Logits()
+        model.eval()
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    if nested:
+        model[1].eval()
+    else:
+        model.eval()
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint model training mode must remain enabled",
+    ):
+        trainer.state_dict()
+
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+    model.train()
+    snapshot = trainer.state_dict()
+    assert (snapshot.micro_step, snapshot.optimizer_step, snapshot.tokens_seen) == (0, 0, 0)
+
+
 def test_ordinary_state_export_still_preserves_named_adamw_resume(
     preserve_process_state: Any,
 ) -> None:

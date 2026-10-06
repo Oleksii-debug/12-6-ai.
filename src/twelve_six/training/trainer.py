@@ -170,6 +170,7 @@ class Trainer:
         "_canonical_lambda_lr_live_state",
         "_optimizer_live_fingerprint",
         "_model_export_fingerprint",
+        "_require_model_training_mode",
         "_checkpoint_auxiliary_fingerprint",
         "_require_exported_model_matches_live",
         "_require_exported_scheduler_matches_live",
@@ -1311,6 +1312,7 @@ class Trainer:
         # A normal mid-accumulation checkpoint attempt must remain retryable:
         # its gradients are legitimately pending and no state was exported.
         self.assert_accumulation_boundary()
+        Trainer._require_model_training_mode(self)
         expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
         if self.micro_step != expected_micro_steps:
             raise RuntimeError(
@@ -1546,6 +1548,67 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     f"checkpoint model export tensor {name!r} byte size differs"
                 )
+
+    def _require_model_training_mode(self) -> None:
+        """Require every durable model module to remain in training mode."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        model = trainer_attrs.get("model")
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is not a torch module"
+            )
+
+        seen_modules: set[int] = set()
+        active_modules: set[int] = set()
+
+        def walk(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            if module_id in active_modules:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module graph contains a cycle"
+                )
+            if module_id in seen_modules:
+                return
+            active_modules.add(module_id)
+            seen_modules.add(module_id)
+            try:
+                attrs = Trainer._raw_instance_dict(
+                    module,
+                    nn.Module,
+                    label="model module",
+                )
+                if attrs.get("training") is not True:
+                    label = prefix or "<root>"
+                    raise TrainingStateInvalidError(
+                        "checkpoint model training mode must remain enabled: "
+                        f"{label}"
+                    )
+                modules = attrs.get("_modules")
+                if type(modules) is not dict:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model child registry is not canonical"
+                    )
+                for name, child in modules.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model child-module name is not canonical"
+                        )
+                    if child is None:
+                        continue
+                    if not isinstance(child, nn.Module):
+                        raise TrainingStateInvalidError(
+                            "checkpoint model child is not a torch module"
+                        )
+                    walk(child, f"{prefix}.{name}" if prefix else name)
+            finally:
+                active_modules.remove(module_id)
+
+        walk(model, "")
 
     def _model_export_fingerprint(self) -> str:
         """Hash model weights and buffers without overridable model iterators."""
@@ -2654,6 +2717,7 @@ class Trainer:
         # checkpoint safety helper must remain first-party. Subclass/instance
         # shadows could otherwise forge the observer chain used below.
         Trainer._require_canonical_checkpoint_authorities(self)
+        Trainer._require_model_training_mode(self)
         export_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
         export_binding_fields = (
             "model",
@@ -2908,10 +2972,11 @@ class Trainer:
                 "trainer state restore requires a fresh trainer with no consumed "
                 "exposure or pending gradients; restore the verified model too"
             )
-        # Entry policy mismatch is externally repairable and has not consumed
-        # checkpoint payload or mutated component state. Reject it before any
-        # untrusted state access so the same clean trainer can be retried.
+        # Entry policy or model-mode mismatch is externally repairable and has
+        # not consumed checkpoint payload or mutated component state. Reject both
+        # before any untrusted state access so the same clean trainer can retry.
         Trainer._require_deterministic_policy(self)
+        Trainer._require_model_training_mode(self)
 
         expected_model = entry_attrs["model"]
         expected_optimizer = entry_attrs["optimizer"]

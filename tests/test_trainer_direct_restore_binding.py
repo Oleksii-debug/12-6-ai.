@@ -120,6 +120,29 @@ def _target_with_optimizer(
     return trainer, optimizer
 
 
+def test_direct_restore_requires_training_mode_and_allows_retry() -> None:
+    config = _config()
+    state = _clean_state(config)
+    model = nn.Sequential(nn.Linear(3, 3), nn.Dropout(p=0.1))
+    target = Trainer(model, config, scheduler=None)
+    model[1].eval()
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint model training mode must remain enabled",
+    ):
+        target.load_state_dict(state)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+    model.train()
+    target.load_state_dict(state)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
 def test_direct_restore_rejects_optimizer_rebind_during_loader_lookup() -> None:
     config = _config()
     state = _clean_state(config)
