@@ -934,6 +934,7 @@ def candidate_pair_indices_with_stats(
     work["unique_candidate_pairs"] = len(pairs)
     return pairs, work
 
+
 def candidate_pair_indices(
     v1: Any,
     fingerprints: Sequence[Mapping[str, Any]],
