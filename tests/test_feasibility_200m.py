@@ -155,6 +155,83 @@ class _DeepcopyTrapDict(dict):
         raise AssertionError("custom deepcopy callback executed")
 
 
+class _CoherentCandidateMutationOnDeepcopy(dict):
+    deepcopy_calls = 0
+
+    def __init__(self, value: dict, requirement_evidence: dict) -> None:
+        super().__init__(value)
+        self._requirement_evidence = requirement_evidence
+
+    def __deepcopy__(self, memo: dict[int, object]) -> dict:
+        del memo
+        type(self).deepcopy_calls += 1
+        self["parameter_count"] += 1
+        copied = dict(self)
+        self._requirement_evidence[
+            "candidate_architecture_and_parameter_count"
+        ]["evidence_sha256"] = canonical_sha256(copied)
+        return copied
+
+
+class _IterationTrapList(list):
+    iteration_calls = 0
+
+    def __iter__(self):
+        type(self).iteration_calls += 1
+        raise AssertionError("custom list iteration callback executed")
+
+
+def test_builder_blocks_coherent_deepcopy_mutation_before_callback() -> None:
+    refs = evidence()
+    original_evidence_sha = refs[
+        "candidate_architecture_and_parameter_count"
+    ]["evidence_sha256"]
+    trapped = _CoherentCandidateMutationOnDeepcopy(candidate(), refs)
+    _CoherentCandidateMutationOnDeepcopy.deepcopy_calls = 0
+
+    with pytest.raises(FeasibilityPacketError, match="candidate_not_plain_json"):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=trapped,
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=refs,
+            decision="GO",
+        )
+
+    assert _CoherentCandidateMutationOnDeepcopy.deepcopy_calls == 0
+    assert trapped["parameter_count"] == 203_000_000
+    assert (
+        refs["candidate_architecture_and_parameter_count"]["evidence_sha256"]
+        == original_evidence_sha
+    )
+
+
+def test_builder_rejects_nested_list_subclass_before_iteration() -> None:
+    roadmap_value = roadmap()
+    roadmap_value["scale_route"] = _IterationTrapList(
+        roadmap_value["scale_route"]
+    )
+    _IterationTrapList.iteration_calls = 0
+
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="roadmap_snapshot_not_plain_json",
+    ):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap_value,
+            source_git_sha=GIT_A,
+            candidate=candidate(),
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=evidence(),
+            decision="GO",
+        )
+
+    assert _IterationTrapList.iteration_calls == 0
+
+
 def test_builder_never_executes_candidate_deepcopy_callback() -> None:
     trapped = _DeepcopyTrapDict(candidate())
     _DeepcopyTrapDict.deepcopy_calls = 0
