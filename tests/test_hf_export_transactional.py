@@ -2682,6 +2682,94 @@ def test_hf_verifier_streams_weights_once_after_metadata_preflight(
     assert streamed == [hf_export.EXPORTED_WEIGHTS_NAME]
 
 
+def test_hf_verifier_rejects_metadata_change_during_weight_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(29.8125), identity=identity("s"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    real_stream = hf_export._stream_regular_sha256
+
+    def stream_then_mutate_metadata(root: Path, name: str):
+        result = real_stream(root, name)
+        (root / hf_export.EXPORTED_CONFIG_NAME).write_bytes(
+            b'{"model_type":"drifted_after_weight_stream"}\n'
+        )
+        return result
+
+    monkeypatch.setattr(
+        hf_export,
+        "_stream_regular_sha256",
+        stream_then_mutate_metadata,
+    )
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export metadata changed while verifying weights",
+    ):
+        verify_hf_directory(output)
+
+
+def test_hf_verifier_poststream_snapshot_rereads_only_bounded_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(29.84375), identity=identity("s"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    real_read = hf_export._read_regular_bytes
+    real_stream = hf_export._stream_regular_sha256
+    observed_limits: list[tuple[str, int | None]] = []
+    streamed: list[str] = []
+
+    def observe_read(
+        root: Path,
+        name: str,
+        *,
+        max_bytes: int | None = None,
+    ):
+        observed_limits.append((name, max_bytes))
+        return real_read(root, name, max_bytes=max_bytes)
+
+    def observe_stream(root: Path, name: str):
+        streamed.append(name)
+        return real_stream(root, name)
+
+    monkeypatch.setattr(hf_export, "_read_regular_bytes", observe_read)
+    monkeypatch.setattr(hf_export, "_stream_regular_sha256", observe_stream)
+
+    verify_hf_directory(output)
+
+    assert streamed == [hf_export.EXPORTED_WEIGHTS_NAME]
+    assert all(
+        name != hf_export.EXPORTED_WEIGHTS_NAME
+        for name, _max_bytes in observed_limits
+    )
+    assert observed_limits.count(
+        (hf_export.EXPORT_CHECKSUM_NAME, hf_export._MAX_EXPORT_CHECKSUM_BYTES)
+    ) == 2
+    for name in (
+        hf_export.EXPORTED_CONFIG_NAME,
+        hf_export.EXPORTED_SOURCE_MANIFEST_NAME,
+        hf_export.PARITY_REQUEST_NAME,
+        hf_export.EXPORT_ATTESTATION_NAME,
+    ):
+        assert observed_limits.count(
+            (name, hf_export._MAX_EXPORT_METADATA_BYTES)
+        ) == 2
+
+
 def test_hf_verifier_rejects_root_replacement_before_weight_stream(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

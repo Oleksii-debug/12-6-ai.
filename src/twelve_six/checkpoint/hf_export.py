@@ -742,6 +742,12 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         raise CheckpointIntegrityError(
             "exported model.safetensors differs from canonical byte length"
         )
+
+    observed_payloads, observed_root_identity = _read_export_snapshot(root)
+    if observed_root_identity != root_identity or observed_payloads != payloads:
+        raise CheckpointIntegrityError(
+            "HF-style export metadata changed while verifying weights"
+        )
     return attestation
 
 
