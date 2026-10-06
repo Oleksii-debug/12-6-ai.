@@ -1,5 +1,6 @@
 name: D05 preapply primary preservation G8-169b
 
+# Qualification-only carrier; exact source remains immutable.
 on:
   pull_request:
     branches:
