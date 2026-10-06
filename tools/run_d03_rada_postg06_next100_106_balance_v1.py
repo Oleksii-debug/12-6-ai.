@@ -1249,6 +1249,7 @@ def compare_outputs(
         "byte_identical_outputs": True,
         "output_file_sha256": hashes,
         "receipt_identity_sha256": receipt_identity,
+        "post_g06_two_clean_proof_identity_sha256": post_g06_two_clean_id,
         "next100_input_identity_sha256": next100_identity,
         "balance_result_identity_sha256": receipt[
             "balance_result_identity_sha256"
