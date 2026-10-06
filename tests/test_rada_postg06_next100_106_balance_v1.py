@@ -517,7 +517,12 @@ def test_verify_module_provenance_missing_file_fails_closed(
     ):
         target.verify_module_provenance(MissingModule(), "canonical.py")
 
-def _write_two_clean_fixture(output: Path, *, zero_credit_override: dict | None = None) -> None:
+
+def _write_two_clean_fixture(
+    output: Path,
+    *,
+    zero_credit_override: dict | None = None,
+) -> None:
     output.mkdir()
     composition_core = {"schema": "synthetic-composition", "x": 1}
     composition = {
@@ -595,6 +600,8 @@ def _write_two_clean_fixture(output: Path, *, zero_credit_override: dict | None 
     }
     for name, value in payloads.items():
         (output / f"{name}.json").write_bytes(target.canonical_line(value))
+
+
 def test_compare_outputs_rejects_same_directory(tmp_path: Path) -> None:
     output = tmp_path / "same"
     _write_two_clean_fixture(output)
