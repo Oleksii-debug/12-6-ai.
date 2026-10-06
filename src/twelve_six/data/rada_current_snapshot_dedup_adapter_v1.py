@@ -165,10 +165,11 @@ def _validate_row(
         type(parent_id) is str and PARENT_ID_RE.fullmatch(parent_id) is not None,
         f"candidate parent_record_id invalid at row {line_number}",
     )
+    parent_basename = parent_id[len(PARENT_ID_PREFIX) :] + ".htm"
     _require(
         type(source_path) is str
         and SOURCE_PATH_RE.fullmatch(source_path) is not None
-        and source_path.endswith(parent_id),
+        and source_path == parent_basename,
         f"candidate source_path invalid at row {line_number}",
     )
     _require(
