@@ -396,7 +396,9 @@ class Trainer:
         cpu_state = torch.get_rng_state().detach().cpu().contiguous()
         emit(b"torch-cpu", cpu_state.numpy().tobytes())
 
-        cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []
+        cuda_initialized = torch.cuda.is_initialized()
+        emit(b"torch-cuda-initialized", b"1" if cuda_initialized else b"0")
+        cuda_states = torch.cuda.get_rng_state_all() if cuda_initialized else []
         emit(b"torch-cuda-count", str(len(cuda_states)).encode("ascii"))
         for index, state in enumerate(cuda_states):
             payload = state.detach().cpu().contiguous().numpy().tobytes()
