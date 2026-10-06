@@ -1937,3 +1937,136 @@ def test_builtin_expectation_table_cannot_be_retargeted_with_builtin() -> None:
     assert str(observed_error) == (
         "canonical byte tokenizer runtime dependency drift: builtins.list"
     )
+
+def test_expected_builtin_root_cannot_be_retargeted_with_live_builtin() -> None:
+    import builtins
+    from types import MappingProxyType
+
+    original_root = authority._EXPECTED_BYTE_RUNTIME_BUILTINS
+    original_list = builtins.list
+    replacement = lambda _value: [999]
+    replacement_root = MappingProxyType({
+        **original_root,
+        "list": replacement,
+    })
+    observed_error = None
+    authority._EXPECTED_BYTE_RUNTIME_BUILTINS = replacement_root
+    builtins.list = replacement
+    try:
+        try:
+            authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+        except BaseException as exc:
+            observed_error = exc
+    finally:
+        builtins.list = original_list
+        authority._EXPECTED_BYTE_RUNTIME_BUILTINS = original_root
+
+    assert type(observed_error) is authority.TokenizerDecisionError
+    assert str(observed_error) == (
+        "canonical tokenizer decision verifier root drift: "
+        "_EXPECTED_BYTE_RUNTIME_BUILTINS"
+    )
+
+
+def test_identity_observation_cannot_retarget_expected_root_transiently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import MappingProxyType
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    original_root = authority._EXPECTED_TOKENIZER_RUNTIME_IDENTITY
+    forged_values = {
+        "config_sha256": "f" * 64,
+        "vocab_sha256": "e" * 64,
+        "vocab_size": 999,
+        "normalization": "forged",
+        "encoding": "latin-1",
+    }
+    forged_root = MappingProxyType({
+        **original_root,
+        **forged_values,
+    })
+    original_getattribute = authority._CanonicalTokenizerIdentity.__getattribute__
+
+    def staged_getattribute(self, name: str):
+        value = original_getattribute(self, name)
+        if name == "version":
+            authority._EXPECTED_TOKENIZER_RUNTIME_IDENTITY = forged_root
+        if name in forged_values:
+            value = forged_values[name]
+            if name == "encoding":
+                authority._EXPECTED_TOKENIZER_RUNTIME_IDENTITY = original_root
+        return value
+
+    monkeypatch.setattr(
+        authority._CanonicalTokenizerIdentity,
+        "__getattribute__",
+        staged_getattribute,
+    )
+
+    observed_error = None
+    try:
+        try:
+            authority.bind_byte_baseline_decision(selection, application, **SHA)
+        except BaseException as exc:
+            observed_error = exc
+    finally:
+        authority._EXPECTED_TOKENIZER_RUNTIME_IDENTITY = original_root
+
+    assert type(observed_error) is authority.TokenizerDecisionError
+    assert str(observed_error) == (
+        "canonical byte tokenizer runtime identity drift: config_sha256"
+    )
+
+
+def test_bind_rejects_byte_module_alias_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(authority, "byte_module", object())
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime dependency drift: byte module",
+    ):
+        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+
+
+def test_bind_source_compile_bypasses_path_string_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    source_class = authority._EXPECTED_BYTE_SOURCE_PATH_CLASS
+
+    def forbidden_str(_self):
+        raise AssertionError("source path string dispatch must not run")
+
+    monkeypatch.setattr(source_class, "__str__", forbidden_str)
+    report = authority.bind_byte_baseline_decision(selection, application, **SHA)
+    assert (
+        report["canonical_byte_tokenizer_git_blob_sha1"]
+        == authority.CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1
+    )
+
