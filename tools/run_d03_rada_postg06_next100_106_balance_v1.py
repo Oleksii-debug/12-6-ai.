@@ -35,7 +35,7 @@ RECEIPT_SCHEMA = "12-6.d03-rada-postg06-next100-106-execution.v1"
 REPEAT_SCHEMA = "12-6.d03-rada-postg06-next100-106-two-clean.v1"
 DEDUP_WORKER_ID = "D03-RADA-POST-G06-GLOBAL-UNIQUE-COMPOSITION-V1"
 
-UPSTREAM_GLOBAL_DEDUP_WORKER_ID = "NEXT100-065F-CURRENT-MAIN-GLOBAL-DEDUP-V8"
+STACK_BASE_HEAD = "8d44631f06fe79905f48905d1e01d52b6dfa32c2"
 UPSTREAM_GLOBAL_DEDUP_HEAD = "a4663e87b010b190343caf1d42784f5dc7984601"
 UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID = (
     "a3f7e396cb13a6b107aaa0eb330edcbdc61bead6fa12eb68542ff5c3a3ed9301"
@@ -191,6 +191,17 @@ def _git(*args: str) -> str:
 def verify_source_head(source_git_sha: str) -> str:
     expected = require_git_sha(source_git_sha, "source_git_sha")
     require(_git("rev-parse", "HEAD") == expected, "execution HEAD drift")
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", STACK_BASE_HEAD, expected],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    require(
+        ancestry.returncode == 0,
+        "execution HEAD is outside the exact post-G06 balance-adapter stack",
+    )
     return expected
 
 
@@ -401,7 +412,7 @@ def build_composition_proof(
         "schema": COMPOSITION_SCHEMA,
         "execution_head_sha": source_git_sha,
         "upstream_global_dedup": {
-            "worker_id": UPSTREAM_GLOBAL_DEDUP_WORKER_ID,
+            "schema_version": "12-6.d03-rada-current-global-dedup-execution.v1",
             "head_sha": UPSTREAM_GLOBAL_DEDUP_HEAD,
             "evidence_identity_sha256": UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID,
             "survivor_authority_sha256": UPSTREAM_SURVIVOR_AUTHORITY_ID,
