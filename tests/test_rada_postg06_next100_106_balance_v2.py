@@ -1573,18 +1573,18 @@ def test_load_pinned_json_rejects_path_swap_after_open(
     authority.write_bytes(original)
     replacement.write_bytes(target.canonical_line({"schema": "fixture", "value": 2}))
 
-    actual_open = target.os.open
+    actual_read = target.os.read
     swapped = False
 
-    def open_then_swap(path: object, flags: int) -> int:
+    def read_then_swap(descriptor: int, count: int) -> bytes:
         nonlocal swapped
-        descriptor = actual_open(path, flags)
-        if not swapped and Path(path) == authority:
+        chunk = actual_read(descriptor, count)
+        if chunk and not swapped:
             replacement.replace(authority)
             swapped = True
-        return descriptor
+        return chunk
 
-    monkeypatch.setattr(target.os, "open", open_then_swap)
+    monkeypatch.setattr(target.os, "read", read_then_swap)
     with pytest.raises(
         target.RadaPostG06BalanceError,
         match="pathname changed during read",
