@@ -1730,6 +1730,7 @@ def test_write_immutable_bytes_cleans_matching_temp_after_published_final(
     assert output.read_bytes() == payload
     assert not temp.exists()
 
+
 def test_write_immutable_bytes_fsyncs_directory_after_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
