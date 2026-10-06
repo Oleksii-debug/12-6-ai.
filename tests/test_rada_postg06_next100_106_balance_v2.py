@@ -256,13 +256,17 @@ def test_post_g06_receipt_rejects_uniqueness_or_root_drift() -> None:
     bad_unique["evidence_identity_sha256"] = target.sha256(
         target.canonical(bad_core)
     )
+    bad_unique_vector = copy.deepcopy(vector)
+    bad_unique_vector["materialization_identity_sha256"] = bad_unique[
+        "evidence_identity_sha256"
+    ]
     with pytest.raises(
         target.RadaPostG06BalanceError,
         match="unique payload count",
     ):
         target.verify_post_g06_receipt(
             bad_unique,
-            vector,
+            bad_unique_vector,
             expected_evidence_identity_sha256=bad_unique[
                 "evidence_identity_sha256"
             ],
@@ -277,13 +281,17 @@ def test_post_g06_receipt_rejects_uniqueness_or_root_drift() -> None:
     bad_root["evidence_identity_sha256"] = target.sha256(
         target.canonical(bad_core)
     )
+    bad_root_vector = copy.deepcopy(vector)
+    bad_root_vector["materialization_identity_sha256"] = bad_root[
+        "evidence_identity_sha256"
+    ]
     with pytest.raises(
         target.RadaPostG06BalanceError,
         match="cross-bind drift",
     ):
         target.verify_post_g06_receipt(
             bad_root,
-            vector,
+            bad_root_vector,
             expected_evidence_identity_sha256=bad_root[
                 "evidence_identity_sha256"
             ],
@@ -809,9 +817,11 @@ def test_write_output_dir_commits_receipt_last(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     labels: list[str] = []
+    actual_write = target.write_immutable_bytes
 
     def capture(path: Path, payload: bytes, *, label: str) -> None:
         labels.append(label)
+        actual_write(path, payload, label=label)
 
     monkeypatch.setattr(target, "write_immutable_bytes", capture)
     values = {
