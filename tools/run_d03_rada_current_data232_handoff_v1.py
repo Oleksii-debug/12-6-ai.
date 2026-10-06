@@ -716,6 +716,8 @@ def execute_data232(args: argparse.Namespace) -> None:
         quarantine_cross_source_families=True,
     )
     reserved.verify_execution_evidence(evidence, report)
+    write_json(args.output_report, report)
+    write_json(args.output_execution_evidence, evidence)
     require(evidence.get("authorized_training_exposure") == 0, "DATA-232 widened training exposure")
     require(evidence.get("tokenizer_fit_authorized") is False, "DATA-232 widened tokenizer authority")
     require(evidence.get("training_executed") is False, "DATA-232 executed training")
@@ -797,6 +799,8 @@ def parser() -> argparse.ArgumentParser:
     execute.add_argument("--expected-reserved-binding-identity-sha256", required=True)
     execute.add_argument("--expected-selection-validation-identity-sha256", required=True)
     execute.add_argument("--expected-final-test-identity-sha256", required=True)
+    execute.add_argument("--output-report", type=Path, required=True)
+    execute.add_argument("--output-execution-evidence", type=Path, required=True)
     execute.add_argument("--output-result", type=Path, required=True)
     return result
 
