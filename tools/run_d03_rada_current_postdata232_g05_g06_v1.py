@@ -1111,6 +1111,9 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         privacy,
     )
     survivor_inventory = clean.materialize_record_inventory(final_survivors)
+    survivor_record_payload_jsonl_sha256 = sha256(
+        clean.canonical_record_bytes(final_survivors)
+    )
     final_bytes = survivor_inventory["total_payload_bytes"]
     require(
         type(final_bytes) is int and final_bytes > 0,
@@ -1192,6 +1195,9 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "completion_marker": "POST_G05_G06_EVIDENCE_WRITTEN_LAST",
         },
         "survivor_inventory": {
+            "record_payload_jsonl_sha256": (
+                survivor_record_payload_jsonl_sha256
+            ),
             "record_count": survivor_inventory["record_count"],
             "total_payload_bytes": survivor_inventory["total_payload_bytes"],
             "record_inventory_digest_sha256": survivor_inventory[
