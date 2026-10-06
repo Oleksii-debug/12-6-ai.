@@ -498,7 +498,7 @@ def _cleanup_temp_paths_strict(
         ) from first_failure
 
 
-def _materialize_verified_reference(
+def _materialize_verified_reference_owned(
     verified: Any,
     parent: Path,
     name: str,
@@ -527,7 +527,12 @@ def _materialize_verified_reference(
         raise
 
 
-def _materialize_hook_candidate(
+def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> Path:
+    reference, _ = _materialize_verified_reference_owned(verified, parent, name)
+    return reference
+
+
+def _materialize_hook_candidate_owned(
     *,
     parent: Path,
     name: str,
@@ -551,6 +556,24 @@ def _materialize_hook_candidate(
             primary_exc=exc,
         )
         raise
+
+
+def _materialize_hook_candidate(
+    *,
+    parent: Path,
+    name: str,
+    weights: bytes,
+    config: bytes,
+    source_manifest: bytes,
+) -> Path:
+    candidate, _ = _materialize_hook_candidate_owned(
+        parent=parent,
+        name=name,
+        weights=weights,
+        config=config,
+        source_manifest=source_manifest,
+    )
+    return candidate
 
 
 def _publish_directory_noreplace(staging: Path, destination: Path) -> None:
@@ -667,12 +690,12 @@ def export_hf_directory(
         candidate_identity: tuple[int, int] | None = None
         parity_primary_exc: BaseException | None = None
         try:
-            reference, reference_identity = _materialize_verified_reference(
+            reference, reference_identity = _materialize_verified_reference_owned(
                 verified,
                 destination.parent,
                 destination.name,
             )
-            candidate, candidate_identity = _materialize_hook_candidate(
+            candidate, candidate_identity = _materialize_hook_candidate_owned(
                 parent=destination.parent,
                 name=destination.name,
                 weights=source_weights_bytes,
