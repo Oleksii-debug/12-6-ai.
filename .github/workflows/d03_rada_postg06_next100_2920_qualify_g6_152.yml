@@ -1,4 +1,5 @@
 name: D03 Rada post-G06 NEXT100 2920 qualify G6 152
+# Synchronize-only carrier; production blobs are pinned below.
 
 on:
   pull_request:
