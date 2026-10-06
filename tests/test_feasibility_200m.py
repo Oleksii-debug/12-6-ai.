@@ -413,6 +413,40 @@ def test_cli_json_reader_accepts_small_regular_utf8_json(tmp_path: Path) -> None
     assert cli._read_json(path, label="input") == {"value": 1}
 
 
+def test_cli_json_reader_rejects_symlink_authority_input(tmp_path: Path) -> None:
+    cli = _load_cli()
+    target = tmp_path / "target.json"
+    alias = tmp_path / "alias.json"
+    target.write_text('{"value":1}', encoding="utf-8")
+    try:
+        alias.symlink_to(target)
+    except (NotImplementedError, OSError):
+        pytest.skip("symlink creation unavailable on this runner")
+
+    with pytest.raises(ValueError, match="input_symlink_not_allowed"):
+        cli._read_json(alias, label="input")
+
+
+def test_cli_json_reader_requests_nofollow_when_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "input.json"
+    path.write_text('{"value":1}', encoding="utf-8")
+    real_open = cli.os.open
+    observed: dict[str, int] = {}
+
+    def observing_open(open_path: Path, flags: int) -> int:
+        observed["flags"] = flags
+        return real_open(open_path, flags)
+
+    monkeypatch.setattr(cli.os, "open", observing_open)
+    assert cli._read_json(path, label="input") == {"value": 1}
+    if hasattr(cli.os, "O_NOFOLLOW"):
+        assert observed["flags"] & cli.os.O_NOFOLLOW
+
+
 def test_cli_json_reader_rejects_oversized_input_before_decode(tmp_path: Path) -> None:
     cli = _load_cli()
     path = tmp_path / "oversized.json"

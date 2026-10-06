@@ -93,10 +93,12 @@ verification primitive. Recursive/non-canonical programmatic inputs fail closed
 at the canonical-hash boundary.
 
 Build and verify also reject canonical path collisions between their authority
-inputs and outputs. Output publication renders before touching the destination,
-rejects non-regular existing destinations, fsyncs a same-directory temporary
-regular file, and uses atomic replacement. A publication failure therefore does
-not truncate the previous destination.
+inputs and outputs. Authority inputs must name regular files directly: symbolic
+links are rejected before open, and the reader requests no-follow semantics where
+the platform exposes them. Output publication renders before touching the
+destination, rejects non-regular existing destinations, fsyncs a same-directory
+temporary regular file, and uses atomic replacement. A publication failure
+therefore does not truncate the previous destination.
 
 ## Authority boundary
 

@@ -93,13 +93,16 @@ def _require_distinct_paths(named_paths: list[tuple[str, Path]]) -> None:
 
 def _read_json(path: Path, *, label: str) -> Any:
     try:
-        before = path.stat()
+        before = path.lstat()
+        if stat.S_ISLNK(before.st_mode):
+            raise ValueError(f"{label}_symlink_not_allowed")
         if not stat.S_ISREG(before.st_mode):
             raise ValueError(f"{label}_not_regular_file")
         flags = (
             os.O_RDONLY
             | getattr(os, "O_NONBLOCK", 0)
             | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
         )
         descriptor = os.open(path, flags)
         try:
