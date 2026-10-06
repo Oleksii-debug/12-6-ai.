@@ -2864,16 +2864,8 @@ class Trainer:
         # opportunity after checkpoint preflight or silently redirect/mutate the
         # target while its loader is being resolved.
         restore_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
-        binding_fields = (
-            "model",
-            "optimizer",
-            "scheduler",
-            "scaler",
-            "config",
-            "device",
-        )
         missing_bindings = [
-            name for name in binding_fields if name not in restore_attrs
+            name for name in required_bindings if name not in restore_attrs
         ]
         if missing_bindings:
             raise TrainingStateInvalidError(
@@ -2885,13 +2877,8 @@ class Trainer:
         expected_scaler = restore_attrs["scaler"]
         expected_config = restore_attrs["config"]
         expected_device = restore_attrs["device"]
-        policy_fields = (
-            "_canonical_default_schedule",
-            "_canonical_unscheduled_default_optimizer",
-            "_canonical_default_optimizer_options",
-        )
         missing_policies = [
-            name for name in policy_fields if name not in restore_attrs
+            name for name in required_policies if name not in restore_attrs
         ]
         if missing_policies:
             raise TrainingStateInvalidError(
@@ -2899,7 +2886,7 @@ class Trainer:
             )
         expected_policy_state = {
             name: copy.deepcopy(restore_attrs[name])
-            for name in policy_fields
+            for name in required_policies
         }
         expected_preapply_state = {
             name: copy.deepcopy(restore_attrs.get(name))
