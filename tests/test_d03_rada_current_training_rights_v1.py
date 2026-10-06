@@ -94,7 +94,7 @@ class RadaCurrentTrainingRightsTests(unittest.TestCase):
     def test_script_text_cannot_satisfy_license_marker(self) -> None:
         markers = self.config()["official_portal_recheck"]["required_semantics"]
         body = dict(markers)
-        license_marker = body.pop("default_license")
+        license_marker = body.pop("default_license_name")
         page = (" ".join(body.values()) + f"<script>{license_marker}</script>").encode(
             "utf-8"
         )
