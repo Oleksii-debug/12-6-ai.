@@ -1062,3 +1062,39 @@ def test_direct_restore_rejects_duck_typed_state_without_attribute_dispatch() ->
     assert target._update_incomplete is False
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert not target.optimizer.state
+
+
+def test_direct_restore_validates_owned_optimizer_snapshot_before_apply() -> None:
+    import copy
+    from dataclasses import replace
+
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+
+    class DriftingGroups(list):
+        def __deepcopy__(self, memo):
+            copied = copy.deepcopy(list(self), memo)
+            copied[0] = dict(copied[0])
+            copied[0]["lr"] = -1.0
+            return copied
+
+    optimizer_state = dict(state.optimizer)
+    optimizer_state["param_groups"] = DriftingGroups(state.optimizer["param_groups"])
+    hostile = replace(state, optimizer=optimizer_state)
+
+    with pytest.raises(
+        FloatingPointError,
+        match="optimizer learning rate must be finite and >= 0",
+    ):
+        target.load_state_dict(hostile)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert not target.optimizer.state
+    assert target.optimizer.param_groups[0]["lr"] == config.learning_rate
+
+    target.load_state_dict(state)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
