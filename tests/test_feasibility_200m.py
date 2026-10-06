@@ -24,9 +24,14 @@ ROADMAP_PATH = Path("configs/research/r01_accelerated_scaling_roadmap_v2.json")
 
 
 def authority(
-    *, git_sha: str = GIT_A, evidence_sha256: str = SHA_A, run: int = 1
+    *,
+    git_sha: str = GIT_A,
+    evidence_sha256: str = SHA_A,
+    run: int = 1,
+    attested_evidence_manifest_sha256: str | None = None,
+    audited_producer_authority_sha256: str | None = None,
 ) -> dict:
-    return {
+    result = {
         "repository": r01.REPOSITORY,
         "git_sha": git_sha,
         "evidence_sha256": evidence_sha256,
@@ -34,18 +39,37 @@ def authority(
         "workflow_conclusion": "success",
         "terminal": True,
     }
+    if attested_evidence_manifest_sha256 is not None:
+        result["attested_evidence_manifest_sha256"] = (
+            attested_evidence_manifest_sha256
+        )
+    if audited_producer_authority_sha256 is not None:
+        result["audited_producer_authority_sha256"] = (
+            audited_producer_authority_sha256
+        )
+    return result
 
 
 def roadmap() -> dict:
     value = json.loads(ROADMAP_PATH.read_text(encoding="utf-8"))
+    manifest_sha256 = "1" * 64
+    producer = authority(
+        run=11,
+        attested_evidence_manifest_sha256=manifest_sha256,
+    )
+    audit = authority(
+        git_sha=GIT_B,
+        evidence_sha256=SHA_B,
+        run=12,
+        attested_evidence_manifest_sha256=manifest_sha256,
+        audited_producer_authority_sha256=canonical_sha256(producer),
+    )
     value["evidence_state"]["learned_20m"] = {
         "status": "PASS",
-        "evidence_manifest_sha256": "1" * 64,
+        "evidence_manifest_sha256": manifest_sha256,
         "requirements_satisfied": sorted(r01.REQUIRED_TERMINAL_20M_EVIDENCE),
-        "terminal_authority": authority(run=11),
-        "independent_audit_authority": authority(
-            git_sha=GIT_B, evidence_sha256=SHA_B, run=12
-        ),
+        "terminal_authority": producer,
+        "independent_audit_authority": audit,
     }
     return value
 
@@ -138,6 +162,31 @@ def test_build_is_deterministic_and_external_validation_passes() -> None:
     assert first["roadmap_snapshot_sha256"] == canonical_sha256(roadmap())
     assert first["requirements_covered"] == sorted(r01.REQUIRED_200M_FEASIBILITY)
     assert validate(first) == []
+
+
+def test_learned_binding_consumes_canonical_crossbound_authorities() -> None:
+    packet = build()
+    binding = packet["learned_20m_binding"]
+    producer = binding["terminal_authority"]
+    audit = binding["independent_audit_authority"]
+    manifest_sha256 = binding["evidence_manifest_sha256"]
+
+    assert producer["attested_evidence_manifest_sha256"] == manifest_sha256
+    assert audit["attested_evidence_manifest_sha256"] == manifest_sha256
+    assert audit["audited_producer_authority_sha256"] == canonical_sha256(producer)
+    assert validate(packet) == []
+
+
+def test_tampered_learned_crossbinding_fails_against_roadmap_snapshot() -> None:
+    packet = build()
+    expected = expected_external_identities(packet)
+    packet["learned_20m_binding"]["independent_audit_authority"][
+        "audited_producer_authority_sha256"
+    ] = "0" * 64
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+
+    errors = validate(packet, expected=expected)
+    assert "learned_20m_binding_roadmap_mismatch" in errors
 
 
 def test_builder_requires_canonical_terminal_20m_transition() -> None:

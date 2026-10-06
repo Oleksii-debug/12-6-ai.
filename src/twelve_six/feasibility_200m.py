@@ -13,8 +13,9 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping
 from copy import deepcopy
-from typing import Any, Mapping
+from typing import Any
 
 from twelve_six import accelerated_scaling as r01
 
@@ -171,16 +172,16 @@ def _validate_measurements(measurements: Any) -> list[str]:
     if set(measurements) != set(r01.REQUIRED_MEASUREMENTS):
         return ["measurements_20m_fields_mismatch"]
 
-    for name in {
+    for name in (
         "tokens_per_second",
         "step_time_seconds",
         "checkpoint_save_seconds",
         "checkpoint_load_seconds",
         "estimated_wall_clock_to_target",
-    }:
+    ):
         if not _is_positive_finite_number(measurements.get(name)):
             errors.append(f"measurement_{name}_invalid")
-    for name in {"peak_ram_bytes", "checkpoint_size_bytes"}:
+    for name in ("peak_ram_bytes", "checkpoint_size_bytes"):
         if not _is_positive_int(measurements.get(name)):
             errors.append(f"measurement_{name}_invalid")
 
@@ -259,13 +260,12 @@ def _validate_requirement_evidence(value: Any) -> list[str]:
 def _validate_learned_20m_binding(value: Any) -> list[str]:
     if not isinstance(value, dict) or set(value) != _LEARNED_20M_BINDING_FIELDS:
         return ["learned_20m_binding_fields_mismatch"]
-    errors: list[str] = []
     if not _is_sha256(value.get("evidence_manifest_sha256")):
-        errors.append("learned_20m_evidence_manifest_sha256_invalid")
-    for field in ("terminal_authority", "independent_audit_authority"):
-        if not _valid_evidence_ref(value.get(field)):
-            errors.append(f"learned_20m_{field}_invalid")
-    return errors
+        return ["learned_20m_evidence_manifest_sha256_invalid"]
+    # Nested producer/audit authority schema and crossbinding belong to the
+    # canonical R01 roadmap validator. Build requires that validator to pass,
+    # and verify additionally requires this binding to equal that exact snapshot.
+    return []
 
 
 def build_200m_feasibility_packet(
