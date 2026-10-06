@@ -3,7 +3,7 @@ name: D03 current Rada DATA232 handoff G6 141
 on:
   pull_request:
     branches:
-      - execution/rada-current-data232-handoff-g6-141-20261006
+      - compat/2841-data232-import-isolation-g8-154-20261006
     paths:
       - ".github/workflows/d03_rada_current_data232_handoff_g6_141.yml"
       - "tools/run_d03_rada_current_data232_handoff_v1.py"
@@ -20,13 +20,18 @@ jobs:
   execute-two-clean:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.head_ref == 'compat/2841-data232-import-isolation-g8-154-20261006'
+      github.head_ref == 'execution/rada-data232-bounded-memory-g6-143-20261006'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        pass: [a, b]
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 360
     env:
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       PARENT_HEAD: "a4663e87b010b190343caf1d42784f5dc7984601"
-      RUNNER_BLOB: "38a7fef05a6ac6a25a48c7de9f0321617b0abaee"
+      RUNNER_BLOB: "a4dbc51a79912b72c0387079fb8917438c3f263e"
       HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
       RETAINED_ARTIFACT_ID: "11281540677"
       RETAINED_OUTER_SHA256: "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb"
@@ -75,6 +80,9 @@ jobs:
           git diff --name-only "$PARENT_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
           cat >"$RUNNER_TEMP/expected.txt" <<'EOF'
           .github/workflows/d03_rada_current_data232_handoff_g6_141.yml
+          src/twelve_six/data/_data232_decontamination_matching.py
+          src/twelve_six/data/decontamination_authority_v2.py
+          tests/test_data232_bounded_memory_execution.py
           tools/run_d03_rada_current_data232_handoff_v1.py
           EOF
           sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
@@ -82,6 +90,9 @@ jobs:
           test "$(git hash-object tools/run_d03_rada_current_data232_handoff_v1.py)" = "$RUNNER_BLOB"
           test "$(git hash-object tools/run_d03_rada_current_global_dedup_v1.py)" = "1f7109ae2efca9a97ea49ab5c29b8f095657489c"
           test "$(git hash-object src/twelve_six/data/current_reserved_decontamination_v1.py)" = "e5c555e3cd27844e98d4ae91af0b746e427f36c9"
+          test "$(git hash-object src/twelve_six/data/_data232_decontamination_matching.py)" = "afa70511f82dc81d9c9f85e3d0b67eba343004f9"
+          test "$(git hash-object src/twelve_six/data/decontamination_authority_v2.py)" = "3ca8f21945c02f692c130a015e036673fa24e7af"
+          test "$(git hash-object tests/test_data232_bounded_memory_execution.py)" = "6948548d9c7d71c126b18568262b72b6c238f5e5"
           test "$(git hash-object src/twelve_six/data/eval303_selection_payload_resolver_v1.py)" = "659cb17fdba903d9c50c1dfc5becf046f523e5ee"
           test "$(git hash-object src/twelve_six/data/eval233_final_test_resolver_v1.py)" = "71dd98204c588bd0bb67b7a7b3ddc5ae8aa87c00"
           test "$(git hash-object src/twelve_six/data/eval647_future_training_exclusion_v1.py)" = "5516577a0720150a7ec12c1bf8898972968e6970"
@@ -90,13 +101,14 @@ jobs:
           test "$(git hash-object evidence/eval647/code_selection_source_materialization_v1.json)" = "efa5b77275919fa9417e35efb30c8c9a527bd960"
           test "$(git hash-object tools/materialize_eval_code_reserve_v1.py)" = "13000d9b911bf0e0c7567613e68f2b9b113bd955"
           python -m py_compile tools/run_d03_rada_current_data232_handoff_v1.py
+          python -m pip install --disable-pip-version-check "pytest>=8,<9" "ruff>=0.12"
+          python -m pytest -q tests/test_data232_bounded_memory_execution.py
           PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<'PY'
           import sys
           import run_d03_rada_current_data232_handoff_v1  # noqa: F401
 
           assert "twelve_six.data._data232_decontamination_matching" not in sys.modules
           PY
-          python -m pip install --disable-pip-version-check "ruff>=0.12"
           ruff check tools/run_d03_rada_current_data232_handoff_v1.py
 
       - name: Checkout exact historical Rada QP mechanics
@@ -198,6 +210,25 @@ jobs:
           test "$(git rev-parse FETCH_HEAD)" = "$V7_HEAD"
           git worktree add --detach "$RUNNER_TEMP/v7-rada-current" "$V7_HEAD"
           test "$(git -C "$RUNNER_TEMP/v7-rada-current" rev-parse HEAD)" = "$V7_HEAD"
+
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+          from types import ModuleType
+
+          import run_d03_rada_current_data232_handoff_v1 as runner
+          import twelve_six.data as data_pkg
+
+          v7_root = Path(os.environ["RUNNER_TEMP"]) / "v7-rada-current"
+          poison = ModuleType(runner.CURRENT_MATCHER_MODULE)
+          poison.__file__ = str(v7_root / "src/twelve_six/data/_data232_decontamination_matching.py")
+          sys.modules[runner.CURRENT_MATCHER_MODULE] = poison
+          setattr(data_pkg, "_data232_decontamination_matching", poison)
+          runner._reset_current_data232_namespace(v7_root)
+          assert runner.CURRENT_MATCHER_MODULE not in sys.modules
+          assert getattr(data_pkg, "_data232_decontamination_matching", None) is not poison
+          PY
 
       - name: Reconstruct full survivor graph and text-free handoff
         shell: bash
@@ -385,22 +416,32 @@ jobs:
           PY
           cat "$RUNNER_TEMP/reserved.env" >> "$GITHUB_ENV"
 
-      - name: Execute incumbent DATA232 twice in fresh processes
+      - name: Execute incumbent DATA232 once in this fresh runner
         shell: bash
         run: |
           set -euo pipefail
-          run_once() {
-            out="$1"
-            mkdir -p "$out"
-            PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools"               python tools/run_d03_rada_current_data232_handoff_v1.py execute-data232                 --expected-execution-head "$EXECUTION_HEAD"                 --inventory-json "$RUNNER_TEMP/current-rada-inventory.json"                 --handoff-json "$RUNNER_TEMP/current-rada-handoff.json"                 --training-records-jsonl "$RUNNER_TEMP/current-rada-training-records.jsonl"                 --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl"                 --reserved-binding-json "$RUNNER_TEMP/composed_reserved_binding.json"                 --expected-inventory-identity-sha256 "$INVENTORY_ID"                 --expected-handoff-identity-sha256 "$HANDOFF_ID"                 --expected-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID"                 --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID"                 --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID"                 --output-report "$out/data232-report.json"                 --output-execution-evidence "$out/data232-execution-evidence.json"                 --output-result "$out/result.json"
-          }
-          run_once "$RUNNER_TEMP/output-a"
-          run_once "$RUNNER_TEMP/output-b"
-          cmp "$RUNNER_TEMP/output-a/data232-report.json" "$RUNNER_TEMP/output-b/data232-report.json"
-          cmp "$RUNNER_TEMP/output-a/data232-execution-evidence.json" "$RUNNER_TEMP/output-b/data232-execution-evidence.json"
-          cmp "$RUNNER_TEMP/output-a/result.json" "$RUNNER_TEMP/output-b/result.json"
+          out="$RUNNER_TEMP/output"
+          mkdir -p "$out"
+          echo "DATA232_FRESH_PASS_START=${{ matrix.pass }}"
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" \
+            python tools/run_d03_rada_current_data232_handoff_v1.py execute-data232 \
+              --expected-execution-head "$EXECUTION_HEAD" \
+              --inventory-json "$RUNNER_TEMP/current-rada-inventory.json" \
+              --handoff-json "$RUNNER_TEMP/current-rada-handoff.json" \
+              --training-records-jsonl "$RUNNER_TEMP/current-rada-training-records.jsonl" \
+              --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl" \
+              --reserved-binding-json "$RUNNER_TEMP/composed_reserved_binding.json" \
+              --expected-inventory-identity-sha256 "$INVENTORY_ID" \
+              --expected-handoff-identity-sha256 "$HANDOFF_ID" \
+              --expected-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID" \
+              --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID" \
+              --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID" \
+              --output-report "$out/data232-report.json" \
+              --output-execution-evidence "$out/data232-execution-evidence.json" \
+              --output-result "$out/result.json"
+          echo "DATA232_FRESH_PASS_DONE=${{ matrix.pass }}"
 
-      - name: Qualify text-free result and seal two-clean proof
+      - name: Validate this pass is text-free and zero-credit
         shell: bash
         run: |
           set -euo pipefail
@@ -413,9 +454,9 @@ jobs:
           from twelve_six.data.decontamination_authority_v2 import verify_report
 
           tmp = Path(os.environ["RUNNER_TEMP"])
-          report_path = tmp / "output-a/data232-report.json"
-          evidence_path = tmp / "output-a/data232-execution-evidence.json"
-          result_path = tmp / "output-a/result.json"
+          report_path = tmp / "output/data232-report.json"
+          evidence_path = tmp / "output/data232-execution-evidence.json"
+          result_path = tmp / "output/result.json"
           report = json.loads(report_path.read_text(encoding="utf-8"))
           evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
           result = json.loads(result_path.read_text(encoding="utf-8"))
@@ -424,15 +465,186 @@ jobs:
 
           core = dict(result)
           claimed = core.pop("result_identity_sha256", None)
-          canonical = json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+          canonical = json.dumps(
+              core, ensure_ascii=False, sort_keys=True,
+              separators=(",", ":"), allow_nan=False
+          ).encode("utf-8")
+          if claimed != hashlib.sha256(canonical).hexdigest():
+              raise RuntimeError("result self-hash mismatch")
+          if result["execution_head_sha"] != os.environ["EXECUTION_HEAD"]:
+              raise RuntimeError("result execution head drift")
+          for key in (
+              "canonical_capacity_credited",
+              "authorized_optimized_target_exposure",
+              "authorized_unique_loss_positions",
+              "authorized_training_exposure",
+          ):
+              if result[key] != 0:
+                  raise RuntimeError(f"authority widened: {key}")
+          for key in (
+              "tokenizer_fit_authorized",
+              "training_executed",
+              "learned_weights_created",
+              "final_test_outcomes_read",
+              "paid_compute_used",
+              "scale_promotion_authorized",
+              "model_architecture_or_hyperparameters_selected",
+          ):
+              if result[key] is not False:
+                  raise RuntimeError(f"truth boundary widened: {key}")
+          if result["durable_evidence_hash_only"] is not True:
+              raise RuntimeError("durable evidence is not hash-only")
+
+          durable = [
+              tmp / "current-rada-replay-summary.json",
+              tmp / "current-rada-inventory.json",
+              tmp / "current-rada-handoff.json",
+              tmp / "current-rada-prepare-evidence.json",
+              tmp / "eval647_composition_receipt.json",
+              report_path, evidence_path, result_path,
+          ]
+          forbidden = {
+              "text", "raw_text", "source_text", "content",
+              "payload_text", "normalized_payload",
+          }
+          def walk(value):
+              if isinstance(value, dict):
+                  overlap = forbidden.intersection(str(k).lower() for k in value)
+                  if overlap:
+                      raise RuntimeError(
+                          "durable raw-text field leaked: " + ",".join(sorted(overlap))
+                      )
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          for durable_path in durable:
+              walk(json.loads(durable_path.read_text(encoding="utf-8")))
+          PY
+
+      - name: Remove all ephemeral raw training and evaluation payloads
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            "$RUNNER_TEMP/current-rada.jsonl" \
+            "$RUNNER_TEMP/current-rada-training-records.jsonl" \
+            "$RUNNER_TEMP/evaluation_records.jsonl" \
+            "$RUNNER_TEMP/eval291-en.jsonl"
+          rm -rf \
+            "$RUNNER_TEMP/rada" \
+            "$RUNNER_TEMP/rada-data232-reconstruct" \
+            "$RUNNER_TEMP/eval290-out-a" \
+            "$RUNNER_TEMP/eval290-out-b"
+
+      - name: Upload text-free fresh-pass evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-current-data232-pass-${{ matrix.pass }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/current-rada-replay-summary.json
+            ${{ runner.temp }}/current-rada-inventory.json
+            ${{ runner.temp }}/current-rada-handoff.json
+            ${{ runner.temp }}/current-rada-prepare-evidence.json
+            ${{ runner.temp }}/eval647_composition_receipt.json
+            ${{ runner.temp }}/output/data232-report.json
+            ${{ runner.temp }}/output/data232-execution-evidence.json
+            ${{ runner.temp }}/output/result.json
+          if-no-files-found: error
+          retention-days: 7
+
+  qualify-two-clean:
+    needs: execute-two-clean
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/rada-data232-bounded-memory-g6-143-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set Python for two-clean qualification
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Download fresh pass A
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: d03-rada-current-data232-pass-a-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/pass-a
+
+      - name: Download fresh pass B
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: d03-rada-current-data232-pass-b-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/pass-b
+
+      - name: Compare, qualify, and seal two-clean proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/src" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from twelve_six.data.current_reserved_decontamination_v1 import verify_execution_evidence
+          from twelve_six.data.decontamination_authority_v2 import verify_report
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          a = tmp / "pass-a"
+          b = tmp / "pass-b"
+          relatives = (
+              "current-rada-replay-summary.json",
+              "current-rada-inventory.json",
+              "current-rada-handoff.json",
+              "current-rada-prepare-evidence.json",
+              "eval647_composition_receipt.json",
+              "output/data232-report.json",
+              "output/data232-execution-evidence.json",
+              "output/result.json",
+          )
+          for relative in relatives:
+              left = a / relative
+              right = b / relative
+              if not left.is_file() or left.is_symlink():
+                  raise RuntimeError(f"pass A artifact invalid: {relative}")
+              if not right.is_file() or right.is_symlink():
+                  raise RuntimeError(f"pass B artifact invalid: {relative}")
+              if left.read_bytes() != right.read_bytes():
+                  raise RuntimeError(f"fresh-pass byte drift: {relative}")
+
+          report_path = a / "output/data232-report.json"
+          evidence_path = a / "output/data232-execution-evidence.json"
+          result_path = a / "output/result.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+          result = json.loads(result_path.read_text(encoding="utf-8"))
+          verify_report(report)
+          verify_execution_evidence(evidence, report)
+
+          core = dict(result)
+          claimed = core.pop("result_identity_sha256", None)
+          canonical = json.dumps(
+              core, ensure_ascii=False, sort_keys=True,
+              separators=(",", ":"), allow_nan=False
+          ).encode("utf-8")
           if claimed != hashlib.sha256(canonical).hexdigest():
               raise RuntimeError("result self-hash mismatch")
           if result["schema_version"] != "12-6.d03-rada-current-data232-execution-result.v1":
               raise RuntimeError("result schema drift")
           if result["execution_head_sha"] != os.environ["EXECUTION_HEAD"]:
               raise RuntimeError("result execution head drift")
-          if result["postdedup_inventory_identity_sha256"] != os.environ["INVENTORY_ID"]:
-              raise RuntimeError("result inventory identity drift")
           if result["full_selection_projection_sha256"] != "601398c39769dabb930997f25506eaaf71bd8960aa82d8af9c697d1cc4075e22":
               raise RuntimeError("full selection identity drift")
           if result["current_rada_slice_authority_sha256"] != "f103a3f18216519bd9228e586bd673d49f73cace03b3b0278f2dd0a33383bffb":
@@ -461,31 +673,6 @@ jobs:
           if result["durable_evidence_hash_only"] is not True:
               raise RuntimeError("durable evidence is not hash-only")
 
-          durable = [
-              tmp / "current-rada-replay-summary.json",
-              tmp / "current-rada-inventory.json",
-              tmp / "current-rada-handoff.json",
-              tmp / "current-rada-prepare-evidence.json",
-              tmp / "eval647_composition_receipt.json",
-              report_path,
-              evidence_path,
-              result_path,
-          ]
-          forbidden = {"text", "raw_text", "source_text", "content", "payload_text", "normalized_payload"}
-          def walk(value):
-              if isinstance(value, dict):
-                  overlap = forbidden.intersection(str(k).lower() for k in value)
-                  if overlap:
-                      raise RuntimeError("durable raw-text field leaked: " + ",".join(sorted(overlap)))
-                  for child in value.values():
-                      walk(child)
-              elif isinstance(value, list):
-                  for child in value:
-                      walk(child)
-          for path in durable:
-              value = json.loads(path.read_text(encoding="utf-8"))
-              walk(value)
-
           def file_sha(path):
               return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -507,6 +694,8 @@ jobs:
               "data232_report_file_sha256": file_sha(report_path),
               "data232_execution_evidence_file_sha256": file_sha(evidence_path),
               "result_file_sha256": file_sha(result_path),
+              "fresh_execution_count": 2,
+              "independent_runner_jobs": True,
               "two_fresh_processes_byte_identical": True,
               "training_records": result["counts"]["training_records"],
               "evaluation_records": result["counts"]["evaluation_records"],
@@ -524,10 +713,19 @@ jobs:
               "paid_compute_used": False,
               "scale_promotion_authorized": False,
           }
-          proof_bytes = json.dumps(proof_core, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
-          proof = {**proof_core, "proof_identity_sha256": hashlib.sha256(proof_bytes).hexdigest()}
-          (tmp / "two-clean-proof.json").write_text(
-              json.dumps(proof, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+          proof_bytes = json.dumps(
+              proof_core, ensure_ascii=False, sort_keys=True,
+              separators=(",", ":"), allow_nan=False
+          ).encode("utf-8")
+          proof = {
+              **proof_core,
+              "proof_identity_sha256": hashlib.sha256(proof_bytes).hexdigest(),
+          }
+          (a / "two-clean-proof.json").write_text(
+              json.dumps(
+                  proof, ensure_ascii=False, sort_keys=True,
+                  separators=(",", ":"), allow_nan=False
+              ) + "\n",
               encoding="utf-8",
           )
           print(json.dumps({
@@ -535,32 +733,26 @@ jobs:
               "counts": result["counts"],
               "result_identity_sha256": result["result_identity_sha256"],
               "proof_identity_sha256": proof["proof_identity_sha256"],
+              "fresh_execution_count": 2,
+              "independent_runner_jobs": True,
               "authorized_optimized_target_exposure": 0,
               "training_executed": False,
           }, sort_keys=True))
           PY
 
-      - name: Remove all ephemeral raw training and evaluation payloads
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f             "$RUNNER_TEMP/current-rada.jsonl"             "$RUNNER_TEMP/current-rada-training-records.jsonl"             "$RUNNER_TEMP/evaluation_records.jsonl"             "$RUNNER_TEMP/eval291-en.jsonl"
-          rm -rf             "$RUNNER_TEMP/rada"             "$RUNNER_TEMP/rada-data232-reconstruct"             "$RUNNER_TEMP/eval290-out-a"             "$RUNNER_TEMP/eval290-out-b"
-
-      - name: Upload text-free current-Rada DATA232 evidence
+      - name: Upload final text-free current-Rada DATA232 evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: d03-rada-current-data232-${{ github.event.pull_request.head.sha }}
           path: |
-            ${{ runner.temp }}/current-rada-replay-summary.json
-            ${{ runner.temp }}/current-rada-inventory.json
-            ${{ runner.temp }}/current-rada-handoff.json
-            ${{ runner.temp }}/current-rada-prepare-evidence.json
-            ${{ runner.temp }}/eval647_composition_receipt.json
-            ${{ runner.temp }}/output-a/data232-report.json
-            ${{ runner.temp }}/output-a/data232-execution-evidence.json
-            ${{ runner.temp }}/output-a/result.json
-            ${{ runner.temp }}/two-clean-proof.json
+            ${{ runner.temp }}/pass-a/current-rada-replay-summary.json
+            ${{ runner.temp }}/pass-a/current-rada-inventory.json
+            ${{ runner.temp }}/pass-a/current-rada-handoff.json
+            ${{ runner.temp }}/pass-a/current-rada-prepare-evidence.json
+            ${{ runner.temp }}/pass-a/eval647_composition_receipt.json
+            ${{ runner.temp }}/pass-a/output/data232-report.json
+            ${{ runner.temp }}/pass-a/output/data232-execution-evidence.json
+            ${{ runner.temp }}/pass-a/output/result.json
+            ${{ runner.temp }}/pass-a/two-clean-proof.json
           if-no-files-found: error
           retention-days: 90

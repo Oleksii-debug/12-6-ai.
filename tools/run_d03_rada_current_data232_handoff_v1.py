@@ -29,6 +29,11 @@ import run_d03_rada_current_global_dedup_v1 as parent
 PARENT_EXECUTION_HEAD = "a4663e87b010b190343caf1d42784f5dc7984601"
 PARENT_RUNNER_BLOB = "1f7109ae2efca9a97ea49ab5c29b8f095657489c"
 CURRENT_RESERVED_BLOB = "e5c555e3cd27844e98d4ae91af0b746e427f36c9"
+CURRENT_MATCHER_MODULE = "twelve_six.data._data232_decontamination_matching"
+CURRENT_AUTHORITY_MODULE = "twelve_six.data.decontamination_authority_v2"
+CURRENT_RESERVED_MODULE = "twelve_six.data.current_reserved_decontamination_v1"
+CURRENT_MATCHER_BLOB = "afa70511f82dc81d9c9f85e3d0b67eba343004f9"
+CURRENT_AUTHORITY_BLOB = "3ca8f21945c02f692c130a015e036673fa24e7af"
 EVAL303_RESOLVER_BLOB = "659cb17fdba903d9c50c1dfc5becf046f523e5ee"
 EVAL233_RESOLVER_BLOB = "71dd98204c588bd0bb67b7a7b3ddc5ae8aa87c00"
 EVAL647_FUTURE_BLOB = "5516577a0720150a7ec12c1bf8898972968e6970"
@@ -204,6 +209,69 @@ def _load_module(path: Path, name: str) -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _reset_current_data232_namespace(v7_root: Path) -> None:
+    """Drop historical DATA-232 imports before activating the current matcher."""
+    import twelve_six.data as data_pkg
+
+    historical_data = (v7_root / "src" / "twelve_six" / "data").resolve(strict=True)
+    current_data = (ROOT / "src" / "twelve_six" / "data").resolve(strict=True)
+    package_paths = [Path(value).resolve(strict=True) for value in data_pkg.__path__]
+    require(historical_data not in package_paths, "historical V7 data package path leaked")
+    require(current_data in package_paths, "current DATA-232 package path missing")
+
+    for module_name in (
+        CURRENT_RESERVED_MODULE,
+        CURRENT_AUTHORITY_MODULE,
+        CURRENT_MATCHER_MODULE,
+    ):
+        module = sys.modules.get(module_name)
+        if module is None:
+            continue
+        raw_path = getattr(module, "__file__", None)
+        require(type(raw_path) is str and bool(raw_path), f"{module_name}: module path missing")
+        module_path = Path(raw_path).resolve(strict=True)
+        require(
+            module_path.is_relative_to(current_data)
+            or module_path.is_relative_to(historical_data),
+            f"{module_name}: unexpected module root",
+        )
+        sys.modules.pop(module_name, None)
+        attribute = module_name.rsplit(".", 1)[1]
+        if getattr(data_pkg, attribute, None) is module:
+            delattr(data_pkg, attribute)
+    importlib.invalidate_caches()
+
+
+def _verify_current_data232_namespace() -> None:
+    expected = {
+        CURRENT_MATCHER_MODULE: (
+            ROOT / "src/twelve_six/data/_data232_decontamination_matching.py",
+            CURRENT_MATCHER_BLOB,
+        ),
+        CURRENT_AUTHORITY_MODULE: (
+            ROOT / "src/twelve_six/data/decontamination_authority_v2.py",
+            CURRENT_AUTHORITY_BLOB,
+        ),
+        CURRENT_RESERVED_MODULE: (
+            ROOT / "src/twelve_six/data/current_reserved_decontamination_v1.py",
+            CURRENT_RESERVED_BLOB,
+        ),
+    }
+    for module_name, (expected_path, expected_blob) in expected.items():
+        module = sys.modules.get(module_name)
+        require(module is not None, f"{module_name}: current module not loaded")
+        raw_path = getattr(module, "__file__", None)
+        require(type(raw_path) is str and bool(raw_path), f"{module_name}: current path missing")
+        require(
+            Path(raw_path).resolve(strict=True) == expected_path.resolve(strict=True),
+            f"{module_name}: current module provenance drift",
+        )
+        require(
+            git("hash-object", str(expected_path)) == expected_blob,
+            f"{module_name}: current module blob drift",
+        )
 
 
 def replay_current_rada(args: argparse.Namespace) -> None:
@@ -578,10 +646,12 @@ def prepare(args: argparse.Namespace) -> None:
         )
     require(retained_declared == EXPECTED_SURVIVOR_DECLARED_BYTES, "retained declared bytes drift")
 
-    # Import the current DATA-232 adapter only after the historical matcher graph
-    # has been reconstructed. Importing it at module load preloads the current
-    # DATA-232 matcher and correctly trips the historical helper isolation guard.
+    # Historical graph reconstruction intentionally leaves exact V7 matcher modules
+    # cached in sys.modules. Reset only the DATA-232 namespace before current replay
+    # so current authority code cannot bind to historical matcher functions.
+    _reset_current_data232_namespace(args.v7_root)
     from twelve_six.data import current_reserved_decontamination_v1 as reserved
+    _verify_current_data232_namespace()
 
     inventory_core = {
         "schema_version": INVENTORY_SCHEMA,
