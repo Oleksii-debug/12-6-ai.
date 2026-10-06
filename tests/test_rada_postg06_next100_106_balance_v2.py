@@ -1485,3 +1485,72 @@ def test_compare_outputs_rejects_unknown_receipt_authority_field(
             b,
             tmp_path / "proof-extra-authority.json",
         )
+
+
+def test_compare_outputs_rejects_resealed_balance_summary_drift(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-summary-drift"
+    b = tmp_path / "b-summary-drift"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "execution-receipt.json"
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt["maximum_feasible_total_source_bytes"] = 999
+        receipt["receipt_identity_sha256"] = target.self_hash(
+            receipt,
+            "receipt_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(receipt))
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="balance summary mismatch",
+    ):
+        _compare_outputs(a, b, tmp_path / "proof-summary-drift.json")
+
+
+def test_compare_outputs_rejects_resealed_next_gate_drift(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-next-gate"
+    b = tmp_path / "b-next-gate"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "execution-receipt.json"
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt["next_scientific_gate"] = "CLUSTER_SAFE_SPLIT_AND_DETERMINISTIC_PACK"
+        receipt["receipt_identity_sha256"] = target.self_hash(
+            receipt,
+            "receipt_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(receipt))
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="next scientific gate drift",
+    ):
+        _compare_outputs(a, b, tmp_path / "proof-next-gate.json")
+
+
+def test_compare_outputs_rejects_resealed_execution_profile_drift(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-profile"
+    b = tmp_path / "b-profile"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "execution-receipt.json"
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt["execution_profile"] = "PAID"
+        receipt["receipt_identity_sha256"] = target.self_hash(
+            receipt,
+            "receipt_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(receipt))
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="execution receipt profile drift",
+    ):
+        _compare_outputs(a, b, tmp_path / "proof-profile.json")
