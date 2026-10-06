@@ -1728,3 +1728,81 @@ def test_verify_does_not_reread_upstreams_after_successful_binding(
         application,
         **SHA,
     )
+
+
+def test_bind_upstreams_reuses_one_detached_selection_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {"sentinel": "application"}
+    observed = {}
+
+    def verify_selection(snapshot, **_kwargs):
+        observed["selection"] = snapshot
+        for field in authority._UPSTREAM_IDENTITY_FIELDS:
+            selection[field] = "f" * 64
+        return SHA["expected_selection_identity_sha256"], {}
+
+    def verify_application(snapshot, selection_snapshot, _totals, **_kwargs):
+        assert snapshot == application
+        assert selection_snapshot is observed["selection"]
+        for field in authority._UPSTREAM_IDENTITY_FIELDS:
+            assert selection_snapshot[field] == SHA[f"expected_{field}"]
+        return SHA["expected_application_identity_sha256"]
+
+    monkeypatch.setattr(authority, "_verify_selection", verify_selection)
+    monkeypatch.setattr(
+        authority,
+        "_verify_split_application",
+        verify_application,
+    )
+    result = authority._bind_upstreams(selection, application, **SHA)
+    assert result == (
+        SHA["expected_selection_identity_sha256"],
+        SHA["expected_application_identity_sha256"],
+    )
+
+
+def test_verify_snapshots_stateful_report_before_semantic_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    canonical_result = (
+        SHA["expected_selection_identity_sha256"],
+        SHA["expected_application_identity_sha256"],
+    )
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: canonical_result,
+    )
+    report = authority.bind_byte_baseline_decision(selection, application, **SHA)
+    report["authorized_optimized_target_exposure"] = 1
+    report.pop("decision_identity_sha256")
+    report["decision_identity_sha256"] = authority.authority_sha256(report)
+
+    class StatefulReport(dict):
+        def get(self, key, default=None):
+            if key == "decision":
+                self["authorized_optimized_target_exposure"] = 0
+            elif key == "decision_identity_sha256":
+                result = super().get(key, default)
+                self["authorized_optimized_target_exposure"] = 1
+                return result
+            return super().get(key, default)
+
+    staged = StatefulReport(report)
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="cannot authorize exposure",
+    ):
+        authority.verify_byte_baseline_decision(
+            staged,
+            selection,
+            application,
+            **SHA,
+        )
+    assert staged["authorized_optimized_target_exposure"] == 1
