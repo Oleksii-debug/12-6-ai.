@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import importlib
 import importlib.util
 import json
 import subprocess
@@ -26,7 +27,6 @@ for location in (ROOT / "tools", ROOT / "src"):
 
 import run_d03_rada_current_global_dedup_v1 as parent
 
-from twelve_six.data import current_reserved_decontamination_v1 as reserved
 
 PARENT_EXECUTION_HEAD = "a4663e87b010b190343caf1d42784f5dc7984601"
 PARENT_RUNNER_BLOB = "1f7109ae2efca9a97ea49ab5c29b8f095657489c"
@@ -72,6 +72,11 @@ PIN_ID = "dcda0321145c03160cef435bc3d1ef5ac668c3415bc013750ed38cd2d891561e"
 EXPECTED_CURRENT_JSONL_SHA256 = parent.EXPECTED_CURRENT_JSONL_SHA256
 EXPECTED_CURRENT_JSONL_BYTES = parent.EXPECTED_CURRENT_JSONL_BYTES
 
+CURRENT_RESERVED_MODULE = "twelve_six.data.current_reserved_decontamination_v1"
+CURRENT_AUTHORITY_MODULE = "twelve_six.data.decontamination_authority_v2"
+CURRENT_MATCHER_MODULE = "twelve_six.data._data232_decontamination_matching"
+CURRENT_MATCHER_PATH = ROOT / "src/twelve_six/data/_data232_decontamination_matching.py"
+
 
 class CurrentRadaData232Error(RuntimeError):
     """Fail-closed execution carrier error."""
@@ -80,6 +85,33 @@ class CurrentRadaData232Error(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise CurrentRadaData232Error(message)
+
+
+def load_current_reserved() -> Any:
+    """Load current DATA-232 semantics after historical reconstruction is complete."""
+    expected_matcher = CURRENT_MATCHER_PATH.resolve(strict=True)
+    loaded_matcher = sys.modules.get(CURRENT_MATCHER_MODULE)
+    loaded_path = None
+    if loaded_matcher is not None:
+        loaded_path = Path(str(getattr(loaded_matcher, "__file__", ""))).resolve()
+    if loaded_path != expected_matcher:
+        for module_name in (
+            CURRENT_RESERVED_MODULE,
+            CURRENT_AUTHORITY_MODULE,
+            CURRENT_MATCHER_MODULE,
+        ):
+            sys.modules.pop(module_name, None)
+        importlib.invalidate_caches()
+
+    module = importlib.import_module(CURRENT_RESERVED_MODULE)
+    matcher = sys.modules.get(CURRENT_MATCHER_MODULE)
+    require(matcher is not None, "current DATA-232 matcher did not load")
+    matcher_path = Path(str(getattr(matcher, "__file__", ""))).resolve()
+    require(
+        matcher_path == expected_matcher,
+        "current DATA-232 matcher escaped exact Product tree",
+    )
+    return module
 
 
 def canonical(value: Any) -> bytes:
@@ -609,6 +641,7 @@ def prepare(args: argparse.Namespace) -> None:
     inventory_evidence = self_hashed(inventory_core, "inventory_identity_sha256")
     inventory_id = inventory_evidence["inventory_identity_sha256"]
 
+    reserved = load_current_reserved()
     matcher_projection = reserved._record_projection(training_rows)
     handoff_core = {
         "schema_version": reserved.TRAINING_HANDOFF_SCHEMA,
@@ -660,6 +693,7 @@ def prepare(args: argparse.Namespace) -> None:
 
 def execute_data232(args: argparse.Namespace) -> None:
     bind_execution_head(args.expected_execution_head)
+    reserved = load_current_reserved()
     inventory = load_json(args.inventory_json)
     handoff = load_json(args.handoff_json)
     training = load_jsonl(args.training_records_jsonl)
