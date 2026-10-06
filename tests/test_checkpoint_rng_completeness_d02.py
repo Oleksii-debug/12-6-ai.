@@ -433,6 +433,77 @@ def test_cuda_process_environment_drift_during_restore_fails_closed(
 
 
 @pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "phase",
+    ["model_apply", "rng_replay"],
+)
+def test_numeric_policy_drift_during_restore_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    phase: str,
+) -> None:
+    ambient = core.capture_rng_state()
+    checkpoint = tmp_path / f"numeric-policy-drift-{phase}"
+    config = TrainerConfig(max_steps=10, seed=703)
+
+    class NumericDriftLinear(torch.nn.Linear):
+        def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
+            result = super().load_state_dict(state_dict, *args, **kwargs)
+            if phase == "model_apply":
+                torch.backends.cudnn.benchmark = (
+                    not torch.backends.cudnn.benchmark
+                )
+            return result
+
+    try:
+        source_model = NumericDriftLinear(3, 3)
+        source = Trainer(source_model, config)
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=checkpoint_identity,
+        )
+
+        target_model = NumericDriftLinear(3, 3)
+        target = Trainer(target_model, config)
+
+        if phase == "rng_replay":
+            original_restore = loader.restore_rng_state
+
+            def drifting_restore(state: Any):
+                result = original_restore(state)
+                torch.backends.cudnn.benchmark = (
+                    not torch.backends.cudnn.benchmark
+                )
+                return result
+
+            monkeypatch.setattr(loader, "restore_rng_state", drifting_restore)
+
+        with pytest.raises(
+            CheckpointCompatibilityError,
+            match="numeric policy differs",
+        ):
+            loader.load_trainer_checkpoint(
+                checkpoint,
+                model=target_model,
+                trainer=target,
+                restore_rng=True,
+            )
+
+        assert target._failure_reason == "checkpoint_restore_apply_failed"
+        assert target._update_incomplete is True
+    finally:
+        core.restore_rng_state(ambient)
+
+
+@pytest.mark.parametrize(
     ("mutation", "message"),
     [
         ({"CUBLAS_WORKSPACE_CONFIG": None}, "fields differ"),
