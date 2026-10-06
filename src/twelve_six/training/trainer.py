@@ -2807,6 +2807,11 @@ class Trainer:
             raise TrainingStateInvalidError(
                 f"trainer restore policy fields are unavailable: {missing_policies}"
             )
+        expected_config = entry_attrs["config"]
+        if type(expected_config) is not TrainerConfig:
+            raise TrainingStateInvalidError(
+                "trainer restore config must use canonical TrainerConfig"
+            )
         if self._failure_reason is not None or self._update_incomplete:
             raise TrainingStateInvalidError(
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
@@ -2836,7 +2841,6 @@ class Trainer:
         expected_optimizer = entry_attrs["optimizer"]
         expected_scheduler = entry_attrs["scheduler"]
         expected_scaler = entry_attrs["scaler"]
-        expected_config = entry_attrs["config"]
         expected_device = entry_attrs["device"]
         expected_policy_state = {
             name: copy.deepcopy(entry_attrs[name])
