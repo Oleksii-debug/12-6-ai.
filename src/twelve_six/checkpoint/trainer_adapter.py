@@ -44,6 +44,9 @@ from .expected_binding import (
 _NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES = (
     _CanonicalTrainer._CHECKPOINT_SAFETY_AUTHORITIES
 )
+_NATIVE_D02_CHECKPOINT_STORAGE_FIELDS = (
+    _CanonicalTrainer._CHECKPOINT_STORAGE_FIELDS
+)
 
 _CANONICAL_TRAINER_STATE_FIELDS = frozenset(
     {
@@ -335,6 +338,14 @@ def _assert_native_d02_checkpoint_safety_lineage(trainer: Any) -> None:
         if canonical is None or resolved is not canonical:
             raise CheckpointCompatibilityError(
                 f"native D02 safety authority must remain canonical: {name}"
+            )
+    for name in _NATIVE_D02_CHECKPOINT_STORAGE_FIELDS:
+        canonical = inspect.getattr_static(_CanonicalTrainer, name, None)
+        resolved = inspect.getattr_static(type(trainer), name, None)
+        if resolved is not canonical:
+            raise CheckpointCompatibilityError(
+                "native D02 restore storage descriptor must remain canonical: "
+                f"{name}"
             )
 
 
