@@ -119,6 +119,17 @@ def _read_json(path: Path, *, label: str) -> Any:
                 after = os.fstat(source.fileno())
                 if _file_stamp(after) != _file_stamp(opened):
                     raise ValueError(f"{label}_changed_during_read")
+                try:
+                    after_path = path.lstat()
+                except OSError:
+                    raise ValueError(f"{label}_changed_during_read") from None
+                if (
+                    not stat.S_ISREG(after_path.st_mode)
+                    or (after_path.st_dev, after_path.st_ino)
+                    != (opened.st_dev, opened.st_ino)
+                    or _file_stamp(after_path) != _file_stamp(after)
+                ):
+                    raise ValueError(f"{label}_changed_during_read")
         finally:
             if descriptor != -1:
                 os.close(descriptor)
