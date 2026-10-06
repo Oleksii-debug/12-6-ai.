@@ -31,8 +31,16 @@ class Model:
 
 
 def identity(fill: str = "a") -> CheckpointIdentity:
+    if len(fill) != 1:
+        raise ValueError("identity fixture fill must be one character")
+    git_fill = fill.lower()
+    git_sha = (
+        git_fill * 40
+        if git_fill in "0123456789abcdef"
+        else f"{ord(fill):040x}"
+    )
     return CheckpointIdentity(
-        git_sha=fill * 40,
+        git_sha=git_sha,
         model_spec={"model_type": "twelve_six_export_transactional"},
         parameter_count=1,
         tokenizer_hash="1" * 64,
@@ -47,6 +55,15 @@ def identity(fill: str = "a") -> CheckpointIdentity:
         optimizer={"name": "none"},
         scheduler=None,
     )
+
+
+def test_identity_fixture_nonhex_label_has_canonical_git_sha():
+    observed = identity("g").git_sha
+
+    assert observed == f"{ord('g'):040x}"
+    assert len(observed) == 40
+    assert observed == observed.lower()
+    assert all(char in "0123456789abcdef" for char in observed)
 
 
 def snapshot_tree(root: Path) -> dict[str, bytes]:
