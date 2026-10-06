@@ -249,8 +249,14 @@ def _read_export_snapshot(root: Path) -> dict[str, bytes]:
             "HF-style export root must be a real directory, not a symlink"
         )
     root_identity = (root_stat.st_dev, root_stat.st_ino)
+    names: set[str] = set()
     try:
-        names = {entry.name for entry in root.iterdir()}
+        for entry in root.iterdir():
+            names.add(entry.name)
+            if len(names) > len(_EXPORT_FILES):
+                raise CheckpointIntegrityError(
+                    "HF-style export inventory exceeds expected size"
+                )
     except OSError as exc:
         raise CheckpointIntegrityError(
             f"cannot enumerate HF-style export directory: {root}"
