@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import zipfile
@@ -266,7 +267,7 @@ def test_selected_payload_identity_matches_historical_row_hash_contract() -> Non
             "training_eligible": False,
         },
     ]
-    manual = __import__("hashlib").sha256()
+    manual = hashlib.sha256()
     for row in rows:
         manual.update(mod.probe.cjson(row))
 
