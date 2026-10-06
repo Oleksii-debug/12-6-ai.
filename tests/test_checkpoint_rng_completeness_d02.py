@@ -374,7 +374,7 @@ def test_cuda_process_environment_drift_during_restore_fails_closed(
     key = "CUBLAS_WORKSPACE_CONFIG"
     monkeypatch.delenv(key, raising=False)
     checkpoint = tmp_path / f"cuda-environment-drift-{phase}"
-    config = TrainerConfig(max_steps=10, seed=719)
+    config = TrainerConfig(max_steps=10, seed=703)
 
     class EnvironmentDriftLinear(torch.nn.Linear):
         def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
