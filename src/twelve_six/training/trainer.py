@@ -2800,6 +2800,10 @@ class Trainer:
                 "trainer state restore requires a fresh trainer with no consumed "
                 "exposure or pending gradients; restore the verified model too"
             )
+        # Entry policy mismatch is externally repairable and has not consumed
+        # checkpoint payload or mutated component state. Reject it before any
+        # untrusted state access so the same clean trainer can be retried.
+        Trainer._require_deterministic_policy(self)
 
         expected_model = entry_attrs["model"]
         expected_optimizer = entry_attrs["optimizer"]
@@ -2863,6 +2867,10 @@ class Trainer:
                     for name, expected in expected_policy_state.items()
                 ):
                     return f"trainer restore policy changed during {phase}"
+                try:
+                    Trainer._require_deterministic_policy(self)
+                except BaseException:
+                    return f"trainer deterministic policy changed during {phase}"
                 Trainer._require_no_residual_model_gradients(self)
                 if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
                     return f"trainer model changed during {phase}"
