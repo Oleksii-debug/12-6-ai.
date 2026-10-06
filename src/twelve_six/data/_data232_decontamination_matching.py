@@ -356,6 +356,54 @@ def _iter_viable_train_pairs(
     code_containment = _fraction(t["code_fragment_containment"])
     skeleton_jaccard = _fraction(t["code_copy_jaccard"])
 
+    natural_noncode_prefixes: list[tuple[str, ...]] = [() for _ in train]
+    mixed_code_prefixes: list[tuple[str, ...]] = [() for _ in train]
+    code_prefixes: list[tuple[str, ...]] = [() for _ in train]
+    skeleton_prefixes: list[tuple[str, ...]] = [() for _ in train]
+    for index, fp in enumerate(train):
+        content_size = len(fp["shingles"])
+        is_code = fp["record"]["modality"] == "code"
+        natural_ratio = (
+            natural_containment
+            if fp["token_count"] >= int(t["natural_fragment_min_tokens"])
+            else natural_jaccard_ratio
+        )
+        natural_width = _necessary_prefix_width(content_size, natural_ratio)
+        natural_prefix = _rare_prefix(
+            fp["shingles"],
+            natural_width,
+            content_frequency,
+        )
+        if is_code:
+            mixed_code_prefixes[index] = natural_prefix
+            code_ratio = (
+                code_containment
+                if fp["token_count"] >= int(t["code_fragment_min_tokens"])
+                else code_jaccard_ratio
+            )
+            code_width = _necessary_prefix_width(content_size, code_ratio)
+            code_prefixes[index] = _rare_prefix(
+                fp["shingles"],
+                code_width,
+                content_frequency,
+            )
+            if fp["skeleton_token_count"] >= int(t["code_copy_min_tokens"]):
+                skeleton_width = _necessary_prefix_width(
+                    len(fp["skeleton_shingles"]),
+                    skeleton_jaccard,
+                )
+                skeleton_prefixes[index] = _rare_prefix(
+                    fp["skeleton_shingles"],
+                    skeleton_width,
+                    skeleton_frequency,
+                )
+        else:
+            natural_noncode_prefixes[index] = natural_prefix
+
+    # Do not retain full corpus frequency maps while posting indexes grow.
+    del content_frequency
+    del skeleton_frequency
+
     order = sorted(
         range(len(train)),
         key=lambda index: (len(train[index]["shingles"]), index),
@@ -392,63 +440,15 @@ def _iter_viable_train_pairs(
         _append_posting(raw_index, str(fp["raw"]), index)
         _append_posting(normalized_index, str(fp["normalized"]), index)
 
-        content_size = len(fp["shingles"])
         if is_code:
-            natural_ratio = (
-                natural_containment
-                if fp["token_count"] >= int(t["natural_fragment_min_tokens"])
-                else natural_jaccard_ratio
-            )
-            natural_width = _necessary_prefix_width(
-                content_size,
-                natural_ratio,
-            )
-            for value in _rare_prefix(
-                fp["shingles"],
-                natural_width,
-                content_frequency,
-            ):
+            for value in mixed_code_prefixes[index]:
                 _append_posting(mixed_code_index, value, index)
-
-            code_ratio = (
-                code_containment
-                if fp["token_count"] >= int(t["code_fragment_min_tokens"])
-                else code_jaccard_ratio
-            )
-            code_width = _necessary_prefix_width(content_size, code_ratio)
-            for value in _rare_prefix(
-                fp["shingles"],
-                code_width,
-                content_frequency,
-            ):
+            for value in code_prefixes[index]:
                 _append_posting(code_index, value, index)
-
-            if fp["skeleton_token_count"] >= int(t["code_copy_min_tokens"]):
-                skeleton_width = _necessary_prefix_width(
-                    len(fp["skeleton_shingles"]),
-                    skeleton_jaccard,
-                )
-                for value in _rare_prefix(
-                    fp["skeleton_shingles"],
-                    skeleton_width,
-                    skeleton_frequency,
-                ):
-                    _append_posting(skeleton_index, value, index)
+            for value in skeleton_prefixes[index]:
+                _append_posting(skeleton_index, value, index)
         else:
-            natural_ratio = (
-                natural_containment
-                if fp["token_count"] >= int(t["natural_fragment_min_tokens"])
-                else natural_jaccard_ratio
-            )
-            natural_width = _necessary_prefix_width(
-                content_size,
-                natural_ratio,
-            )
-            for value in _rare_prefix(
-                fp["shingles"],
-                natural_width,
-                content_frequency,
-            ):
+            for value in natural_noncode_prefixes[index]:
                 _append_posting(natural_noncode_index, value, index)
 
 
