@@ -2225,3 +2225,55 @@ def test_hf_snapshot_keeps_model_weights_outside_metadata_read_cap(
     ):
         assert observed_limits[name] == 8 * 1024 * 1024
 
+def test_hf_snapshot_rejects_seventh_inventory_entry(
+    tmp_path: Path,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(30.0), identity=identity("q"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    (output / "unexpected-seventh.txt").write_text("x", encoding="utf-8")
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export inventory exceeds expected size",
+    ):
+        hf_export._read_export_snapshot(output)
+
+
+def test_hf_snapshot_stops_inventory_after_seventh_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    real_iterdir = Path.iterdir
+    consumed: list[str] = []
+
+    def oversized_entries():
+        for name in sorted(hf_export._EXPORT_FILES):
+            consumed.append(name)
+            yield SimpleNamespace(name=name)
+        consumed.append("unexpected-seventh.txt")
+        yield SimpleNamespace(name="unexpected-seventh.txt")
+        raise AssertionError("eighth inventory entry must not be requested")
+
+    def bounded_iterdir(path: Path):
+        if path == root:
+            return oversized_entries()
+        return real_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", bounded_iterdir)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export inventory exceeds expected size",
+    ):
+        hf_export._read_export_snapshot(root)
+
+    assert len(consumed) == len(hf_export._EXPORT_FILES) + 1
+
