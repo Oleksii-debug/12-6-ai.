@@ -41,10 +41,14 @@ G05_G06_BUNDLE_FILES = {
     "survivor_inventory": "survivor-inventory.json",
 }
 FAMILY_VECTOR_SCHEMA = "12-6.d03-postmaterialization-family-vector.v1"
-COMPOSITION_SCHEMA = "12-6.d03-rada-post-g06-global-unique-composition.v1"
-RECEIPT_SCHEMA = "12-6.d03-rada-postg06-next100-106-execution.v1"
-REPEAT_SCHEMA = "12-6.d03-rada-postg06-next100-106-two-clean.v1"
-DEDUP_WORKER_ID = "D03-RADA-POST-G06-GLOBAL-UNIQUE-COMPOSITION-V1"
+COMPOSITION_SCHEMA = "12-6.d03-rada-post-g06-global-unique-composition.v2"
+RECEIPT_SCHEMA = "12-6.d03-rada-postg06-next100-106-execution.v2"
+REPEAT_SCHEMA = "12-6.d03-rada-postg06-next100-106-two-clean.v2"
+DEDUP_WORKER_ID = "D03-RADA-POST-G06-GLOBAL-UNIQUE-COMPOSITION-V2"
+COMPOSITION_SEMANTICS = (
+    "UPSTREAM_GLOBAL_DEDUP_PASS_PLUS_POST_G06_EXACT_PAYLOAD_UNIQUENESS_"
+    "PLUS_G05_G06_TWO_CLEAN_PLUS_PHYSICAL_FAMILY_VECTOR_NO_REPLAY"
+)
 
 STACK_BASE_HEAD = "039ae67cfd0a1393936c49a7bf463f5f68927a03"
 UPSTREAM_GLOBAL_DEDUP_HEAD = "a4663e87b010b190343caf1d42784f5dc7984601"
@@ -777,10 +781,7 @@ def build_composition_proof(
         "record_count": family_vector["record_count"],
         "total_payload_bytes": family_vector["total_payload_bytes"],
         "cross_transform_exact_payload_collision_free": True,
-        "semantics": (
-            "UPSTREAM_GLOBAL_DEDUP_PASS_PLUS_POST_G06_EXACT_PAYLOAD_"
-            "UNIQUENESS_PLUS_PHYSICAL_FAMILY_VECTOR_NO_REPLAY"
-        ),
+        "semantics": COMPOSITION_SEMANTICS,
         "terminal_verdict": "PASS",
         **ZERO_CREDIT,
     }
@@ -1085,6 +1086,22 @@ def compare_outputs(
         hashes[f"{name}.json"] = sha256(a)
 
     composition = parsed["composition-dedup-proof"]
+    require(
+        composition.get("schema") == COMPOSITION_SCHEMA,
+        "composition schema mismatch",
+    )
+    require(
+        composition.get("terminal_verdict") == "PASS",
+        "composition terminal verdict is not PASS",
+    )
+    require(
+        composition.get("cross_transform_exact_payload_collision_free") is True,
+        "composition post-transform uniqueness is not terminal",
+    )
+    require(
+        composition.get("semantics") == COMPOSITION_SEMANTICS,
+        "composition semantics drift",
+    )
     composition_identity = require_sha256(
         composition.get("evidence_identity_sha256"),
         "composition dedup identity",
