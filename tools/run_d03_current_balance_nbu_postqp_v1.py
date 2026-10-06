@@ -441,9 +441,12 @@ def verify_nbu(
         family_config.get("status") == "PREPARED_DISCOVERY_ZERO_CREDIT",
         "NBU intake status drift",
     )
+    intake_core = dict(family_config)
+    intake_core.pop("contract_identity_sha256", None)
+    intake_identity = hashlib.sha256(canonical(intake_core) + b"\n").hexdigest()
     require(
         family_config.get("contract_identity_sha256") == NBU_INTAKE_ID
-        and self_hash(family_config, "contract_identity_sha256") == NBU_INTAKE_ID,
+        and intake_identity == NBU_INTAKE_ID,
         "NBU intake contract identity drift",
     )
     source = family_config.get("source")
