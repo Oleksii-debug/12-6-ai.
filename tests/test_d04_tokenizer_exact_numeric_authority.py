@@ -2256,14 +2256,70 @@ def test_verifier_kwdefault_retarget_cannot_legitimize_builtin_root() -> None:
     )
 
 
-def test_verifier_root_anchor_has_no_mutable_function_defaults() -> None:
+def test_verifier_root_anchor_has_no_mutable_python_code() -> None:
     verifier = authority._verify_expected_root_integrity
-    assert verifier.func.__defaults__ is None
-    assert verifier.func.__kwdefaults__ is None
+    assert not hasattr(verifier.func, "__code__")
+    assert not hasattr(verifier.func, "__defaults__")
+    assert not hasattr(verifier.func, "__kwdefaults__")
     original_args = verifier.args
+    original_func = verifier.func
 
     with pytest.raises(AttributeError, match="readonly"):
         verifier.args = original_args
+    with pytest.raises(AttributeError, match="readonly"):
+        verifier.func = original_func
 
     assert verifier.args is original_args
+    assert verifier.func is original_func
+
+
+def test_verifier_code_retarget_cannot_legitimize_builtin_root() -> None:
+    import builtins
+    from types import MappingProxyType
+
+    verifier = authority._verify_expected_root_integrity
+    original_root = authority._EXPECTED_BYTE_RUNTIME_BUILTINS
+    original_bytearray = builtins.bytearray
+
+    def verifier_noop(_observed, _expected):
+        return True
+
+    code_mutation_error = None
+    try:
+        verifier.func.__code__ = verifier_noop.__code__
+    except BaseException as exc:
+        code_mutation_error = exc
+
+    def hostile_bytearray():
+        raise RuntimeError("hostile bytearray")
+
+    replacement_root = MappingProxyType({
+        **original_root,
+        "bytearray": hostile_bytearray,
+    })
+    decode_error = None
+    observed_error = None
+    authority._EXPECTED_BYTE_RUNTIME_BUILTINS = replacement_root
+    builtins.bytearray = hostile_bytearray
+    try:
+        try:
+            authority._EXPECTED_BYTE_TOKENIZER_CLASS().decode([65])
+        except BaseException as exc:
+            decode_error = exc
+        try:
+            authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+        except BaseException as exc:
+            observed_error = exc
+    finally:
+        builtins.bytearray = original_bytearray
+        authority._EXPECTED_BYTE_RUNTIME_BUILTINS = original_root
+
+    assert type(code_mutation_error) is AttributeError
+    assert type(decode_error) is RuntimeError
+    assert str(decode_error) == "hostile bytearray"
+    assert type(observed_error) is authority.TokenizerDecisionError
+    assert str(observed_error) == (
+        "canonical tokenizer decision verifier root drift: "
+        "_EXPECTED_BYTE_RUNTIME_BUILTINS"
+    )
 
