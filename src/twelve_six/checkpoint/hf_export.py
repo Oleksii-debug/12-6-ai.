@@ -391,7 +391,7 @@ def _cleanup_temp_paths_strict(
             _remove_temp_path_strict(
                 path, label=label, expected_identity=expected_identity
             )
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - cleanup covers interrupts
             failures.append((label, exc))
     if failures:
         labels = ", ".join(label for label, _ in failures)
