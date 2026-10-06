@@ -2208,3 +2208,62 @@ def test_bind_upstreams_reseals_after_application_verifier(
             **SHA,
         )
 
+def test_verifier_kwdefault_retarget_cannot_legitimize_builtin_root() -> None:
+    import builtins
+    from types import MappingProxyType
+
+    verifier = authority._verify_expected_root_integrity
+    original_root = authority._EXPECTED_BYTE_RUNTIME_BUILTINS
+    original_bytearray = builtins.bytearray
+    missing = object()
+    original_kwdefaults = getattr(verifier, "__kwdefaults__", missing)
+
+    def hostile_bytearray():
+        raise RuntimeError("hostile bytearray")
+
+    replacement_root = MappingProxyType({
+        **original_root,
+        "bytearray": hostile_bytearray,
+    })
+    decode_error = None
+    observed_error = None
+    authority._EXPECTED_BYTE_RUNTIME_BUILTINS = replacement_root
+    verifier.__kwdefaults__ = {"_runtime_builtins": replacement_root}
+    builtins.bytearray = hostile_bytearray
+    try:
+        try:
+            authority._EXPECTED_BYTE_TOKENIZER_CLASS().decode([65])
+        except BaseException as exc:
+            decode_error = exc
+        try:
+            authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+        except BaseException as exc:
+            observed_error = exc
+    finally:
+        builtins.bytearray = original_bytearray
+        authority._EXPECTED_BYTE_RUNTIME_BUILTINS = original_root
+        if original_kwdefaults is missing:
+            del verifier.__kwdefaults__
+        else:
+            verifier.__kwdefaults__ = original_kwdefaults
+
+    assert type(decode_error) is RuntimeError
+    assert str(decode_error) == "hostile bytearray"
+    assert type(observed_error) is authority.TokenizerDecisionError
+    assert str(observed_error) == (
+        "canonical tokenizer decision verifier root drift: "
+        "_EXPECTED_BYTE_RUNTIME_BUILTINS"
+    )
+
+
+def test_verifier_root_anchor_has_no_mutable_function_defaults() -> None:
+    verifier = authority._verify_expected_root_integrity
+    assert verifier.func.__defaults__ is None
+    assert verifier.func.__kwdefaults__ is None
+    original_args = verifier.args
+
+    with pytest.raises(AttributeError, match="readonly"):
+        verifier.args = original_args
+
+    assert verifier.args is original_args
+
