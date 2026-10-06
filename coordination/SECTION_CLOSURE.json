@@ -1,0 +1,44 @@
+{
+  "schema_version": "12-6.section-closure.v1",
+  "canonical_plan": {
+    "document_id": "16KotBqgSyf3A0FEWpN8Pnobgf2ZJ1ecT8MLgHoQXibY",
+    "revision_id": "AHj4eMRLaHccAytgXlAMJ8VWh7OI8IBzEvpQtlHf2LCzdZ-MS4Asxbyf4K6DsKkQqi43tx_lYVEkT5UEAut8l8X7EhXLj3Zuv65xmgfsdw",
+    "title": "12-6 AI — ПОВНИЙ SECTION PLAN — 96 РОЗДІЛІВ — 2026-10-06",
+    "ordered_section_count": 96
+  },
+  "status_model": [
+    "UNVERIFIED",
+    "NOT_STARTED",
+    "IN_PROGRESS",
+    "WAITING_LONG_RUN",
+    "BLOCKED_EXTERNAL",
+    "READY_AFTER_PREDECESSOR",
+    "DONE",
+    "REGRESSION_REOPENED"
+  ],
+  "default_status_for_unlisted_sections": "UNVERIFIED",
+  "frontier_section": 0,
+  "registry_created_from_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
+  "sections": {
+    "0": {
+      "title": "Цільова архітектура 12-6 як повної AI-системи",
+      "status": "IN_PROGRESS",
+      "evidence": [
+        {
+          "kind": "branch",
+          "value": "section-00/product-architecture-contract-v1"
+        }
+      ],
+      "notes": [
+        "Canonical 96-section Section 0 is semantically different from the historical scale-S0 ~10K execution plan; no historical DONE state was transferred.",
+        "DONE requires integration on accepted main plus exact-head CI for the product architecture contract and adversarial replacement/boundary tests."
+      ]
+    },
+    "1": {
+      "title": "Єдина система ідентичностей і маніфестів",
+      "status": "UNVERIFIED",
+      "evidence": [],
+      "notes": []
+    }
+  }
+}
