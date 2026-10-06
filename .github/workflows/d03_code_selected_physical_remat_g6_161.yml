@@ -1,0 +1,615 @@
+name: D03 code selected physical rematerialization G6 161
+
+on:
+  pull_request:
+    branches:
+      - execution/3069-code-selected-rematerialization-g6-161-20261006
+    paths:
+      - ".github/workflows/d03_code_selected_physical_remat_g6_161.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-code-selected-physical-remat-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  rematerialize-code-selected:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/3070-code-physical-remat-g6-161-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "86537c99b773f49d27ed432dc57ae84d27f92f04"
+      CAPTURE_BLOB: "5e0aff8a3e44702853ff03a5af49f4f0dd7646ca"
+      CAPTURE_QUAL_ARTIFACT_ID: "11444994752"
+      CAPTURE_QUAL_ZIP_SHA256: "456c3e6e9d8f55ef4b92a1a166d40a37a6268139e1a80bc4fb49cb31ac8e5fb2"
+      CAPTURE_QUAL_FILE_SHA256: "b9e2b93d4875d8bb8a35bc304ced0c8900ed135703ef5eb60d10d9e818a4691a"
+      CAPTURE_QUAL_ID: "35dc15a24faf45645c5ec430791a691116f8b17589f2c6110c17592424fd40d9"
+      CODE_HEAD: "62dc9f487e0b3dd9eb2a8367a01061f8f55799ef"
+      CODE_RUNNER_BLOB: "3e1d9a68622a3e709488a128967f7d83ff1074ea"
+      CODE_WORKFLOW_BLOB: "4ddcbd418c71ef16f215b625f21cca2522103096"
+      CODE_QUAL_ARTIFACT_ID: "11339155095"
+      CODE_QUAL_ZIP_SHA256: "2de7f5b5cace0691eee50e707120f95a28d12cf56f8211d4cfe3f1ebc5902a37"
+      CODE_EVIDENCE_SHA256: "214fbaedb50858b1276043a12ea8f2c403fbebc93f8790a229ce487f67490ad4"
+      CODE_PROOF_SHA256: "6f43358df28940172728c6c70f5dff8c963797f0a9a335a5167c3c704c96ccdb"
+      CODE_EVIDENCE_ID: "4ef571e9703f432d95272ebd20ac03e4ec253fba5164371d33d64ddc76c1f45f"
+      CODE_PROOF_ID: "29f8e0f9404e978710d6c5eb4f6578f1ba8e93679c65ab7af94c371f7da477a4"
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GH_TOKEN: ${{ github.token }}
+      PARENT_ARTIFACT_ID: "11334617491"
+      PARENT_ARTIFACT_ZIP_SHA256: "81f9d7375f7ad18b884ede5b0b9a7768702a62474893d24fe294b9dbcba3eac1"
+      PARENT_SURVIVORS_FILE_SHA256: "aeddd3e5a1435043553fdb4384ad6c5e81a88381c5b0038493ed1cf8a944867d"
+      PARENT_EVIDENCE_FILE_SHA256: "a512ebde58912d694dcbf729f87aca8240319fffb7c4334c1189ded4ff06e633"
+      EXPECTED_SELECTION_ID: "7b97a9ab04469236dc5bc17fc80155cb43430b01c443bb6209fac090557258fd"
+      EXPECTED_FINAL_ID: "86d51eb106524cd8e4d0f94d4ff6e2e3426c6321e0698279877dfc4d5fce3116"
+      EXPECTED_EVAL647_EVIDENCE_ID: "3401db10bad35fd1c6fac2839413fc6afffac58fa5f2135d2202b944bc2fda82"
+      EXPECTED_EVAL647_OBJECT_SET_ID: "0557410622403b411ac9d6d8fb01a57ef461617c19d06f112aa61dd57f670048"
+      EVAL290_HEAD_SHA: "029514654829cebc149cff6fc1fea2a8ba4fa566"
+      EVAL290_DATA_SHA256: "5400e37b8e8ddfdb9516a8b6eaa6fc01a8c5ec41811385d9f6907e6ef6d9614f"
+      EVAL290_MANIFEST_SHA256: "d0f8cf208724c80bda7b92aed54e10bea1492fa5bb3511a7e0fd828fc881e14a"
+      EVAL291_HEAD_SHA: "fb268061300127b62cc2a262664b30c614559dac"
+      EVAL291_DATA_SHA256: "df20e3d3ec75208399039a283487c3b8958c80ec3f119cee278fcc09948c6bfb"
+      EVAL291_AUTHORITY_SHA256: "493be56b8189325d122868ca778733676cc2143d24d121fb63f6b1b62a977177"
+      PLAN_ARTIFACT_ID: "11443423543"
+      PLAN_ZIP_SHA256: "9717f36a4956aba5432f111a0bf58f6aa70dc752bcd28676203da825124eec01"
+      PLAN_FILE_SHA256: "8e526a876ea2a2a05ee55847d5669b594acd6c72f13861b690a30b69ef42b996"
+      BALANCE_ARTIFACT_ID: "11441000276"
+      BALANCE_ZIP_SHA256: "85ae6ace4914cd8fae86cef71b8ac63cf73c97b1386ff7e01a716692ddce6c10"
+      COMPOSITION_FILE_SHA256: "8a737ca830d0e98095b258c31bb1fc6f5e0c294384484b3f266dad654522850e"
+
+    steps:
+      - name: Checkout exact child head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind one-path child and exact qualified capture helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PR_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          mapfile -t changed < <(git diff --name-only "$PARENT_HEAD"..HEAD | sort)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = ".github/workflows/d03_code_selected_physical_remat_g6_161.yml"
+          test "$(git hash-object tools/run_d03_lane_selected_survivor_capture_v1.py)" = "$CAPTURE_BLOB"
+          python -m py_compile tools/run_d03_lane_selected_survivor_capture_v1.py
+          echo "CODE_ROOT=$RUNNER_TEMP/code-src" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$RUNNER_TEMP/code-src/src" >> "$GITHUB_ENV"
+
+      - name: Materialize exact code lane worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin refs/pull/2752/head
+          test "$(git rev-parse FETCH_HEAD)" = "$CODE_HEAD"
+          git worktree add --detach "$CODE_ROOT" "$CODE_HEAD"
+          test "$(git -C "$CODE_ROOT" rev-parse HEAD)" = "$CODE_HEAD"
+          git -C "$CODE_ROOT" diff --quiet HEAD --
+          git -C "$CODE_ROOT" diff --cached --quiet HEAD --
+          test "$(git -C "$CODE_ROOT" hash-object tools/run_d03_code_delta_decontam_qp_v1.py)" = "$CODE_RUNNER_BLOB"
+          test "$(git -C "$CODE_ROOT" hash-object .github/workflows/d03_code_delta_decontam_qp.yml)" = "$CODE_WORKFLOW_BLOB"
+          python -m py_compile             "$CODE_ROOT/tools/run_d03_code_delta_decontam_qp_v1.py"             "$CODE_ROOT/src/twelve_six/data/current_clean_execution_v1.py"
+
+      - name: Bind terminal helper and code qualification artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/helper-qual" "$RUNNER_TEMP/code-qual"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$RUNNER_TEMP/helper-qual/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CAPTURE_QUAL_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$RUNNER_TEMP/helper-qual/artifact.zip" | cut -d' ' -f1)" = "$CAPTURE_QUAL_ZIP_SHA256"
+          unzip -p "$RUNNER_TEMP/helper-qual/artifact.zip" qualification.json > "$RUNNER_TEMP/helper-qual/qualification.json"
+          test "$(sha256sum "$RUNNER_TEMP/helper-qual/qualification.json" | cut -d' ' -f1)" = "$CAPTURE_QUAL_FILE_SHA256"
+
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$RUNNER_TEMP/code-qual/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CODE_QUAL_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$RUNNER_TEMP/code-qual/artifact.zip" | cut -d' ' -f1)" = "$CODE_QUAL_ZIP_SHA256"
+          unzip -p "$RUNNER_TEMP/code-qual/artifact.zip" output-a/evidence.json > "$RUNNER_TEMP/code-qual/evidence.json"
+          unzip -p "$RUNNER_TEMP/code-qual/artifact.zip" two-clean-proof.json > "$RUNNER_TEMP/code-qual/two-clean-proof.json"
+          test "$(sha256sum "$RUNNER_TEMP/code-qual/evidence.json" | cut -d' ' -f1)" = "$CODE_EVIDENCE_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/code-qual/two-clean-proof.json" | cut -d' ' -f1)" = "$CODE_PROOF_SHA256"
+
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          helper = json.loads(
+              (tmp / "helper-qual/qualification.json").read_text(encoding="utf-8")
+          )
+          helper_claim = helper.pop("qualification_identity_sha256")
+          helper_raw = json.dumps(
+              helper,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          if hashlib.sha256(helper_raw).hexdigest() != helper_claim:
+              raise RuntimeError("capture-helper qualification self-hash mismatch")
+          if helper_claim != os.environ["CAPTURE_QUAL_ID"]:
+              raise RuntimeError("capture-helper qualification identity drift")
+          if helper["execution_head_sha"] != os.environ["PARENT_HEAD"]:
+              raise RuntimeError("capture-helper head drift")
+          if helper["capture_git_blob_sha1"] != os.environ["CAPTURE_BLOB"]:
+              raise RuntimeError("capture-helper blob drift")
+          if helper["raw_payload_published"] is not False:
+              raise RuntimeError("capture-helper raw boundary widened")
+
+          proof = json.loads(
+              (tmp / "code-qual/two-clean-proof.json").read_text(encoding="utf-8")
+          )
+          if proof["proof_identity_sha256"] != os.environ["CODE_PROOF_ID"]:
+              raise RuntimeError("code proof identity drift")
+          if proof["execution_head_sha"] != os.environ["CODE_HEAD"]:
+              raise RuntimeError("code proof head drift")
+          if proof["evidence_identity_sha256"] != os.environ["CODE_EVIDENCE_ID"]:
+              raise RuntimeError("code evidence identity drift")
+          if proof["delta_survivor_payload_bytes"] != 418481:
+              raise RuntimeError("code survivor byte authority drift")
+          if proof["delta_source_objects"] != 18:
+              raise RuntimeError("code survivor record authority drift")
+          if proof["two_fresh_processes_byte_identical"] is not True:
+              raise RuntimeError("code two-clean reproducibility drift")
+          PY
+
+      - name: Fetch exact parent two-clean artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          parent="$RUNNER_TEMP/parent"
+          mkdir -p "$parent"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$parent/parent.zip"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PARENT_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$parent/parent.zip" | cut -d' ' -f1)" = "$PARENT_ARTIFACT_ZIP_SHA256"
+          unzip -q "$parent/parent.zip" -d "$parent/extracted"
+          test "$(sha256sum "$parent/extracted/survivors.json" | cut -d' ' -f1)" = "$PARENT_SURVIVORS_FILE_SHA256"
+          test "$(sha256sum "$parent/extracted/evidence.json" | cut -d' ' -f1)" = "$PARENT_EVIDENCE_FILE_SHA256"
+
+      - name: Reconstruct immutable selection-validation payloads from exact heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval290_src="$RUNNER_TEMP/eval290-src"
+          eval290_out_a="$RUNNER_TEMP/eval290-out-a"
+          eval290_out_b="$RUNNER_TEMP/eval290-out-b"
+          eval290_lock="$RUNNER_TEMP/eval290-extra.lock.txt"
+          eval290_venv="$RUNNER_TEMP/eval290-venv"
+          eval290_environment="$RUNNER_TEMP/eval290-environment.json"
+          eval291_src="$RUNNER_TEMP/eval291-src"
+          eval291_venv="$RUNNER_TEMP/eval291-venv"
+          eval291_environment="$RUNNER_TEMP/eval291-environment.json"
+          rm -rf "$eval290_src" "$eval290_out_a" "$eval290_out_b" "$eval291_src" "$eval290_venv" "$eval291_venv"
+          rm -f "$eval290_environment" "$eval291_environment"
+
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL290_HEAD_SHA"
+          git worktree add --detach "$eval290_src" "$EVAL290_HEAD_SHA"
+          test "$(git -C "$eval290_src" rev-parse HEAD)" = "$EVAL290_HEAD_SHA"
+          git -C "$eval290_src" diff --quiet HEAD --
+          git -C "$eval290_src" diff --cached --quiet HEAD --
+
+          python "$eval290_src/tools/execution_bootstrap.py" bootstrap             --repo-root "$eval290_src"             --capabilities "runtime,tests"             --venv "$eval290_venv"             --manifest "$eval290_environment"             --command "python -m pytest -q tests/test_eval290_ua_selection.py"
+
+          git -C "$eval290_src" show             "$EVAL290_HEAD_SHA:requirements/locks/linux-x86_64/eval290-extra.lock.txt"             > "$eval290_lock"
+          "$eval290_venv/bin/python" -m pip install             --disable-pip-version-check             --require-hashes             --no-deps             -r "$eval290_lock"
+          "$eval290_venv/bin/python" -c 'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+          for out in "$eval290_out_a" "$eval290_out_b"; do
+            PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python"               -m twelve_six.eval290_ua_selection               build --repo-root "$eval290_src" --output-dir "$out"
+          done
+          diff -ru "$eval290_out_a" "$eval290_out_b"
+          PYTHONPATH="$eval290_src/src" "$eval290_venv/bin/python"             -m twelve_six.eval290_ua_selection             verify --repo-root "$eval290_src" --output-dir "$eval290_out_a"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_v1.jsonl" | cut -d' ' -f1)" = "$EVAL290_DATA_SHA256"
+          test "$(sha256sum "$eval290_out_a/eval290_ua_selection_validation_manifest_v1.json" | cut -d' ' -f1)" = "$EVAL290_MANIFEST_SHA256"
+
+          git fetch --no-tags origin refs/pull/395/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL291_HEAD_SHA"
+          git worktree add --detach "$eval291_src" "$EVAL291_HEAD_SHA"
+          test "$(git -C "$eval291_src" rev-parse HEAD)" = "$EVAL291_HEAD_SHA"
+          git -C "$eval291_src" diff --quiet HEAD --
+          git -C "$eval291_src" diff --cached --quiet HEAD --
+
+          python "$eval291_src/tools/execution_bootstrap.py" bootstrap             --repo-root "$eval291_src"             --capabilities "runtime,tests"             --venv "$eval291_venv"             --manifest "$eval291_environment"             --command "python -m pytest -q tests/test_eval291_en_selection_validation.py"
+
+          cp "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"             "$RUNNER_TEMP/eval291-en.jsonl"
+          cp "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"             "$RUNNER_TEMP/eval291-authority.json"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-en.jsonl" | cut -d' ' -f1)" = "$EVAL291_DATA_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/eval291-authority.json" | cut -d' ' -f1)" = "$EVAL291_AUTHORITY_SHA256"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python"             -m twelve_six.eval291_en_selection_validation             build --repo-root "$eval291_src"
+          cmp "$RUNNER_TEMP/eval291-en.jsonl"             "$eval291_src/data/evaluation/eval291/selection-validation/en.jsonl"
+          cmp "$RUNNER_TEMP/eval291-authority.json"             "$eval291_src/evidence/eval291/en-selection-validation-v1-authority.json"
+          PYTHONPATH="$eval291_src/src" "$eval291_venv/bin/python"             -m twelve_six.eval291_en_selection_validation             verify --repo-root "$eval291_src"
+
+      - name: Build complete ephemeral reserved-evaluation universe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          from twelve_six.data.current_reserved_decontamination_v1 import (
+              build_reserved_payload_binding,
+          )
+          from twelve_six.data.eval233_final_test_resolver_v1 import (
+              DATA232_FINAL_TEST_ID,
+              resolve_eval233_final_test,
+          )
+          from twelve_six.data.eval303_selection_payload_resolver_v1 import (
+              EVAL303_SELECTION_ID,
+              resolve_eval303_selection_payloads_from_reconstructed,
+          )
+          from twelve_six.data.eval647_future_training_exclusion_v1 import (
+              build_eval647_auxiliary_reserved_set,
+              compose_eval647_future_training_exclusion,
+          )
+
+          root = Path(os.environ["CODE_ROOT"])
+          tmp = Path(os.environ["RUNNER_TEMP"])
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("utf-8")
+
+          def write_json(path, value):
+              Path(path).write_bytes(canonical(value) + b"\n")
+
+          def write_jsonl(path, rows):
+              Path(path).write_bytes(
+                  b"".join(canonical(row) + b"\n" for row in rows)
+              )
+
+          selection_rows, selection_set, selection_evidence = (
+              resolve_eval303_selection_payloads_from_reconstructed(
+                  eval290_data_jsonl=(
+                      tmp
+                      / "eval290-out-a/eval290_ua_selection_validation_v1.jsonl"
+                  ),
+                  eval290_manifest_json=(
+                      tmp
+                      / "eval290-out-a/eval290_ua_selection_validation_manifest_v1.json"
+                  ),
+                  eval291_data_jsonl=tmp / "eval291-en.jsonl",
+                  eval291_authority_json=tmp / "eval291-authority.json",
+                  eval303_membership_jsonl=(
+                      root
+                      / "data/evaluation/eval303/selection-validation/composite-membership.jsonl"
+                  ),
+              )
+          )
+          resolver_identity = selection_evidence.get("resolver_identity_sha256")
+          if not isinstance(resolver_identity, str) or len(resolver_identity) != 64:
+              raise RuntimeError("EVAL-303 resolver identity malformed")
+
+          final_rows, final_set, _ = resolve_eval233_final_test(root)
+          if EVAL303_SELECTION_ID != os.environ["EXPECTED_SELECTION_ID"]:
+              raise RuntimeError("selection identity drift")
+          if DATA232_FINAL_TEST_ID != os.environ["EXPECTED_FINAL_ID"]:
+              raise RuntimeError("final-test identity drift")
+
+          manifest = json.loads(
+              (root / "configs/evaluation/eval_code_reserve_v1.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          evidence = json.loads(
+              (
+                  root
+                  / "evidence/eval647/code_selection_source_materialization_v1.json"
+              ).read_text(encoding="utf-8")
+          )
+          if (
+              evidence["evidence_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_EVIDENCE_ID"]
+          ):
+              raise RuntimeError("EVAL-647 evidence identity drift")
+          if (
+              evidence["object_set_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_OBJECT_SET_ID"]
+          ):
+              raise RuntimeError("EVAL-647 object-set identity drift")
+
+          spec = importlib.util.spec_from_file_location(
+              "eval647_source_materializer",
+              root / "tools/materialize_eval_code_reserve_v1.py",
+          )
+          if spec is None or spec.loader is None:
+              raise RuntimeError("cannot load EVAL-647 materializer")
+          materializer = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(materializer)
+          observed = materializer.materialize(manifest, timeout=60)
+          if (
+              observed["object_set_identity_sha256"]
+              != os.environ["EXPECTED_EVAL647_OBJECT_SET_ID"]
+          ):
+              raise RuntimeError("fresh EVAL-647 materialization membership drift")
+
+          auxiliary = build_eval647_auxiliary_reserved_set(manifest, evidence)
+          member_by_source = {
+              member["source_id"]: member for member in auxiliary["members"]
+          }
+          eval647_rows = []
+          for obj in manifest["objects"]:
+              payload = materializer._fetch(materializer._raw_url(obj), 60)
+              if len(payload) != obj["expected_raw_bytes"]:
+                  raise RuntimeError("EVAL-647 raw byte count drift")
+              if hashlib.sha256(payload).hexdigest() != obj["raw_sha256"]:
+                  raise RuntimeError("EVAL-647 raw SHA drift")
+              source_id = f"{obj['repository']}@{obj['revision']}:{obj['path']}"
+              member = member_by_source[source_id]
+              if member["content_sha256"] != obj["raw_sha256"]:
+                  raise RuntimeError("EVAL-647 member/content binding drift")
+              eval647_rows.append(
+                  {
+                      "record_id": member["record_id"],
+                      "source_id": member["source_id"],
+                      "source_family": member["source_family"],
+                      "modality": "code",
+                      "text": payload.decode("utf-8", errors="strict"),
+                  }
+              )
+
+          base_binding = build_reserved_payload_binding([selection_set, final_set])
+          composed, _ = compose_eval647_future_training_exclusion(
+              base_binding,
+              manifest,
+              evidence,
+          )
+          expected_members = sum(
+              len(item["members"]) for item in composed["reserved_sets"]
+          )
+          evaluation_rows = [*selection_rows, *final_rows, *eval647_rows]
+          if len(evaluation_rows) != expected_members:
+              raise RuntimeError("reserved evaluation payload coverage drift")
+
+          write_json(tmp / "base_reserved_binding.json", base_binding)
+          write_jsonl(tmp / "evaluation_records.jsonl", evaluation_rows)
+          with (tmp / "execution.env").open("w", encoding="utf-8") as out:
+              values = {
+                  "BASE_BINDING_ID": base_binding["binding_identity_sha256"],
+                  "COMPOSED_BINDING_ID": composed["binding_identity_sha256"],
+              }
+              for key, value in values.items():
+                  if not isinstance(value, str) or len(value) != 64:
+                      raise RuntimeError(f"invalid derived identity: {key}")
+                  out.write(f"{key}={value}\n")
+
+          print(
+              json.dumps(
+                  {
+                      "base_binding_identity_sha256": (
+                          base_binding["binding_identity_sha256"]
+                      ),
+                      "composed_binding_identity_sha256": (
+                          composed["binding_identity_sha256"]
+                      ),
+                      "evaluation_records": len(evaluation_rows),
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+          cat "$RUNNER_TEMP/execution.env" >> "$GITHUB_ENV"
+
+
+      - name: Fetch exact passed selection plan and composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/plan" "$RUNNER_TEMP/balance"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$RUNNER_TEMP/plan/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PLAN_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$RUNNER_TEMP/plan/artifact.zip" | cut -d' ' -f1)" = "$PLAN_ZIP_SHA256"
+          unzip -p "$RUNNER_TEMP/plan/artifact.zip" plan-1.json > "$RUNNER_TEMP/plan/plan.json"
+          test "$(sha256sum "$RUNNER_TEMP/plan/plan.json" | cut -d' ' -f1)" = "$PLAN_FILE_SHA256"
+
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$RUNNER_TEMP/balance/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BALANCE_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$RUNNER_TEMP/balance/artifact.zip" | cut -d' ' -f1)" = "$BALANCE_ZIP_SHA256"
+          unzip -p "$RUNNER_TEMP/balance/artifact.zip" composition.json > "$RUNNER_TEMP/balance/composition.json"
+          test "$(sha256sum "$RUNNER_TEMP/balance/composition.json" | cut -d' ' -f1)" = "$COMPOSITION_FILE_SHA256"
+
+      - name: Replay exact code lane and capture selected physical survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$CODE_ROOT/src"           python "$GITHUB_WORKSPACE/tools/run_d03_lane_selected_survivor_capture_v1.py"             --runner "$CODE_ROOT/tools/run_d03_code_delta_decontam_qp_v1.py"             --expected-lane-head "$CODE_HEAD"             --expected-runner-blob "$CODE_RUNNER_BLOB"             --hook-path "clean.execute_current_clean_composition"             --survivor-index 6             --family "code.scipy.project"             --family "github:Textualize/rich"             --family "github:fastapi/fastapi"             --family "github:fastapi/typer"             --family "github:pallets/flask"             --family "github:pandas-dev/pandas"             --family "github:pydantic/pydantic"             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --output-raw-jsonl "$RUNNER_TEMP/code-selected.jsonl"             --output-receipt "$RUNNER_TEMP/code-capture.json"             --             --expected-execution-head "$CODE_HEAD"             --parent-survivors-json "$RUNNER_TEMP/parent/extracted/survivors.json"             --parent-evidence-json "$RUNNER_TEMP/parent/extracted/evidence.json"             --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl"             --base-reserved-binding-json "$RUNNER_TEMP/base_reserved_binding.json"             --eval647-manifest-json "$CODE_ROOT/configs/evaluation/eval_code_reserve_v1.json"             --eval647-materialization-evidence-json "$CODE_ROOT/evidence/eval647/code_selection_source_materialization_v1.json"             --expected-base-reserved-binding-identity-sha256 "$BASE_BINDING_ID"             --expected-composed-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID"             --expected-eval647-materialization-evidence-identity-sha256 "$EXPECTED_EVAL647_EVIDENCE_ID"             --expected-eval647-object-set-identity-sha256 "$EXPECTED_EVAL647_OBJECT_SET_ID"             --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID"             --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID"             --output-evidence "$RUNNER_TEMP/code-evidence.json"
+          test -s "$RUNNER_TEMP/code-selected.jsonl"
+          test -s "$RUNNER_TEMP/code-capture.json"
+          test -s "$RUNNER_TEMP/code-evidence.json"
+          test "$(sha256sum "$RUNNER_TEMP/code-evidence.json" | cut -d' ' -f1)" = "$CODE_EVIDENCE_SHA256"
+          cmp "$RUNNER_TEMP/code-qual/evidence.json" "$RUNNER_TEMP/code-evidence.json"
+
+      - name: Qualify exact selected code physical bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/publish"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          receipt_raw = (tmp / "code-capture.json").read_bytes()
+          receipt = json.loads(receipt_raw)
+          claimed = receipt.pop("capture_identity_sha256")
+          canonical = json.dumps(
+              receipt,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          if hashlib.sha256(canonical).hexdigest() != claimed:
+              raise RuntimeError("capture receipt self-hash mismatch")
+          if receipt["lane_execution_head_sha"] != os.environ["CODE_HEAD"]:
+              raise RuntimeError("capture lane head drift")
+          if receipt["lane_runner_git_blob_sha1"] != os.environ["CODE_RUNNER_BLOB"]:
+              raise RuntimeError("capture runner blob drift")
+          if receipt["selected_record_count"] != 18:
+              raise RuntimeError("selected code record count drift")
+          if receipt["selected_payload_bytes"] != 418481:
+              raise RuntimeError("selected code payload bytes drift")
+          expected_counts = {
+              "code.scipy.project": 2,
+              "github:Textualize/rich": 6,
+              "github:fastapi/fastapi": 3,
+              "github:fastapi/typer": 1,
+              "github:pallets/flask": 1,
+              "github:pandas-dev/pandas": 1,
+              "github:pydantic/pydantic": 4,
+          }
+          expected_bytes = {
+              "code.scipy.project": 78307,
+              "github:Textualize/rich": 46162,
+              "github:fastapi/fastapi": 19857,
+              "github:fastapi/typer": 7599,
+              "github:pallets/flask": 15521,
+              "github:pandas-dev/pandas": 15837,
+              "github:pydantic/pydantic": 235198,
+          }
+          if receipt["family_record_counts"] != expected_counts:
+              raise RuntimeError("selected code family counts drift")
+          if receipt["family_payload_bytes"] != expected_bytes:
+              raise RuntimeError("selected code family bytes drift")
+          if receipt["raw_output_is_ephemeral"] is not True:
+              raise RuntimeError("raw output no longer ephemeral")
+          if receipt["durable_output_contains_raw_payload"] is not False:
+              raise RuntimeError("durable raw boundary widened")
+          for key in (
+              "canonical_capacity_credited",
+              "training_authorized_bytes",
+              "authorized_unique_loss_positions",
+              "authorized_optimized_target_exposure",
+              "optimizer_updates_executed_on_real_targets",
+          ):
+              if type(receipt[key]) is not int or receipt[key] != 0:
+                  raise RuntimeError(f"zero-credit drift: {key}")
+          for key in (
+              "tokenizer_fit_authorized",
+              "training_executed",
+              "learned_weights_created",
+              "final_test_outcomes_read",
+              "paid_compute_used",
+              "scale_promotion_authorized",
+          ):
+              if receipt[key] is not False:
+                  raise RuntimeError(f"truth-boundary drift: {key}")
+
+          raw_path = tmp / "code-selected.jsonl"
+          raw_bytes = raw_path.read_bytes()
+          if hashlib.sha256(raw_bytes).hexdigest() != receipt["ephemeral_raw_jsonl_sha256"]:
+              raise RuntimeError("ephemeral code raw hash drift")
+          rows = [
+              json.loads(line)
+              for line in raw_bytes.decode("utf-8").splitlines()
+          ]
+          if len(rows) != 18:
+              raise RuntimeError("ephemeral code raw record count drift")
+          if len({row["record_id"] for row in rows}) != 18:
+              raise RuntimeError("ephemeral code raw record replay")
+          if sum(
+              len(row["normalized_payload"].encode("utf-8"))
+              for row in rows
+          ) != 418481:
+              raise RuntimeError("ephemeral code raw byte arithmetic drift")
+          if set(row["family"] for row in rows) != set(expected_counts):
+              raise RuntimeError("ephemeral code family set drift")
+
+          evidence_raw = (tmp / "code-evidence.json").read_bytes()
+          if hashlib.sha256(evidence_raw).hexdigest() != os.environ["CODE_EVIDENCE_SHA256"]:
+              raise RuntimeError("replay evidence byte identity drift")
+          evidence = json.loads(evidence_raw)
+          if evidence["evidence_identity_sha256"] != os.environ["CODE_EVIDENCE_ID"]:
+              raise RuntimeError("replay evidence identity drift")
+
+          core = {
+              "schema_version": "12-6.d03-code-selected-physical-rematerialization.v1",
+              "status": "PASS_EXACT_CODE_SELECTED_PHYSICAL_BYTES",
+              "execution_head_sha": os.environ["PR_HEAD"],
+              "parent_capture_head_sha": os.environ["PARENT_HEAD"],
+              "code_lane_head_sha": os.environ["CODE_HEAD"],
+              "code_runner_git_blob_sha1": os.environ["CODE_RUNNER_BLOB"],
+              "qualified_code_evidence_sha256": os.environ["CODE_EVIDENCE_SHA256"],
+              "qualified_code_evidence_identity_sha256": os.environ["CODE_EVIDENCE_ID"],
+              "capture_identity_sha256": claimed,
+              "ephemeral_raw_jsonl_sha256": receipt["ephemeral_raw_jsonl_sha256"],
+              "selected_record_count": 18,
+              "selected_payload_bytes": 418481,
+              "family_record_counts": expected_counts,
+              "family_payload_bytes": expected_bytes,
+              "replay_evidence_byte_identical_to_qualified_lane": True,
+              "raw_payload_published": False,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "scale_promotion_authorized": False,
+          }
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          qualification = {
+              **core,
+              "qualification_identity_sha256": hashlib.sha256(raw).hexdigest(),
+          }
+          (tmp / "publish/qualification.json").write_text(
+              json.dumps(
+                  qualification,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          (tmp / "publish/capture.json").write_bytes(receipt_raw)
+          (tmp / "publish/code-evidence.json").write_bytes(evidence_raw)
+          PY
+
+          rm -f "$RUNNER_TEMP/code-selected.jsonl"
+          rm -f "$RUNNER_TEMP/evaluation_records.jsonl"             "$RUNNER_TEMP/eval291-en.jsonl"
+          rm -rf "$RUNNER_TEMP/parent" "$RUNNER_TEMP/plan" "$RUNNER_TEMP/balance"
+          test ! -e "$RUNNER_TEMP/code-selected.jsonl"
+          test "$(find "$RUNNER_TEMP/publish" -maxdepth 1 -type f | wc -l)" -eq 3
+          if grep -R -q '"normalized_payload"' "$RUNNER_TEMP/publish"; then
+            echo "raw payload key leaked into durable publication" >&2
+            exit 1
+          fi
+
+      - name: Upload text-free code physical qualification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-code-selected-physical-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/publish
+          if-no-files-found: error
+          retention-days: 90
