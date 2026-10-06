@@ -64,6 +64,11 @@ def _transactional_restore(
             # Preserve KeyboardInterrupt/SystemExit/GeneratorExit identity after
             # restoring the exact pre-call process state.
             raise
+        if isinstance(exc, core.CheckpointCompatibilityError):
+            # A fail-closed compatibility preflight can reject before mutating
+            # anything. The transactional wrapper still proves rollback, but
+            # must preserve the precise incompatibility for operator diagnosis.
+            raise
         raise core.CheckpointCompatibilityError(
             "RNG restore failed; prior RNG state was restored transactionally"
         ) from exc
