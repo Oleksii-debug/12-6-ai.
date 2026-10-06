@@ -1,0 +1,99 @@
+name: D05 RNG compatibility replay qualification G8-157c
+
+on:
+  pull_request:
+    branches:
+      - repair/2856-preserve-rng-compat-g8-157b-20261006
+    paths:
+      - ".github/workflows/d05_rng_compat_replay_g8_157c.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d05-checkpoint-process-replay-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2858-rng-compat-g8-157c-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      D05_PRODUCT_SHA: "ed595263f8dba8921197e8befa03942756f200e6"
+      QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+      EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PYTHONUTF8: "1"
+
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact Product parent and focused closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$D05_PRODUCT_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$D05_PRODUCT_SHA" HEAD)" = "$D05_PRODUCT_SHA"
+          changed="$(git diff --name-only "$D05_PRODUCT_SHA..HEAD")"
+          test "$changed" = ".github/workflows/d05_rng_compat_replay_g8_157c.yml"
+          test "$(git rev-parse "$D05_PRODUCT_SHA:src/twelve_six/checkpoint/core.py")" = "58bde19b37c1e1de31c4fc2ae151e9220cd5d969"
+          test "$(git rev-parse "$D05_PRODUCT_SHA:src/twelve_six/checkpoint/trainer_adapter.py")" = "d75fd8010de2bba57e3bc6aaee474d2e1e150778"
+          test "$(git rev-parse "$D05_PRODUCT_SHA:src/twelve_six/checkpoint/transactional_rng.py")" = "f7c0531bd7fc4a200337ebf860765747c5447b6a"
+          test "$(git rev-parse "$D05_PRODUCT_SHA:tests/test_checkpoint_rng_completeness_d02.py")" = "16cba4bb0473f7f997aab0fc2d1672e169050a6f"
+          test "$(git rev-parse "$D05_PRODUCT_SHA:tests/test_checkpoint_transactional_rng.py")" = "38d475435f9ac2c2f17de9cb4e8f694db8834c42"
+          python -m py_compile \
+            src/twelve_six/checkpoint/core.py \
+            src/twelve_six/checkpoint/trainer_adapter.py \
+            src/twelve_six/checkpoint/transactional_rng.py \
+            tests/test_checkpoint_rng_completeness_d02.py \
+            tests/test_checkpoint_transactional_rng.py
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+
+      - name: Install exact Product test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Lint exact checkpoint replay delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check \
+            src/twelve_six/checkpoint/core.py \
+            src/twelve_six/checkpoint/trainer_adapter.py \
+            src/twelve_six/checkpoint/transactional_rng.py \
+            tests/test_checkpoint_rng_completeness_d02.py \
+            tests/test_checkpoint_transactional_rng.py
+
+      - name: Execute focused checkpoint process replay regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_checkpoint_rng_completeness_d02.py \
+            tests/test_checkpoint_transactional_rng.py
+
+      - name: Prove qualification carrier is still clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
