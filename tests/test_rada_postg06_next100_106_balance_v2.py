@@ -1356,3 +1356,53 @@ def test_zero_credit_boundary_explicitly_blocks_scale_and_optimizer() -> None:
     assert target.ZERO_CREDIT["optimizer_updates_executed_on_real_targets"] == 0
     assert target.ZERO_CREDIT["foreign_pretrained_weights_used"] is False
     assert target.ZERO_CREDIT["scale_promotion_authorized"] is False
+
+
+def test_compare_outputs_rejects_v1_composition_schema_downgrade(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-schema-v1"
+    b = tmp_path / "b-schema-v1"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "composition-dedup-proof.json"
+        composition = json.loads(path.read_text(encoding="utf-8"))
+        composition["schema"] = (
+            "12-6.d03-rada-post-g06-global-unique-composition.v1"
+        )
+        composition["evidence_identity_sha256"] = target.self_hash(
+            composition,
+            "evidence_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(composition))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="composition schema mismatch",
+    ):
+        _compare_outputs(a, b, tmp_path / "proof-schema-v1.json")
+
+
+def test_compare_outputs_rejects_nonpass_composition_verdict(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-nonpass"
+    b = tmp_path / "b-nonpass"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "composition-dedup-proof.json"
+        composition = json.loads(path.read_text(encoding="utf-8"))
+        composition["terminal_verdict"] = "BLOCKED"
+        composition["evidence_identity_sha256"] = target.self_hash(
+            composition,
+            "evidence_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(composition))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="composition terminal verdict is not PASS",
+    ):
+        _compare_outputs(a, b, tmp_path / "proof-nonpass.json")
