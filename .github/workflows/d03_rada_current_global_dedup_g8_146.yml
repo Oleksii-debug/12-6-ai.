@@ -102,6 +102,21 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Run exact parent and carrier source preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "pytest>=8" "ruff>=0.12"
+          ruff check \
+            tools/run_d03_rada_current_global_dedup_v1.py \
+            src/twelve_six/data/rada_current_snapshot_qp_authority_v1.py \
+            src/twelve_six/data/rada_current_snapshot_dedup_adapter_v1.py \
+            tests/test_rada_current_snapshot_qp_authority_v1.py \
+            tests/test_rada_current_snapshot_dedup_adapter_v1.py
+          PYTHONPATH="$GITHUB_WORKSPACE/src" pytest -q \
+            tests/test_rada_current_snapshot_qp_authority_v1.py \
+            tests/test_rada_current_snapshot_dedup_adapter_v1.py
+
       - name: Download exact retained source artifact
         shell: bash
         env:
