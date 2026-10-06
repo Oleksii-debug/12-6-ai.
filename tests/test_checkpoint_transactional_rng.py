@@ -55,6 +55,42 @@ def test_transactional_rng_restore_rolls_back_late_apply_failure() -> None:
     _assert_numpy_rng_equal(np.random.get_state(), before_numpy)
 
 
+def test_transactional_rng_restore_preserves_compatibility_error() -> None:
+    random.seed(123)
+    np.random.seed(123)
+    before_python = copy.deepcopy(random.getstate())
+    before_numpy = copy.deepcopy(np.random.get_state())
+
+    target = capture_rng_state()
+    primary = CheckpointCompatibilityError(
+        "checkpoint torch default_dtype is invalid"
+    )
+    real_restore = restore_rng_state
+
+    def reject_target_after_partial_apply(
+        state: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if state is target:
+            random.seed(999)
+            np.random.seed(999)
+            raise primary
+        return real_restore(state)
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="default_dtype",
+    ) as raised:
+        _transactional_restore(
+            __import__("twelve_six.checkpoint", fromlist=["checkpoint"]),
+            reject_target_after_partial_apply,
+            target,
+        )
+
+    assert raised.value is primary
+    assert random.getstate() == before_python
+    _assert_numpy_rng_equal(np.random.get_state(), before_numpy)
+
+
 def test_transactional_rng_restore_surfaces_rollback_failure() -> None:
     target = capture_rng_state()
 
