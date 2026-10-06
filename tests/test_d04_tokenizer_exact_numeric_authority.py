@@ -1915,18 +1915,25 @@ def test_verifier_nested_expected_mapping_is_immutable(
         nested[nested_key] = object()
 
 
-def test_builtin_expectation_table_cannot_be_retargeted_with_builtin(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_builtin_expectation_table_cannot_be_retargeted_with_builtin() -> None:
     import builtins
 
     replacement = lambda _value: [999]
     with pytest.raises(TypeError):
         authority._EXPECTED_BYTE_RUNTIME_BUILTINS["list"] = replacement
-    monkeypatch.setattr(builtins, "list", replacement)
 
-    with pytest.raises(
-        authority.TokenizerDecisionError,
-        match="runtime dependency drift: builtins.list",
-    ):
-        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+    original = builtins.list
+    observed_error = None
+    builtins.list = replacement
+    try:
+        try:
+            authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+        except BaseException as exc:
+            observed_error = exc
+    finally:
+        builtins.list = original
+
+    assert type(observed_error) is authority.TokenizerDecisionError
+    assert str(observed_error) == (
+        "canonical byte tokenizer runtime dependency drift: builtins.list"
+    )
