@@ -139,7 +139,7 @@ def test_incomplete_but_verified_rng_rejected_before_model_materialization(
 )
 @pytest.mark.parametrize(
     "missing",
-    ["python", "numpy", "cuda", "default_dtype", "matmul_precision"],
+    ["python", "numpy", "cuda", "default_dtype", "matmul_precision", "cudnn_tf32"],
 )
 def test_explicit_rng_opt_out_retains_existing_checkpoint_compatibility(
     tmp_path: Path,
