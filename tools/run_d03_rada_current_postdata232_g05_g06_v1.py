@@ -13,6 +13,7 @@ here.
 from __future__ import annotations
 
 import argparse
+import ast
 import copy
 import hashlib
 import json
@@ -325,6 +326,59 @@ def verify_self_hash(
     return claimed
 
 
+def _project_import_paths(source: str, *, label: str) -> set[str]:
+    try:
+        tree = ast.parse(source, filename=label)
+    except SyntaxError as exc:
+        raise RadaPostData232Error(
+            f"{label}: dependency source is not valid Python"
+        ) from exc
+
+    paths: set[str] = set()
+    prefix = "twelve_six.data"
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == prefix:
+                for alias in node.names:
+                    if alias.name == "*":
+                        raise RadaPostData232Error(
+                            f"{label}: wildcard project import is not auditable"
+                        )
+                    paths.add(
+                        "src/twelve_six/data/"
+                        + alias.name.replace(".", "/")
+                        + ".py"
+                    )
+            elif module.startswith(prefix + "."):
+                suffix = module[len(prefix) + 1 :].replace(".", "/")
+                paths.add(f"src/twelve_six/data/{suffix}.py")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                module = alias.name
+                if module.startswith(prefix + "."):
+                    suffix = module[len(prefix) + 1 :].replace(".", "/")
+                    paths.add(f"src/twelve_six/data/{suffix}.py")
+    return paths
+
+
+def verify_declared_dependency_import_closure(
+    carrier: str,
+) -> None:
+    allowed = set(EXPECTED_DEPENDENCY_BLOBS)
+    sources = sorted(allowed | {carrier})
+    for relative in sources:
+        source = (ROOT / relative).read_text(
+            encoding="utf-8",
+            errors="strict",
+        )
+        for imported in _project_import_paths(source, label=relative):
+            require(
+                imported in allowed,
+                f"unpinned project import in {relative}: {imported}",
+            )
+
+
 def verify_local_authority(expected_execution_head: str) -> dict[str, str]:
     require(
         isinstance(expected_execution_head, str)
@@ -360,6 +414,7 @@ def verify_local_authority(expected_execution_head: str) -> dict[str, str]:
         "executing carrier worktree drift",
     )
     observed[carrier] = carrier_blob
+    verify_declared_dependency_import_closure(carrier)
     return dict(sorted(observed.items()))
 
 
