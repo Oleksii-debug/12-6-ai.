@@ -1,0 +1,377 @@
+name: D03 EDRNPA selected act-card join G8-169
+
+on:
+  pull_request:
+    branches:
+      - compat/2794-edrnpa-historical-revision-g8-163-20261006
+    paths:
+      - ".github/workflows/d03_edrnpa_selected_actcard_join_g8_169.yml"
+      - "tools/run_d03_edrnpa_selected_actcard_join_discovery_v1.py"
+      - "tests/test_d03_edrnpa_selected_actcard_join_discovery_v1.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-edrnpa-actcard-join-g8-169-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PARENT_SHA: "66c812a5345e707f59424b2562502943ddf7a33f"
+  EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  PROBE_BLOB: "09bdf8ba7f561ea66b60e2b17acffe4de361f701"
+  POLICY_BLOB: "5f42cd3c20edad4b513857249f2c52d9efd4d82d"
+  POLICY_VERIFIER_BLOB: "95b52b98421e3e7861216a4f1f50c840aaed310c"
+  PARENT_DISCOVERY_BLOB: "71c4cb8acf0ddaf09a27289533d492cdd92ccda1"
+  JOIN_RUNNER_BLOB: "35d2be178566928c951ee47b8c4413cd41b77279"
+  JOIN_TEST_BLOB: "1ee5abda117059f6d8c7143c242196a534eb52cd"
+  SOURCE_BYTES: "611865397"
+  SOURCE_MD5: "0ea96e1582e5584ced79be1027f0ae55"
+  SOURCE_SHA256: "a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431"
+  SOURCE_URL: "https://data.gov.ua/dataset/b22d184c-4826-4e1d-8577-972effc5700c/resource/5616dd04-949a-489c-8efc-54004293b238/revision/522061/download"
+  PYTHONUTF8: "1"
+
+jobs:
+  physical-selected-actcard-join:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2879-edrnpa-actcard-join-g8-169-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact execution carrier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Install focused qualification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "pytest==8.4.2" "ruff==0.16.10"
+          test "$(python -m pytest --version)" = "pytest 8.4.2"
+          test "$(ruff --version)" = "ruff 0.16.10"
+
+      - name: Bind exact parent and executable closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$PARENT_SHA"
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_SHA" HEAD)" = "$PARENT_SHA"
+          test "$(git hash-object tools/probe_d03_edrnpa_open_data_v1.py)" = "$PROBE_BLOB"
+          test "$(git hash-object configs/data/d03_edrnpa_rights_provenance_source_policy_v1.json)" = "$POLICY_BLOB"
+          test "$(git hash-object tools/verify_d03_edrnpa_rights_provenance_source_policy_v1.py)" = "$POLICY_VERIFIER_BLOB"
+          test "$(git hash-object tools/run_d03_edrnpa_selected_actcard_schema_discovery_v1.py)" = "$PARENT_DISCOVERY_BLOB"
+          test "$(git hash-object tools/run_d03_edrnpa_selected_actcard_join_discovery_v1.py)" = "$JOIN_RUNNER_BLOB"
+          test "$(git hash-object tests/test_d03_edrnpa_selected_actcard_join_discovery_v1.py)" = "$JOIN_TEST_BLOB"
+
+          mapfile -t changed < <(git diff --name-only "$PARENT_SHA"..HEAD | sort)
+          expected=(
+            ".github/workflows/d03_edrnpa_selected_actcard_join_g8_169.yml"
+            "tests/test_d03_edrnpa_selected_actcard_join_discovery_v1.py"
+            "tools/run_d03_edrnpa_selected_actcard_join_discovery_v1.py"
+          )
+          if [ "${changed[*]}" != "${expected[*]}" ]; then
+            printf 'unexpected carrier delta:\n%s\n' "${changed[*]}"
+            exit 1
+          fi
+
+          python -m py_compile             tools/run_d03_edrnpa_selected_actcard_join_discovery_v1.py             tests/test_d03_edrnpa_selected_actcard_join_discovery_v1.py
+          ruff check             tools/run_d03_edrnpa_selected_actcard_join_discovery_v1.py             tests/test_d03_edrnpa_selected_actcard_join_discovery_v1.py
+          PYTHONPATH=. python -m pytest -q             tests/test_d03_edrnpa_selected_actcard_join_discovery_v1.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Download exact historical EDRNPA outer source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/edrnpa-source.zip
+          PYTHONPATH=. python - <<'PY'
+          import os
+          import time
+          import urllib.error
+          from pathlib import Path
+          import tools.probe_d03_edrnpa_open_data_v1 as probe
+
+          target = Path("/tmp/edrnpa-source.zip")
+          transient_http = {502, 503, 504}
+          result = None
+          for attempt in range(1, 4):
+              try:
+                  result = probe.download_archive_to(
+                      target,
+                      url=os.environ["SOURCE_URL"],
+                      timeout=600.0,
+                  )
+                  break
+              except urllib.error.HTTPError as exc:
+                  if exc.code not in transient_http or attempt == 3:
+                      raise
+                  print(
+                      f"transient source HTTP {exc.code}; retry {attempt + 1}/3",
+                      flush=True,
+                  )
+              except (urllib.error.URLError, TimeoutError) as exc:
+                  if attempt == 3:
+                      raise
+                  print(
+                      f"transient source transport failure "
+                      f"({type(exc).__name__}); retry {attempt + 1}/3",
+                      flush=True,
+                  )
+              time.sleep(15 * attempt)
+
+          if result is None:
+              raise SystemExit("source download exhausted retries")
+          print(result)
+          PY
+          test "$(stat -c '%s' /tmp/edrnpa-source.zip)" = "$SOURCE_BYTES"
+          test "$(md5sum /tmp/edrnpa-source.zip | cut -d' ' -f1)" = "$SOURCE_MD5"
+          test "$(sha256sum /tmp/edrnpa-source.zip | cut -d' ' -f1)" = "$SOURCE_SHA256"
+
+      - name: Execute selected text to act-card join discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/edrnpa-actcard-join-output
+          PYTHONPATH=. python             tools/run_d03_edrnpa_selected_actcard_join_discovery_v1.py             --source-zip /tmp/edrnpa-source.zip             --execution-head-sha "$EXECUTION_HEAD"             --output-dir /tmp/edrnpa-actcard-join-output
+
+      - name: Qualify text-free zero-credit join evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("/tmp/edrnpa-actcard-join-output")
+          expected = {
+              "selected-actcard-join-discovery.json",
+              "execution-receipt.json",
+          }
+          if {path.name for path in root.iterdir()} != expected:
+              raise SystemExit("unexpected join output members")
+
+          discovery = json.loads(
+              (root / "selected-actcard-join-discovery.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          receipt = json.loads(
+              (root / "execution-receipt.json").read_text(encoding="utf-8")
+          )
+
+          def identity(document, field):
+              body = dict(document)
+              body.pop(field, None)
+              raw = (
+                  json.dumps(
+                      body,
+                      ensure_ascii=False,
+                      sort_keys=True,
+                      separators=(",", ":"),
+                      allow_nan=False,
+                  )
+                  + "\n"
+              ).encode("utf-8")
+              return hashlib.sha256(raw).hexdigest()
+
+          if discovery["execution_head_sha"] != os.environ["EXECUTION_HEAD"]:
+              raise SystemExit("execution head drift")
+          source = discovery["source_binding"]
+          if source["source_bytes"] != int(os.environ["SOURCE_BYTES"]):
+              raise SystemExit("source byte count drift")
+          if source["source_md5"] != os.environ["SOURCE_MD5"]:
+              raise SystemExit("source MD5 drift")
+          if source["source_sha256"] != os.environ["SOURCE_SHA256"]:
+              raise SystemExit("source SHA-256 drift")
+          if source["card_nested_zip_member"] != "25.1-edrnpa_cards.zip":
+              raise SystemExit("card nested member drift")
+          if source["text_nested_zip_member"] != "25.2-edrnpa_text.zip":
+              raise SystemExit("text nested member drift")
+
+          candidate = discovery["candidate_binding"]
+          if candidate["selected_objects"] != 176:
+              raise SystemExit("selected object count drift")
+          if candidate["selected_bytes"] != 4_000_000:
+              raise SystemExit("selected byte count drift")
+          if candidate["inventory_identity_sha256"] != (
+              "380939a9ef8f67dcfb55912c010941f08d35b868267116d927603e988e710cca"
+          ):
+              raise SystemExit("selected inventory identity drift")
+          if candidate["selected_payload_identity_sha256"] != (
+              "9b1c7b65a71f36ebd3c99273abf3e9f4c3c1885c96432d65761275e37e0b4435"
+          ):
+              raise SystemExit("selected payload identity drift")
+          if candidate["report_identity_sha256"] != (
+              "f5668ad4ddb3ce7ed0cd0130377f803ddbcebfb5b547c6757176efa8043122a6"
+          ):
+              raise SystemExit("selected report identity drift")
+
+          parent = discovery["parent_discovery_binding"]
+          if parent["execution_head_sha"] != (
+              "66c812a5345e707f59424b2562502943ddf7a33f"
+          ):
+              raise SystemExit("parent discovery head drift")
+          if parent["workflow_run"] != 37456392095:
+              raise SystemExit("parent discovery run drift")
+          if parent["artifact_id"] != 11410515967:
+              raise SystemExit("parent discovery artifact drift")
+          if parent["discovery_identity_sha256"] != (
+              "d8f2ca73a95a37f996cae60098f39a6f576d30362d3c380a4d4331eaaaf0a9e0"
+          ):
+              raise SystemExit("parent discovery identity drift")
+
+          if identity(discovery, "discovery_identity_sha256") != (
+              discovery["discovery_identity_sha256"]
+          ):
+              raise SystemExit("discovery self-hash mismatch")
+          if identity(receipt, "receipt_identity_sha256") != (
+              receipt["receipt_identity_sha256"]
+          ):
+              raise SystemExit("receipt self-hash mismatch")
+          if receipt["discovery_identity_sha256"] != (
+              discovery["discovery_identity_sha256"]
+          ):
+              raise SystemExit("receipt/discovery cross-bind drift")
+          if receipt["candidate_selected_payload_identity_sha256"] != (
+              "9b1c7b65a71f36ebd3c99273abf3e9f4c3c1885c96432d65761275e37e0b4435"
+          ):
+              raise SystemExit("receipt selected payload identity drift")
+
+          join = discovery["selected_text_to_act_card_join"]
+          allowed_statuses = {
+              "COMPLETE_UNIQUE_SELECTED_TEXT_TO_CARD_JOIN",
+              "BLOCKED_DUPLICATE_SELECTED_TEXT_CODE",
+              "BLOCKED_UNMATCHED_SELECTED_CODES",
+              "BLOCKED_AMBIGUOUS_CARD_MATCH",
+              "BLOCKED_NON_BIJECTIVE_CARD_JOIN",
+          }
+          if join["join_status"] not in allowed_statuses:
+              raise SystemExit("unknown join status")
+          if join["selected_text_documents"] != 176:
+              raise SystemExit("selected text cardinality drift")
+
+          forbidden_keys = {
+              "text",
+              "raw_text",
+              "legal_text",
+              "metadata_value",
+              "metadata_values",
+              "raw_payload",
+              "normalized_payload",
+              "reestr_kod_value",
+              "reestr_kod_values",
+              "selected_codes",
+              "selected_code_values",
+          }
+
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      if key in forbidden_keys:
+                          raise SystemExit(f"forbidden raw-content/value key: {key}")
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+
+          walk(discovery)
+          walk(receipt)
+
+          boundary = discovery["content_boundary"]
+          if boundary != {
+              "legal_text_persisted": False,
+              "selected_reestr_kod_values_persisted": False,
+              "act_card_metadata_values_persisted": False,
+              "only_field_names_structures_and_aggregate_counts_persisted": True,
+          }:
+              raise SystemExit("content boundary drift")
+
+          truth = discovery["truth_boundary"]
+          exact_zero = {
+              "record_level_payload_provenance_executed": False,
+              "official_normative_act_classification_executed": False,
+              "payload_source_admission_executed": False,
+              "admitted_payload_records": 0,
+              "admitted_payload_bytes": 0,
+              "canonical_capacity_credit_bytes": 0,
+              "family_count_credit_added": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_executed": False,
+              "learned_weights_created": False,
+              "final_test_accessed": False,
+              "paid_compute_used": False,
+          }
+          if truth != exact_zero:
+              raise SystemExit("zero-credit truth boundary drift")
+          if receipt["payload_source_admission_executed"] is not False:
+              raise SystemExit("receipt admission drift")
+          if receipt["training_authorized_bytes"] != 0:
+              raise SystemExit("receipt training bytes drift")
+
+          print("EDRNPA_ACTCARD_JOIN_EVIDENCE_QUALIFIED")
+          print("JOIN_STATUS=" + join["join_status"])
+          print(
+              "MATCHED_SELECTED_UNIQUE_CODES="
+              + str(join["matched_selected_unique_codes"])
+          )
+          print(
+              "UNMATCHED_SELECTED_UNIQUE_CODES="
+              + str(join["unmatched_selected_unique_codes"])
+          )
+          print(
+              "AMBIGUOUS_SELECTED_UNIQUE_CODES="
+              + str(join["ambiguous_selected_unique_codes"])
+          )
+          print(
+              "JOIN_FIELD_NAMES="
+              + json.dumps(
+                  join["join_field_names"],
+                  ensure_ascii=False,
+                  sort_keys=True,
+              )
+          )
+          print(
+              "DISCOVERY_IDENTITY_SHA256="
+              + discovery["discovery_identity_sha256"]
+          )
+          print("RECEIPT_IDENTITY_SHA256=" + receipt["receipt_identity_sha256"])
+          PY
+
+      - name: Remove source before evidence publication
+        if: always()
+        shell: bash
+        run: |
+          rm -f /tmp/edrnpa-source.zip
+
+      - name: Prove carrier remains clean
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Upload text-free join evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-edrnpa-selected-actcard-join-${{ env.EXECUTION_HEAD }}
+          path: /tmp/edrnpa-actcard-join-output
+          if-no-files-found: error
+          retention-days: 90
