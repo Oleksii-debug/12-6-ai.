@@ -36,9 +36,17 @@
     },
     "1": {
       "title": "Єдина система ідентичностей і маніфестів",
-      "status": "UNVERIFIED",
-      "evidence": [],
-      "notes": []
+      "status": "READY_AFTER_PREDECESSOR",
+      "evidence": [
+        {
+          "kind": "branch",
+          "value": "section-01/unified-identity-manifest-v1"
+        }
+      ],
+      "notes": [
+        "Prepared as a stacked successor while Section 0 remains the canonical frontier.",
+        "Promotion to DONE is forbidden until Section 0 closes, this branch is reconciled onto current accepted main, and exact-head CI passes."
+      ]
     }
   }
 }
