@@ -300,9 +300,14 @@ def _validate_source_manifest_structure(
         artifact=EXPORTED_SOURCE_MANIFEST_NAME,
     )
     files = source_manifest.get("files")
-    if not isinstance(files, dict) or set(files) != _SOURCE_FILE_NAMES:
-        missing = sorted(_SOURCE_FILE_NAMES - set(files or ()))
-        unexpected = sorted(set(files or ()) - _SOURCE_FILE_NAMES)
+    if not isinstance(files, dict):
+        raise CheckpointIntegrityError(
+            "exported source manifest files must be a mapping"
+        )
+    actual_files = set(files)
+    if actual_files != _SOURCE_FILE_NAMES:
+        missing = sorted(_SOURCE_FILE_NAMES - actual_files)
+        unexpected = sorted(actual_files - _SOURCE_FILE_NAMES)
         raise CheckpointIntegrityError(
             "exported source manifest file inventory mismatch: "
             f"missing={missing}, unexpected={unexpected}"
