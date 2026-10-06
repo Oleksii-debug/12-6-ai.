@@ -79,9 +79,15 @@ def _require(condition: bool, message: str) -> None:
         raise JoinDiscoveryError(message)
 
 
-def _safe_value(value: str, *, label: str) -> str:
+def _safe_value(
+    value: str,
+    *,
+    label: str,
+    require_nonempty: bool = True,
+) -> str:
     normalized = unicodedata.normalize("NFC", value.strip())
-    _require(bool(normalized), f"{label} must be non-empty")
+    if require_nonempty:
+        _require(bool(normalized), f"{label} must be non-empty")
     _require(len(normalized) <= MAX_ITEM_VALUE_CHARS, f"{label} exceeds safety bound")
     _require(
         all(ch >= " " and ch not in {"\x7f", "\x00"} for ch in normalized),
@@ -322,7 +328,11 @@ def _discover_card_join(
                 _require(bool(stack) and stack[-1] == tag, "act-card XML stack drift")
                 if tag == "item":
                     name = parent_discovery._safe_field_name(elem.attrib["name"])
-                    value = _safe_value("".join(elem.itertext()), label="act-card item value")
+                    value = _safe_value(
+                        "".join(elem.itertext()),
+                        label="act-card item value",
+                        require_nonempty=False,
+                    )
                     signature, has_richtext = _item_signature(elem)
                     current_items.append((name, signature, has_richtext, value))
                     _require(
@@ -372,19 +382,19 @@ def _discover_card_join(
     ambiguous_codes = [
         code
         for code in selected_codes
-        if matches.get(code) and len(set(matches[code])) != 1
+        if matches.get(code) and len(matches[code]) != 1
     ]
     uniquely_matched_codes = [
         code
         for code in selected_codes
-        if len(set(matches.get(code, []))) == 1
+        if len(matches.get(code, [])) == 1
     ]
     unique_join_card_documents = {
-        next(iter(set(matches[code])))[0] for code in uniquely_matched_codes
+        matches[code][0][0] for code in uniquely_matched_codes
     }
     join_fields: defaultdict[str, int] = defaultdict(int)
     for code in uniquely_matched_codes:
-        _document, field = next(iter(set(matches[code])))
+        _document, field = matches[code][0]
         join_fields[field] += 1
 
     if duplicate_text_code_groups:
