@@ -288,6 +288,44 @@ def load_bound_runtime() -> tuple[Any, Any, Any]:
     return clean, reserved, verify_report
 
 
+def verify_zero_credit_truth(
+    value: Mapping[str, Any],
+    *,
+    label: str,
+    require_model_selection_false: bool,
+) -> None:
+    zero_fields = (
+        "canonical_capacity_credited",
+        "authorized_optimized_target_exposure",
+        "authorized_unique_loss_positions",
+        "authorized_training_exposure",
+    )
+    false_fields = (
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "scale_promotion_authorized",
+    )
+    for field in zero_fields:
+        require(
+            type(value.get(field)) is int and value.get(field) == 0,
+            f"{label}: authority widened: {field}",
+        )
+    for field in false_fields:
+        require(
+            value.get(field) is False,
+            f"{label}: truth boundary widened: {field}",
+        )
+    if require_model_selection_false:
+        require(
+            value.get("model_architecture_or_hyperparameters_selected") is False,
+            f"{label}: truth boundary widened: "
+            "model_architecture_or_hyperparameters_selected",
+        )
+
+
 def verify_parent(
     *,
     reserved_module: Any,
@@ -415,16 +453,22 @@ def verify_parent(
         "parent result next-gate drift",
     )
     require(
-        result.get("final_test_outcomes_read") is False
-        and result.get("training_executed") is False
-        and result.get("tokenizer_fit_authorized") is False
-        and result.get("paid_compute_used") is False,
-        "parent result widened science boundary",
+        result.get("status") == report.get("status")
+        and result.get("status") == evidence.get("status"),
+        "parent result/report/evidence status drift",
     )
     require(
-        type(result.get("authorized_optimized_target_exposure")) is int
-        and result.get("authorized_optimized_target_exposure") == 0,
-        "parent result widened optimized exposure",
+        result.get("durable_evidence_hash_only") is True,
+        "parent result durable evidence is not hash-only",
+    )
+    require(
+        result.get("final_test_payload_accessed_for_decontamination") is True,
+        "parent result final-test decontamination access truth missing",
+    )
+    verify_zero_credit_truth(
+        result,
+        label="parent result",
+        require_model_selection_false=True,
     )
 
     proof_id = verify_self_hash(
@@ -451,16 +495,27 @@ def verify_parent(
         "parent proof/file SHA-256 drift",
     )
     require(
+        proof.get("schema_version")
+        == "12-6.d03-rada-current-data232-two-clean.v1",
+        "parent proof schema drift",
+    )
+    require(
+        proof.get("full_selection_projection_sha256")
+        == EXPECTED_FULL_SELECTION_SHA256
+        and proof.get("current_rada_slice_authority_sha256")
+        == EXPECTED_RADA_SLICE_SHA256
+        and proof.get("postdedup_inventory_identity_sha256") == inventory_id
+        and proof.get("training_handoff_identity_sha256") == handoff_id,
+        "parent proof corpus-lineage drift",
+    )
+    require(
         proof.get("two_fresh_processes_byte_identical") is True,
         "parent proof lacks two byte-identical fresh processes",
     )
-    require(
-        proof.get("final_test_outcomes_read") is False
-        and proof.get("training_executed") is False
-        and proof.get("tokenizer_fit_authorized") is False
-        and proof.get("paid_compute_used") is False
-        and proof.get("scale_promotion_authorized") is False,
-        "parent proof widened science boundary",
+    verify_zero_credit_truth(
+        proof,
+        label="parent two-clean proof",
+        require_model_selection_false=False,
     )
     return report_id, evidence_id, proof_id
 
