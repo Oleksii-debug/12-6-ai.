@@ -608,6 +608,73 @@ def test_public_restore_apply_failure_records_execution_mode_leak(
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
+@pytest.mark.parametrize("broken_notes", [False, True], ids=["hostile-hook", "bad-storage"])
+def test_restore_failure_note_attachment_cannot_mask_primary_failure(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    broken_notes: bool,
+) -> None:
+    checkpoint = tmp_path / f"hostile-failure-note-{broken_notes}"
+    config = TrainerConfig(max_steps=10, seed=703)
+    hostile_hook_calls: list[str] = []
+
+    class HostileNoteError(RuntimeError):
+        def add_note(self, note: str) -> None:
+            hostile_hook_calls.append(note)
+            raise RuntimeError("hostile add_note hook executed")
+
+    failure = HostileNoteError("primary restore failure must survive")
+    if broken_notes:
+        failure.__notes__ = "attacker-controlled non-list"
+
+    class FailingDriftLinear(torch.nn.Linear):
+        def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
+            result = super().load_state_dict(state_dict, *args, **kwargs)
+            torch.set_grad_enabled(not torch.is_grad_enabled())
+            raise failure
+
+    source_model = FailingDriftLinear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+
+    target_model = FailingDriftLinear(3, 3)
+    target = Trainer(target_model, config)
+    entry_grad_enabled = torch.is_grad_enabled()
+    try:
+        with pytest.raises(
+            HostileNoteError,
+            match="primary restore failure must survive",
+        ) as caught:
+            loader.load_trainer_checkpoint(
+                checkpoint,
+                model=target_model,
+                trainer=target,
+                restore_rng=False,
+            )
+        assert caught.value is failure
+        assert hostile_hook_calls == []
+        if not broken_notes:
+            assert any(
+                "checkpoint restore apply also leaked caller-owned torch execution mode"
+                in note
+                for note in getattr(caught.value, "__notes__", ())
+            )
+    finally:
+        torch.set_grad_enabled(entry_grad_enabled)
+
+    assert target._failure_reason == "checkpoint_restore_apply_failed"
+    assert target._update_incomplete is True
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_public_restore_preserves_caller_inference_mode(
     tmp_path: Path,
