@@ -100,7 +100,7 @@ def test_manifest_rejects_missing_or_duplicate_planes() -> None:
 def test_manifest_rejects_missing_or_duplicate_boundary_contracts() -> None:
     canonical = canonical_system_architecture_v1()
 
-    with pytest.raises(ValueError, match="boundary set"):
+    with pytest.raises(ValueError, match="order or set"):
         SystemArchitectureManifest(
             schema_version=1,
             planes=canonical.planes,
@@ -112,6 +112,24 @@ def test_manifest_rejects_missing_or_duplicate_boundary_contracts() -> None:
             schema_version=1,
             planes=canonical.planes,
             boundaries=(*canonical.boundaries, canonical.boundaries[0]),
+        )
+
+
+def test_manifest_rejects_identity_ambiguous_reordering() -> None:
+    canonical = canonical_system_architecture_v1()
+
+    with pytest.raises(ValueError, match="plane order or set"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=(canonical.planes[1], canonical.planes[0], *canonical.planes[2:]),
+            boundaries=canonical.boundaries,
+        )
+
+    with pytest.raises(ValueError, match="boundary order or set"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=(canonical.boundaries[1], canonical.boundaries[0], *canonical.boundaries[2:]),
         )
 
 
@@ -198,6 +216,28 @@ def test_architecture_and_shell_identities_are_deterministic() -> None:
     assert architecture_a.identity_sha256() == architecture_b.identity_sha256()
     assert shell_a.identity_sha256() == shell_b.identity_sha256()
     assert architecture_a.identity_sha256() != shell_a.identity_sha256()
+
+
+def test_product_assembly_cross_binds_shell_gateway_to_architecture() -> None:
+    shell = canonical_runtime_shell_v1()
+    incompatible_shell = RuntimeShellContract(
+        gateway_api=InterfaceContract("twelve_six.other_gateway", 1),
+        memory_api=shell.memory_api,
+        tools_api=shell.tools_api,
+        voice_api=shell.voice_api,
+        ui_api=shell.ui_api,
+        orchestration_api=shell.orchestration_api,
+    )
+
+    with pytest.raises(ValueError, match="incompatible with architecture"):
+        ProductAssembly(
+            architecture=canonical_system_architecture_v1(),
+            shell=incompatible_shell,
+            core_binding=CognitiveCoreBinding(
+                core=_core("20m", 20_613_440),
+                gateway_api=incompatible_shell.gateway_api,
+            ),
+        )
 
 
 def test_product_assembly_rejects_gateway_generation_mismatch() -> None:
