@@ -598,6 +598,7 @@ def verify_inventory(
     expected_source_object_count: int,
     expected_record_inventory_digest_sha256: str,
     expected_payload_inventory_digest_sha256: str,
+    expected_payload_set_identity_sha256: str,
 ) -> list[dict[str, Any]]:
     require(
         set(inventory)
@@ -696,6 +697,25 @@ def verify_inventory(
         for row in normalized
     ]
     payload_root = sha256(canonical(payload_projection))
+    payload_set_projection = sorted(
+        (
+            {
+                "payload_sha256": row["payload_sha256"],
+                "payload_bytes": row["payload_bytes"],
+            }
+            for row in normalized
+        ),
+        key=lambda row: (row["payload_sha256"], row["payload_bytes"]),
+    )
+    payload_set_root = sha256(canonical(payload_set_projection))
+    require(
+        payload_set_root
+        == require_sha256(
+            expected_payload_set_identity_sha256,
+            "expected post-G06 payload-set identity",
+        ),
+        "post-G06 payload-set identity drift",
+    )
 
     require(record_count == expected_record_count, "inventory record count drift")
     require(total_bytes == expected_total_payload_bytes, "inventory byte count drift")
@@ -942,6 +962,9 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         expected_payload_inventory_digest_sha256=(
             args.expected_payload_inventory_digest_sha256
         ),
+        expected_payload_set_identity_sha256=evidence["g06"][
+            "payload_set_identity_sha256"
+        ],
     )
 
     vector = build_family_vector(
