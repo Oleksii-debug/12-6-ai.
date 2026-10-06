@@ -154,7 +154,7 @@ def test_missing_selected_ordinal_fails_closed() -> None:
         archive.close()
 
 
-@pytest.mark.parametrize("name", ["", "bad\x7fname", "bad\x01name"])
+@pytest.mark.parametrize("name", ["", "bad\x7fname"])
 def test_unsafe_item_name_fails_closed(name: str) -> None:
     xml = _xml(_document(_value_item(name, "value"), _legal_item("legal-text", "One")))
     archive, info = _nested(xml)
@@ -179,3 +179,31 @@ def test_selected_ordinals_reject_duplicate_identity_and_bad_format() -> None:
 
     with pytest.raises(mod.DiscoveryError, match="ordinal"):
         mod._selected_ordinals([{"source_path": "x#document:+7"}])
+
+
+def test_xml10_c0_removal_is_deterministic_and_bound_to_schema() -> None:
+    xml = _xml(
+        _document(
+            _value_item("bad\x01name", "value"),
+            _legal_item("legal-text", "One"),
+        )
+    )
+    archive, info = _nested(xml)
+    try:
+        first = mod._discover_schema(nested=archive, info=info, selected_ordinals={1})
+    finally:
+        archive.close()
+
+    archive, info = _nested(xml)
+    try:
+        second = mod._discover_schema(nested=archive, info=info, selected_ordinals={1})
+    finally:
+        archive.close()
+
+    assert first == second
+    assert first["xml10_control_bytes_removed"] == 1
+    assert len(first["xml10_control_removal_identity_sha256"]) == 64
+    assert [row["item_name"] for row in first["fields"]] == [
+        "badname",
+        "legal-text",
+    ]

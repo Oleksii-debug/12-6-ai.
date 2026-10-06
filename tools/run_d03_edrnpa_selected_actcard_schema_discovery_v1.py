@@ -191,12 +191,14 @@ def _discover_schema(
                 "item_name": name,
                 "selected_document_count": len(field_documents[name]),
                 "occurrence_count": field_occurrences[name],
-                "richtext_occurrence_count": richtext_names[name],
+                "richtext_occurrence_count": richtext_names.get(name, 0),
                 "structural_signatures": sorted(field_signatures[name]),
             }
         )
     return {
         "selected_documents_seen": len(selected_documents_seen),
+        "xml10_control_bytes_removed": guarded.removed_control_bytes,
+        "xml10_control_removal_identity_sha256": guarded.removal_identity_sha256,
         "unique_item_names": len(fields),
         "richtext_item_names": [
             {"item_name": name, "occurrence_count": count}
@@ -263,6 +265,25 @@ def execute(source_path: Path, *, execution_head_sha: str) -> tuple[dict[str, An
             "candidate evaluation eligibility widened",
         )
         selected_ordinals = _selected_ordinals(rows)
+        normalization = report.get("normalization")
+        _require(isinstance(normalization, Mapping), "candidate normalization missing")
+        expected_control_count = normalization.get("xml10_control_bytes_removed")
+        expected_control_identity = normalization.get(
+            "xml10_control_removal_identity_sha256"
+        )
+        _require(
+            isinstance(expected_control_count, int)
+            and not isinstance(expected_control_count, bool)
+            and expected_control_count >= 0,
+            "candidate XML control-removal count invalid",
+        )
+        _require(
+            isinstance(expected_control_identity, str)
+            and len(expected_control_identity) == 64
+            and expected_control_identity == expected_control_identity.lower()
+            and all(ch in "0123456789abcdef" for ch in expected_control_identity),
+            "candidate XML control-removal identity invalid",
+        )
 
         nested_path = root / "schema-nested.zip"
         nested_name, nested_size = probe._extract_nested_zip(snapshot, nested_path)
@@ -275,6 +296,15 @@ def execute(source_path: Path, *, execution_head_sha: str) -> tuple[dict[str, An
             )
         finally:
             nested.close()
+        _require(
+            structure["xml10_control_bytes_removed"] == expected_control_count,
+            "schema replay XML control-removal count drift",
+        )
+        _require(
+            structure["xml10_control_removal_identity_sha256"]
+            == expected_control_identity,
+            "schema replay XML control-removal identity drift",
+        )
 
     core = {
         "schema_version": SCHEMA,
