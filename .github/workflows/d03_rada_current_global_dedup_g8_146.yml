@@ -1,0 +1,501 @@
+name: D03 current Rada replacement global dedup two-clean
+
+on:
+  pull_request:
+    branches:
+      - d03/rada-current-snapshot-replay-authority-g8-143-20261005
+    paths:
+      - ".github/workflows/d03_rada_current_global_dedup_g8_146.yml"
+      - "tools/run_d03_rada_current_global_dedup_v1.py"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d03-rada-current-global-dedup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  global-dedup:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2808-rada-current-global-dedup-g8-146-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PARENT_HEAD: "fb49b7e212444547219df2bd2aa466db955d51e5"
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
+      RETAINED_ARTIFACT_ID: "11281540677"
+      OUTER_SHA256: "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb"
+      SOURCE_SHA256: "9f937b3283dd2d9508a0a92442fc007e7e6d373a17d3d50fa428e324cb2fa290"
+      NBU_HELPER_HEAD: "b5235cfd83852854e345dea6c2e89cfbcd1cef79"
+      NBU_HELPER_BRANCH: "execution/nbu-current40-global-dedup-g8-146-20261005"
+      NBU_HELPER_BLOB: "dc0ed88924610fc7ac19ba4fc7d960d8679c9742"
+      V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
+      V7_BRANCH: "next100-065c/crosssource-dedup-v5-20260826"
+      RADA_RUNNER_BLOB: "2757da9c2f5535c39e3984e4a84ed7fe36aab3fb"
+      ACCEPTED_JSONL_SHA256: "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7"
+      ACCEPTED_JSONL_BYTES: "224897989"
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact parent-relative closure and incumbent blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          git diff --name-only "$PARENT_HEAD"..HEAD | sort > /tmp/changed.txt
+          cat >/tmp/expected.txt <<'EOF'
+          .github/workflows/d03_rada_current_global_dedup_g8_146.yml
+          tools/run_d03_rada_current_global_dedup_v1.py
+          EOF
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+          test "$(git hash-object tools/normalize_d03_rada_bulk_html.py)" = \
+            "55ef5f5e7f09042489fa2642d099aedffaddb740"
+          test "$(git hash-object configs/data/d03_rada_bulk_normalization_v1.json)" = \
+            "3e0ca093762242f18fadb21002946b4b733afea3"
+          test "$(git hash-object configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json)" = \
+            "4a6cb0bd6b009ef36c9d2fb712967a4ae1cbfe0b"
+          test "$(git hash-object configs/data/d03_rada_bulk_fresh_snapshot_v2.json)" = \
+            "e7ed13b8d5db6c66ff48c771ca1d5e6eb6e24c02"
+          test "$(git hash-object evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json)" = \
+            "9953940072fdd973cd6c83eb5899314d3484da30"
+          test "$(git hash-object src/twelve_six/data/rada_current_snapshot_dedup_adapter_v1.py)" = \
+            "41558b33a2d9964aa41cfb11cc6114b61adb7297"
+          test "$(git hash-object src/twelve_six/data/rada_current_snapshot_qp_authority_v1.py)" = \
+            "6b0c7e173460f23d3d3b702448b228253135c6cc"
+          test "$(git hash-object tools/run_d03_rada_current_global_dedup_v1.py)" = \
+            "$RADA_RUNNER_BLOB"
+          python -m py_compile tools/run_d03_rada_current_global_dedup_v1.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Checkout frozen historical QP mechanics
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.HISTORICAL_QP_REF }}
+          path: _historical_qp
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify frozen QP blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _historical_qp rev-parse HEAD)" = "$HISTORICAL_QP_REF"
+          test "$(git -C _historical_qp hash-object tools/filter_d03_rada_bulk_quality_privacy.py)" = \
+            "69491874e60a1b846d683fff3c10214a869f18ff"
+          test "$(git -C _historical_qp hash-object configs/data/d03_rada_bulk_quality_privacy_v1.json)" = \
+            "e1798398a87893c5561afc6d9cd4f3d8fdce6d8b"
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Download exact retained source artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rada
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$RETAINED_ARTIFACT_ID/zip" \
+            -o /tmp/rada-artifact.zip
+          echo "$OUTER_SHA256  /tmp/rada-artifact.zip" | sha256sum --check --strict
+          zipinfo -1 /tmp/rada-artifact.zip | sort > /tmp/members.txt
+          cat >/tmp/expected-members.txt <<'EOF'
+          ATTRIBUTION.txt
+          rada-fresh-snapshot-qualification-v2.json
+          rada-probe-a.json
+          rada-probe-b.json
+          rada-source-a.zip
+          rada-successor-pin-v2.json
+          EOF
+          sort -o /tmp/expected-members.txt /tmp/expected-members.txt
+          cmp /tmp/expected-members.txt /tmp/members.txt
+          while IFS= read -r member; do
+            unzip -p /tmp/rada-artifact.zip "$member" > "/tmp/rada/$member"
+          done < /tmp/expected-members.txt
+          test "$(stat -c %s /tmp/rada/rada-source-a.zip)" = "46774786"
+          echo "$SOURCE_SHA256  /tmp/rada/rada-source-a.zip" | sha256sum --check --strict
+
+      - name: Materialize exact replay driver outside repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/replay.py <<'PY'
+          import copy
+          import hashlib
+          import importlib.util
+          import json
+          import sys
+          from pathlib import Path
+
+          ROOT = Path("/tmp/rada")
+          SOURCE_SHA = "9f937b3283dd2d9508a0a92442fc007e7e6d373a17d3d50fa428e324cb2fa290"
+          PROBE_SHA = "d2e1b233124551d91df7e7f9f41f38073843807c121adc73914264b04bef19a0"
+          QUAL_SHA = "78bcb860c2edaf09a3658524efd39b0ce5487508fe16656dfb96bcae11ae6341"
+          PIN_SHA = "3eb281bc0f00a91bee523183017bda2a308f87358eec9ade15419aaf8202ea2a"
+          ENTRY_ID = "1fcc222a959d1dfc24e2b23b71a5412b1050e22a5004cbd36f0dc79998898cc0"
+          QUAL_ID = "ced7b9370925ba0aa17952efd2cc5ff917601d44fa301b8449ba135644e5a8b3"
+          PIN_ID = "dcda0321145c03160cef435bc3d1ef5ac668c3415bc013750ed38cd2d891561e"
+
+          def sha(data):
+              return hashlib.sha256(data).hexdigest()
+
+          def load_module(path, name):
+              spec = importlib.util.spec_from_file_location(name, path)
+              if spec is None or spec.loader is None:
+                  raise RuntimeError("cannot load frozen mechanics")
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              return module
+
+          def read_json(path):
+              raw = path.read_bytes()
+              value = json.loads(raw.decode("utf-8"))
+              if not isinstance(value, dict):
+                  raise RuntimeError("JSON root must be object")
+              return value, raw
+
+          norm = load_module(
+              Path("tools/normalize_d03_rada_bulk_html.py"),
+              "rada_norm",
+          )
+          qp = load_module(
+              Path("_historical_qp/tools/filter_d03_rada_bulk_quality_privacy.py"),
+              "rada_qp",
+          )
+          norm_cfg, _ = read_json(
+              Path("configs/data/d03_rada_bulk_normalization_v1.json")
+          )
+          qp_cfg, _ = read_json(
+              Path("_historical_qp/configs/data/d03_rada_bulk_quality_privacy_v1.json")
+          )
+          source = (ROOT / "rada-source-a.zip").read_bytes()
+          if len(source) != 46774786 or sha(source) != SOURCE_SHA:
+              raise RuntimeError("source archive identity drift")
+
+          probe_a, probe_a_raw = read_json(ROOT / "rada-probe-a.json")
+          probe_b, probe_b_raw = read_json(ROOT / "rada-probe-b.json")
+          if sha(probe_a_raw) != PROBE_SHA or sha(probe_b_raw) != PROBE_SHA:
+              raise RuntimeError("probe transport identity drift")
+          if probe_a != probe_b:
+              raise RuntimeError("retained clean probes differ")
+          qualification, qualification_raw = read_json(
+              ROOT / "rada-fresh-snapshot-qualification-v2.json"
+          )
+          pin, pin_raw = read_json(ROOT / "rada-successor-pin-v2.json")
+          if sha(qualification_raw) != QUAL_SHA or sha(pin_raw) != PIN_SHA:
+              raise RuntimeError("qualification/pin transport drift")
+          if qualification.get("evidence_identity_sha256") != QUAL_ID:
+              raise RuntimeError("qualification identity drift")
+          if pin.get("pin_identity_sha256") != PIN_ID:
+              raise RuntimeError("pin identity drift")
+          if qualification.get("normalization_reexecution_required") is not True:
+              raise RuntimeError("normalization replay boundary drift")
+          if qualification.get("quality_privacy_reexecution_required") is not True:
+              raise RuntimeError("Q/P replay boundary drift")
+          if pin.get("purpose") != "NORMALIZATION_INPUT_ONLY":
+              raise RuntimeError("pin purpose widened")
+          inventory = probe_a.get("inventory")
+          if not isinstance(inventory, dict):
+              raise RuntimeError("probe inventory missing")
+          if inventory.get("entry_identity_sha256") != ENTRY_ID:
+              raise RuntimeError("entry identity drift")
+          if inventory.get("canonical_entry_count") != 3055:
+              raise RuntimeError("entry count drift")
+          if inventory.get("canonical_raw_bytes") != 353891824:
+              raise RuntimeError("raw byte total drift")
+
+          projected_probe = copy.deepcopy(probe_a)
+          projected_probe["safe_result"] = norm.PINNED_PROBE_RESULT
+          projected_probe["gates"]["exact_archive_identity"] = norm.PINNED_PROBE_GATE
+          projected_probe_sha = sha(norm._serialized_probe_report_bytes(projected_probe))
+          normalized_jsonl, manifest = norm._materialize_normalized_records_unbound(
+              source,
+              projected_probe,
+              norm_cfg,
+              probe_report_sha256=projected_probe_sha,
+          )
+          if manifest.get("safe_result") != norm.UNBOUND_SAFE_RESULT:
+              raise RuntimeError("normalization projection widened authority")
+
+          projected_manifest = copy.deepcopy(manifest)
+          projected_manifest["safe_result"] = qp.PARENT_SAFE_RESULT
+          projected_manifest.pop("manifest_identity_sha256", None)
+          projected_manifest["manifest_identity_sha256"] = sha(
+              qp._canonical_bytes(projected_manifest)
+          )
+          norm_data = projected_manifest["normalization"]
+          parent_probe = projected_manifest["parent_probe"]
+          binding = {
+              "pr": 2478,
+              "head_sha": "9fa66e11faf3710d6ddf75854381eb879a37d1ba",
+              "branch": "swarm/2477-rada-laws-fresh-snapshot-v2",
+              "execution_head_sha": "9fa66e11faf3710d6ddf75854381eb879a37d1ba",
+              "execution_run_id": 37136885886,
+              "execution_evidence_identity_sha256": QUAL_ID,
+              "manifest_schema": qp.PARENT_MANIFEST_SCHEMA,
+              "manifest_worker_id": qp.PARENT_WORKER_ID,
+              "source_family": qp.SOURCE_FAMILY,
+              "safe_result": qp.PARENT_SAFE_RESULT,
+              "manifest_identity_sha256": projected_manifest[
+                  "manifest_identity_sha256"
+              ],
+              "manifest_transport_sha256": sha(
+                  qp._canonical_bytes(projected_manifest)
+              ),
+              "jsonl_sha256": norm_data["jsonl_sha256"],
+              "record_count": norm_data["record_count"],
+              "nonempty_record_count": norm_data["nonempty_record_count"],
+              "normalized_bytes_observed_not_credited": norm_data[
+                  "normalized_bytes_observed_not_credited"
+              ],
+              "normalized_record_inventory_sha256": norm_data[
+                  "normalized_record_inventory_sha256"
+              ],
+              "source_encoding_counts": norm_data["source_encoding_counts"],
+              "pinned_probe_report_sha256": parent_probe["probe_report_sha256"],
+              "archive_sha256": parent_probe["archive_sha256"],
+              "entry_identity_sha256": parent_probe["entry_identity_sha256"],
+          }
+          projected_qp_cfg = copy.deepcopy(qp_cfg)
+          projected_qp_cfg["parent_normalization"] = binding
+          qp.EXPECTED_PARENT_BINDING = binding
+          accepted_jsonl, qp_report = qp._materialize_quality_privacy_candidate_for_test(
+              normalized_jsonl,
+              projected_manifest,
+              projected_qp_cfg,
+              parent_manifest_sha256=binding["manifest_transport_sha256"],
+          )
+          result = {
+              "normalization": {
+                  "record_count": norm_data["record_count"],
+                  "nonempty_record_count": norm_data["nonempty_record_count"],
+                  "normalized_bytes_observed_not_credited": norm_data[
+                      "normalized_bytes_observed_not_credited"
+                  ],
+                  "source_encoding_counts": norm_data["source_encoding_counts"],
+                  "jsonl_file_bytes": len(normalized_jsonl),
+                  "jsonl_sha256": sha(normalized_jsonl),
+                  "normalized_record_inventory_sha256": norm_data[
+                      "normalized_record_inventory_sha256"
+                  ],
+              },
+              "quality_privacy": {
+                  "total_chunks": qp_report["filter_result"]["total_chunks"],
+                  "accepted_chunk_count": qp_report["filter_result"][
+                      "accepted_chunk_count"
+                  ],
+                  "rejected_chunk_count": qp_report["filter_result"][
+                      "rejected_chunk_count"
+                  ],
+                  "rejection_reasons": qp_report["filter_result"]["rejection_reasons"],
+                  "zero_chunk_parent_count": qp_report["input"][
+                      "zero_chunk_parent_count"
+                  ],
+                  "accepted_bytes_observed_not_credited": qp_report[
+                      "filter_result"
+                  ]["accepted_bytes_observed_not_credited"],
+                  "accepted_source_encoding_counts": qp_report["filter_result"][
+                      "accepted_source_encoding_counts"
+                  ],
+                  "accepted_jsonl_file_bytes": len(accepted_jsonl),
+                  "accepted_jsonl_sha256": sha(accepted_jsonl),
+                  "accepted_inventory_sha256": qp_report["filter_result"][
+                      "accepted_inventory_sha256"
+                  ],
+                  "exact_duplicate_accepted_hashes_observed_not_removed": qp_report[
+                      "filter_result"
+                  ]["exact_duplicate_accepted_hashes_observed_not_removed"],
+              },
+              "truth_boundary": {
+                  "canonical_capacity_credited": 0,
+                  "training_authorized_bytes": 0,
+                  "tokenizer_fit_authorized": False,
+                  "global_cross_source_dedup": "NOT_RUN",
+                  "evaluation_decontamination": "NOT_RUN",
+                  "training_executed": False,
+                  "learned_weights_created": False,
+                  "final_test_outcomes_read": False,
+                  "paid_compute_used": False,
+                  "production_qp_authority_established": False,
+              },
+          }
+          out = Path(sys.argv[1])
+          out.write_text(
+              json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          accepted_out = Path(sys.argv[2])
+          accepted_out.write_bytes(accepted_jsonl)
+          PY
+          python -m py_compile /tmp/replay.py
+
+      - name: Execute two fresh physical mechanics replays
+        shell: bash
+        run: |
+          set -euo pipefail
+          python /tmp/replay.py /tmp/replay-a.json /tmp/current-rada-a.jsonl
+          python /tmp/replay.py /tmp/replay-b.json /tmp/current-rada-b.jsonl
+          cmp /tmp/replay-a.json /tmp/replay-b.json
+          cmp /tmp/current-rada-a.jsonl /tmp/current-rada-b.jsonl
+          test "$(stat -c %s /tmp/current-rada-a.jsonl)" = "$ACCEPTED_JSONL_BYTES"
+          test "$(sha256sum /tmp/current-rada-a.jsonl | cut -d' ' -f1)" = \
+            "$ACCEPTED_JSONL_SHA256"
+
+      - name: Cross-bind exact expected local two-clean result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("utf-8")
+
+          evidence = json.loads(
+              Path(
+                  "evidence/d03_rada_bulk/current_snapshot_local_two_clean_g8_143.json"
+              ).read_text(encoding="utf-8")
+          )
+          replay = json.loads(Path("/tmp/replay-a.json").read_text(encoding="utf-8"))
+          claimed = evidence.pop("evidence_identity_sha256")
+          if hashlib.sha256(canonical(evidence)).hexdigest() != claimed:
+              raise SystemExit("local evidence self-identity mismatch")
+          if claimed != "5fbcb694e005b40db37232132d84fefdaa2fe428700368d4d63365ef3886bf38":
+              raise SystemExit("unexpected local evidence identity")
+          for section in ("normalization", "quality_privacy"):
+              if replay[section] != evidence[section]:
+                  raise SystemExit(f"GitHub replay differs from local {section}")
+          truth = replay["truth_boundary"]
+          if truth["canonical_capacity_credited"] != 0:
+              raise SystemExit("capacity widened")
+          if truth["training_authorized_bytes"] != 0:
+              raise SystemExit("training authority widened")
+          if truth["tokenizer_fit_authorized"] is not False:
+              raise SystemExit("tokenizer authority widened")
+          if truth["production_qp_authority_established"] is not False:
+              raise SystemExit("mechanics replay became false Product authority")
+          summary = {
+              "schema_version": "12-6.d03-rada-current-snapshot-github-replay.v1",
+              "status": "TWO_CLEAN_GITHUB_MECHANICS_REPLAY_ZERO_CREDIT",
+              "local_evidence_identity_sha256": claimed,
+              "normalization": replay["normalization"],
+              "quality_privacy": replay["quality_privacy"],
+              "truth_boundary": truth,
+          }
+          Path("/tmp/github-replay-summary.json").write_text(
+              json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print("CURRENT_RADA_TWO_CLEAN_GITHUB_REPLAY=PASS")
+          print("NORMALIZED_BYTES=211492947")
+          print("QP_ACCEPTED_BYTES=192393157")
+          print("CAPACITY_CREDIT=0")
+          PY
+
+
+      - name: Prepare exact incumbent helper and V7 worktrees
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$NBU_HELPER_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$NBU_HELPER_HEAD"
+          NBU_ROOT="$RUNNER_TEMP/nbu-helper"
+          git worktree add --detach "$NBU_ROOT" "$NBU_HELPER_HEAD"
+          test "$(git -C "$NBU_ROOT" rev-parse HEAD)" = "$NBU_HELPER_HEAD"
+          test "$(git -C "$NBU_ROOT" hash-object tools/run_d03_nbu_current40_global_dedup_v1.py)" = \
+            "$NBU_HELPER_BLOB"
+
+          git fetch --no-tags origin "$V7_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$V7_HEAD"
+          V7_ROOT="$RUNNER_TEMP/v7-rada-current"
+          git worktree add --detach "$V7_ROOT" "$V7_HEAD"
+          test "$(git -C "$V7_ROOT" rev-parse HEAD)" = "$V7_HEAD"
+
+      - name: Execute first fresh current-Rada global dedup
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" \
+            python tools/run_d03_rada_current_global_dedup_v1.py run \
+              --candidate-jsonl /tmp/current-rada-a.jsonl \
+              --nbu-helper-root "$RUNNER_TEMP/nbu-helper" \
+              --v7-root "$RUNNER_TEMP/v7-rada-current" \
+              --bulk-workspace "$RUNNER_TEMP/rada-bulk-a" \
+              --output-dir "$RUNNER_TEMP/rada-dedup-a" \
+              --expected-execution-head "$EXECUTION_HEAD" \
+              --max-candidate-pairs 100000000 \
+              --max-index-postings 250000000 \
+              --max-pair-expansions 250000000
+
+      - name: Execute second fresh current-Rada global dedup
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" \
+            python tools/run_d03_rada_current_global_dedup_v1.py run \
+              --candidate-jsonl /tmp/current-rada-b.jsonl \
+              --nbu-helper-root "$RUNNER_TEMP/nbu-helper" \
+              --v7-root "$RUNNER_TEMP/v7-rada-current" \
+              --bulk-workspace "$RUNNER_TEMP/rada-bulk-b" \
+              --output-dir "$RUNNER_TEMP/rada-dedup-b" \
+              --expected-execution-head "$EXECUTION_HEAD" \
+              --max-candidate-pairs 100000000 \
+              --max-index-postings 250000000 \
+              --max-pair-expansions 250000000
+
+      - name: Prove exact two-clean convergence
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" \
+            python tools/run_d03_rada_current_global_dedup_v1.py compare \
+              --output-a "$RUNNER_TEMP/rada-dedup-a" \
+              --output-b "$RUNNER_TEMP/rada-dedup-b" \
+              --proof "$RUNNER_TEMP/rada-two-clean.json"
+          test -f "$RUNNER_TEMP/rada-two-clean.json"
+
+      - name: Remove raw current-Rada text before publication
+        if: always()
+        shell: bash
+        run: |
+          rm -f /tmp/current-rada-a.jsonl /tmp/current-rada-b.jsonl
+
+      - name: Publish text-free current-Rada global-dedup evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-current-global-dedup-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/replay-a.json
+            /tmp/replay-b.json
+            /tmp/github-replay-summary.json
+            ${{ runner.temp }}/rada-dedup-a/dedup-report.json
+            ${{ runner.temp }}/rada-dedup-a/rada-survivor-authority.json
+            ${{ runner.temp }}/rada-dedup-a/execution-evidence.json
+            ${{ runner.temp }}/rada-two-clean.json
+          if-no-files-found: error
+          retention-days: 14
