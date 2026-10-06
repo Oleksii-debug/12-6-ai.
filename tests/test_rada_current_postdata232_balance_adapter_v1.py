@@ -431,3 +431,39 @@ def test_record_payload_jsonl_root_is_carried_without_raw_payload(
         "record_count",
         "capacity_bytes",
     }
+
+
+
+def test_future_terminal_parent_head_can_be_bound_exactly(
+    tmp_path: Path,
+) -> None:
+    evidence_path, inventory_path, receipt, inventory, jsonl_sha = _write_inputs(
+        tmp_path
+    )
+    terminal_head = "f" * 40
+    receipt["execution_head_sha"] = terminal_head
+    core = dict(receipt)
+    core.pop("evidence_identity_sha256")
+    receipt["evidence_identity_sha256"] = _sha(target.canonical(core))
+    evidence_path.write_bytes(target.canonical_line(receipt))
+
+    args = _args(
+        tmp_path,
+        evidence_path,
+        inventory_path,
+        receipt,
+        inventory,
+        jsonl_sha,
+    )
+    args.expected_parent_execution_head = terminal_head
+    result = target.execute(args)
+    vector = target.load_json_bytes(
+        (tmp_path / "family-vector.json").read_bytes(),
+        "vector",
+    )
+
+    assert vector["materialization_execution_head_sha"] == terminal_head
+    assert vector["source_git_sha"] == terminal_head
+    assert result["family_vector_identity_sha256"] == vector[
+        "family_vector_identity_sha256"
+    ]
