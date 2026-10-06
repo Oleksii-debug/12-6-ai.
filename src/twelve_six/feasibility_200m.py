@@ -147,6 +147,25 @@ def _is_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _is_schema_version(value: Any) -> bool:
+    return type(value) is int and value == PACKET_SCHEMA_VERSION
+
+
+def _validate_authority_boundaries(value: Any) -> list[str]:
+    if not isinstance(value, dict) or set(value) != _BOUNDARY_FIELDS:
+        return ["authority_boundaries_fields_mismatch"]
+    errors: list[str] = []
+    for key in _BOUNDARY_FIELDS - {"optimizer_updates_executed_by_packet"}:
+        if value.get(key) is not False:
+            errors.append(f"authority_boundary_{key}_must_be_false")
+    optimizer_updates = value.get("optimizer_updates_executed_by_packet")
+    if type(optimizer_updates) is not int or optimizer_updates != 0:
+        errors.append(
+            "authority_boundary_optimizer_updates_executed_by_packet_must_be_zero"
+        )
+    return errors
+
+
 def _is_positive_finite_number(value: Any) -> bool:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return False
@@ -362,7 +381,7 @@ def _trusted_build_retention_errors(packet: Any) -> list[str]:
     errors: list[str] = []
     if set(packet) != _TOP_LEVEL_FIELDS:
         errors.append("packet_fields_mismatch")
-    if packet.get("schema_version") != PACKET_SCHEMA_VERSION:
+    if not _is_schema_version(packet.get("schema_version")):
         errors.append("schema_version_mismatch")
     if packet.get("packet_kind") != PACKET_KIND:
         errors.append("packet_kind_mismatch")
@@ -420,10 +439,7 @@ def _trusted_build_retention_errors(packet: Any) -> list[str]:
     if not _is_allowed_decision(packet.get("decision")):
         errors.append("decision_invalid")
     boundaries = packet.get("authority_boundaries")
-    if not isinstance(boundaries, dict) or set(boundaries) != _BOUNDARY_FIELDS:
-        errors.append("authority_boundaries_fields_mismatch")
-    elif boundaries != _FALSE_BOUNDARIES:
-        errors.append("authority_boundaries_must_be_non_authorizing")
+    errors.extend(_validate_authority_boundaries(boundaries))
 
     packet_sha = packet.get("packet_sha256")
     if not _is_sha256(packet_sha):
@@ -477,7 +493,7 @@ def validate_200m_feasibility_packet(
     if set(packet) != _TOP_LEVEL_FIELDS:
         errors.append("packet_fields_mismatch")
 
-    if packet.get("schema_version") != PACKET_SCHEMA_VERSION:
+    if not _is_schema_version(packet.get("schema_version")):
         errors.append("schema_version_mismatch")
     if packet.get("packet_kind") != PACKET_KIND:
         errors.append("packet_kind_mismatch")
@@ -515,7 +531,10 @@ def validate_200m_feasibility_packet(
     except FeasibilityPacketError:
         target = None
         errors.append("roadmap_product_200m_target_invalid")
-    if packet.get("roadmap_target_parameters") != target:
+    roadmap_target = packet.get("roadmap_target_parameters")
+    if not _is_positive_int(roadmap_target):
+        errors.append("roadmap_target_parameters_invalid")
+    if roadmap_target != target:
         errors.append("roadmap_target_parameters_mismatch")
 
     learned_binding = packet.get("learned_20m_binding")
@@ -604,10 +623,7 @@ def validate_200m_feasibility_packet(
         errors.append("decision_invalid")
 
     boundaries = packet.get("authority_boundaries")
-    if not isinstance(boundaries, dict) or set(boundaries) != _BOUNDARY_FIELDS:
-        errors.append("authority_boundaries_fields_mismatch")
-    elif boundaries != _FALSE_BOUNDARIES:
-        errors.append("authority_boundaries_must_be_non_authorizing")
+    errors.extend(_validate_authority_boundaries(boundaries))
 
     packet_sha = packet.get("packet_sha256")
     if not _is_sha256(packet_sha):
