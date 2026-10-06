@@ -1,0 +1,280 @@
+name: D03 EDRNPA source byte drift G8-170
+
+on:
+  pull_request:
+    branches:
+      - execution/2879-edrnpa-actcard-join-g8-169-20261006
+    paths:
+      - ".github/workflows/d03_edrnpa_source_byte_drift_g8_170.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-edrnpa-source-byte-drift-g8-170-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PARENT_HEAD: "1342d7ea6541273fbc325290f5ea25ee77544442"
+  EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  SOURCE_URL: "https://data.gov.ua/dataset/b22d184c-4826-4e1d-8577-972effc5700c/resource/5616dd04-949a-489c-8efc-54004293b238/revision/522061/download"
+  EXPECTED_BYTES: "611865397"
+  EXPECTED_MD5: "0ea96e1582e5584ced79be1027f0ae55"
+  EXPECTED_SHA256: "a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431"
+  PYTHONUTF8: "1"
+
+jobs:
+  physical-source-byte-drift:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/3028-edrnpa-source-drift-g8-170-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact diagnostic carrier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact parent and workflow-only delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$PARENT_HEAD"
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          mapfile -t changed < <(git diff --name-only "$PARENT_HEAD"..HEAD)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = ".github/workflows/d03_edrnpa_source_byte_drift_g8_170.yml"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Stream two independent revision observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/edrnpa-source-drift
+          mkdir -p /tmp/edrnpa-source-drift
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          URL = os.environ["SOURCE_URL"]
+          EXPECTED = {
+              "bytes": int(os.environ["EXPECTED_BYTES"]),
+              "md5": os.environ["EXPECTED_MD5"],
+              "sha256": os.environ["EXPECTED_SHA256"],
+          }
+          MAX_BYTES = 700_000_000
+          OUT = Path("/tmp/edrnpa-source-drift")
+
+          def observe(index: int) -> dict:
+              request = urllib.request.Request(
+                  URL,
+                  headers={
+                      "User-Agent": "12-6-ai-edrnpa-open-data/3.0 (+LOCAL_FREE research)",
+                      "Accept": "application/zip,application/octet-stream",
+                  },
+              )
+              record = {
+                  "attempt": index,
+                  "status": "TRANSPORT_ERROR",
+                  "http_status": None,
+                  "headers": {},
+                  "bytes": 0,
+                  "md5": None,
+                  "sha256": None,
+                  "matches_expected_pin": False,
+              }
+              try:
+                  with urllib.request.urlopen(request, timeout=600.0) as response:
+                      record["http_status"] = getattr(response, "status", None)
+                      for key in ("Content-Length", "Content-Type", "ETag", "Last-Modified"):
+                          value = response.headers.get(key)
+                          if value is not None:
+                              record["headers"][key.lower()] = value
+                      length = response.headers.get("Content-Length")
+                      if length is not None and int(length) > MAX_BYTES:
+                          record["status"] = "OVERSIZE_HEADER"
+                          return record
+                      md5_hash = hashlib.md5(usedforsecurity=False)
+                      sha_hash = hashlib.sha256()
+                      total = 0
+                      while True:
+                          chunk = response.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          total += len(chunk)
+                          if total > MAX_BYTES:
+                              record["status"] = "OVERSIZE_STREAM"
+                              record["bytes"] = total
+                              return record
+                          md5_hash.update(chunk)
+                          sha_hash.update(chunk)
+                      record["bytes"] = total
+                      record["md5"] = md5_hash.hexdigest()
+                      record["sha256"] = sha_hash.hexdigest()
+                      record["matches_expected_pin"] = (
+                          total == EXPECTED["bytes"]
+                          and record["md5"] == EXPECTED["md5"]
+                          and record["sha256"] == EXPECTED["sha256"]
+                      )
+                      record["status"] = (
+                          "PIN_MATCH" if record["matches_expected_pin"] else "PIN_MISMATCH"
+                      )
+                      return record
+              except urllib.error.HTTPError as exc:
+                  record["http_status"] = exc.code
+                  record["status"] = "HTTP_ERROR"
+                  return record
+              except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                  record["status"] = type(exc).__name__
+                  return record
+
+          observations = [observe(1), observe(2)]
+          successful = [
+              row for row in observations
+              if row["status"] in {"PIN_MATCH", "PIN_MISMATCH"}
+          ]
+          if len(successful) == 2:
+              same_observed_bytes = all(
+                  (
+                      row["bytes"],
+                      row["md5"],
+                      row["sha256"],
+                  )
+                  == (
+                      successful[0]["bytes"],
+                      successful[0]["md5"],
+                      successful[0]["sha256"],
+                  )
+                  for row in successful
+              )
+          else:
+              same_observed_bytes = False
+
+          if len(successful) == 2 and all(row["matches_expected_pin"] for row in successful):
+              verdict = "TWO_CLEAN_PIN_MATCH"
+          elif len(successful) == 2 and same_observed_bytes:
+              verdict = "DETERMINISTIC_PIN_MISMATCH"
+          else:
+              verdict = "SOURCE_ENDPOINT_UNSTABLE_OR_UNAVAILABLE"
+
+          result = {
+              "schema_version": "12-6.d03-edrnpa-source-byte-drift-diagnostic.v1",
+              "execution_head_sha": os.environ["EXECUTION_HEAD"],
+              "parent_head_sha": os.environ["PARENT_HEAD"],
+              "expected_pin": EXPECTED,
+              "observations": observations,
+              "two_successful_observations_byte_identical": same_observed_bytes,
+              "diagnostic_verdict": verdict,
+              "content_persisted": False,
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "scale_promotion_authorized": False,
+          }
+          body = dict(result)
+          raw = json.dumps(
+              body,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          result["diagnostic_identity_sha256"] = hashlib.sha256(raw).hexdigest()
+          (OUT / "source-byte-drift.json").write_text(
+              json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print("DIAGNOSTIC_VERDICT=" + verdict)
+          for row in observations:
+              print(
+                  "OBSERVATION_"
+                  + str(row["attempt"])
+                  + "="
+                  + json.dumps(row, ensure_ascii=False, sort_keys=True)
+              )
+          print("DIAGNOSTIC_IDENTITY_SHA256=" + result["diagnostic_identity_sha256"])
+          PY
+
+      - name: Qualify text-free zero-credit diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("/tmp/edrnpa-source-drift/source-byte-drift.json")
+          value = json.loads(path.read_text(encoding="utf-8"))
+          identity = value.pop("diagnostic_identity_sha256")
+          raw = json.dumps(
+              value,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          if hashlib.sha256(raw).hexdigest() != identity:
+              raise SystemExit("diagnostic identity mismatch")
+          if value["execution_head_sha"] != os.environ["EXECUTION_HEAD"]:
+              raise SystemExit("execution head drift")
+          if value["parent_head_sha"] != os.environ["PARENT_HEAD"]:
+              raise SystemExit("parent head drift")
+          if value["content_persisted"] is not False:
+              raise SystemExit("content persistence widened")
+          exact_zero = {
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "scale_promotion_authorized": False,
+          }
+          for key, expected in exact_zero.items():
+              if value.get(key) != expected:
+                  raise SystemExit(f"truth boundary drift: {key}")
+          for observation in value["observations"]:
+              allowed = {
+                  "attempt", "status", "http_status", "headers",
+                  "bytes", "md5", "sha256", "matches_expected_pin",
+              }
+              if set(observation) != allowed:
+                  raise SystemExit("unexpected observation key")
+          print("EDRNPA_SOURCE_BYTE_DRIFT_DIAGNOSTIC_QUALIFIED")
+          print("DIAGNOSTIC_VERDICT=" + value["diagnostic_verdict"])
+          print("DIAGNOSTIC_IDENTITY_SHA256=" + identity)
+          PY
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Upload text-free diagnostic evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-edrnpa-source-byte-drift-${{ env.EXECUTION_HEAD }}
+          path: /tmp/edrnpa-source-drift/source-byte-drift.json
+          if-no-files-found: error
+          retention-days: 90
