@@ -370,6 +370,161 @@ def test_rng_opt_out_rejects_application_ambient_process_drift(
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
+@pytest.mark.parametrize(
+    ("phase", "mutation"),
+    [
+        ("preapply", "grad_enabled"),
+        ("model_apply", "grad_enabled"),
+        ("trainer_apply", "grad_enabled"),
+        ("model_apply", "inference_mode"),
+    ],
+)
+def test_public_restore_rejects_autograd_execution_mode_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    restore_rng: bool,
+    phase: str,
+    mutation: str,
+) -> None:
+    checkpoint = tmp_path / f"autograd-drift-{phase}-{mutation}-{restore_rng}"
+    config = TrainerConfig(max_steps=10, seed=703)
+    leaked_contexts: list[Any] = []
+
+    def mutate_execution_mode() -> None:
+        if mutation == "grad_enabled":
+            torch.set_grad_enabled(not torch.is_grad_enabled())
+        elif mutation == "inference_mode":
+            context = torch.inference_mode(
+                not torch.is_inference_mode_enabled()
+            )
+            context.__enter__()
+            leaked_contexts.append(context)
+        else:
+            raise AssertionError(f"unknown execution-mode mutation: {mutation}")
+
+    class DriftLinear(torch.nn.Linear):
+        def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
+            result = super().load_state_dict(state_dict, *args, **kwargs)
+            if phase == "model_apply":
+                mutate_execution_mode()
+            return result
+
+    source_model = DriftLinear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+
+    target_model = DriftLinear(3, 3)
+    target = Trainer(target_model, config)
+    entry_grad_enabled = torch.is_grad_enabled()
+
+    if phase == "preapply":
+        original_prepare = loader._prepare_model_weights
+
+        def drifting_prepare(*args: Any, **kwargs: Any) -> Any:
+            result = original_prepare(*args, **kwargs)
+            mutate_execution_mode()
+            return result
+
+        monkeypatch.setattr(loader, "_prepare_model_weights", drifting_prepare)
+    elif phase == "trainer_apply":
+        original_bind = loader._bind_trainer_state_loader
+
+        def bind_drifting_loader(trainer: Any) -> Any:
+            apply_state = original_bind(trainer)
+
+            def drifting_apply(state: Any) -> Any:
+                result = apply_state(state)
+                mutate_execution_mode()
+                return result
+
+            return drifting_apply
+
+        monkeypatch.setattr(
+            loader,
+            "_bind_trainer_state_loader",
+            bind_drifting_loader,
+        )
+
+    try:
+        with pytest.raises(
+            CheckpointCompatibilityError,
+            match="live torch autograd/inference mode changed",
+        ):
+            loader.load_trainer_checkpoint(
+                checkpoint,
+                model=target_model,
+                trainer=target,
+                restore_rng=restore_rng,
+            )
+    finally:
+        for context in reversed(leaked_contexts):
+            context.__exit__(None, None, None)
+        torch.set_grad_enabled(entry_grad_enabled)
+
+    expected_reason = (
+        "checkpoint_preapply_rng_rollback_failed"
+        if phase == "preapply"
+        else "checkpoint_restore_apply_failed"
+    )
+    assert target._failure_reason == expected_reason
+    assert target._update_incomplete is True
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
+def test_public_restore_preserves_caller_no_grad_mode(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    restore_rng: bool,
+) -> None:
+    checkpoint = tmp_path / f"caller-no-grad-{restore_rng}"
+    config = TrainerConfig(max_steps=10, seed=703)
+    source_model = torch.nn.Linear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+    target_model = torch.nn.Linear(3, 3)
+    target = Trainer(target_model, config)
+
+    with torch.no_grad():
+        expected = (
+            torch.is_grad_enabled(),
+            torch.is_inference_mode_enabled(),
+        )
+        result = loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=restore_rng,
+        )
+        assert (
+            torch.is_grad_enabled(),
+            torch.is_inference_mode_enabled(),
+        ) == expected
+
+    assert result.manifest["identity"]["step"] == 0
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
 def test_complete_verified_checkpoint_replays_python_numpy_and_torch_cpu(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
