@@ -462,3 +462,65 @@ def test_cli_json_reader_converts_excessive_nesting_to_bounded_error(
     path.write_text("[" * 10_000 + "]" * 10_000, encoding="utf-8")
     with pytest.raises(ValueError, match="input_json_too_deep"):
         cli._read_json(path, label="input")
+
+
+
+def test_cli_path_preflight_rejects_canonical_collision(tmp_path: Path) -> None:
+    cli = _load_cli()
+    target = tmp_path / "target.json"
+    alias = tmp_path / "nested" / ".." / "target.json"
+    with pytest.raises(ValueError, match="output_path_collides_with_roadmap"):
+        cli._require_distinct_paths(
+            [
+                ("roadmap", target),
+                ("output", alias),
+            ]
+        )
+
+
+def test_cli_writer_rejects_nonregular_destination(tmp_path: Path) -> None:
+    cli = _load_cli()
+    target = tmp_path / "output.json"
+    target.mkdir()
+    with pytest.raises(ValueError, match="output_destination_not_regular_file"):
+        cli._write_json(target, {"value": 1}, label="output")
+    assert target.is_dir()
+
+
+def test_cli_writer_replace_failure_preserves_previous_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    target = tmp_path / "output.json"
+    target.write_text("previous\n", encoding="utf-8")
+
+    def fail_replace(source: Path, destination: Path) -> None:
+        raise OSError("simulated publication failure")
+
+    monkeypatch.setattr(cli.os, "replace", fail_replace)
+    with pytest.raises(ValueError, match="output_write_failed"):
+        cli._write_json(target, {"value": 1}, label="output")
+
+    assert target.read_text(encoding="utf-8") == "previous\n"
+    assert list(tmp_path.glob(".output.json.*.tmp")) == []
+
+
+def test_cli_writer_rejects_nonfinite_before_touching_target(
+    tmp_path: Path,
+) -> None:
+    cli = _load_cli()
+    target = tmp_path / "output.json"
+    target.write_text("previous\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        cli._write_json(target, {"value": float("nan")}, label="output")
+    assert target.read_text(encoding="utf-8") == "previous\n"
+
+
+def test_cli_writer_round_trips_utf8_without_temp_residue(tmp_path: Path) -> None:
+    cli = _load_cli()
+    target = tmp_path / "output.json"
+    value = {"label": "перевірка", "value": 1}
+    cli._write_json(target, value, label="output")
+    assert json.loads(target.read_text(encoding="utf-8")) == value
+    assert list(tmp_path.glob(".output.json.*.tmp")) == []
