@@ -13,8 +13,7 @@ import numpy as np
 import pytest
 import torch
 
-from twelve_six.checkpoint import CheckpointCompatibilityError
-from twelve_six.checkpoint import progress_trainer, trainer_adapter
+from twelve_six.checkpoint import CheckpointCompatibilityError, progress_trainer, trainer_adapter
 from twelve_six.training import Trainer, TrainerConfig
 
 
