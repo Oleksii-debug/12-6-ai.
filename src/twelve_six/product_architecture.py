@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
-from twelve_six.model import canonical_json_sha256
+
+def _canonical_json_sha256(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 class ProductLayer(StrEnum):
@@ -139,7 +149,7 @@ class BaseModelIdentity:
         }
 
     def identity_sha256(self) -> str:
-        return canonical_json_sha256(self.to_dict())
+        return _canonical_json_sha256(self.to_dict())
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,7 +216,7 @@ class ProductArchitecture:
                 item["version"],
             ),
         )
-        return canonical_json_sha256(
+        return _canonical_json_sha256(
             {
                 "schema_version": self.schema_version,
                 "components": components,
@@ -222,4 +232,4 @@ class ProductArchitecture:
         }
 
     def identity_sha256(self) -> str:
-        return canonical_json_sha256(self.to_dict())
+        return _canonical_json_sha256(self.to_dict())
