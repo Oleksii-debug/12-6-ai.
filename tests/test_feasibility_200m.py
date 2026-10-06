@@ -932,3 +932,26 @@ def test_retained_identity_helper_rejects_scalar_aliases() -> None:
     packet["packet_sha256"] = compute_packet_sha256(packet)
     with pytest.raises(FeasibilityPacketError, match="schema_version_mismatch"):
         retained_identities_for_built_packet(packet)
+
+
+
+def _deep_list(depth: int) -> list:
+    value: list = []
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+def test_canonical_hash_excessive_nesting_is_bounded() -> None:
+    with pytest.raises(FeasibilityPacketError, match="value_not_canonical_json"):
+        canonical_sha256(_deep_list(10_000))
+
+
+def test_validator_deep_malformed_packet_never_leaks_recursion_error() -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    packet["candidate"]["candidate_id"] = _deep_list(10_000)
+    errors = validate(packet, expected=expected)
+    assert "candidate_id_invalid" in errors
+    assert "candidate_not_canonical_json" in errors
+    assert "packet_not_canonical_json" in errors
