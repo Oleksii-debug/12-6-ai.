@@ -1908,6 +1908,42 @@ def _assert_checkpoint_process_environment_stable(
         )
     _core._assert_torch_process_environment_matches(cuda_environment)
 
+    required_numeric = (
+        "default_dtype",
+        "float32_matmul_precision",
+        "cudnn_allow_tf32",
+        "cudnn_enabled",
+        "cudnn_deterministic",
+        "cudnn_benchmark",
+    )
+    missing_numeric = [
+        field for field in required_numeric if field not in torch_state
+    ]
+    if missing_numeric:
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint numeric policy is incomplete: "
+            f"{missing_numeric}"
+        )
+    torch = importlib.import_module("torch")
+    live_numeric = {
+        "default_dtype": str(torch.get_default_dtype()),
+        "float32_matmul_precision": torch.get_float32_matmul_precision(),
+        "cudnn_allow_tf32": bool(torch.backends.cudnn.allow_tf32),
+        "cudnn_enabled": bool(torch.backends.cudnn.enabled),
+        "cudnn_deterministic": bool(torch.backends.cudnn.deterministic),
+        "cudnn_benchmark": bool(torch.backends.cudnn.benchmark),
+    }
+    drifted_numeric = [
+        field
+        for field in required_numeric
+        if live_numeric[field] != torch_state[field]
+    ]
+    if drifted_numeric:
+        raise CheckpointCompatibilityError(
+            "checkpoint torch numeric policy differs from the live process: "
+            f"{drifted_numeric}"
+        )
+
 
 def _snapshot_torch_policy(state: Mapping[str, Any]) -> tuple[bool, bool] | None:
     """Pin the live policy before any model or trainer loader can mutate it."""
