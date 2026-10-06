@@ -227,6 +227,13 @@ def _clear_canonical_module_cache() -> None:
     importlib.invalidate_caches()
 
 
+def _resolve_existing_path(raw_path: str, error: str) -> Path:
+    try:
+        return Path(raw_path).resolve(strict=True)
+    except OSError as exc:
+        raise CurrentRadaBalanceAdapterError(error) from exc
+
+
 def _verify_loaded_module(module_name: str, module: Any) -> None:
     relative = _CANONICAL_MODULE_FILES[module_name]
     expected_blob = EXPECTED_CANONICAL_BLOBS[relative]
@@ -235,7 +242,10 @@ def _verify_loaded_module(module_name: str, module: Any) -> None:
         isinstance(raw_path, str) and bool(raw_path),
         f"canonical module path missing: {module_name}",
     )
-    observed = Path(raw_path).resolve(strict=True)
+    observed = _resolve_existing_path(
+        raw_path,
+        f"canonical module provenance drift: {module_name}",
+    )
     expected = (ROOT / relative).resolve(strict=True)
     require(
         observed == expected,
@@ -257,11 +267,18 @@ def load_canonical_bridge() -> tuple[Any, Any, Any]:
     )
     expected_package = (ROOT / "src/twelve_six/__init__.py").resolve(strict=True)
     require(
-        Path(package_file).resolve(strict=True) == expected_package,
+        _resolve_existing_path(
+            package_file,
+            "canonical twelve_six package provenance drift",
+        )
+        == expected_package,
         "canonical twelve_six package provenance drift",
     )
     package_paths = [
-        Path(value).resolve(strict=True)
+        _resolve_existing_path(
+            value,
+            "canonical twelve_six package search path drift",
+        )
         for value in getattr(twelve_six, "__path__", ())
     ]
     require(
@@ -277,7 +294,10 @@ def load_canonical_bridge() -> tuple[Any, Any, Any]:
     data_package = importlib.import_module("twelve_six.data")
     expected_data_dir = (ROOT / "src/twelve_six/data").resolve(strict=True)
     data_paths = [
-        Path(value).resolve(strict=True)
+        _resolve_existing_path(
+            value,
+            "canonical twelve_six.data package search path drift",
+        )
         for value in getattr(data_package, "__path__", ())
     ]
     require(
