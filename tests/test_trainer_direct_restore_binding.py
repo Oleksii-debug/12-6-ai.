@@ -743,6 +743,38 @@ class ApplyStateDriftAdamW(AdamW):
         return result
 
 
+class ApplyReproducibilityDriftAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.mutation: str | None = None
+        self.armed = False
+        self.guarded_zero_grad_calls = 0
+
+    def load_state_dict(self, state_dict):
+        result = super().load_state_dict(state_dict)
+        if self.armed:
+            assert self.owner is not None
+            if self.mutation == "determinism":
+                torch.use_deterministic_algorithms(
+                    not self.owner.config.deterministic_algorithms,
+                    warn_only=self.owner.config.deterministic_warn_only,
+                )
+            elif self.mutation == "training_mode":
+                self.owner.model.eval()
+            else:
+                raise AssertionError(
+                    f"unknown reproducibility mutation: {self.mutation}"
+                )
+        return result
+
+    def zero_grad(self, *args, **kwargs):
+        if self.armed:
+            self.guarded_zero_grad_calls += 1
+        return super().zero_grad(*args, **kwargs)
+
+
 class ZeroGradAuxiliaryDriftAdamW(AdamW):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -791,6 +823,44 @@ def test_direct_restore_rejects_apply_time_state_drift(
         trainer.state_dict()
     with pytest.raises(TrainingStateInvalidError, match="verified model"):
         trainer.load_state_dict(state)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("determinism", "live PyTorch deterministic policy disagrees"),
+        ("training_mode", "checkpoint model training mode must remain enabled"),
+    ],
+)
+def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero_grad(
+    mutation: str,
+    message: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(
+        ApplyReproducibilityDriftAdamW,
+        config,
+    )
+    assert isinstance(optimizer, ApplyReproducibilityDriftAdamW)
+    optimizer.mutation = mutation
+    expected_enabled = torch.are_deterministic_algorithms_enabled()
+    expected_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+
+    try:
+        with pytest.raises(TrainingStateInvalidError, match=message):
+            trainer.load_state_dict(state)
+    finally:
+        torch.use_deterministic_algorithms(
+            expected_enabled,
+            warn_only=expected_warn_only,
+        )
+
+    assert optimizer.guarded_zero_grad_calls == 0
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
 
 
 def test_direct_restore_rejects_zero_grad_auxiliary_drift() -> None:
