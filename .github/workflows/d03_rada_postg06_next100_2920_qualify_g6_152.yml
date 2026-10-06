@@ -1,0 +1,94 @@
+name: D03 Rada post-G06 NEXT100 2920 qualify G6 152
+
+on:
+  pull_request:
+    branches:
+      - execution/rada-postg06-next100-2920-g6-152-20261006
+    paths:
+      - ".github/workflows/d03_rada_postg06_next100_2920_qualify_g6_152.yml"
+      - "tools/adapt_d03_rada_current_postdata232_to_balance_v1.py"
+      - "tests/test_rada_current_postdata232_balance_adapter_v1.py"
+      - "tools/run_d03_rada_postg06_next100_106_balance_v2.py"
+      - "tests/test_rada_postg06_next100_106_balance_v2.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-rada-postg06-next100-2920-g6-152-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/rada-postg06-next100-2920-g6-152-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "7c62a37ffa8b3c505a6988174b833e44f41fef39"
+      ADAPTER_BLOB: "b0d098ce283dc7194f81a6b5cda5cd11a7b14773"
+      ADAPTER_TEST_BLOB: "afaf854140df4cc4ef4a6f68093ad9f16d072522"
+      RUNNER_BLOB: "30a7e00705f270964515d67da5606e81d37d1e7d"
+      TEST_BLOB: "9b23aef7a7fc97cd48a23c4ed9867e6d430a109a"
+    steps:
+      - name: Checkout exact qualification head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+          cache: pip
+      - name: Bind exact parent, scope, and blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          git diff --name-only "$PARENT_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' '.github/workflows/d03_rada_postg06_next100_2920_qualify_g6_152.yml' | sort > "$RUNNER_TEMP/expected.txt"
+          cmp "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+          test "$(git hash-object tools/adapt_d03_rada_current_postdata232_to_balance_v1.py)" = "$ADAPTER_BLOB"
+          test "$(git hash-object tests/test_rada_current_postdata232_balance_adapter_v1.py)" = "$ADAPTER_TEST_BLOB"
+          test "$(git hash-object tools/run_d03_rada_postg06_next100_106_balance_v2.py)" = "$RUNNER_BLOB"
+          test "$(git hash-object tests/test_rada_postg06_next100_106_balance_v2.py)" = "$TEST_BLOB"
+      - name: Install canonical current test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -e '.[dev]'
+      - name: Compile focused files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/adapt_d03_rada_current_postdata232_to_balance_v1.py \
+            tests/test_rada_current_postdata232_balance_adapter_v1.py \
+            tools/run_d03_rada_postg06_next100_106_balance_v2.py \
+            tests/test_rada_postg06_next100_106_balance_v2.py
+      - name: Lint focused files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check \
+            tools/adapt_d03_rada_current_postdata232_to_balance_v1.py \
+            tests/test_rada_current_postdata232_balance_adapter_v1.py \
+            tools/run_d03_rada_postg06_next100_106_balance_v2.py \
+            tests/test_rada_postg06_next100_106_balance_v2.py
+      - name: Run focused tests
+        shell: bash
+        env:
+          PYTHONPATH: src
+          TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_rada_current_postdata232_balance_adapter_v1.py \
+            tests/test_rada_postg06_next100_106_balance_v2.py
