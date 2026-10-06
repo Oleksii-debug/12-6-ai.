@@ -256,6 +256,28 @@ def test_fragment_containment_candidate_survives_low_jaccard():
 
 
 @_isolated_indexed_test
+def test_small_set_exhaustion_retains_every_natural_containment_candidate():
+    universe = tuple(f"token-{index}" for index in range(5))
+    subsets = [
+        frozenset(
+            universe[index]
+            for index in range(len(universe))
+            if mask & (1 << index)
+        )
+        for mask in range(1, 1 << len(universe))
+    ]
+    rows = [_fp(str(index), shingles=subset) for index, subset in enumerate(subsets)]
+    candidates = set(indexed.candidate_pair_indices(FakeV1, rows))
+
+    for left_index, left in enumerate(subsets):
+        for right_index in range(left_index + 1, len(subsets)):
+            right = subsets[right_index]
+            containment = len(left & right) / min(len(left), len(right))
+            if containment >= indexed.EXPECTED_THRESHOLDS["natural_near_jaccard"]:
+                assert (left_index, right_index) in candidates
+
+
+@_isolated_indexed_test
 def test_boilerplate_weight_prefix_retains_multi_line_eighty_character_overlap():
     shared_a = "A" * 40
     shared_b = "B" * 45
