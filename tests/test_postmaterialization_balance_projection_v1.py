@@ -1891,7 +1891,9 @@ def test_selection_repairs_impossible_family_witness_at_cap_safe_stratum() -> No
     assert family_bytes[CODE_C] == 1_500_000
     assert all(family_bytes[family] <= 2_400_000 for family in (CODE_A, CODE_B, CODE_C))
     projected = _project_current_clean_selection(selection, raw["survivor_records"])
-    assert sum(row["payload_bytes"] for row in projected) == 20_000_000
+    assert sum(
+        len(row["normalized_payload"].encode("utf-8")) for row in projected
+    ) == 20_000_000
     assert selection["claim_boundary"]["model_training_authorized"] is False
     assert selection["claim_boundary"]["tokenizer_fit_authorized"] is False
     assert selection["claim_boundary"]["authorized_optimized_target_exposure"] == 0
