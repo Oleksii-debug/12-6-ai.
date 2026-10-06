@@ -62,7 +62,7 @@ def _application(selection: dict) -> tuple[dict, dict]:
         "selected_family_source_bytes": totals["family_source_bytes"],
         "selected_stratum_source_bytes": totals["stratum_source_bytes"],
         "split_family": {},
-        "claim_boundary": deepcopy(authority._ZERO_CREDIT_BOUNDARY),
+        "claim_boundary": dict(authority._ZERO_CREDIT_BOUNDARY),
     }
     application["application_identity_sha256"] = authority.authority_sha256(
         application
@@ -1873,3 +1873,60 @@ def test_bind_upstreams_deep_detaches_nested_selection_aliases(
         SHA["expected_application_identity_sha256"],
     )
     assert selection["nested"]["family_source_bytes"]["ua"] == 999
+
+
+@pytest.mark.parametrize(
+    ("mapping_name", "key"),
+    [
+        ("_ZERO_CREDIT_BOUNDARY", "training_eligible"),
+        ("_EXPECTED_TOKENIZER_RUNTIME_IDENTITY", "version"),
+        ("_EXPECTED_TOKENIZER_CLASS_STATE", "version"),
+        ("_EXPECTED_BYTE_MODULE_CONSTANTS", "BYTE_TOKENIZER_VERSION"),
+        ("_EXPECTED_BYTE_RUNTIME_BUILTINS", "list"),
+    ],
+)
+def test_verifier_expected_mapping_is_immutable(
+    mapping_name: str,
+    key: str,
+) -> None:
+    expected = getattr(authority, mapping_name)
+    original = expected[key]
+    with pytest.raises(TypeError):
+        expected[key] = object()
+    assert expected[key] is original or expected[key] == original
+
+
+@pytest.mark.parametrize(
+    ("container_name", "field", "nested_key"),
+    [
+        ("_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS", "encode", "add_bos"),
+        ("_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS", "decode", "errors"),
+        ("_EXPECTED_BYTE_MODULE_CONFIG", "special_tokens", "forged"),
+        ("_EXPECTED_TOKENIZER_RUNTIME_IDENTITY", "special_tokens", "forged"),
+    ],
+)
+def test_verifier_nested_expected_mapping_is_immutable(
+    container_name: str,
+    field: str,
+    nested_key: str,
+) -> None:
+    nested = getattr(authority, container_name)[field]
+    with pytest.raises(TypeError):
+        nested[nested_key] = object()
+
+
+def test_builtin_expectation_table_cannot_be_retargeted_with_builtin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    replacement = lambda _value: [999]
+    with pytest.raises(TypeError):
+        authority._EXPECTED_BYTE_RUNTIME_BUILTINS["list"] = replacement
+    monkeypatch.setattr(builtins, "list", replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime dependency drift: builtins.list",
+    ):
+        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
