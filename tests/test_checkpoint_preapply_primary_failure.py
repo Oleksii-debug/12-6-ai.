@@ -235,7 +235,7 @@ def test_save_export_passes_primary_into_process_state_finalizer(
         "_assert_live_d02_determinism",
         lambda trainer: None,
     )
-    monkeypatch.setattr(trainer_adapter, "capture_rng_state", lambda: {})
+    monkeypatch.setattr(trainer_adapter, "capture_rng_state", dict)
     monkeypatch.setattr(
         trainer_adapter,
         "_snapshot_torch_policy",
