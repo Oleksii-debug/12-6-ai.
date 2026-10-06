@@ -586,6 +586,8 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, dict[str, object
     _verify_runtime_byte_tokenizer_module_state()
     _verify_runtime_byte_tokenizer_class()
     return implementation, final_snapshot
+
+
 def _verify_selection(
     selection: Mapping[str, Any],
     *,
