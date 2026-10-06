@@ -17,6 +17,9 @@ import importlib.util
 import json
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
@@ -66,6 +69,9 @@ EXPECTED_CURRENT_DUPLICATE_HASHES = 765
 
 EXPECTED_COMBINED_OBJECTS = 101_995
 EXPECTED_COMBINED_DECLARED_BYTES = 198_398_557
+
+HISTORICAL_FETCH_MAX_ATTEMPTS = 3
+HISTORICAL_FETCH_RETRY_BASE_SECONDS = 2.0
 
 AUTHORITY_PATH = (
     ROOT / "evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json"
@@ -188,6 +194,52 @@ def load_helper(nbu_root: Path) -> ModuleType:
         raise RadaCurrentGlobalDedupError("cannot import exact NBU helper") from exc
     require(module.EXPECTED_MAIN == "019944d5fe12334791f05f1232d13de4a12e37d3", "helper main drift")
     return module
+
+
+def _make_bounded_historical_urlopen(
+    original_urlopen: Any,
+    *,
+    sleeper: Any = time.sleep,
+) -> Any:
+    """Retry only transport failures while preserving the exact request and timeout."""
+
+    def bounded_urlopen(request: Any, *args: Any, **kwargs: Any) -> Any:
+        for attempt in range(1, HISTORICAL_FETCH_MAX_ATTEMPTS + 1):
+            try:
+                return original_urlopen(request, *args, **kwargs)
+            except urllib.error.HTTPError:
+                raise
+            except (TimeoutError, ConnectionError, urllib.error.URLError):
+                if attempt >= HISTORICAL_FETCH_MAX_ATTEMPTS:
+                    raise
+                sleeper(
+                    HISTORICAL_FETCH_RETRY_BASE_SECONDS
+                    * (2 ** (attempt - 1))
+                )
+        raise AssertionError("historical fetch retry loop exhausted unexpectedly")
+
+    return bounded_urlopen
+
+
+def _reconstruct_v8_with_bounded_historical_fetch(
+    helper: ModuleType,
+    *,
+    v7_root: Path,
+    bulk_workspace: Path,
+    config: Mapping[str, Any],
+) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    """Import frozen V7 under a bounded transport retry without changing V7 bytes."""
+
+    original_urlopen = urllib.request.urlopen
+    urllib.request.urlopen = _make_bounded_historical_urlopen(original_urlopen)
+    try:
+        return helper._reconstruct_v8_with_historical_namespace(
+            v7_root=v7_root,
+            bulk_workspace=bulk_workspace,
+            config=config,
+        )
+    finally:
+        urllib.request.urlopen = original_urlopen
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -560,7 +612,8 @@ def execute(args: argparse.Namespace) -> None:
         args.nbu_helper_root / "configs/data/next100_065f_global_dedup_v8.json"
     )
     matcher, base_inventory, base_payloads, removal = (
-        helper._reconstruct_v8_with_historical_namespace(
+        _reconstruct_v8_with_bounded_historical_fetch(
+            helper,
             v7_root=args.v7_root,
             bulk_workspace=args.bulk_workspace,
             config=config,
