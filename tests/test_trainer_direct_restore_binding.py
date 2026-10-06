@@ -1098,3 +1098,30 @@ def test_direct_restore_validates_owned_optimizer_snapshot_before_apply() -> Non
     target.load_state_dict(state)
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+def test_direct_restore_rejects_nonfinite_owned_optimizer_state_before_apply() -> None:
+    import copy
+    from dataclasses import replace
+
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    bad_optimizer = copy.deepcopy(state.optimizer)
+    bad_optimizer["state"][0] = {"diagnostic": float("nan")}
+    hostile = replace(state, optimizer=bad_optimizer)
+
+    with pytest.raises(
+        FloatingPointError,
+        match="checkpoint optimizer has non-finite state",
+    ):
+        target.load_state_dict(hostile)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert not target.optimizer.state
+
+    target.load_state_dict(state)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
