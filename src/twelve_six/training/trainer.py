@@ -418,12 +418,16 @@ class Trainer:
         )
 
     @staticmethod
-    def _checkpoint_numeric_policy() -> tuple[str, str]:
-        """Snapshot process-wide floating-point defaults used by training code."""
+    def _checkpoint_numeric_policy() -> tuple[str, str, bool, bool, bool, bool]:
+        """Snapshot process-wide floating-point policy used by training code."""
 
         return (
             str(torch.get_default_dtype()),
             torch.get_float32_matmul_precision(),
+            bool(torch.backends.cudnn.allow_tf32),
+            bool(torch.backends.cudnn.enabled),
+            bool(torch.backends.cudnn.deterministic),
+            bool(torch.backends.cudnn.benchmark),
         )
 
     @staticmethod
