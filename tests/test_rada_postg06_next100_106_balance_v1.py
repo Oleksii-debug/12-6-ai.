@@ -529,7 +529,23 @@ def _write_two_clean_fixture(
     zero_credit_override: dict | None = None,
 ) -> None:
     output.mkdir()
-    composition_core = {"schema": "synthetic-composition", "x": 1}
+    execution_head = "c" * 40
+    family_identity = "8" * 64
+    post_g06_identity = "6" * 64
+    composition_core = {
+        "schema": "synthetic-composition",
+        "execution_head_sha": execution_head,
+        "upstream_global_dedup": {
+            "evidence_identity_sha256": target.UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID,
+            "two_clean_identity_sha256": target.UPSTREAM_TWO_CLEAN_ID,
+        },
+        "post_g06_physical_uniqueness": {
+            "evidence_identity_sha256": post_g06_identity,
+        },
+        "family_vector_identity_sha256": family_identity,
+        "x": 1,
+        **target.ZERO_CREDIT,
+    }
     composition = {
         **composition_core,
         "evidence_identity_sha256": target.sha256(
@@ -538,8 +554,18 @@ def _write_two_clean_fixture(
     }
     next100 = {
         "schema_version": "synthetic-next100",
-        "dedup_authority": {"worker_id": "dedup", "terminal_verdict": "PASS"},
+        "dedup_authority": {
+            "worker_id": target.DEDUP_WORKER_ID,
+            "head_sha": execution_head,
+            "evidence_identity_sha256": composition[
+                "evidence_identity_sha256"
+            ],
+            "terminal_verdict": "PASS",
+        },
         "totals": {"total_unique_bytes": 2},
+        "physical_authority": {
+            "family_vector_identity_sha256": family_identity,
+        },
         "x": 2,
     }
     next100_identity = target.sha256(target.canonical(next100))
@@ -558,7 +584,7 @@ def _write_two_clean_fixture(
     }
     binding_core = {
         "schema": "synthetic-binding",
-        "family_vector_identity_sha256": "8" * 64,
+        "family_vector_identity_sha256": family_identity,
         "next100_input_identity_sha256": next100_identity,
         "balance_policy_identity_sha256": policy_identity,
         "balance_status": balance_result["status"],
@@ -572,14 +598,19 @@ def _write_two_clean_fixture(
     }
     receipt_core = {
         "schema": target.RECEIPT_SCHEMA,
-        "execution_head_sha": "c" * 40,
+        "execution_head_sha": execution_head,
+        "upstream_global_dedup_evidence_identity_sha256": (
+            target.UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID
+        ),
+        "upstream_global_dedup_two_clean_identity_sha256": (
+            target.UPSTREAM_TWO_CLEAN_ID
+        ),
+        "post_g06_evidence_identity_sha256": post_g06_identity,
         "composition_dedup_identity_sha256": composition[
             "evidence_identity_sha256"
         ],
         "next100_input_identity_sha256": next100_identity,
-        "family_vector_identity_sha256": balance_binding[
-            "family_vector_identity_sha256"
-        ],
+        "family_vector_identity_sha256": family_identity,
         "balance_policy_identity_sha256": policy_identity,
         "balance_status": balance_result["status"],
         "balance_result_identity_sha256": balance_result[
@@ -899,4 +930,82 @@ def test_verify_source_head_maps_git_launch_failure(
         match="git merge-base failed",
     ):
         target.verify_source_head(expected)
+
+def test_compare_outputs_rejects_composition_zero_credit_reseal(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-composition-credit"
+    b = tmp_path / "b-composition-credit"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        composition_path = output / "composition-dedup-proof.json"
+        composition = json.loads(composition_path.read_text(encoding="utf-8"))
+        composition["training_executed"] = True
+        composition["evidence_identity_sha256"] = target.self_hash(
+            composition,
+            "evidence_identity_sha256",
+        )
+        composition_path.write_bytes(target.canonical_line(composition))
+
+        receipt_path = output / "execution-receipt.json"
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt["composition_dedup_identity_sha256"] = composition[
+            "evidence_identity_sha256"
+        ]
+        receipt["receipt_identity_sha256"] = target.self_hash(
+            receipt,
+            "receipt_identity_sha256",
+        )
+        receipt_path.write_bytes(target.canonical_line(receipt))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="composition zero-credit drift: training_executed",
+    ):
+        target.compare_outputs(
+            a,
+            b,
+            tmp_path / "proof-composition-credit.json",
+        )
+
+
+def test_compare_outputs_rejects_dedup_worker_drift(tmp_path: Path) -> None:
+    a = tmp_path / "a-worker"
+    b = tmp_path / "b-worker"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "next100-input.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["dedup_authority"]["worker_id"] = "forged-worker"
+        path.write_bytes(target.canonical_line(value))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="NEXT100 dedup worker drift",
+    ):
+        target.compare_outputs(a, b, tmp_path / "proof-worker.json")
+
+
+def test_compare_outputs_rejects_post_g06_chain_drift(tmp_path: Path) -> None:
+    a = tmp_path / "a-post-g06"
+    b = tmp_path / "b-post-g06"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "execution-receipt.json"
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt["post_g06_evidence_identity_sha256"] = "7" * 64
+        receipt["receipt_identity_sha256"] = target.self_hash(
+            receipt,
+            "receipt_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(receipt))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="post-G06 identity differs across evidence chain",
+    ):
+        target.compare_outputs(a, b, tmp_path / "proof-post-g06.json")
 
