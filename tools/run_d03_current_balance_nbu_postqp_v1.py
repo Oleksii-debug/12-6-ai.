@@ -712,7 +712,7 @@ def execute(
             "en": EXPECTED_FAMILY_COUNT["en"],
             "code": EXPECTED_FAMILY_COUNT["code"],
         },
-        "next_gate": "CLUSTER_SAFE_SPLIT_THEN_DETERMINISTIC_TOKENIZER_PACKING",
+        "next_gate": "ACQUIRE_MORE_DIVERSE_LAWFUL_UA_SOURCE_CAPACITY",
         "canonical_capacity_credited": 0,
         "training_authorized_bytes": 0,
         "authorized_unique_loss_positions": 0,
@@ -761,7 +761,7 @@ def execute(
         "raw_gap_to_target_by_stratum": EXPECTED_GAPS,
         "balance_status": balance["status"],
         "next_scientific_gate": (
-            "CLUSTER_SAFE_SPLIT_THEN_DETERMINISTIC_TOKENIZER_PACKING"
+            "ACQUIRE_MORE_DIVERSE_LAWFUL_UA_SOURCE_CAPACITY"
         ),
         "canonical_capacity_credited": 0,
         "training_authorized_bytes": 0,
