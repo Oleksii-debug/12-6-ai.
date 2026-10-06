@@ -26,7 +26,7 @@ jobs:
     env:
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       PARENT_HEAD: "a4663e87b010b190343caf1d42784f5dc7984601"
-      RUNNER_BLOB: "38a7fef05a6ac6a25a48c7de9f0321617b0abaee"
+      RUNNER_BLOB: "a4dbc51a79912b72c0387079fb8917438c3f263e"
       HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
       RETAINED_ARTIFACT_ID: "11281540677"
       RETAINED_OUTER_SHA256: "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb"
@@ -205,6 +205,25 @@ jobs:
           test "$(git rev-parse FETCH_HEAD)" = "$V7_HEAD"
           git worktree add --detach "$RUNNER_TEMP/v7-rada-current" "$V7_HEAD"
           test "$(git -C "$RUNNER_TEMP/v7-rada-current" rev-parse HEAD)" = "$V7_HEAD"
+
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<\'PY\'
+          import os
+          import sys
+          from pathlib import Path
+          from types import ModuleType
+
+          import run_d03_rada_current_data232_handoff_v1 as runner
+          import twelve_six.data as data_pkg
+
+          v7_root = Path(os.environ["RUNNER_TEMP"]) / "v7-rada-current"
+          poison = ModuleType(runner.CURRENT_MATCHER_MODULE)
+          poison.__file__ = str(v7_root / "src/twelve_six/data/_data232_decontamination_matching.py")
+          sys.modules[runner.CURRENT_MATCHER_MODULE] = poison
+          setattr(data_pkg, "_data232_decontamination_matching", poison)
+          runner._reset_current_data232_namespace(v7_root)
+          assert runner.CURRENT_MATCHER_MODULE not in sys.modules
+          assert getattr(data_pkg, "_data232_decontamination_matching", None) is not poison
+          PY
 
       - name: Reconstruct full survivor graph and text-free handoff
         shell: bash
