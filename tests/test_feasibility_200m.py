@@ -524,3 +524,81 @@ def test_cli_writer_round_trips_utf8_without_temp_residue(tmp_path: Path) -> Non
     cli._write_json(target, value, label="output")
     assert json.loads(target.read_text(encoding="utf-8")) == value
     assert list(tmp_path.glob(".output.json.*.tmp")) == []
+
+
+
+def test_builder_wrong_requirement_evidence_type_fails_closed() -> None:
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="requirement_evidence_not_object",
+    ):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=candidate(),
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=[],
+            decision="GO",
+        )
+
+
+def test_builder_huge_numeric_measurement_fails_without_overflow() -> None:
+    values = measurements()
+    values["tokens_per_second"] = 10**10_000
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="measurement_tokens_per_second_invalid",
+    ):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=candidate(),
+            measurements_20m=values,
+            measurement_authority=measurement_authority(values),
+            requirement_evidence=evidence(),
+            decision="GO",
+        )
+
+
+@pytest.mark.parametrize(
+    "bad_roadmap",
+    [
+        [],
+        {"evidence_state": []},
+        {"scale_route": []},
+    ],
+)
+def test_validator_malformed_roadmap_shapes_fail_closed(bad_roadmap: object) -> None:
+    packet = build()
+    expected = expected_external_identities(packet)
+    errors = validate_200m_feasibility_packet(
+        packet,
+        roadmap_snapshot=bad_roadmap,
+        expected_packet_sha256=expected["packet_sha256"],
+        expected_roadmap_snapshot_sha256=expected["roadmap_snapshot_sha256"],
+        expected_source_git_sha=expected["source_git_sha"],
+        expected_measurements_20m_sha256=expected["measurements_20m_sha256"],
+        expected_requirement_evidence_sha256=expected[
+            "requirement_evidence_sha256"
+        ],
+    )
+    assert "roadmap_not_at_200m_feasibility_boundary" in errors
+
+
+def test_validator_rejects_malformed_external_scalar_identities() -> None:
+    packet = build()
+    expected = expected_external_identities(packet)
+    errors = validate_200m_feasibility_packet(
+        packet,
+        roadmap_snapshot=roadmap(),
+        expected_packet_sha256=expected["packet_sha256"],
+        expected_roadmap_snapshot_sha256=expected["roadmap_snapshot_sha256"],
+        expected_source_git_sha="not-a-git-sha",
+        expected_measurements_20m_sha256="not-a-sha256",
+        expected_requirement_evidence_sha256=expected[
+            "requirement_evidence_sha256"
+        ],
+    )
+    assert "expected_source_git_sha_invalid" in errors
+    assert "expected_measurements_20m_sha256_invalid" in errors
