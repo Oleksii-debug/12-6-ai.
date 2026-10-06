@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Execute current-Rada post-DATA232 survivors through canonical G05/G06.
 
 This is an execution-only child. It consumes exact text-free DATA-232 evidence from
