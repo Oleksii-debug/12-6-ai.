@@ -731,7 +731,13 @@ def write_output_dir(path: Path, values: Mapping[str, Mapping[str, Any]]) -> Non
     )
 
 
-def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[str, Any]:
+def compare_outputs(
+    output_a: Path,
+    output_b: Path,
+    proof_path: Path,
+    *,
+    enforce_checkout_provenance: bool = False,
+) -> dict[str, Any]:
     for path, label in (
         (output_a, "two-clean output A"),
         (output_b, "two-clean output B"),
@@ -871,6 +877,10 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
             f"execution receipt zero-credit drift: {field}",
         )
 
+    if enforce_checkout_provenance:
+        verify_dependency_blobs()
+        verify_source_head(str(receipt["execution_head_sha"]))
+
     core: dict[str, Any] = {
         "schema": REPEAT_SCHEMA,
         "execution_head_sha": receipt["execution_head_sha"],
@@ -930,7 +940,12 @@ def main() -> int:
                 + values["execution-receipt"]["balance_status"]
             )
         else:
-            proof = compare_outputs(args.output_a, args.output_b, args.proof)
+            proof = compare_outputs(
+                args.output_a,
+                args.output_b,
+                args.proof,
+                enforce_checkout_provenance=True,
+            )
             print(
                 "D03_RADA_POSTG06_NEXT100_TWO_CLEAN=PASS "
                 + proof["proof_identity_sha256"]
