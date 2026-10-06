@@ -673,6 +673,7 @@ def execute(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
         "composition_dedup_identity_sha256": composition[
             "evidence_identity_sha256"
         ],
+        "next100_input_identity_sha256": sha256(canonical(next100)),
         "balance_policy_identity_sha256": POLICY_IDENTITY_SHA256,
         "balance_result_identity_sha256": result_identity,
         "balance_binding_identity_sha256": binding["binding_identity_sha256"],
@@ -785,6 +786,9 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
         "composition dedup self-hash mismatch",
     )
 
+    next100_input = parsed["next100-input"]
+    next100_identity = sha256(canonical(next100_input))
+
     balance_result = parsed["balance-result"]
     result_identity = require_sha256(
         balance_result.get("result_identity_sha256"),
@@ -804,6 +808,18 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
         binding_identity == self_hash(balance_binding, "binding_identity_sha256"),
         "balance binding self-hash mismatch",
     )
+    require(
+        balance_binding.get("next100_input_identity_sha256") == next100_identity,
+        "balance binding next100-input identity mismatch",
+    )
+    require(
+        balance_result.get("dedup_authority") == next100_input.get("dedup_authority"),
+        "balance result dedup authority differs from next100 input",
+    )
+    require(
+        balance_result.get("input_totals") == next100_input.get("totals"),
+        "balance result totals differ from next100 input",
+    )
 
     receipt = parsed["execution-receipt"]
     require(receipt.get("schema") == RECEIPT_SCHEMA, "execution receipt schema mismatch")
@@ -819,6 +835,27 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
     require(
         receipt.get("composition_dedup_identity_sha256") == composition_identity,
         "execution receipt composition identity mismatch",
+    )
+    require(
+        receipt.get("next100_input_identity_sha256") == next100_identity,
+        "execution receipt next100-input identity mismatch",
+    )
+    require(
+        receipt.get("family_vector_identity_sha256")
+        == balance_binding.get("family_vector_identity_sha256"),
+        "execution receipt family-vector identity mismatch",
+    )
+    require(
+        receipt.get("balance_policy_identity_sha256")
+        == balance_binding.get("balance_policy_identity_sha256")
+        == balance_result.get("policy_identity_sha256"),
+        "execution receipt balance-policy identity mismatch",
+    )
+    require(
+        receipt.get("balance_status")
+        == balance_binding.get("balance_status")
+        == balance_result.get("status"),
+        "execution receipt balance status mismatch",
     )
     require(
         receipt.get("balance_result_identity_sha256") == result_identity,
@@ -841,6 +878,7 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
         "byte_identical_outputs": True,
         "output_file_sha256": hashes,
         "receipt_identity_sha256": receipt_identity,
+        "next100_input_identity_sha256": next100_identity,
         "balance_result_identity_sha256": receipt[
             "balance_result_identity_sha256"
         ],
