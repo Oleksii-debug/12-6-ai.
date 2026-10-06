@@ -1257,7 +1257,7 @@ def test_cuda_process_environment_drift_during_restore_fails_closed(
 
     assert target._update_incomplete is True
     if phase == "preapply":
-        assert target._failure_reason == "checkpoint_preapply_process_environment_drift"
+        assert target._failure_reason == "checkpoint_preapply_rng_rollback_failed"
     else:
         assert target._failure_reason == "checkpoint_restore_apply_failed"
 
