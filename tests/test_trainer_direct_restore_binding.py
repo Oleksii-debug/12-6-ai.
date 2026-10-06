@@ -491,7 +491,10 @@ def test_direct_restore_rejects_subclass_safety_authority_override(
     elif authority == "__setattr__":
         override = passthrough_setattr
     else:
-        override = lambda self: None
+        def no_op_authority(self):
+            return None
+
+        override = no_op_authority
 
     unsafe_type = type(
         f"DirectRestoreUnsafe_{authority}",
@@ -516,7 +519,11 @@ def test_direct_restore_rejects_instance_safety_shadow_then_allows_retry() -> No
     config = _config()
     state = _clean_state(config)
     target = Trainer(nn.Linear(3, 2), config, scheduler=None)
-    target._require_finite_committed_update = lambda: None
+
+    def no_op_authority():
+        return None
+
+    target._require_finite_committed_update = no_op_authority
 
     with pytest.raises(
         TrainingStateInvalidError,
@@ -635,7 +642,11 @@ class LookupAuthorityMutatingAdamW(AdamW):
                 object.__setattr__(self, "armed", False)
                 owner = object.__getattribute__(self, "owner")
                 assert owner is not None
-                vars(owner)["_require_finite_committed_update"] = lambda: None
+
+                def no_op_authority():
+                    return None
+
+                vars(owner)["_require_finite_committed_update"] = no_op_authority
         return super().__getattribute__(name)
 
 
@@ -651,7 +662,11 @@ class ApplyAuthorityMutatingAdamW(AdamW):
         if self.armed:
             self.armed = False
             assert self.owner is not None
-            vars(self.owner)["_mark_failed"] = lambda *args, **kwargs: None
+
+            def suppress_poison(*args, **kwargs):
+                return None
+
+            vars(self.owner)["_mark_failed"] = suppress_poison
         return result
 
 
