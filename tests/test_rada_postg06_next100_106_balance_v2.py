@@ -532,6 +532,8 @@ def test_compare_outputs_requires_byte_identity_and_seals_proof(
 
     proof_path = tmp_path / "proof.json"
     proof = _compare_outputs(a, b, proof_path)
+    assert proof["checkout_provenance_verified"] is False
+    assert proof["terminal_verdict"] == "UNVERIFIED_TEST_ONLY"
     assert proof["fresh_process_count"] == 2
     assert proof["independent_runner_jobs"] is True
     assert proof["runner_instance_identities"] == {
@@ -700,6 +702,7 @@ def _write_two_clean_fixture(
     }
     receipt_core = {
         "schema": target.RECEIPT_SCHEMA,
+        "execution_profile": "LOCAL_FREE",
         "execution_head_sha": execution_head,
         "upstream_global_dedup_evidence_identity_sha256": (
             target.UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID
@@ -722,6 +725,15 @@ def _write_two_clean_fixture(
         "balance_binding_identity_sha256": balance_binding[
             "binding_identity_sha256"
         ],
+        "maximum_feasible_total_source_bytes": balance_result[
+            "maximum_feasible_total_source_bytes"
+        ],
+        "raw_capacity_by_stratum": balance_result["raw_capacity_by_stratum"],
+        "raw_gap_to_target_by_stratum": balance_result[
+            "raw_gap_to_target_by_stratum"
+        ],
+        "family_minimum": balance_result["family_minimum"],
+        "next_scientific_gate": "ACQUIRE_MORE_DIVERSE_LAWFUL_SOURCE_CAPACITY",
         **target.ZERO_CREDIT,
     }
     if zero_credit_override:
@@ -961,6 +973,8 @@ def test_compare_outputs_accepts_bound_checkout_provenance(
     assert calls == ["dependencies", "head:" + "c" * 40]
     assert proof_path.exists()
     assert proof["execution_head_sha"] == "c" * 40
+    assert proof["checkout_provenance_verified"] is True
+    assert proof["terminal_verdict"] == "PASS"
 
 
 def test_write_output_dir_rejects_unbound_stale_file(tmp_path: Path) -> None:
@@ -1406,3 +1420,60 @@ def test_compare_outputs_rejects_nonpass_composition_verdict(
         match="composition terminal verdict is not PASS",
     ):
         _compare_outputs(a, b, tmp_path / "proof-nonpass.json")
+
+
+def test_post_g06_receipt_rejects_content_boundary_widening() -> None:
+    vector = _family_vector()
+    evidence = _post_g06(vector)
+    evidence["content_boundary"]["raw_training_text_persisted"] = True
+    core = dict(evidence)
+    core.pop("evidence_identity_sha256")
+    evidence["evidence_identity_sha256"] = target.sha256(
+        target.canonical(core)
+    )
+    vector["materialization_identity_sha256"] = evidence[
+        "evidence_identity_sha256"
+    ]
+    vector_core = dict(vector)
+    vector_core.pop("family_vector_identity_sha256")
+    vector["family_vector_identity_sha256"] = target.sha256(
+        target.canonical(vector_core)
+    )
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="post-G06 content boundary drift",
+    ):
+        target.verify_post_g06_receipt(
+            evidence,
+            vector,
+            expected_evidence_identity_sha256=evidence[
+                "evidence_identity_sha256"
+            ],
+        )
+
+
+def test_compare_outputs_rejects_unknown_receipt_authority_field(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-extra-authority"
+    b = tmp_path / "b-extra-authority"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "execution-receipt.json"
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt["training_authorized"] = True
+        receipt["receipt_identity_sha256"] = target.self_hash(
+            receipt,
+            "receipt_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(receipt))
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="execution receipt fields drift",
+    ):
+        _compare_outputs(
+            a,
+            b,
+            tmp_path / "proof-extra-authority.json",
+        )
