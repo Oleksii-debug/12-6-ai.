@@ -293,3 +293,58 @@ def test_bootstrap_pins_behavior_import_closure_before_runtime_load() -> None:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     ]
     assert calls.index("verify_local_authority") < calls.index("load_bound_runtime")
+
+
+
+def test_immutable_writer_resumes_identical_and_rejects_divergence(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "evidence.json"
+    payload = b"{\"ok\":true}\n"
+    target.write_immutable_bytes(output, payload, label="synthetic")
+    assert output.read_bytes() == payload
+
+    target.write_immutable_bytes(output, payload, label="synthetic")
+    assert output.read_bytes() == payload
+
+    with pytest.raises(
+        target.RadaPostData232Error,
+        match="refusing to overwrite divergent durable evidence",
+    ):
+        target.write_immutable_bytes(
+            output,
+            b"{\"ok\":false}\n",
+            label="synthetic",
+        )
+
+
+def test_immutable_writer_recovers_matching_interrupted_temp(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "evidence.json"
+    payload = b"{\"resume\":true}\n"
+    temp = output.with_name(output.name + ".tmp")
+    temp.write_bytes(payload)
+
+    target.write_immutable_bytes(output, payload, label="synthetic")
+
+    assert output.read_bytes() == payload
+    assert not temp.exists()
+
+
+def test_immutable_writer_rejects_divergent_interrupted_temp(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "evidence.json"
+    temp = output.with_name(output.name + ".tmp")
+    temp.write_bytes(b"stale\n")
+
+    with pytest.raises(
+        target.RadaPostData232Error,
+        match="divergent interrupted temp evidence",
+    ):
+        target.write_immutable_bytes(
+            output,
+            b"fresh\n",
+            label="synthetic",
+        )
