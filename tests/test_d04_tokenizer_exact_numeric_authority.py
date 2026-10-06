@@ -2323,3 +2323,29 @@ def test_verifier_code_retarget_cannot_legitimize_builtin_root() -> None:
         "_EXPECTED_BYTE_RUNTIME_BUILTINS"
     )
 
+@pytest.mark.parametrize(
+    "target_name",
+    [
+        "_EXPECTED_BYTE_SOURCE_READ_BYTES",
+        "_EXPECTED_BYTE_JSON_DUMPS",
+        "_EXPECTED_BYTE_JSON_LOADS",
+        "_EXPECTED_VERIFY_BALANCED_SELECTION",
+    ],
+)
+def test_trusted_callable_code_retarget_fails_closed(target_name: str) -> None:
+    target = getattr(authority, target_name)
+    original_code = target.__code__
+
+    def forged_callable(*_args, **_kwargs):
+        return None
+
+    target.__code__ = forged_callable.__code__
+    try:
+        with pytest.raises(
+            authority.TokenizerDecisionError,
+            match="canonical tokenizer decision verifier executable drift",
+        ):
+            authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+    finally:
+        target.__code__ = original_code
+
