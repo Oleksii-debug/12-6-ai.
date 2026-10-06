@@ -345,27 +345,83 @@ def _resolve_existing_path(raw_path: str, error: str) -> Path:
         raise RadaPostG06BalanceError(error) from exc
 
 
-def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
-    """Atomically create deterministic evidence or resume an identical write."""
-    require(not path.is_symlink(), f"{label}: output path must not be a symlink")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        require(path.is_file(), f"{label}: output path is not a regular file")
+def _publish_temp_without_overwrite(
+    temp: Path,
+    path: Path,
+    payload: bytes,
+    *,
+    label: str,
+) -> None:
+    """Publish one fsynced temp file only if the final name is still free."""
+    try:
+        os.link(temp, path, follow_symlinks=False)
+    except FileExistsError:
+        existing = _read_stable_regular_bytes(
+            path,
+            label=f"{label}: concurrent durable evidence",
+        )
         require(
-            path.read_bytes() == payload,
+            existing == payload,
             f"{label}: refusing to overwrite divergent durable evidence",
         )
+
+    published = _read_stable_regular_bytes(
+        path,
+        label=f"{label}: published durable evidence",
+    )
+    require(
+        published == payload,
+        f"{label}: published durable evidence drift",
+    )
+    try:
+        temp.unlink()
+    except OSError as exc:
+        raise RadaPostG06BalanceError(
+            f"{label}: published evidence temp cleanup failed"
+        ) from exc
+
+
+def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
+    """Atomically create deterministic evidence or resume an identical write."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".tmp")
+
+    if path.exists() or path.is_symlink():
+        existing = _read_stable_regular_bytes(
+            path,
+            label=f"{label}: durable evidence",
+        )
+        require(
+            existing == payload,
+            f"{label}: refusing to overwrite divergent durable evidence",
+        )
+        if temp.exists() or temp.is_symlink():
+            interrupted = _read_stable_regular_bytes(
+                temp,
+                label=f"{label}: interrupted temp evidence",
+            )
+            require(
+                interrupted == payload,
+                f"{label}: divergent interrupted temp evidence",
+            )
+            try:
+                temp.unlink()
+            except OSError as exc:
+                raise RadaPostG06BalanceError(
+                    f"{label}: interrupted temp cleanup failed"
+                ) from exc
         return
 
-    temp = path.with_name(path.name + ".tmp")
-    require(not temp.is_symlink(), f"{label}: temp path must not be a symlink")
-    if temp.exists():
-        require(temp.is_file(), f"{label}: temp path is not a regular file")
+    if temp.exists() or temp.is_symlink():
+        interrupted = _read_stable_regular_bytes(
+            temp,
+            label=f"{label}: interrupted temp evidence",
+        )
         require(
-            temp.read_bytes() == payload,
+            interrupted == payload,
             f"{label}: divergent interrupted temp evidence",
         )
-        temp.replace(path)
+        _publish_temp_without_overwrite(temp, path, payload, label=label)
         return
 
     created_temp = False
@@ -375,7 +431,7 @@ def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        temp.replace(path)
+        _publish_temp_without_overwrite(temp, path, payload, label=label)
     except OSError:
         if created_temp:
             try:
