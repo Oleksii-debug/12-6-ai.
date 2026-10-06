@@ -1197,6 +1197,18 @@ def _restore_checkpoint_save_rng(
     )
 
 
+def _add_failure_note_preserving_primary(
+    exc: BaseException,
+    note: str,
+) -> None:
+    """Attach rollback diagnostics without replacing the primary failure."""
+
+    try:
+        BaseException.add_note(exc, note)
+    except BaseException:  # noqa: BLE001 - diagnostics must never mask failure
+        return
+
+
 def save_checkpoint(
     directory: str | Path,
     *,
@@ -1341,9 +1353,10 @@ def save_checkpoint(
             try:
                 _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
             except BaseException as rollback_exc:  # noqa: BLE001
-                exc.add_note(
+                _add_failure_note_preserving_primary(
+                    exc,
                     "checkpoint save RNG rollback also failed: "
-                    f"{rollback_exc!r}"
+                    f"{rollback_exc!r}",
                 )
         if temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
