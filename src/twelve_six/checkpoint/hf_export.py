@@ -25,6 +25,7 @@ from .core import (
     WEIGHTS_NAME,
     CheckpointCompatibilityError,
     CheckpointIntegrityError,
+    _add_failure_note_preserving_primary,
     hash_json,
     prepare_checkpoint_load,
     sha256_bytes,
@@ -374,8 +375,10 @@ def _remove_temp_path_strict(
 
 def _cleanup_temp_paths_strict(
     paths: tuple[tuple[Path | None, str, tuple[int, int] | None], ...],
+    *,
+    primary_exc: BaseException | None = None,
 ) -> None:
-    failures: list[tuple[str, Exception]] = []
+    failures: list[tuple[str, BaseException]] = []
     for path, label, expected_identity in paths:
         if path is None:
             continue
@@ -388,13 +391,23 @@ def _cleanup_temp_paths_strict(
             _remove_temp_path_strict(
                 path, label=label, expected_identity=expected_identity
             )
-        except (OSError, CheckpointIntegrityError) as exc:
+        except BaseException as exc:
             failures.append((label, exc))
     if failures:
         labels = ", ".join(label for label, _ in failures)
+        if primary_exc is not None:
+            for label, cleanup_exc in failures:
+                _add_failure_note_preserving_primary(
+                    primary_exc,
+                    f"{label} cleanup also failed: {cleanup_exc!r}",
+                )
+            return
+        first_failure = failures[0][1]
+        if isinstance(first_failure, (KeyboardInterrupt, SystemExit, GeneratorExit)):
+            raise first_failure
         raise CheckpointIntegrityError(
             f"temporary cleanup failed for: {labels}"
-        ) from failures[0][1]
+        ) from first_failure
 
 
 def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> Path:
@@ -411,9 +424,10 @@ def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> P
             (reference / artifact).write_bytes(verified._artifacts[artifact])
         prepare_checkpoint_load(reference)
         return reference
-    except Exception:
+    except BaseException as exc:
         _cleanup_temp_paths_strict(
-            ((reference, "verified checkpoint reference", reference_identity),)
+            ((reference, "verified checkpoint reference", reference_identity),),
+            primary_exc=exc,
         )
         raise
 
@@ -433,9 +447,10 @@ def _materialize_hook_candidate(
         (candidate / EXPORTED_CONFIG_NAME).write_bytes(config)
         (candidate / EXPORTED_SOURCE_MANIFEST_NAME).write_bytes(source_manifest)
         return candidate
-    except Exception:
+    except BaseException as exc:
         _cleanup_temp_paths_strict(
-            ((candidate, "HF parity hook candidate", candidate_identity),)
+            ((candidate, "HF parity hook candidate", candidate_identity),),
+            primary_exc=exc,
         )
         raise
 
@@ -552,6 +567,7 @@ def export_hf_directory(
         candidate: Path | None = None
         reference_identity: tuple[int, int] | None = None
         candidate_identity: tuple[int, int] | None = None
+        parity_primary_exc: BaseException | None = None
         try:
             reference = _materialize_verified_reference(
                 verified,
@@ -576,12 +592,16 @@ def export_hf_directory(
                 parity_request,
                 artifact=PARITY_REQUEST_NAME,
             ) + b"\n"
+        except BaseException as exc:
+            parity_primary_exc = exc
+            raise
         finally:
             _cleanup_temp_paths_strict(
                 (
                     (candidate, "HF parity hook candidate", candidate_identity),
                     (reference, "verified checkpoint reference", reference_identity),
-                )
+                ),
+                primary_exc=parity_primary_exc,
             )
     else:
         parity_bytes = _strict_json_bytes(
@@ -610,6 +630,7 @@ def export_hf_directory(
         )
     )
     staging_identity = _temporary_directory_identity(staging)
+    staging_primary_exc: BaseException | None = None
     try:
         (staging / EXPORTED_WEIGHTS_NAME).write_bytes(source_weights_bytes)
         (staging / EXPORTED_CONFIG_NAME).write_bytes(config_bytes)
@@ -625,8 +646,12 @@ def export_hf_directory(
         _publish_directory_noreplace(staging, destination)
         staging = None
         return destination
+    except BaseException as exc:
+        staging_primary_exc = exc
+        raise
     finally:
         if staging is not None:
             _cleanup_temp_paths_strict(
-                ((staging, "HF export staging", staging_identity),)
+                ((staging, "HF export staging", staging_identity),),
+                primary_exc=staging_primary_exc,
             )
