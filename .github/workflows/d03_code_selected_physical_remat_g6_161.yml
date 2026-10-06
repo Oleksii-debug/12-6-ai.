@@ -40,8 +40,6 @@ jobs:
       CODE_PROOF_SHA256: "6f43358df28940172728c6c70f5dff8c963797f0a9a335a5167c3c704c96ccdb"
       CODE_EVIDENCE_ID: "4ef571e9703f432d95272ebd20ac03e4ec253fba5164371d33d64ddc76c1f45f"
       CODE_PROOF_ID: "29f8e0f9404e978710d6c5eb4f6578f1ba8e93679c65ab7af94c371f7da477a4"
-      CODE_ROOT: ${{ runner.temp }}/code-src
-      PYTHONPATH: ${{ runner.temp }}/code-src/src
       TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
       GH_TOKEN: ${{ github.token }}
       PARENT_ARTIFACT_ID: "11334617491"
@@ -89,6 +87,8 @@ jobs:
           test "${changed[0]}" = ".github/workflows/d03_code_selected_physical_remat_g6_161.yml"
           test "$(git hash-object tools/run_d03_lane_selected_survivor_capture_v1.py)" = "$CAPTURE_BLOB"
           python -m py_compile tools/run_d03_lane_selected_survivor_capture_v1.py
+          echo "CODE_ROOT=$RUNNER_TEMP/code-src" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$RUNNER_TEMP/code-src/src" >> "$GITHUB_ENV"
 
       - name: Materialize exact code lane worktree
         shell: bash
