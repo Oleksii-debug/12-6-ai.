@@ -165,6 +165,7 @@ class Trainer:
         "_checkpoint_inert_copy",
         "_checkpoint_rng_fingerprint",
         "_checkpoint_autograd_mode",
+        "_checkpoint_numeric_policy",
         "_canonical_config_state",
         "_canonical_model_members",
         "_canonical_optimizer_storage",
@@ -414,6 +415,15 @@ class Trainer:
         return (
             bool(torch.is_grad_enabled()),
             bool(torch.is_inference_mode_enabled()),
+        )
+
+    @staticmethod
+    def _checkpoint_numeric_policy() -> tuple[str, str]:
+        """Snapshot process-wide floating-point defaults used by training code."""
+
+        return (
+            str(torch.get_default_dtype()),
+            torch.get_float32_matmul_precision(),
         )
 
     @staticmethod
@@ -3124,6 +3134,7 @@ class Trainer:
         Trainer._require_model_training_mode(self)
         expected_rng_fingerprint = Trainer._checkpoint_rng_fingerprint()
         expected_autograd_mode = Trainer._checkpoint_autograd_mode()
+        expected_numeric_policy = Trainer._checkpoint_numeric_policy()
 
         expected_model = entry_attrs["model"]
         expected_optimizer = entry_attrs["optimizer"]
@@ -3200,6 +3211,8 @@ class Trainer:
                     return f"trainer deterministic policy changed during {phase}"
                 if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
                     return f"trainer autograd mode changed during {phase}"
+                if Trainer._checkpoint_numeric_policy() != expected_numeric_policy:
+                    return f"trainer numeric policy changed during {phase}"
                 if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
                     return f"trainer RNG state changed during {phase}"
                 Trainer._require_no_residual_model_gradients(self)
@@ -3433,6 +3446,10 @@ class Trainer:
             if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
                 raise TrainingStateInvalidError(
                     "trainer autograd mode changed during load"
+                )
+            if Trainer._checkpoint_numeric_policy() != expected_numeric_policy:
+                raise TrainingStateInvalidError(
+                    "trainer numeric policy changed during load"
                 )
             if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
                 raise TrainingStateInvalidError(
