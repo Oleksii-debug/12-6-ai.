@@ -16,7 +16,7 @@ from typing import Any
 
 SCHEMA = "12-6.d03-rada-current-training-rights.v1"
 EVIDENCE_SCHEMA = "12-6.d03-rada-current-training-rights-evidence.v1"
-AUTHORITY_ID = "638a38a6185f280d3862da8fedf610a1c57801403b2bb7be042d66dce364e934"
+AUTHORITY_ID = "582cf513e61b5427065150a072e7f3131aefec17b349a31e1bf1b7ce3d779ef6"
 REPLAY_BLOB = "9953940072fdd973cd6c83eb5899314d3484da30"
 REPLAY_ID = "543f9cdd5a9aacaf2cc00b5d4057ad8b142aa685870545cff8bd518f8085055e"
 RIGHTS_BLOB = "4a6cb0bd6b009ef36c9d2fb712967a4ae1cbfe0b"
@@ -68,7 +68,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
     require(identity == AUTHORITY_ID and digest(core) == AUTHORITY_ID, "authority identity drift")
     snapshot = config.get("current_snapshot")
     require(isinstance(snapshot, Mapping), "current snapshot missing")
-    require(snapshot.get("parent_head_sha") == "fb49b7e212444547219df2bd2aa466db955d51e5", "parent head drift")
+    require(snapshot.get("parent_head_sha") == "e0194d1fd76673e492d33ca3f674ca794a04926a", "parent head drift")
     require(snapshot.get("source_family") == FAMILY, "source family drift")
     require(snapshot.get("archive_sha256") == ARCHIVE_SHA and snapshot.get("archive_bytes") == ARCHIVE_BYTES, "snapshot archive drift")
     require(snapshot.get("entry_identity_sha256") == ENTRY_ID and snapshot.get("canonical_entry_count") == 3055, "snapshot inventory drift")

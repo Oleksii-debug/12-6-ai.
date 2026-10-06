@@ -4,7 +4,7 @@
   "execution_profile": "LOCAL_FREE",
   "current_snapshot": {
     "parent_pr": 2808,
-    "parent_head_sha": "fb49b7e212444547219df2bd2aa466db955d51e5",
+    "parent_head_sha": "e0194d1fd76673e492d33ca3f674ca794a04926a",
     "replay_authority_path": "evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json",
     "replay_authority_git_blob_sha1": "9953940072fdd973cd6c83eb5899314d3484da30",
     "replay_authority_identity_sha256": "543f9cdd5a9aacaf2cc00b5d4057ad8b142aa685870545cff8bd518f8085055e",
@@ -90,5 +90,5 @@
     "paid_compute_used": false,
     "scale_promotion_authorized": false
   },
-  "authority_identity_sha256": "638a38a6185f280d3862da8fedf610a1c57801403b2bb7be042d66dce364e934"
+  "authority_identity_sha256": "582cf513e61b5427065150a072e7f3131aefec17b349a31e1bf1b7ce3d779ef6"
 }

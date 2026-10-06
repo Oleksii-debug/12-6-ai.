@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 10
     env:
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
-      BASE_HEAD: fb49b7e212444547219df2bd2aa466db955d51e5
+      BASE_HEAD: e0194d1fd76673e492d33ca3f674ca794a04926a
       DATA287_HEAD: b0523ccbc4b957615aac849d476cfa851be87578
       DATA287_BLOB: 21fe6485aa9eaa0945837efce54c69cfc1098472
       GITHUB_TOKEN: ${{ github.token }}
