@@ -382,7 +382,8 @@ def _poison_canonical_restore_failure(
     try:
         attrs = _trainer_instance_attrs(trainer)
     except TypeError as poison_exc:
-        _add_failure_note_preserving_primary(exc, 
+        _add_failure_note_preserving_primary(
+            exc,
             "canonical trainer recovery-state access also failed: "
             f"{poison_exc!r}"
         )
@@ -823,7 +824,8 @@ def _note_restore_binding_drift(
     try:
         _assert_trainer_restore_bindings(trainer, snapshot)
     except CheckpointCompatibilityError as drift_exc:
-        _add_failure_note_preserving_primary(exc, 
+        _add_failure_note_preserving_primary(
+            exc,
             "trainer restore target drift also detected: "
             f"{drift_exc}"
         )
@@ -1731,7 +1733,8 @@ def _preflight_trainer_state(
                             warn_only=warn_only,
                         )
                     except BaseException as mode_exc:  # noqa: BLE001
-                        rng__add_failure_note_preserving_primary(exc, 
+                        _add_failure_note_preserving_primary(
+                            rng_exc,
                             "PyTorch preflight-mode rollback also failed: "
                             f"{mode_exc!r}"
                         )
@@ -2078,7 +2081,10 @@ def _restore_initial_torch_policy(
             initial_policy[0], warn_only=initial_policy[1],
         )
     except BaseException as mode_exc:  # noqa: BLE001
-        _add_failure_note_preserving_primary(exc, f"PyTorch deterministic-mode rollback also failed: {mode_exc!r}")
+        _add_failure_note_preserving_primary(
+            exc,
+            f"PyTorch deterministic-mode rollback also failed: {mode_exc!r}",
+        )
 
 
 def _restore_ambient_rng_after_failed_apply(
@@ -2099,12 +2105,18 @@ def _restore_ambient_rng_after_failed_apply(
         try:
             _core.random.setstate(ambient["python"])
         except BaseException as rollback_exc:  # noqa: BLE001
-            _add_failure_note_preserving_primary(exc, f"Python RNG rollback also failed: {rollback_exc!r}")
+            _add_failure_note_preserving_primary(
+                exc,
+                f"Python RNG rollback also failed: {rollback_exc!r}",
+            )
     if "numpy" in ambient:
         try:
             _core.np.random.set_state(ambient["numpy"])
         except BaseException as rollback_exc:  # noqa: BLE001
-            _add_failure_note_preserving_primary(exc, f"NumPy RNG rollback also failed: {rollback_exc!r}")
+            _add_failure_note_preserving_primary(
+                exc,
+                f"NumPy RNG rollback also failed: {rollback_exc!r}",
+            )
 
     torch_state = ambient.get("torch")
     if not isinstance(torch_state, Mapping):
@@ -2112,18 +2124,25 @@ def _restore_ambient_rng_after_failed_apply(
     try:
         torch = importlib.import_module("torch")
     except BaseException as rollback_exc:  # noqa: BLE001
-        _add_failure_note_preserving_primary(exc, f"PyTorch RNG rollback unavailable: {rollback_exc!r}")
+        _add_failure_note_preserving_primary(
+            exc,
+            f"PyTorch RNG rollback unavailable: {rollback_exc!r}",
+        )
         return
     if "cpu" in torch_state:
         try:
             torch.set_rng_state(torch_state["cpu"].cpu())
         except BaseException as rollback_exc:  # noqa: BLE001
-            _add_failure_note_preserving_primary(exc, f"PyTorch CPU RNG rollback also failed: {rollback_exc!r}")
+            _add_failure_note_preserving_primary(
+                exc,
+                f"PyTorch CPU RNG rollback also failed: {rollback_exc!r}",
+            )
     for index, cuda_state in enumerate(torch_state.get("cuda", ())):
         try:
             torch.cuda.set_rng_state(cuda_state.cpu(), device=index)
         except BaseException as rollback_exc:  # noqa: BLE001
-            _add_failure_note_preserving_primary(exc, 
+            _add_failure_note_preserving_primary(
+                exc,
                 f"PyTorch CUDA RNG rollback on device {index} also failed: "
                 f"{rollback_exc!r}"
             )
@@ -2134,7 +2153,8 @@ def _restore_ambient_rng_after_failed_apply(
                 torch_state["default_dtype"],
             )
         except BaseException as rollback_exc:  # noqa: BLE001
-            _add_failure_note_preserving_primary(exc, 
+            _add_failure_note_preserving_primary(
+                exc,
                 f"PyTorch default-dtype rollback also failed: {rollback_exc!r}"
             )
     if "float32_matmul_precision" in torch_state:
@@ -2144,7 +2164,8 @@ def _restore_ambient_rng_after_failed_apply(
                 torch_state["float32_matmul_precision"],
             )
         except BaseException as rollback_exc:  # noqa: BLE001
-            _add_failure_note_preserving_primary(exc, 
+            _add_failure_note_preserving_primary(
+                exc,
                 "PyTorch float32-matmul-precision rollback also failed: "
                 f"{rollback_exc!r}"
             )
@@ -2155,7 +2176,8 @@ def _restore_ambient_rng_after_failed_apply(
                 torch_state["cudnn_allow_tf32"],
             )
         except BaseException as rollback_exc:  # noqa: BLE001
-            _add_failure_note_preserving_primary(exc, 
+            _add_failure_note_preserving_primary(
+                exc,
                 "PyTorch cuDNN TF32 rollback also failed: "
                 f"{rollback_exc!r}"
             )
@@ -2174,7 +2196,8 @@ def _restore_ambient_rng_after_failed_apply(
         try:
             restore(torch, torch_state[field])
         except BaseException as rollback_exc:  # noqa: BLE001
-            _add_failure_note_preserving_primary(exc, 
+            _add_failure_note_preserving_primary(
+                exc,
                 f"PyTorch cuDNN {label} rollback also failed: {rollback_exc!r}"
             )
 
@@ -2581,7 +2604,8 @@ def save_trainer_checkpoint(
                     reason="checkpoint_export_state_drift",
                     exc=mode_exc,
                 )
-                _add_failure_note_preserving_primary(exc, 
+                _add_failure_note_preserving_primary(
+                    exc,
                     "checkpoint save also leaked caller-owned torch execution "
                     f"mode: {mode_exc}"
                 )
