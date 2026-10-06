@@ -2000,6 +2000,27 @@ def _restore_preapply_process_state(
         raise
 
 
+def _restore_checkpoint_numeric_policy_for_apply(
+    state: Mapping[str, Any],
+) -> None:
+    """Apply saved floating-point process policy before effectful loaders."""
+
+    torch_state = state.get("torch")
+    if not isinstance(torch_state, Mapping):
+        return
+    torch = importlib.import_module("torch")
+    if "default_dtype" in torch_state:
+        _core._restore_torch_default_dtype(
+            torch,
+            torch_state["default_dtype"],
+        )
+    if "float32_matmul_precision" in torch_state:
+        _core._restore_torch_matmul_precision(
+            torch,
+            torch_state["float32_matmul_precision"],
+        )
+
+
 def _restore_checkpoint_rng_preserving_warn_only(
     state: Mapping[str, Any],
     *,
@@ -2474,6 +2495,10 @@ def load_trainer_checkpoint(
     # Failed application may leave a mixed model/optimizer state, so canonical
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
+        if restore_rng:
+            _restore_checkpoint_numeric_policy_for_apply(
+                combined_state["rng"],
+            )
         model_apply(materialized)
         if model_apply_authority is not None:
             try:
