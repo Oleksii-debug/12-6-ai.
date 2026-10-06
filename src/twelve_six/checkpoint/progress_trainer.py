@@ -33,6 +33,7 @@ from .expected_binding import (
 from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
     _assert_bound_metadata,
+    _assert_checkpoint_numeric_policy_stable,
     _assert_checkpoint_process_environment_stable,
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
@@ -339,9 +340,17 @@ def load_trainer_checkpoint(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
         model_apply(materialized)
         if restore_rng:
             _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
@@ -366,6 +375,10 @@ def load_trainer_checkpoint(
         load_trainer_state(trainer_state)
         if restore_rng:
             _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
@@ -399,6 +412,10 @@ def load_trainer_checkpoint(
                 initial_policy=policy_before_apply,
             )
             _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
