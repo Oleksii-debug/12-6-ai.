@@ -4,6 +4,8 @@ import argparse
 import copy
 import hashlib
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -489,3 +491,61 @@ def test_nonexistent_terminal_parent_head_is_rejected() -> None:
         match="outside the stacked",
     ):
         target.verify_parent_execution_ancestry("f" * 40)
+
+def test_canonical_bridge_discards_in_memory_trusted_family_mutation() -> None:
+    _, trusted, _ = target.load_canonical_bridge()
+    original_count = len(trusted)
+    trusted["adversarial.in-memory.family"] = {
+        "family": "adversarial.in-memory.family",
+        "source_family_identity_sha256": "0" * 64,
+        "language": "en",
+        "modalities": ["text"],
+        "stratum": "en",
+    }
+
+    _, refreshed, _ = target.load_canonical_bridge()
+
+    assert "adversarial.in-memory.family" not in refreshed
+    assert len(refreshed) == original_count
+
+
+def test_canonical_bridge_rejects_alternate_module_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_import = target.importlib.import_module
+    fake = types.SimpleNamespace(
+        __file__=str(tmp_path / "trusted_family_authority_v1.py"),
+        TRUSTED_FAMILY_SEMANTICS={},
+        trusted_family_authority_root_sha256=lambda _families: "0" * 64,
+    )
+
+    def adversarial_import(name: str):
+        if name == "twelve_six.data.trusted_family_authority_v1":
+            return fake
+        return real_import(name)
+
+    monkeypatch.setattr(target.importlib, "import_module", adversarial_import)
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="canonical module provenance drift",
+    ):
+        target.load_canonical_bridge()
+
+
+def test_canonical_bridge_rejects_preloaded_foreign_top_package(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    foreign = types.SimpleNamespace(
+        __file__=str(tmp_path / "__init__.py"),
+        __path__=[str(tmp_path)],
+    )
+    monkeypatch.setitem(sys.modules, "twelve_six", foreign)
+
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="canonical twelve_six package provenance drift",
+    ):
+        target.load_canonical_bridge()
+
