@@ -543,6 +543,7 @@ def test_compare_outputs_requires_byte_identity_and_seals_proof(
     proof = target.compare_outputs(a, b, proof_path)
     assert proof["fresh_process_count"] == 2
     assert proof["byte_identical_outputs"] is True
+    assert proof["post_g06_two_clean_proof_identity_sha256"] == "5" * 64
     assert proof["proof_identity_sha256"] == target.self_hash(
         proof, "proof_identity_sha256"
     )
