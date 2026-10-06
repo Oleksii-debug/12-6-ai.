@@ -1570,7 +1570,7 @@ def test_bind_rejects_tokenizer_base_module_alias_replacement(
 
 @pytest.mark.parametrize(
     "builtin_name",
-    ["all", "any", "compile", "dict", "getattr", "object", "set", "type", "vars"],
+    ["all", "any", "compile", "dict", "getattr", "object", "open", "set", "type", "vars"],
 )
 def test_bind_rejects_mutated_verifier_builtin_dependency(builtin_name: str) -> None:
     import builtins
@@ -1806,3 +1806,37 @@ def test_verify_snapshots_stateful_report_before_semantic_checks(
             **SHA,
         )
     assert staged["authorized_optimized_target_exposure"] == 1
+
+
+def test_bind_source_read_bypasses_path_instance_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    source_class = authority._EXPECTED_BYTE_SOURCE_PATH_CLASS
+    original_getattribute = source_class.__getattribute__
+
+    def guarded_getattribute(self, name: str):
+        if self is authority._EXPECTED_BYTE_SOURCE_PATH and name in {
+            "open",
+            "read_bytes",
+        }:
+            raise AssertionError("canonical source read used mutable Path dispatch")
+        return original_getattribute(self, name)
+
+    monkeypatch.setattr(source_class, "__getattribute__", guarded_getattribute)
+    report = authority.bind_byte_baseline_decision(selection, application, **SHA)
+    assert (
+        report["canonical_byte_tokenizer_git_blob_sha1"]
+        == authority.CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1
+    )
