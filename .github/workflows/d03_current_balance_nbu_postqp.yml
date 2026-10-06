@@ -248,7 +248,8 @@ jobs:
               raise SystemExit("NBU intake Git blob drift")
           if response.get("encoding") != "base64":
               raise SystemExit("NBU intake API encoding drift")
-          raw = base64.b64decode(response["content"], validate=True)
+          encoded = "".join(response["content"].split())
+          raw = base64.b64decode(encoded, validate=True)
           (tmp / "inputs" / "nbu-intake.json").write_bytes(raw)
           PY
 
