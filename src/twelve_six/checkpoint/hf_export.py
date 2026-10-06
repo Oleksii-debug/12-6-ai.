@@ -12,6 +12,7 @@ import stat
 import sys
 import tempfile
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -325,6 +326,29 @@ def _validate_source_manifest_structure(
         _SOURCE_MANIFEST_FIELDS,
         artifact=EXPORTED_SOURCE_MANIFEST_NAME,
     )
+    if type(source_manifest.get("format_version")) is not int:
+        raise CheckpointIntegrityError(
+            "exported source manifest format_version must be an integer"
+        )
+    created_at = source_manifest.get("created_at_utc")
+    if not isinstance(created_at, str) or not created_at.endswith("Z"):
+        raise CheckpointIntegrityError(
+            "exported source manifest created_at_utc is not canonical UTC"
+        )
+    try:
+        parsed_created_at = datetime.fromisoformat(
+            f"{created_at[:-1]}+00:00"
+        )
+    except ValueError as exc:
+        raise CheckpointIntegrityError(
+            "exported source manifest created_at_utc is not canonical UTC"
+        ) from exc
+    canonical_created_at = parsed_created_at.isoformat().replace("+00:00", "Z")
+    if parsed_created_at.tzinfo != UTC or canonical_created_at != created_at:
+        raise CheckpointIntegrityError(
+            "exported source manifest created_at_utc is not canonical UTC"
+        )
+
     files = source_manifest.get("files")
     if not isinstance(files, dict):
         raise CheckpointIntegrityError(
