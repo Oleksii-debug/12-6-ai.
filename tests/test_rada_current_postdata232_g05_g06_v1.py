@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import sys
@@ -240,3 +241,55 @@ def test_self_hash_rejects_caller_selected_reseal_against_external_pin() -> None
 def test_canonical_serialization_rejects_nonfinite_values() -> None:
     with pytest.raises(ValueError):
         json.loads(target.canonical({"x": float("nan")}).decode("utf-8"))
+
+
+def test_bootstrap_has_no_eager_twelve_six_imports() -> None:
+    source = Path(target.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    eager: list[str] = []
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == "twelve_six" or module.startswith("twelve_six."):
+                eager.append(module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "twelve_six" or alias.name.startswith("twelve_six."):
+                    eager.append(alias.name)
+    assert eager == []
+
+
+def test_bootstrap_pins_behavior_import_closure_before_runtime_load() -> None:
+    expected = {
+        "src/twelve_six/__init__.py":
+            "5433166c507bc845bd12d8d5c4145f1fbedda204",
+        "src/twelve_six/data/_data232_decontamination_matching.py":
+            "afa70511f82dc81d9c9f85e3d0b67eba343004f9",
+        "src/twelve_six/data/decontamination_authority_v2.py":
+            "3ca8f21945c02f692c130a015e036673fa24e7af",
+        "src/twelve_six/data/document_quality.py":
+            "b1461263034b4fb9510479b20c9697e22faa5f97",
+        "src/twelve_six/data/quality_granularity.py":
+            "513523b86824c423cad97352b3abb3d1241531b9",
+        "src/twelve_six/data/eval647_future_training_exclusion_v1.py":
+            "5516577a0720150a7ec12c1bf8898972968e6970",
+        "src/twelve_six/data/eval647_reserved_decontamination_v1.py":
+            "ce33771c9fb4a6cc421e2f8e1f6f232c119bec71",
+    }
+    for path, blob in expected.items():
+        assert target.EXPECTED_DEPENDENCY_BLOBS[path] == blob
+
+    execute_source = ast.parse(
+        Path(target.__file__).read_text(encoding="utf-8")
+    )
+    execute_node = next(
+        node
+        for node in execute_source.body
+        if isinstance(node, ast.FunctionDef) and node.name == "execute"
+    )
+    calls = [
+        node.func.id
+        for node in ast.walk(execute_node)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    ]
+    assert calls.index("verify_local_authority") < calls.index("load_bound_runtime")
