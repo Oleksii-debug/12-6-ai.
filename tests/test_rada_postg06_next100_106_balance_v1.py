@@ -540,21 +540,26 @@ def test_compare_outputs_requires_byte_identity_and_seals_proof(
     _write_two_clean_fixture(b)
 
     proof_path = tmp_path / "proof.json"
-    proof = target.compare_outputs(a, b, proof_path)
+    proof = _compare_outputs(a, b, proof_path)
     assert proof["fresh_process_count"] == 2
+    assert proof["independent_runner_jobs"] is True
+    assert proof["runner_instance_identities"] == {
+        "a": "github-run:synthetic/job-a",
+        "b": "github-run:synthetic/job-b",
+    }
     assert proof["byte_identical_outputs"] is True
     assert proof["post_g06_two_clean_proof_identity_sha256"] == "5" * 64
     assert proof["proof_identity_sha256"] == target.self_hash(
         proof, "proof_identity_sha256"
     )
-    assert target.compare_outputs(a, b, proof_path) == proof
+    assert _compare_outputs(a, b, proof_path) == proof
 
     (b / "balance-result.json").write_bytes(b"{}\n")
     with pytest.raises(
         target.RadaPostG06BalanceError,
         match="two-clean output differs",
     ):
-        target.compare_outputs(a, b, tmp_path / "second-proof.json")
+        _compare_outputs(a, b, tmp_path / "second-proof.json")
 
 
 def test_write_output_dir_is_immutable_and_resumable(tmp_path: Path) -> None:
@@ -747,7 +752,7 @@ def test_compare_outputs_rejects_same_directory(tmp_path: Path) -> None:
         target.RadaPostG06BalanceError,
         match="two-clean output directories must be distinct",
     ):
-        target.compare_outputs(output, output, tmp_path / "proof.json")
+        _compare_outputs(output, output, tmp_path / "proof.json")
 
 
 def test_compare_outputs_rejects_coherently_resealed_zero_credit_drift(
@@ -762,7 +767,7 @@ def test_compare_outputs_rejects_coherently_resealed_zero_credit_drift(
         target.RadaPostG06BalanceError,
         match="execution receipt zero-credit drift: training_executed",
     ):
-        target.compare_outputs(a, b, tmp_path / "proof-zero.json")
+        _compare_outputs(a, b, tmp_path / "proof-zero.json")
 
 
 def test_write_output_dir_recovers_matching_interrupted_temp(tmp_path: Path) -> None:
@@ -829,7 +834,7 @@ def test_compare_outputs_rejects_coherently_tampered_result_self_hash(
         target.RadaPostG06BalanceError,
         match="balance result self-hash mismatch",
     ):
-        target.compare_outputs(a, b, tmp_path / "proof-result.json")
+        _compare_outputs(a, b, tmp_path / "proof-result.json")
 
 
 def test_compare_outputs_rejects_coherently_tampered_next100_input(
@@ -849,7 +854,7 @@ def test_compare_outputs_rejects_coherently_tampered_next100_input(
         target.RadaPostG06BalanceError,
         match="balance binding next100-input identity mismatch",
     ):
-        target.compare_outputs(a, b, tmp_path / "proof-next100.json")
+        _compare_outputs(a, b, tmp_path / "proof-next100.json")
 
 
 def test_compare_outputs_rejects_cross_binding_policy_drift(
@@ -873,7 +878,7 @@ def test_compare_outputs_rejects_cross_binding_policy_drift(
         target.RadaPostG06BalanceError,
         match="execution receipt balance-policy identity mismatch",
     ):
-        target.compare_outputs(a, b, tmp_path / "proof-policy.json")
+        _compare_outputs(a, b, tmp_path / "proof-policy.json")
 
 
 def test_compare_outputs_enforces_checkout_provenance_before_proof_write(
@@ -902,7 +907,7 @@ def test_compare_outputs_enforces_checkout_provenance_before_proof_write(
         target.RadaPostG06BalanceError,
         match="execution HEAD drift",
     ):
-        target.compare_outputs(
+        _compare_outputs(
             a,
             b,
             proof,
@@ -950,7 +955,7 @@ def test_compare_outputs_accepts_bound_checkout_provenance(
         lambda: (ReplayGate(), object(), {}),
     )
     proof_path = tmp_path / "proof-provenance-ok.json"
-    proof = target.compare_outputs(
+    proof = _compare_outputs(
         a,
         b,
         proof_path,
@@ -993,7 +998,7 @@ def test_compare_outputs_rejects_unbound_extra_files(tmp_path: Path) -> None:
         target.RadaPostG06BalanceError,
         match="output directory contains unexpected entries",
     ):
-        target.compare_outputs(a, b, tmp_path / "proof-extra.json")
+        _compare_outputs(a, b, tmp_path / "proof-extra.json")
 
 
 def test_write_output_dir_rejects_receipt_before_children(tmp_path: Path) -> None:
@@ -1084,7 +1089,7 @@ def test_compare_outputs_rejects_composition_zero_credit_reseal(
         target.RadaPostG06BalanceError,
         match="composition zero-credit drift: training_executed",
     ):
-        target.compare_outputs(
+        _compare_outputs(
             a,
             b,
             tmp_path / "proof-composition-credit.json",
@@ -1106,7 +1111,7 @@ def test_compare_outputs_rejects_dedup_worker_drift(tmp_path: Path) -> None:
         target.RadaPostG06BalanceError,
         match="NEXT100 dedup worker drift",
     ):
-        target.compare_outputs(a, b, tmp_path / "proof-worker.json")
+        _compare_outputs(a, b, tmp_path / "proof-worker.json")
 
 
 def test_compare_outputs_rejects_post_g06_chain_drift(tmp_path: Path) -> None:
@@ -1128,7 +1133,7 @@ def test_compare_outputs_rejects_post_g06_chain_drift(tmp_path: Path) -> None:
         target.RadaPostG06BalanceError,
         match="post-G06 identity differs across evidence chain",
     ):
-        target.compare_outputs(a, b, tmp_path / "proof-post-g06.json")
+        _compare_outputs(a, b, tmp_path / "proof-post-g06.json")
 
 
 def test_compare_outputs_rejects_nonreproducible_canonical_replay(
@@ -1159,7 +1164,7 @@ def test_compare_outputs_rejects_nonreproducible_canonical_replay(
         target.RadaPostG06BalanceError,
         match="balance result is not a deterministic replay of canonical gate",
     ):
-        target.compare_outputs(
+        _compare_outputs(
             a,
             b,
             proof,
@@ -1255,8 +1260,67 @@ def test_compare_outputs_rejects_post_g06_two_clean_chain_drift(
         target.RadaPostG06BalanceError,
         match="post-G06 two-clean identity differs across evidence chain",
     ):
-        target.compare_outputs(
+        _compare_outputs(
             a,
             b,
             tmp_path / "proof-two-clean-chain.json",
+        )
+
+
+def _compare_outputs(
+    output_a: Path,
+    output_b: Path,
+    proof_path: Path,
+    **kwargs,
+):
+    return target.compare_outputs(
+        output_a,
+        output_b,
+        proof_path,
+        runner_a_identity="github-run:synthetic/job-a",
+        runner_b_identity="github-run:synthetic/job-b",
+        independent_runner_jobs=True,
+        **kwargs,
+    )
+
+
+def test_compare_outputs_requires_independent_runner_attestation(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-independent"
+    b = tmp_path / "b-independent"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="independent runner jobs are not attested",
+    ):
+        target.compare_outputs(
+            a,
+            b,
+            tmp_path / "proof-independent.json",
+            runner_a_identity="github-run:synthetic/job-a",
+            runner_b_identity="github-run:synthetic/job-b",
+            independent_runner_jobs=False,
+        )
+
+
+def test_compare_outputs_rejects_same_runner_identity(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-same-runner"
+    b = tmp_path / "b-same-runner"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="runner identities must be distinct",
+    ):
+        target.compare_outputs(
+            a,
+            b,
+            tmp_path / "proof-same-runner.json",
+            runner_a_identity="github-run:synthetic/job",
+            runner_b_identity="github-run:synthetic/job",
+            independent_runner_jobs=True,
         )
