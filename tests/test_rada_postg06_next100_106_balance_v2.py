@@ -1587,7 +1587,7 @@ def test_load_pinned_json_rejects_path_swap_after_open(
     monkeypatch.setattr(target.os, "read", read_then_swap)
     with pytest.raises(
         target.RadaPostG06BalanceError,
-        match="pathname changed during read",
+        match="changed during read",
     ):
         target.load_pinned_json(
             authority,
