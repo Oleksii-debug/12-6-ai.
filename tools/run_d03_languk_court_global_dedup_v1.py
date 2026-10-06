@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Execute the physically qualified Lang-UK Supreme Court slice through incumbent global dedup.
 
 Execution glue only. This runner re-materializes the exact pinned parquet, reproduces
@@ -30,6 +29,7 @@ for location in (str(ROOT / "tools"), str(ROOT / "src")):
 import run_d03_franko1901_global_dedup_execution_v1 as incumbent
 import run_d03_languk_court_privacy_retest_v1 as source_gate
 import run_next100_065f_global_dedup_v8 as v8
+
 from twelve_six.data import expanded_global_dedup_v9 as v9_semantics
 from twelve_six.data import incumbent_dedup_indexed_execution as indexed
 
