@@ -1,0 +1,90 @@
+name: D05 process environment seal qualification G8-160c
+
+on:
+  pull_request:
+    branches:
+      - repair/2778-process-env-seal-g8-160-20261006
+    paths:
+      - ".github/workflows/d05_process_env_seal_g8_160c.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d05-process-env-seal-c-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2877-process-env-replay-g8-160c-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      D05_REPAIR_SHA: "4d40965e3efe02e7222aad3d7cf5fffe158fa059"
+      QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+      EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PYTHONUTF8: "1"
+
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact repair parent and focused closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$D05_REPAIR_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$D05_REPAIR_SHA" HEAD)" = "$D05_REPAIR_SHA"
+          test "$(git diff --name-only "$D05_REPAIR_SHA..HEAD")" = ".github/workflows/d05_process_env_seal_g8_160c.yml"
+          test "$(git rev-parse "$D05_REPAIR_SHA:src/twelve_six/checkpoint/core.py")" = "58bde19b37c1e1de31c4fc2ae151e9220cd5d969"
+          test "$(git rev-parse "$D05_REPAIR_SHA:src/twelve_six/checkpoint/progress_trainer.py")" = "e73a8de66ac44d38d6e37915da51832e02b6250d"
+          test "$(git rev-parse "$D05_REPAIR_SHA:src/twelve_six/checkpoint/trainer_adapter.py")" = "d68175a3ac43870aaaa31b494503f8be3f7ae7f1"
+          test "$(git rev-parse "$D05_REPAIR_SHA:src/twelve_six/checkpoint/transactional_rng.py")" = "f7c0531bd7fc4a200337ebf860765747c5447b6a"
+          test "$(git rev-parse "$D05_REPAIR_SHA:src/twelve_six/training/trainer.py")" = "493b482bf9d87533790fd4cd3087269a7062c3ba"
+          test "$(git rev-parse "$D05_REPAIR_SHA:tests/test_checkpoint_rng_completeness_d02.py")" = "7d92abdabe784fb0da117a5315b5f5cf7ef6dc59"
+          test "$(git rev-parse "$D05_REPAIR_SHA:tests/test_checkpoint_transactional_rng.py")" = "38d475435f9ac2c2f17de9cb4e8f694db8834c42"
+          test "$(git rev-parse "$D05_REPAIR_SHA:tests/test_trainer_direct_restore_binding.py")" = "c02e9c2453493cc463f0e020a342e4eb14a5c5b6"
+          test "$(git rev-parse "$D05_REPAIR_SHA:tests/test_checkpoint_load_result_aliasing.py")" = "1246f432e4daca7603ca366b180ecf782cda445c"
+          python -m py_compile             src/twelve_six/checkpoint/core.py             src/twelve_six/checkpoint/progress_trainer.py             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/transactional_rng.py             src/twelve_six/training/trainer.py             tests/test_checkpoint_rng_completeness_d02.py             tests/test_checkpoint_transactional_rng.py             tests/test_trainer_direct_restore_binding.py             tests/test_checkpoint_load_result_aliasing.py
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+
+      - name: Install exact repair test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Lint exact process-state closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check             src/twelve_six/checkpoint/core.py             src/twelve_six/checkpoint/progress_trainer.py             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/transactional_rng.py             src/twelve_six/training/trainer.py             tests/test_checkpoint_rng_completeness_d02.py             tests/test_checkpoint_transactional_rng.py             tests/test_trainer_direct_restore_binding.py             tests/test_checkpoint_load_result_aliasing.py
+
+      - name: Execute checkpoint and direct-restore regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q             tests/test_checkpoint_rng_completeness_d02.py             tests/test_checkpoint_transactional_rng.py             tests/test_trainer_direct_restore_binding.py             tests/test_checkpoint_load_result_aliasing.py
+
+      - name: Prove qualification carrier is still clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
