@@ -7,6 +7,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from functools import partial
+from operator import is_ as _identity_is
 from pathlib import Path
 from types import CodeType, FunctionType, MappingProxyType
 from typing import Any
@@ -195,7 +196,7 @@ class TokenizerDecisionError(ValueError):
 
 
 def _build_expected_root_verifier():
-    """Bind verifier roots in read-only partial args, not mutable function defaults."""
+    """Bind root identities behind a C callable with read-only partial args."""
 
     anchors = (
         _APPLICATION_KEYS,
@@ -237,186 +238,12 @@ def _build_expected_root_verifier():
         _EXPECTED_BYTE_TOKENIZER_CLASS,
         _EXPECTED_BYTE_SOURCE_PATH_TEXT,
     )
-
-    def verify(bound_roots) -> None:
-        (
-            application_keys,
-            report_keys,
-            zero_credit_boundary,
-            runtime_identity,
-            class_state,
-            method_kwdefaults,
-            module_constants,
-            module_config,
-            builtins_module,
-            runtime_builtins,
-            source_path,
-            source_path_class,
-            source_read_bytes,
-            base_module_root,
-            identity_class,
-            byte_module_root,
-            json_module,
-            hashlib_module,
-            json_dumps,
-            json_loads,
-            sha1,
-            sha256,
-            mapping_type,
-            code_type,
-            function_type,
-            mapping_proxy_type,
-            decision_schema,
-            decision,
-            status,
-            selection_schema,
-            application_schema,
-            split_blob,
-            split_spec,
-            byte_blob,
-            verify_selection_call,
-            split_error,
-            byte_tokenizer_class,
-            source_path_text,
-        ) = bound_roots
-        identity_roots = (
-            ("_APPLICATION_KEYS", _APPLICATION_KEYS, application_keys),
-            ("_REPORT_KEYS", _REPORT_KEYS, report_keys),
-            ("_ZERO_CREDIT_BOUNDARY", _ZERO_CREDIT_BOUNDARY, zero_credit_boundary),
-            (
-                "_EXPECTED_TOKENIZER_RUNTIME_IDENTITY",
-                _EXPECTED_TOKENIZER_RUNTIME_IDENTITY,
-                runtime_identity,
-            ),
-            (
-                "_EXPECTED_TOKENIZER_CLASS_STATE",
-                _EXPECTED_TOKENIZER_CLASS_STATE,
-                class_state,
-            ),
-            (
-                "_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS",
-                _EXPECTED_TOKENIZER_METHOD_KWDEFAULTS,
-                method_kwdefaults,
-            ),
-            (
-                "_EXPECTED_BYTE_MODULE_CONSTANTS",
-                _EXPECTED_BYTE_MODULE_CONSTANTS,
-                module_constants,
-            ),
-            ("_EXPECTED_BYTE_MODULE_CONFIG", _EXPECTED_BYTE_MODULE_CONFIG, module_config),
-            ("_EXPECTED_BUILTINS_MODULE", _EXPECTED_BUILTINS_MODULE, builtins_module),
-            (
-                "_EXPECTED_BYTE_RUNTIME_BUILTINS",
-                _EXPECTED_BYTE_RUNTIME_BUILTINS,
-                runtime_builtins,
-            ),
-            ("_EXPECTED_BYTE_SOURCE_PATH", _EXPECTED_BYTE_SOURCE_PATH, source_path),
-            (
-                "_EXPECTED_BYTE_SOURCE_PATH_CLASS",
-                _EXPECTED_BYTE_SOURCE_PATH_CLASS,
-                source_path_class,
-            ),
-            (
-                "_EXPECTED_BYTE_SOURCE_READ_BYTES",
-                _EXPECTED_BYTE_SOURCE_READ_BYTES,
-                source_read_bytes,
-            ),
-            (
-                "_EXPECTED_TOKENIZER_BASE_MODULE",
-                _EXPECTED_TOKENIZER_BASE_MODULE,
-                base_module_root,
-            ),
-            (
-                "_EXPECTED_TOKENIZER_IDENTITY_CLASS",
-                _EXPECTED_TOKENIZER_IDENTITY_CLASS,
-                identity_class,
-            ),
-            (
-                "_EXPECTED_BYTE_TOKENIZER_MODULE",
-                _EXPECTED_BYTE_TOKENIZER_MODULE,
-                byte_module_root,
-            ),
-            ("_EXPECTED_BYTE_JSON_MODULE", _EXPECTED_BYTE_JSON_MODULE, json_module),
-            ("_EXPECTED_BYTE_HASHLIB_MODULE", _EXPECTED_BYTE_HASHLIB_MODULE, hashlib_module),
-            ("_EXPECTED_BYTE_JSON_DUMPS", _EXPECTED_BYTE_JSON_DUMPS, json_dumps),
-            ("_EXPECTED_BYTE_JSON_LOADS", _EXPECTED_BYTE_JSON_LOADS, json_loads),
-            ("_EXPECTED_BYTE_HASHLIB_SHA1", _EXPECTED_BYTE_HASHLIB_SHA1, sha1),
-            ("_EXPECTED_BYTE_HASHLIB_SHA256", _EXPECTED_BYTE_HASHLIB_SHA256, sha256),
-            ("Mapping", Mapping, mapping_type),
-            ("CodeType", CodeType, code_type),
-            ("FunctionType", FunctionType, function_type),
-            ("MappingProxyType", MappingProxyType, mapping_proxy_type),
-            ("SCHEMA", SCHEMA, decision_schema),
-            ("_EXPECTED_DECISION_SCHEMA", _EXPECTED_DECISION_SCHEMA, decision_schema),
-            ("DECISION", DECISION, decision),
-            ("_EXPECTED_DECISION", _EXPECTED_DECISION, decision),
-            ("STATUS", STATUS, status),
-            ("_EXPECTED_STATUS", _EXPECTED_STATUS, status),
-            ("SELECTION_SCHEMA", SELECTION_SCHEMA, selection_schema),
-            ("_EXPECTED_SELECTION_SCHEMA", _EXPECTED_SELECTION_SCHEMA, selection_schema),
-            ("APPLICATION_SCHEMA", APPLICATION_SCHEMA, application_schema),
-            ("_EXPECTED_APPLICATION_SCHEMA", _EXPECTED_APPLICATION_SCHEMA, application_schema),
-            ("CANONICAL_SPLIT_GIT_BLOB_SHA1", CANONICAL_SPLIT_GIT_BLOB_SHA1, split_blob),
-            (
-                "_EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1",
-                _EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1,
-                split_blob,
-            ),
-            (
-                "CANONICAL_SPLIT_SPEC_IDENTITY_SHA256",
-                CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
-                split_spec,
-            ),
-            (
-                "_EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256",
-                _EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
-                split_spec,
-            ),
-            (
-                "CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1",
-                CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1,
-                byte_blob,
-            ),
-            (
-                "_EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1",
-                _EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1,
-                byte_blob,
-            ),
-            ("verify_balanced_selection", verify_balanced_selection, verify_selection_call),
-            (
-                "_EXPECTED_VERIFY_BALANCED_SELECTION",
-                _EXPECTED_VERIFY_BALANCED_SELECTION,
-                verify_selection_call,
-            ),
-            ("BalancedSplitApplicationError", BalancedSplitApplicationError, split_error),
-            (
-                "_EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR",
-                _EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR,
-                split_error,
-            ),
-            ("ByteTokenizer", ByteTokenizer, byte_tokenizer_class),
-            (
-                "_EXPECTED_BYTE_TOKENIZER_CLASS",
-                _EXPECTED_BYTE_TOKENIZER_CLASS,
-                byte_tokenizer_class,
-            ),
-            (
-                "_EXPECTED_BYTE_SOURCE_PATH_TEXT",
-                _EXPECTED_BYTE_SOURCE_PATH_TEXT,
-                source_path_text,
-            ),
-        )
-        for name, observed, expected in identity_roots:
-            if observed is not expected:
-                raise TokenizerDecisionError(
-                    f"canonical tokenizer decision verifier root drift: {name}"
-                )
-
-    return partial(verify, anchors)
+    return partial(_identity_is, anchors)
 
 
 _verify_expected_root_integrity = _build_expected_root_verifier()
 del _build_expected_root_verifier
+del _identity_is
 
 def _canonical_json(value: Mapping[str, Any]) -> str:
     try:
@@ -609,7 +436,152 @@ def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
 def _verify_byte_tokenizer_runtime_dependencies() -> None:
     """Bind mutable interpreter and stdlib dependencies used by D04 verification."""
 
-    _verify_expected_root_integrity()
+    verifier = _verify_expected_root_integrity
+    expected = verifier.args[0]
+    identity_roots = (
+        ("_APPLICATION_KEYS", _APPLICATION_KEYS, expected[0]),
+        ("_REPORT_KEYS", _REPORT_KEYS, expected[1]),
+        ("_ZERO_CREDIT_BOUNDARY", _ZERO_CREDIT_BOUNDARY, expected[2]),
+        (
+            "_EXPECTED_TOKENIZER_RUNTIME_IDENTITY",
+            _EXPECTED_TOKENIZER_RUNTIME_IDENTITY,
+            expected[3],
+        ),
+        (
+            "_EXPECTED_TOKENIZER_CLASS_STATE",
+            _EXPECTED_TOKENIZER_CLASS_STATE,
+            expected[4],
+        ),
+        (
+            "_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS",
+            _EXPECTED_TOKENIZER_METHOD_KWDEFAULTS,
+            expected[5],
+        ),
+        (
+            "_EXPECTED_BYTE_MODULE_CONSTANTS",
+            _EXPECTED_BYTE_MODULE_CONSTANTS,
+            expected[6],
+        ),
+        ("_EXPECTED_BYTE_MODULE_CONFIG", _EXPECTED_BYTE_MODULE_CONFIG, expected[7]),
+        ("_EXPECTED_BUILTINS_MODULE", _EXPECTED_BUILTINS_MODULE, expected[8]),
+        (
+            "_EXPECTED_BYTE_RUNTIME_BUILTINS",
+            _EXPECTED_BYTE_RUNTIME_BUILTINS,
+            expected[9],
+        ),
+        ("_EXPECTED_BYTE_SOURCE_PATH", _EXPECTED_BYTE_SOURCE_PATH, expected[10]),
+        (
+            "_EXPECTED_BYTE_SOURCE_PATH_CLASS",
+            _EXPECTED_BYTE_SOURCE_PATH_CLASS,
+            expected[11],
+        ),
+        (
+            "_EXPECTED_BYTE_SOURCE_READ_BYTES",
+            _EXPECTED_BYTE_SOURCE_READ_BYTES,
+            expected[12],
+        ),
+        (
+            "_EXPECTED_TOKENIZER_BASE_MODULE",
+            _EXPECTED_TOKENIZER_BASE_MODULE,
+            expected[13],
+        ),
+        (
+            "_EXPECTED_TOKENIZER_IDENTITY_CLASS",
+            _EXPECTED_TOKENIZER_IDENTITY_CLASS,
+            expected[14],
+        ),
+        (
+            "_EXPECTED_BYTE_TOKENIZER_MODULE",
+            _EXPECTED_BYTE_TOKENIZER_MODULE,
+            expected[15],
+        ),
+        ("_EXPECTED_BYTE_JSON_MODULE", _EXPECTED_BYTE_JSON_MODULE, expected[16]),
+        (
+            "_EXPECTED_BYTE_HASHLIB_MODULE",
+            _EXPECTED_BYTE_HASHLIB_MODULE,
+            expected[17],
+        ),
+        ("_EXPECTED_BYTE_JSON_DUMPS", _EXPECTED_BYTE_JSON_DUMPS, expected[18]),
+        ("_EXPECTED_BYTE_JSON_LOADS", _EXPECTED_BYTE_JSON_LOADS, expected[19]),
+        ("_EXPECTED_BYTE_HASHLIB_SHA1", _EXPECTED_BYTE_HASHLIB_SHA1, expected[20]),
+        (
+            "_EXPECTED_BYTE_HASHLIB_SHA256",
+            _EXPECTED_BYTE_HASHLIB_SHA256,
+            expected[21],
+        ),
+        ("Mapping", Mapping, expected[22]),
+        ("CodeType", CodeType, expected[23]),
+        ("FunctionType", FunctionType, expected[24]),
+        ("MappingProxyType", MappingProxyType, expected[25]),
+        ("SCHEMA", SCHEMA, expected[26]),
+        ("_EXPECTED_DECISION_SCHEMA", _EXPECTED_DECISION_SCHEMA, expected[26]),
+        ("DECISION", DECISION, expected[27]),
+        ("_EXPECTED_DECISION", _EXPECTED_DECISION, expected[27]),
+        ("STATUS", STATUS, expected[28]),
+        ("_EXPECTED_STATUS", _EXPECTED_STATUS, expected[28]),
+        ("SELECTION_SCHEMA", SELECTION_SCHEMA, expected[29]),
+        ("_EXPECTED_SELECTION_SCHEMA", _EXPECTED_SELECTION_SCHEMA, expected[29]),
+        ("APPLICATION_SCHEMA", APPLICATION_SCHEMA, expected[30]),
+        ("_EXPECTED_APPLICATION_SCHEMA", _EXPECTED_APPLICATION_SCHEMA, expected[30]),
+        ("CANONICAL_SPLIT_GIT_BLOB_SHA1", CANONICAL_SPLIT_GIT_BLOB_SHA1, expected[31]),
+        (
+            "_EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1",
+            _EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1,
+            expected[31],
+        ),
+        (
+            "CANONICAL_SPLIT_SPEC_IDENTITY_SHA256",
+            CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
+            expected[32],
+        ),
+        (
+            "_EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256",
+            _EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
+            expected[32],
+        ),
+        (
+            "CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1",
+            CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1,
+            expected[33],
+        ),
+        (
+            "_EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1",
+            _EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1,
+            expected[33],
+        ),
+        (
+            "verify_balanced_selection",
+            verify_balanced_selection,
+            expected[34],
+        ),
+        (
+            "_EXPECTED_VERIFY_BALANCED_SELECTION",
+            _EXPECTED_VERIFY_BALANCED_SELECTION,
+            expected[34],
+        ),
+        (
+            "BalancedSplitApplicationError",
+            BalancedSplitApplicationError,
+            expected[35],
+        ),
+        (
+            "_EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR",
+            _EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR,
+            expected[35],
+        ),
+        ("ByteTokenizer", ByteTokenizer, expected[36]),
+        ("_EXPECTED_BYTE_TOKENIZER_CLASS", _EXPECTED_BYTE_TOKENIZER_CLASS, expected[36]),
+        (
+            "_EXPECTED_BYTE_SOURCE_PATH_TEXT",
+            _EXPECTED_BYTE_SOURCE_PATH_TEXT,
+            expected[37],
+        ),
+    )
+    for name, observed, expected_root in identity_roots:
+        if not verifier.func(observed, expected_root):
+            raise TokenizerDecisionError(
+                f"canonical tokenizer decision verifier root drift: {name}"
+            )
     if builtins is not _EXPECTED_BUILTINS_MODULE:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime dependency drift: builtins module"
