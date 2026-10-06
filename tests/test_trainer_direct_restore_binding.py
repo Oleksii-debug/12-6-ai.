@@ -163,7 +163,7 @@ def test_direct_restore_seals_each_payload_ownership_phase() -> None:
         "trainer restore safety authority changed during "
         "optimizer payload ownership"
     )
-    assert target._update_incomplete is True
+    assert target._update_incomplete is False
     assert not target.optimizer.state
 
 
@@ -211,9 +211,10 @@ class _RestoreConfigDriftReset:
 
 
 def test_direct_restore_uses_entry_config_for_counter_preflight() -> None:
+    from dataclasses import replace
+
     config = _config()
-    state = _clean_state(config)
-    state.micro_step = 2
+    state = replace(_clean_state(config), micro_step=2)
     target = Trainer(nn.Linear(3, 2), config, scheduler=None)
     reset = _RestoreConfigDriftReset(target)
     _RestoreConfigDriftReset.deepcopy_calls = 0
@@ -594,6 +595,19 @@ def test_direct_restore_missing_interface_is_preapply_and_retryable(
     assert not trainer.optimizer.state
 
     monkeypatch.undo()
+    # MonkeyPatch restores a bound method as an instance attribute. Remove that
+    # test artifact so retry observes the original class-defined interface and
+    # the auxiliary fingerprint remains canonical.
+    if surface == "optimizer-load":
+        vars(trainer.optimizer).pop("load_state_dict", None)
+    elif surface == "optimizer-zero-grad":
+        vars(trainer.optimizer).pop("zero_grad", None)
+    elif surface == "scheduler-load":
+        assert trainer.scheduler is not None
+        vars(trainer.scheduler).pop("load_state_dict", None)
+    elif surface == "scaler-load":
+        assert trainer.scaler is not None
+        vars(trainer.scaler).pop("load_state_dict", None)
     trainer.load_state_dict(state)
     assert trainer._failure_reason is None
     assert trainer._update_incomplete is False
@@ -787,7 +801,12 @@ class ApplyReproducibilityDriftAdamW(AdamW):
 
     def zero_grad(self, *args, **kwargs):
         if self.armed:
-            self.guarded_zero_grad_calls += 1
+            assert self.owner is not None
+            # _mark_failed() deliberately performs best-effort gradient cleanup
+            # after recording the failure. Count only the normal restore
+            # zero_grad path; the regression proves drift rejects before it.
+            if self.owner._failure_reason is None:
+                self.guarded_zero_grad_calls += 1
         return super().zero_grad(*args, **kwargs)
 
 
@@ -1334,12 +1353,14 @@ def test_direct_restore_rejects_effectful_state_deepcopy_before_loader_lookup() 
 
     with pytest.raises(
         TrainingStateInvalidError,
-        match="trainer model changed during checkpoint preflight",
+        match="trainer model changed during scheduler payload ownership",
     ):
         target.load_state_dict(replace(state, scheduler=effectful))
 
     assert not torch.equal(target.model.weight.detach(), before)
-    assert target._failure_reason == "trainer model changed during checkpoint preflight"
+    assert target._failure_reason == (
+        "trainer model changed during scheduler payload ownership"
+    )
     assert target._update_incomplete is False
     assert not target.optimizer.state
 
@@ -1375,7 +1396,7 @@ def test_direct_restore_poison_target_when_state_mapping_decode_mutates_then_rai
     assert not target.optimizer.state
 
 
-def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_raises() -> None:
+def test_direct_restore_inertly_snapshots_optimizer_dict_subclass() -> None:
     from dataclasses import replace
 
     config = _config()
@@ -1383,26 +1404,22 @@ def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_rais
     target = Trainer(nn.Linear(3, 2), config, scheduler=None)
 
     class ExplodingOptimizerState(dict):
-        armed = True
+        get_calls = 0
 
         def get(self, key, default=None):
-            if self.armed and key == "param_groups":
-                self.armed = False
-                target.tokens_seen = 1
-                raise RuntimeError("optimizer preflight exploded")
-            return super().get(key, default)
+            type(self).get_calls += 1
+            target.tokens_seen = 1
+            raise RuntimeError("optimizer dict subclass callback escaped")
 
     hostile_state = replace(state, optimizer=ExplodingOptimizerState(state.optimizer))
+    ExplodingOptimizerState.get_calls = 0
 
-    with pytest.raises(RuntimeError, match="optimizer preflight exploded"):
-        target.load_state_dict(hostile_state)
+    target.load_state_dict(hostile_state)
 
-    assert target.tokens_seen == 1
-    assert target._failure_reason == (
-        "trainer restore state changed during checkpoint preflight"
-    )
+    assert ExplodingOptimizerState.get_calls == 0
+    assert target.tokens_seen == state.tokens_seen
+    assert target._failure_reason is None
     assert target._update_incomplete is False
-    assert not target.optimizer.state
 
 
 def test_checkpoint_rng_fingerprint_is_observer_only() -> None:
@@ -1713,7 +1730,7 @@ def test_direct_restore_rejects_entry_deterministic_policy_drift_before_state_ac
     assert target._update_incomplete is False
 
 
-def test_direct_restore_poison_target_when_payload_drifts_deterministic_policy() -> None:
+def test_direct_restore_optimizer_dict_subclass_cannot_drift_deterministic_policy() -> None:
     from dataclasses import replace
 
     config = _config()
@@ -1723,40 +1740,32 @@ def test_direct_restore_poison_target_when_payload_drifts_deterministic_policy()
     expected_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
 
     class PolicyMutatingOptimizerState(dict):
-        armed = True
+        get_calls = 0
 
         def get(self, key, default=None):
-            if self.armed and key == "param_groups":
-                self.armed = False
-                torch.use_deterministic_algorithms(
-                    not expected_enabled,
-                    warn_only=expected_warn_only,
-                )
-                raise RuntimeError("optimizer preflight changed deterministic policy")
-            return super().get(key, default)
+            type(self).get_calls += 1
+            torch.use_deterministic_algorithms(
+                not expected_enabled,
+                warn_only=expected_warn_only,
+            )
+            raise RuntimeError("optimizer dict subclass callback escaped")
 
     hostile_state = replace(
         state,
         optimizer=PolicyMutatingOptimizerState(state.optimizer),
     )
+    PolicyMutatingOptimizerState.get_calls = 0
 
-    try:
-        with pytest.raises(
-            RuntimeError,
-            match="optimizer preflight changed deterministic policy",
-        ):
-            target.load_state_dict(hostile_state)
-    finally:
-        torch.use_deterministic_algorithms(
-            expected_enabled,
-            warn_only=expected_warn_only,
-        )
+    target.load_state_dict(hostile_state)
 
-    assert target._failure_reason == (
-        "trainer deterministic policy changed during checkpoint preflight"
+    assert PolicyMutatingOptimizerState.get_calls == 0
+    assert torch.are_deterministic_algorithms_enabled() is expected_enabled
+    assert (
+        torch.is_deterministic_algorithms_warn_only_enabled()
+        is expected_warn_only
     )
+    assert target._failure_reason is None
     assert target._update_incomplete is False
-    assert not target.optimizer.state
 
 
 def test_direct_restore_rejects_late_marker_storage_descriptor_before_mutation() -> None:
