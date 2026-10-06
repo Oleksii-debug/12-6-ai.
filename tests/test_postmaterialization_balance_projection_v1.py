@@ -42,6 +42,7 @@ EN_A = "en.mdn.webdocs.prose"
 EN_B = "en.project-gutenberg.public-domain-books"
 CODE_A = "github:agronholm/anyio"
 CODE_B = "github:pytest-dev/pytest"
+CODE_C = "github:pallets/flask"
 
 
 def _canonical(value: object) -> bytes:
@@ -1783,42 +1784,162 @@ def test_exact_record_realization_rejects_unrepresentable_allocation() -> None:
     with pytest.raises(ProjectionError, match="no exact whole-record realization"):
         _exact_record_subset(rows, target_bytes=3, family="family")
     assert SELECTION_REALIZATION_POLICY == (
-        "record-id-ascending-exact-family-byte-subset-v1"
+        "record-id-ascending-bitset-exact-with-safe-stratum-repair-v2"
     )
 
 
-def test_exact_record_realization_fails_closed_on_state_budget() -> None:
+def test_exact_record_realization_is_deterministic_and_prefers_earlier_rows() -> None:
+    rows = [
+        {"record_id": f"record-{index:04d}", "payload_bytes": 1}
+        for index in range(400)
+    ]
+    first = _exact_record_subset(rows, target_bytes=300, family="family")
+    second = _exact_record_subset(rows, target_bytes=300, family="family")
+    assert second == first
+    assert [row["record_id"] for row in first] == [
+        f"record-{index:04d}" for index in range(300)
+    ]
+
+
+def test_exact_record_realization_fails_closed_on_reconstruction_memory_bound() -> None:
     rows = [
         {"record_id": "a", "payload_bytes": 1},
         {"record_id": "b", "payload_bytes": 2},
         {"record_id": "c", "payload_bytes": 4},
         {"record_id": "d", "payload_bytes": 8},
     ]
-    with pytest.raises(ProjectionError, match="exact-subset state budget exceeded"):
+    with pytest.raises(ProjectionError, match="reconstruction memory bound"):
         _exact_record_subset(
             rows,
             target_bytes=14,
             family="family",
-            max_states=3,
-            max_expansions=100,
+            max_reconstruction_bytes=1,
         )
 
 
-def test_exact_record_realization_fails_closed_on_work_budget() -> None:
+def _safe_code_stratum_repair_fixture() -> tuple[
+    dict, dict[str, bytes], dict, dict, dict
+]:
     rows = [
-        {"record_id": "a", "payload_bytes": 2},
-        {"record_id": "b", "payload_bytes": 4},
-        {"record_id": "c", "payload_bytes": 6},
+        _row("ua-a", UA_A, "uk", 4_500_000),
+        _row("ua-b", UA_B, "uk", 4_500_000),
+        _row("en-a", EN_A, "en", 3_500_000),
+        _row("en-b", EN_B, "en", 3_500_000),
+        _row("code-a-1", CODE_A, "code", 1_000_000),
+        _row("code-a-2", CODE_A, "code", 500_000),
+        _row("code-c-1", CODE_C, "code", 600_000),
+        _row("code-c-2", CODE_C, "code", 900_000),
+        _row("code-b", CODE_B, "code", 1_500_000),
     ]
-    with pytest.raises(ProjectionError, match="exact-subset work budget exceeded"):
-        _exact_record_subset(
-            rows,
-            target_bytes=11,
-            family="family",
-            max_states=100,
-            max_expansions=1,
-        )
+    vector, raw, _expected = _build_current_clean(rows)
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    assert balance["status"] == "TARGET_20M_SOURCE_MIX_FEASIBLE"
+    binding = build_balance_result_binding(
+        family_vector=vector,
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        next100_input=adapted,
+        balance_result=balance,
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    return vector, raw, adapted, balance, binding
 
+
+def test_selection_repairs_impossible_family_witness_at_cap_safe_stratum() -> None:
+    vector, raw, adapted, balance, binding = _safe_code_stratum_repair_fixture()
+    code_allocations = {
+        row["family_id"]: row["allocated_bytes"]
+        for row in balance["deterministic_maximum_allocation"]
+        if row["stratum"] == "code"
+    }
+    assert code_allocations == {
+        CODE_A: 1_500_000,
+        CODE_B: 1_000_000,
+        CODE_C: 1_500_000,
+    }
+
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    selection = build_current_clean_balanced_selection(
+        family_vector=vector,
+        next100_input=adapted,
+        balance_result=balance,
+        balance_binding=binding,
+        composition_receipt_raw=raw["composition_receipt"],
+        survivor_records_raw=raw["survivor_records"],
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        expected_balance_binding_identity_sha256=binding[
+            "binding_identity_sha256"
+        ],
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    family_bytes = selection["totals"]["family_source_bytes"]
+    assert selection["totals"]["source_bytes"] == 20_000_000
+    assert selection["totals"]["stratum_source_bytes"] == {
+        "code": 4_000_000,
+        "en": 7_000_000,
+        "uk": 9_000_000,
+    }
+    assert family_bytes[CODE_B] == 1_500_000
+    assert family_bytes[CODE_A] == 1_000_000
+    assert family_bytes[CODE_C] == 1_500_000
+    assert all(family_bytes[family] <= 2_400_000 for family in (CODE_A, CODE_B, CODE_C))
+    projected = _project_current_clean_selection(selection, raw["survivor_records"])
+    assert sum(row["payload_bytes"] for row in projected) == 20_000_000
+    assert selection["claim_boundary"]["model_training_authorized"] is False
+    assert selection["claim_boundary"]["tokenizer_fit_authorized"] is False
+    assert selection["claim_boundary"]["authorized_optimized_target_exposure"] == 0
+
+
+def test_selection_refuses_stratum_repair_when_full_family_exceeds_cap() -> None:
+    rows = [
+        _row("ua-a", UA_A, "uk", 4_500_000),
+        _row("ua-b", UA_B, "uk", 4_500_000),
+        _row("en-a", EN_A, "en", 3_500_000),
+        _row("en-b", EN_B, "en", 3_500_000),
+        _row("code-a-1", CODE_A, "code", 1_300_000),
+        _row("code-a-2", CODE_A, "code", 1_200_000),
+        _row("code-c", CODE_C, "code", 1_500_000),
+        _row("code-b", CODE_B, "code", 1_500_000),
+    ]
+    vector, raw, _expected = _build_current_clean(rows)
+    adapted = _adapt(vector)
+    policy = next100_gate.load_json(next100_gate.POLICY_PATH)
+    balance = next100_gate.evaluate(policy, adapted)
+    assert balance["status"] == "TARGET_20M_SOURCE_MIX_FEASIBLE"
+    binding = build_balance_result_binding(
+        family_vector=vector,
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        next100_input=adapted,
+        balance_result=balance,
+        expected_policy_identity_sha256=policy["policy_identity_sha256"],
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    with pytest.raises(ProjectionError, match="unsafe whole-record stratum repair"):
+        build_current_clean_balanced_selection(
+            family_vector=vector,
+            next100_input=adapted,
+            balance_result=balance,
+            balance_binding=binding,
+            composition_receipt_raw=raw["composition_receipt"],
+            survivor_records_raw=raw["survivor_records"],
+            expected_family_vector_identity_sha256=vector[
+                "family_vector_identity_sha256"
+            ],
+            expected_balance_binding_identity_sha256=binding[
+                "binding_identity_sha256"
+            ],
+            expected_policy_identity_sha256=policy["policy_identity_sha256"],
+            expected_result_identity_sha256=balance["result_identity_sha256"],
+        )
 
 def test_current_clean_balanced_selection_rejects_raw_survivor_substitution() -> None:
     vector, raw, _expected, adapted, balance, binding = (
