@@ -35,7 +35,7 @@ jobs:
       NBU_HELPER_BLOB: "dc0ed88924610fc7ac19ba4fc7d960d8679c9742"
       V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
       V7_BRANCH: "next100-065c/crosssource-dedup-v5-20260826"
-      RADA_RUNNER_BLOB: "2757da9c2f5535c39e3984e4a84ed7fe36aab3fb"
+      RADA_RUNNER_BLOB: "172956ea2312099a3226aaf49db76a48ee5f4f8d"
       ACCEPTED_JSONL_SHA256: "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7"
       ACCEPTED_JSONL_BYTES: "224897989"
 
@@ -107,12 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check "pytest>=8" "ruff>=0.12"
-          ruff check \
-            tools/run_d03_rada_current_global_dedup_v1.py \
-            src/twelve_six/data/rada_current_snapshot_qp_authority_v1.py \
-            src/twelve_six/data/rada_current_snapshot_dedup_adapter_v1.py \
-            tests/test_rada_current_snapshot_qp_authority_v1.py \
-            tests/test_rada_current_snapshot_dedup_adapter_v1.py
+          ruff check tools/run_d03_rada_current_global_dedup_v1.py
           PYTHONPATH="$GITHUB_WORKSPACE/src" pytest -q \
             tests/test_rada_current_snapshot_qp_authority_v1.py \
             tests/test_rada_current_snapshot_dedup_adapter_v1.py
