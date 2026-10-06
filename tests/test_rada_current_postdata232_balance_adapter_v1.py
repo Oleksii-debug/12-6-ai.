@@ -436,7 +436,13 @@ def test_record_payload_jsonl_root_is_carried_without_raw_payload(
 
 def test_future_terminal_parent_head_can_be_bound_exactly(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(
+        target,
+        "verify_parent_execution_ancestry",
+        lambda value: value,
+    )
     evidence_path, inventory_path, receipt, inventory, jsonl_sha = _write_inputs(
         tmp_path
     )
@@ -467,3 +473,19 @@ def test_future_terminal_parent_head_can_be_bound_exactly(
     assert result["family_vector_identity_sha256"] == vector[
         "family_vector_identity_sha256"
     ]
+
+
+
+def test_stack_base_is_valid_current_parent_ancestor() -> None:
+    assert (
+        target.verify_parent_execution_ancestry(target.STACK_BASE_HEAD)
+        == target.STACK_BASE_HEAD
+    )
+
+
+def test_nonexistent_terminal_parent_head_is_rejected() -> None:
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="outside the stacked",
+    ):
+        target.verify_parent_execution_ancestry("f" * 40)
