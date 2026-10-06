@@ -1239,9 +1239,14 @@ def test_cuda_process_environment_drift_during_restore_fails_closed(
 
         monkeypatch.setattr(loader, "restore_rng_state", drifting_restore)
 
+    expected_message = (
+        "live ambient torch/CUDA process state changed"
+        if phase == "preapply"
+        else "CUDA process environment differs"
+    )
     with pytest.raises(
         CheckpointCompatibilityError,
-        match="CUDA process environment differs",
+        match=expected_message,
     ):
         loader.load_trainer_checkpoint(
             checkpoint,
