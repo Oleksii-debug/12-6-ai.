@@ -57,7 +57,8 @@ jobs:
             src/twelve_six/checkpoint/core.py \
             src/twelve_six/checkpoint/trainer_adapter.py \
             tests/test_checkpoint_rng_completeness_d02.py
-          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
 
       - name: Install exact Product test dependencies
         shell: bash
@@ -86,4 +87,5 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
-          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
