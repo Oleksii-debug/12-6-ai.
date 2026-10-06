@@ -85,6 +85,18 @@ SURVIVOR_SCHEMA = "12-6.d03-rada-current-global-dedup-survivors.v1"
 EVIDENCE_SCHEMA = "12-6.d03-rada-current-global-dedup-execution.v1"
 TWO_CLEAN_SCHEMA = "12-6.d03-rada-current-global-dedup-two-clean.v1"
 
+PRODUCT_INDEXED_HEAD = "d34f5cf35cc53724d3b1f93967a29fe901c5342c"
+PRODUCT_INDEXED_CORE_BLOB = "b7bb13c7a96f6c8e9a7f88d940aab0d0ed6a93e7"
+EXPECTED_QUALIFIED_REPORT_SHA256 = (
+    "64e687ae431804862003d5839b9a90c715838e794daad907200f0abfc73b4333"
+)
+EXPECTED_SELECTION_PROJECTION_SHA256 = (
+    "601398c39769dabb930997f25506eaaf71bd8960aa82d8af9c697d1cc4075e22"
+)
+EXPECTED_RADA_SURVIVOR_AUTHORITY_SHA256 = (
+    "f103a3f18216519bd9228e586bd673d49f73cace03b3b0278f2dd0a33383bffb"
+)
+
 
 class RadaCurrentGlobalDedupError(RuntimeError):
     """Fail-closed current-Rada global-dedup execution error."""
@@ -860,7 +872,7 @@ def _run_prefix_filter_selftest(v1: Any, edge_lines: Any) -> dict[str, int]:
     }
 
 
-def execute_prefix_filtered_matcher(
+def execute_product_indexed_matcher(
     helper: ModuleType,
     matcher: Any,
     inventory: Mapping[str, Any],
@@ -869,29 +881,29 @@ def execute_prefix_filtered_matcher(
     max_candidate_pairs: int,
     max_index_postings: int,
     max_pair_expansions: int,
-) -> tuple[dict[str, Any], float, dict[str, int | str], dict[str, int]]:
-    """Use stronger necessary-condition blocking while preserving qualified report logic."""
+) -> tuple[dict[str, Any], float, dict[str, int], dict[str, Any]]:
+    """Execute the exact #2827 Product candidate generator on the real Rada graph."""
     indexed = helper.indexed
     core = getattr(indexed, "_core", None)
     require(core is not None, "indexed executor core missing")
     original = getattr(core, "candidate_pair_indices", None)
-    require(callable(original), "indexed candidate generator missing")
+    measured = getattr(core, "candidate_pair_indices_with_stats", None)
+    require(callable(original), "Product candidate generator missing")
+    require(callable(measured), "Product measured candidate generator missing")
     require(
         getattr(indexed, "candidate_pair_indices", None) is original,
         "indexed facade/core candidate generator identity drift",
     )
-    edge_lines = getattr(core, "_edge_lines", None)
-    require(callable(edge_lines), "indexed edge-line helper missing")
+    require(
+        getattr(indexed, "candidate_pair_indices_with_stats", None) is measured,
+        "indexed facade/core measured generator identity drift",
+    )
 
-    # Complete exact incumbent runtime attestation before installing the
-    # execution-only stronger necessary-condition generator.
+    # Attest the exact incumbent matcher closure before any compatibility dispatch.
     indexed.attest_incumbent_runtime(matcher)
-    selftest = _run_prefix_filter_selftest(matcher.v1, edge_lines)
+    captured_stats: dict[str, int] = {}
 
-    global _PREFIX_FILTER_LAST_STATS
-    _PREFIX_FILTER_LAST_STATS = None
-
-    def replacement(
+    def exact_product_generator(
         v1: Any,
         fingerprints: Any,
         *,
@@ -899,19 +911,21 @@ def execute_prefix_filtered_matcher(
         max_index_postings: int = 100_000_000,
         max_pair_expansions: int = 100_000_000,
     ) -> list[tuple[int, int]]:
-        pairs, stats = _prefix_candidate_pairs(
+        pairs, stats = measured(
             v1,
             fingerprints,
             max_candidate_pairs=max_candidate_pairs,
             max_index_postings=max_index_postings,
             max_pair_expansions=max_pair_expansions,
-            edge_lines=edge_lines,
         )
-        global _PREFIX_FILTER_LAST_STATS
-        _PREFIX_FILTER_LAST_STATS = stats
+        captured_stats.clear()
+        captured_stats.update(stats)
         return pairs
 
-    core.candidate_pair_indices = replacement
+    # audit_payloads_indexed resolves this exact core global. The temporary wrapper
+    # captures telemetry only; all candidate generation is delegated to the exact
+    # Product candidate_pair_indices_with_stats implementation above.
+    core.candidate_pair_indices = exact_product_generator
     try:
         started = time.perf_counter()
         report = indexed.audit_payloads_indexed(
@@ -928,21 +942,31 @@ def execute_prefix_filtered_matcher(
 
     require(
         getattr(core, "candidate_pair_indices", None) is original,
-        "indexed candidate generator restore failed",
+        "Product candidate generator restore failed",
     )
-    stats = _PREFIX_FILTER_LAST_STATS
-    require(type(stats) is dict, "prefix matcher work telemetry missing")
-    require(
-        stats.get("algorithm") == PREFIX_FILTER_ALGORITHM,
-        "prefix matcher algorithm telemetry drift",
-    )
-    require(
-        type(stats.get("unique_candidate_pairs")) is int
-        and 0 <= int(stats["unique_candidate_pairs"]) <= max_candidate_pairs,
-        "prefix matcher candidate count invalid",
-    )
+    require(captured_stats, "Product candidate work telemetry missing")
+    for key, limit in (
+        ("unique_candidate_pairs", max_candidate_pairs),
+        ("index_postings", max_index_postings),
+        ("pair_expansion_attempts", max_pair_expansions),
+    ):
+        value = captured_stats.get(key)
+        require(
+            type(value) is int and 0 <= value <= limit,
+            f"Product candidate telemetry invalid: {key}",
+        )
     matcher.verify_report(report)
-    return report, elapsed, stats, selftest
+    require(
+        report.get("report_sha256") == EXPECTED_QUALIFIED_REPORT_SHA256,
+        "Product candidate generator changed incumbent Rada report identity",
+    )
+    qualification = {
+        "product_head_sha": PRODUCT_INDEXED_HEAD,
+        "product_core_blob_sha1": PRODUCT_INDEXED_CORE_BLOB,
+        "exact_product_candidate_generator_executed": True,
+        "report_identity_matches_qualified_carrier": True,
+    }
+    return report, elapsed, dict(captured_stats), qualification
 
 
 def compose_current_graph(
@@ -1288,7 +1312,7 @@ def execute(args: argparse.Namespace) -> None:
         current_sources,
         current_payloads,
     )
-    report, _elapsed, prefix_stats, prefix_selftest = execute_prefix_filtered_matcher(
+    report, _elapsed, prefix_stats, prefix_selftest = execute_product_indexed_matcher(
         helper,
         matcher,
         inventory,
@@ -1304,6 +1328,16 @@ def execute(args: argparse.Namespace) -> None:
         by_id,
         set(current_payloads),
         replacement_proof,
+    )
+    require(
+        authority.get("selection_projection_sha256")
+        == EXPECTED_SELECTION_PROJECTION_SHA256,
+        "Product candidate generator changed survivor selection projection",
+    )
+    require(
+        authority.get("survivor_authority_sha256")
+        == EXPECTED_RADA_SURVIVOR_AUTHORITY_SHA256,
+        "Product candidate generator changed Rada survivor authority",
     )
     evidence_core = {
         "schema_version": EVIDENCE_SCHEMA,
@@ -1326,9 +1360,11 @@ def execute(args: argparse.Namespace) -> None:
         "combined_declared_capacity_bytes": EXPECTED_COMBINED_DECLARED_BYTES,
         "matcher_report_sha256": report.get("report_sha256"),
         "candidate_filter": {
-            "algorithm": PREFIX_FILTER_ALGORITHM,
+            "algorithm": "PRODUCT_2827_THRESHOLD_AWARE_INDEXED_CORE",
+            "product_head_sha": PRODUCT_INDEXED_HEAD,
+            "product_core_blob_sha1": PRODUCT_INDEXED_CORE_BLOB,
             "work_telemetry": prefix_stats,
-            "bounded_differential_selftest": prefix_selftest,
+            "compatibility_qualification": prefix_selftest,
             "pair_decision_authority": "EXACT_INCUMBENT_V1_PAIR_MATCHES",
             "lineage_and_report_authority": "QUALIFIED_INCUMBENT_INDEXED_EXECUTOR",
             "science_changed": False,
@@ -1376,10 +1412,10 @@ def execute(args: argparse.Namespace) -> None:
         "CURRENT_RADA_SURVIVOR_DECLARED_BYTES="
         + str(authority["current_rada_survivor_declared_capacity_bytes"])
     )
-    print("PREFIX_FILTER=" + PREFIX_FILTER_ALGORITHM)
-    print("PREFIX_CANDIDATE_PAIRS=" + str(prefix_stats["unique_candidate_pairs"]))
-    print("PREFIX_PAIR_EXPANSIONS=" + str(prefix_stats["pair_expansion_attempts"]))
-    print("PREFIX_INDEX_POSTINGS=" + str(prefix_stats["index_postings"]))
+    print("PRODUCT_INDEXED_HEAD=" + PRODUCT_INDEXED_HEAD)
+    print("PRODUCT_CANDIDATE_PAIRS=" + str(prefix_stats["unique_candidate_pairs"]))
+    print("PRODUCT_PAIR_EXPANSIONS=" + str(prefix_stats["pair_expansion_attempts"]))
+    print("PRODUCT_INDEX_POSTINGS=" + str(prefix_stats["index_postings"]))
     print("CAPACITY_CREDIT=0")
     print("RIGHTS_RECHECK_REQUIRED=true")
 

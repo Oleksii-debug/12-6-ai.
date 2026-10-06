@@ -3,7 +3,7 @@ name: D03 current Rada replacement global dedup two-clean
 on:
   pull_request:
     branches:
-      - d03/rada-current-snapshot-replay-authority-g8-143-20261005
+      - execution/2808-rada-current-global-dedup-g8-146-20261006
     paths:
       - ".github/workflows/d03_rada_current_global_dedup_g8_146.yml"
       - "tools/run_d03_rada_current_global_dedup_v1.py"
@@ -20,7 +20,7 @@ jobs:
   global-dedup:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.head_ref == 'execution/2808-rada-current-global-dedup-g8-146-20261006'
+      github.head_ref == 'compat/2818-2827-rada-product-core-g8-154-20261006'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
@@ -35,11 +35,20 @@ jobs:
       NBU_HELPER_BLOB: "dc0ed88924610fc7ac19ba4fc7d960d8679c9742"
       V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
       V7_BRANCH: "next100-065c/crosssource-dedup-v5-20260826"
-      RADA_RUNNER_BLOB: "1f7109ae2efca9a97ea49ab5c29b8f095657489c"
+      RADA_RUNNER_BLOB: "02ae01e4f144bee021e343fb66a0bcbad7974edb"
       ACCEPTED_JSONL_SHA256: "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7"
       ACCEPTED_JSONL_BYTES: "224897989"
       POPPLER_VERSION: "25.06.0"
       POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+      PRODUCT_BRANCH: "swarm/2825-incumbent-dedup-threshold-prefix-v2"
+      PRODUCT_HEAD: "d34f5cf35cc53724d3b1f93967a29fe901c5342c"
+      PRODUCT_CORE_BLOB: "b7bb13c7a96f6c8e9a7f88d940aab0d0ed6a93e7"
+      PRODUCT_TEST_BLOB: "6edf89014d9b059639067567ce6da57b50216b8d"
+      PRODUCT_DIRECT_IMPORT_TEST_BLOB: "0b19707229b255f7d09c789bf2eb6cb43285abac"
+      PRODUCT_IMPORTED_MEMBER_TEST_BLOB: "2ce29919ec434993c129a81e2a6eff068e9993f8"
+      PRODUCT_JSON_RE_TEST_BLOB: "418d32db8830dd36edf9f76bf0842d85e520c436"
+      PRODUCT_RUNTIME_CLOSURE_TEST_BLOB: "f237101c898427937a17a84843affc58d098ae1d"
+      PRODUCT_FACADE_BLOB: "f75336008839198b6d46bea4954f120e2d81613c"
 
     steps:
       - name: Checkout exact execution head
@@ -80,6 +89,40 @@ jobs:
             "$RADA_RUNNER_BLOB"
           python -m py_compile tools/run_d03_rada_current_global_dedup_v1.py
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Materialize exact #2827 Product indexed core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$PRODUCT_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$PRODUCT_HEAD"
+          test "$(git rev-parse "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py")" = "$PRODUCT_CORE_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_indexed_execution.py")" = "$PRODUCT_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_direct_import_behavior.py")" = "$PRODUCT_DIRECT_IMPORT_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_imported_member_closure.py")" = "$PRODUCT_IMPORTED_MEMBER_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_json_re_transitive_closure.py")" = "$PRODUCT_JSON_RE_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_runtime_closure.py")" = "$PRODUCT_RUNTIME_CLOSURE_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:src/twelve_six/data/incumbent_dedup_indexed_execution.py")" = "$PRODUCT_FACADE_BLOB"
+          git show "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py"             > "$RUNNER_TEMP/product-indexed-core.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_indexed_execution.py"             > "$RUNNER_TEMP/test_incumbent_dedup_indexed_execution.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_direct_import_behavior.py"             > "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_imported_member_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_json_re_transitive_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_runtime_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_runtime_closure.py"
+          test "$(git hash-object "$RUNNER_TEMP/product-indexed-core.py")" = "$PRODUCT_CORE_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_indexed_execution.py")" = "$PRODUCT_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py")" = "$PRODUCT_DIRECT_IMPORT_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py")" = "$PRODUCT_IMPORTED_MEMBER_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py")" = "$PRODUCT_JSON_RE_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_runtime_closure.py")" = "$PRODUCT_RUNTIME_CLOSURE_TEST_BLOB"
+          cp "$RUNNER_TEMP/product-indexed-core.py"             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py
+          test "$(git hash-object src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py)" = "$PRODUCT_CORE_BLOB"
+          test "$(git hash-object src/twelve_six/data/incumbent_dedup_indexed_execution.py)" = "$PRODUCT_FACADE_BLOB"
+          python -m py_compile             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py             src/twelve_six/data/incumbent_dedup_indexed_execution.py             "$RUNNER_TEMP/test_incumbent_dedup_indexed_execution.py" \
+            "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py" \
+            "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py" \
+            "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py" \
+            "$RUNNER_TEMP/test_incumbent_dedup_runtime_closure.py"
 
       - name: Checkout frozen historical QP mechanics
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -148,6 +191,7 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check "pytest>=8" "ruff>=0.12"
           ruff check tools/run_d03_rada_current_global_dedup_v1.py
+          PYTHONPATH="$GITHUB_WORKSPACE/src" pytest -q "$RUNNER_TEMP/test_incumbent_dedup_indexed_execution.py"
           PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<'PY'
           from run_d03_rada_current_global_dedup_v1 import (
               CURRENT_REPLAY_EVIDENCE_STATUS,
