@@ -3186,13 +3186,16 @@ class Trainer:
                 for value in (state.micro_step, state.optimizer_step, state.tokens_seen)
             ):
                 raise ValueError("trainer counters must be non-negative integers")
-            expected_micro_steps = state.optimizer_step * self.config.gradient_accumulation_steps
+            expected_micro_steps = (
+                state.optimizer_step
+                * expected_config_state["gradient_accumulation_steps"]
+            )
             if state.micro_step != expected_micro_steps:
                 raise ValueError(
                     "checkpoint is not at a complete committed accumulation boundary: "
                     f"micro_step={state.micro_step}, expected={expected_micro_steps}"
                 )
-            if state.optimizer_step > self.config.max_steps:
+            if state.optimizer_step > expected_config_state["max_steps"]:
                 raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
 
             # Take ownership before semantic preflight. The external payload may
@@ -3220,13 +3223,16 @@ class Trainer:
             # Reject known contract mismatches before touching live component state.
             if (scheduler_state is None) != (self.scheduler is None):
                 raise ValueError("scheduler state/config mismatch")
-            self._require_checkpoint_scaler_state(scaler_state)
+            Trainer._require_checkpoint_scaler_state(self, scaler_state)
             # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
             # parameter identity. Reject missing/reordered names before mutation.
-            self._require_optimizer_state_parameter_order(optimizer_state)
-            self._require_safe_optimizer_hyperparameters(optimizer_state)
-            self._require_checkpoint_scheduler_chronology(
-                scheduler_state, state.optimizer_step, optimizer_state,
+            Trainer._require_optimizer_state_parameter_order(self, optimizer_state)
+            Trainer._require_safe_optimizer_hyperparameters(self, optimizer_state)
+            Trainer._require_checkpoint_scheduler_chronology(
+                self,
+                scheduler_state,
+                state.optimizer_step,
+                optimizer_state,
             )
 
             # From the first component load onward a failure may leave optimizer,
@@ -3404,7 +3410,7 @@ class Trainer:
         try:
             optimizer_loader(optimizer_state)
             _require_restore_control_state(preapply_counters)
-            self._require_optimizer_parameter_coverage()
+            Trainer._require_optimizer_parameter_coverage(self)
             if expected_scheduler is not None and scheduler_state is not None:
                 assert scheduler_loader is not None
                 scheduler_loader(scheduler_state)
@@ -3434,9 +3440,9 @@ class Trainer:
             # PyTorch's load_state_dict accepts NaN optimizer moments and
             # malformed-but-type-compatible group rates. A restore must not
             # return a supposedly checkpoint-safe trainer with those values.
-            self._require_finite_auxiliary_state()
-            self._require_finite_committed_update()
-            self._require_no_residual_model_gradients()
+            Trainer._require_finite_auxiliary_state(self)
+            Trainer._require_finite_committed_update(self)
+            Trainer._require_no_residual_model_gradients(self)
             Trainer._require_exported_optimizer_matches_live(self, optimizer_state)
             Trainer._require_exported_scheduler_matches_live(self, scheduler_state)
             if scaler_state is None:
@@ -3446,7 +3452,7 @@ class Trainer:
                     )
             else:
                 Trainer._require_exported_scaler_matches_live(self, scaler_state)
-            self._require_deterministic_policy()
+            Trainer._require_deterministic_policy(self)
             _require_restore_control_state(checkpoint_counters)
 
             # The validation observers above can themselves be effectful for

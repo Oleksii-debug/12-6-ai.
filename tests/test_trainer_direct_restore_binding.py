@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
+
 import pytest
 import torch
 from torch import nn
@@ -118,6 +120,86 @@ def _target_with_optimizer(
     optimizer.replacement = replacement
     optimizer.armed = True
     return trainer, optimizer
+
+
+class _RestoreConfigDriftMapping(Mapping[str, object]):
+    def __init__(
+        self,
+        payload: dict[str, object],
+        owner: Trainer,
+    ) -> None:
+        self.payload = payload
+        self.owner = owner
+        self.iterations = 0
+
+    def __iter__(self) -> Iterator[str]:
+        self.iterations += 1
+        object.__setattr__(
+            self.owner.config,
+            "gradient_accumulation_steps",
+            2,
+        )
+        return iter(self.payload)
+
+    def __len__(self) -> int:
+        return len(self.payload)
+
+    def __getitem__(self, key: str) -> object:
+        return self.payload[key]
+
+
+class _RestoreConfigDriftReset:
+    deepcopy_calls = 0
+
+    def __init__(self, owner: Trainer) -> None:
+        self.owner = owner
+
+    def __deepcopy__(self, memo: dict[int, object]) -> int:
+        del memo
+        type(self).deepcopy_calls += 1
+        object.__setattr__(
+            self.owner.config,
+            "gradient_accumulation_steps",
+            1,
+        )
+        return 0
+
+
+def test_direct_restore_uses_entry_config_for_counter_preflight() -> None:
+    config = _config()
+    state = _clean_state(config)
+    state.micro_step = 2
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    reset = _RestoreConfigDriftReset(target)
+    _RestoreConfigDriftReset.deepcopy_calls = 0
+    state.optimizer["restore_config_after_counter_check"] = reset
+    payload = _RestoreConfigDriftMapping(
+        {
+            "micro_step": state.micro_step,
+            "optimizer_step": state.optimizer_step,
+            "tokens_seen": state.tokens_seen,
+            "optimizer": state.optimizer,
+            "scheduler": state.scheduler,
+            "scaler": state.scaler,
+            "config": state.config,
+        },
+        target,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="checkpoint is not at a complete committed accumulation boundary",
+    ):
+        target.load_state_dict(payload)
+
+    assert payload.iterations >= 1
+    assert _RestoreConfigDriftReset.deepcopy_calls == 0
+    assert target.config.gradient_accumulation_steps == 2
+    assert target._failure_reason == (
+        "trainer restore config changed during checkpoint preflight"
+    )
+    assert target._update_incomplete is True
+    assert not target.optimizer.state
 
 
 class _ForbiddenRestoreControlValue:
