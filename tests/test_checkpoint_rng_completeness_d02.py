@@ -544,7 +544,7 @@ def test_public_restore_apply_failure_records_execution_mode_leak(
             apply_state = original_bind(trainer)
 
             def failing_apply(state: Any) -> Any:
-                result = apply_state(state)
+                apply_state(state)
                 mutate_process_state()
                 raise failure
 
@@ -630,7 +630,7 @@ def test_restore_failure_note_attachment_cannot_mask_primary_failure(
 
     class FailingDriftLinear(torch.nn.Linear):
         def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
-            result = super().load_state_dict(state_dict, *args, **kwargs)
+            super().load_state_dict(state_dict, *args, **kwargs)
             torch.set_grad_enabled(not torch.is_grad_enabled())
             raise failure
 
