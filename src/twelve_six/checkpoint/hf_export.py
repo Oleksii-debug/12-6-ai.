@@ -312,7 +312,7 @@ def _require_export_root_identity(
         )
 
 
-def _read_export_snapshot(root: Path) -> dict[str, bytes]:
+def _read_export_snapshot(root: Path) -> tuple[dict[str, bytes], str, int]:
     try:
         root_stat = root.lstat()
     except FileNotFoundError as exc:
