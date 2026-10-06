@@ -1,0 +1,59 @@
+name: D05 opt-out ambient seal G8-164a
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+          cache: pip
+
+      - name: Bind exact Product child and focused closure
+        env:
+          SOURCE_SHA: a266d2c881bc5b5d2dd4c4ebd994e93f4c714440
+          TRAINER_ADAPTER_BLOB: d2a36e229ca3a0b07e17b42851e023e610571ae5
+          PROGRESS_TRAINER_BLOB: a8dc5453c5490c49d4907d3a5f30579441ca3c6e
+          TEST_BLOB: 57603b29310e04bd5833f962f0040af193dd0855
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git hash-object src/twelve_six/checkpoint/trainer_adapter.py)" = "$TRAINER_ADAPTER_BLOB"
+          test "$(git hash-object src/twelve_six/checkpoint/progress_trainer.py)" = "$PROGRESS_TRAINER_BLOB"
+          test "$(git hash-object tests/test_checkpoint_rng_completeness_d02.py)" = "$TEST_BLOB"
+
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Compile focused Python paths
+        run: |
+          python -m py_compile             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/progress_trainer.py             tests/test_checkpoint_rng_completeness_d02.py
+
+      - name: Lint exact changed closure
+        run: |
+          python -m ruff check             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/progress_trainer.py             tests/test_checkpoint_rng_completeness_d02.py
+
+      - name: Execute physical opt-out and RNG regressions
+        run: |
+          python -m pytest -q tests/test_checkpoint_rng_completeness_d02.py
+
+      - name: Prove carrier remains clean
+        run: |
+          test -z "$(git status --porcelain)"
