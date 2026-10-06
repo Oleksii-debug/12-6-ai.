@@ -237,6 +237,10 @@ def _build_expected_root_verifier():
         _EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR,
         _EXPECTED_BYTE_TOKENIZER_CLASS,
         _EXPECTED_BYTE_SOURCE_PATH_TEXT,
+        _EXPECTED_BYTE_SOURCE_READ_BYTES.__code__,
+        _EXPECTED_BYTE_JSON_DUMPS.__code__,
+        _EXPECTED_BYTE_JSON_LOADS.__code__,
+        _EXPECTED_VERIFY_BALANCED_SELECTION.__code__,
     )
     return partial(_identity_is, anchors)
 
@@ -581,6 +585,33 @@ def _verify_byte_tokenizer_runtime_dependencies() -> None:
         if not verifier.func(observed, expected_root):
             raise TokenizerDecisionError(
                 f"canonical tokenizer decision verifier root drift: {name}"
+            )
+    callable_code_roots = (
+        (
+            "_EXPECTED_BYTE_SOURCE_READ_BYTES.__code__",
+            _EXPECTED_BYTE_SOURCE_READ_BYTES.__code__,
+            expected[38],
+        ),
+        (
+            "_EXPECTED_BYTE_JSON_DUMPS.__code__",
+            _EXPECTED_BYTE_JSON_DUMPS.__code__,
+            expected[39],
+        ),
+        (
+            "_EXPECTED_BYTE_JSON_LOADS.__code__",
+            _EXPECTED_BYTE_JSON_LOADS.__code__,
+            expected[40],
+        ),
+        (
+            "_EXPECTED_VERIFY_BALANCED_SELECTION.__code__",
+            _EXPECTED_VERIFY_BALANCED_SELECTION.__code__,
+            expected[41],
+        ),
+    )
+    for name, observed, expected_code in callable_code_roots:
+        if not verifier.func(observed, expected_code):
+            raise TokenizerDecisionError(
+                f"canonical tokenizer decision verifier executable drift: {name}"
             )
     if builtins is not _EXPECTED_BUILTINS_MODULE:
         raise TokenizerDecisionError(
