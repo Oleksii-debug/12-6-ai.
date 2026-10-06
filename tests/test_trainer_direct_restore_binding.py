@@ -751,3 +751,40 @@ def test_direct_restore_rejects_missing_native_restore_contract_field(
     target.load_state_dict(state)
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+def test_direct_restore_rejects_effectful_state_deepcopy_before_loader_lookup() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    before = target.model.weight.detach().clone()
+
+    class EffectfulSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            with torch.no_grad():
+                target.model.weight.add_(1.0)
+            return dict(self)
+
+    effectful = EffectfulSchedulerState(state.scheduler)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="trainer model changed during checkpoint preflight",
+    ):
+        target.load_state_dict(replace(state, scheduler=effectful))
+
+    assert not torch.equal(target.model.weight.detach(), before)
+    assert target._failure_reason == "trainer model changed during checkpoint preflight"
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
