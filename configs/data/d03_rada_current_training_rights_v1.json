@@ -1,0 +1,97 @@
+{
+  "schema_version": "12-6.d03-rada-current-training-rights.v1",
+  "authority_id": "D03-RADA-CURRENT-TRAINING-RIGHTS-G8-150",
+  "execution_profile": "LOCAL_FREE",
+  "current_snapshot": {
+    "parent_pr": 2808,
+    "parent_head_sha": "e0194d1fd76673e492d33ca3f674ca794a04926a",
+    "replay_authority_path": "evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json",
+    "replay_authority_git_blob_sha1": "9953940072fdd973cd6c83eb5899314d3484da30",
+    "replay_authority_identity_sha256": "543f9cdd5a9aacaf2cc00b5d4057ad8b142aa685870545cff8bd518f8085055e",
+    "source_family": "ua.rada.open-data.laws-texts",
+    "dataset_id": "laws-texts",
+    "dataset_page_url": "https://data.rada.gov.ua/open/data/en/laws-texts/page?lang=en",
+    "archive_url": "https://data.rada.gov.ua/ogd/zak/perv/text/texts.zip",
+    "archive_sha256": "9f937b3283dd2d9508a0a92442fc007e7e6d373a17d3d50fa428e324cb2fa290",
+    "archive_bytes": 46774786,
+    "canonical_entry_count": 3055,
+    "canonical_raw_bytes": 353891824,
+    "entry_identity_sha256": "1fcc222a959d1dfc24e2b23b71a5412b1050e22a5004cbd36f0dc79998898cc0"
+  },
+  "prior_family_authority": {
+    "data287_head_sha": "b0523ccbc4b957615aac849d476cfa851be87578",
+    "registry_path": "data/registry/external_snapshots.v2.json",
+    "registry_git_blob_sha1": "21fe6485aa9eaa0945837efce54c69cfc1098472",
+    "registry_identity_sha256": "917e9bc31b2fa040d25e807ae3c01aa2cce32420752a891caacfb6c830e6632c",
+    "family_identity_sha256": "b8f1d2f99a3db71d894a3233e9417d6283d11768c41b1634bc8b096ab77aba4e",
+    "bounded_source_id": "ua.rada.open-data.laws-texts.d23314",
+    "bounded_raw_sha256": "36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4",
+    "model_training_status": "ALLOWED",
+    "evaluation_status": "NOT_SEPARATELY_ADMITTED",
+    "redistribution_status": "ALLOWED"
+  },
+  "incumbent_rights_policy": {
+    "path": "configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json",
+    "git_blob_sha1": "4a6cb0bd6b009ef36c9d2fb712967a4ae1cbfe0b",
+    "policy_identity_sha256": "47e43afc87e798a52be1745d4313f353a349bc957e809126369a3923ffb68d0f",
+    "observed_at_utc_date": "2026-10-02",
+    "scope": "ARTIFACT_RETENTION_AND_REPRODUCIBILITY_ONLY"
+  },
+  "official_portal_recheck": {
+    "url": "https://data.rada.gov.ua/open/data/en/laws-texts/sort2",
+    "allowed_host": "data.rada.gov.ua",
+    "max_response_bytes": 8388608,
+    "required_semantics": {
+      "dataset_title": "Тексти первинних законів бази даних \"Законодавство України\"",
+      "publisher": "Апарат Верховної Ради України",
+      "archive_path": "/ogd/zak/perv/text/",
+      "archive_name": "texts",
+      "archive_format": "ZIP",
+      "free_reuse": "Open data on the Portal can be freely used, re-used and redistributed.",
+      "commercial_and_product": "as well as with commercial purposes, combine with other data or include it in its own product",
+      "source_attribution": "with the obligatory reference to the data source",
+      "default_license_name": "Creative Commons Attribution 4.0 International license",
+      "default_license_scope": "unless otherwise specified"
+    }
+  },
+  "project_decision": {
+    "purpose_rights_recheck_complete_for_exact_snapshot": true,
+    "model_training_purpose": "ALLOWED_WITH_SOURCE_ATTRIBUTION_AFTER_REMAINING_DATA_GATES",
+    "redistribution": "ALLOWED_WITH_SOURCE_ATTRIBUTION",
+    "evaluation": "NOT_SEPARATELY_ADMITTED",
+    "final_test": "PROHIBITED",
+    "legal_conclusion_claimed": false,
+    "attribution_required": true,
+    "attribution_creator": "Апарат Верховної Ради України",
+    "attribution_source_url": "https://data.rada.gov.ua/open/data/en/laws-texts/sort2",
+    "attribution_license": "Creative Commons Attribution 4.0 International",
+    "training_authorized_bytes": 0,
+    "canonical_capacity_credited": 0
+  },
+  "downstream_required": [
+    "TERMINAL_CURRENT_RADA_GLOBAL_DEDUP_REPLACEMENT",
+    "CURRENT_RESERVED_EVALUATION_DECONTAMINATION",
+    "CURRENT_CANONICAL_QUALITY_PRIVACY_AUTHORITY",
+    "CROSS_LINEAGE_COMPOSITION_AND_BALANCE",
+    "CLUSTER_SAFE_SPLIT_SHARD_PACK",
+    "TWO_CLEAN_CORPUS_BUILD",
+    "POSITIVE_UNIQUE_CAUSAL_LOSS_LEDGER",
+    "TOKENIZER_FIT_AUTHORIZATION",
+    "D05_REQUALIFICATION",
+    "EXPLICIT_LEARNED_20M_COMPUTE_AUTHORIZATION"
+  ],
+  "truth_boundary": {
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": false,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": false,
+    "learned_weights_created": false,
+    "final_test_outcomes_read": false,
+    "paid_compute_used": false,
+    "scale_promotion_authorized": false
+  },
+  "authority_identity_sha256": "c95db543b3b04868d6dcd531db130197c160883971c16e237bdf5828234c71d6"
+}

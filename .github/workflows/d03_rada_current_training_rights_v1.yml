@@ -1,0 +1,193 @@
+name: D03 current Rada training-rights provenance recheck
+
+on:
+  pull_request:
+    branches:
+      - d03/rada-current-snapshot-replay-authority-g8-143-20261005
+    paths:
+      - "configs/data/d03_rada_current_training_rights_v1.json"
+      - "tools/validate_d03_rada_current_training_rights_v1.py"
+      - "tests/test_d03_rada_current_training_rights_v1.py"
+      - ".github/workflows/d03_rada_current_training_rights_v1.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-rada-current-rights-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-rights:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'rights/2808-rada-current-training-provenance-g8-150-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      BASE_HEAD: e0194d1fd76673e492d33ca3f674ca794a04926a
+      DATA287_HEAD: b0523ccbc4b957615aac849d476cfa851be87578
+      DATA287_BLOB: 21fe6485aa9eaa0945837efce54c69cfc1098472
+      GITHUB_TOKEN: ${{ github.token }}
+      PORTAL_URL: https://data.rada.gov.ua/open/data/en/laws-texts/sort2
+      PORTAL_HOST: data.rada.gov.ua
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact four-file lane
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$BASE_HEAD" HEAD)" = "$BASE_HEAD"
+          mapfile -t changed < <(git diff --name-only "$BASE_HEAD"..HEAD | sort)
+          expected=(
+            ".github/workflows/d03_rada_current_training_rights_v1.yml"
+            "configs/data/d03_rada_current_training_rights_v1.json"
+            "tests/test_d03_rada_current_training_rights_v1.py"
+            "tools/validate_d03_rada_current_training_rights_v1.py"
+          )
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          test "${#changed[@]}" -eq "${#wanted[@]}"
+          for i in "${!wanted[@]}"; do
+            test "${changed[$i]}" = "${wanted[$i]}"
+          done
+          test "$(git hash-object evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json)" = "9953940072fdd973cd6c83eb5899314d3484da30"
+          test "$(git hash-object configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json)" = "4a6cb0bd6b009ef36c9d2fb712967a4ae1cbfe0b"
+          python -m py_compile tools/validate_d03_rada_current_training_rights_v1.py tests/test_d03_rada_current_training_rights_v1.py
+          python tests/test_d03_rada_current_training_rights_v1.py
+
+      - name: Fetch exact DATA-287 prior family authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 4 --retry-all-errors \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/data/registry/external_snapshots.v2.json?ref=${DATA287_HEAD}" \
+            -o "$RUNNER_TEMP/data287-api.json"
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          response = json.loads((root / "data287-api.json").read_text(encoding="utf-8"))
+          if response.get("type") != "file":
+              raise SystemExit("DATA-287 authority is not a file")
+          if response.get("sha") != os.environ["DATA287_BLOB"]:
+              raise SystemExit("DATA-287 authority Git blob drift")
+          if response.get("encoding") != "base64":
+              raise SystemExit("DATA-287 authority encoding drift")
+          raw = base64.b64decode("".join(response["content"].split()), validate=True)
+          (root / "data287.json").write_bytes(raw)
+          PY
+          test "$(git hash-object "$RUNNER_TEMP/data287.json")" = "$DATA287_BLOB"
+
+      - name: Verify immutable authority closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/validate_d03_rada_current_training_rights_v1.py \
+            --config configs/data/d03_rada_current_training_rights_v1.json \
+            --replay-authority evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json \
+            --rights-policy configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json \
+            --prior-registry "$RUNNER_TEMP/data287.json"
+
+      - name: Recheck official portal semantics twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suffix in a b; do
+            page="$RUNNER_TEMP/portal-${suffix}.html"
+            effective="$RUNNER_TEMP/portal-${suffix}.url"
+            curl --fail --silent --show-error --location \
+              --proto '=https' --proto-redir '=https' \
+              --retry 4 --retry-all-errors --connect-timeout 10 --max-time 60 \
+              --max-filesize 8388608 \
+              --user-agent 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/154 Safari/537.36' \
+              --header 'Accept: text/html,application/xhtml+xml' \
+              --output "$page" --write-out '%{url_effective}' \
+              "$PORTAL_URL" >"$effective"
+            python - "$effective" "$page" <<'PY'
+          import os
+          import sys
+          import urllib.parse
+          from pathlib import Path
+
+          effective = Path(sys.argv[1]).read_text(encoding="utf-8").strip()
+          parsed = urllib.parse.urlsplit(effective)
+          if parsed.scheme != "https" or parsed.hostname != os.environ["PORTAL_HOST"]:
+              raise SystemExit("official portal redirect left allowed HTTPS host")
+          size = Path(sys.argv[2]).stat().st_size
+          if not 0 < size <= 8_388_608:
+              raise SystemExit("official portal response size invalid")
+          PY
+            python tools/validate_d03_rada_current_training_rights_v1.py \
+              --config configs/data/d03_rada_current_training_rights_v1.json \
+              --replay-authority evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json \
+              --rights-policy configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json \
+              --prior-registry "$RUNNER_TEMP/data287.json" \
+              --live \
+              --portal-html "$page" \
+              --output "$RUNNER_TEMP/rights-${suffix}.json"
+            rm -f "$page"
+          done
+
+      - name: Require two semantic observations to converge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"])
+          a = json.loads((root / "rights-a.json").read_text(encoding="utf-8"))
+          b = json.loads((root / "rights-b.json").read_text(encoding="utf-8"))
+          for value in (a, b):
+              portal = value["official_portal_semantic_evidence"]
+              assert portal is not None
+              assert all(portal["semantic_projection"]["semantic_checks"].values())
+              assert value["project_decision"]["training_authorized_bytes"] == 0
+              assert value["truth_boundary"]["canonical_capacity_credited"] == 0
+              assert value["truth_boundary"]["tokenizer_fit_authorized"] is False
+              assert value["truth_boundary"]["training_executed"] is False
+              assert value["project_decision"]["evaluation"] == "NOT_SEPARATELY_ADMITTED"
+              assert value["project_decision"]["final_test"] == "PROHIBITED"
+          assert (
+              a["official_portal_semantic_evidence"]["semantic_identity_sha256"]
+              == b["official_portal_semantic_evidence"]["semantic_identity_sha256"]
+          )
+          assert a["exact_snapshot"] == b["exact_snapshot"]
+          assert a["prior_family_authority"] == b["prior_family_authority"]
+          assert a["project_decision"] == b["project_decision"]
+          assert a["downstream_required"] == b["downstream_required"]
+          assert a["truth_boundary"] == b["truth_boundary"]
+          PY
+
+      - name: Publish text-free rights evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-current-training-rights-${{ env.EXECUTION_HEAD }}
+          path: |
+            ${{ runner.temp }}/rights-a.json
+            ${{ runner.temp }}/rights-b.json
+          if-no-files-found: error
+          retention-days: 30
