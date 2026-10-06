@@ -815,7 +815,7 @@ def test_direct_restore_poison_target_when_state_mapping_decode_mutates_then_rai
 
     assert target.tokens_seen == 1
     assert target._failure_reason == (
-        "trainer restore state changed during checkpoint payload preflight"
+        "trainer restore state changed during checkpoint preflight"
     )
     assert target._update_incomplete is False
     assert not target.optimizer.state
@@ -845,7 +845,7 @@ def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_rais
 
     assert target.tokens_seen == 1
     assert target._failure_reason == (
-        "trainer restore state changed during checkpoint payload preflight"
+        "trainer restore state changed during checkpoint preflight"
     )
     assert target._update_incomplete is False
     assert not target.optimizer.state
