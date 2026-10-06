@@ -9,8 +9,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from twelve_six.checkpoint import CheckpointCompatibilityError, CheckpointIdentity
-from twelve_six.checkpoint import core, progress_trainer, trainer_adapter
+from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
+    CheckpointIdentity,
+    core,
+    progress_trainer,
+    trainer_adapter,
+)
 
 
 class Model:
@@ -114,7 +119,7 @@ def identity() -> CheckpointIdentity:
         run_manifest_hash="e" * 64,
         training_config={"steps": 10},
         seed=703,
-        precision="float64",
+        precision="fp32",
         step=7,
         tokens_seen=128,
         optimizer={"name": "trainer-owned"},
@@ -605,16 +610,32 @@ def test_failed_preflight_rng_rollback_poisons_canonical_target_before_model_app
     trainer = ProbeTarget(model)
     loader_module = progress_trainer if use_progress else trainer_adapter
     original_restore = core.restore_rng_state
+    original_probe = trainer_adapter._preflight_trainer_state_without_rng_guard
     ambient = core.capture_rng_state()
     deterministic = torch.are_deterministic_algorithms_enabled()
     warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    preflight_reached = False
 
-    def fail_rng_rollback(_state: object) -> None:
+    def probe_then_arm(*args: object, **kwargs: object) -> None:
+        nonlocal preflight_reached
+        try:
+            original_probe(*args, **kwargs)
+        finally:
+            preflight_reached = True
+
+    def fail_rng_rollback(state: object) -> object:
+        if not preflight_reached:
+            return original_restore(state)
         random.random()
         torch.use_deterministic_algorithms(not deterministic, warn_only=not warn_only)
         raise OSError("injected ambient RNG rollback failure")
 
     try:
+        monkeypatch.setattr(
+            trainer_adapter,
+            "_preflight_trainer_state_without_rng_guard",
+            probe_then_arm,
+        )
         monkeypatch.setattr(core, "restore_rng_state", fail_rng_rollback)
         with pytest.raises(OSError, match="ambient RNG rollback failure") as raised:
             loader_module.load_trainer_checkpoint(
@@ -653,12 +674,12 @@ def test_real_d02_trainer_refuses_training_after_failed_probe_rng_rollback(
 ) -> None:
     """An unrecoverable preflight RNG fault must poison the actual D02 runtime."""
 
+    from dataclasses import replace
+
     import torch
 
     from twelve_six.training.config import TrainerConfig
     from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
-
-    from dataclasses import replace
 
     checkpoint = tmp_path / "real-d02-rollback"
     ambient = core.capture_rng_state()
@@ -881,6 +902,7 @@ def test_real_d02_partial_final_rng_failure_poisons_and_preserves_torch_mode(
     from dataclasses import replace
 
     import torch
+
     from twelve_six.training.config import TrainerConfig
     from twelve_six.training.trainer import Trainer, TrainingStateInvalidError
 
@@ -958,14 +980,25 @@ def test_preflight_double_rollback_fault_keeps_primary_rng_error(
     loader_module = progress_trainer if use_progress else trainer_adapter
     ambient = core.capture_rng_state()
     original_restore = core.restore_rng_state
+    original_probe = trainer_adapter._preflight_trainer_state_without_rng_guard
     original_use = torch.use_deterministic_algorithms
     enabled = torch.are_deterministic_algorithms_enabled()
     warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     original_error = OSError("primary preflight RNG rollback failure")
+    preflight_reached = False
     try:
         original_use(True, warn_only=True)
 
-        def fail_rng(_state: object) -> None:
+        def probe_then_arm(*args: object, **kwargs: object) -> None:
+            nonlocal preflight_reached
+            try:
+                original_probe(*args, **kwargs)
+            finally:
+                preflight_reached = True
+
+        def fail_rng(state: object) -> object:
+            if not preflight_reached:
+                return original_restore(state)
             raise original_error
 
         def fail_mode(requested: bool, *, warn_only: bool = False) -> None:
@@ -973,6 +1006,11 @@ def test_preflight_double_rollback_fault_keeps_primary_rng_error(
                 raise RuntimeError("secondary preflight mode rollback failure")
             original_use(requested, warn_only=warn_only)
 
+        monkeypatch.setattr(
+            trainer_adapter,
+            "_preflight_trainer_state_without_rng_guard",
+            probe_then_arm,
+        )
         monkeypatch.setattr(core, "restore_rng_state", fail_rng)
         monkeypatch.setattr(torch, "use_deterministic_algorithms", fail_mode)
         with pytest.raises(OSError, match="primary preflight RNG rollback") as raised:
@@ -1076,13 +1114,15 @@ def test_real_d02_rejects_checkpoint_rng_policy_drift_before_model_mutation(
         source_model = torch.nn.Linear(3, 3)
         source = Trainer(source_model, config)
         checkpoint = tmp_path / "mismatched-deterministic-policy"
+        source_state = asdict(source.state_dict())
         # Test the loader against an integrity-valid but semantically invalid
-        # low-level checkpoint; the public D02 save adapter now rejects it.
+        # low-level checkpoint; capture trainer state while its live policy is
+        # still valid, then write the low-level bundle under the drifted mode.
         torch.use_deterministic_algorithms(False, warn_only=False)
         core.save_checkpoint(
             checkpoint,
             model=source_model,
-            trainer_state=asdict(source.state_dict()),
+            trainer_state=source_state,
             identity=replace(identity(), parameter_count=12, step=0, tokens_seen=0),
         )
         model = torch.nn.Linear(3, 3)
@@ -1469,16 +1509,16 @@ def test_failed_ambient_rng_rollback_preserves_primary_and_poisons(
         trainer = CanonicalTarget(model)
         loader_module = progress_trainer if use_progress else trainer_adapter
         original_error = RuntimeError("primary checkpoint replay failure")
-        rollbacks = 0
+        final_replay_failed = False
 
-        def fail_ambient_rollback(state: object) -> None:
-            nonlocal rollbacks
-            rollbacks += 1
-            if rollbacks >= 2:
-                raise OSError("secondary ambient RNG rollback failure")
-            original_restore(state)
+        def fail_ambient_rollback(state: object) -> object:
+            if not final_replay_failed:
+                return original_restore(state)
+            raise OSError("secondary ambient RNG rollback failure")
 
         def fail_final_replay(_state: object) -> None:
+            nonlocal final_replay_failed
+            final_replay_failed = True
             raise original_error
 
         monkeypatch.setattr(core, "restore_rng_state", fail_ambient_rollback)

@@ -13,8 +13,12 @@ import numpy as np
 import pytest
 import torch
 
-from twelve_six.checkpoint import CheckpointIdentity, core
-from twelve_six.checkpoint import progress_trainer, trainer_adapter
+from twelve_six.checkpoint import (
+    CheckpointIdentity,
+    core,
+    progress_trainer,
+    trainer_adapter,
+)
 from twelve_six.training import Trainer, TrainerConfig
 
 
@@ -330,7 +334,7 @@ def test_restore_policy_snapshot_rejects_exotic_objects_without_running_hooks(
             torch.rand(1)
             return self
 
-        def __eq__(self, other: Any) -> bool:
+        def __eq__(self, other: object) -> bool:
             del other
             hook_calls.append("eq")
             random.random()

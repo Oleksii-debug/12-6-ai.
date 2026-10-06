@@ -7,10 +7,12 @@ import hashlib
 import math
 import random
 import struct
+from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
-from dataclasses import asdict, dataclass
-from types import FunctionType
+from dataclasses import dataclass
+from enum import Enum
+from types import FunctionType, GetSetDescriptorType
 from typing import Any
 
 import numpy as np
@@ -156,6 +158,68 @@ class Trainer:
     boundary-safe reusable loop without owning dataset iteration semantics.
     """
 
+    _CHECKPOINT_SAFETY_AUTHORITIES = (
+        "__dict__",
+        "__getattribute__",
+        "__setattr__",
+        "_checkpoint_inert_copy",
+        "_checkpoint_rng_fingerprint",
+        "_checkpoint_autograd_mode",
+        "_checkpoint_numeric_policy",
+        "_canonical_config_state",
+        "_canonical_model_members",
+        "_canonical_optimizer_storage",
+        "_canonical_scheduler_storage",
+        "_canonical_scaler_storage",
+        "_canonical_scaler_live_state",
+        "_canonical_lambda_lr_live_state",
+        "_optimizer_live_fingerprint",
+        "_model_export_fingerprint",
+        "_require_model_training_mode",
+        "_checkpoint_auxiliary_fingerprint",
+        "_require_exported_model_matches_live",
+        "_require_exported_scheduler_matches_live",
+        "_require_exported_scaler_matches_live",
+        "_require_exported_optimizer_matches_live",
+        "_exact_export_leaf_equal",
+        "assert_accumulation_boundary",
+        "assert_checkpoint_safe",
+        "_assert_trainable",
+        "_require_finite_auxiliary_state",
+        "_require_finite_committed_update",
+        "_require_no_residual_model_gradients",
+        "_require_deterministic_policy",
+        "_require_optimizer_parameter_coverage",
+        "_require_safe_optimizer_hyperparameters",
+        "_require_default_optimizer_options",
+        "_require_constant_default_rate",
+        "_require_finite_state_tree",
+        "_require_checkpoint_scaler_state",
+        "_require_default_schedule_rates",
+        "_require_checkpoint_scheduler_chronology",
+        "_require_optimizer_state_parameter_order",
+        "_optimizer_parameter_name_groups",
+        "_mark_failed",
+    )
+    _CHECKPOINT_STORAGE_FIELDS = (
+        "model",
+        "optimizer",
+        "scheduler",
+        "scaler",
+        "config",
+        "device",
+        "micro_step",
+        "optimizer_step",
+        "tokens_seen",
+        "_pending_tokens",
+        "_pending_loss_sum",
+        "_update_incomplete",
+        "_failure_reason",
+        "_canonical_default_schedule",
+        "_canonical_unscheduled_default_optimizer",
+        "_canonical_default_optimizer_options",
+    )
+
     def __init__(
         self,
         model: nn.Module,
@@ -188,10 +252,11 @@ class Trainer:
         )
         # Freeze small constructor-owned AdamW options before external hooks
         # can change otherwise finite optimizer behavior at a resume boundary.
+        _, initial_optimizer_groups = self._canonical_optimizer_storage()
         self._canonical_default_optimizer_options = (
             {
                 key: copy.deepcopy(value)
-                for key, value in self.optimizer.param_groups[0].items()
+                for key, value in initial_optimizer_groups[0].items()
                 if key not in ("params", "lr", "initial_lr", "param_names")
             }
             if optimizer is None and scheduler is None else None
@@ -220,17 +285,475 @@ class Trainer:
             warn_only=config.deterministic_warn_only,
         )
 
+    @staticmethod
+    def _type_identity(value: Any) -> str:
+        """Return class identity without instance or custom-metaclass dispatch."""
+
+        value_type = type(value)
+        module = type.__getattribute__(value_type, "__module__")
+        qualname = type.__getattribute__(value_type, "__qualname__")
+        if type(module) is not str or type(qualname) is not str:
+            raise TrainingStateInvalidError("runtime type identity is not canonical")
+        return f"{module}.{qualname}"
+
+    @staticmethod
+    def _raw_instance_dict(
+        value: Any,
+        base_type: type | None = None,
+        *,
+        label: str,
+    ) -> dict[str, Any]:
+        """Read instance storage through a real getset descriptor, never a property."""
+
+        descriptor = None
+        if base_type is not None:
+            namespace = type.__getattribute__(base_type, "__dict__")
+            candidate = namespace.get("__dict__")
+            if isinstance(candidate, GetSetDescriptorType):
+                descriptor = candidate
+        else:
+            value_type = type(value)
+            mro = type.__getattribute__(value_type, "__mro__")
+            for candidate_type in mro:
+                namespace = type.__getattribute__(candidate_type, "__dict__")
+                candidate = namespace.get("__dict__")
+                if isinstance(candidate, GetSetDescriptorType):
+                    descriptor = candidate
+                    break
+        if descriptor is None:
+            raise TrainingStateInvalidError(
+                f"{label} instance dictionary authority is unavailable"
+            )
+        try:
+            attrs = descriptor.__get__(value, type(value))
+        except (AttributeError, TypeError) as exc:
+            raise TrainingStateInvalidError(
+                f"{label} instance storage is unavailable"
+            ) from exc
+        if type(attrs) is not dict:
+            raise TrainingStateInvalidError(
+                f"{label} instance storage must be a dictionary"
+            )
+        return attrs
+
+    @staticmethod
+    def _checkpoint_inert_copy(value: Any, *, label: str) -> Any:
+        """Copy small checkpoint contract values without user callbacks."""
+
+        value_type = type(value)
+        if value is None or value_type in {bool, int, str}:
+            return value
+        if value_type is float:
+            if not math.isfinite(value):
+                raise TrainingStateInvalidError(
+                    f"{label} contains a non-finite float"
+                )
+            return value
+        if value_type is tuple:
+            return tuple(
+                Trainer._checkpoint_inert_copy(
+                    item,
+                    label=f"{label} tuple item",
+                )
+                for item in value
+            )
+        if value_type is dict:
+            result: dict[str, Any] = {}
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise TrainingStateInvalidError(
+                        f"{label} keys must be canonical strings"
+                    )
+                result[key] = Trainer._checkpoint_inert_copy(
+                    item,
+                    label=f"{label}.{key}",
+                )
+            return result
+        raise TrainingStateInvalidError(
+            f"{label} contains non-canonical value type: "
+            f"{Trainer._type_identity(value)}"
+        )
+
+    @staticmethod
+    def _checkpoint_rng_fingerprint() -> str:
+        """Fingerprint process RNG state without advancing any stream."""
+
+        digest = hashlib.sha256()
+
+        def emit(label: bytes, payload: bytes) -> None:
+            digest.update(len(label).to_bytes(2, "big"))
+            digest.update(label)
+            digest.update(len(payload).to_bytes(8, "big"))
+            digest.update(payload)
+
+        emit(b"python", repr(random.getstate()).encode("utf-8"))
+
+        numpy_state = np.random.get_state()
+        emit(b"numpy-kind", str(numpy_state[0]).encode("utf-8"))
+        emit(b"numpy-state", np.ascontiguousarray(numpy_state[1]).tobytes())
+        emit(b"numpy-position", str(int(numpy_state[2])).encode("ascii"))
+        emit(b"numpy-has-gauss", b"1" if bool(numpy_state[3]) else b"0")
+        emit(b"numpy-cached-gauss", struct.pack("!d", float(numpy_state[4])))
+
+        cpu_state = torch.get_rng_state().detach().cpu().contiguous()
+        emit(b"torch-cpu", cpu_state.numpy().tobytes())
+
+        cuda_initialized = torch.cuda.is_initialized()
+        emit(b"torch-cuda-initialized", b"1" if cuda_initialized else b"0")
+        cuda_states = torch.cuda.get_rng_state_all() if cuda_initialized else []
+        emit(b"torch-cuda-count", str(len(cuda_states)).encode("ascii"))
+        for index, state in enumerate(cuda_states):
+            payload = state.detach().cpu().contiguous().numpy().tobytes()
+            emit(f"torch-cuda-{index}".encode("ascii"), payload)
+
+        return digest.hexdigest()
+
+    @staticmethod
+    def _checkpoint_autograd_mode() -> tuple[bool, bool]:
+        """Snapshot thread-local autograd modes without changing them."""
+
+        return (
+            bool(torch.is_grad_enabled()),
+            bool(torch.is_inference_mode_enabled()),
+        )
+
+    @staticmethod
+    def _checkpoint_numeric_policy() -> tuple[str, str, bool, bool, bool, bool]:
+        """Snapshot process-wide floating-point policy used by training code."""
+
+        return (
+            str(torch.get_default_dtype()),
+            torch.get_float32_matmul_precision(),
+            bool(torch.backends.cudnn.allow_tf32),
+            bool(torch.backends.cudnn.enabled),
+            bool(torch.backends.cudnn.deterministic),
+            bool(torch.backends.cudnn.benchmark),
+        )
+
+    @staticmethod
+    def _canonical_config_state(config: Any) -> dict[str, Any]:
+        """Snapshot TrainerConfig slots without dataclass deepcopy callbacks."""
+
+        if type(config) is not TrainerConfig:
+            raise TrainingStateInvalidError(
+                "checkpoint config must use canonical TrainerConfig"
+            )
+        names = (
+            "learning_rate",
+            "weight_decay",
+            "betas",
+            "eps",
+            "max_steps",
+            "warmup_steps",
+            "scheduler",
+            "gradient_accumulation_steps",
+            "gradient_clip_norm",
+            "precision",
+            "seed",
+            "deterministic_algorithms",
+            "deterministic_warn_only",
+        )
+        state = {
+            name: Trainer._checkpoint_inert_copy(
+                object.__getattribute__(config, name),
+                label=f"checkpoint config field {name}",
+            )
+            for name in names
+        }
+        try:
+            TrainerConfig(**state)
+        except (TypeError, ValueError) as exc:
+            raise TrainingStateInvalidError(
+                "checkpoint config values are not canonical"
+            ) from exc
+        return state
+
+    def _require_canonical_checkpoint_authorities(self) -> None:
+        """Reject native subclass/instance replacement of checkpoint safety code."""
+
+        trainer_type = type(self)
+        trainer_mro = type.__getattribute__(trainer_type, "__mro__")
+        canonical_mro = type.__getattribute__(Trainer, "__mro__")
+        if Trainer not in trainer_mro:
+            raise TrainingStateInvalidError(
+                "native D02 checkpoint safety lineage is unavailable"
+            )
+        instance_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+
+        def resolve_static(mro: tuple[type, ...], name: str) -> Any | None:
+            for owner in mro:
+                namespace = type.__getattribute__(owner, "__dict__")
+                if name in namespace:
+                    return namespace[name]
+            return None
+
+        for name in Trainer._CHECKPOINT_SAFETY_AUTHORITIES:
+            if name in instance_attrs or (
+                resolve_static(trainer_mro, name)
+                is not resolve_static(canonical_mro, name)
+            ):
+                raise TrainingStateInvalidError(
+                    f"native D02 safety authority must remain canonical: {name}"
+                )
+        for name in Trainer._CHECKPOINT_STORAGE_FIELDS:
+            if (
+                resolve_static(trainer_mro, name)
+                is not resolve_static(canonical_mro, name)
+            ):
+                raise TrainingStateInvalidError(
+                    "native D02 restore storage descriptor must remain canonical: "
+                    f"{name}"
+                )
+
+    def _canonical_model_members(
+        self,
+    ) -> tuple[list[tuple[str, nn.Parameter]], list[tuple[str, Tensor]]]:
+        """Enumerate registered model state without overridable Module iterators."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        model = trainer_attrs.get("model")
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "trainer model binding is not a torch module"
+            )
+
+        named_parameters: list[tuple[str, nn.Parameter]] = []
+        named_buffers: list[tuple[str, Tensor]] = []
+        seen_modules: set[int] = set()
+        active_modules: set[int] = set()
+        seen_parameters: set[int] = set()
+        seen_buffers: set[int] = set()
+
+        def walk(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            if module_id in active_modules:
+                raise TrainingStateInvalidError(
+                    "model module graph contains a cycle"
+                )
+            if module_id in seen_modules:
+                return
+            active_modules.add(module_id)
+            seen_modules.add(module_id)
+            try:
+                attrs = Trainer._raw_instance_dict(
+                    module,
+                    nn.Module,
+                    label="model module",
+                )
+                parameters = attrs.get("_parameters")
+                buffers = attrs.get("_buffers")
+                modules = attrs.get("_modules")
+                if not all(
+                    type(value) is dict
+                    for value in (parameters, buffers, modules)
+                ):
+                    raise TrainingStateInvalidError(
+                        "model module registries must remain canonical dictionaries"
+                    )
+
+                for name, parameter in parameters.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model parameter name is not canonical"
+                        )
+                    if parameter is None or id(parameter) in seen_parameters:
+                        continue
+                    if not isinstance(parameter, nn.Parameter):
+                        raise TrainingStateInvalidError(
+                            "model parameter binding is not canonical"
+                        )
+                    seen_parameters.add(id(parameter))
+                    named_parameters.append((f"{prefix}{name}", parameter))
+
+                for name, buffer in buffers.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model buffer name is not canonical"
+                        )
+                    if buffer is None or id(buffer) in seen_buffers:
+                        continue
+                    if not isinstance(buffer, Tensor):
+                        raise TrainingStateInvalidError(
+                            "model buffer binding is not canonical"
+                        )
+                    seen_buffers.add(id(buffer))
+                    named_buffers.append((f"{prefix}{name}", buffer))
+
+                for name, child in modules.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "model child-module name is not canonical"
+                        )
+                    if child is None:
+                        continue
+                    if not isinstance(child, nn.Module):
+                        raise TrainingStateInvalidError(
+                            "model child binding is not a torch module"
+                        )
+                    walk(child, f"{prefix}{name}.")
+            finally:
+                active_modules.remove(module_id)
+
+        walk(model, "")
+        return named_parameters, named_buffers
+
+    def _canonical_optimizer_storage(
+        self,
+    ) -> tuple[dict[Any, Any] | defaultdict[Any, Any], list[dict[str, Any]]]:
+        """Read live Optimizer storage without subclass attribute dispatch."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        optimizer = trainer_attrs.get("optimizer")
+        if not isinstance(optimizer, Optimizer):
+            raise TrainingStateInvalidError(
+                "trainer optimizer binding is not a torch Optimizer"
+            )
+        attrs = Trainer._raw_instance_dict(
+            optimizer,
+            Optimizer,
+            label="optimizer",
+        )
+        state = attrs.get("state")
+        groups = attrs.get("param_groups")
+        if type(state) not in {dict, defaultdict} or type(groups) is not list:
+            raise TrainingStateInvalidError(
+                "optimizer live storage is not canonical"
+            )
+        if any(type(group) is not dict for group in groups):
+            raise TrainingStateInvalidError(
+                "optimizer parameter groups are not canonical dictionaries"
+            )
+        return state, groups
+
+    def _canonical_scheduler_storage(self) -> dict[str, Any] | None:
+        """Read live scheduler storage without subclass attribute dispatch."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        scheduler = trainer_attrs.get("scheduler")
+        if scheduler is None:
+            return None
+        if not isinstance(scheduler, LRScheduler):
+            raise TrainingStateInvalidError(
+                "trainer scheduler binding is not a torch LRScheduler"
+            )
+        return Trainer._raw_instance_dict(
+            scheduler,
+            LRScheduler,
+            label="scheduler",
+        )
+
+    def _canonical_scaler_storage(self) -> dict[str, Any]:
+        """Read the trainer-owned GradScaler without subclass method dispatch."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        scaler = trainer_attrs.get("scaler")
+        amp = getattr(torch, "amp", None)
+        amp_type = getattr(amp, "GradScaler", None)
+        cuda_amp = getattr(getattr(torch, "cuda", None), "amp", None)
+        cuda_type = getattr(cuda_amp, "GradScaler", None)
+        allowed = tuple(
+            candidate
+            for candidate in (amp_type, cuda_type)
+            if isinstance(candidate, type)
+        )
+        if not allowed or type(scaler) not in allowed:
+            raise TrainingStateInvalidError(
+                "gradient scaler binding is not canonical"
+            )
+        base_type = (
+            amp_type
+            if isinstance(amp_type, type) and isinstance(scaler, amp_type)
+            else cuda_type
+        )
+        if not isinstance(base_type, type):
+            raise TrainingStateInvalidError(
+                "gradient scaler dictionary authority is unavailable"
+            )
+        return Trainer._raw_instance_dict(
+            scaler,
+            base_type,
+            label="gradient scaler",
+        )
+
+    def _canonical_scaler_live_state(self) -> dict[str, Any]:
+        """Derive GradScaler checkpoint fields from raw trainer-owned storage."""
+
+        attrs = Trainer._canonical_scaler_storage(self)
+        enabled = attrs.get("_enabled")
+        if type(enabled) is not bool:
+            raise TrainingStateInvalidError(
+                "gradient scaler enabled flag is not canonical"
+            )
+        if not enabled:
+            return {}
+
+        scale_tensor = attrs.get("_scale")
+        tracker_tensor = attrs.get("_growth_tracker")
+        init_scale = attrs.get("_init_scale")
+        init_tracker = attrs.get("_init_growth_tracker")
+        growth = attrs.get("_growth_factor")
+        backoff = attrs.get("_backoff_factor")
+        interval = attrs.get("_growth_interval")
+
+        if scale_tensor is None:
+            scale = init_scale
+        else:
+            if type(scale_tensor) is not Tensor or scale_tensor.numel() != 1:
+                raise TrainingStateInvalidError(
+                    "gradient scaler live scale tensor is not canonical"
+                )
+            scale = float(scale_tensor.detach().item())
+
+        if tracker_tensor is None:
+            tracker = init_tracker
+        else:
+            if type(tracker_tensor) is not Tensor or tracker_tensor.numel() != 1:
+                raise TrainingStateInvalidError(
+                    "gradient scaler growth tracker is not canonical"
+                )
+            tracker = int(tracker_tensor.detach().item())
+
+        return {
+            "scale": scale,
+            "growth_factor": growth,
+            "backoff_factor": backoff,
+            "growth_interval": interval,
+            "_growth_tracker": tracker,
+        }
+
     def _require_optimizer_parameter_coverage(self) -> None:
         """Require the optimizer to own every trainable model parameter exactly once."""
-        model_parameters = tuple(self.model.parameters())
+        named_parameters, _ = self._canonical_model_members()
+        model_parameters = tuple(parameter for _, parameter in named_parameters)
         model_ids = {id(parameter) for parameter in model_parameters}
         trainable_ids = {
             id(parameter) for parameter in model_parameters if parameter.requires_grad
         }
         if not trainable_ids:
             raise ValueError("model has no trainable parameters for optimizer")
+        _, live_groups = self._canonical_optimizer_storage()
         optimizer_ids: list[int] = []
-        for group in self.optimizer.param_groups:
+        for group in live_groups:
             parameters = group.get("params")
             if not isinstance(parameters, (list, tuple)):
                 raise TypeError("optimizer group must contain a concrete parameter sequence")
@@ -246,9 +769,11 @@ class Trainer:
     def _optimizer_parameter_name_groups(self) -> list[list[str]]:
         """Bind optimizer slots to first canonical model names, including tied weights."""
         self._require_optimizer_parameter_coverage()
-        by_id = {id(parameter): name for name, parameter in self.model.named_parameters()}
+        named_parameters, _ = self._canonical_model_members()
+        by_id = {id(parameter): name for name, parameter in named_parameters}
+        _, live_groups = self._canonical_optimizer_storage()
         ordered: list[list[str]] = []
-        for group in self.optimizer.param_groups:
+        for group in live_groups:
             names: list[str] = []
             for parameter in group["params"]:
                 name = by_id.get(id(parameter))
@@ -263,7 +788,7 @@ class Trainer:
     def _require_optimizer_state_parameter_order(self, state: Any) -> None:
         """Refuse positional state remapping even between same-shaped parameters."""
         if not isinstance(state, Mapping):
-            raise ValueError("checkpoint optimizer state must be a mapping")
+            raise TypeError("checkpoint optimizer state must be a mapping")
         source_groups = state.get("param_groups")
         expected = self._optimizer_parameter_name_groups()
         if not isinstance(source_groups, list) or len(source_groups) != len(expected):
@@ -312,12 +837,14 @@ class Trainer:
             raise ValueError("checkpoint optimizer state parameter ID is noncanonical")
 
     def _require_no_residual_model_gradients(self) -> None:
-        if any(parameter.grad is not None for parameter in self.model.parameters()):
+        named_parameters, _ = self._canonical_model_members()
+        if any(parameter.grad is not None for _, parameter in named_parameters):
             raise RuntimeError("completed optimizer step left residual model gradients")
 
     def _require_finite_committed_update(self) -> None:
         """Reject optimizer corruption before crediting an optimizer transition."""
-        for parameter in self.model.parameters():
+        named_parameters, named_buffers = self._canonical_model_members()
+        for _, parameter in named_parameters:
             if not torch.isfinite(parameter.detach()).all().item():
                 raise NonFiniteTrainingError(
                     f"optimizer produced non-finite model weights at micro_step={self.micro_step}"
@@ -325,14 +852,15 @@ class Trainer:
         # Buffers are durable model state too (for example normalization
         # statistics). They can be corrupted by forward/scheduler hooks even
         # when every optimizer-managed parameter and moment remains finite.
-        for buffer in self.model.buffers():
+        for _, buffer in named_buffers:
             if (buffer.is_floating_point() or buffer.is_complex()) and not (
                 torch.isfinite(buffer.detach()).all().item()
             ):
                 raise NonFiniteTrainingError(
                     f"model contains non-finite buffer at micro_step={self.micro_step}"
                 )
-        for state in self.optimizer.state.values():
+        optimizer_state, _ = self._canonical_optimizer_storage()
+        for state in optimizer_state.values():
             for value in state.values():
                 if isinstance(value, Tensor):
                     if not torch.isfinite(value).all().item():
@@ -353,7 +881,7 @@ class Trainer:
         self, optimizer_state: Any | None = None,
     ) -> None:
         """Validate live or checkpoint group hyperparameters before use."""
-        live_groups = self.optimizer.param_groups
+        _, live_groups = self._canonical_optimizer_storage()
         groups = live_groups
         compare_checkpoint_types = optimizer_state is not None
         if optimizer_state is not None:
@@ -450,16 +978,18 @@ class Trainer:
         # pre-backward check; a completed step must remain checkpoint-safe.
         self._require_optimizer_parameter_coverage()
         self._require_safe_optimizer_hyperparameters()
+        _, live_groups = self._canonical_optimizer_storage()
         self._require_default_optimizer_options(
-            {"param_groups": self.optimizer.param_groups},
+            {"param_groups": live_groups},
         )
-        self._require_constant_default_rate({"param_groups": self.optimizer.param_groups})
+        self._require_constant_default_rate({"param_groups": live_groups})
         scaler_state = self.scaler.state_dict()
         self._require_finite_state_tree(scaler_state, "gradient scaler")
         # Live scaler state must also be restorable: finite subnormal scales
         # can yield an infinite float32 inverse on the next unscale_.
         self._require_checkpoint_scaler_state(scaler_state)
-        if self.scheduler is not None:
+        scheduler_state = self._canonical_scheduler_storage()
+        if scheduler_state is not None:
             self._require_finite_state_tree(self.scheduler.state_dict(), "scheduler")
             # The canonical LambdaLR advances exactly once per committed
             # optimizer step. Finite live corruption is not an exact-resume
@@ -467,13 +997,13 @@ class Trainer:
             if (
                 isinstance(self.scheduler, LambdaLR)
                 and (
-                    type(self.scheduler.last_epoch) is not int
-                    or self.scheduler.last_epoch != self.optimizer_step
+                    type(scheduler_state.get("last_epoch")) is not int
+                    or scheduler_state["last_epoch"] != self.optimizer_step
                     or (
                         type(self.scheduler) is LambdaLR
                         and (
-                            type(self.scheduler._step_count) is not int
-                            or self.scheduler._step_count != self.optimizer_step + 1
+                            type(scheduler_state.get("_step_count")) is not int
+                            or scheduler_state["_step_count"] != self.optimizer_step + 1
                         )
                     )
                 )
@@ -482,8 +1012,9 @@ class Trainer:
                     "scheduler chronology differs from committed optimizer step"
                 )
             self._require_default_schedule_rates(
-                vars(self.scheduler), self.optimizer_step,
-                {"param_groups": self.optimizer.param_groups},
+                scheduler_state,
+                self.optimizer_step,
+                {"param_groups": live_groups},
             )
 
     def _build_scaler(self):
@@ -612,7 +1143,8 @@ class Trainer:
             raise RuntimeError("optimizer update requires at least one valid target token")
         squared_norm = torch.zeros((), device=self.device)
         found = False
-        for parameter in self.model.parameters():
+        named_parameters, _ = self._canonical_model_members()
+        for _, parameter in named_parameters:
             if parameter.grad is None:
                 continue
             found = True
@@ -713,7 +1245,8 @@ class Trainer:
             update_loss: float | None = None
             # A custom optimizer can have distinct schedules per group. Never
             # validate only the first group while another can write NaN weights.
-            learning_rate = float(self.optimizer.param_groups[0]["lr"])
+            _, live_groups = self._canonical_optimizer_storage()
+            learning_rate = float(live_groups[0]["lr"])
             self._require_safe_optimizer_hyperparameters()
             # Forward/backward hooks may change otherwise finite AdamW options
             # or rates. Refuse before scaler/optimizer.step can mutate weights.
@@ -736,8 +1269,9 @@ class Trainer:
                 update_loss = self._pending_loss_sum / self._pending_tokens
 
                 if self.config.gradient_clip_norm is not None:
+                    named_parameters, _ = self._canonical_model_members()
                     torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
+                        [parameter for _, parameter in named_parameters],
                         self.config.gradient_clip_norm,
                         error_if_nonfinite=True,
                     )
@@ -915,6 +1449,7 @@ class Trainer:
         # A normal mid-accumulation checkpoint attempt must remain retryable:
         # its gradients are legitimately pending and no state was exported.
         self.assert_accumulation_boundary()
+        Trainer._require_model_training_mode(self)
         expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
         if self.micro_step != expected_micro_steps:
             raise RuntimeError(
@@ -936,7 +1471,9 @@ class Trainer:
         """Obtain the canonical built-in scheduler's state without invoking hooks."""
         if self.scheduler is None or type(self.scheduler) is not LambdaLR:
             return None
-        live = vars(self.scheduler)
+        live = self._canonical_scheduler_storage()
+        if live is None:
+            raise TrainingStateInvalidError("canonical LambdaLR storage is unavailable")
         functions = live.get("lr_lambdas")
         if not isinstance(functions, list) or any(
             not isinstance(fn, FunctionType) for fn in functions
@@ -952,11 +1489,276 @@ class Trainer:
         # Freeze mutable scheduler lists: an export hook may change them in place.
         return copy.deepcopy(snapshot)
 
+    def _require_exported_model_matches_live(
+        self,
+        exported: Mapping[str, np.ndarray],
+    ) -> None:
+        """Require staged checkpoint weights to equal raw live module state exactly."""
+
+        if not isinstance(exported, Mapping):
+            raise TrainingStateInvalidError("checkpoint model export is not a mapping")
+
+        expected: dict[str, Tensor] = {}
+        active_modules: set[int] = set()
+
+        def collect(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            if module_id in active_modules:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module graph contains a cycle"
+                )
+            active_modules.add(module_id)
+            try:
+                attrs = Trainer._raw_instance_dict(module, nn.Module, label="model module")
+            except (AttributeError, TypeError) as exc:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module state is unavailable"
+                ) from exc
+            try:
+                parameters = attrs.get("_parameters")
+                buffers = attrs.get("_buffers")
+                modules = attrs.get("_modules")
+                non_persistent = attrs.get("_non_persistent_buffers_set")
+                if (
+                    type(parameters) is not dict
+                    or type(buffers) is not dict
+                    or type(modules) is not dict
+                    or type(non_persistent) is not set
+                ):
+                    raise TrainingStateInvalidError(
+                        "checkpoint model registries are not canonical"
+                    )
+
+                for name, value in parameters.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model parameter name is not canonical"
+                        )
+                    if value is None:
+                        continue
+                    if type(value) is not nn.Parameter:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model parameter binding is not canonical"
+                        )
+                    expected[f"{prefix}{name}"] = value
+
+                for name, value in buffers.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model buffer name is not canonical"
+                        )
+                    if value is None or name in non_persistent:
+                        continue
+                    if type(value) is not Tensor:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model buffer binding is not canonical"
+                        )
+                    expected[f"{prefix}{name}"] = value
+
+                for name, child in modules.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model child-module name is not canonical"
+                        )
+                    if child is None:
+                        continue
+                    if not isinstance(child, nn.Module):
+                        raise TrainingStateInvalidError(
+                            "checkpoint model child is not a torch module"
+                        )
+                    collect(child, f"{prefix}{name}.")
+            finally:
+                active_modules.remove(module_id)
+
+        try:
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            model = trainer_attrs["model"]
+        except (AttributeError, KeyError, TypeError) as exc:
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is unavailable"
+            ) from exc
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is not a torch module"
+            )
+        collect(model, "")
+
+        if set(exported) != set(expected):
+            raise TrainingStateInvalidError(
+                "checkpoint model export keys differ from live model state"
+            )
+
+        def iter_tensor_bytes(value: Tensor):
+            detached = value.detach()
+            if detached.is_contiguous():
+                flat = detached.reshape(-1)
+                for index in range(0, flat.numel(), 262_144):
+                    block = flat[index:index + 262_144].to(device="cpu").contiguous()
+                    if str(block.dtype) == "torch.bfloat16":
+                        block = block.view(torch.uint16)
+                    yield block.numpy().tobytes()
+                return
+            if detached.numel() <= 262_144:
+                block = detached.to(device="cpu").contiguous().reshape(-1)
+                if str(block.dtype) == "torch.bfloat16":
+                    block = block.view(torch.uint16)
+                yield block.numpy().tobytes()
+                return
+            if detached.ndim == 0:
+                block = detached.to(device="cpu").contiguous().reshape(-1)
+                if str(block.dtype) == "torch.bfloat16":
+                    block = block.view(torch.uint16)
+                yield block.numpy().tobytes()
+                return
+            for child in detached.unbind(0):
+                yield from iter_tensor_bytes(child)
+
+        for name, live in expected.items():
+            exported_value = exported[name]
+            if isinstance(exported_value, Tensor):
+                if (
+                    type(exported_value) not in {Tensor, nn.Parameter}
+                    or exported_value.dtype != live.dtype
+                    or exported_value.shape != live.shape
+                    or exported_value.layout != live.layout
+                    or live.layout != torch.strided
+                ):
+                    raise TrainingStateInvalidError(
+                        f"checkpoint model export tensor {name!r} metadata differs"
+                    )
+                exported_digest = hashlib.sha256()
+                live_digest = hashlib.sha256()
+                exported_bytes = 0
+                live_bytes = 0
+                for block in iter_tensor_bytes(exported_value):
+                    exported_digest.update(block)
+                    exported_bytes += len(block)
+                for block in iter_tensor_bytes(live):
+                    live_digest.update(block)
+                    live_bytes += len(block)
+                if (
+                    exported_bytes != live_bytes
+                    or exported_digest.digest() != live_digest.digest()
+                ):
+                    raise TrainingStateInvalidError(
+                        f"checkpoint model export tensor {name!r} differs from live state"
+                    )
+                continue
+
+            array = exported_value
+            if type(array) is not np.ndarray or array.dtype.hasobject:
+                raise TrainingStateInvalidError(
+                    f"checkpoint model export tensor {name!r} is not canonical"
+                )
+            if not array.flags.c_contiguous or tuple(array.shape) != tuple(live.shape):
+                raise TrainingStateInvalidError(
+                    f"checkpoint model export tensor {name!r} metadata differs"
+                )
+            if str(live.dtype) == "torch.bfloat16":
+                expected_dtype = np.dtype(np.uint16)
+            else:
+                try:
+                    expected_dtype = torch.empty(
+                        0,
+                        dtype=live.dtype,
+                        device="cpu",
+                    ).numpy().dtype
+                except (TypeError, RuntimeError) as exc:
+                    raise TrainingStateInvalidError(
+                        f"checkpoint model dtype {live.dtype} is unsupported"
+                    ) from exc
+            if array.dtype != expected_dtype:
+                raise TrainingStateInvalidError(
+                    f"checkpoint model export tensor {name!r} dtype differs"
+                )
+
+            exported_bytes_view = memoryview(array).cast("B")
+            offset = 0
+            for block in iter_tensor_bytes(live):
+                block_size = len(block)
+                if bytes(exported_bytes_view[offset:offset + block_size]) != block:
+                    raise TrainingStateInvalidError(
+                        f"checkpoint model export tensor {name!r} differs from live state"
+                    )
+                offset += block_size
+            if offset != array.nbytes:
+                raise TrainingStateInvalidError(
+                    f"checkpoint model export tensor {name!r} byte size differs"
+                )
+
+    def _require_model_training_mode(self) -> None:
+        """Require every durable model module to remain in training mode."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        model = trainer_attrs.get("model")
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is not a torch module"
+            )
+
+        seen_modules: set[int] = set()
+        active_modules: set[int] = set()
+
+        def walk(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            if module_id in active_modules:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module graph contains a cycle"
+                )
+            if module_id in seen_modules:
+                return
+            active_modules.add(module_id)
+            seen_modules.add(module_id)
+            try:
+                attrs = Trainer._raw_instance_dict(
+                    module,
+                    nn.Module,
+                    label="model module",
+                )
+                if attrs.get("training") is not True:
+                    label = prefix or "<root>"
+                    raise TrainingStateInvalidError(
+                        "checkpoint model training mode must remain enabled: "
+                        f"{label}"
+                    )
+                modules = attrs.get("_modules")
+                if type(modules) is not dict:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model child registry is not canonical"
+                    )
+                for name, child in modules.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model child-module name is not canonical"
+                        )
+                    if child is None:
+                        continue
+                    if not isinstance(child, nn.Module):
+                        raise TrainingStateInvalidError(
+                            "checkpoint model child is not a torch module"
+                        )
+                    walk(child, f"{prefix}.{name}" if prefix else name)
+            finally:
+                active_modules.remove(module_id)
+
+        walk(model, "")
+
     def _model_export_fingerprint(self) -> str:
-        """Hash weights and buffers in bounded chunks across effectful export hooks."""
+        """Hash model weights and buffers without overridable model iterators."""
         digest = hashlib.sha256()
+        seen_modules: set[int] = set()
+        seen_parameters: set[int] = set()
+        seen_buffers: set[int] = set()
 
         def hash_tensor(value: Tensor) -> None:
+            if type(value) not in {Tensor, nn.Parameter}:
+                raise TrainingStateInvalidError(
+                    "checkpoint model state must use canonical torch tensors"
+                )
             if value.layout != torch.strided:
                 raise TrainingStateInvalidError(
                     "checkpoint model contains unsupported non-strided state"
@@ -969,42 +1771,176 @@ class Trainer:
                     raw = block.to(device="cpu").contiguous().view(torch.uint8)
                     digest.update(raw.numpy().tobytes())
             elif detached.numel() <= 262_144:
-                # An individual bounded strided window may be copied safely.
                 bounded = detached.to(device="cpu").contiguous().reshape(-1)
                 digest.update(bounded.view(torch.uint8).numpy().tobytes())
             elif detached.ndim == 1:
                 for index in range(0, detached.numel(), 262_144):
                     hash_tensor(detached[index:index + 262_144])
             else:
-                # Split a larger strided view until each copy is bounded.
                 for child in detached.unbind(0):
                     hash_tensor(child)
 
-        for label, members in (
-            ("parameter", self.model.named_parameters()),
-            ("buffer", self.model.named_buffers()),
-        ):
-            for name, value in members:
-                metadata = (
-                    label, name, id(value), str(value.dtype), str(value.device),
-                    tuple(value.shape), tuple(value.stride()), value.requires_grad,
+        def hash_member(label: str, name: str, value: Tensor) -> None:
+            metadata = (
+                label,
+                name,
+                id(value),
+                str(value.dtype),
+                str(value.device),
+                tuple(value.shape),
+                tuple(value.stride()),
+                value.requires_grad,
+            )
+            digest.update(repr(metadata).encode("utf-8"))
+            hash_tensor(value)
+
+        def walk(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            digest.update(
+                repr(
+                    (
+                        "module",
+                        prefix,
+                        module_id,
+                        Trainer._type_identity(module),
+                    )
+                ).encode("utf-8")
+            )
+            if module_id in seen_modules:
+                return
+            seen_modules.add(module_id)
+            try:
+                attrs = Trainer._raw_instance_dict(module, nn.Module, label="model module")
+            except (AttributeError, TypeError) as exc:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module state is unavailable"
+                ) from exc
+            training = attrs.get("training")
+            if type(training) is not bool:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module training mode is unavailable"
                 )
-                digest.update(repr(metadata).encode("utf-8"))
-                hash_tensor(value)
+            digest.update(repr(("training", training)).encode("utf-8"))
+            parameters = attrs.get("_parameters")
+            buffers = attrs.get("_buffers")
+            modules = attrs.get("_modules")
+            non_persistent = attrs.get("_non_persistent_buffers_set")
+            if (
+                not all(type(value) is dict for value in (parameters, buffers, modules))
+                or type(non_persistent) is not set
+                or any(type(name) is not str for name in non_persistent)
+            ):
+                raise TrainingStateInvalidError(
+                    "checkpoint model module registries must remain canonical"
+                )
+            digest.update(
+                repr(
+                    (
+                        "non-persistent-buffers",
+                        prefix,
+                        tuple(sorted(non_persistent)),
+                    )
+                ).encode("utf-8")
+            )
+
+            for name, value in parameters.items():
+                if type(name) is not str:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model parameter name is not canonical"
+                    )
+                digest.update(
+                    repr(
+                        (
+                            "parameter-binding",
+                            f"{prefix}{name}",
+                            None if value is None else id(value),
+                        )
+                    ).encode("utf-8")
+                )
+                if value is None or id(value) in seen_parameters:
+                    continue
+                if not isinstance(value, Tensor):
+                    raise TrainingStateInvalidError(
+                        "checkpoint model parameter is not a tensor"
+                    )
+                seen_parameters.add(id(value))
+                hash_member("parameter", f"{prefix}{name}", value)
+                if value.grad is not None:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model contains residual parameter gradients"
+                    )
+
+            for name, value in buffers.items():
+                if type(name) is not str:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model buffer name is not canonical"
+                    )
+                digest.update(
+                    repr(
+                        (
+                            "buffer-binding",
+                            f"{prefix}{name}",
+                            None if value is None else id(value),
+                        )
+                    ).encode("utf-8")
+                )
+                if value is None or id(value) in seen_buffers:
+                    continue
+                if not isinstance(value, Tensor):
+                    raise TrainingStateInvalidError(
+                        "checkpoint model buffer is not a tensor"
+                    )
+                seen_buffers.add(id(value))
+                hash_member("buffer", f"{prefix}{name}", value)
+
+            for name, child in modules.items():
+                if type(name) is not str:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model child-module name is not canonical"
+                    )
+                digest.update(
+                    repr(
+                        (
+                            "module-binding",
+                            f"{prefix}{name}",
+                            None if child is None else id(child),
+                        )
+                    ).encode("utf-8")
+                )
+                if child is None:
+                    continue
+                if not isinstance(child, nn.Module):
+                    raise TrainingStateInvalidError(
+                        "checkpoint model child is not a torch module"
+                    )
+                walk(child, f"{prefix}{name}.")
+
+        try:
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            model = trainer_attrs["model"]
+        except (AttributeError, KeyError, TypeError) as exc:
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is unavailable"
+            ) from exc
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is not a torch module"
+            )
+        walk(model, "")
         return digest.hexdigest()
 
     def _optimizer_live_fingerprint(self) -> str | None:
         """Bind first-party Torch optimizer groups and moments without export hooks."""
-        if not self.optimizer.__class__.__module__.startswith("torch.optim"):
+        optimizer_type = type(self.optimizer)
+        optimizer_module = type.__getattribute__(optimizer_type, "__module__")
+        if type(optimizer_module) is not str or not optimizer_module.startswith("torch.optim"):
             return None
-        if not isinstance(self.optimizer.state, Mapping):
-            raise TrainingStateInvalidError("optimizer live state is not a mapping")
+        optimizer_state, live_groups = self._canonical_optimizer_storage()
 
         digest = hashlib.sha256()
 
         def update(value: Any) -> None:
-            kind = f"{type(value).__module__}.{type(value).__qualname__}"
-            digest.update(kind.encode("utf-8") + b"\0")
+            digest.update(Trainer._type_identity(value).encode("utf-8") + b"\0")
             if isinstance(value, Tensor):
                 if value.layout != torch.strided:
                     raise TrainingStateInvalidError(
@@ -1093,16 +2029,10 @@ class Trainer:
             )
 
         name_groups = self._optimizer_parameter_name_groups()
-        digest.update(
-            (
-                self.optimizer.__class__.__module__
-                + "."
-                + self.optimizer.__class__.__qualname__
-            ).encode("utf-8")
-        )
+        digest.update(Trainer._type_identity(self.optimizer).encode("utf-8"))
         live_parameter_ids: set[int] = set()
         for group_index, (group, names) in enumerate(
-            zip(self.optimizer.param_groups, name_groups, strict=True)
+            zip(live_groups, name_groups, strict=True)
         ):
             if not isinstance(group, Mapping):
                 raise TrainingStateInvalidError(
@@ -1125,15 +2055,301 @@ class Trainer:
             for parameter, name in zip(parameters, names, strict=True):
                 live_parameter_ids.add(id(parameter))
                 update(name)
-                if parameter in self.optimizer.state:
+                if parameter in optimizer_state:
                     digest.update(b"state-present\0")
-                    update(self.optimizer.state[parameter])
+                    update(optimizer_state[parameter])
                 else:
                     digest.update(b"state-absent\0")
-        if any(id(parameter) not in live_parameter_ids for parameter in self.optimizer.state):
+        if any(id(parameter) not in live_parameter_ids for parameter in optimizer_state):
             raise TrainingStateInvalidError(
                 "optimizer live state contains foreign parameter state"
             )
+        return digest.hexdigest()
+
+    def _checkpoint_auxiliary_fingerprint(self) -> str:
+        """Hash live optimizer/scheduler/scaler state without export or subclass hooks."""
+
+        digest = hashlib.sha256()
+        active_objects: set[int] = set()
+
+        def label(value: Any) -> None:
+            digest.update(Trainer._type_identity(value).encode("utf-8") + b"\0")
+
+        def update_tensor(value: Tensor) -> None:
+            if type(value) not in {Tensor, nn.Parameter}:
+                raise TrainingStateInvalidError(
+                    "checkpoint auxiliary state contains a tensor subclass"
+                )
+            if value.layout != torch.strided:
+                raise TrainingStateInvalidError(
+                    "checkpoint auxiliary state contains non-strided tensor"
+                )
+            digest.update(
+                repr(
+                    (
+                        str(value.dtype),
+                        str(value.device),
+                        tuple(value.shape),
+                        tuple(value.stride()),
+                        value.storage_offset(),
+                        value.data_ptr(),
+                        value.requires_grad,
+                    )
+                ).encode("utf-8")
+            )
+            detached = value.detach()
+            if detached.is_contiguous():
+                flat = detached.reshape(-1)
+                for index in range(0, flat.numel(), 262_144):
+                    raw = (
+                        flat[index:index + 262_144]
+                        .to(device="cpu")
+                        .contiguous()
+                        .view(torch.uint8)
+                    )
+                    digest.update(raw.numpy().tobytes())
+            elif detached.numel() <= 262_144:
+                raw = detached.to(device="cpu").contiguous().reshape(-1)
+                digest.update(raw.view(torch.uint8).numpy().tobytes())
+            elif detached.ndim == 1:
+                for index in range(0, detached.numel(), 262_144):
+                    update_tensor(detached[index:index + 262_144])
+            else:
+                for child in detached.unbind(0):
+                    update_tensor(child)
+
+        def update(value: Any) -> None:
+            label(value)
+            if isinstance(value, Tensor):
+                update_tensor(value)
+                return
+            if isinstance(value, np.ndarray):
+                if type(value) is not np.ndarray or value.dtype.hasobject:
+                    raise TrainingStateInvalidError(
+                        "checkpoint auxiliary NumPy state is not canonical"
+                    )
+                digest.update(
+                    repr((value.dtype.str, value.shape, value.strides)).encode("utf-8")
+                )
+                for block in np.nditer(
+                    value,
+                    flags=["external_loop", "buffered", "zerosize_ok"],
+                    op_flags=[["readonly"]],
+                    order="C",
+                    buffersize=262_144,
+                ):
+                    digest.update(block.tobytes(order="C"))
+                return
+            if isinstance(value, np.generic):
+                digest.update(value.dtype.str.encode("ascii") + b"\0" + value.tobytes())
+                return
+            if type(value) is float:
+                digest.update(struct.pack("!d", value))
+                return
+            if type(value) is complex:
+                digest.update(struct.pack("!dd", value.real, value.imag))
+                return
+            if value is None or type(value) in {bool, int, str, bytes}:
+                digest.update(repr(value).encode("utf-8"))
+                return
+            if isinstance(value, Enum):
+                digest.update(
+                    f"{Trainer._type_identity(value)}:{value.name}".encode()
+                )
+                return
+            value_type = type(value)
+            value_module = type.__getattribute__(value_type, "__module__")
+            value_name = type.__getattribute__(value_type, "__name__")
+            if value_module == "torch" and value_name in {
+                "device",
+                "dtype",
+                "layout",
+                "memory_format",
+            }:
+                digest.update(str(value).encode("utf-8"))
+                return
+            if isinstance(value, FunctionType):
+                digest.update(
+                    f"{value.__module__}.{value.__qualname__}:{id(value)}".encode()
+                )
+                return
+            if type(value) in {dict, defaultdict, OrderedDict}:
+                object_id = id(value)
+                if object_id in active_objects:
+                    raise TrainingStateInvalidError(
+                        "checkpoint auxiliary state contains a container cycle"
+                    )
+                active_objects.add(object_id)
+                try:
+                    digest.update(str(len(value)).encode("ascii") + b"\0")
+                    for key, child in value.items():
+                        if type(key) not in {str, int, bool}:
+                            raise TrainingStateInvalidError(
+                                "checkpoint auxiliary mapping key is not canonical"
+                            )
+                        update(key)
+                        update(child)
+                finally:
+                    active_objects.remove(object_id)
+                return
+            if type(value) in {list, tuple}:
+                object_id = id(value)
+                if object_id in active_objects:
+                    raise TrainingStateInvalidError(
+                        "checkpoint auxiliary state contains a container cycle"
+                    )
+                active_objects.add(object_id)
+                try:
+                    digest.update(str(len(value)).encode("ascii") + b"\0")
+                    for child in value:
+                        update(child)
+                finally:
+                    active_objects.remove(object_id)
+                return
+            try:
+                raw_attrs = Trainer._raw_instance_dict(
+                    value,
+                    label="checkpoint auxiliary object",
+                )
+            except TrainingStateInvalidError:
+                raw_attrs = None
+            if type(raw_attrs) is dict:
+                object_id = id(value)
+                if object_id in active_objects:
+                    raise TrainingStateInvalidError(
+                        "checkpoint auxiliary state contains an object cycle"
+                    )
+                active_objects.add(object_id)
+                try:
+                    digest.update(str(id(value)).encode("ascii") + b"\0")
+                    update(raw_attrs)
+                finally:
+                    active_objects.remove(object_id)
+                return
+            raise TrainingStateInvalidError(
+                "checkpoint auxiliary state contains unsupported exact-resume value"
+            )
+
+        try:
+            trainer_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            optimizer = trainer_attrs["optimizer"]
+            scheduler = trainer_attrs["scheduler"]
+            scaler = trainer_attrs["scaler"]
+            optimizer_attrs = Trainer._raw_instance_dict(
+                optimizer,
+                Optimizer,
+                label="optimizer",
+            )
+        except (AttributeError, KeyError, TypeError) as exc:
+            raise TrainingStateInvalidError(
+                "checkpoint auxiliary bindings are unavailable"
+            ) from exc
+        if type(optimizer_attrs) is not dict:
+            raise TrainingStateInvalidError(
+                "checkpoint optimizer storage is not canonical"
+            )
+        state = optimizer_attrs.get("state")
+        groups = optimizer_attrs.get("param_groups")
+        if type(state) not in {dict, defaultdict} or type(groups) is not list:
+            raise TrainingStateInvalidError(
+                "checkpoint optimizer live state is not canonical"
+            )
+
+        digest.update(b"optimizer\0")
+        digest.update(
+            (
+                Trainer._type_identity(optimizer)
+            ).encode("utf-8")
+        )
+        digest.update(str(len(groups)).encode("ascii") + b"\0")
+        live_parameters: set[int] = set()
+        for group in groups:
+            if type(group) is not dict:
+                raise TrainingStateInvalidError(
+                    "checkpoint optimizer parameter group is not canonical"
+                )
+            parameters = group.get("params")
+            if type(parameters) not in {list, tuple}:
+                raise TrainingStateInvalidError(
+                    "checkpoint optimizer parameters are not a canonical sequence"
+                )
+            digest.update(str(len(parameters)).encode("ascii") + b"\0")
+            for parameter in parameters:
+                if type(parameter) is not nn.Parameter:
+                    raise TrainingStateInvalidError(
+                        "checkpoint optimizer parameter binding is not canonical"
+                    )
+                live_parameters.add(id(parameter))
+                digest.update(str(id(parameter)).encode("ascii") + b"\0")
+            update(
+                {
+                    key: value
+                    for key, value in group.items()
+                    if key not in ("params", "param_names")
+                }
+            )
+
+        digest.update(str(len(state)).encode("ascii") + b"\0")
+        for parameter, slot in state.items():
+            if type(parameter) is not nn.Parameter or id(parameter) not in live_parameters:
+                raise TrainingStateInvalidError(
+                    "checkpoint optimizer state has a foreign parameter key"
+                )
+            digest.update(str(id(parameter)).encode("ascii") + b"\0")
+            update(slot)
+
+        digest.update(b"scheduler\0")
+        if scheduler is None:
+            digest.update(b"none\0")
+        else:
+            try:
+                scheduler_attrs = Trainer._raw_instance_dict(
+                    scheduler,
+                    LRScheduler,
+                    label="scheduler",
+                )
+            except TrainingStateInvalidError as exc:
+                raise TrainingStateInvalidError(
+                    "checkpoint scheduler storage is unavailable"
+                ) from exc
+            if type(scheduler_attrs) is not dict:
+                raise TrainingStateInvalidError(
+                    "checkpoint scheduler storage is not canonical"
+                )
+            digest.update(
+                (
+                    Trainer._type_identity(scheduler)
+                ).encode("utf-8")
+            )
+            update(
+                {
+                    key: value
+                    for key, value in scheduler_attrs.items()
+                    if key != "optimizer"
+                }
+            )
+
+        digest.update(b"scaler\0")
+        if scaler is None:
+            digest.update(b"none\0")
+        else:
+            try:
+                scaler_attrs = Trainer._canonical_scaler_storage(self)
+            except TrainingStateInvalidError as exc:
+                raise TrainingStateInvalidError(
+                    "checkpoint scaler storage is unavailable"
+                ) from exc
+            if type(scaler_attrs) is not dict:
+                raise TrainingStateInvalidError(
+                    "checkpoint scaler storage is not canonical"
+                )
+            digest.update(
+                (
+                    Trainer._type_identity(scaler)
+                ).encode("utf-8")
+            )
+            update(scaler_attrs)
+
         return digest.hexdigest()
 
     @staticmethod
@@ -1144,7 +2360,6 @@ class Trainer:
                 isinstance(saved, Tensor)
                 and isinstance(live, Tensor)
                 and saved.dtype == live.dtype
-                and saved.device == live.device
                 and saved.shape == live.shape
                 and saved.layout == live.layout == torch.strided
                 and saved.is_contiguous()
@@ -1152,10 +2367,35 @@ class Trainer:
             ):
                 # Never create an unbounded contiguous copy of model-scale state.
                 return False
-            return bool(torch.equal(
-                saved.reshape(-1).view(torch.uint8),
-                live.reshape(-1).view(torch.uint8),
-            ))
+
+            # Checkpoint state is portable across devices. A CPU-decoded state
+            # can be installed into a CUDA optimizer by PyTorch, so device
+            # identity is not part of the serialized numerical value. Compare
+            # bounded raw bytes instead. This also preserves signed-zero bits
+            # and avoids the mutable global torch.equal observer.
+            saved_flat = saved.detach().reshape(-1)
+            live_flat = live.detach().reshape(-1)
+            chunk_elements = 262_144
+            for index in range(0, saved_flat.numel(), chunk_elements):
+                saved_block = (
+                    saved_flat[index:index + chunk_elements]
+                    .to(device="cpu")
+                    .contiguous()
+                    .view(torch.uint8)
+                    .numpy()
+                    .tobytes()
+                )
+                live_block = (
+                    live_flat[index:index + chunk_elements]
+                    .to(device="cpu")
+                    .contiguous()
+                    .view(torch.uint8)
+                    .numpy()
+                    .tobytes()
+                )
+                if saved_block != live_block:
+                    return False
+            return True
         if isinstance(saved, np.ndarray) or isinstance(live, np.ndarray):
             if not (
                 isinstance(saved, np.ndarray)
@@ -1207,12 +2447,13 @@ class Trainer:
         saved_groups = exported.get("param_groups") if isinstance(exported, Mapping) else None
         if not isinstance(saved_state, Mapping) or not isinstance(saved_groups, list):
             raise TrainingStateInvalidError("optimizer export is not canonical")
-        if len(saved_groups) != len(self.optimizer.param_groups):
+        live_state, live_groups = Trainer._canonical_optimizer_storage(self)
+        if len(saved_groups) != len(live_groups):
             raise TrainingStateInvalidError("optimizer export group count differs")
         present: set[int] = set()
         ordinal = 0
         for saved_group, live_group in zip(
-            saved_groups, self.optimizer.param_groups, strict=True,
+            saved_groups, live_groups, strict=True,
         ):
             live_params = live_group["params"]
             expected_ids = list(range(ordinal, ordinal + len(live_params)))
@@ -1231,16 +2472,16 @@ class Trainer:
                 k: v for k, v in live_group.items()
                 if k not in ("params", "param_names")
             }
-            if not self._exact_export_leaf_equal(saved_options, live_options):
+            if not Trainer._exact_export_leaf_equal(saved_options, live_options):
                 raise TrainingStateInvalidError("optimizer export hyperparameters differ")
             for parameter in live_params:
-                live_slot = self.optimizer.state.get(parameter)
+                live_slot = live_state.get(parameter)
                 saved_slot = saved_state.get(ordinal)
                 if live_slot is None:
                     if ordinal in saved_state:
                         raise TrainingStateInvalidError("optimizer export has foreign state")
                 elif type(ordinal) is not int or ordinal not in saved_state or not (
-                    self._exact_export_leaf_equal(saved_slot, live_slot)
+                    Trainer._exact_export_leaf_equal(saved_slot, live_slot)
                 ):
                     raise TrainingStateInvalidError("optimizer export moments differ")
                 else:
@@ -1256,9 +2497,13 @@ class Trainer:
         schema matching and a detached native load probe are not sufficient.
         This check must run before either loader touches model or optimizer.
         """
-        if self.scaler.is_enabled() and not scaler_state:
+        scaler_attrs = self._canonical_scaler_storage()
+        enabled = scaler_attrs.get("_enabled")
+        if type(enabled) is not bool:
+            raise ValueError("gradient scaler enabled flag is invalid")
+        if enabled and not scaler_state:
             raise ValueError("enabled gradient scaler checkpoint state missing")
-        if self.scaler.is_enabled():
+        if enabled:
             expected_fields = {
                 "scale", "growth_factor", "backoff_factor",
                 "growth_interval", "_growth_tracker",
@@ -1314,7 +2559,7 @@ class Trainer:
                     "enabled gradient scaler checkpoint statistics invalid in float32"
                 )
         if (
-            not self.scaler.is_enabled()
+            not enabled
             and scaler_state is not None
             and (not isinstance(scaler_state, Mapping) or bool(scaler_state))
         ):
@@ -1357,7 +2602,7 @@ class Trainer:
                 or any(
                     not isinstance(group, Mapping)
                     or "lr" not in group
-                    or not self._exact_export_leaf_equal(rate, group["lr"])
+                    or not Trainer._exact_export_leaf_equal(rate, group["lr"])
                     for rate, group in zip(last_rates, saved_groups, strict=True)
                 )
             ):
@@ -1474,7 +2719,8 @@ class Trainer:
 
     def _require_first_party_optimizer_contract(self) -> None:
         """Check the live first-party step contract without invoking state_dict hooks."""
-        groups = {"param_groups": self.optimizer.param_groups}
+        _, live_groups = self._canonical_optimizer_storage()
+        groups = {"param_groups": live_groups}
         self._require_default_optimizer_options(groups)
         self._require_constant_default_rate(groups)
         if self._canonical_default_schedule:
@@ -1482,8 +2728,13 @@ class Trainer:
             # The direct checkpoint preflight uses ValueError for an invalid
             # saved payload. During training this is an invalid live state.
             try:
+                scheduler_state = self._canonical_scheduler_storage()
+                if scheduler_state is None:
+                    raise ValueError("default scheduler storage is unavailable")
                 self._require_checkpoint_scheduler_chronology(
-                    vars(self.scheduler), self.optimizer_step, groups,
+                    scheduler_state,
+                    self.optimizer_step,
+                    groups,
                 )
             except ValueError as exc:
                 raise TrainingStateInvalidError(
@@ -1528,26 +2779,10 @@ class Trainer:
 
     def _require_exported_scaler_matches_live(self, exported: Any) -> None:
         """Refuse finite, detached GradScaler statistics that cannot replay."""
-        scaler = self.scaler
-        if scaler is None:
-            if exported is not None:
-                raise TrainingStateInvalidError("gradient scaler export is not canonical")
-            return
         if not isinstance(exported, Mapping):
             raise TrainingStateInvalidError("gradient scaler export is not canonical")
-        if not scaler.is_enabled():
-            expected: dict[str, Any] = {}
-        else:
-            # Match GradScaler's own five-field state_dict schema using live
-            # getters, never a second potentially effectful state_dict call.
-            expected = {
-                "scale": scaler.get_scale(),
-                "growth_factor": scaler.get_growth_factor(),
-                "backoff_factor": scaler.get_backoff_factor(),
-                "growth_interval": scaler.get_growth_interval(),
-                "_growth_tracker": scaler._get_growth_tracker(),
-            }
-        if not self._exact_export_leaf_equal(exported, expected):
+        expected = Trainer._canonical_scaler_live_state(self)
+        if not Trainer._exact_export_leaf_equal(exported, expected):
             raise TrainingStateInvalidError(
                 "gradient scaler export differs from live state"
             )
@@ -1566,69 +2801,194 @@ class Trainer:
             return
         if not isinstance(exported, Mapping):
             raise TrainingStateInvalidError("scheduler export is not canonical")
+        raw_live = Trainer._canonical_scheduler_storage(self)
+        if raw_live is None:
+            raise TrainingStateInvalidError("scheduler live storage is unavailable")
         live = {
-            key: value for key, value in vars(scheduler).items()
+            key: value for key, value in raw_live.items()
             if key != "optimizer"
         }
         if isinstance(scheduler, LambdaLR):
-            live.pop("lr_lambdas", None)
+            live_lambdas = live.pop("lr_lambdas", None)
             if set(exported) != set(live) | {"lr_lambdas"}:
                 raise TrainingStateInvalidError("scheduler export fields differ")
             exported_lambdas = exported["lr_lambdas"]
             if (
                 not isinstance(exported_lambdas, list)
-                or len(exported_lambdas) != len(scheduler.lr_lambdas)
+                or not isinstance(live_lambdas, list)
+                or len(exported_lambdas) != len(live_lambdas)
             ):
                 raise TrainingStateInvalidError("scheduler export lambda count differs")
             for fn, saved in zip(
-                scheduler.lr_lambdas, exported_lambdas, strict=True,
+                live_lambdas, exported_lambdas, strict=True,
             ):
                 # Match PyTorch LambdaLR's own function-vs-callable-object
-                # serialization, but inspect the live object directly.
-                expected = None if isinstance(fn, FunctionType) else vars(fn)
-                if not self._exact_export_leaf_equal(saved, expected):
+                # serialization, but inspect callable-object storage directly.
+                if isinstance(fn, FunctionType):
+                    expected = None
+                else:
+                    expected = Trainer._raw_instance_dict(
+                        fn,
+                        label="scheduler lambda",
+                    )
+                if not Trainer._exact_export_leaf_equal(saved, expected):
                     raise TrainingStateInvalidError("scheduler export lambda differs")
             exported = {
                 key: value for key, value in exported.items()
                 if key != "lr_lambdas"
             }
-        if not self._exact_export_leaf_equal(exported, live):
+        if not Trainer._exact_export_leaf_equal(exported, live):
             raise TrainingStateInvalidError("scheduler export differs from live state")
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        # Preserve the authoritative recovery contract before deep observation.
+        # A poisoned/ambiguous trainer may already contain malformed model or
+        # optimizer state, so fingerprint traversal must not mask the required
+        # fresh-trainer + verified-checkpoint diagnostic.
+        Trainer._assert_trainable(self)
+        # A normal incomplete accumulation is retryable. Reject it before
+        # fingerprinting legitimate pending gradients or other transient state.
+        Trainer.assert_accumulation_boundary(self)
+        # Once a committed boundary is eligible for export, every reachable
+        # checkpoint safety helper must remain first-party. Subclass/instance
+        # shadows could otherwise forge the observer chain used below.
+        Trainer._require_canonical_checkpoint_authorities(self)
+        Trainer._require_model_training_mode(self)
+        export_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+        export_binding_fields = (
+            "model",
+            "optimizer",
+            "scheduler",
+            "scaler",
+            "config",
+            "device",
+        )
+        missing_export_bindings = [
+            name for name in export_binding_fields if name not in export_attrs
+        ]
+        if missing_export_bindings:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export binding fields are unavailable: "
+                f"{missing_export_bindings}"
+            )
+        expected_export_bindings = {
+            name: export_attrs[name] for name in export_binding_fields
+        }
+        expected_export_config = export_attrs["config"]
+        if type(expected_export_config) is not TrainerConfig:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export config must use canonical TrainerConfig"
+            )
+        expected_export_config_state = Trainer._canonical_config_state(
+            expected_export_config
+        )
+        export_policy_fields = (
+            "_canonical_default_schedule",
+            "_canonical_unscheduled_default_optimizer",
+            "_canonical_default_optimizer_options",
+        )
+        missing_export_policies = [
+            name for name in export_policy_fields if name not in export_attrs
+        ]
+        if missing_export_policies:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export policy fields are unavailable: "
+                f"{missing_export_policies}"
+            )
+        expected_export_policies = {
+            name: Trainer._checkpoint_inert_copy(
+                export_attrs[name],
+                label=f"checkpoint export policy {name}",
+            )
+            for name in export_policy_fields
+        }
+
+        def _require_export_contract_unchanged(phase: str) -> None:
+            Trainer._require_canonical_checkpoint_authorities(self)
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            if any(
+                name not in current or current[name] is not expected
+                for name, expected in expected_export_bindings.items()
+            ):
+                raise TrainingStateInvalidError(
+                    f"trainer checkpoint export binding changed during {phase}"
+                )
+            if not _typed_state_equal(
+                Trainer._canonical_config_state(expected_export_config),
+                expected_export_config_state,
+            ):
+                raise TrainingStateInvalidError(
+                    f"trainer checkpoint export config changed during {phase}"
+                )
+            for name, expected in expected_export_policies.items():
+                if name not in current or not _typed_state_equal(
+                    Trainer._checkpoint_inert_copy(
+                        current[name],
+                        label=f"checkpoint export policy {name}",
+                    ),
+                    expected,
+                ):
+                    raise TrainingStateInvalidError(
+                        f"trainer checkpoint export policy changed during {phase}"
+                    )
+
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
-        model_before = self._model_export_fingerprint()
-        optimizer_before = self._optimizer_live_fingerprint()
-        scheduler_before = self._canonical_lambda_lr_live_state()
-        self.assert_checkpoint_safe()
-        if not _typed_state_equal(
-            committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
-        ):
-            self._mark_failed("checkpoint preflight changed committed counters")
-            raise TrainingStateInvalidError("checkpoint export changed committed counters")
-        if self._model_export_fingerprint() != model_before:
-            self._mark_failed("checkpoint preflight changed model weights or buffers")
-            raise TrainingStateInvalidError(
-                "checkpoint export changed model weights or buffers"
+        try:
+            model_before = Trainer._model_export_fingerprint(self)
+            optimizer_before = Trainer._optimizer_live_fingerprint(self)
+            scheduler_before = Trainer._canonical_lambda_lr_live_state(self)
+        except BaseException:
+            # At a committed boundary, a failed canonical observation makes the
+            # checkpoint boundary ambiguous and therefore requires recovery.
+            Trainer._mark_failed(
+                self,
+                "checkpoint boundary has invalid optimizer or residual gradients",
             )
-        if (
-            optimizer_before is not None
-            and self._optimizer_live_fingerprint() != optimizer_before
-        ):
-            self._mark_failed("checkpoint preflight changed live optimizer state")
-            raise TrainingStateInvalidError(
-                "checkpoint preflight changed optimizer state"
+            raise
+        try:
+            Trainer.assert_checkpoint_safe(self)
+            if not _typed_state_equal(
+                committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
+            ):
+                Trainer._mark_failed(self, "checkpoint preflight changed committed counters")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed committed counters"
+                )
+            if Trainer._model_export_fingerprint(self) != model_before:
+                Trainer._mark_failed(self, "checkpoint preflight changed model weights or buffers")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed model weights or buffers"
+                )
+            if (
+                optimizer_before is not None
+                and Trainer._optimizer_live_fingerprint(self) != optimizer_before
+            ):
+                Trainer._mark_failed(self, "checkpoint preflight changed live optimizer state")
+                raise TrainingStateInvalidError(
+                    "checkpoint preflight changed optimizer state"
+                )
+            if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
+                scheduler_before, Trainer._canonical_lambda_lr_live_state(self)
+            ):
+                Trainer._mark_failed(self, "checkpoint preflight changed live scheduler")
+                raise TrainingStateInvalidError(
+                    "checkpoint export changed live scheduler"
+                )
+            _require_export_contract_unchanged("checkpoint preflight")
+        except BaseException:
+            # Mid-accumulation was rejected above as the one retryable export
+            # refusal. Any failure after committed-boundary observation means
+            # the checkpoint boundary can no longer be trusted in-place.
+            Trainer._mark_failed(
+                self,
+                "checkpoint preflight failed after committed boundary",
             )
-        if scheduler_before is not None and not self._exact_export_leaf_equal(
-            scheduler_before, self._canonical_lambda_lr_live_state()
-        ):
-            self._mark_failed("checkpoint preflight changed live scheduler")
-            raise TrainingStateInvalidError("checkpoint export changed live scheduler")
+            raise
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
-            name_groups = self._optimizer_parameter_name_groups()
+            name_groups = Trainer._optimizer_parameter_name_groups(self)
             if not isinstance(saved_groups, list) or len(saved_groups) != len(name_groups):
                 raise TrainingStateInvalidError(
                     "optimizer state cannot bind named parameter groups"
@@ -1641,34 +3001,34 @@ class Trainer:
                 # Never trust caller-provided param_names over live model identity.
                 saved_group["param_names"] = names
             snapshot = TrainerState(
-                micro_step=self.micro_step,
-                optimizer_step=self.optimizer_step,
-                tokens_seen=self.tokens_seen,
+                micro_step=committed_before[0],
+                optimizer_step=committed_before[1],
+                tokens_seen=committed_before[2],
                 optimizer=optimizer_state,
                 scheduler=(
                     None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
                 ),
                 scaler=None if self.scaler is None else copy.deepcopy(self.scaler.state_dict()),
-                config=asdict(self.config),
+                config=dict(expected_export_config_state),
             )
             # State-dict hooks can mutate weights, moments, gradients or policy.
             # Refuse publication unless the extracted state remains checkpoint-safe.
-            self.assert_checkpoint_safe()
+            Trainer.assert_checkpoint_safe(self)
             # Hooks can also return a detached, corrupt snapshot without
             # changing their live component. Validate the bytes to publish.
-            self._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
-            self._require_exported_optimizer_matches_live(snapshot.optimizer)
+            Trainer._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
+            Trainer._require_exported_optimizer_matches_live(self, snapshot.optimizer)
             if snapshot.scheduler is not None:
-                self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+                Trainer._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
             # A hook may suppress the second export entirely. Even a missing
             # snapshot must agree with whether a live component exists.
-            self._require_exported_scheduler_matches_live(snapshot.scheduler)
+            Trainer._require_exported_scheduler_matches_live(self, snapshot.scheduler)
             if snapshot.scaler is not None:
-                self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
-            self._require_exported_scaler_matches_live(snapshot.scaler)
+                Trainer._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
+            Trainer._require_exported_scaler_matches_live(self, snapshot.scaler)
             if (
                 optimizer_before is not None
-                and self._optimizer_live_fingerprint() != optimizer_before
+                and Trainer._optimizer_live_fingerprint(self) != optimizer_before
             ):
                 raise TrainingStateInvalidError(
                     "checkpoint export changed optimizer state"
@@ -1679,18 +3039,19 @@ class Trainer:
                 committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
             ):
                 raise TrainingStateInvalidError("checkpoint export changed committed counters")
-            if self._model_export_fingerprint() != model_before:
+            if Trainer._model_export_fingerprint(self) != model_before:
                 raise TrainingStateInvalidError(
                     "checkpoint export changed model weights or buffers"
                 )
-            if scheduler_before is not None and not self._exact_export_leaf_equal(
-                scheduler_before, self._canonical_lambda_lr_live_state()
+            if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
+                scheduler_before, Trainer._canonical_lambda_lr_live_state(self)
             ):
                 raise TrainingStateInvalidError(
                     "checkpoint scheduler export differs from live committed state"
                 )
+            _require_export_contract_unchanged("checkpoint export")
         except BaseException:
-            self._mark_failed("checkpoint state extraction failed after possible mutation")
+            Trainer._mark_failed(self, "checkpoint state extraction failed after possible mutation")
             raise
         return snapshot
 
@@ -1702,99 +3063,523 @@ class Trainer:
         restored. Construct a fresh Trainer around the verified checkpoint model and
         then load the trainer state.
         """
-        if self._failure_reason is not None or self._update_incomplete:
+        Trainer._require_canonical_checkpoint_authorities(self)
+        entry_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+        required_bindings = (
+            "model",
+            "optimizer",
+            "scheduler",
+            "scaler",
+            "config",
+            "device",
+        )
+        missing_bindings = [
+            name for name in required_bindings if name not in entry_attrs
+        ]
+        if missing_bindings:
+            raise TrainingStateInvalidError(
+                f"trainer restore binding fields are unavailable: {missing_bindings}"
+            )
+        required_policies = (
+            "_canonical_default_schedule",
+            "_canonical_unscheduled_default_optimizer",
+            "_canonical_default_optimizer_options",
+        )
+        missing_policies = [
+            name for name in required_policies if name not in entry_attrs
+        ]
+        if missing_policies:
+            raise TrainingStateInvalidError(
+                f"trainer restore policy fields are unavailable: {missing_policies}"
+            )
+        expected_config = entry_attrs["config"]
+        if type(expected_config) is not TrainerConfig:
+            raise TrainingStateInvalidError(
+                "trainer restore config must use canonical TrainerConfig"
+            )
+        entry_failure_reason = entry_attrs.get("_failure_reason")
+        entry_update_incomplete = entry_attrs.get("_update_incomplete")
+        if (
+            entry_failure_reason is not None
+            or type(entry_update_incomplete) is not bool
+            or entry_update_incomplete
+        ):
             raise TrainingStateInvalidError(
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
                 "and restore the verified model + trainer checkpoint"
             )
+        entry_counter_fields = (
+            "micro_step",
+            "optimizer_step",
+            "tokens_seen",
+            "_pending_tokens",
+        )
+        entry_counters = tuple(
+            entry_attrs.get(name) for name in entry_counter_fields
+        )
+        entry_pending_loss = entry_attrs.get("_pending_loss_sum")
         if (
-            self.micro_step != 0
-            or self.optimizer_step != 0
-            or self.tokens_seen != 0
-            or self._pending_tokens != 0
-            or self._pending_loss_sum != 0.0
-            or any(parameter.grad is not None for parameter in self.model.parameters())
+            any(type(value) is not int or value != 0 for value in entry_counters)
+            or type(entry_pending_loss) is not float
+            or entry_pending_loss != 0.0
+            or any(
+                parameter.grad is not None
+                for _, parameter in Trainer._canonical_model_members(self)[0]
+            )
         ):
             raise TrainingStateInvalidError(
                 "trainer state restore requires a fresh trainer with no consumed "
                 "exposure or pending gradients; restore the verified model too"
             )
-        if isinstance(state, Mapping):
-            state = TrainerState(**state)
+        # Entry policy or model-mode mismatch is externally repairable and has
+        # not consumed checkpoint payload or mutated component state. Reject both
+        # before any untrusted state access so the same clean trainer can retry.
+        Trainer._require_deterministic_policy(self)
+        Trainer._require_model_training_mode(self)
+        expected_rng_fingerprint = Trainer._checkpoint_rng_fingerprint()
+        expected_autograd_mode = Trainer._checkpoint_autograd_mode()
+        expected_numeric_policy = Trainer._checkpoint_numeric_policy()
 
-        if not _typed_state_equal(state.config, asdict(self.config)):
-            raise ValueError("trainer config mismatch; refusing unsafe resume")
-        # Validate exact counter types before any optimizer/scheduler/scaler mutation.
-        # Python considers False == 0 and 0.0 == 0; those are not durable
-        # training/exposure accounting identities.
-        if any(
-            type(value) is not int or value < 0
-            for value in (state.micro_step, state.optimizer_step, state.tokens_seen)
-        ):
-            raise ValueError("trainer counters must be non-negative integers")
-        expected_micro_steps = state.optimizer_step * self.config.gradient_accumulation_steps
-        if state.micro_step != expected_micro_steps:
-            raise ValueError(
-                "checkpoint is not at a complete committed accumulation boundary: "
-                f"micro_step={state.micro_step}, expected={expected_micro_steps}"
+        expected_model = entry_attrs["model"]
+        expected_optimizer = entry_attrs["optimizer"]
+        expected_scheduler = entry_attrs["scheduler"]
+        expected_scaler = entry_attrs["scaler"]
+        expected_device = entry_attrs["device"]
+        expected_policy_state = {
+            name: Trainer._checkpoint_inert_copy(
+                entry_attrs[name],
+                label=f"trainer restore policy {name}",
             )
-        if state.optimizer_step > self.config.max_steps:
-            raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
+            for name in required_policies
+        }
+        expected_preapply_state = {
+            "_failure_reason": entry_failure_reason,
+            "_update_incomplete": entry_update_incomplete,
+            "micro_step": entry_counters[0],
+            "optimizer_step": entry_counters[1],
+            "tokens_seen": entry_counters[2],
+            "_pending_tokens": entry_counters[3],
+            "_pending_loss_sum": entry_pending_loss,
+        }
+        expected_config_state = Trainer._canonical_config_state(
+            expected_config
+        )
+        expected_model_fingerprint = Trainer._model_export_fingerprint(self)
+        expected_auxiliary_fingerprint = Trainer._checkpoint_auxiliary_fingerprint(self)
 
-        # Reject known contract mismatches before touching optimizer state.
-        if (state.scheduler is None) != (self.scheduler is None):
-            raise ValueError("scheduler state/config mismatch")
-        self._require_checkpoint_scaler_state(state.scaler)
-        # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
-        # parameter identity. Reject missing/reordered names before mutation.
-        self._require_optimizer_state_parameter_order(state.optimizer)
-        self._require_safe_optimizer_hyperparameters(state.optimizer)
-        self._require_checkpoint_scheduler_chronology(
-            state.scheduler, state.optimizer_step, state.optimizer,
+        def _restore_component_bindings_changed() -> bool:
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            return any(
+                current.get(name) is not expected
+                for name, expected in (
+                    ("model", expected_model),
+                    ("optimizer", expected_optimizer),
+                    ("scheduler", expected_scheduler),
+                    ("scaler", expected_scaler),
+                    ("config", expected_config),
+                    ("device", expected_device),
+                )
+            )
+
+        def _restore_preapply_drift_reason(phase: str) -> str | None:
+            try:
+                Trainer._require_canonical_checkpoint_authorities(self)
+            except BaseException:  # noqa: BLE001 - fail closed on observer faults
+                return f"trainer restore safety authority changed during {phase}"
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            if _restore_component_bindings_changed():
+                return f"trainer restore component binding changed during {phase}"
+            if any(
+                not _typed_state_equal(current.get(name), expected)
+                for name, expected in expected_preapply_state.items()
+            ):
+                return f"trainer restore state changed during {phase}"
+            try:
+                if not _typed_state_equal(
+                    Trainer._canonical_config_state(expected_config),
+                    expected_config_state,
+                ):
+                    return f"trainer restore config changed during {phase}"
+                for name, expected in expected_policy_state.items():
+                    if name not in current or not _typed_state_equal(
+                        Trainer._checkpoint_inert_copy(
+                            current[name],
+                            label=f"trainer restore policy {name}",
+                        ),
+                        expected,
+                    ):
+                        return f"trainer restore policy changed during {phase}"
+                try:
+                    Trainer._require_deterministic_policy(self)
+                except BaseException:  # noqa: BLE001 - fail closed on observer faults
+                    return f"trainer deterministic policy changed during {phase}"
+                if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
+                    return f"trainer autograd mode changed during {phase}"
+                if Trainer._checkpoint_numeric_policy() != expected_numeric_policy:
+                    return f"trainer numeric policy changed during {phase}"
+                if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
+                    return f"trainer RNG state changed during {phase}"
+                Trainer._require_no_residual_model_gradients(self)
+                if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
+                    return f"trainer model changed during {phase}"
+                if (
+                    Trainer._checkpoint_auxiliary_fingerprint(self)
+                    != expected_auxiliary_fingerprint
+                ):
+                    return f"trainer auxiliary state changed during {phase}"
+            except BaseException:  # noqa: BLE001 - fail closed on observer faults
+                return f"trainer restore state became unobservable during {phase}"
+            return None
+
+        try:
+            if isinstance(state, Mapping):
+                state = TrainerState(**state)
+            elif type(state) is not TrainerState:
+                raise TypeError("trainer state must be TrainerState or a mapping")
+
+            checkpoint_config_state = Trainer._checkpoint_inert_copy(
+                state.config,
+                label="checkpoint trainer config",
+            )
+            if type(checkpoint_config_state) is not dict or not _typed_state_equal(
+                checkpoint_config_state,
+                expected_config_state,
+            ):
+                raise ValueError("trainer config mismatch; refusing unsafe resume")
+            # Validate exact counter types before any optimizer/scheduler/scaler mutation.
+            # Python considers False == 0 and 0.0 == 0; those are not durable
+            # training/exposure accounting identities.
+            if any(
+                type(value) is not int or value < 0
+                for value in (state.micro_step, state.optimizer_step, state.tokens_seen)
+            ):
+                raise ValueError("trainer counters must be non-negative integers")
+            expected_micro_steps = (
+                state.optimizer_step
+                * expected_config_state["gradient_accumulation_steps"]
+            )
+            if state.micro_step != expected_micro_steps:
+                raise ValueError(
+                    "checkpoint is not at a complete committed accumulation boundary: "
+                    f"micro_step={state.micro_step}, expected={expected_micro_steps}"
+                )
+            if state.optimizer_step > expected_config_state["max_steps"]:
+                raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
+
+            # Take ownership before semantic preflight. The external payload may
+            # expose effectful/mutable Mapping or sequence subclasses; validation
+            # must apply to the exact detached snapshot that will later be loaded.
+            optimizer_state = copy.deepcopy(dict(state.optimizer))
+            drift_reason = _restore_preapply_drift_reason(
+                "optimizer payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
+
+            scheduler_state = copy.deepcopy(state.scheduler)
+            drift_reason = _restore_preapply_drift_reason(
+                "scheduler payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
+
+            scaler_state = copy.deepcopy(state.scaler)
+            drift_reason = _restore_preapply_drift_reason(
+                "scaler payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
+
+            Trainer._require_finite_state_tree(
+                optimizer_state,
+                "checkpoint optimizer",
+            )
+            if scheduler_state is not None:
+                Trainer._require_finite_state_tree(
+                    scheduler_state,
+                    "checkpoint scheduler",
+                )
+            if scaler_state is not None:
+                Trainer._require_finite_state_tree(
+                    scaler_state,
+                    "checkpoint gradient scaler",
+                )
+
+            # Reject known contract mismatches before touching live component state.
+            if (scheduler_state is None) != (expected_scheduler is None):
+                raise ValueError("scheduler state/config mismatch")
+            Trainer._require_checkpoint_scaler_state(self, scaler_state)
+            # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
+            # parameter identity. Reject missing/reordered names before mutation.
+            Trainer._require_optimizer_state_parameter_order(self, optimizer_state)
+            Trainer._require_safe_optimizer_hyperparameters(self, optimizer_state)
+            Trainer._require_checkpoint_scheduler_chronology(
+                self,
+                scheduler_state,
+                state.optimizer_step,
+                optimizer_state,
+            )
+
+            # From the first component load onward a failure may leave optimizer,
+            # scheduler, scaler or counters partially applied. No same-instance
+            # retry is safe without also restoring the verified model/RNG state.
+            # param_names is checkpoint-only transport metadata used above to
+            # authenticate positional optimizer slots. Do not install it into the
+            # live PyTorch optimizer: uninterrupted training does not carry this key,
+            # and retaining it would make a resumed raw optimizer state differ from
+            # the exact uninterrupted state despite identical numerical dynamics.
+            optimizer_state["param_groups"] = [
+                {
+                    key: value
+                    for key, value in group.items()
+                    if key != "param_names"
+                }
+                for group in optimizer_state["param_groups"]
+            ]
+        except BaseException:
+            drift_reason = _restore_preapply_drift_reason("checkpoint preflight")
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+            raise
+        drift_reason = _restore_preapply_drift_reason("checkpoint preflight")
+        if drift_reason is not None:
+            Trainer._mark_failed(self, drift_reason)
+            raise TrainingStateInvalidError(drift_reason)
+
+        # Bind every effectful component interface before the first live restore
+        # mutation. A stateful descriptor/proxy must not get a second lookup
+        # opportunity after checkpoint preflight or silently redirect/mutate the
+        # target while its loader is being resolved.
+        restore_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+        missing_bindings = [
+            name for name in required_bindings if name not in restore_attrs
+        ]
+        if missing_bindings:
+            raise TrainingStateInvalidError(
+                f"trainer restore binding fields are unavailable: {missing_bindings}"
+            )
+        missing_policies = [
+            name for name in required_policies if name not in restore_attrs
+        ]
+        if missing_policies:
+            raise TrainingStateInvalidError(
+                f"trainer restore policy fields are unavailable: {missing_policies}"
+            )
+
+        def _require_restore_component_bindings() -> None:
+            if _restore_component_bindings_changed():
+                raise TrainingStateInvalidError(
+                    "trainer restore component binding changed during load"
+                )
+
+        preapply_counters = (
+            expected_preapply_state["micro_step"],
+            expected_preapply_state["optimizer_step"],
+            expected_preapply_state["tokens_seen"],
+        )
+        preapply_pending = (
+            expected_preapply_state["_pending_tokens"],
+            expected_preapply_state["_pending_loss_sum"],
         )
 
-        # From the first component load onward a failure may leave optimizer,
-        # scheduler, scaler or counters partially applied. No same-instance
-        # retry is safe without also restoring the verified model/RNG state.
-        # param_names is checkpoint-only transport metadata used above to
-        # authenticate positional optimizer slots. Do not install it into the
-        # live PyTorch optimizer: uninterrupted training does not carry this key,
-        # and retaining it would make a resumed raw optimizer state differ from
-        # the exact uninterrupted state despite identical numerical dynamics.
-        optimizer_state = dict(state.optimizer)
-        optimizer_state["param_groups"] = [
-            {
-                key: value
-                for key, value in group.items()
-                if key != "param_names"
-            }
-            for group in state.optimizer["param_groups"]
-        ]
+        def _require_restore_control_state(
+            expected_counters: tuple[int, int, int],
+        ) -> None:
+            Trainer._require_canonical_checkpoint_authorities(self)
+            _require_restore_component_bindings()
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            if not _typed_state_equal(
+                current.get("_failure_reason"),
+                expected_preapply_state["_failure_reason"],
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer restore failure marker changed during load"
+                )
+            if current.get("_update_incomplete") is not True:
+                raise TrainingStateInvalidError(
+                    "trainer restore transaction marker changed during load"
+                )
+            if not _typed_state_equal(
+                (
+                    current.get("micro_step"),
+                    current.get("optimizer_step"),
+                    current.get("tokens_seen"),
+                ),
+                expected_counters,
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer restore counters changed during load"
+                )
+            if not _typed_state_equal(
+                (
+                    current.get("_pending_tokens"),
+                    current.get("_pending_loss_sum"),
+                ),
+                preapply_pending,
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer restore pending accounting changed during load"
+                )
+            if not _typed_state_equal(
+                Trainer._canonical_config_state(expected_config),
+                expected_config_state,
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer restore config changed during load"
+                )
+            for name, expected in expected_policy_state.items():
+                if name not in current or not _typed_state_equal(
+                    Trainer._checkpoint_inert_copy(
+                        current[name],
+                        label=f"trainer restore policy {name}",
+                    ),
+                    expected,
+                ):
+                    raise TrainingStateInvalidError(
+                        "trainer restore policy changed during load"
+                    )
+            # Every effectful component loader must return under the same
+            # reproducibility policy and model mode before the next loader runs.
+            # The final validation below is too late: a later loader could observe
+            # an already-drifted process policy or eval-mode model.
+            Trainer._require_deterministic_policy(self)
+            Trainer._require_model_training_mode(self)
+            if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
+                raise TrainingStateInvalidError(
+                    "trainer autograd mode changed during load"
+                )
+            if Trainer._checkpoint_numeric_policy() != expected_numeric_policy:
+                raise TrainingStateInvalidError(
+                    "trainer numeric policy changed during load"
+                )
+            if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
+                raise TrainingStateInvalidError(
+                    "trainer RNG state changed during load"
+                )
+            Trainer._require_no_residual_model_gradients(self)
 
+        drift_reason = _restore_preapply_drift_reason("checkpoint preflight")
+        if drift_reason is not None:
+            Trainer._mark_failed(self, drift_reason)
+            raise TrainingStateInvalidError(drift_reason)
+
+        try:
+            optimizer_loader = getattr(expected_optimizer, "load_state_dict", None)
+            optimizer_zero_grad = getattr(expected_optimizer, "zero_grad", None)
+            scheduler_loader = (
+                None
+                if expected_scheduler is None
+                else getattr(expected_scheduler, "load_state_dict", None)
+            )
+            scaler_loader = (
+                None
+                if expected_scaler is None
+                else getattr(expected_scaler, "load_state_dict", None)
+            )
+        except BaseException:
+            drift_reason = _restore_preapply_drift_reason("loader lookup")
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+            raise
+
+        drift_reason = _restore_preapply_drift_reason("loader lookup")
+        if drift_reason is not None:
+            Trainer._mark_failed(self, drift_reason)
+            raise TrainingStateInvalidError(drift_reason)
+
+        if not callable(optimizer_loader):
+            raise TrainingStateInvalidError(
+                "trainer optimizer must provide load_state_dict()"
+            )
+        if not callable(optimizer_zero_grad):
+            raise TrainingStateInvalidError(
+                "trainer optimizer must provide zero_grad()"
+            )
+        if expected_scheduler is not None and not callable(scheduler_loader):
+            raise TrainingStateInvalidError(
+                "trainer scheduler must provide load_state_dict()"
+            )
+        if expected_scaler is not None and not callable(scaler_loader):
+            raise TrainingStateInvalidError(
+                "trainer gradient scaler must provide load_state_dict()"
+            )
+
+        checkpoint_counters = (
+            state.micro_step,
+            state.optimizer_step,
+            state.tokens_seen,
+        )
         self._update_incomplete = True
         try:
-            self.optimizer.load_state_dict(optimizer_state)
-            self._require_optimizer_parameter_coverage()
-            if self.scheduler is not None and state.scheduler is not None:
-                self.scheduler.load_state_dict(state.scheduler)
-            if state.scaler is not None:
-                self.scaler.load_state_dict(state.scaler)
+            optimizer_loader(optimizer_state)
+            _require_restore_control_state(preapply_counters)
+            Trainer._require_optimizer_parameter_coverage(self)
+            if expected_scheduler is not None and scheduler_state is not None:
+                assert scheduler_loader is not None
+                scheduler_loader(scheduler_state)
+                _require_restore_control_state(preapply_counters)
+            if scaler_state is not None:
+                assert scaler_loader is not None
+                scaler_loader(scaler_state)
+                _require_restore_control_state(preapply_counters)
 
             self.micro_step = state.micro_step
             self.optimizer_step = state.optimizer_step
             self.tokens_seen = state.tokens_seen
             self._pending_tokens = 0
             self._pending_loss_sum = 0.0
-            self.optimizer.zero_grad(set_to_none=True)
+            _require_restore_control_state(checkpoint_counters)
+            optimizer_zero_grad(set_to_none=True)
+            _require_restore_control_state(checkpoint_counters)
+
+            if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
+                raise TrainingStateInvalidError(
+                    "trainer model changed during load"
+                )
+            postapply_auxiliary_fingerprint = (
+                Trainer._checkpoint_auxiliary_fingerprint(self)
+            )
+
             # PyTorch's load_state_dict accepts NaN optimizer moments and
             # malformed-but-type-compatible group rates. A restore must not
             # return a supposedly checkpoint-safe trainer with those values.
-            self._require_finite_auxiliary_state()
-            self._require_finite_committed_update()
-            self._require_no_residual_model_gradients()
-            self._require_deterministic_policy()
+            Trainer._require_finite_auxiliary_state(self)
+            Trainer._require_finite_committed_update(self)
+            Trainer._require_no_residual_model_gradients(self)
+            Trainer._require_exported_optimizer_matches_live(self, optimizer_state)
+            Trainer._require_exported_scheduler_matches_live(self, scheduler_state)
+            if scaler_state is None:
+                if Trainer._canonical_scaler_live_state(self):
+                    raise TrainingStateInvalidError(
+                        "gradient scaler restore differs from live state"
+                    )
+            else:
+                Trainer._require_exported_scaler_matches_live(self, scaler_state)
+            Trainer._require_deterministic_policy(self)
+            _require_restore_control_state(checkpoint_counters)
+
+            # The validation observers above can themselves be effectful for
+            # injected optimizer/scheduler implementations. Close the observer
+            # chain with descriptor-free fingerprints after the final control seal.
+            if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
+                raise TrainingStateInvalidError(
+                    "trainer model changed during final restore validation"
+                )
+            if (
+                Trainer._checkpoint_auxiliary_fingerprint(self)
+                != postapply_auxiliary_fingerprint
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer auxiliary state changed during final restore validation"
+                )
         except BaseException:
-            self._mark_failed("trainer state restore failed after possible partial apply")
+            Trainer._mark_failed(
+                self,
+                "trainer state restore failed after possible partial apply",
+            )
             raise
         self._update_incomplete = False
         self._failure_reason = None

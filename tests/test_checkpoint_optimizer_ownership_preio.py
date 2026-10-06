@@ -12,8 +12,11 @@ from typing import Any
 import pytest
 import torch
 
-from twelve_six.checkpoint import CheckpointCompatibilityError
-from twelve_six.checkpoint import progress_trainer, trainer_adapter
+from twelve_six.checkpoint import (
+    CheckpointCompatibilityError,
+    progress_trainer,
+    trainer_adapter,
+)
 from twelve_six.training.config import TrainerConfig
 from twelve_six.training.trainer import Trainer
 
@@ -39,7 +42,7 @@ class _CoverageTarget:
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
-def test_invalid_ownership_rejected_before_io_and_clean_retry_remains_possible(
+def test_generic_target_does_not_dispatch_native_optimizer_ownership_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, loader: Any,
 ) -> None:
     model = torch.nn.Linear(2, 2)
@@ -55,25 +58,20 @@ def test_invalid_ownership_rejected_before_io_and_clean_retry_remains_possible(
         raise CheckpointReadReached()
 
     monkeypatch.setattr(loader, "prepare_checkpoint_load", reached_read)
-    with pytest.raises(CheckpointCompatibilityError, match="optimizer ownership") as got:
-        loader.load_trainer_checkpoint(
-            tmp_path / "nonexistent-checkpoint", model=model, trainer=trainer,
-        )
-    assert isinstance(got.value.__cause__, ValueError)
-    assert trainer.coverage_checks == 1
-    assert attempts == []
-    assert trainer._failure_reason is None
-    assert trainer._update_incomplete is False
-    for parameter, before in zip(model.parameters(), unchanged, strict=True):
-        torch.testing.assert_close(parameter.detach(), before, rtol=0, atol=0)
-
-    trainer.violation = None
     with pytest.raises(CheckpointReadReached):
         loader.load_trainer_checkpoint(
             tmp_path / "nonexistent-checkpoint", model=model, trainer=trainer,
         )
+
+    # Optimizer ownership is a native D02 authority. Generic adapters are
+    # validated through their isolated state probe and must not dispatch an
+    # arbitrary same-named callback before checkpoint I/O.
+    assert trainer.coverage_checks == 0
     assert attempts == ["open"]
-    assert trainer.coverage_checks == 2
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+    for parameter, before in zip(model.parameters(), unchanged, strict=True):
+        torch.testing.assert_close(parameter.detach(), before, rtol=0, atol=0)
 
 
 @pytest.mark.skipif(
