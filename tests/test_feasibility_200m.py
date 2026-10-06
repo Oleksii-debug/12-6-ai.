@@ -305,6 +305,7 @@ def test_builder_rejects_stateful_candidate_before_semantic_access() -> None:
         )
     assert changing_candidate["parameter_count"] == 203_000_000
 
+
 def test_validator_rejects_stateful_candidate_before_semantic_access() -> None:
     packet = build()
     expected = retained_identities_for_built_packet(packet)
@@ -315,6 +316,8 @@ def test_validator_rejects_stateful_candidate_before_semantic_access() -> None:
 
     assert errors == ["programmatic_input_not_plain_json"]
     assert changing_candidate["parameter_count"] == 203_000_000
+
+
 def test_canonical_hash_rejects_lone_surrogate_programmatic_text() -> None:
     with pytest.raises(FeasibilityPacketError, match="value_not_canonical_json"):
         canonical_sha256({"value": "\ud800"})
