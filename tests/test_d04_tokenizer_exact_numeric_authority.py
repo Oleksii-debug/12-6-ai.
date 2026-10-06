@@ -1566,3 +1566,73 @@ def test_bind_rejects_tokenizer_base_module_alias_replacement(
         match="runtime dependency drift: base module",
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+@pytest.mark.parametrize(
+    "builtin_name",
+    ["all", "any", "compile", "dict", "getattr", "object", "set", "type", "vars"],
+)
+def test_bind_rejects_mutated_verifier_builtin_dependency(builtin_name: str) -> None:
+    import builtins
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    original = builtins.__dict__[builtin_name]
+    replacement = lambda *_args, **_kwargs: None
+    observed_error = None
+    builtins.__dict__[builtin_name] = replacement
+    try:
+        try:
+            authority.bind_byte_baseline_decision(selection, application, **SHA)
+        except BaseException as exc:
+            observed_error = exc
+    finally:
+        builtins.__dict__[builtin_name] = original
+
+    assert type(observed_error) is authority.TokenizerDecisionError
+    assert str(observed_error) == (
+        "canonical byte tokenizer runtime dependency drift: "
+        f"builtins.{builtin_name}"
+    )
+
+
+def test_bind_rejects_builtin_module_alias_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(authority, "builtins", object())
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime dependency drift: builtins module",
+    ):
+        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+
+
+def test_bind_rejects_source_path_alias_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        authority,
+        "_BYTE_TOKENIZER_SOURCE_PATH",
+        authority._BYTE_TOKENIZER_SOURCE_PATH.with_name("byte-shadow.py"),
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime dependency drift: source path",
+    ):
+        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+
+
+def test_bind_rejects_source_reader_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_class = authority._EXPECTED_BYTE_SOURCE_PATH_CLASS
+    monkeypatch.setattr(source_class, "read_bytes", lambda _self: b"")
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime dependency drift: source reader",
+    ):
+        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)

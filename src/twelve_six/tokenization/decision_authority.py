@@ -131,21 +131,36 @@ _EXPECTED_BYTE_MODULE_CONFIG = {
     "vocab_size": 256,
 }
 
-# Freeze the ambient call targets used by source-pinned byte.py. Function.__builtins__
-# identity alone is insufficient because the shared builtins mapping is mutable.
+# Freeze ambient call targets used by source-pinned byte.py and by this verifier.
+# Function.__builtins__ identity alone is insufficient because the shared builtins
+# mapping is mutable, including helpers such as compile/vars/type used to prove the
+# live runtime still matches the pinned source.
+_EXPECTED_BUILTINS_MODULE = builtins
 _EXPECTED_BYTE_RUNTIME_BUILTINS = {
     "RuntimeError": builtins.RuntimeError,
     "TypeError": builtins.TypeError,
     "ValueError": builtins.ValueError,
+    "all": builtins.all,
+    "any": builtins.any,
     "bytearray": builtins.bytearray,
     "bytes": builtins.bytes,
+    "compile": builtins.compile,
+    "dict": builtins.dict,
+    "getattr": builtins.getattr,
     "int": builtins.int,
     "isinstance": builtins.isinstance,
     "len": builtins.len,
     "list": builtins.list,
+    "object": builtins.object,
     "range": builtins.range,
+    "set": builtins.set,
     "str": builtins.str,
+    "type": builtins.type,
+    "vars": builtins.vars,
 }
+_EXPECTED_BYTE_SOURCE_PATH = _BYTE_TOKENIZER_SOURCE_PATH
+_EXPECTED_BYTE_SOURCE_PATH_CLASS = type(_BYTE_TOKENIZER_SOURCE_PATH)
+_EXPECTED_BYTE_SOURCE_READ_BYTES = _EXPECTED_BYTE_SOURCE_PATH_CLASS.read_bytes
 _EXPECTED_TOKENIZER_BASE_MODULE = base_module
 _EXPECTED_TOKENIZER_IDENTITY_CLASS = _CanonicalTokenizerIdentity
 _EXPECTED_BYTE_JSON_MODULE = json
@@ -198,10 +213,12 @@ def _git_blob_sha1(payload: bytes) -> str:
 
 
 def _canonical_byte_tokenizer_git_blob_sha1() -> str:
+    _verify_byte_tokenizer_runtime_dependencies()
     try:
         payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
     except OSError as exc:
         raise TokenizerDecisionError("cannot read canonical byte tokenizer implementation") from exc
+    _verify_byte_tokenizer_runtime_dependencies()
     return _git_blob_sha1(payload)
 
 
@@ -215,18 +232,20 @@ def _verify_canonical_byte_tokenizer_implementation() -> str:
 def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
     """Compile the pinned source without executing it and bind live method code."""
 
+    _verify_byte_tokenizer_runtime_dependencies()
     try:
         payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
     except OSError as exc:
         raise TokenizerDecisionError(
             "cannot read canonical byte tokenizer implementation"
         ) from exc
+    _verify_byte_tokenizer_runtime_dependencies()
     if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
         raise TokenizerDecisionError(
             "canonical byte tokenizer implementation identity drift"
         )
     try:
-        module_code = compile(
+        module_code = _EXPECTED_BYTE_RUNTIME_BUILTINS["compile"](
             payload,
             str(_BYTE_TOKENIZER_SOURCE_PATH),
             "exec",
@@ -268,18 +287,20 @@ def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
 def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
     """Compile the pinned source and return behavior-bearing module helper code."""
 
+    _verify_byte_tokenizer_runtime_dependencies()
     try:
         payload = _BYTE_TOKENIZER_SOURCE_PATH.read_bytes()
     except OSError as exc:
         raise TokenizerDecisionError(
             "cannot read canonical byte tokenizer implementation"
         ) from exc
+    _verify_byte_tokenizer_runtime_dependencies()
     if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
         raise TokenizerDecisionError(
             "canonical byte tokenizer implementation identity drift"
         )
     try:
-        module_code = compile(
+        module_code = _EXPECTED_BYTE_RUNTIME_BUILTINS["compile"](
             payload,
             str(_BYTE_TOKENIZER_SOURCE_PATH),
             "exec",
@@ -308,18 +329,34 @@ def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
 
 
 def _verify_byte_tokenizer_runtime_dependencies() -> None:
-    """Bind mutable builtin and stdlib call targets used by canonical byte.py."""
+    """Bind mutable interpreter and stdlib dependencies used by D04 verification."""
 
-    if base_module is not _EXPECTED_TOKENIZER_BASE_MODULE:
+    if builtins is not _EXPECTED_BUILTINS_MODULE:
         raise TokenizerDecisionError(
-            "canonical byte tokenizer runtime dependency drift: base module"
+            "canonical byte tokenizer runtime dependency drift: builtins module"
         )
-    builtins_state = vars(builtins)
+    builtins_state = _EXPECTED_BUILTINS_MODULE.__dict__
     for name, expected in _EXPECTED_BYTE_RUNTIME_BUILTINS.items():
         if builtins_state.get(name) is not expected:
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime dependency drift: builtins.{name}"
             )
+    if _BYTE_TOKENIZER_SOURCE_PATH is not _EXPECTED_BYTE_SOURCE_PATH:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: source path"
+        )
+    if (
+        type(_BYTE_TOKENIZER_SOURCE_PATH) is not _EXPECTED_BYTE_SOURCE_PATH_CLASS
+        or _EXPECTED_BYTE_SOURCE_PATH_CLASS.read_bytes
+        is not _EXPECTED_BYTE_SOURCE_READ_BYTES
+    ):
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: source reader"
+        )
+    if base_module is not _EXPECTED_TOKENIZER_BASE_MODULE:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: base module"
+        )
     if json is not _EXPECTED_BYTE_JSON_MODULE:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime dependency drift: json module"
@@ -345,7 +382,7 @@ def _verify_byte_tokenizer_runtime_dependencies() -> None:
 def _verify_runtime_byte_tokenizer_module_state() -> None:
     """Bind mutable module state used by the source-pinned tokenizer runtime."""
 
-    module_state = vars(byte_module)
+    module_state = _EXPECTED_BYTE_RUNTIME_BUILTINS["vars"](byte_module)
     if module_state.get("ByteTokenizer") is not ByteTokenizer:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime module drift: ByteTokenizer"
@@ -782,6 +819,7 @@ def bind_byte_baseline_decision(
 ) -> dict[str, Any]:
     """Bind canonical balanced-selection/split lineage to the frozen byte tokenizer."""
 
+    _verify_byte_tokenizer_runtime_dependencies()
     selection_identity, application_identity = _bind_upstreams(
         selection,
         application,
@@ -793,6 +831,7 @@ def bind_byte_baseline_decision(
         expected_balance_policy_identity_sha256=expected_balance_policy_identity_sha256,
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
+    _verify_byte_tokenizer_runtime_dependencies()
 
     (
         tokenizer_implementation_git_blob_sha1,
@@ -820,7 +859,9 @@ def bind_byte_baseline_decision(
         "compute_authorized_by_this_report": False,
         "authorized_optimized_target_exposure": 0,
     }
-    return {**core, "decision_identity_sha256": authority_sha256(core)}
+    decision_identity = authority_sha256(core)
+    _verify_byte_tokenizer_runtime_dependencies()
+    return {**core, "decision_identity_sha256": decision_identity}
 
 
 def verify_byte_baseline_decision(
@@ -838,6 +879,7 @@ def verify_byte_baseline_decision(
 ) -> None:
     """Verify decision identity and rebind the canonical upstream lineage."""
 
+    _verify_byte_tokenizer_runtime_dependencies()
     if not isinstance(report, Mapping) or set(report) != _REPORT_KEYS:
         raise TokenizerDecisionError("report fields are not closed-world")
     if report.get("schema") != SCHEMA or report.get("status") != STATUS:
@@ -856,6 +898,7 @@ def verify_byte_baseline_decision(
         expected_balance_policy_identity_sha256=expected_balance_policy_identity_sha256,
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
+    _verify_byte_tokenizer_runtime_dependencies()
     if report.get("balanced_selection_identity_sha256") != selection_identity:
         raise TokenizerDecisionError("report balanced-selection identity mismatch")
     if report.get("split_application_identity_sha256") != application_identity:
@@ -906,3 +949,4 @@ def verify_byte_baseline_decision(
     )
     if _self_hash(report, "decision_identity_sha256") != supplied_identity:
         raise TokenizerDecisionError("decision report identity mismatch")
+    _verify_byte_tokenizer_runtime_dependencies()
