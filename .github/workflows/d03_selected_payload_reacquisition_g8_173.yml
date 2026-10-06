@@ -1,0 +1,520 @@
+name: D03 selected payload reacquisition G8 173
+
+on:
+  pull_request:
+    branches:
+      - execution/3068-selected-raw-rematerialization-g6-161-20261006
+    paths:
+      - ".github/workflows/d03_selected_payload_reacquisition_g8_173.yml"
+      - "tools/run_d03_selected_payload_reacquisition_v1.py"
+      - "tests/test_run_d03_selected_payload_reacquisition_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-selected-payload-reacquisition-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  materialize-selected-20m:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/3069-selected-payload-reacquire-g8-173-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "cb119fec17184432b11fe0a0372b74022fbc996d"
+      REACQUIRE_BLOB: "3b6c5fb3b12d7c7471ba4df469a214e022c9f746"
+      REACQUIRE_TEST_BLOB: "7d7604dcf05966cd3cf482f556fa70d9c59ed8f5"
+      ASSEMBLER_BLOB: "e1e428a6d26c96f52cf900018d4e3da3cd21963f"
+      PLAN_RUNNER_BLOB: "5a24c137d6368538f170cdd6c8fdf8709a43f7c0"
+      PLAN_ARTIFACT_ID: "11443423543"
+      PLAN_ZIP_SHA256: "9717f36a4956aba5432f111a0bf58f6aa70dc752bcd28676203da825124eec01"
+      PLAN_FILE_SHA256: "8e526a876ea2a2a05ee55847d5669b594acd6c72f13861b690a30b69ef42b996"
+      BALANCE_ARTIFACT_ID: "11441000276"
+      BALANCE_ZIP_SHA256: "85ae6ace4914cd8fae86cef71b8ac63cf73c97b1386ff7e01a716692ddce6c10"
+      COMPOSITION_FILE_SHA256: "8a737ca830d0e98095b258c31bb1fc6f5e0c294384484b3f266dad654522850e"
+      BALANCE_FILE_SHA256: "655eee7aa4fd0aeb7d124405a420a7148efb0474951f9843e0476bc4f05b56d4"
+      BASE_ARTIFACT_ID: "11181030848"
+      BASE_ZIP_SHA256: "3eef740b52e9db962b01b63a0a48474f735694dca4c3848e3e9c53d8cd7f1988"
+      BASE_RAW_SHA256: "3aa6235e07da4fa50c9642639cc0d93d7da22a6b602d822c7c7ca6e1f4a7486a"
+      UBUNTU_PARENT_ARTIFACT_ID: "11347350536"
+      UBUNTU_PARENT_ZIP_SHA256: "24750d7f3d7f179f6632da142eeb76283ea6e96a20ba77f5d293c39ece1cb33c"
+      LOC_CLEAN_ARTIFACT_ID: "10820342689"
+      LOC_CLEAN_ZIP_SHA256: "99069ce2183abbbc374749cca5c538efa259df0c64658a9b88cc96b25c0fbba0"
+      LOC_PARENT_ARTIFACT_ID: "11357173588"
+      LOC_PARENT_ZIP_SHA256: "379a7984b86afde8ea3bf0d55ee9f3c19a045799b0ee106e8bb19bf4680054d5"
+      LOC_PROOF_ARTIFACT_ID: "11357043314"
+      LOC_PROOF_ZIP_SHA256: "befa277e2c624b7719295907c863db383a8bc2f206271b073447f2e4d95a254c"
+      LANGUK_PARENT_ARTIFACT_ID: "11436803293"
+      LANGUK_PARENT_ZIP_SHA256: "60e28a851ddadcee7eda44c827d70988004fff60d241da16e4f8acd89457c961"
+      LANGUK_PROOF_ARTIFACT_ID: "11437337310"
+      LANGUK_PROOF_ZIP_SHA256: "8135bb7e2d62a0a39e460dc72a735f7d8bdc8eb3ac8691e8074d47b7141b3a0e"
+      LANGUK_SOURCE_URL: "https://huggingface.co/datasets/lang-uk/court-decisions-uk/resolve/289c0316fc076db3e1607db6776a29df42f4ffc5/2024-5K-supreme-court-decisions-deduplicated.parquet?download=true"
+      LANGUK_SOURCE_SHA256: "9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597"
+      LANGUK_SOURCE_BYTES: "20220778"
+      LESIA_PARENT_ARTIFACT_ID: "11373941621"
+      LESIA_PARENT_ZIP_SHA256: "4d26bc6d451bf7765b341317ed73cf40ff24631ae02fbf2565b6b3b8a55bae80"
+      LESIA_PROOF_ARTIFACT_ID: "11373372018"
+      LESIA_PROOF_ZIP_SHA256: "e94814590131fddb0727b7afca763a006e69187d855dc7cf5d64074fc767be9d"
+      NBU_PARENT_ARTIFACT_ID: "11375922011"
+      NBU_PARENT_ZIP_SHA256: "8a5b5624d75caa57734d3efa86fb0a89f537a7e978bdd6edc4118be1d27ce744"
+      NBU_PHYSICAL_ARTIFACT_ID: "11374275477"
+      NBU_PHYSICAL_ZIP_SHA256: "ba7d7148a2fb4a389ad16396690bdcc72ccbf9077e5007b74d6cdca51cc24697"
+      FRANKO_PARENT_ARTIFACT_ID: "11341482304"
+      FRANKO_PARENT_ZIP_SHA256: "60cd01afb53bbec2f0b2cb66dbe2b299ffec60592a8e9c5fe75a178476f803ac"
+      FRANKO_PROOF_ARTIFACT_ID: "11341042046"
+      FRANKO_PROOF_ZIP_SHA256: "76d364aed9ea14fdde2d3ca1c5ddd932582434d80955d6bc132321e7282ea39f"
+      RADA_RETAINED_ARTIFACT_ID: "11281540677"
+      RADA_RETAINED_ZIP_SHA256: "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb"
+      RADA_PARENT_ARTIFACT_ID: "11389910019"
+      RADA_PARENT_ZIP_SHA256: "63f9e1bf5713989a155429c8862196cacaff3207a7e0fe97586f7dd2c98881f9"
+      RADA_DATA232_ARTIFACT_ID: "11415639104"
+      RADA_DATA232_ZIP_SHA256: "54f0c5729c2087e13400413acf63b1eabdaa7bd697c03bf967dc44978b05abb7"
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind child scope and focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          mapfile -t changed < <(git diff --name-only "$PARENT_HEAD"..HEAD | sort)
+          test "${#changed[@]}" -eq 3
+          test "${changed[0]}" = ".github/workflows/d03_selected_payload_reacquisition_g8_173.yml"
+          test "${changed[1]}" = "tests/test_run_d03_selected_payload_reacquisition_v1.py"
+          test "${changed[2]}" = "tools/run_d03_selected_payload_reacquisition_v1.py"
+          test "$(git hash-object tools/run_d03_selected_payload_reacquisition_v1.py)" = "$REACQUIRE_BLOB"
+          test "$(git hash-object tests/test_run_d03_selected_payload_reacquisition_v1.py)" = "$REACQUIRE_TEST_BLOB"
+          test "$(git hash-object tools/run_d03_selected_raw_assembly_v1.py)" = "$ASSEMBLER_BLOB"
+          test "$(git hash-object tools/run_d03_selected_raw_materialization_plan_v1.py)" = "$PLAN_RUNNER_BLOB"
+          python -m py_compile tools/run_d03_selected_payload_reacquisition_v1.py
+          python -m pip install --disable-pip-version-check "ruff==0.16.10" "pytest>=8,<9"
+          ruff check tools/run_d03_selected_payload_reacquisition_v1.py tests/test_run_d03_selected_payload_reacquisition_v1.py
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE" pytest -q tests/test_run_d03_selected_payload_reacquisition_v1.py
+          echo "PY311=$(command -v python)" >> "$GITHUB_ENV"
+
+      - name: Fetch plan, balance and retained base raw
+        shell: bash
+        run: |
+          set -euo pipefail
+          fetch_artifact() {
+            id="$1"
+            expected="$2"
+            output="$3"
+            curl --fail --location --retry 5 --retry-all-errors               -H "Authorization: Bearer $GH_TOKEN"               -H "Accept: application/vnd.github+json"               -H "X-GitHub-Api-Version: 2022-11-28"               -o "$output"               "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip"
+            test "$(sha256sum "$output" | cut -d' ' -f1)" = "$expected"
+          }
+          mkdir -p "$RUNNER_TEMP/plan" "$RUNNER_TEMP/balance" "$RUNNER_TEMP/base" "$RUNNER_TEMP/fragments"
+          fetch_artifact "$PLAN_ARTIFACT_ID" "$PLAN_ZIP_SHA256" "$RUNNER_TEMP/plan/artifact.zip"
+          test "$(zipinfo -1 "$RUNNER_TEMP/plan/artifact.zip")" = "plan-1.json"
+          unzip -p "$RUNNER_TEMP/plan/artifact.zip" plan-1.json > "$RUNNER_TEMP/plan/plan.json"
+          test "$(sha256sum "$RUNNER_TEMP/plan/plan.json" | cut -d' ' -f1)" = "$PLAN_FILE_SHA256"
+
+          fetch_artifact "$BALANCE_ARTIFACT_ID" "$BALANCE_ZIP_SHA256" "$RUNNER_TEMP/balance/artifact.zip"
+          unzip -p "$RUNNER_TEMP/balance/artifact.zip" composition.json > "$RUNNER_TEMP/balance/composition.json"
+          unzip -p "$RUNNER_TEMP/balance/artifact.zip" balance-result.json > "$RUNNER_TEMP/balance/balance-result.json"
+          test "$(sha256sum "$RUNNER_TEMP/balance/composition.json" | cut -d' ' -f1)" = "$COMPOSITION_FILE_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/balance/balance-result.json" | cut -d' ' -f1)" = "$BALANCE_FILE_SHA256"
+
+          fetch_artifact "$BASE_ARTIFACT_ID" "$BASE_ZIP_SHA256" "$RUNNER_TEMP/base/artifact.zip"
+          unzip -p "$RUNNER_TEMP/base/artifact.zip" survivor_records.jsonl > "$RUNNER_TEMP/base/survivor_records.jsonl"
+          test "$(sha256sum "$RUNNER_TEMP/base/survivor_records.jsonl" | cut -d' ' -f1)" = "$BASE_RAW_SHA256"
+
+      - name: Prepare exact source-lane worktrees
+        shell: bash
+        run: |
+          set -euo pipefail
+          add_lane() {
+            key="$1"
+            pr="$2"
+            head="$3"
+            root="$RUNNER_TEMP/lane-$key"
+            git fetch --no-tags origin "refs/pull/$pr/head"
+            test "$(git rev-parse FETCH_HEAD)" = "$head"
+            git worktree add --detach "$root" "$head"
+            test "$(git -C "$root" rev-parse HEAD)" = "$head"
+            git -C "$root" diff --quiet HEAD --
+            git -C "$root" diff --cached --quiet HEAD --
+          }
+          add_lane code 2752 62dc9f487e0b3dd9eb2a8367a01061f8f55799ef
+          add_lane ubuntu 2780 fb9c3d9c137b0ccacf40dbee8d6dc75db7a2209f
+          add_lane loc 2788 0aeddc6c32917dee110a669ffea55d55a399c1c9
+          add_lane languk 3039 f6a2a440aacebec6a44a5f2ba955902970ff4d50
+          add_lane lesia 2810 1d594e048365fd2121433210b83c0dc9069c50bf
+          add_lane nbu 2815 dc4822ec1365494507bca1d67bab1b334a3fa143
+          add_lane rada 2920 a63d7c88ccb5fa380b7af4b44bde32433cf35877
+          add_lane franko 2766 4280ac3a6b901906b0b38b5ff0ce0e74a90dd154
+
+      - name: Reacquire exact code delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PY311" tools/run_d03_selected_payload_reacquisition_v1.py code             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --lane-root "$RUNNER_TEMP/lane-code"             --output-jsonl "$RUNNER_TEMP/fragments/code.jsonl"
+
+      - name: Reacquire exact Ubuntu IRC survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/ubuntu"
+          mkdir -p "$root/parent" "$root/source"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"             -o "$root/parent.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$UBUNTU_PARENT_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/parent.zip" | cut -d' ' -f1)" = "$UBUNTU_PARENT_ZIP_SHA256"
+          unzip -q "$root/parent.zip" -d "$root/parent"
+          test "$(sha256sum "$root/parent/_temp/pass-1/survivors.json" | cut -d' ' -f1)" = "6cd93687c6b1063f62c19fc7be90001bc06a87cc320b1cabaa1b31a3a59bbdb2"
+          test "$(sha256sum "$root/parent/_temp/pass-1/evidence.json" | cut -d' ' -f1)" = "581ee1d16abed2542978300475f93b41f6ff386d9fcb6ab6fa97d12dd2a15705"
+          test "$(sha256sum "$root/parent/12-6-ai./12-6-ai./ubuntu-irc-two-clean-proof.json" | cut -d' ' -f1)" = "27c7addb9897c1317eff260767ee67c6bd7761532e9ba2a9de5237c67efb7a18"
+          PYTHONPATH="$RUNNER_TEMP/lane-ubuntu/src" "$PY311"             "$RUNNER_TEMP/lane-ubuntu/tools/materialize_d03_common_pile_ubuntu_irc_v1.py"             --shard "$root/source/source.jsonl.gz"             --output-jsonl "$root/source/candidate.jsonl"             --report "$root/source/materialization.json"             --download
+          test "$(sha256sum "$root/source/candidate.jsonl" | cut -d' ' -f1)" = "d6a0eaea27313e0d5146bc2a0624104541923ef06b12f01c22b3ccf6956eb6c2"
+          "$PY311" tools/run_d03_selected_payload_reacquisition_v1.py ubuntu             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --lane-root "$RUNNER_TEMP/lane-ubuntu"             --parent-survivors "$root/parent/_temp/pass-1/survivors.json"             --parent-evidence "$root/parent/_temp/pass-1/evidence.json"             --parent-proof "$root/parent/12-6-ai./12-6-ai./ubuntu-irc-two-clean-proof.json"             --candidate-jsonl "$root/source/candidate.jsonl"             --output-jsonl "$RUNNER_TEMP/fragments/ubuntu.jsonl"
+
+      - name: Reacquire exact PEP LoC survivor payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/loc"
+          mkdir -p "$root/parent-pass" "$root/parent-proof" "$root/clean" "$root/source"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/pass.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$LOC_PARENT_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/pass.zip" | cut -d' ' -f1)" = "$LOC_PARENT_ZIP_SHA256"
+          unzip -q "$root/pass.zip" -d "$root/parent-pass"
+          test "$(sha256sum "$root/parent-pass/expanded-v10-survivors.json" | cut -d' ' -f1)" = "6f93ca5d730aaa1e07d8429f77606a43705697667e5a786bfda17506ac394d72"
+          test "$(sha256sum "$root/parent-pass/evidence.json" | cut -d' ' -f1)" = "a7c57f08708b718833272b9d41a67e39cc679476661486a7689f96cb405615fd"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/proof.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$LOC_PROOF_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/proof.zip" | cut -d' ' -f1)" = "$LOC_PROOF_ZIP_SHA256"
+          unzip -q "$root/proof.zip" -d "$root/parent-proof"
+          test "$(sha256sum "$root/parent-proof/d03-pep-loc-v10-two-clean-proof.json" | cut -d' ' -f1)" = "2f3ce844a8d62203fa1ef54407842ad474059640ef06444fa62bf83ea8b79400"
+
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/clean.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$LOC_CLEAN_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/clean.zip" | cut -d' ' -f1)" = "$LOC_CLEAN_ZIP_SHA256"
+          unzip -q "$root/clean.zip" -d "$root/clean"
+          PYTHONPATH="$RUNNER_TEMP/lane-loc/src:$RUNNER_TEMP/lane-loc/tools" "$PY311"             "$RUNNER_TEMP/lane-loc/tools/prepare_data232_ephemeral_handoff_v1.py"             --repo-root "$RUNNER_TEMP/lane-loc"             --records-jsonl "$root/clean/records.jsonl"             --record-inventory-json "$root/clean/inventory.json"             --materialization-evidence-json "$root/clean/evidence.json"             --output-dir "$root/clean-handoff"             --expected-carrier-git-sha "0aeddc6c32917dee110a669ffea55d55a399c1c9"
+          test "$(sha256sum "$root/clean-handoff/training_records.jsonl" | cut -d' ' -f1)" = "3458afe0380ea45d328ad3f004b21845a188ca69f2f7a83c24999e9e53268e53"
+          test "$(sha256sum "$root/clean-handoff/training_handoff.json" | cut -d' ' -f1)" = "80bcf2dd28f0d13795ceea01b358c7149b636f55f17b29575d14313b5cee99ee"
+
+          PYTHONPATH="$RUNNER_TEMP/lane-loc/src" "$PY311" "$RUNNER_TEMP/lane-loc/tools/materialize_d03_peps.py"             --repo-root "$RUNNER_TEMP/lane-loc" --output-dir "$root/source/pep"
+          test "$(sha256sum "$root/source/pep/pep-candidate.jsonl" | cut -d' ' -f1)" = "65d1cf23354efc5a66d7132b67602a7af1715e18a0fb77e729595866c25d33c3"
+          test "$(sha256sum "$root/source/pep/pep-report.json" | cut -d' ' -f1)" = "bc217b3b795bfe5001b8ef266270eee10089c88bc148e8a8f0fa540c2451edcb"
+
+          curl --fail --location --retry 3 --retry-all-errors             "https://huggingface.co/datasets/common-pile/library_of_congress/resolve/d31bdba02cdad5104ccec2c02ae799c0bcb5a9a7/data/00000_loc_books.jsonl.gz"             -o "$root/source/loc-shard.jsonl.gz"
+          test "$(stat -c %s "$root/source/loc-shard.jsonl.gz")" = "358594502"
+          test "$(sha256sum "$root/source/loc-shard.jsonl.gz" | cut -d' ' -f1)" = "a6a6023d9cae067b5531ba84537877c180ab3ff1579f99aeac446d65d465ae0f"
+          PYTHONPATH="$RUNNER_TEMP/lane-loc/src" "$PY311" "$RUNNER_TEMP/lane-loc/tools/materialize_d03_common_pile_loc.py"             --repo-root "$RUNNER_TEMP/lane-loc"             --shard "$root/source/loc-shard.jsonl.gz"             --output-dir "$root/source/loc"
+          test "$(sha256sum "$root/source/loc/loc-candidate.jsonl" | cut -d' ' -f1)" = "f87201d71eb8c3f2510cdf2c9b3ce1a32b83d1a11198e8a1ff0ad67d0a3fec20"
+          test "$(sha256sum "$root/source/loc/loc-report.json" | cut -d' ' -f1)" = "ae8de852ffeea6d2f697641b2f941eeb044e3377565d0bc1b3b7ba8b6cf3133a"
+          "$PY311" tools/run_d03_selected_payload_reacquisition_v1.py loc             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --lane-root "$RUNNER_TEMP/lane-loc"             --parent-survivors "$root/parent-pass/expanded-v10-survivors.json"             --parent-evidence "$root/parent-pass/evidence.json"             --parent-proof "$root/parent-proof/d03-pep-loc-v10-two-clean-proof.json"             --clean-training-records "$root/clean-handoff/training_records.jsonl"             --clean-training-handoff "$root/clean-handoff/training_handoff.json"             --pep-candidate "$root/source/pep/pep-candidate.jsonl"             --pep-report "$root/source/pep/pep-report.json"             --loc-candidate "$root/source/loc/loc-candidate.jsonl"             --loc-report "$root/source/loc/loc-report.json"             --output-jsonl "$RUNNER_TEMP/fragments/loc.jsonl"
+
+      - name: Build hash-locked PyArrow runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/eval290-runtime"
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "029514654829cebc149cff6fc1fea2a8ba4fa566"
+          git worktree add --detach "$root" 029514654829cebc149cff6fc1fea2a8ba4fa566
+          "$PY311" "$root/tools/execution_bootstrap.py" bootstrap             --repo-root "$root"             --capabilities "runtime,tests"             --venv "$RUNNER_TEMP/eval290-venv"             --manifest "$RUNNER_TEMP/eval290-environment.json"             --command "python -m pytest -q tests/test_eval290_ua_selection.py"
+          git -C "$root" show             "029514654829cebc149cff6fc1fea2a8ba4fa566:requirements/locks/linux-x86_64/eval290-extra.lock.txt"             > "$RUNNER_TEMP/eval290-extra.lock.txt"
+          "$RUNNER_TEMP/eval290-venv/bin/python" -m pip install             --disable-pip-version-check --require-hashes --no-deps             -r "$RUNNER_TEMP/eval290-extra.lock.txt"
+          "$RUNNER_TEMP/eval290-venv/bin/python" -c             'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+
+      - name: Reacquire exact Lang UK court survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/languk"
+          mkdir -p "$root/parent" "$root/proof"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/parent.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$LANGUK_PARENT_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/parent.zip" | cut -d' ' -f1)" = "$LANGUK_PARENT_ZIP_SHA256"
+          unzip -q "$root/parent.zip" -d "$root/parent"
+          test "$(sha256sum "$root/parent/survivors.json" | cut -d' ' -f1)" = "b65c71e64345fbce0f7b6593acc5cc924696a1aba81861b3e49fc2138fd83a58"
+          test "$(sha256sum "$root/parent/evidence.json" | cut -d' ' -f1)" = "2b758d3bd37913daad19c80e70e820218fd47578f910018c0d3f2c38cd5149aa"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/proof.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$LANGUK_PROOF_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/proof.zip" | cut -d' ' -f1)" = "$LANGUK_PROOF_ZIP_SHA256"
+          unzip -q "$root/proof.zip" -d "$root/proof"
+          test "$(sha256sum "$root/proof/languk-court-global-dedup-two-clean-proof.json" | cut -d' ' -f1)" = "ebc3f6db77718727b45fa43c76a023a87d86980c32cf75a657663fc1391a5781"
+          curl --fail --location --retry 5 --retry-all-errors "$LANGUK_SOURCE_URL" -o "$root/source.parquet"
+          test "$(stat -c %s "$root/source.parquet")" = "$LANGUK_SOURCE_BYTES"
+          test "$(sha256sum "$root/source.parquet" | cut -d' ' -f1)" = "$LANGUK_SOURCE_SHA256"
+          "$RUNNER_TEMP/eval290-venv/bin/python" tools/run_d03_selected_payload_reacquisition_v1.py languk             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --lane-root "$RUNNER_TEMP/lane-languk"             --parent-survivors "$root/parent/survivors.json"             --parent-evidence "$root/parent/evidence.json"             --parent-proof "$root/proof/languk-court-global-dedup-two-clean-proof.json"             --source-parquet "$root/source.parquet"             --output-jsonl "$RUNNER_TEMP/fragments/languk.jsonl"
+
+      - name: Reacquire exact Franko survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/franko"
+          mkdir -p "$root/parent" "$root/proof" "$root/source"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/parent.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$FRANKO_PARENT_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/parent.zip" | cut -d' ' -f1)" = "$FRANKO_PARENT_ZIP_SHA256"
+          unzip -q "$root/parent.zip" -d "$root/parent"
+          test "$(sha256sum "$root/parent/survivors.json" | cut -d' ' -f1)" = "de2ff6f13ab138caa4ad4471326ab16b97abdb5167a95a48272963445e976839"
+          test "$(sha256sum "$root/parent/evidence.json" | cut -d' ' -f1)" = "6112dafe7839018fd96293d970843cb5d3c3547a90608face4506ae2e636fd3d"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/proof.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$FRANKO_PROOF_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/proof.zip" | cut -d' ' -f1)" = "$FRANKO_PROOF_ZIP_SHA256"
+          unzip -q "$root/proof.zip" -d "$root/proof"
+          test "$(sha256sum "$root/proof/franko1901-two-clean-proof.json" | cut -d' ' -f1)" = "db859857d483c0d77d1e1900ac48ee3064d014214e088556824549a7ebda18bc"
+          PYTHONPATH="$RUNNER_TEMP/lane-franko/src:$RUNNER_TEMP/lane-franko/tools" "$PY311"             "$RUNNER_TEMP/lane-franko/tools/materialize_d03_franko1901.py"             --output-dir "$root/source"
+          "$PY311" tools/run_d03_selected_payload_reacquisition_v1.py franko             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --lane-root "$RUNNER_TEMP/lane-franko"             --parent-survivors "$root/parent/survivors.json"             --parent-evidence "$root/parent/evidence.json"             --parent-proof "$root/proof/franko1901-two-clean-proof.json"             --candidate-jsonl "$root/source/franko1901-candidate.jsonl"             --historical-terminal-evidence-json "$RUNNER_TEMP/lane-franko/configs/data/d03_franko1901_terminal_execution_v1.json"             --fresh-execution-authority-json "$RUNNER_TEMP/lane-franko/configs/data/d03_franko1901_fresh_execution_authority_v1.json"             --output-jsonl "$RUNNER_TEMP/fragments/franko.jsonl"
+
+      - name: Build exact Poppler once for remaining UA source lanes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             build-essential ca-certificates cmake curl libfontconfig1-dev libfreetype6-dev             libharfbuzz-dev libjpeg-dev liblcms2-dev libopenjp2-7-dev libpng-dev             libtiff-dev ninja-build pkg-config zlib1g-dev
+          curl --fail --location --retry 3 --retry-delay 2             "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz"             --output "$RUNNER_TEMP/poppler.tar.xz"
+          echo "${POPPLER_TARBALL_SHA256}  ${RUNNER_TEMP}/poppler.tar.xz" | sha256sum --check --strict
+          tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/poppler.tar.xz"
+          cmake -S "$RUNNER_TEMP/poppler-$POPPLER_VERSION" -B "$RUNNER_TEMP/poppler-build" -G Ninja             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local             -DENABLE_UTILS=ON -DENABLE_CPP=OFF -DENABLE_GLIB=OFF             -DENABLE_QT5=OFF -DENABLE_QT6=OFF -DENABLE_BOOST=OFF             -DENABLE_LIBCURL=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF             -DBUILD_GTK_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF             -DBUILD_CPP_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF
+          cmake --build "$RUNNER_TEMP/poppler-build" --parallel 2
+          sudo cmake --install "$RUNNER_TEMP/poppler-build"
+          sudo ldconfig
+          pdftotext -v 2>&1 | tee "$RUNNER_TEMP/pdftotext-version.txt"
+          grep -F "pdftotext version $POPPLER_VERSION" "$RUNNER_TEMP/pdftotext-version.txt"
+
+      - name: Reacquire exact Lesia survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/lesia"
+          mkdir -p "$root/parent" "$root/proof" "$root/source"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/parent.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$LESIA_PARENT_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/parent.zip" | cut -d' ' -f1)" = "$LESIA_PARENT_ZIP_SHA256"
+          unzip -q "$root/parent.zip" -d "$root/parent"
+          test "$(sha256sum "$root/parent/survivors.json" | cut -d' ' -f1)" = "293cd4257ab2f1ccdf93dc9140db0db94c1dc5a5469b646e0489bc843ba266cd"
+          test "$(sha256sum "$root/parent/evidence.json" | cut -d' ' -f1)" = "acc0da17667115a49a1cd4312583c04f689bc5864f65984f5b62600d78e5ed70"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/proof.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$LESIA_PROOF_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/proof.zip" | cut -d' ' -f1)" = "$LESIA_PROOF_ZIP_SHA256"
+          unzip -q "$root/proof.zip" -d "$root/proof"
+          test "$(sha256sum "$root/proof/lesia-wikisource-global-dedup-two-clean-proof.json" | cut -d' ' -f1)" = "d109e9584b8b0d1f42e64706623a69d1fa89426a55fc48e6c1091eaa1bf83511"
+          git fetch --no-tags origin refs/pull/2807/head
+          test "$(git rev-parse FETCH_HEAD)" = "0a06d20e77d3a5f50f838c6fe4eb39ce40cccf0d"
+          git worktree add --detach "$root/source-authority" 0a06d20e77d3a5f50f838c6fe4eb39ce40cccf0d
+          PYTHONPATH="$root/source-authority/src" "$PY311"             "$root/source-authority/tools/materialize_d03_wikisource_lesia1892.py"             --candidate-out "$root/source/candidate.jsonl"             --report-out "$root/source/materialization.json"             --max-pages 112
+          test "$(sha256sum "$root/source/candidate.jsonl" | cut -d' ' -f1)" = "13025e767ff3f92c0809de807893a5002b691c296b345c12978249c11bc44d12"
+          test "$(sha256sum "$root/source/materialization.json" | cut -d' ' -f1)" = "29ebf68ff368fedb1e5bdae7ecfae2f81e4b96b8236f92f630114f1567375e9a"
+          "$PY311" tools/run_d03_selected_payload_reacquisition_v1.py lesia             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --lane-root "$RUNNER_TEMP/lane-lesia"             --parent-survivors "$root/parent/survivors.json"             --parent-evidence "$root/parent/evidence.json"             --parent-proof "$root/proof/lesia-wikisource-global-dedup-two-clean-proof.json"             --candidate-jsonl "$root/source/candidate.jsonl"             --materialization-report-json "$root/source/materialization.json"             --output-jsonl "$RUNNER_TEMP/fragments/lesia.jsonl"
+
+      - name: Reacquire exact NBU survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/nbu"
+          mkdir -p "$root/parent" "$root/physical" "$root/source"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/parent.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$NBU_PARENT_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/parent.zip" | cut -d' ' -f1)" = "$NBU_PARENT_ZIP_SHA256"
+          unzip -q "$root/parent.zip" -d "$root/parent"
+          base="$root/parent/nbu-current40-global-dedup/two-clean/clean-a"
+          test "$(sha256sum "$base/survivor-authority.json" | cut -d' ' -f1)" = "e95f2af8c8ee2c1d8264b2e9cffa3f7147101640b74a8842e4968b49854934ab"
+          test "$(sha256sum "$base/dedup-report.json" | cut -d' ' -f1)" = "b049793ee0cb6e1381da6ff41d0e010e71c20a9491ea8c88326d3de72d798d7f"
+          proof="$root/parent/nbu-current40-global-dedup/two-clean/two-clean-authority.json"
+          test "$(sha256sum "$proof" | cut -d' ' -f1)" = "8cef03ad210da947fe1cbab8a66b4c2e58b3b99cb75857d3fef5aa89af862549"
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/physical.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$NBU_PHYSICAL_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/physical.zip" | cut -d' ' -f1)" = "$NBU_PHYSICAL_ZIP_SHA256"
+          unzip -q "$root/physical.zip" -d "$root/physical"
+
+          git fetch --no-tags origin refs/pull/2804/head
+          test "$(git rev-parse FETCH_HEAD)" = "1695c16ab038960d74da5a9911643e9426bb9ad4"
+          git worktree add --detach "$root/physical-authority" 1695c16ab038960d74da5a9911643e9426bb9ad4
+          git fetch --no-tags origin refs/pull/2809/head
+          test "$(git rev-parse FETCH_HEAD)" = "b5235cfd83852854e345dea6c2e89cfbcd1cef79"
+          git worktree add --detach "$root/dedup-authority" b5235cfd83852854e345dea6c2e89cfbcd1cef79
+          test "$(git -C "$root/dedup-authority" rev-parse HEAD:src/twelve_six/data/nbu_current40_dedup_intake.py)" = "43e54663d5666e4fd26b1f56a792f03aa1ef08ec"
+          PYTHONPATH="$root/physical-authority/src" "$PY311"             "$root/physical-authority/tools/materialize_d03_ua_nbu_pdftotext_v1.py"             "$root/physical/nbu-discovery-evidence.json"             "$root/physical/nbu-pdf-pin-evidence.json"             --text-output "$root/source/candidate.jsonl"             --evidence-output "$root/source/materialization.json"
+          test "$(sha256sum "$root/source/candidate.jsonl" | cut -d' ' -f1)" = "c1dbff49a6fb62c0ab07305aa9f5c9870e0bccdfd754d3644e4d7d6a6b033eaf"
+          "$PY311" tools/run_d03_selected_payload_reacquisition_v1.py nbu             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --lane-root "$RUNNER_TEMP/lane-nbu"             --parent-survivors "$base/survivor-authority.json"             --parent-evidence "$base/dedup-report.json"             --parent-proof "$proof"             --candidate-jsonl "$root/source/candidate.jsonl"             --materialization-report-json "$root/source/materialization.json"             --nbu-intake-path "$root/dedup-authority/src/twelve_six/data/nbu_current40_dedup_intake.py"             --output-jsonl "$RUNNER_TEMP/fragments/nbu.jsonl"
+
+      - name: Prepare exact Rada DATA232 input
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/rada"
+          mkdir -p "$root/source" "$root/parent" "$root/data232"
+          git fetch --no-tags origin 43a7d62854255da4426d6a3dc4d5ad9b1e4898e9
+          test "$(git rev-parse FETCH_HEAD)" = "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
+          git worktree add --detach "$root/historical-qp" 43a7d62854255da4426d6a3dc4d5ad9b1e4898e9
+          test "$(git -C "$root/historical-qp" hash-object tools/filter_d03_rada_bulk_quality_privacy.py)" = "69491874e60a1b846d683fff3c10214a869f18ff"
+
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/source.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$RADA_RETAINED_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/source.zip" | cut -d' ' -f1)" = "$RADA_RETAINED_ZIP_SHA256"
+          unzip -q "$root/source.zip" -d "$root/source"
+
+          PYTHONPATH="$RUNNER_TEMP/lane-rada/src:$RUNNER_TEMP/lane-rada/tools" "$PY311"             "$RUNNER_TEMP/lane-rada/tools/run_d03_rada_current_data232_handoff_v1.py"             replay-current-rada             --expected-execution-head a63d7c88ccb5fa380b7af4b44bde32433cf35877             --historical-qp-root "$root/historical-qp"             --source-zip "$root/source/rada-source-a.zip"             --probe-a "$root/source/rada-probe-a.json"             --probe-b "$root/source/rada-probe-b.json"             --qualification "$root/source/rada-fresh-snapshot-qualification-v2.json"             --pin "$root/source/rada-successor-pin-v2.json"             --output-candidate "$root/current-rada.jsonl"             --output-summary "$root/current-rada-replay-summary.json"
+          test "$(stat -c %s "$root/current-rada.jsonl")" = "224897989"
+          test "$(sha256sum "$root/current-rada.jsonl" | cut -d' ' -f1)" = "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7"
+
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/parent.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$RADA_PARENT_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/parent.zip" | cut -d' ' -f1)" = "$RADA_PARENT_ZIP_SHA256"
+          unzip -p "$root/parent.zip" "home/runner/work/_temp/rada-dedup-a/dedup-report.json" > "$root/parent/dedup-report.json"
+          unzip -p "$root/parent.zip" "home/runner/work/_temp/rada-dedup-a/rada-survivor-authority.json" > "$root/parent/rada-survivor-authority.json"
+          unzip -p "$root/parent.zip" "home/runner/work/_temp/rada-dedup-a/execution-evidence.json" > "$root/parent/execution-evidence.json"
+          unzip -p "$root/parent.zip" "home/runner/work/_temp/rada-two-clean.json" > "$root/parent/two-clean.json"
+          test "$(sha256sum "$root/parent/dedup-report.json" | cut -d' ' -f1)" = "9a38961a5dc5bc7ef93ba046fdfb4f22ccddc175b8b028c875316b3f80324c1f"
+          test "$(sha256sum "$root/parent/rada-survivor-authority.json" | cut -d' ' -f1)" = "ebdb68e689625e2f46e8a44a02b9d38ffafd9e79a04dbdc49bf6f12b5dcfb6c9"
+
+          git fetch --no-tags origin execution/nbu-current40-global-dedup-g8-146-20261005
+          test "$(git rev-parse FETCH_HEAD)" = "b5235cfd83852854e345dea6c2e89cfbcd1cef79"
+          git worktree add --detach "$root/nbu-helper" b5235cfd83852854e345dea6c2e89cfbcd1cef79
+          git fetch --no-tags origin next100-065c/crosssource-dedup-v5-20260826
+          test "$(git rev-parse FETCH_HEAD)" = "d3333ec1b4a508df232a5aefccd6686adda745fb"
+          git worktree add --detach "$root/v7" d3333ec1b4a508df232a5aefccd6686adda745fb
+
+          PYTHONPATH="$RUNNER_TEMP/lane-rada/src:$RUNNER_TEMP/lane-rada/tools" "$PY311"             "$RUNNER_TEMP/lane-rada/tools/run_d03_rada_current_data232_handoff_v1.py"             prepare             --expected-execution-head a63d7c88ccb5fa380b7af4b44bde32433cf35877             --candidate-jsonl "$root/current-rada.jsonl"             --nbu-helper-root "$root/nbu-helper"             --v7-root "$root/v7"             --bulk-workspace "$root/data232-reconstruct"             --parent-report "$root/parent/dedup-report.json"             --parent-rada-authority "$root/parent/rada-survivor-authority.json"             --parent-evidence "$root/parent/execution-evidence.json"             --parent-two-clean "$root/parent/two-clean.json"             --output-inventory "$root/current-rada-inventory.json"             --output-handoff "$root/current-rada-handoff.json"             --output-prepare-evidence "$root/current-rada-prepare-evidence.json"             --output-training-records "$root/current-rada-training-records.jsonl"
+
+          curl --fail --location --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN"             -o "$root/data232.zip"             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$RADA_DATA232_ARTIFACT_ID/zip"
+          test "$(sha256sum "$root/data232.zip" | cut -d' ' -f1)" = "$RADA_DATA232_ZIP_SHA256"
+          unzip -p "$root/data232.zip" current-rada-inventory.json > "$root/data232/current-rada-inventory.json"
+          unzip -p "$root/data232.zip" current-rada-handoff.json > "$root/data232/current-rada-handoff.json"
+          unzip -p "$root/data232.zip" output/data232-report.json > "$root/data232/data232-report.json"
+          unzip -p "$root/data232.zip" output/data232-execution-evidence.json > "$root/data232/data232-execution-evidence.json"
+          unzip -p "$root/data232.zip" output/result.json > "$root/data232/result.json"
+          unzip -p "$root/data232.zip" two-clean-proof.json > "$root/data232/two-clean-proof.json"
+
+      - name: Set CPython 3.12 for exact Rada G05 G06
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Reacquire exact Rada post G06 survivors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/run_d03_selected_payload_reacquisition_v1.py rada             --plan-json "$RUNNER_TEMP/plan/plan.json"             --composition-json "$RUNNER_TEMP/balance/composition.json"             --lane-root "$RUNNER_TEMP/lane-rada"             --training-records-jsonl "$RUNNER_TEMP/rada/current-rada-training-records.jsonl"             --parent-inventory-json "$RUNNER_TEMP/rada/data232/current-rada-inventory.json"             --parent-handoff-json "$RUNNER_TEMP/rada/data232/current-rada-handoff.json"             --parent-report-json "$RUNNER_TEMP/rada/data232/data232-report.json"             --parent-execution-evidence-json "$RUNNER_TEMP/rada/data232/data232-execution-evidence.json"             --parent-result-json "$RUNNER_TEMP/rada/data232/result.json"             --parent-two-clean-proof-json "$RUNNER_TEMP/rada/data232/two-clean-proof.json"             --scratch-dir "$RUNNER_TEMP/rada/g05g06-capture"             --output-jsonl "$RUNNER_TEMP/fragments/rada.jsonl"
+
+      - name: Restore exact CPython 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Assemble exact selected raw corpus twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          fragments=(
+            "$RUNNER_TEMP/fragments/code.jsonl"
+            "$RUNNER_TEMP/fragments/ubuntu.jsonl"
+            "$RUNNER_TEMP/fragments/loc.jsonl"
+            "$RUNNER_TEMP/fragments/languk.jsonl"
+            "$RUNNER_TEMP/fragments/franko.jsonl"
+            "$RUNNER_TEMP/fragments/lesia.jsonl"
+            "$RUNNER_TEMP/fragments/nbu.jsonl"
+            "$RUNNER_TEMP/fragments/rada.jsonl"
+          )
+          args=()
+          for fragment in "${fragments[@]}"; do
+            test -s "$fragment"
+            args+=(--rematerialized-jsonl "$fragment")
+          done
+          for pass_id in 1 2; do
+            python tools/run_d03_selected_raw_assembly_v1.py               --plan-json "$RUNNER_TEMP/plan/plan.json"               --composition-json "$RUNNER_TEMP/balance/composition.json"               --balance-result-json "$RUNNER_TEMP/balance/balance-result.json"               --base-raw-jsonl "$RUNNER_TEMP/base/survivor_records.jsonl"               "${args[@]}"               --output-raw-jsonl "$RUNNER_TEMP/selected-20m-${pass_id}.jsonl"               --output-receipt "$RUNNER_TEMP/assembly-${pass_id}.json"
+          done
+          cmp "$RUNNER_TEMP/selected-20m-1.jsonl" "$RUNNER_TEMP/selected-20m-2.jsonl"
+          cmp "$RUNNER_TEMP/assembly-1.json" "$RUNNER_TEMP/assembly-2.json"
+
+      - name: Independently require exact 20M raw assembly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/assembly-1.json" "$RUNNER_TEMP/selected-20m-1.jsonl" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          receipt = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          core = dict(receipt)
+          claimed = core.pop("assembly_identity_sha256")
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          assert hashlib.sha256(raw).hexdigest() == claimed
+          assert receipt["selected_record_count"] == 5294
+          assert receipt["selected_payload_bytes"] == 20_000_000
+          assert receipt["base_selected_record_count"] == 211
+          assert receipt["base_selected_payload_bytes"] == 3_582_998
+          assert receipt["rematerialized_record_count"] == 5083
+          assert receipt["rematerialized_payload_bytes"] == 16_417_002
+          assert receipt["selected_membership_sha256"] == (
+              "a00572acfb1033f7bfe55e7e1f53ae9eb44b6fa039f3f378a156bec6fd13615f"
+          )
+          assert receipt["selected_payload_projection_sha256"] == (
+              "9bcfc6eb09418c93a00373df6d4c4cf3e5795d54e12c0e4bc106eaecbc89de82"
+          )
+          assert receipt["selected_family_bytes_sha256"] == (
+              "f54dec34d6c86506d3321686e63af0c226f4f7adec6bffdf7a5d8d51133db280"
+          )
+          raw_bytes = Path(sys.argv[2]).read_bytes()
+          assert hashlib.sha256(raw_bytes).hexdigest() == receipt["selected_raw_jsonl_sha256"]
+          assert raw_bytes.count(b"\n") == 5294
+          for key in (
+              "training_authorized_bytes",
+              "authorized_unique_loss_positions",
+              "authorized_optimized_target_exposure",
+              "optimizer_updates_executed_on_real_targets",
+          ):
+              assert receipt[key] == 0
+          for key in (
+              "tokenizer_fit_authorized",
+              "training_executed",
+              "learned_weights_created",
+              "final_test_outcomes_read",
+              "paid_compute_used",
+              "scale_promotion_authorized",
+          ):
+              assert receipt[key] is False
+          print("D03_SELECTED_20M_RAW_MATERIALIZATION_PASS")
+          print(json.dumps({
+              "assembly_identity_sha256": claimed,
+              "selected_raw_jsonl_sha256": receipt["selected_raw_jsonl_sha256"],
+              "records": receipt["selected_record_count"],
+              "payload_bytes": receipt["selected_payload_bytes"],
+          }, sort_keys=True))
+          PY
+
+      - name: Delete raw bytes and upload text-free receipt only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$RUNNER_TEMP/assembly-1.json" "$RUNNER_TEMP/durable-selected-20m-receipt.json"
+          rm -f "$RUNNER_TEMP/selected-20m-1.jsonl" "$RUNNER_TEMP/selected-20m-2.jsonl"
+          rm -rf "$RUNNER_TEMP/fragments"
+          test ! -e "$RUNNER_TEMP/selected-20m-1.jsonl"
+          test ! -e "$RUNNER_TEMP/selected-20m-2.jsonl"
+          python - "$RUNNER_TEMP/durable-selected-20m-receipt.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert value["durable_output_contains_raw_payload"] is False
+          assert value["raw_output_is_ephemeral"] is True
+          assert "normalized_payload" not in Path(sys.argv[1]).read_text(encoding="utf-8")
+          PY
+
+      - name: Upload text-free selected raw authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-selected-20m-raw-receipt-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/durable-selected-20m-receipt.json
+          if-no-files-found: error
+          retention-days: 90
