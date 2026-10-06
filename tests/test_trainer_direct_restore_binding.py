@@ -229,6 +229,44 @@ class LookupDriftAdamW(AdamW):
         return super().load_state_dict(state_dict)
 
 
+class LookupNonCallableDriftAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.mutation: str | None = None
+        self.armed = False
+
+    def __getattribute__(self, name: str):
+        if name == "load_state_dict":
+            armed = object.__getattribute__(self, "armed")
+            if armed:
+                object.__setattr__(self, "armed", False)
+                owner = object.__getattribute__(self, "owner")
+                mutation = object.__getattribute__(self, "mutation")
+                assert owner is not None
+                if mutation == "model":
+                    owner.model.weight = nn.Parameter(
+                        owner.model.weight.detach().clone() + 1.0
+                    )
+                elif mutation == "counter":
+                    owner.tokens_seen = 1
+                elif mutation == "config":
+                    object.__setattr__(
+                        owner.config,
+                        "learning_rate",
+                        owner.config.learning_rate * 2.0,
+                    )
+                elif mutation == "auxiliary":
+                    owner.optimizer.param_groups[0]["lr"] *= 0.5
+                else:
+                    raise AssertionError(
+                        f"unknown non-callable lookup mutation: {mutation}"
+                    )
+                return None
+        return super().__getattribute__(name)
+
+
 class LookupRaisingAdamW(AdamW):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -338,6 +376,42 @@ def test_direct_restore_rejects_stable_binding_lookup_drift(
     assert optimizer.apply_calls == 0
     assert trainer._failure_reason is not None
     assert trainer._update_incomplete is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("model", "model changed during loader lookup"),
+        ("counter", "restore state changed during loader lookup"),
+        ("config", "restore config changed during loader lookup"),
+        ("auxiliary", "trainer auxiliary state changed during loader lookup"),
+    ],
+)
+def test_direct_restore_poisons_noncallable_lookup_drift_before_interface_error(
+    mutation: str,
+    message: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(
+        LookupNonCallableDriftAdamW,
+        config,
+    )
+    assert isinstance(optimizer, LookupNonCallableDriftAdamW)
+    optimizer.mutation = mutation
+
+    with pytest.raises(TrainingStateInvalidError, match=message):
+        trainer.load_state_dict(state)
+
+    assert trainer.optimizer is optimizer
+    assert trainer._failure_reason is not None
+    assert trainer._update_incomplete is False
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="failed trainer cannot be repaired in place",
+    ):
+        trainer.load_state_dict(state)
 
 
 def test_direct_restore_preserves_lookup_exception_without_drift_and_allows_retry() -> None:
