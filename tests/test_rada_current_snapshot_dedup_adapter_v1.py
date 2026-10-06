@@ -26,17 +26,18 @@ def _canonical(value: object) -> bytes:
 
 
 def _row(
-    parent: str,
+    source_basename: str,
     chunk: int,
     text: str,
     *,
     encoding: str = "utf-8",
 ) -> dict[str, object]:
     payload = text.encode("utf-8")
+    parent = f"{adapter.SOURCE_FAMILY}.{Path(source_basename).stem}"
     return {
         "record_id": f"{parent}.q{chunk:05d}",
         "parent_record_id": parent,
-        "source_path": f"zak/perv/text/{parent}",
+        "source_path": source_basename,
         "source_encoding": encoding,
         "chunk_index": chunk,
         "normalized_bytes": len(payload),
@@ -124,8 +125,8 @@ def test_projection_preserves_every_chunk_and_exact_duplicate_alias(
     assert first["stable_object_id"] == second["stable_object_id"]
     assert first["stable_origin_id"] != second["stable_origin_id"]
     assert first["origin_key"] != second["origin_key"]
-    assert first["source_id"] == "rada-laws-qp:d100.htm.q00000"
-    assert third["source_id"] == "rada-laws-qp:d200.htm.q00001"
+    assert first["source_id"] == ("rada-laws-qp:ua.rada.open-data.laws-texts.d100.q00000")
+    assert third["source_id"] == ("rada-laws-qp:ua.rada.open-data.laws-texts.d200.q00001")
     assert projection.receipt["exact_duplicate_payload_hashes_preserved"] == 1
     assert projection.receipt["source_object_count"] == 3
 
@@ -217,8 +218,8 @@ def test_candidate_rejects_noncanonical_order_even_when_rebound(
         ("chunk_index", True, "chunk_index invalid"),
         ("normalized_bytes", True, "normalized byte drift"),
         ("source_encoding", "utf-16", "source_encoding invalid"),
-        ("parent_record_id", "../d100.htm", "parent_record_id invalid"),
-        ("source_path", "/tmp/d100.htm", "source_path invalid"),
+        ("parent_record_id", "d100.htm", "parent_record_id invalid"),
+        ("source_path", "zak/perv/text/d100.htm", "source_path invalid"),
     ],
 )
 def test_candidate_row_type_and_path_aliases_fail_closed(
@@ -260,8 +261,9 @@ def test_candidate_rejects_duplicate_json_keys(tmp_path: Path) -> None:
     line = (
         b'{"chunk_index":0,"chunk_index":0,"normalized_bytes":1,'
         b'"normalized_sha256":"' + b"0" * 64 + b'",'
-        b'"parent_record_id":"d1.htm","record_id":"d1.htm.q00000",'
-        b'"source_encoding":"utf-8","source_path":"zak/perv/text/d1.htm",'
+        b'"parent_record_id":"ua.rada.open-data.laws-texts.d1",'
+        b'"record_id":"ua.rada.open-data.laws-texts.d1.q00000",'
+        b'"source_encoding":"utf-8","source_path":"d1.htm",'
         b'"text":"x"}\n'
     )
     candidate = tmp_path / "candidate.jsonl"

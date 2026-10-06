@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      PARENT_HEAD: "fb49b7e212444547219df2bd2aa466db955d51e5"
+      PARENT_HEAD: "e0194d1fd76673e492d33ca3f674ca794a04926a"
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
       RETAINED_ARTIFACT_ID: "11281540677"
@@ -71,7 +71,7 @@ jobs:
           test "$(git hash-object evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json)" = \
             "9953940072fdd973cd6c83eb5899314d3484da30"
           test "$(git hash-object src/twelve_six/data/rada_current_snapshot_dedup_adapter_v1.py)" = \
-            "41558b33a2d9964aa41cfb11cc6114b61adb7297"
+            "86a481be4fdae8fd4aa75e348a4839ba7a8b6ce8"
           test "$(git hash-object src/twelve_six/data/rada_current_snapshot_qp_authority_v1.py)" = \
             "6b0c7e173460f23d3d3b702448b228253135c6cc"
           test "$(git hash-object tools/run_d03_rada_current_global_dedup_v1.py)" = \
