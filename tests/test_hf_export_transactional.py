@@ -1326,3 +1326,106 @@ def test_hf_reader_read_interrupt_retains_exact_identity(
 
     assert caught.value is primary
 
+def test_hf_reader_artifact_lstat_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    name = "artifact.bin"
+    (root / name).write_bytes(b"exact artifact bytes")
+    failure = OSError("simulated HF artifact lstat failure")
+    real_lstat = Path.lstat
+
+    def fail_artifact_lstat(path: Path):
+        if path == root / name:
+            raise failure
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_artifact_lstat)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot inspect HF-style export artifact",
+    ) as caught:
+        hf_export._read_regular_bytes(root, name)
+
+    assert caught.value.__cause__ is failure
+
+
+def test_hf_snapshot_root_lstat_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    failure = OSError("simulated HF root lstat failure")
+    real_lstat = Path.lstat
+
+    def fail_root_lstat(path: Path):
+        if path == root:
+            raise failure
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_root_lstat)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot inspect HF-style export directory",
+    ) as caught:
+        hf_export._read_export_snapshot(root)
+
+    assert caught.value.__cause__ is failure
+
+
+def test_hf_snapshot_inventory_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    failure = OSError("simulated HF root inventory failure")
+    real_iterdir = Path.iterdir
+
+    def fail_root_iterdir(path: Path):
+        if path == root:
+            raise failure
+        return real_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_root_iterdir)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot enumerate HF-style export directory",
+    ) as caught:
+        hf_export._read_export_snapshot(root)
+
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    "interrupt_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_hf_snapshot_inventory_interrupt_retains_exact_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    primary = interrupt_type("simulated HF inventory interruption")
+    real_iterdir = Path.iterdir
+
+    def interrupt_root_iterdir(path: Path):
+        if path == root:
+            raise primary
+        return real_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", interrupt_root_iterdir)
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._read_export_snapshot(root)
+
+    assert caught.value is primary
+
