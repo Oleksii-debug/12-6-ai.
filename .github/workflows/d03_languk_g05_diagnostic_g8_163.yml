@@ -1,0 +1,288 @@
+name: D03 Lang-UK G05 aggregate diagnostic G8 163
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_languk_g05_diagnostic_g8_163.yml"
+      - "tools/run_d03_languk_g05_diagnostic_v1.py"
+      - "tests/test_d03_languk_g05_diagnostic_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-languk-g05-diagnostic-g8-163-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'diagnostic/2860-languk-g05-reasons-g8-163-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      MAIN_HEAD: "019944d5fe12334791f05f1232d13de4a12e37d3"
+      OWNER_HEAD: "7cda697ac4fc8330754b28f0a02e119e395dbd25"
+      OWNER_RUNNER_BLOB: "da2d904bf9ab67bf8b20acd8cdb6b09d33657736"
+      DIAGNOSTIC_RUNNER_BLOB: "d8fd5b7c910b7f3866f28919f2aee81adf1f9700"
+      DIAGNOSTIC_TEST_BLOB: "3a96aea13c606ee9fb53483e6d6161811155886e"
+      DOCUMENT_QUALITY_BLOB: "b1461263034b4fb9510479b20c9697e22faa5f97"
+      GRANULARITY_BLOB: "513523b86824c423cad97352b3abb3d1241531b9"
+      QUALITY_EXECUTION_BLOB: "4659a9d4aba49908f372250904a54361c8d8cf46"
+      PRIVACY_EXECUTION_BLOB: "9215287e81c0a82f05ec8405dc4f34c60313c193"
+      PRIVACY_FILTER_BLOB: "bcc5938395724f6728ab212f98b39f2334b0f37d"
+      PARENT_AUDIT_HEAD: "0e682d8a63719063b7661600bf46e775b58ce823"
+      PARENT_AUDIT_BLOB: "c88a2884f77f2c9747b56d7f08edfdf7b6478af2"
+      EVAL290_HEAD: "029514654829cebc149cff6fc1fea2a8ba4fa566"
+      EVAL290_LOCK_BLOB: "6b9f6d3105333681f2db17e399805bac92ad2615"
+      SOURCE_SHA256: "9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597"
+      SOURCE_BYTES: "20220778"
+      SOURCE_URL: "https://huggingface.co/datasets/lang-uk/court-decisions-uk/resolve/289c0316fc076db3e1607db6776a29df42f4ffc5/2024-5K-supreme-court-decisions-deduplicated.parquet?download=true"
+      SELECTED_MANIFEST: "bbcbd9c2235234007737128c37f375ba0802f32a6dcc45bac02aff30fe4c3fc3"
+      QUALITY_EXECUTION: "537b302bfe32314fbdcfe284094c98c817fddd0a9910bb475b1c2dcdbba1a732"
+      THRESHOLD_POLICY: "97b9fe1452b22c6275a27f85524f670253a7f4012377361c4cb007004aeccd1d"
+      GRANULARITY_POLICY: "e8685c2c6b265b9b289ded7a5245888d8d16ae4d6e881f6229f3bc777601f857"
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact diagnostic closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$OWNER_HEAD" HEAD)" = "$OWNER_HEAD"
+          test "$(git merge-base "$MAIN_HEAD" HEAD)" = "$MAIN_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+
+          git diff --name-only "$OWNER_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
+          cat >"$RUNNER_TEMP/expected.txt" <<'EOF'
+          .github/workflows/d03_languk_g05_diagnostic_g8_163.yml
+          tests/test_d03_languk_g05_diagnostic_v1.py
+          tools/run_d03_languk_g05_diagnostic_v1.py
+          EOF
+          sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
+          cmp "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+
+          test "$(git hash-object tools/run_d03_languk_court_privacy_retest_v1.py)" = "$OWNER_RUNNER_BLOB"
+          test "$(git hash-object tools/run_d03_languk_g05_diagnostic_v1.py)" = "$DIAGNOSTIC_RUNNER_BLOB"
+          test "$(git hash-object tests/test_d03_languk_g05_diagnostic_v1.py)" = "$DIAGNOSTIC_TEST_BLOB"
+          test "$(git hash-object src/twelve_six/data/document_quality.py)" = "$DOCUMENT_QUALITY_BLOB"
+          test "$(git hash-object src/twelve_six/data/quality_granularity.py)" = "$GRANULARITY_BLOB"
+          test "$(git hash-object src/twelve_six/data/quality_execution_authority.py)" = "$QUALITY_EXECUTION_BLOB"
+          test "$(git hash-object src/twelve_six/data/privacy_execution_authority.py)" = "$PRIVACY_EXECUTION_BLOB"
+          test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "$PRIVACY_FILTER_BLOB"
+
+          python -m py_compile \
+            tools/run_d03_languk_court_privacy_retest_v1.py \
+            tools/run_d03_languk_g05_diagnostic_v1.py \
+            tests/test_d03_languk_g05_diagnostic_v1.py
+          python -m pip install --disable-pip-version-check "pytest==8.4.2" "ruff>=0.12"
+          ruff check \
+            tools/run_d03_languk_g05_diagnostic_v1.py \
+            tests/test_d03_languk_g05_diagnostic_v1.py
+          PYTHONPATH="src:." python -m pytest -q tests/test_d03_languk_g05_diagnostic_v1.py
+
+      - name: Checkout exact parent rights audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit="$RUNNER_TEMP/audit447"
+          git fetch --no-tags origin refs/pull/447/head
+          test "$(git rev-parse FETCH_HEAD)" = "$PARENT_AUDIT_HEAD"
+          git worktree add --detach "$audit" "$PARENT_AUDIT_HEAD"
+          test "$(git -C "$audit" rev-parse HEAD)" = "$PARENT_AUDIT_HEAD"
+          test "$(git -C "$audit" hash-object configs/data/next100_029_languk_rights_audit_v1.json)" = "$PARENT_AUDIT_BLOB"
+
+      - name: Prepare exact EVAL-290 PyArrow runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/eval290-src"
+          venv="$RUNNER_TEMP/eval290-venv"
+          manifest="$RUNNER_TEMP/eval290-environment.json"
+          lock="$RUNNER_TEMP/eval290-extra.lock.txt"
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL290_HEAD"
+          git worktree add --detach "$src" "$EVAL290_HEAD"
+          test "$(git -C "$src" rev-parse HEAD)" = "$EVAL290_HEAD"
+          test "$(git -C "$src" hash-object requirements/locks/linux-x86_64/eval290-extra.lock.txt)" = "$EVAL290_LOCK_BLOB"
+          python "$src/tools/execution_bootstrap.py" bootstrap \
+            --repo-root "$src" \
+            --capabilities "runtime,tests" \
+            --venv "$venv" \
+            --manifest "$manifest" \
+            --command "python -m pytest -q tests/test_eval290_ua_selection.py"
+          cp "$src/requirements/locks/linux-x86_64/eval290-extra.lock.txt" "$lock"
+          "$venv/bin/python" -m pip install \
+            --disable-pip-version-check --require-hashes --no-deps -r "$lock"
+          "$venv/bin/python" -c 'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+
+      - name: Download exact pinned source twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suffix in a b; do
+            target="$RUNNER_TEMP/court-$suffix.parquet"
+            curl --fail --location --retry 5 --retry-all-errors \
+              --connect-timeout 30 --max-time 600 \
+              "$SOURCE_URL" -o "$target"
+            test "$(stat -c %s "$target")" = "$SOURCE_BYTES"
+            test "$(sha256sum "$target" | cut -d' ' -f1)" = "$SOURCE_SHA256"
+          done
+          cmp "$RUNNER_TEMP/court-a.parquet" "$RUNNER_TEMP/court-b.parquet"
+
+      - name: Execute aggregate diagnostic twice in fresh processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="$RUNNER_TEMP/eval290-venv"
+          for suffix in a b; do
+            PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE" "$venv/bin/python" \
+              tools/run_d03_languk_g05_diagnostic_v1.py \
+              --expected-execution-head "$EXECUTION_HEAD" \
+              --parent-audit "$RUNNER_TEMP/audit447/configs/data/next100_029_languk_rights_audit_v1.json" \
+              --source-parquet "$RUNNER_TEMP/court-$suffix.parquet" \
+              --output-dir "$RUNNER_TEMP/diagnostic-$suffix"
+          done
+          diff -ru "$RUNNER_TEMP/diagnostic-a" "$RUNNER_TEMP/diagnostic-b"
+
+      - name: Qualify text-free aggregate diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/eval290-venv/bin/python" - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "diagnostic-a"
+          expected = {"g05-aggregate-diagnostic.json"}
+          assert {path.name for path in root.iterdir()} == expected
+          path = root / "g05-aggregate-diagnostic.json"
+          assert path.stat().st_size < 65536
+          report = json.loads(path.read_text(encoding="utf-8"))
+
+          claimed = report["diagnostic_identity_sha256"]
+          core = dict(report)
+          del core["diagnostic_identity_sha256"]
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          assert hashlib.sha256(raw).hexdigest() == claimed
+          assert report["schema_version"] == "12-6.d03-languk-g05-aggregate-diagnostic.v1"
+          assert report["execution_head_sha"] == os.environ["EXECUTION_HEAD"]
+          assert report["owner_binding"]["head_sha"] == os.environ["OWNER_HEAD"]
+          assert report["source_binding"]["sha256"] == os.environ["SOURCE_SHA256"]
+          assert report["source_binding"]["bytes"] == int(os.environ["SOURCE_BYTES"])
+          cohort = report["cohort_binding"]
+          assert cohort["selected_records"] == 256
+          assert cohort["selected_manifest_identity_sha256"] == os.environ["SELECTED_MANIFEST"]
+          assert cohort["parent_quality_execution_identity_sha256"] == os.environ["QUALITY_EXECUTION"]
+          authority = report["quality_authority_binding"]
+          assert authority["threshold_policy_sha256"] == os.environ["THRESHOLD_POLICY"]
+          assert authority["granularity_policy_sha256"] == os.environ["GRANULARITY_POLICY"]
+
+          diagnostic = report["diagnostic"]
+          assert diagnostic["documents"] == 256
+          assert diagnostic["accepted_documents"] == 0
+          assert diagnostic["rejected_documents"] == 256
+          assert sum(diagnostic["reason_set_counts"].values()) == 256
+          assert diagnostic["reason_counts"]
+          assert diagnostic["documents_at_or_below_window_trigger"] == 256
+          assert diagnostic["documents_above_window_trigger"] == 0
+          assert diagnostic["feature_summaries"]["chars"]["count"] == 256
+          assert diagnostic["threshold_crossings"]["eligible_for_token_diversity_check"] <= 256
+
+          forbidden_keys = {
+              "record_id",
+              "source_id",
+              "text",
+              "raw_text",
+              "normalized_text",
+              "raw_payload",
+              "normalized_payload",
+              "content",
+              "excerpt",
+              "example",
+          }
+          def walk(value):
+              if isinstance(value, dict):
+                  overlap = forbidden_keys.intersection(str(key).casefold() for key in value)
+                  assert not overlap, f"forbidden durable key leaked: {sorted(overlap)}"
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(report)
+
+          assert report["durable_evidence_text_free_aggregate_only"] is True
+          assert report["product_policy_mutated"] is False
+          assert report["capacity_or_training_authority_granted"] is False
+          truth = report["truth_boundary"]
+          for key in (
+              "canonical_capacity_credited",
+              "training_authorized_bytes",
+              "authorized_unique_loss_positions",
+              "authorized_optimized_target_exposure",
+              "optimizer_updates_executed",
+          ):
+              assert truth[key] == 0
+          for key in (
+              "tokenizer_fit_authorized",
+              "training_executed",
+              "learned_weights_created",
+              "final_test_outcomes_read",
+              "paid_compute_used",
+              "scale_promotion_authorized",
+              "registry_change_authorized",
+              "source_family_admitted",
+          ):
+              assert truth[key] is False
+
+          print(json.dumps({
+              "status": "PASS_TEXT_FREE_LANGUK_G05_DIAGNOSTIC",
+              "reason_counts": diagnostic["reason_counts"],
+              "threshold_crossings": diagnostic["threshold_crossings"],
+              "diagnostic_identity_sha256": claimed,
+          }, sort_keys=True))
+          PY
+
+      - name: Remove all source payloads
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/court-a.parquet" "$RUNNER_TEMP/court-b.parquet"
+
+      - name: Upload aggregate diagnostic evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-languk-g05-diagnostic-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/diagnostic-a/g05-aggregate-diagnostic.json
+          if-no-files-found: error
+          retention-days: 90
