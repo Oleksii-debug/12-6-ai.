@@ -194,7 +194,7 @@ def stable_id_key(value: str) -> tuple[int, Any, str]:
 
 
 def record_id(source_id: str) -> str:
-    lineage = f"{DATASET}@{REVISION}:{SOURCE_FILE}#{source_id}".encode("utf-8")
+    lineage = f"{DATASET}@{REVISION}:{SOURCE_FILE}#{source_id}".encode()
     return "languk-court-" + sha256(lineage)
 
 
