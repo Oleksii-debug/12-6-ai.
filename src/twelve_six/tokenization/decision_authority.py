@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 from collections.abc import Mapping
@@ -337,6 +338,10 @@ def _verify_runtime_byte_tokenizer_module_state() -> None:
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime module drift: {name}"
             )
+        if function.__builtins__ is not vars(builtins):
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime module drift: {name} builtins"
+            )
 
 
 def _runtime_byte_tokenizer_method(
@@ -463,6 +468,10 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
         if runtime_method.__globals__ is not vars(byte_module):
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime implementation drift: {name} globals"
+            )
+        if runtime_method.__builtins__ is not vars(builtins):
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime implementation drift: {name} builtins"
             )
         _verify_runtime_byte_tokenizer_method_defaults(name, runtime_method)
 
