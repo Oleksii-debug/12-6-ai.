@@ -70,6 +70,17 @@ def _receipt(
     inventory_file_sha256: str,
     record_payload_jsonl_sha256: str,
 ) -> dict[str, object]:
+    payload_set_projection = sorted(
+        (
+            {
+                "payload_sha256": row["payload_sha256"],
+                "payload_bytes": row["payload_bytes"],
+            }
+            for row in inventory["records"]
+        ),
+        key=lambda row: (row["payload_sha256"], row["payload_bytes"]),
+    )
+    payload_set_identity = _sha(target.canonical(payload_set_projection))
     core: dict[str, object] = {
         "schema_version": target.PARENT_SCHEMA,
         "execution_profile": "LOCAL_FREE",
@@ -104,6 +115,9 @@ def _receipt(
             "detector_counts": {},
             "materialization": {},
             "payload_delta_from_g05_retained_bytes": 0,
+            "exact_payload_collision_free": True,
+            "unique_payload_count": inventory["record_count"],
+            "payload_set_identity_sha256": payload_set_identity,
         },
         "durable_artifacts": {
             "g05_authority_file_sha256": "c" * 64,
@@ -384,6 +398,7 @@ def test_inventory_raw_text_key_is_rejected(tmp_path: Path) -> None:
             expected_source_object_count=3,
             expected_record_inventory_digest_sha256="0" * 64,
             expected_payload_inventory_digest_sha256="0" * 64,
+            expected_payload_set_identity_sha256="0" * 64,
         )
 
 
@@ -589,6 +604,7 @@ def test_inventory_rejects_post_g06_duplicate_payload_hash() -> None:
             expected_source_object_count=2,
             expected_record_inventory_digest_sha256="2" * 64,
             expected_payload_inventory_digest_sha256="3" * 64,
+            expected_payload_set_identity_sha256="4" * 64,
         )
 
 
@@ -605,4 +621,58 @@ def test_canonical_bridge_rejects_foreign_data_namespace_path(
         match="canonical twelve_six.data package search path drift",
     ):
         target.load_canonical_bridge()
+
+def test_inventory_cross_binds_parent_payload_set_identity() -> None:
+    inventory = _inventory()
+    rows = inventory["records"]
+    payload_set_projection = sorted(
+        (
+            {
+                "payload_sha256": row["payload_sha256"],
+                "payload_bytes": row["payload_bytes"],
+            }
+            for row in rows
+        ),
+        key=lambda row: (row["payload_sha256"], row["payload_bytes"]),
+    )
+    actual_payload_set_identity = _sha(
+        target.canonical(payload_set_projection)
+    )
+
+    verified = target.verify_inventory(
+        inventory,
+        expected_record_count=inventory["record_count"],
+        expected_total_payload_bytes=inventory["total_payload_bytes"],
+        expected_source_object_count=len(
+            {row["source_id"] for row in rows}
+        ),
+        expected_record_inventory_digest_sha256=inventory[
+            "record_inventory_digest_sha256"
+        ],
+        expected_payload_inventory_digest_sha256=inventory[
+            "payload_inventory_digest_sha256"
+        ],
+        expected_payload_set_identity_sha256=actual_payload_set_identity,
+    )
+    assert len(verified) == inventory["record_count"]
+
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="post-G06 payload-set identity drift",
+    ):
+        target.verify_inventory(
+            inventory,
+            expected_record_count=inventory["record_count"],
+            expected_total_payload_bytes=inventory["total_payload_bytes"],
+            expected_source_object_count=len(
+                {row["source_id"] for row in rows}
+            ),
+            expected_record_inventory_digest_sha256=inventory[
+                "record_inventory_digest_sha256"
+            ],
+            expected_payload_inventory_digest_sha256=inventory[
+                "payload_inventory_digest_sha256"
+            ],
+            expected_payload_set_identity_sha256="f" * 64,
+        )
 
