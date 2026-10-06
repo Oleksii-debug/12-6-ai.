@@ -434,32 +434,8 @@ def test_compare_outputs_requires_byte_identity_and_seals_proof(
 ) -> None:
     a = tmp_path / "a"
     b = tmp_path / "b"
-    a.mkdir()
-    b.mkdir()
-    receipt_core = {
-        "schema": target.RECEIPT_SCHEMA,
-        "execution_head_sha": "c" * 40,
-        "balance_result_identity_sha256": "1" * 64,
-        "balance_binding_identity_sha256": "2" * 64,
-        **target.ZERO_CREDIT,
-    }
-    receipt = {
-        **receipt_core,
-        "receipt_identity_sha256": target.sha256(
-            target.canonical(receipt_core)
-        ),
-    }
-    payloads = {
-        "composition-dedup-proof": {"x": 1},
-        "next100-input": {"x": 2},
-        "balance-result": {"x": 3},
-        "balance-binding": {"x": 4},
-        "execution-receipt": receipt,
-    }
-    for name, value in payloads.items():
-        raw = target.canonical_line(value)
-        (a / f"{name}.json").write_bytes(raw)
-        (b / f"{name}.json").write_bytes(raw)
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
 
     proof_path = tmp_path / "proof.json"
     proof = target.compare_outputs(a, b, proof_path)
@@ -468,6 +444,7 @@ def test_compare_outputs_requires_byte_identity_and_seals_proof(
     assert proof["proof_identity_sha256"] == target.self_hash(
         proof, "proof_identity_sha256"
     )
+    assert target.compare_outputs(a, b, proof_path) == proof
 
     (b / "balance-result.json").write_bytes(b"{}\n")
     with pytest.raises(
@@ -542,11 +519,37 @@ def test_verify_module_provenance_missing_file_fails_closed(
 
 def _write_two_clean_fixture(output: Path, *, zero_credit_override: dict | None = None) -> None:
     output.mkdir()
+    composition_core = {"schema": "synthetic-composition", "x": 1}
+    composition = {
+        **composition_core,
+        "evidence_identity_sha256": target.sha256(
+            target.canonical(composition_core)
+        ),
+    }
+    result_core = {"schema_version": "synthetic-result", "x": 3}
+    balance_result = {
+        **result_core,
+        "result_identity_sha256": target.sha256(target.canonical(result_core)),
+    }
+    binding_core = {"schema": "synthetic-binding", "x": 4}
+    balance_binding = {
+        **binding_core,
+        "binding_identity_sha256": target.sha256(
+            target.canonical(binding_core)
+        ),
+    }
     receipt_core = {
         "schema": target.RECEIPT_SCHEMA,
         "execution_head_sha": "c" * 40,
-        "balance_result_identity_sha256": "1" * 64,
-        "balance_binding_identity_sha256": "2" * 64,
+        "composition_dedup_identity_sha256": composition[
+            "evidence_identity_sha256"
+        ],
+        "balance_result_identity_sha256": balance_result[
+            "result_identity_sha256"
+        ],
+        "balance_binding_identity_sha256": balance_binding[
+            "binding_identity_sha256"
+        ],
         **target.ZERO_CREDIT,
     }
     if zero_credit_override:
@@ -556,10 +559,10 @@ def _write_two_clean_fixture(output: Path, *, zero_credit_override: dict | None 
         "receipt_identity_sha256": target.sha256(target.canonical(receipt_core)),
     }
     payloads = {
-        "composition-dedup-proof": {"x": 1},
+        "composition-dedup-proof": composition,
         "next100-input": {"x": 2},
-        "balance-result": {"x": 3},
-        "balance-binding": {"x": 4},
+        "balance-result": balance_result,
+        "balance-binding": balance_binding,
         "execution-receipt": receipt,
     }
     for name, value in payloads.items():
@@ -636,4 +639,23 @@ def test_write_output_dir_commits_receipt_last(
         "balance-binding",
         "execution receipt",
     ]
+
+def test_compare_outputs_rejects_coherently_tampered_result_self_hash(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-result"
+    b = tmp_path / "b-result"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "balance-result.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["x"] = 99
+        path.write_bytes(target.canonical_line(value))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="balance result self-hash mismatch",
+    ):
+        target.compare_outputs(a, b, tmp_path / "proof-result.json")
 
