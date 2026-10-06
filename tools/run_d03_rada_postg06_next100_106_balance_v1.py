@@ -224,6 +224,54 @@ def _resolve_existing_path(raw_path: str, error: str) -> Path:
         raise RadaPostG06BalanceError(error) from exc
 
 
+def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
+    """Atomically create deterministic evidence or resume an identical write."""
+    require(not path.is_symlink(), f"{label}: output path must not be a symlink")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        require(path.is_file(), f"{label}: output path is not a regular file")
+        require(
+            path.read_bytes() == payload,
+            f"{label}: refusing to overwrite divergent durable evidence",
+        )
+        return
+
+    temp = path.with_name(path.name + ".tmp")
+    require(not temp.is_symlink(), f"{label}: temp path must not be a symlink")
+    if temp.exists():
+        require(temp.is_file(), f"{label}: temp path is not a regular file")
+        require(
+            temp.read_bytes() == payload,
+            f"{label}: divergent interrupted temp evidence",
+        )
+        temp.replace(path)
+        return
+
+    created_temp = False
+    try:
+        with temp.open("xb") as handle:
+            created_temp = True
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temp.replace(path)
+    except OSError:
+        if created_temp:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
+def _read_regular_bytes(path: Path, *, label: str) -> bytes:
+    require(
+        path.is_file() and not path.is_symlink(),
+        f"{label}: file invalid",
+    )
+    return path.read_bytes()
+
+
 def verify_module_provenance(module: Any, relative: str) -> None:
     raw = getattr(module, "__file__", None)
     require(isinstance(raw, str) and raw, f"module path missing: {relative}")
@@ -652,18 +700,54 @@ def execute(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
 
 
 def write_output_dir(path: Path, values: Mapping[str, Mapping[str, Any]]) -> None:
-    require(not path.exists() and not path.is_symlink(), "output directory already exists")
-    path.mkdir(parents=True)
-    for name, value in values.items():
-        target = path / f"{name}.json"
-        with target.open("xb") as handle:
-            payload = canonical_line(value)
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
+    names = (
+        "composition-dedup-proof",
+        "next100-input",
+        "balance-result",
+        "balance-binding",
+        "execution-receipt",
+    )
+    require(set(values) == set(names), "output bundle key set drift")
+    require(not path.is_symlink(), "output directory must not be a symlink")
+    if path.exists():
+        require(path.is_dir(), "output path is not a directory")
+    else:
+        path.mkdir(parents=True)
+
+    # Commit child artifacts first and the bound receipt last. This permits
+    # deterministic restart after an interrupted partial bundle without ever
+    # publishing a receipt before its children are durable.
+    for name in names[:-1]:
+        write_immutable_bytes(
+            path / f"{name}.json",
+            canonical_line(values[name]),
+            label=name,
+        )
+    write_immutable_bytes(
+        path / "execution-receipt.json",
+        canonical_line(values["execution-receipt"]),
+        label="execution receipt",
+    )
 
 
 def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[str, Any]:
+    for path, label in (
+        (output_a, "two-clean output A"),
+        (output_b, "two-clean output B"),
+    ):
+        require(path.is_dir() and not path.is_symlink(), f"{label}: directory invalid")
+    require(
+        _resolve_existing_path(
+            str(output_a),
+            "two-clean output A: directory invalid",
+        )
+        != _resolve_existing_path(
+            str(output_b),
+            "two-clean output B: directory invalid",
+        ),
+        "two-clean output directories must be distinct",
+    )
+
     names = (
         "composition-dedup-proof",
         "next100-input",
@@ -672,22 +756,57 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
         "execution-receipt",
     )
     hashes: dict[str, str] = {}
+    parsed: dict[str, dict[str, Any]] = {}
     for name in names:
-        a = (output_a / f"{name}.json").read_bytes()
-        b = (output_b / f"{name}.json").read_bytes()
+        a = _read_regular_bytes(
+            output_a / f"{name}.json",
+            label=f"two-clean A {name}",
+        )
+        b = _read_regular_bytes(
+            output_b / f"{name}.json",
+            label=f"two-clean B {name}",
+        )
         require(a == b, f"two-clean output differs: {name}")
+        value = load_json_bytes(a, f"two-clean {name}")
+        require(
+            canonical_line(value) == a,
+            f"two-clean output is not canonical JSON: {name}",
+        )
+        parsed[name] = value
         hashes[f"{name}.json"] = sha256(a)
-    receipt = load_json_bytes(
-        (output_a / "execution-receipt.json").read_bytes(),
-        "execution receipt",
+
+    receipt = parsed["execution-receipt"]
+    require(receipt.get("schema") == RECEIPT_SCHEMA, "execution receipt schema mismatch")
+    receipt_identity = require_sha256(
+        receipt.get("receipt_identity_sha256"),
+        "execution receipt identity",
     )
+    require(
+        receipt_identity == self_hash(receipt, "receipt_identity_sha256"),
+        "execution receipt self-hash mismatch",
+    )
+    require_git_sha(receipt.get("execution_head_sha"), "execution receipt head")
+    require_sha256(
+        receipt.get("balance_result_identity_sha256"),
+        "balance result identity",
+    )
+    require_sha256(
+        receipt.get("balance_binding_identity_sha256"),
+        "balance binding identity",
+    )
+    for field, expected in ZERO_CREDIT.items():
+        require(
+            receipt.get(field) == expected,
+            f"execution receipt zero-credit drift: {field}",
+        )
+
     core: dict[str, Any] = {
         "schema": REPEAT_SCHEMA,
         "execution_head_sha": receipt["execution_head_sha"],
         "fresh_process_count": 2,
         "byte_identical_outputs": True,
         "output_file_sha256": hashes,
-        "receipt_identity_sha256": receipt["receipt_identity_sha256"],
+        "receipt_identity_sha256": receipt_identity,
         "balance_result_identity_sha256": receipt[
             "balance_result_identity_sha256"
         ],
@@ -697,9 +816,11 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
         **ZERO_CREDIT,
     }
     proof = {**core, "proof_identity_sha256": sha256(canonical(core))}
-    require(not proof_path.exists() and not proof_path.is_symlink(),
-            "repeat proof already exists")
-    proof_path.write_bytes(canonical_line(proof))
+    write_immutable_bytes(
+        proof_path,
+        canonical_line(proof),
+        label="repeat proof",
+    )
     return proof
 
 
