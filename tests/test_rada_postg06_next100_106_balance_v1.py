@@ -1,0 +1,489 @@
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+import tools.run_d03_rada_postg06_next100_106_balance_v1 as target
+
+
+UPSTREAM_EVIDENCE_RAW = b'''{"authorized_optimized_target_exposure":0,"authorized_unique_loss_positions":0,"candidate_filter":{"algorithm":"INCUMBENT_V1_CONSERVATIVE_RARE_PREFIX_V1","bounded_differential_selftest":{"fixture_groups":9,"incumbent_positive_pairs":9,"prefix_candidate_pairs":9},"lineage_and_report_authority":"QUALIFIED_INCUMBENT_INDEXED_EXECUTOR","pair_decision_authority":"EXACT_INCUMBENT_V1_PAIR_MATCHES","science_changed":false,"work_telemetry":{"algorithm":"INCUMBENT_V1_CONSERVATIVE_RARE_PREFIX_V1","candidate_limit":100000000,"edge_prefix_sources":93807,"exact_bucket_signatures":747,"frequency_scan_items":17440032,"index_posting_limit":250000000,"index_postings":17746017,"pair_expansion_attempts":738618,"pair_expansion_limit":250000000,"prefix_queries":2649276,"source_count":101995,"unique_candidate_pairs":382329}},"candidate_jsonl_sha256":"8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7","candidate_payload_bytes":192393157,"candidate_source_object_count":101733,"canonical_capacity_credited":0,"combined_declared_capacity_bytes":198398557,"combined_source_object_count":101995,"current_rada_survivor_declared_capacity_bytes":186855914,"current_rada_survivor_source_object_count":98601,"evidence_identity_sha256":"a3f7e396cb13a6b107aaa0eb330edcbdc61bead6fa12eb68542ff5c3a3ed9301","execution_head_sha":"a4663e87b010b190343caf1d42784f5dc7984601","final_test_outcomes_read":false,"learned_weights_created":false,"matcher_model_training_executed":false,"matcher_report_sha256":"64e687ae431804862003d5839b9a90c715838e794daad907200f0abfc73b4333","matcher_source_admission_authority":false,"nbu_helper_blob_sha1":"dc0ed88924610fc7ac19ba4fc7d960d8679c9742","nbu_helper_head_sha":"b5235cfd83852854e345dea6c2e89cfbcd1cef79","next_gate":"CURRENT_RADA_RIGHTS_PROVENANCE_RECHECK_FOR_TRAINING","optimizer_updates_executed_on_real_targets":0,"paid_compute_used":false,"parent_product_head_sha":"0294dd8f04e28cd7992f2afce4cdb3af39846d98","parent_replay_authority_identity_sha256":"543f9cdd5a9aacaf2cc00b5d4057ad8b142aa685870545cff8bd518f8085055e","projection_receipt_identity_sha256":"d439cceebaf5b7a5ef365fca8c20fc9e5ad873435513380793d3020fad1c28e7","raw_text_persisted":false,"replacement_proof":{"append_forbidden_by_current_adapter":true,"matcher_only_status_projection":{"canonical_capacity_credited":0,"input_evidence_status":"CURRENT_SNAPSHOT_REPLAY_ZERO_CREDIT","matcher_evidence_status":"DEDICATED_TERMINAL","projected_source_object_count":101733,"projection_scope":"GLOBAL_DEDUP_MATCHER_INPUT_ONLY","source_admission_authority_granted":false,"tokenizer_fit_authorized":false,"training_authority_granted":false,"training_authorized_bytes":0},"replaced_declared_capacity_bytes":88565,"replaced_raw_bytes":332400,"replaced_raw_sha256":"36eae31c3b0676ea7c02236fa05bd695c240c9a8eade5febc00457b8103ee1a4","replaced_source_ids":["ua.rada.open-data.laws-texts.d23314"],"replaced_source_object_count":1,"replacement_required_by_current_adapter":true,"source_family":"ua.rada.open-data.laws-texts"},"rights_recheck_for_training_required":true,"rights_scope":"ARTIFACT_RETENTION_AND_REPRODUCIBILITY_ONLY","scale_promotion_authorized":false,"schema_version":"12-6.d03-rada-current-global-dedup-execution.v1","survivor_authority_sha256":"f103a3f18216519bd9228e586bd673d49f73cace03b3b0278f2dd0a33383bffb","tokenizer_fit_authorized":false,"training_authorized_bytes":0,"training_executed":false,"v7_head_sha":"d3333ec1b4a508df232a5aefccd6686adda745fb"}\n'''
+UPSTREAM_TWO_CLEAN_RAW = b'''{"byte_identical_outputs":true,"canonical_capacity_credited":0,"current_rada_survivor_declared_capacity_bytes":186855914,"current_rada_survivor_source_object_count":98601,"execution_head_sha":"a4663e87b010b190343caf1d42784f5dc7984601","fresh_process_count":2,"matcher_report_sha256":"64e687ae431804862003d5839b9a90c715838e794daad907200f0abfc73b4333","next_gate":"CURRENT_RADA_RIGHTS_PROVENANCE_RECHECK_FOR_TRAINING","output_file_sha256":{"dedup-report.json":"9a38961a5dc5bc7ef93ba046fdfb4f22ccddc175b8b028c875316b3f80324c1f","execution-evidence.json":"43a9621ab11fd82232e8251ab26aae4126cf0b4854878af1e97184d587740caa","rada-survivor-authority.json":"ebdb68e689625e2f46e8a44a02b9d38ffafd9e79a04dbdc49bf6f12b5dcfb6c9"},"rights_recheck_for_training_required":true,"schema_version":"12-6.d03-rada-current-global-dedup-two-clean.v1","survivor_authority_sha256":"f103a3f18216519bd9228e586bd673d49f73cace03b3b0278f2dd0a33383bffb","tokenizer_fit_authorized":false,"training_authorized_bytes":0,"two_clean_identity_sha256":"f24f4b2d23bee6cb1273a4680297d942aa59030dab50d5c5de7a4d659ff99a5e"}\n'''
+
+
+def _family_vector() -> dict[str, object]:
+    core: dict[str, object] = {
+        "schema": target.FAMILY_VECTOR_SCHEMA,
+        "status": "PASS",
+        "source_git_sha": "a" * 40,
+        "materialization_identity_sha256": "1" * 64,
+        "materialization_execution_head_sha": "b" * 40,
+        "record_payload_jsonl_sha256": "2" * 64,
+        "record_inventory_digest_sha256": "3" * 64,
+        "payload_inventory_digest_sha256": "4" * 64,
+        "record_count": 6,
+        "total_payload_bytes": 6000,
+        "source_object_count": 6,
+        "record_membership_sha256": "5" * 64,
+        "trusted_family_authority_root_sha256": "6" * 64,
+        "families": [
+            {
+                "stratum": "uk",
+                "family": "ua.rada.open-data.laws-texts",
+                "record_count": 2,
+                "capacity_bytes": 2000,
+            },
+            {
+                "stratum": "en",
+                "family": "en.standardebooks.manual",
+                "record_count": 2,
+                "capacity_bytes": 2000,
+            },
+            {
+                "stratum": "code",
+                "family": "github:encode/httpx",
+                "record_count": 2,
+                "capacity_bytes": 2000,
+            },
+        ],
+        "stratum_capacity_bytes": {"code": 2000, "en": 2000, "uk": 2000},
+        "stratum_family_counts": {"code": 1, "en": 1, "uk": 1},
+        "next_gate": "NEXT100-106_BALANCE_FAMILY_CAP",
+        "training_eligible": False,
+        "evaluation_eligible": False,
+        "tokenizer_fit_authorized": False,
+        "model_training_authorized": False,
+        "authorized_optimized_target_exposure": 0,
+        "training_authorized_by_this_report": False,
+    }
+    return {
+        **core,
+        "family_vector_identity_sha256": target.sha256(target.canonical(core)),
+    }
+
+
+def _post_g06(vector: dict[str, object]) -> dict[str, object]:
+    core: dict[str, object] = {
+        "schema_version": target.POST_G06_SCHEMA,
+        "execution_profile": "LOCAL_FREE",
+        "execution_head_sha": vector["materialization_execution_head_sha"],
+        "parent": {},
+        "g05": {},
+        "g06": {
+            "exact_payload_collision_free": True,
+            "unique_payload_count": vector["record_count"],
+            "payload_set_identity_sha256": "7" * 64,
+        },
+        "durable_artifacts": {},
+        "survivor_inventory": {
+            "record_payload_jsonl_sha256": vector[
+                "record_payload_jsonl_sha256"
+            ],
+            "record_count": vector["record_count"],
+            "total_payload_bytes": vector["total_payload_bytes"],
+            "record_inventory_digest_sha256": vector[
+                "record_inventory_digest_sha256"
+            ],
+            "payload_inventory_digest_sha256": vector[
+                "payload_inventory_digest_sha256"
+            ],
+        },
+        "counts": {},
+        "authority_blobs": {},
+        "content_boundary": {
+            "raw_training_text_persisted": False,
+            "raw_evaluation_text_persisted": False,
+            "raw_survivor_text_persisted": False,
+            "durable_output_text_free": True,
+        },
+        "truth_boundary": {
+            "canonical_capacity_credited": 0,
+            "training_authorized_bytes": 0,
+            "authorized_unique_loss_positions": 0,
+            "authorized_optimized_target_exposure": 0,
+            "tokenizer_fit_authorized": False,
+            "training_executed": False,
+            "final_test_outcomes_read": False,
+            "paid_compute_used": False,
+        },
+        "next_gate": "CURRENT_RADA_BALANCE_DIVERSITY_FAMILY_CAP_RETEST",
+    }
+    evidence = {
+        **core,
+        "evidence_identity_sha256": target.sha256(target.canonical(core)),
+    }
+    vector["materialization_identity_sha256"] = evidence[
+        "evidence_identity_sha256"
+    ]
+    vector_core = dict(vector)
+    vector_core.pop("family_vector_identity_sha256")
+    vector["family_vector_identity_sha256"] = target.sha256(
+        target.canonical(vector_core)
+    )
+    return evidence
+
+
+def test_known_global_dedup_terminal_artifact_is_accepted() -> None:
+    evidence = target.load_json_bytes(UPSTREAM_EVIDENCE_RAW, "upstream")
+    two_clean = target.load_json_bytes(UPSTREAM_TWO_CLEAN_RAW, "two-clean")
+    target.verify_global_dedup(evidence, two_clean)
+
+
+def test_known_global_dedup_tamper_fails_closed() -> None:
+    evidence = target.load_json_bytes(UPSTREAM_EVIDENCE_RAW, "upstream")
+    two_clean = target.load_json_bytes(UPSTREAM_TWO_CLEAN_RAW, "two-clean")
+    evidence["training_authorized_bytes"] = 1
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="self-hash mismatch",
+    ):
+        target.verify_global_dedup(evidence, two_clean)
+
+
+def test_known_artifact_transport_hashes_are_exact() -> None:
+    assert target.sha256(UPSTREAM_EVIDENCE_RAW) == (
+        target.UPSTREAM_GLOBAL_DEDUP_EVIDENCE_FILE_SHA256
+    )
+    assert target.sha256(UPSTREAM_TWO_CLEAN_RAW) == (
+        target.UPSTREAM_TWO_CLEAN_FILE_SHA256
+    )
+
+
+def test_strict_json_rejects_duplicate_keys_and_nonfinite() -> None:
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="duplicate JSON key",
+    ):
+        target.load_json_bytes(b'{"a":1,"a":2}', "duplicate")
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="non-finite",
+    ):
+        target.load_json_bytes(b'{"a":NaN}', "nan")
+
+
+def test_post_g06_receipt_cross_binds_physical_vector() -> None:
+    vector = _family_vector()
+    evidence = _post_g06(vector)
+    normalized = target.verify_post_g06_receipt(
+        evidence,
+        vector,
+        expected_evidence_identity_sha256=evidence[
+            "evidence_identity_sha256"
+        ],
+    )
+    assert normalized["unique_payload_count"] == vector["record_count"]
+    assert normalized["payload_set_identity_sha256"] == "7" * 64
+
+
+def test_post_g06_receipt_rejects_uniqueness_or_root_drift() -> None:
+    vector = _family_vector()
+    evidence = _post_g06(vector)
+
+    bad_unique = copy.deepcopy(evidence)
+    bad_unique["g06"]["unique_payload_count"] = 5
+    bad_core = dict(bad_unique)
+    bad_core.pop("evidence_identity_sha256")
+    bad_unique["evidence_identity_sha256"] = target.sha256(
+        target.canonical(bad_core)
+    )
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="unique payload count",
+    ):
+        target.verify_post_g06_receipt(
+            bad_unique,
+            vector,
+            expected_evidence_identity_sha256=bad_unique[
+                "evidence_identity_sha256"
+            ],
+        )
+
+    bad_root = copy.deepcopy(evidence)
+    bad_root["survivor_inventory"][
+        "payload_inventory_digest_sha256"
+    ] = "f" * 64
+    bad_core = dict(bad_root)
+    bad_core.pop("evidence_identity_sha256")
+    bad_root["evidence_identity_sha256"] = target.sha256(
+        target.canonical(bad_core)
+    )
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="cross-bind drift",
+    ):
+        target.verify_post_g06_receipt(
+            bad_root,
+            vector,
+            expected_evidence_identity_sha256=bad_root[
+                "evidence_identity_sha256"
+            ],
+        )
+
+
+def test_composition_proof_is_deterministic_terminal_and_zero_credit() -> None:
+    vector = _family_vector()
+    evidence = _post_g06(vector)
+    post = target.verify_post_g06_receipt(
+        evidence,
+        vector,
+        expected_evidence_identity_sha256=evidence[
+            "evidence_identity_sha256"
+        ],
+    )
+    first = target.build_composition_proof(
+        source_git_sha="c" * 40,
+        family_vector=vector,
+        post_g06=post,
+    )
+    second = target.build_composition_proof(
+        source_git_sha="c" * 40,
+        family_vector=copy.deepcopy(vector),
+        post_g06=copy.deepcopy(post),
+    )
+    assert first == second
+    assert first["terminal_verdict"] == "PASS"
+    assert first["cross_transform_exact_payload_collision_free"] is True
+    assert first["upstream_global_dedup"]["evidence_identity_sha256"] == (
+        target.UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID
+    )
+    for field, expected in target.ZERO_CREDIT.items():
+        assert first[field] == expected
+    assert first["evidence_identity_sha256"] == target.self_hash(
+        first, "evidence_identity_sha256"
+    )
+
+
+class _FakeGate:
+    def validate_vector(self, value: dict) -> None:
+        assert value["dedup_authority"]["terminal_verdict"] == "PASS"
+
+    def evaluate(self, policy: dict, value: dict) -> dict:
+        assert policy["policy_identity_sha256"] == target.POLICY_IDENTITY_SHA256
+        result = {
+            "schema_version": "12-6.next100-106-balance-gate-result.v1",
+            "policy_identity_sha256": target.POLICY_IDENTITY_SHA256,
+            "dedup_authority": value["dedup_authority"],
+            "input_totals": value["totals"],
+            "family_minimum": {
+                "required_per_stratum": 2,
+                "observed": {"ua": 1, "en": 1, "code": 1},
+                "pass": False,
+            },
+            "maximum_feasible_total_source_bytes": 0,
+            "maximum_feasible_stratum_bytes": {"ua": 0, "en": 0, "code": 0},
+            "target_total_source_bytes": 20_000_000,
+            "target_stratum_bytes": {
+                "ua": 9_000_000,
+                "en": 7_000_000,
+                "code": 4_000_000,
+            },
+            "raw_capacity_by_stratum": {
+                "ua": 2000,
+                "en": 2000,
+                "code": 2000,
+            },
+            "raw_gap_to_target_by_stratum": {
+                "ua": 8_998_000,
+                "en": 6_998_000,
+                "code": 3_998_000,
+            },
+            "deterministic_maximum_allocation": [],
+            "status": "BLOCKED_NO_NONZERO_POLICY_COMPLIANT_MIXTURE",
+            "claim_boundary": {
+                "authorized_training_exposure_loss_positions": 0,
+                "corpus_identity": None,
+                "shard_identity": None,
+                "tokenizer_fit_authorized": False,
+                "model_training_authorized": False,
+                "paid_compute_authorized": False,
+                "source_bytes_are_loss_positions": False,
+            },
+        }
+        result["result_identity_sha256"] = target.sha256(
+            target.canonical(result)
+        )
+        return result
+
+
+class _FakeBridge:
+    def verify_postmaterialization_family_vector(
+        self, value: dict, *, expected_identity_sha256: str
+    ) -> str:
+        assert value["family_vector_identity_sha256"] == expected_identity_sha256
+        return expected_identity_sha256
+
+    def adapt_postmaterialization_family_vector_to_next100_106(
+        self,
+        family_vector: dict,
+        *,
+        expected_family_vector_identity_sha256: str,
+        dedup_authority: dict,
+        expected_dedup_worker_id: str,
+        expected_dedup_head_sha: str,
+        expected_dedup_evidence_identity_sha256: str,
+    ) -> dict:
+        assert expected_dedup_worker_id == target.DEDUP_WORKER_ID
+        assert dedup_authority["head_sha"] == expected_dedup_head_sha
+        assert dedup_authority["evidence_identity_sha256"] == (
+            expected_dedup_evidence_identity_sha256
+        )
+        return {
+            "schema_version": "12-6.next100-106-post-dedup-family-vector.v1",
+            "terminal": True,
+            "dedup_authority": dedup_authority,
+            "families": [
+                {
+                    "family_id": row["family"],
+                    "stratum": {"uk": "ua"}.get(
+                        row["stratum"], row["stratum"]
+                    ),
+                    "unique_bytes": row["capacity_bytes"],
+                }
+                for row in family_vector["families"]
+            ],
+            "totals": {
+                "total_unique_bytes": family_vector["total_payload_bytes"],
+                "by_stratum": {"ua": 2000, "en": 2000, "code": 2000},
+                "family_count": {"ua": 1, "en": 1, "code": 1},
+            },
+            "physical_authority": {},
+        }
+
+    def verify_balance_result(
+        self, value: dict, *, expected_result_identity_sha256: str
+    ) -> str:
+        assert value["result_identity_sha256"] == expected_result_identity_sha256
+        return expected_result_identity_sha256
+
+    def build_balance_result_binding(self, **kwargs) -> dict:
+        result = kwargs["balance_result"]
+        return {
+            "binding_identity_sha256": "d" * 64,
+            "balance_status": result["status"],
+        }
+
+
+def _write_json(path: Path, value: dict) -> str:
+    raw = target.canonical_line(value)
+    path.write_bytes(raw)
+    return target.sha256(raw)
+
+
+def test_execute_delegates_policy_without_widening_science(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector = _family_vector()
+    evidence = _post_g06(vector)
+    vector_path = tmp_path / "family.json"
+    evidence_path = tmp_path / "post-g06.json"
+    upstream_path = tmp_path / "upstream.json"
+    two_path = tmp_path / "two.json"
+    vector_sha = _write_json(vector_path, vector)
+    evidence_sha = _write_json(evidence_path, evidence)
+    upstream_path.write_bytes(UPSTREAM_EVIDENCE_RAW)
+    two_path.write_bytes(UPSTREAM_TWO_CLEAN_RAW)
+
+    source_sha = "c" * 40
+    monkeypatch.setattr(target, "verify_source_head", lambda value: source_sha)
+    monkeypatch.setattr(
+        target,
+        "load_canonical_authorities",
+        lambda: (
+            _FakeGate(),
+            _FakeBridge(),
+            {"policy_identity_sha256": target.POLICY_IDENTITY_SHA256},
+        ),
+    )
+
+    args = argparse.Namespace(
+        source_git_sha=source_sha,
+        family_vector=vector_path,
+        expected_family_vector_file_sha256=vector_sha,
+        expected_family_vector_identity_sha256=vector[
+            "family_vector_identity_sha256"
+        ],
+        post_g06_evidence=evidence_path,
+        expected_post_g06_evidence_file_sha256=evidence_sha,
+        expected_post_g06_evidence_identity_sha256=evidence[
+            "evidence_identity_sha256"
+        ],
+        upstream_global_dedup_evidence=upstream_path,
+        upstream_global_dedup_two_clean=two_path,
+    )
+    values = target.execute(args)
+    receipt = values["execution-receipt"]
+    assert receipt["balance_status"] == (
+        "BLOCKED_NO_NONZERO_POLICY_COMPLIANT_MIXTURE"
+    )
+    assert receipt["next_scientific_gate"] == (
+        "ACQUIRE_MORE_DIVERSE_LAWFUL_SOURCE_CAPACITY"
+    )
+    assert values["composition-dedup-proof"]["terminal_verdict"] == "PASS"
+    for field, expected in target.ZERO_CREDIT.items():
+        assert receipt[field] == expected
+
+
+def test_compare_outputs_requires_byte_identity_and_seals_proof(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    receipt_core = {
+        "execution_head_sha": "c" * 40,
+        "balance_result_identity_sha256": "1" * 64,
+        "balance_binding_identity_sha256": "2" * 64,
+    }
+    receipt = {
+        **receipt_core,
+        "receipt_identity_sha256": target.sha256(
+            target.canonical(receipt_core)
+        ),
+    }
+    payloads = {
+        "composition-dedup-proof": {"x": 1},
+        "next100-input": {"x": 2},
+        "balance-result": {"x": 3},
+        "balance-binding": {"x": 4},
+        "execution-receipt": receipt,
+    }
+    for name, value in payloads.items():
+        raw = target.canonical_line(value)
+        (a / f"{name}.json").write_bytes(raw)
+        (b / f"{name}.json").write_bytes(raw)
+
+    proof_path = tmp_path / "proof.json"
+    proof = target.compare_outputs(a, b, proof_path)
+    assert proof["fresh_process_count"] == 2
+    assert proof["byte_identical_outputs"] is True
+    assert proof["proof_identity_sha256"] == target.self_hash(
+        proof, "proof_identity_sha256"
+    )
+
+    (b / "balance-result.json").write_bytes(b"{}\n")
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="two-clean output differs",
+    ):
+        target.compare_outputs(a, b, tmp_path / "second-proof.json")
+
+
+def test_write_output_dir_is_immutable(tmp_path: Path) -> None:
+    output = tmp_path / "out"
+    values = {"execution-receipt": {"value": 1}}
+    target.write_output_dir(output, values)
+    assert (output / "execution-receipt.json").read_bytes() == (
+        target.canonical_line({"value": 1})
+    )
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="already exists",
+    ):
+        target.write_output_dir(output, values)
