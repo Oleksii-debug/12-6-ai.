@@ -165,6 +165,7 @@ _EXPECTED_BYTE_SOURCE_PATH_CLASS = type(_BYTE_TOKENIZER_SOURCE_PATH)
 _EXPECTED_BYTE_SOURCE_READ_BYTES = _EXPECTED_BYTE_SOURCE_PATH_CLASS.read_bytes
 _EXPECTED_TOKENIZER_BASE_MODULE = base_module
 _EXPECTED_TOKENIZER_IDENTITY_CLASS = _CanonicalTokenizerIdentity
+_EXPECTED_BYTE_TOKENIZER_MODULE = byte_module
 _EXPECTED_BYTE_JSON_MODULE = json
 _EXPECTED_BYTE_HASHLIB_MODULE = hashlib
 _EXPECTED_BYTE_JSON_DUMPS = json.dumps
@@ -177,7 +178,102 @@ class TokenizerDecisionError(ValueError):
     """Raised when terminal tokenizer-decision evidence fails closed."""
 
 
+def _verify_expected_root_integrity(
+    *,
+    _application_keys=_APPLICATION_KEYS,
+    _report_keys=_REPORT_KEYS,
+    _zero_credit_boundary=_ZERO_CREDIT_BOUNDARY,
+    _runtime_identity=_EXPECTED_TOKENIZER_RUNTIME_IDENTITY,
+    _class_state=_EXPECTED_TOKENIZER_CLASS_STATE,
+    _method_kwdefaults=_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS,
+    _module_constants=_EXPECTED_BYTE_MODULE_CONSTANTS,
+    _module_config=_EXPECTED_BYTE_MODULE_CONFIG,
+    _builtins_module=_EXPECTED_BUILTINS_MODULE,
+    _runtime_builtins=_EXPECTED_BYTE_RUNTIME_BUILTINS,
+    _source_path=_EXPECTED_BYTE_SOURCE_PATH,
+    _source_path_class=_EXPECTED_BYTE_SOURCE_PATH_CLASS,
+    _source_read_bytes=_EXPECTED_BYTE_SOURCE_READ_BYTES,
+    _base_module=_EXPECTED_TOKENIZER_BASE_MODULE,
+    _identity_class=_EXPECTED_TOKENIZER_IDENTITY_CLASS,
+    _byte_module=_EXPECTED_BYTE_TOKENIZER_MODULE,
+    _json_module=_EXPECTED_BYTE_JSON_MODULE,
+    _hashlib_module=_EXPECTED_BYTE_HASHLIB_MODULE,
+    _json_dumps=_EXPECTED_BYTE_JSON_DUMPS,
+    _json_loads=_EXPECTED_BYTE_JSON_LOADS,
+    _sha1=_EXPECTED_BYTE_HASHLIB_SHA1,
+    _sha256=_EXPECTED_BYTE_HASHLIB_SHA256,
+    _mapping_type=Mapping,
+    _code_type=CodeType,
+    _function_type=FunctionType,
+    _mapping_proxy_type=MappingProxyType,
+) -> None:
+    """Reject rebinding of immutable verifier roots before they can be trusted."""
+
+    identity_roots = (
+        ("_APPLICATION_KEYS", _APPLICATION_KEYS, _application_keys),
+        ("_REPORT_KEYS", _REPORT_KEYS, _report_keys),
+        ("_ZERO_CREDIT_BOUNDARY", _ZERO_CREDIT_BOUNDARY, _zero_credit_boundary),
+        (
+            "_EXPECTED_TOKENIZER_RUNTIME_IDENTITY",
+            _EXPECTED_TOKENIZER_RUNTIME_IDENTITY,
+            _runtime_identity,
+        ),
+        ("_EXPECTED_TOKENIZER_CLASS_STATE", _EXPECTED_TOKENIZER_CLASS_STATE, _class_state),
+        (
+            "_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS",
+            _EXPECTED_TOKENIZER_METHOD_KWDEFAULTS,
+            _method_kwdefaults,
+        ),
+        ("_EXPECTED_BYTE_MODULE_CONSTANTS", _EXPECTED_BYTE_MODULE_CONSTANTS, _module_constants),
+        ("_EXPECTED_BYTE_MODULE_CONFIG", _EXPECTED_BYTE_MODULE_CONFIG, _module_config),
+        ("_EXPECTED_BUILTINS_MODULE", _EXPECTED_BUILTINS_MODULE, _builtins_module),
+        (
+            "_EXPECTED_BYTE_RUNTIME_BUILTINS",
+            _EXPECTED_BYTE_RUNTIME_BUILTINS,
+            _runtime_builtins,
+        ),
+        ("_EXPECTED_BYTE_SOURCE_PATH", _EXPECTED_BYTE_SOURCE_PATH, _source_path),
+        (
+            "_EXPECTED_BYTE_SOURCE_PATH_CLASS",
+            _EXPECTED_BYTE_SOURCE_PATH_CLASS,
+            _source_path_class,
+        ),
+        (
+            "_EXPECTED_BYTE_SOURCE_READ_BYTES",
+            _EXPECTED_BYTE_SOURCE_READ_BYTES,
+            _source_read_bytes,
+        ),
+        ("_EXPECTED_TOKENIZER_BASE_MODULE", _EXPECTED_TOKENIZER_BASE_MODULE, _base_module),
+        (
+            "_EXPECTED_TOKENIZER_IDENTITY_CLASS",
+            _EXPECTED_TOKENIZER_IDENTITY_CLASS,
+            _identity_class,
+        ),
+        (
+            "_EXPECTED_BYTE_TOKENIZER_MODULE",
+            _EXPECTED_BYTE_TOKENIZER_MODULE,
+            _byte_module,
+        ),
+        ("_EXPECTED_BYTE_JSON_MODULE", _EXPECTED_BYTE_JSON_MODULE, _json_module),
+        ("_EXPECTED_BYTE_HASHLIB_MODULE", _EXPECTED_BYTE_HASHLIB_MODULE, _hashlib_module),
+        ("_EXPECTED_BYTE_JSON_DUMPS", _EXPECTED_BYTE_JSON_DUMPS, _json_dumps),
+        ("_EXPECTED_BYTE_JSON_LOADS", _EXPECTED_BYTE_JSON_LOADS, _json_loads),
+        ("_EXPECTED_BYTE_HASHLIB_SHA1", _EXPECTED_BYTE_HASHLIB_SHA1, _sha1),
+        ("_EXPECTED_BYTE_HASHLIB_SHA256", _EXPECTED_BYTE_HASHLIB_SHA256, _sha256),
+        ("Mapping", Mapping, _mapping_type),
+        ("CodeType", CodeType, _code_type),
+        ("FunctionType", FunctionType, _function_type),
+        ("MappingProxyType", MappingProxyType, _mapping_proxy_type),
+    )
+    for name, observed, expected in identity_roots:
+        if observed is not expected:
+            raise TokenizerDecisionError(
+                f"canonical tokenizer decision verifier root drift: {name}"
+            )
+
+
 def _canonical_json(value: Mapping[str, Any]) -> str:
+    _verify_byte_tokenizer_runtime_dependencies()
     try:
         rendered = _EXPECTED_BYTE_JSON_DUMPS(
             value, sort_keys=True, separators=(",", ":"),
@@ -185,15 +281,20 @@ def _canonical_json(value: Mapping[str, Any]) -> str:
         )
         # UTF-8 is the identity encoding; lone surrogates are not valid evidence.
         rendered.encode("utf-8")
-        return rendered
     except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
         raise TokenizerDecisionError("authority must be strict UTF-8 JSON") from exc
+    _verify_byte_tokenizer_runtime_dependencies()
+    return rendered
 
 
 def authority_sha256(value: Mapping[str, Any]) -> str:
     """Return the SHA-256 identity of a canonical JSON mapping."""
 
-    return _EXPECTED_BYTE_HASHLIB_SHA256(_canonical_json(value).encode()).hexdigest()
+    _verify_byte_tokenizer_runtime_dependencies()
+    digest = _EXPECTED_BYTE_HASHLIB_SHA256
+    rendered = _canonical_json(value)
+    _verify_byte_tokenizer_runtime_dependencies()
+    return digest(rendered.encode()).hexdigest()
 
 
 def _self_hash(value: Mapping[str, Any], identity_field: str) -> str:
@@ -221,6 +322,7 @@ def _git_blob_sha1(payload: bytes) -> str:
 def _detached_json_mapping(value: Mapping[str, Any], *, field: str) -> dict[str, Any]:
     """Capture one deep JSON snapshot and discard all caller-owned aliases."""
 
+    _verify_byte_tokenizer_runtime_dependencies()
     try:
         rendered = _EXPECTED_BYTE_JSON_DUMPS(
             value,
@@ -230,9 +332,17 @@ def _detached_json_mapping(value: Mapping[str, Any], *, field: str) -> dict[str,
             allow_nan=False,
         )
         rendered.encode("utf-8")
+    except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
+        raise TokenizerDecisionError(f"{field} must be strict UTF-8 JSON") from exc
+
+    # Caller-owned Mapping hooks run inside dumps(). Re-seal before resolving
+    # the decoder so a stateful input cannot retarget the expected JSON root.
+    _verify_byte_tokenizer_runtime_dependencies()
+    try:
         detached = _EXPECTED_BYTE_JSON_LOADS(rendered)
     except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
         raise TokenizerDecisionError(f"{field} must be strict UTF-8 JSON") from exc
+    _verify_byte_tokenizer_runtime_dependencies()
     if type(detached) is not dict:
         raise TokenizerDecisionError(f"{field} must be a JSON object")
     return detached
@@ -282,7 +392,7 @@ def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
     try:
         module_code = _EXPECTED_BYTE_RUNTIME_BUILTINS["compile"](
             payload,
-            str(_BYTE_TOKENIZER_SOURCE_PATH),
+            _EXPECTED_BYTE_SOURCE_PATH_TEXT,
             "exec",
             dont_inherit=True,
         )
@@ -330,7 +440,7 @@ def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
     try:
         module_code = _EXPECTED_BYTE_RUNTIME_BUILTINS["compile"](
             payload,
-            str(_BYTE_TOKENIZER_SOURCE_PATH),
+            _EXPECTED_BYTE_SOURCE_PATH_TEXT,
             "exec",
             dont_inherit=True,
         )
@@ -359,6 +469,7 @@ def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
 def _verify_byte_tokenizer_runtime_dependencies() -> None:
     """Bind mutable interpreter and stdlib dependencies used by D04 verification."""
 
+    _verify_expected_root_integrity()
     if builtins is not _EXPECTED_BUILTINS_MODULE:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime dependency drift: builtins module"
@@ -384,6 +495,10 @@ def _verify_byte_tokenizer_runtime_dependencies() -> None:
     if base_module is not _EXPECTED_TOKENIZER_BASE_MODULE:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime dependency drift: base module"
+        )
+    if byte_module is not _EXPECTED_BYTE_TOKENIZER_MODULE:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: byte module"
         )
     if json is not _EXPECTED_BYTE_JSON_MODULE:
         raise TokenizerDecisionError(
@@ -610,8 +725,16 @@ def _verify_runtime_byte_tokenizer_class() -> None:
         _verify_runtime_byte_tokenizer_method_defaults(name, runtime_method)
 
 
-def _snapshot_verified_tokenizer_identity(tokenizer: Any) -> dict[str, object]:
-    """Copy canonical identity values so no live object is trusted after reseal."""
+def _snapshot_verified_tokenizer_identity(
+    tokenizer: Any,
+    *,
+    _expected_identity=_EXPECTED_TOKENIZER_RUNTIME_IDENTITY,
+    _getattr=builtins.getattr,
+    _type=builtins.type,
+    _dict=builtins.dict,
+    _mapping_proxy_type=MappingProxyType,
+) -> dict[str, object]:
+    """Copy identity through immutable local roots across effectful observation."""
 
     snapshot: dict[str, object] = {}
     for field in (
@@ -622,16 +745,16 @@ def _snapshot_verified_tokenizer_identity(tokenizer: Any) -> dict[str, object]:
         "normalization",
         "encoding",
     ):
-        expected = _EXPECTED_TOKENIZER_RUNTIME_IDENTITY[field]
-        observed = getattr(tokenizer, field)
-        if type(observed) is not type(expected) or observed != expected:
+        expected = _expected_identity[field]
+        observed = _getattr(tokenizer, field)
+        if _type(observed) is not _type(expected) or observed != expected:
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime identity drift: {field}"
             )
         snapshot[field] = observed
 
-    special_tokens = getattr(tokenizer, "special_tokens")
-    if type(special_tokens) is not MappingProxyType or dict(special_tokens):
+    special_tokens = _getattr(tokenizer, "special_tokens")
+    if _type(special_tokens) is not _mapping_proxy_type or _dict(special_tokens):
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime identity drift: special_tokens"
         )
@@ -837,6 +960,7 @@ def _bind_upstreams(
         application,
         field="split application",
     )
+    _verify_byte_tokenizer_runtime_dependencies()
 
     selection_identity, totals = _verify_selection(
         selection_snapshot,
