@@ -27,6 +27,7 @@ jobs:
       SOURCE_BYTES: "611865397"
       SOURCE_MD5: 0ea96e1582e5584ced79be1027f0ae55
       SOURCE_SHA256: a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431
+      SOURCE_URL: "https://data.gov.ua/dataset/b22d184c-4826-4e1d-8577-972effc5700c/resource/5616dd04-949a-489c-8efc-54004293b238/revision/522061/download"
 
     steps:
       - name: Checkout exact execution head
@@ -86,11 +87,13 @@ jobs:
           set -euo pipefail
           rm -f /tmp/edrnpa-source.zip
           PYTHONPATH=. python - <<'PY'
+          import os
           from pathlib import Path
           import tools.probe_d03_edrnpa_open_data_v1 as probe
 
           result = probe.download_archive_to(
               Path("/tmp/edrnpa-source.zip"),
+              url=os.environ["SOURCE_URL"],
               timeout=600.0,
           )
           print(result)
