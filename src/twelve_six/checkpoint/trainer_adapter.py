@@ -2013,6 +2013,18 @@ def _assert_torch_execution_mode_stable(
         )
 
 
+def _add_failure_note_preserving_primary(
+    exc: BaseException,
+    note: str,
+) -> None:
+    """Best-effort note attachment that cannot replace the primary failure."""
+
+    try:
+        BaseException.add_note(exc, note)
+    except BaseException:  # noqa: BLE001 - diagnostics must never mask failure
+        return
+
+
 def _note_torch_execution_mode_drift(
     expected: tuple[bool, bool],
     exc: BaseException,
@@ -2027,15 +2039,17 @@ def _note_torch_execution_mode_drift(
     try:
         live = _snapshot_torch_execution_mode()
     except BaseException as mode_exc:  # noqa: BLE001 - preserve primary failure
-        exc.add_note(
-            f"{operation} execution-mode drift check also failed: {mode_exc!r}"
+        _add_failure_note_preserving_primary(
+            exc,
+            f"{operation} execution-mode drift check also failed: {mode_exc!r}",
         )
         return
     if live != expected:
-        exc.add_note(
+        _add_failure_note_preserving_primary(
+            exc,
             f"{operation} also leaked caller-owned torch execution mode: "
             f"expected grad_enabled={expected[0]}, inference_mode={expected[1]}; "
-            f"observed grad_enabled={live[0]}, inference_mode={live[1]}"
+            f"observed grad_enabled={live[0]}, inference_mode={live[1]}",
         )
 
 
