@@ -26,8 +26,6 @@ for location in (ROOT / "tools", ROOT / "src"):
 
 import run_d03_rada_current_global_dedup_v1 as parent
 
-from twelve_six.data import current_reserved_decontamination_v1 as reserved
-
 PARENT_EXECUTION_HEAD = "a4663e87b010b190343caf1d42784f5dc7984601"
 PARENT_RUNNER_BLOB = "1f7109ae2efca9a97ea49ab5c29b8f095657489c"
 CURRENT_RESERVED_BLOB = "e5c555e3cd27844e98d4ae91af0b746e427f36c9"
@@ -580,6 +578,11 @@ def prepare(args: argparse.Namespace) -> None:
         )
     require(retained_declared == EXPECTED_SURVIVOR_DECLARED_BYTES, "retained declared bytes drift")
 
+    # Import the current DATA-232 adapter only after the historical matcher graph
+    # has been reconstructed. Importing it at module load preloads the current
+    # DATA-232 matcher and correctly trips the historical helper isolation guard.
+    from twelve_six.data import current_reserved_decontamination_v1 as reserved
+
     inventory_core = {
         "schema_version": INVENTORY_SCHEMA,
         "parent_execution_head_sha": PARENT_EXECUTION_HEAD,
@@ -660,6 +663,9 @@ def prepare(args: argparse.Namespace) -> None:
 
 def execute_data232(args: argparse.Namespace) -> None:
     bind_execution_head(args.expected_execution_head)
+    # This command runs in its own fresh process and performs no historical graph
+    # reconstruction, so loading the current DATA-232 adapter here is intentional.
+    from twelve_six.data import current_reserved_decontamination_v1 as reserved
     inventory = load_json(args.inventory_json)
     handoff = load_json(args.handoff_json)
     training = load_jsonl(args.training_records_jsonl)
