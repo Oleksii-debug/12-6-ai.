@@ -116,6 +116,325 @@ def test_effectful_optimizer_state_dict_never_publishes_unsafe_snapshot(
         trainer.state_dict()
 
 
+@pytest.mark.parametrize(
+    ("mutation", "expected_message"),
+    [
+        ("config", "checkpoint export config changed during checkpoint export"),
+        ("policy", "checkpoint export policy changed during checkpoint export"),
+        ("device", "checkpoint export binding changed during checkpoint export"),
+    ],
+)
+def test_transient_scheduler_storage_shadow_cannot_forge_snapshot(
+    preserve_process_state: Any,
+) -> None:
+    import copy
+
+    del preserve_process_state
+    model = _Logits()
+    config = TrainerConfig(seed=703, max_steps=2)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=config.learning_rate,
+        betas=config.betas,
+        eps=config.eps,
+        weight_decay=config.weight_decay,
+    )
+
+    class ForgingScheduler(torch.optim.lr_scheduler.LambdaLR):
+        calls = 0
+        owner: Trainer | None = None
+
+        def state_dict(self):
+            type(self).calls += 1
+            snapshot = copy.deepcopy(super().state_dict())
+            if type(self).calls == 2:
+                snapshot["base_lrs"] = [rate + 0.125 for rate in snapshot["base_lrs"]]
+            elif type(self).calls == 3:
+                owner = type(self).owner
+                assert owner is not None
+                raw = Trainer._canonical_scheduler_storage(owner)
+                assert raw is not None
+                forged_live = dict(raw)
+                forged_live["base_lrs"] = [
+                    rate + 0.125 for rate in forged_live["base_lrs"]
+                ]
+
+                def one_shot_storage():
+                    del vars(owner)["_canonical_scheduler_storage"]
+                    return forged_live
+
+                owner._canonical_scheduler_storage = one_shot_storage
+            return snapshot
+
+    scheduler = ForgingScheduler(optimizer, lr_lambda=lambda _step: 1.0)
+    trainer = Trainer(
+        model,
+        config,
+        optimizer=optimizer,
+        scheduler=scheduler,
+    )
+    ForgingScheduler.owner = trainer
+    ForgingScheduler.calls = 0
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="scheduler export differs from live state",
+        ):
+            trainer.state_dict()
+    finally:
+        ForgingScheduler.owner = None
+        ForgingScheduler.calls = 0
+
+    assert "_canonical_scheduler_storage" in vars(trainer)
+    assert trainer._failure_reason == (
+        "checkpoint state extraction failed after possible mutation"
+    )
+
+
+def test_transient_counter_drift_cannot_forge_exported_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    committed = (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen)
+    original_optimizer_export = trainer.optimizer.state_dict
+    original_scaler_export = trainer.scaler.state_dict
+
+    def drift_counters() -> dict[str, Any]:
+        snapshot = original_optimizer_export()
+        trainer.micro_step = 9
+        trainer.optimizer_step = 9
+        trainer.tokens_seen = 99
+        return snapshot
+
+    def restore_counters() -> dict[str, Any]:
+        trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen = committed
+        return original_scaler_export()
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", drift_counters)
+    monkeypatch.setattr(trainer.scaler, "state_dict", restore_counters)
+    snapshot = trainer.state_dict()
+
+    assert (snapshot.micro_step, snapshot.optimizer_step, snapshot.tokens_seen) == committed
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == committed
+    assert trainer._failure_reason is None
+
+
+def test_effectful_optimizer_export_cannot_forge_final_model_observer(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    expected_model_fingerprint = Trainer._model_export_fingerprint(trainer)
+    original_state_dict = trainer.optimizer.state_dict
+
+    def install_forged_observer() -> dict[str, Any]:
+        snapshot = original_state_dict()
+        trainer.model.weight.data.add_(0.25)
+        trainer._model_export_fingerprint = lambda: expected_model_fingerprint
+        return snapshot
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", install_forged_observer)
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint export changed model weights or buffers",
+    ):
+        trainer.state_dict()
+
+    assert "_model_export_fingerprint" in vars(trainer)
+    assert trainer._failure_reason == (
+        "checkpoint state extraction failed after possible mutation"
+    )
+
+
+class _ForbiddenCheckpointContractValue:
+    deepcopy_calls = 0
+    eq_calls = 0
+
+    def __deepcopy__(
+        self,
+        memo: dict[int, Any],
+    ) -> "_ForbiddenCheckpointContractValue":
+        del memo
+        type(self).deepcopy_calls += 1
+        return self
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        type(self).eq_calls += 1
+        return True
+
+
+def test_direct_export_rejects_noncanonical_config_without_callbacks(
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    value = _ForbiddenCheckpointContractValue()
+    _ForbiddenCheckpointContractValue.deepcopy_calls = 0
+    _ForbiddenCheckpointContractValue.eq_calls = 0
+    object.__setattr__(trainer.config, "seed", value)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint config field seed contains non-canonical value type",
+    ):
+        trainer.state_dict()
+
+    assert _ForbiddenCheckpointContractValue.deepcopy_calls == 0
+    assert _ForbiddenCheckpointContractValue.eq_calls == 0
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+
+
+def test_direct_export_rejects_noncanonical_policy_without_callbacks(
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    value = _ForbiddenCheckpointContractValue()
+    _ForbiddenCheckpointContractValue.deepcopy_calls = 0
+    _ForbiddenCheckpointContractValue.eq_calls = 0
+    trainer._canonical_default_optimizer_options["eps"] = value
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint export policy .* contains non-canonical value type",
+    ):
+        trainer.state_dict()
+
+    assert _ForbiddenCheckpointContractValue.deepcopy_calls == 0
+    assert _ForbiddenCheckpointContractValue.eq_calls == 0
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+
+
+def test_effectful_optimizer_export_cannot_drift_checkpoint_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+    mutation: str,
+    expected_message: str,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    original_state_dict = trainer.optimizer.state_dict
+
+    def mutate_contract() -> dict[str, Any]:
+        snapshot = original_state_dict()
+        if mutation == "config":
+            object.__setattr__(trainer.config, "seed", trainer.config.seed + 1)
+        elif mutation == "policy":
+            trainer._canonical_unscheduled_default_optimizer = False
+        elif mutation == "device":
+            trainer.device = torch.device("meta")
+        else:
+            raise AssertionError(f"unknown checkpoint contract mutation: {mutation}")
+        return snapshot
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", mutate_contract)
+    with pytest.raises(TrainingStateInvalidError, match=expected_message):
+        trainer.state_dict()
+
+    assert trainer._failure_reason == (
+        "checkpoint state extraction failed after possible mutation"
+    )
+
+
+def test_checkpoint_preflight_cannot_drift_config_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    original_state_dict = trainer.scaler.state_dict
+    calls = 0
+
+    def mutate_config_on_preflight() -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        snapshot = original_state_dict()
+        if calls == 1:
+            object.__setattr__(trainer.config, "seed", trainer.config.seed + 1)
+        return snapshot
+
+    monkeypatch.setattr(trainer.scaler, "state_dict", mutate_config_on_preflight)
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint export config changed during checkpoint preflight",
+    ):
+        trainer.state_dict()
+
+    assert calls == 1
+    assert trainer._failure_reason == (
+        "checkpoint preflight failed after committed boundary"
+    )
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_direct_state_export_requires_training_mode_and_allows_retry(
+    preserve_process_state: Any,
+    nested: bool,
+) -> None:
+    del preserve_process_state
+    if nested:
+        model = torch.nn.Sequential(
+            torch.nn.Linear(3, 3),
+            torch.nn.Dropout(p=0.1),
+        )
+        model[1].eval()
+    else:
+        model = _Logits()
+        model.eval()
+    trainer = Trainer(
+        model,
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    if nested:
+        model[1].eval()
+    else:
+        model.eval()
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint model training mode must remain enabled",
+    ):
+        trainer.state_dict()
+
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+    model.train()
+    snapshot = trainer.state_dict()
+    assert (snapshot.micro_step, snapshot.optimizer_step, snapshot.tokens_seen) == (0, 0, 0)
+
+
 def test_ordinary_state_export_still_preserves_named_adamw_resume(
     preserve_process_state: Any,
 ) -> None:
@@ -305,6 +624,55 @@ def test_mid_accumulation_state_dict_rejects_before_fingerprint_traversal(
     assert trainer._failure_reason is None
 
 
+def test_committed_boundary_rejects_instance_safety_shadow_before_export(
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+
+    trainer._model_export_fingerprint = lambda: "forged"
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="native D02 safety authority must remain canonical",
+    ):
+        trainer.state_dict()
+
+    assert trainer._failure_reason is None
+    del vars(trainer)["_model_export_fingerprint"]
+    clean = trainer.state_dict()
+    assert (clean.micro_step, clean.optimizer_step, clean.tokens_seen) == (0, 0, 0)
+
+
+def test_committed_boundary_rejects_subclass_safety_override_before_export(
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+
+    class UnsafeExportTrainer(Trainer):
+        def _model_export_fingerprint(self) -> str:
+            return "forged"
+
+    trainer = UnsafeExportTrainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match=(
+            "native D02 safety authority must remain canonical: "
+            "_model_export_fingerprint"
+        ),
+    ):
+        Trainer.state_dict(trainer)
+
+    assert trainer._failure_reason is None
+
+
 def test_committed_boundary_fingerprint_failure_poisons_trainer(
     monkeypatch: pytest.MonkeyPatch,
     preserve_process_state: Any,
@@ -316,10 +684,11 @@ def test_committed_boundary_fingerprint_failure_poisons_trainer(
     )
     assert trainer.train_microbatch(_BATCH).optimizer_stepped
 
-    def fail_fingerprint() -> str:
+    def fail_fingerprint(self: Trainer) -> str:
+        assert self is trainer
         raise ValueError("injected canonical fingerprint failure")
 
-    monkeypatch.setattr(trainer, "_model_export_fingerprint", fail_fingerprint)
+    monkeypatch.setattr(Trainer, "_model_export_fingerprint", fail_fingerprint)
     with pytest.raises(ValueError, match="canonical fingerprint failure"):
         trainer.state_dict()
     assert trainer._failure_reason is not None
@@ -374,17 +743,18 @@ def test_committed_boundary_recheck_failure_poisons_trainer(
     )
     assert trainer.train_microbatch(_BATCH).optimizer_stepped
 
-    original = getattr(trainer, attribute)
+    original = getattr(Trainer, attribute)
     calls = 0
 
-    def fail_on_second_observation() -> Any:
+    def fail_on_second_observation(self: Trainer) -> Any:
         nonlocal calls
+        assert self is trainer
         calls += 1
         if calls == 2:
             raise ValueError(f"injected {observer} recheck failure")
-        return original()
+        return original(self)
 
-    monkeypatch.setattr(trainer, attribute, fail_on_second_observation)
+    monkeypatch.setattr(Trainer, attribute, fail_on_second_observation)
     with pytest.raises(ValueError, match=f"injected {observer} recheck failure"):
         trainer.state_dict()
 

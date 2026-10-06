@@ -162,6 +162,11 @@ class Trainer:
         "__dict__",
         "__getattribute__",
         "__setattr__",
+        "_checkpoint_inert_copy",
+        "_checkpoint_rng_fingerprint",
+        "_checkpoint_autograd_mode",
+        "_checkpoint_numeric_policy",
+        "_canonical_config_state",
         "_canonical_model_members",
         "_canonical_optimizer_storage",
         "_canonical_scheduler_storage",
@@ -170,6 +175,7 @@ class Trainer:
         "_canonical_lambda_lr_live_state",
         "_optimizer_live_fingerprint",
         "_model_export_fingerprint",
+        "_require_model_training_mode",
         "_checkpoint_auxiliary_fingerprint",
         "_require_exported_model_matches_live",
         "_require_exported_scheduler_matches_live",
@@ -329,6 +335,134 @@ class Trainer:
                 f"{label} instance storage must be a dictionary"
             )
         return attrs
+
+    @staticmethod
+    def _checkpoint_inert_copy(value: Any, *, label: str) -> Any:
+        """Copy small checkpoint contract values without user callbacks."""
+
+        value_type = type(value)
+        if value is None or value_type in {bool, int, str}:
+            return value
+        if value_type is float:
+            if not math.isfinite(value):
+                raise TrainingStateInvalidError(
+                    f"{label} contains a non-finite float"
+                )
+            return value
+        if value_type is tuple:
+            return tuple(
+                Trainer._checkpoint_inert_copy(
+                    item,
+                    label=f"{label} tuple item",
+                )
+                for item in value
+            )
+        if value_type is dict:
+            result: dict[str, Any] = {}
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise TrainingStateInvalidError(
+                        f"{label} keys must be canonical strings"
+                    )
+                result[key] = Trainer._checkpoint_inert_copy(
+                    item,
+                    label=f"{label}.{key}",
+                )
+            return result
+        raise TrainingStateInvalidError(
+            f"{label} contains non-canonical value type: "
+            f"{Trainer._type_identity(value)}"
+        )
+
+    @staticmethod
+    def _checkpoint_rng_fingerprint() -> str:
+        """Fingerprint process RNG state without advancing any stream."""
+
+        digest = hashlib.sha256()
+
+        def emit(label: bytes, payload: bytes) -> None:
+            digest.update(len(label).to_bytes(2, "big"))
+            digest.update(label)
+            digest.update(len(payload).to_bytes(8, "big"))
+            digest.update(payload)
+
+        emit(b"python", repr(random.getstate()).encode("utf-8"))
+
+        numpy_state = np.random.get_state()
+        emit(b"numpy-kind", str(numpy_state[0]).encode("utf-8"))
+        emit(b"numpy-state", np.ascontiguousarray(numpy_state[1]).tobytes())
+        emit(b"numpy-position", str(int(numpy_state[2])).encode("ascii"))
+        emit(b"numpy-has-gauss", b"1" if bool(numpy_state[3]) else b"0")
+        emit(b"numpy-cached-gauss", struct.pack("!d", float(numpy_state[4])))
+
+        cpu_state = torch.get_rng_state().detach().cpu().contiguous()
+        emit(b"torch-cpu", cpu_state.numpy().tobytes())
+
+        cuda_initialized = torch.cuda.is_initialized()
+        emit(b"torch-cuda-initialized", b"1" if cuda_initialized else b"0")
+        cuda_states = torch.cuda.get_rng_state_all() if cuda_initialized else []
+        emit(b"torch-cuda-count", str(len(cuda_states)).encode("ascii"))
+        for index, state in enumerate(cuda_states):
+            payload = state.detach().cpu().contiguous().numpy().tobytes()
+            emit(f"torch-cuda-{index}".encode("ascii"), payload)
+
+        return digest.hexdigest()
+
+    @staticmethod
+    def _checkpoint_autograd_mode() -> tuple[bool, bool]:
+        """Snapshot thread-local autograd modes without changing them."""
+
+        return (
+            bool(torch.is_grad_enabled()),
+            bool(torch.is_inference_mode_enabled()),
+        )
+
+    @staticmethod
+    def _checkpoint_numeric_policy() -> tuple[str, str]:
+        """Snapshot process-wide floating-point defaults used by training code."""
+
+        return (
+            str(torch.get_default_dtype()),
+            torch.get_float32_matmul_precision(),
+        )
+
+    @staticmethod
+    def _canonical_config_state(config: Any) -> dict[str, Any]:
+        """Snapshot TrainerConfig slots without dataclass deepcopy callbacks."""
+
+        if type(config) is not TrainerConfig:
+            raise TrainingStateInvalidError(
+                "checkpoint config must use canonical TrainerConfig"
+            )
+        names = (
+            "learning_rate",
+            "weight_decay",
+            "betas",
+            "eps",
+            "max_steps",
+            "warmup_steps",
+            "scheduler",
+            "gradient_accumulation_steps",
+            "gradient_clip_norm",
+            "precision",
+            "seed",
+            "deterministic_algorithms",
+            "deterministic_warn_only",
+        )
+        state = {
+            name: Trainer._checkpoint_inert_copy(
+                object.__getattribute__(config, name),
+                label=f"checkpoint config field {name}",
+            )
+            for name in names
+        }
+        try:
+            TrainerConfig(**state)
+        except (TypeError, ValueError) as exc:
+            raise TrainingStateInvalidError(
+                "checkpoint config values are not canonical"
+            ) from exc
+        return state
 
     def _require_canonical_checkpoint_authorities(self) -> None:
         """Reject native subclass/instance replacement of checkpoint safety code."""
@@ -560,7 +694,7 @@ class Trainer:
     def _canonical_scaler_live_state(self) -> dict[str, Any]:
         """Derive GradScaler checkpoint fields from raw trainer-owned storage."""
 
-        attrs = self._canonical_scaler_storage()
+        attrs = Trainer._canonical_scaler_storage(self)
         enabled = attrs.get("_enabled")
         if type(enabled) is not bool:
             raise TrainingStateInvalidError(
@@ -1311,6 +1445,7 @@ class Trainer:
         # A normal mid-accumulation checkpoint attempt must remain retryable:
         # its gradients are legitimately pending and no state was exported.
         self.assert_accumulation_boundary()
+        Trainer._require_model_training_mode(self)
         expected_micro_steps = self.optimizer_step * self.config.gradient_accumulation_steps
         if self.micro_step != expected_micro_steps:
             raise RuntimeError(
@@ -1546,6 +1681,67 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     f"checkpoint model export tensor {name!r} byte size differs"
                 )
+
+    def _require_model_training_mode(self) -> None:
+        """Require every durable model module to remain in training mode."""
+
+        trainer_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+        model = trainer_attrs.get("model")
+        if not isinstance(model, nn.Module):
+            raise TrainingStateInvalidError(
+                "checkpoint trainer model binding is not a torch module"
+            )
+
+        seen_modules: set[int] = set()
+        active_modules: set[int] = set()
+
+        def walk(module: nn.Module, prefix: str) -> None:
+            module_id = id(module)
+            if module_id in active_modules:
+                raise TrainingStateInvalidError(
+                    "checkpoint model module graph contains a cycle"
+                )
+            if module_id in seen_modules:
+                return
+            active_modules.add(module_id)
+            seen_modules.add(module_id)
+            try:
+                attrs = Trainer._raw_instance_dict(
+                    module,
+                    nn.Module,
+                    label="model module",
+                )
+                if attrs.get("training") is not True:
+                    label = prefix or "<root>"
+                    raise TrainingStateInvalidError(
+                        "checkpoint model training mode must remain enabled: "
+                        f"{label}"
+                    )
+                modules = attrs.get("_modules")
+                if type(modules) is not dict:
+                    raise TrainingStateInvalidError(
+                        "checkpoint model child registry is not canonical"
+                    )
+                for name, child in modules.items():
+                    if type(name) is not str:
+                        raise TrainingStateInvalidError(
+                            "checkpoint model child-module name is not canonical"
+                        )
+                    if child is None:
+                        continue
+                    if not isinstance(child, nn.Module):
+                        raise TrainingStateInvalidError(
+                            "checkpoint model child is not a torch module"
+                        )
+                    walk(child, f"{prefix}.{name}" if prefix else name)
+            finally:
+                active_modules.remove(module_id)
+
+        walk(model, "")
 
     def _model_export_fingerprint(self) -> str:
         """Hash model weights and buffers without overridable model iterators."""
@@ -2247,7 +2443,7 @@ class Trainer:
         saved_groups = exported.get("param_groups") if isinstance(exported, Mapping) else None
         if not isinstance(saved_state, Mapping) or not isinstance(saved_groups, list):
             raise TrainingStateInvalidError("optimizer export is not canonical")
-        live_state, live_groups = self._canonical_optimizer_storage()
+        live_state, live_groups = Trainer._canonical_optimizer_storage(self)
         if len(saved_groups) != len(live_groups):
             raise TrainingStateInvalidError("optimizer export group count differs")
         present: set[int] = set()
@@ -2581,7 +2777,7 @@ class Trainer:
         """Refuse finite, detached GradScaler statistics that cannot replay."""
         if not isinstance(exported, Mapping):
             raise TrainingStateInvalidError("gradient scaler export is not canonical")
-        expected = self._canonical_scaler_live_state()
+        expected = Trainer._canonical_scaler_live_state(self)
         if not Trainer._exact_export_leaf_equal(exported, expected):
             raise TrainingStateInvalidError(
                 "gradient scaler export differs from live state"
@@ -2601,7 +2797,7 @@ class Trainer:
             return
         if not isinstance(exported, Mapping):
             raise TrainingStateInvalidError("scheduler export is not canonical")
-        raw_live = self._canonical_scheduler_storage()
+        raw_live = Trainer._canonical_scheduler_storage(self)
         if raw_live is None:
             raise TrainingStateInvalidError("scheduler live storage is unavailable")
         live = {
@@ -2650,11 +2846,94 @@ class Trainer:
         # A normal incomplete accumulation is retryable. Reject it before
         # fingerprinting legitimate pending gradients or other transient state.
         Trainer.assert_accumulation_boundary(self)
+        # Once a committed boundary is eligible for export, every reachable
+        # checkpoint safety helper must remain first-party. Subclass/instance
+        # shadows could otherwise forge the observer chain used below.
+        Trainer._require_canonical_checkpoint_authorities(self)
+        Trainer._require_model_training_mode(self)
+        export_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+        export_binding_fields = (
+            "model",
+            "optimizer",
+            "scheduler",
+            "scaler",
+            "config",
+            "device",
+        )
+        missing_export_bindings = [
+            name for name in export_binding_fields if name not in export_attrs
+        ]
+        if missing_export_bindings:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export binding fields are unavailable: "
+                f"{missing_export_bindings}"
+            )
+        expected_export_bindings = {
+            name: export_attrs[name] for name in export_binding_fields
+        }
+        expected_export_config = export_attrs["config"]
+        if type(expected_export_config) is not TrainerConfig:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export config must use canonical TrainerConfig"
+            )
+        expected_export_config_state = Trainer._canonical_config_state(
+            expected_export_config
+        )
+        export_policy_fields = (
+            "_canonical_default_schedule",
+            "_canonical_unscheduled_default_optimizer",
+            "_canonical_default_optimizer_options",
+        )
+        missing_export_policies = [
+            name for name in export_policy_fields if name not in export_attrs
+        ]
+        if missing_export_policies:
+            raise TrainingStateInvalidError(
+                "trainer checkpoint export policy fields are unavailable: "
+                f"{missing_export_policies}"
+            )
+        expected_export_policies = {
+            name: Trainer._checkpoint_inert_copy(
+                export_attrs[name],
+                label=f"checkpoint export policy {name}",
+            )
+            for name in export_policy_fields
+        }
+
+        def _require_export_contract_unchanged(phase: str) -> None:
+            Trainer._require_canonical_checkpoint_authorities(self)
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            if any(
+                name not in current or current[name] is not expected
+                for name, expected in expected_export_bindings.items()
+            ):
+                raise TrainingStateInvalidError(
+                    f"trainer checkpoint export binding changed during {phase}"
+                )
+            if not _typed_state_equal(
+                Trainer._canonical_config_state(expected_export_config),
+                expected_export_config_state,
+            ):
+                raise TrainingStateInvalidError(
+                    f"trainer checkpoint export config changed during {phase}"
+                )
+            for name, expected in expected_export_policies.items():
+                if name not in current or not _typed_state_equal(
+                    Trainer._checkpoint_inert_copy(
+                        current[name],
+                        label=f"checkpoint export policy {name}",
+                    ),
+                    expected,
+                ):
+                    raise TrainingStateInvalidError(
+                        f"trainer checkpoint export policy changed during {phase}"
+                    )
+
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
         try:
-            model_before = self._model_export_fingerprint()
-            optimizer_before = self._optimizer_live_fingerprint()
-            scheduler_before = self._canonical_lambda_lr_live_state()
+            model_before = Trainer._model_export_fingerprint(self)
+            optimizer_before = Trainer._optimizer_live_fingerprint(self)
+            scheduler_before = Trainer._canonical_lambda_lr_live_state(self)
         except BaseException:  # noqa: BLE001
             # At a committed boundary, a failed canonical observation makes the
             # checkpoint boundary ambiguous and therefore requires recovery.
@@ -2664,34 +2943,35 @@ class Trainer:
             )
             raise
         try:
-            self.assert_checkpoint_safe()
+            Trainer.assert_checkpoint_safe(self)
             if not _typed_state_equal(
                 committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
             ):
-                self._mark_failed("checkpoint preflight changed committed counters")
+                Trainer._mark_failed(self, "checkpoint preflight changed committed counters")
                 raise TrainingStateInvalidError(
                     "checkpoint export changed committed counters"
                 )
-            if self._model_export_fingerprint() != model_before:
-                self._mark_failed("checkpoint preflight changed model weights or buffers")
+            if Trainer._model_export_fingerprint(self) != model_before:
+                Trainer._mark_failed(self, "checkpoint preflight changed model weights or buffers")
                 raise TrainingStateInvalidError(
                     "checkpoint export changed model weights or buffers"
                 )
             if (
                 optimizer_before is not None
-                and self._optimizer_live_fingerprint() != optimizer_before
+                and Trainer._optimizer_live_fingerprint(self) != optimizer_before
             ):
-                self._mark_failed("checkpoint preflight changed live optimizer state")
+                Trainer._mark_failed(self, "checkpoint preflight changed live optimizer state")
                 raise TrainingStateInvalidError(
                     "checkpoint preflight changed optimizer state"
                 )
             if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
-                scheduler_before, self._canonical_lambda_lr_live_state()
+                scheduler_before, Trainer._canonical_lambda_lr_live_state(self)
             ):
-                self._mark_failed("checkpoint preflight changed live scheduler")
+                Trainer._mark_failed(self, "checkpoint preflight changed live scheduler")
                 raise TrainingStateInvalidError(
                     "checkpoint export changed live scheduler"
                 )
+            _require_export_contract_unchanged("checkpoint preflight")
         except BaseException:  # noqa: BLE001
             # Mid-accumulation was rejected above as the one retryable export
             # refusal. Any failure after committed-boundary observation means
@@ -2704,7 +2984,7 @@ class Trainer:
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
-            name_groups = self._optimizer_parameter_name_groups()
+            name_groups = Trainer._optimizer_parameter_name_groups(self)
             if not isinstance(saved_groups, list) or len(saved_groups) != len(name_groups):
                 raise TrainingStateInvalidError(
                     "optimizer state cannot bind named parameter groups"
@@ -2717,34 +2997,34 @@ class Trainer:
                 # Never trust caller-provided param_names over live model identity.
                 saved_group["param_names"] = names
             snapshot = TrainerState(
-                micro_step=self.micro_step,
-                optimizer_step=self.optimizer_step,
-                tokens_seen=self.tokens_seen,
+                micro_step=committed_before[0],
+                optimizer_step=committed_before[1],
+                tokens_seen=committed_before[2],
                 optimizer=optimizer_state,
                 scheduler=(
                     None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
                 ),
                 scaler=None if self.scaler is None else copy.deepcopy(self.scaler.state_dict()),
-                config=asdict(self.config),
+                config=dict(expected_export_config_state),
             )
             # State-dict hooks can mutate weights, moments, gradients or policy.
             # Refuse publication unless the extracted state remains checkpoint-safe.
-            self.assert_checkpoint_safe()
+            Trainer.assert_checkpoint_safe(self)
             # Hooks can also return a detached, corrupt snapshot without
             # changing their live component. Validate the bytes to publish.
-            self._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
-            self._require_exported_optimizer_matches_live(snapshot.optimizer)
+            Trainer._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
+            Trainer._require_exported_optimizer_matches_live(self, snapshot.optimizer)
             if snapshot.scheduler is not None:
-                self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+                Trainer._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
             # A hook may suppress the second export entirely. Even a missing
             # snapshot must agree with whether a live component exists.
-            self._require_exported_scheduler_matches_live(snapshot.scheduler)
+            Trainer._require_exported_scheduler_matches_live(self, snapshot.scheduler)
             if snapshot.scaler is not None:
-                self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
-            self._require_exported_scaler_matches_live(snapshot.scaler)
+                Trainer._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
+            Trainer._require_exported_scaler_matches_live(self, snapshot.scaler)
             if (
                 optimizer_before is not None
-                and self._optimizer_live_fingerprint() != optimizer_before
+                and Trainer._optimizer_live_fingerprint(self) != optimizer_before
             ):
                 raise TrainingStateInvalidError(
                     "checkpoint export changed optimizer state"
@@ -2755,18 +3035,19 @@ class Trainer:
                 committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
             ):
                 raise TrainingStateInvalidError("checkpoint export changed committed counters")
-            if self._model_export_fingerprint() != model_before:
+            if Trainer._model_export_fingerprint(self) != model_before:
                 raise TrainingStateInvalidError(
                     "checkpoint export changed model weights or buffers"
                 )
             if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
-                scheduler_before, self._canonical_lambda_lr_live_state()
+                scheduler_before, Trainer._canonical_lambda_lr_live_state(self)
             ):
                 raise TrainingStateInvalidError(
                     "checkpoint scheduler export differs from live committed state"
                 )
+            _require_export_contract_unchanged("checkpoint export")
         except BaseException:
-            self._mark_failed("checkpoint state extraction failed after possible mutation")
+            Trainer._mark_failed(self, "checkpoint state extraction failed after possible mutation")
             raise
         return snapshot
 
@@ -2812,30 +3093,48 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "trainer restore config must use canonical TrainerConfig"
             )
-        if self._failure_reason is not None or self._update_incomplete:
+        entry_failure_reason = entry_attrs.get("_failure_reason")
+        entry_update_incomplete = entry_attrs.get("_update_incomplete")
+        if (
+            entry_failure_reason is not None
+            or type(entry_update_incomplete) is not bool
+            or entry_update_incomplete
+        ):
             raise TrainingStateInvalidError(
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
                 "and restore the verified model + trainer checkpoint"
             )
+        entry_counter_fields = (
+            "micro_step",
+            "optimizer_step",
+            "tokens_seen",
+            "_pending_tokens",
+        )
+        entry_counters = tuple(
+            entry_attrs.get(name) for name in entry_counter_fields
+        )
+        entry_pending_loss = entry_attrs.get("_pending_loss_sum")
         if (
-            self.micro_step != 0
-            or self.optimizer_step != 0
-            or self.tokens_seen != 0
-            or self._pending_tokens != 0
-            or self._pending_loss_sum != 0.0
+            any(type(value) is not int or value != 0 for value in entry_counters)
+            or type(entry_pending_loss) is not float
+            or entry_pending_loss != 0.0
             or any(
                 parameter.grad is not None
-                for _, parameter in self._canonical_model_members()[0]
+                for _, parameter in Trainer._canonical_model_members(self)[0]
             )
         ):
             raise TrainingStateInvalidError(
                 "trainer state restore requires a fresh trainer with no consumed "
                 "exposure or pending gradients; restore the verified model too"
             )
-        # Entry policy mismatch is externally repairable and has not consumed
-        # checkpoint payload or mutated component state. Reject it before any
-        # untrusted state access so the same clean trainer can be retried.
+        # Entry policy or model-mode mismatch is externally repairable and has
+        # not consumed checkpoint payload or mutated component state. Reject both
+        # before any untrusted state access so the same clean trainer can retry.
         Trainer._require_deterministic_policy(self)
+        Trainer._require_model_training_mode(self)
+        expected_rng_fingerprint = Trainer._checkpoint_rng_fingerprint()
+        expected_autograd_mode = Trainer._checkpoint_autograd_mode()
+        expected_numeric_policy = Trainer._checkpoint_numeric_policy()
 
         expected_model = entry_attrs["model"]
         expected_optimizer = entry_attrs["optimizer"]
@@ -2843,22 +3142,24 @@ class Trainer:
         expected_scaler = entry_attrs["scaler"]
         expected_device = entry_attrs["device"]
         expected_policy_state = {
-            name: copy.deepcopy(entry_attrs[name])
+            name: Trainer._checkpoint_inert_copy(
+                entry_attrs[name],
+                label=f"trainer restore policy {name}",
+            )
             for name in required_policies
         }
         expected_preapply_state = {
-            name: copy.deepcopy(entry_attrs.get(name))
-            for name in (
-                "_failure_reason",
-                "_update_incomplete",
-                "micro_step",
-                "optimizer_step",
-                "tokens_seen",
-                "_pending_tokens",
-                "_pending_loss_sum",
-            )
+            "_failure_reason": entry_failure_reason,
+            "_update_incomplete": entry_update_incomplete,
+            "micro_step": entry_counters[0],
+            "optimizer_step": entry_counters[1],
+            "tokens_seen": entry_counters[2],
+            "_pending_tokens": entry_counters[3],
+            "_pending_loss_sum": entry_pending_loss,
         }
-        expected_config_state = asdict(expected_config)
+        expected_config_state = Trainer._canonical_config_state(
+            expected_config
+        )
         expected_model_fingerprint = Trainer._model_export_fingerprint(self)
         expected_auxiliary_fingerprint = Trainer._checkpoint_auxiliary_fingerprint(self)
 
@@ -2890,18 +3191,30 @@ class Trainer:
             ):
                 return f"trainer restore state changed during {phase}"
             try:
-                if not _typed_state_equal(asdict(expected_config), expected_config_state):
-                    return f"trainer restore config changed during {phase}"
-                if any(
-                    name not in current
-                    or not _typed_state_equal(current[name], expected)
-                    for name, expected in expected_policy_state.items()
+                if not _typed_state_equal(
+                    Trainer._canonical_config_state(expected_config),
+                    expected_config_state,
                 ):
-                    return f"trainer restore policy changed during {phase}"
+                    return f"trainer restore config changed during {phase}"
+                for name, expected in expected_policy_state.items():
+                    if name not in current or not _typed_state_equal(
+                        Trainer._checkpoint_inert_copy(
+                            current[name],
+                            label=f"trainer restore policy {name}",
+                        ),
+                        expected,
+                    ):
+                        return f"trainer restore policy changed during {phase}"
                 try:
                     Trainer._require_deterministic_policy(self)
                 except BaseException:
                     return f"trainer deterministic policy changed during {phase}"
+                if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
+                    return f"trainer autograd mode changed during {phase}"
+                if Trainer._checkpoint_numeric_policy() != expected_numeric_policy:
+                    return f"trainer numeric policy changed during {phase}"
+                if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
+                    return f"trainer RNG state changed during {phase}"
                 Trainer._require_no_residual_model_gradients(self)
                 if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
                     return f"trainer model changed during {phase}"
@@ -2920,7 +3233,14 @@ class Trainer:
             elif type(state) is not TrainerState:
                 raise TypeError("trainer state must be TrainerState or a mapping")
 
-            if not _typed_state_equal(state.config, asdict(self.config)):
+            checkpoint_config_state = Trainer._checkpoint_inert_copy(
+                state.config,
+                label="checkpoint trainer config",
+            )
+            if type(checkpoint_config_state) is not dict or not _typed_state_equal(
+                checkpoint_config_state,
+                expected_config_state,
+            ):
                 raise ValueError("trainer config mismatch; refusing unsafe resume")
             # Validate exact counter types before any optimizer/scheduler/scaler mutation.
             # Python considers False == 0 and 0.0 == 0; those are not durable
@@ -2930,21 +3250,44 @@ class Trainer:
                 for value in (state.micro_step, state.optimizer_step, state.tokens_seen)
             ):
                 raise ValueError("trainer counters must be non-negative integers")
-            expected_micro_steps = state.optimizer_step * self.config.gradient_accumulation_steps
+            expected_micro_steps = (
+                state.optimizer_step
+                * expected_config_state["gradient_accumulation_steps"]
+            )
             if state.micro_step != expected_micro_steps:
                 raise ValueError(
                     "checkpoint is not at a complete committed accumulation boundary: "
                     f"micro_step={state.micro_step}, expected={expected_micro_steps}"
                 )
-            if state.optimizer_step > self.config.max_steps:
+            if state.optimizer_step > expected_config_state["max_steps"]:
                 raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
 
             # Take ownership before semantic preflight. The external payload may
             # expose effectful/mutable Mapping or sequence subclasses; validation
             # must apply to the exact detached snapshot that will later be loaded.
             optimizer_state = copy.deepcopy(dict(state.optimizer))
+            drift_reason = _restore_preapply_drift_reason(
+                "optimizer payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
+
             scheduler_state = copy.deepcopy(state.scheduler)
+            drift_reason = _restore_preapply_drift_reason(
+                "scheduler payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
+
             scaler_state = copy.deepcopy(state.scaler)
+            drift_reason = _restore_preapply_drift_reason(
+                "scaler payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
 
             Trainer._require_finite_state_tree(
                 optimizer_state,
@@ -2962,15 +3305,18 @@ class Trainer:
                 )
 
             # Reject known contract mismatches before touching live component state.
-            if (scheduler_state is None) != (self.scheduler is None):
+            if (scheduler_state is None) != (expected_scheduler is None):
                 raise ValueError("scheduler state/config mismatch")
-            self._require_checkpoint_scaler_state(scaler_state)
+            Trainer._require_checkpoint_scaler_state(self, scaler_state)
             # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
             # parameter identity. Reject missing/reordered names before mutation.
-            self._require_optimizer_state_parameter_order(optimizer_state)
-            self._require_safe_optimizer_hyperparameters(optimizer_state)
-            self._require_checkpoint_scheduler_chronology(
-                scheduler_state, state.optimizer_step, optimizer_state,
+            Trainer._require_optimizer_state_parameter_order(self, optimizer_state)
+            Trainer._require_safe_optimizer_hyperparameters(self, optimizer_state)
+            Trainer._require_checkpoint_scheduler_chronology(
+                self,
+                scheduler_state,
+                state.optimizer_step,
+                optimizer_state,
             )
 
             # From the first component load onward a failure may leave optimizer,
@@ -3073,17 +3419,41 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "trainer restore pending accounting changed during load"
                 )
-            if not _typed_state_equal(asdict(expected_config), expected_config_state):
+            if not _typed_state_equal(
+                Trainer._canonical_config_state(expected_config),
+                expected_config_state,
+            ):
                 raise TrainingStateInvalidError(
                     "trainer restore config changed during load"
                 )
-            if any(
-                name not in current
-                or not _typed_state_equal(current[name], expected)
-                for name, expected in expected_policy_state.items()
-            ):
+            for name, expected in expected_policy_state.items():
+                if name not in current or not _typed_state_equal(
+                    Trainer._checkpoint_inert_copy(
+                        current[name],
+                        label=f"trainer restore policy {name}",
+                    ),
+                    expected,
+                ):
+                    raise TrainingStateInvalidError(
+                        "trainer restore policy changed during load"
+                    )
+            # Every effectful component loader must return under the same
+            # reproducibility policy and model mode before the next loader runs.
+            # The final validation below is too late: a later loader could observe
+            # an already-drifted process policy or eval-mode model.
+            Trainer._require_deterministic_policy(self)
+            Trainer._require_model_training_mode(self)
+            if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
                 raise TrainingStateInvalidError(
-                    "trainer restore policy changed during load"
+                    "trainer autograd mode changed during load"
+                )
+            if Trainer._checkpoint_numeric_policy() != expected_numeric_policy:
+                raise TrainingStateInvalidError(
+                    "trainer numeric policy changed during load"
+                )
+            if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
+                raise TrainingStateInvalidError(
+                    "trainer RNG state changed during load"
                 )
             Trainer._require_no_residual_model_gradients(self)
 
@@ -3111,6 +3481,11 @@ class Trainer:
                 Trainer._mark_failed(self, drift_reason)
             raise
 
+        drift_reason = _restore_preapply_drift_reason("loader lookup")
+        if drift_reason is not None:
+            Trainer._mark_failed(self, drift_reason)
+            raise TrainingStateInvalidError(drift_reason)
+
         if not callable(optimizer_loader):
             raise TrainingStateInvalidError(
                 "trainer optimizer must provide load_state_dict()"
@@ -3127,10 +3502,6 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "trainer gradient scaler must provide load_state_dict()"
             )
-        drift_reason = _restore_preapply_drift_reason("loader lookup")
-        if drift_reason is not None:
-            Trainer._mark_failed(self, drift_reason)
-            raise TrainingStateInvalidError(drift_reason)
 
         checkpoint_counters = (
             state.micro_step,
@@ -3141,7 +3512,7 @@ class Trainer:
         try:
             optimizer_loader(optimizer_state)
             _require_restore_control_state(preapply_counters)
-            self._require_optimizer_parameter_coverage()
+            Trainer._require_optimizer_parameter_coverage(self)
             if expected_scheduler is not None and scheduler_state is not None:
                 assert scheduler_loader is not None
                 scheduler_loader(scheduler_state)
@@ -3164,13 +3535,16 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "trainer model changed during load"
                 )
+            postapply_auxiliary_fingerprint = (
+                Trainer._checkpoint_auxiliary_fingerprint(self)
+            )
 
             # PyTorch's load_state_dict accepts NaN optimizer moments and
             # malformed-but-type-compatible group rates. A restore must not
             # return a supposedly checkpoint-safe trainer with those values.
-            self._require_finite_auxiliary_state()
-            self._require_finite_committed_update()
-            self._require_no_residual_model_gradients()
+            Trainer._require_finite_auxiliary_state(self)
+            Trainer._require_finite_committed_update(self)
+            Trainer._require_no_residual_model_gradients(self)
             Trainer._require_exported_optimizer_matches_live(self, optimizer_state)
             Trainer._require_exported_scheduler_matches_live(self, scheduler_state)
             if scaler_state is None:
@@ -3180,8 +3554,23 @@ class Trainer:
                     )
             else:
                 Trainer._require_exported_scaler_matches_live(self, scaler_state)
-            self._require_deterministic_policy()
+            Trainer._require_deterministic_policy(self)
             _require_restore_control_state(checkpoint_counters)
+
+            # The validation observers above can themselves be effectful for
+            # injected optimizer/scheduler implementations. Close the observer
+            # chain with descriptor-free fingerprints after the final control seal.
+            if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
+                raise TrainingStateInvalidError(
+                    "trainer model changed during final restore validation"
+                )
+            if (
+                Trainer._checkpoint_auxiliary_fingerprint(self)
+                != postapply_auxiliary_fingerprint
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer auxiliary state changed during final restore validation"
+                )
         except BaseException:
             Trainer._mark_failed(
                 self,

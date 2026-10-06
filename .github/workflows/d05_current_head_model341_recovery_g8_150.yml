@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      D05_RUNTIME_SHA: "093aeaa348041193468e6be2d4c3c2430588c707"
+      D05_RUNTIME_SHA: "17c9571cf043bebb337322e7b414f4da04d124e0"
       EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
       MODEL341_SHA: "f151c77a8ef8721f0f568509147b1a5f961ae6c7"
@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C d05-runtime rev-parse HEAD)" = "$D05_RUNTIME_SHA"
-          test "$(git -C d05-runtime hash-object src/twelve_six/training/trainer.py)" =             "ce64e35c9c1a6dba9e68416236f33b3a87031cee"
+          test "$(git -C d05-runtime hash-object src/twelve_six/training/trainer.py)" =             "87544f736db705bd4cbfa2b217ff37109f5f6a4c"
           test "$(git -C d05-runtime hash-object src/twelve_six/checkpoint/trainer_adapter.py)" =             "9d47a7b86a2f883f8d09709e820c411dffcb388f"
           test "$(git -C model341-carrier rev-parse HEAD)" = "$MODEL341_SHA"
           test "$(git -C model341-carrier hash-object configs/candidates/model341_20m_candidate_a.json)" =             "$MODEL341_CANDIDATE_BLOB"

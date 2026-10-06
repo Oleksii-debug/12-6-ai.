@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
+
 import pytest
 import torch
 from torch import nn
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import LambdaLR
 
 from twelve_six.training import (
     Trainer,
@@ -119,6 +122,262 @@ def _target_with_optimizer(
     return trainer, optimizer
 
 
+class _PayloadOwnershipSafetyShadow:
+    deepcopy_calls = 0
+
+    def __init__(self, owner: Trainer) -> None:
+        self.owner = owner
+
+    def __deepcopy__(self, memo: dict[int, object]) -> int:
+        del memo
+        type(self).deepcopy_calls += 1
+
+        def forged_storage():
+            del vars(self.owner)["_canonical_optimizer_storage"]
+            return {}, []
+
+        self.owner._canonical_optimizer_storage = forged_storage
+        return 0
+
+
+def test_direct_restore_seals_each_payload_ownership_phase() -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    shadow = _PayloadOwnershipSafetyShadow(target)
+    _PayloadOwnershipSafetyShadow.deepcopy_calls = 0
+    state.optimizer["payload_shadow"] = shadow
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match=(
+            "trainer restore safety authority changed during "
+            "optimizer payload ownership"
+        ),
+    ):
+        target.load_state_dict(state)
+
+    assert _PayloadOwnershipSafetyShadow.deepcopy_calls == 1
+    assert "_canonical_optimizer_storage" in vars(target)
+    assert target._failure_reason == (
+        "trainer restore safety authority changed during "
+        "optimizer payload ownership"
+    )
+    assert target._update_incomplete is True
+    assert not target.optimizer.state
+
+
+class _RestoreConfigDriftMapping(Mapping[str, object]):
+    def __init__(
+        self,
+        payload: dict[str, object],
+        owner: Trainer,
+    ) -> None:
+        self.payload = payload
+        self.owner = owner
+        self.iterations = 0
+
+    def __iter__(self) -> Iterator[str]:
+        self.iterations += 1
+        object.__setattr__(
+            self.owner.config,
+            "gradient_accumulation_steps",
+            2,
+        )
+        return iter(self.payload)
+
+    def __len__(self) -> int:
+        return len(self.payload)
+
+    def __getitem__(self, key: str) -> object:
+        return self.payload[key]
+
+
+class _RestoreConfigDriftReset:
+    deepcopy_calls = 0
+
+    def __init__(self, owner: Trainer) -> None:
+        self.owner = owner
+
+    def __deepcopy__(self, memo: dict[int, object]) -> int:
+        del memo
+        type(self).deepcopy_calls += 1
+        object.__setattr__(
+            self.owner.config,
+            "gradient_accumulation_steps",
+            1,
+        )
+        return 0
+
+
+def test_direct_restore_uses_entry_config_for_counter_preflight() -> None:
+    config = _config()
+    state = _clean_state(config)
+    state.micro_step = 2
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    reset = _RestoreConfigDriftReset(target)
+    _RestoreConfigDriftReset.deepcopy_calls = 0
+    state.optimizer["restore_config_after_counter_check"] = reset
+    payload = _RestoreConfigDriftMapping(
+        {
+            "micro_step": state.micro_step,
+            "optimizer_step": state.optimizer_step,
+            "tokens_seen": state.tokens_seen,
+            "optimizer": state.optimizer,
+            "scheduler": state.scheduler,
+            "scaler": state.scaler,
+            "config": state.config,
+        },
+        target,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="checkpoint is not at a complete committed accumulation boundary",
+    ):
+        target.load_state_dict(payload)
+
+    assert payload.iterations >= 1
+    assert _RestoreConfigDriftReset.deepcopy_calls == 0
+    assert target.config.gradient_accumulation_steps == 2
+    assert target._failure_reason == (
+        "trainer restore config changed during checkpoint preflight"
+    )
+    assert target._update_incomplete is True
+    assert not target.optimizer.state
+
+
+class _ForbiddenRestoreControlValue:
+    bool_calls = 0
+    eq_calls = 0
+    deepcopy_calls = 0
+
+    def __bool__(self) -> bool:
+        type(self).bool_calls += 1
+        return False
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        type(self).eq_calls += 1
+        return True
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "_ForbiddenRestoreControlValue":
+        del memo
+        type(self).deepcopy_calls += 1
+        return self
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["_update_incomplete", "micro_step", "_pending_loss_sum"],
+)
+def test_direct_restore_rejects_noncanonical_fresh_control_without_callbacks(
+    field: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    value = _ForbiddenRestoreControlValue()
+    _ForbiddenRestoreControlValue.bool_calls = 0
+    _ForbiddenRestoreControlValue.eq_calls = 0
+    _ForbiddenRestoreControlValue.deepcopy_calls = 0
+    setattr(target, field, value)
+
+    with pytest.raises(TrainingStateInvalidError):
+        target.load_state_dict(state)
+
+    assert _ForbiddenRestoreControlValue.bool_calls == 0
+    assert _ForbiddenRestoreControlValue.eq_calls == 0
+    assert _ForbiddenRestoreControlValue.deepcopy_calls == 0
+    assert target._failure_reason is None
+    assert not target.optimizer.state
+
+
+class _ForbiddenRestoreContractValue:
+    deepcopy_calls = 0
+    eq_calls = 0
+
+    def __deepcopy__(
+        self,
+        memo: dict[int, object],
+    ) -> "_ForbiddenRestoreContractValue":
+        del memo
+        type(self).deepcopy_calls += 1
+        return self
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        type(self).eq_calls += 1
+        return True
+
+
+def test_direct_restore_rejects_noncanonical_config_without_callbacks() -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    value = _ForbiddenRestoreContractValue()
+    _ForbiddenRestoreContractValue.deepcopy_calls = 0
+    _ForbiddenRestoreContractValue.eq_calls = 0
+    object.__setattr__(target.config, "seed", value)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint config field seed contains non-canonical value type",
+    ):
+        target.load_state_dict(state)
+
+    assert _ForbiddenRestoreContractValue.deepcopy_calls == 0
+    assert _ForbiddenRestoreContractValue.eq_calls == 0
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+
+def test_direct_restore_rejects_noncanonical_policy_without_callbacks() -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    value = _ForbiddenRestoreContractValue()
+    _ForbiddenRestoreContractValue.deepcopy_calls = 0
+    _ForbiddenRestoreContractValue.eq_calls = 0
+    target._canonical_default_optimizer_options["eps"] = value
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="trainer restore policy .* contains non-canonical value type",
+    ):
+        target.load_state_dict(state)
+
+    assert _ForbiddenRestoreContractValue.deepcopy_calls == 0
+    assert _ForbiddenRestoreContractValue.eq_calls == 0
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+
+def test_direct_restore_requires_training_mode_and_allows_retry() -> None:
+    config = _config()
+    state = _clean_state(config)
+    model = nn.Linear(3, 2)
+    target = Trainer(model, config, scheduler=None)
+    model.eval()
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint model training mode must remain enabled",
+    ):
+        target.load_state_dict(state)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+    model.train()
+    target.load_state_dict(state)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
 def test_direct_restore_rejects_optimizer_rebind_during_loader_lookup() -> None:
     config = _config()
     state = _clean_state(config)
@@ -227,6 +486,44 @@ class LookupDriftAdamW(AdamW):
     def load_state_dict(self, state_dict):
         self.apply_calls += 1
         return super().load_state_dict(state_dict)
+
+
+class LookupNonCallableDriftAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.mutation: str | None = None
+        self.armed = False
+
+    def __getattribute__(self, name: str):
+        if name == "load_state_dict":
+            armed = object.__getattribute__(self, "armed")
+            if armed:
+                object.__setattr__(self, "armed", False)
+                owner = object.__getattribute__(self, "owner")
+                mutation = object.__getattribute__(self, "mutation")
+                assert owner is not None
+                if mutation == "model":
+                    owner.model.weight = nn.Parameter(
+                        owner.model.weight.detach().clone() + 1.0
+                    )
+                elif mutation == "counter":
+                    owner.tokens_seen = 1
+                elif mutation == "config":
+                    object.__setattr__(
+                        owner.config,
+                        "learning_rate",
+                        owner.config.learning_rate * 2.0,
+                    )
+                elif mutation == "auxiliary":
+                    owner.optimizer.param_groups[0]["lr"] *= 0.5
+                else:
+                    raise AssertionError(
+                        f"unknown non-callable lookup mutation: {mutation}"
+                    )
+                return None
+        return super().__getattribute__(name)
 
 
 class LookupRaisingAdamW(AdamW):
@@ -340,6 +637,42 @@ def test_direct_restore_rejects_stable_binding_lookup_drift(
     assert trainer._update_incomplete is False
 
 
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("model", "model changed during loader lookup"),
+        ("counter", "restore state changed during loader lookup"),
+        ("config", "restore config changed during loader lookup"),
+        ("auxiliary", "trainer auxiliary state changed during loader lookup"),
+    ],
+)
+def test_direct_restore_poisons_noncallable_lookup_drift_before_interface_error(
+    mutation: str,
+    message: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(
+        LookupNonCallableDriftAdamW,
+        config,
+    )
+    assert isinstance(optimizer, LookupNonCallableDriftAdamW)
+    optimizer.mutation = mutation
+
+    with pytest.raises(TrainingStateInvalidError, match=message):
+        trainer.load_state_dict(state)
+
+    assert trainer.optimizer is optimizer
+    assert trainer._failure_reason is not None
+    assert trainer._update_incomplete is False
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="failed trainer cannot be repaired in place",
+    ):
+        trainer.load_state_dict(state)
+
+
 def test_direct_restore_preserves_lookup_exception_without_drift_and_allows_retry() -> None:
     config = _config()
     state = _clean_state(config)
@@ -410,6 +743,54 @@ class ApplyStateDriftAdamW(AdamW):
         return result
 
 
+class ApplyReproducibilityDriftAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.mutation: str | None = None
+        self.armed = False
+        self.guarded_zero_grad_calls = 0
+
+    def load_state_dict(self, state_dict):
+        result = super().load_state_dict(state_dict)
+        if self.armed:
+            assert self.owner is not None
+            if self.mutation == "determinism":
+                torch.use_deterministic_algorithms(
+                    not self.owner.config.deterministic_algorithms,
+                    warn_only=self.owner.config.deterministic_warn_only,
+                )
+            elif self.mutation == "training_mode":
+                self.owner.model.eval()
+            elif self.mutation == "grad_mode":
+                torch.set_grad_enabled(not torch.is_grad_enabled())
+            elif self.mutation == "default_dtype":
+                replacement = (
+                    torch.float64
+                    if torch.get_default_dtype() is not torch.float64
+                    else torch.float32
+                )
+                torch.set_default_dtype(replacement)
+            elif self.mutation == "matmul_precision":
+                replacement = (
+                    "high"
+                    if torch.get_float32_matmul_precision() == "highest"
+                    else "highest"
+                )
+                torch.set_float32_matmul_precision(replacement)
+            else:
+                raise AssertionError(
+                    f"unknown reproducibility mutation: {self.mutation}"
+                )
+        return result
+
+    def zero_grad(self, *args, **kwargs):
+        if self.armed:
+            self.guarded_zero_grad_calls += 1
+        return super().zero_grad(*args, **kwargs)
+
+
 class ZeroGradAuxiliaryDriftAdamW(AdamW):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -460,6 +841,53 @@ def test_direct_restore_rejects_apply_time_state_drift(
         trainer.load_state_dict(state)
 
 
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("determinism", "live PyTorch deterministic policy disagrees"),
+        ("training_mode", "checkpoint model training mode must remain enabled"),
+        ("grad_mode", "trainer autograd mode changed during load"),
+        ("default_dtype", "trainer numeric policy changed during load"),
+        ("matmul_precision", "trainer numeric policy changed during load"),
+    ],
+)
+def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero_grad(
+    mutation: str,
+    message: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(
+        ApplyReproducibilityDriftAdamW,
+        config,
+    )
+    assert isinstance(optimizer, ApplyReproducibilityDriftAdamW)
+    optimizer.mutation = mutation
+    expected_enabled = torch.are_deterministic_algorithms_enabled()
+    expected_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    expected_grad_enabled = torch.is_grad_enabled()
+    expected_default_dtype = torch.get_default_dtype()
+    expected_matmul_precision = torch.get_float32_matmul_precision()
+
+    try:
+        with pytest.raises(TrainingStateInvalidError, match=message):
+            trainer.load_state_dict(state)
+    finally:
+        torch.use_deterministic_algorithms(
+            expected_enabled,
+            warn_only=expected_warn_only,
+        )
+        torch.set_grad_enabled(expected_grad_enabled)
+        torch.set_default_dtype(expected_default_dtype)
+        torch.set_float32_matmul_precision(expected_matmul_precision)
+
+    assert optimizer.guarded_zero_grad_calls == 0
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
+
+
 def test_direct_restore_rejects_zero_grad_auxiliary_drift() -> None:
     config = _config()
     state = _clean_state(config)
@@ -471,6 +899,128 @@ def test_direct_restore_rejects_zero_grad_auxiliary_drift() -> None:
         match="optimizer export hyperparameters differ",
     ):
         trainer.load_state_dict(state)
+
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
+
+
+class FinalValidationAuxiliaryObserver:
+    owner: Trainer | None = None
+    armed = False
+
+    def __eq__(self, other: object) -> bool:
+        if type(self).armed:
+            type(self).armed = False
+            owner = type(self).owner
+            assert owner is not None
+            owner.optimizer.param_groups[0]["lr"] *= 0.5
+        return type(other) is type(self)
+
+
+class FinalValidationMutatingLambdaLR(LambdaLR):
+    owner: Trainer | None = None
+    armed = False
+
+    def __init__(self, optimizer: AdamW) -> None:
+        super().__init__(optimizer, lr_lambda=lambda _step: 1.0)
+        self.observer = FinalValidationAuxiliaryObserver()
+
+    def state_dict(self):
+        result = super().state_dict()
+        if type(self).armed:
+            type(self).armed = False
+            owner = type(self).owner
+            assert owner is not None
+            with torch.no_grad():
+                owner.model.weight.add_(1.0)
+        return result
+
+
+def _target_with_final_validation_scheduler(
+    config: TrainerConfig,
+) -> tuple[Trainer, FinalValidationMutatingLambdaLR]:
+    model = nn.Linear(3, 2)
+    optimizer = build_optimizer(model, config)
+    scheduler = FinalValidationMutatingLambdaLR(optimizer)
+    trainer = Trainer(
+        model,
+        config,
+        optimizer=optimizer,
+        scheduler=scheduler,
+    )
+    return trainer, scheduler
+
+
+def _state_with_final_validation_scheduler(config: TrainerConfig):
+    trainer, _ = _target_with_final_validation_scheduler(config)
+    return trainer.state_dict()
+
+
+def test_direct_restore_final_observer_cannot_mutate_model() -> None:
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    FinalValidationMutatingLambdaLR.owner = None
+    FinalValidationMutatingLambdaLR.armed = False
+    FinalValidationAuxiliaryObserver.owner = None
+    FinalValidationAuxiliaryObserver.armed = False
+    state = _state_with_final_validation_scheduler(config)
+    trainer, _ = _target_with_final_validation_scheduler(config)
+    before = trainer.model.weight.detach().clone()
+
+    FinalValidationMutatingLambdaLR.owner = trainer
+    FinalValidationMutatingLambdaLR.armed = True
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer model changed during final restore validation",
+        ):
+            trainer.load_state_dict(state)
+    finally:
+        FinalValidationMutatingLambdaLR.owner = None
+        FinalValidationMutatingLambdaLR.armed = False
+
+    assert not torch.equal(trainer.model.weight.detach(), before)
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
+
+
+def test_direct_restore_final_observer_cannot_mutate_auxiliary_state() -> None:
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    FinalValidationMutatingLambdaLR.owner = None
+    FinalValidationMutatingLambdaLR.armed = False
+    FinalValidationAuxiliaryObserver.owner = None
+    FinalValidationAuxiliaryObserver.armed = False
+    state = _state_with_final_validation_scheduler(config)
+    trainer, _ = _target_with_final_validation_scheduler(config)
+
+    FinalValidationAuxiliaryObserver.owner = trainer
+    FinalValidationAuxiliaryObserver.armed = True
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer auxiliary state changed during final restore validation",
+        ):
+            trainer.load_state_dict(state)
+    finally:
+        FinalValidationAuxiliaryObserver.owner = None
+        FinalValidationAuxiliaryObserver.armed = False
 
     assert trainer._failure_reason == (
         "trainer state restore failed after possible partial apply"
@@ -853,6 +1403,267 @@ def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_rais
     )
     assert target._update_incomplete is False
     assert not target.optimizer.state
+
+
+def test_checkpoint_rng_fingerprint_is_observer_only() -> None:
+    import random
+
+    import numpy as np
+
+    config = _config()
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    python_before = random.getstate()
+    numpy_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    cuda_was_initialized = torch.cuda.is_initialized()
+
+    first = target._checkpoint_rng_fingerprint()
+    second = target._checkpoint_rng_fingerprint()
+
+    assert first == second
+    assert random.getstate() == python_before
+    numpy_after = np.random.get_state()
+    assert numpy_after[0] == numpy_before[0]
+    assert np.array_equal(numpy_after[1], numpy_before[1])
+    assert numpy_after[2:] == numpy_before[2:]
+    assert torch.equal(torch.get_rng_state(), torch_before)
+    assert torch.cuda.is_initialized() is cuda_was_initialized
+
+
+def test_direct_restore_preflight_seals_numeric_policy() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    expected_dtype = torch.get_default_dtype()
+
+    class NumericPolicyMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            replacement = (
+                torch.float64 if expected_dtype is not torch.float64 else torch.float32
+            )
+            torch.set_default_dtype(replacement)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=NumericPolicyMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer numeric policy changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert torch.get_default_dtype() is not expected_dtype
+        assert target._failure_reason == (
+            "trainer numeric policy changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_default_dtype(expected_dtype)
+
+
+def test_direct_restore_preflight_seals_autograd_mode() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    expected_grad_enabled = torch.is_grad_enabled()
+
+    class GradModeMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            torch.set_grad_enabled(not expected_grad_enabled)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=GradModeMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer autograd mode changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert torch.is_grad_enabled() is not expected_grad_enabled
+        assert target._failure_reason == (
+            "trainer autograd mode changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_grad_enabled(expected_grad_enabled)
+
+
+def test_direct_restore_poison_target_when_checkpoint_preflight_consumes_rng() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    rng_before = torch.get_rng_state().clone()
+
+    class RngMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            torch.rand(1)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=RngMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert not torch.equal(torch.get_rng_state(), rng_before)
+        assert target._failure_reason == (
+            "trainer RNG state changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_rng_state(rng_before)
+
+
+def test_direct_restore_preflight_seals_python_and_numpy_rng() -> None:
+    import random
+
+    import numpy as np
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=23,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    python_before = random.getstate()
+    numpy_before = np.random.get_state()
+
+    class PythonNumpyRngMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            random.random()
+            np.random.random()
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=PythonNumpyRngMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert random.getstate() != python_before
+        numpy_after = np.random.get_state()
+        assert (
+            numpy_after[2] != numpy_before[2]
+            or not np.array_equal(numpy_after[1], numpy_before[1])
+        )
+        assert target._failure_reason == (
+            "trainer RNG state changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+    finally:
+        random.setstate(python_before)
+        np.random.set_state(numpy_before)
+
+
+def test_direct_restore_poison_target_when_component_load_consumes_rng() -> None:
+    config = _config()
+    state = _clean_state(config)
+    model = nn.Linear(3, 2)
+
+    class RngMutatingAdamW(AdamW):
+        def load_state_dict(self, state_dict):
+            result = super().load_state_dict(state_dict)
+            torch.rand(1)
+            return result
+
+    optimizer = RngMutatingAdamW(
+        model.parameters(),
+        lr=config.learning_rate,
+        betas=config.betas,
+        eps=config.eps,
+        weight_decay=config.weight_decay,
+    )
+    target = Trainer(
+        model,
+        config,
+        optimizer=optimizer,
+        scheduler=None,
+    )
+    rng_before = torch.get_rng_state().clone()
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during load",
+        ):
+            target.load_state_dict(state)
+
+        assert not torch.equal(torch.get_rng_state(), rng_before)
+        assert target._failure_reason == (
+            "trainer state restore failed after possible partial apply"
+        )
+        assert target._update_incomplete is True
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="failed trainer cannot be repaired in place",
+        ):
+            target.load_state_dict(state)
+    finally:
+        torch.set_rng_state(rng_before)
 
 
 def test_direct_restore_rejects_entry_deterministic_policy_drift_before_state_access() -> None:
