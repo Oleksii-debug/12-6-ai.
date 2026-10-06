@@ -54,15 +54,18 @@ def test_aggregate_decisions_emits_no_ids_or_text() -> None:
 
 
 def test_aggregate_reason_sets_are_counts_not_exemplars() -> None:
+    first_id = "SECRET_RECORD_ALPHA_987654321"
+    second_id = "SECRET_RECORD_BETA_123456789"
     decisions = [
-        diagnostic.assess_document("a", "повтор " * 100, "uk"),
-        diagnostic.assess_document("b", "повтор " * 100, "uk"),
+        diagnostic.assess_document(first_id, "повтор " * 100, "uk"),
+        diagnostic.assess_document(second_id, "повтор " * 100, "uk"),
     ]
     result = diagnostic.aggregate_decisions(decisions)
     assert sum(result["reason_set_counts"].values()) == 2
     assert all(isinstance(value, int) for value in result["reason_set_counts"].values())
-    assert "a" not in json.dumps(result, ensure_ascii=False, sort_keys=True)
-    assert "b" not in json.dumps(result, ensure_ascii=False, sort_keys=True)
+    durable = json.dumps(result, ensure_ascii=False, sort_keys=True)
+    assert first_id not in durable
+    assert second_id not in durable
 
 
 def test_authority_constants_are_fail_closed() -> None:
