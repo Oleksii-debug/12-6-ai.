@@ -294,6 +294,59 @@ def test_invalid_numeric_policy_rejected_before_torch_rng_mutation(
         core.restore_rng_state(ambient)
 
 
+@pytest.mark.parametrize(
+    "fault",
+    ["default_dtype", "matmul_precision"],
+)
+def test_failed_apply_numeric_policy_rollback_isolates_setter_fault(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    ambient = core.capture_rng_state()
+    try:
+        torch.set_default_dtype(torch.float64)
+        torch.set_float32_matmul_precision("high")
+        expected = core.capture_rng_state()
+
+        torch.set_default_dtype(torch.float32)
+        torch.set_float32_matmul_precision("highest")
+        primary = RuntimeError("injected checkpoint apply failure")
+
+        with monkeypatch.context() as patch:
+            if fault == "default_dtype":
+                patch.setattr(
+                    core,
+                    "_restore_torch_default_dtype",
+                    lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                        OSError("injected default-dtype rollback failure")
+                    ),
+                )
+            else:
+                patch.setattr(
+                    core,
+                    "_restore_torch_matmul_precision",
+                    lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                        OSError("injected matmul-precision rollback failure")
+                    ),
+                )
+            trainer_adapter._restore_ambient_rng_after_failed_apply(
+                expected,
+                primary,
+            )
+
+        notes = getattr(primary, "__notes__", ())
+        if fault == "default_dtype":
+            assert torch.get_default_dtype() is torch.float32
+            assert torch.get_float32_matmul_precision() == "high"
+            assert any("default-dtype rollback" in note for note in notes)
+        else:
+            assert torch.get_default_dtype() is torch.float64
+            assert torch.get_float32_matmul_precision() == "highest"
+            assert any("float32-matmul-precision rollback" in note for note in notes)
+    finally:
+        core.restore_rng_state(ambient)
+
+
 def _seal_warn_only_mismatch(
     path: Path,
     monkeypatch: pytest.MonkeyPatch,
