@@ -3,7 +3,7 @@ name: D03 current Rada DATA232 handoff G6 141
 on:
   pull_request:
     branches:
-      - execution/2808-rada-current-global-dedup-g8-146-20261006
+      - execution/rada-current-data232-handoff-g6-141-20261006
     paths:
       - ".github/workflows/d03_rada_current_data232_handoff_g6_141.yml"
       - "tools/run_d03_rada_current_data232_handoff_v1.py"
@@ -20,13 +20,13 @@ jobs:
   execute-two-clean:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.head_ref == 'execution/rada-current-data232-handoff-g6-141-20261006'
+      github.head_ref == 'compat/2841-data232-import-isolation-g8-154-20261006'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       PARENT_HEAD: "a4663e87b010b190343caf1d42784f5dc7984601"
-      RUNNER_BLOB: "8e4a96f936b332c198d802ba6b252b95f7670408"
+      RUNNER_BLOB: "38a7fef05a6ac6a25a48c7de9f0321617b0abaee"
       HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
       RETAINED_ARTIFACT_ID: "11281540677"
       RETAINED_OUTER_SHA256: "2d0351a7ae6bbcd6ca5bc5d84c115717a467dbad51bd9b17e71072aed1827aeb"
@@ -90,6 +90,12 @@ jobs:
           test "$(git hash-object evidence/eval647/code_selection_source_materialization_v1.json)" = "efa5b77275919fa9417e35efb30c8c9a527bd960"
           test "$(git hash-object tools/materialize_eval_code_reserve_v1.py)" = "13000d9b911bf0e0c7567613e68f2b9b113bd955"
           python -m py_compile tools/run_d03_rada_current_data232_handoff_v1.py
+          PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<'PY'
+          import sys
+          import run_d03_rada_current_data232_handoff_v1  # noqa: F401
+
+          assert "twelve_six.data._data232_decontamination_matching" not in sys.modules
+          PY
           python -m pip install --disable-pip-version-check "ruff>=0.12"
           ruff check tools/run_d03_rada_current_data232_handoff_v1.py
 
