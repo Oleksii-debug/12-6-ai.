@@ -2935,15 +2935,14 @@ class Trainer:
             scheduler_state = copy.deepcopy(state.scheduler)
             scaler_state = copy.deepcopy(state.scaler)
         except BaseException:
-            drift_reason = _restore_preapply_drift_reason("checkpoint payload preflight")
+            drift_reason = _restore_preapply_drift_reason("checkpoint preflight")
             if drift_reason is not None:
                 Trainer._mark_failed(self, drift_reason)
             raise
-        drift_reason = _restore_preapply_drift_reason("checkpoint payload preflight")
+        drift_reason = _restore_preapply_drift_reason("checkpoint preflight")
         if drift_reason is not None:
             Trainer._mark_failed(self, drift_reason)
             raise TrainingStateInvalidError(drift_reason)
-
 
         # Bind every effectful component interface before the first live restore
         # mutation. A stateful descriptor/proxy must not get a second lookup
