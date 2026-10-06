@@ -849,9 +849,31 @@ def compare_outputs(
         composition_identity == self_hash(composition, "evidence_identity_sha256"),
         "composition dedup self-hash mismatch",
     )
+    for field, expected in ZERO_CREDIT.items():
+        require(
+            composition.get(field) == expected,
+            f"composition zero-credit drift: {field}",
+        )
 
     next100_input = parsed["next100-input"]
     next100_identity = sha256(canonical(next100_input))
+    dedup_authority = next100_input.get("dedup_authority")
+    require(
+        isinstance(dedup_authority, Mapping),
+        "NEXT100 input lacks dedup authority",
+    )
+    require(
+        dedup_authority.get("worker_id") == DEDUP_WORKER_ID,
+        "NEXT100 dedup worker drift",
+    )
+    require(
+        dedup_authority.get("evidence_identity_sha256") == composition_identity,
+        "NEXT100 dedup evidence differs from composition",
+    )
+    require(
+        dedup_authority.get("terminal_verdict") == "PASS",
+        "NEXT100 dedup authority is not PASS",
+    )
 
     balance_result = parsed["balance-result"]
     result_identity = require_sha256(
@@ -895,10 +917,71 @@ def compare_outputs(
         receipt_identity == self_hash(receipt, "receipt_identity_sha256"),
         "execution receipt self-hash mismatch",
     )
-    require_git_sha(receipt.get("execution_head_sha"), "execution receipt head")
+    receipt_head = require_git_sha(
+        receipt.get("execution_head_sha"),
+        "execution receipt head",
+    )
+    require(
+        composition.get("execution_head_sha") == receipt_head,
+        "composition execution head differs from receipt",
+    )
+    require(
+        dedup_authority.get("head_sha") == receipt_head,
+        "NEXT100 dedup head differs from receipt",
+    )
     require(
         receipt.get("composition_dedup_identity_sha256") == composition_identity,
         "execution receipt composition identity mismatch",
+    )
+
+    composition_family = require_sha256(
+        composition.get("family_vector_identity_sha256"),
+        "composition family-vector identity",
+    )
+    receipt_family = require_sha256(
+        receipt.get("family_vector_identity_sha256"),
+        "execution receipt family-vector identity",
+    )
+    require(
+        composition_family
+        == receipt_family
+        == balance_binding.get("family_vector_identity_sha256"),
+        "family-vector identity differs across evidence chain",
+    )
+    physical = next100_input.get("physical_authority")
+    require(
+        isinstance(physical, Mapping)
+        and physical.get("family_vector_identity_sha256") == receipt_family,
+        "NEXT100 physical family-vector identity mismatch",
+    )
+
+    post_g06 = composition.get("post_g06_physical_uniqueness")
+    require(
+        isinstance(post_g06, Mapping),
+        "composition lacks post-G06 physical evidence",
+    )
+    require(
+        post_g06.get("evidence_identity_sha256")
+        == receipt.get("post_g06_evidence_identity_sha256"),
+        "post-G06 identity differs across evidence chain",
+    )
+
+    upstream = composition.get("upstream_global_dedup")
+    require(
+        isinstance(upstream, Mapping),
+        "composition lacks upstream global-dedup evidence",
+    )
+    require(
+        upstream.get("evidence_identity_sha256")
+        == receipt.get("upstream_global_dedup_evidence_identity_sha256")
+        == UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID,
+        "upstream global-dedup evidence identity mismatch",
+    )
+    require(
+        upstream.get("two_clean_identity_sha256")
+        == receipt.get("upstream_global_dedup_two_clean_identity_sha256")
+        == UPSTREAM_TWO_CLEAN_ID,
+        "upstream global-dedup two-clean identity mismatch",
     )
     require(
         receipt.get("next100_input_identity_sha256") == next100_identity,
