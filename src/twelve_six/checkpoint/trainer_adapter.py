@@ -1887,6 +1887,73 @@ def _assert_d02_checkpoint_rng_policy(
             ) from exc
 
 
+def _assert_checkpoint_process_environment_stable(
+    state: Mapping[str, Any],
+    *,
+    expected_canonical: bool,
+) -> None:
+    """Fail closed if effectful restore work drifts the bound CUDA environment."""
+
+    if not expected_canonical:
+        return
+    torch_state = state.get("torch")
+    if not isinstance(torch_state, Mapping):
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint torch process state is unavailable"
+        )
+    cuda_environment = torch_state.get("cuda_environment")
+    if not isinstance(cuda_environment, Mapping):
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint CUDA process environment is unavailable"
+        )
+    _core._assert_torch_process_environment_matches(cuda_environment)
+
+
+def _assert_checkpoint_numeric_policy_stable(
+    state: Mapping[str, Any],
+    *,
+    expected_canonical: bool,
+) -> None:
+    """Require live floating-point process policy to equal the checkpoint."""
+
+    if not expected_canonical:
+        return
+    torch_state = state.get("torch")
+    if not isinstance(torch_state, Mapping):
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint torch process state is unavailable"
+        )
+    required = (
+        "default_dtype",
+        "float32_matmul_precision",
+        "cudnn_allow_tf32",
+        "cudnn_enabled",
+        "cudnn_deterministic",
+        "cudnn_benchmark",
+    )
+    missing = [field for field in required if field not in torch_state]
+    if missing:
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint numeric policy is incomplete: "
+            f"{missing}"
+        )
+    torch = importlib.import_module("torch")
+    live = {
+        "default_dtype": str(torch.get_default_dtype()),
+        "float32_matmul_precision": torch.get_float32_matmul_precision(),
+        "cudnn_allow_tf32": bool(torch.backends.cudnn.allow_tf32),
+        "cudnn_enabled": bool(torch.backends.cudnn.enabled),
+        "cudnn_deterministic": bool(torch.backends.cudnn.deterministic),
+        "cudnn_benchmark": bool(torch.backends.cudnn.benchmark),
+    }
+    drifted = [field for field in required if live[field] != torch_state[field]]
+    if drifted:
+        raise CheckpointCompatibilityError(
+            "checkpoint torch numeric policy differs from the live process: "
+            f"{drifted}"
+        )
+
+
 def _snapshot_torch_policy(state: Mapping[str, Any]) -> tuple[bool, bool] | None:
     """Pin the live policy before any model or trainer loader can mutate it."""
 
@@ -2544,6 +2611,20 @@ def load_trainer_checkpoint(
             expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
+    if restore_rng:
+        try:
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+        except BaseException as exc:
+            _poison_canonical_restore_failure(
+                trainer,
+                expected_canonical=restore_bindings[0],
+                reason="checkpoint_preapply_process_environment_drift",
+                exc=exc,
+            )
+            raise
 
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = capture_rng_state()
@@ -2563,7 +2644,24 @@ def load_trainer_checkpoint(
             _restore_checkpoint_numeric_policy_for_apply(
                 combined_state["rng"],
             )
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
         model_apply(materialized)
+        if restore_rng:
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
         if model_apply_authority is not None:
             try:
                 model_apply_authority(materialized)
@@ -2583,6 +2681,15 @@ def load_trainer_checkpoint(
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
+        if restore_rng:
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
         sealed_auxiliary_fingerprint = (
             auxiliary_fingerprint()
             if auxiliary_fingerprint is not None
@@ -2608,6 +2715,14 @@ def load_trainer_checkpoint(
                 combined_state["rng"],
                 restore=restore_rng_state,
                 initial_policy=policy_before_apply,
+            )
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
             )
         else:
             _assert_live_d02_determinism(trainer)

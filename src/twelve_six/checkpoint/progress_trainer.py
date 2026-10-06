@@ -33,6 +33,8 @@ from .expected_binding import (
 from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
     _assert_bound_metadata,
+    _assert_checkpoint_numeric_policy_stable,
+    _assert_checkpoint_process_environment_stable,
     _assert_d02_checkpoint_rng_policy,
     _assert_live_d02_determinism,
     _assert_native_d02_exact_live_state,
@@ -300,6 +302,20 @@ def load_trainer_checkpoint(
             expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
+    if restore_rng:
+        try:
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+        except BaseException as exc:
+            _poison_canonical_restore_failure(
+                trainer,
+                expected_canonical=restore_bindings[0],
+                reason="checkpoint_preapply_process_environment_drift",
+                exc=exc,
+            )
+            raise
 
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = _core.capture_rng_state()
@@ -320,7 +336,24 @@ def load_trainer_checkpoint(
             _restore_checkpoint_numeric_policy_for_apply(
                 combined_state["rng"],
             )
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
         model_apply(materialized)
+        if restore_rng:
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
         if model_apply_authority is not None:
             try:
                 model_apply_authority(materialized)
@@ -340,6 +373,15 @@ def load_trainer_checkpoint(
         _assert_trainer_model_binding(model, trainer)
         _assert_native_d02_model_training_mode(model, trainer)
         load_trainer_state(trainer_state)
+        if restore_rng:
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
         sealed_auxiliary_fingerprint = (
             auxiliary_fingerprint()
             if auxiliary_fingerprint is not None
@@ -368,6 +410,14 @@ def load_trainer_checkpoint(
                 combined_state["rng"],
                 restore=restore_rng_state,
                 initial_policy=policy_before_apply,
+            )
+            _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
             )
         else:
             _assert_live_d02_determinism(trainer)
