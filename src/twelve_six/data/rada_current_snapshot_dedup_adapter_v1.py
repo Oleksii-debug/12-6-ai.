@@ -44,8 +44,9 @@ ROW_KEYS = frozenset(
 )
 METADATA_KEYS = ROW_KEYS - {"text"}
 ALLOWED_ENCODINGS = frozenset({"utf-8", "windows-1251"})
-PARENT_ID_RE = re.compile(r"d[0-9]+\.htm")
-SOURCE_PATH_RE = re.compile(r"zak/perv/text/d[0-9]+\.htm")
+PARENT_ID_PREFIX = SOURCE_FAMILY + "."
+PARENT_ID_RE = re.compile(r"ua\.rada\.open-data\.laws-texts\.d[0-9]+")
+SOURCE_PATH_RE = re.compile(r"d[0-9]+\.htm")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 

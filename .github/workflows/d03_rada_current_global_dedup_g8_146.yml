@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      PARENT_HEAD: "e0194d1fd76673e492d33ca3f674ca794a04926a"
+      PARENT_HEAD: "0294dd8f04e28cd7992f2afce4cdb3af39846d98"
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       HISTORICAL_QP_REF: "43a7d62854255da4426d6a3dc4d5ad9b1e4898e9"
       RETAINED_ARTIFACT_ID: "11281540677"
@@ -35,7 +35,7 @@ jobs:
       NBU_HELPER_BLOB: "dc0ed88924610fc7ac19ba4fc7d960d8679c9742"
       V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
       V7_BRANCH: "next100-065c/crosssource-dedup-v5-20260826"
-      RADA_RUNNER_BLOB: "c83936aed66def1f3d24c9dea43ca3543ba10374"
+      RADA_RUNNER_BLOB: "1c2e8234738b7387a240bf0506e4f2a6a7ff4cd7"
       ACCEPTED_JSONL_SHA256: "8d1343708b3ce1747d32c3b551d6fb8ab7123be5b37f74fff3c457b6439159a7"
       ACCEPTED_JSONL_BYTES: "224897989"
 
@@ -71,7 +71,7 @@ jobs:
           test "$(git hash-object evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json)" = \
             "9953940072fdd973cd6c83eb5899314d3484da30"
           test "$(git hash-object src/twelve_six/data/rada_current_snapshot_dedup_adapter_v1.py)" = \
-            "86a481be4fdae8fd4aa75e348a4839ba7a8b6ce8"
+            "b07bf36c4efd84b524b5f1330d8650179dd0e5a1"
           test "$(git hash-object src/twelve_six/data/rada_current_snapshot_qp_authority_v1.py)" = \
             "6b0c7e173460f23d3d3b702448b228253135c6cc"
           test "$(git hash-object tools/run_d03_rada_current_global_dedup_v1.py)" = \
