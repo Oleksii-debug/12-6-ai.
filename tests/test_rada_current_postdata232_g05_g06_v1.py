@@ -640,3 +640,37 @@ def test_parent_cross_binding_rejects_resealed_lineage_drift(
 
     with pytest.raises(target.RadaPostData232Error, match=message):
         _verify_parent_fixture(fixture)
+
+
+
+def test_text_free_durable_guard_accepts_hash_only_evidence() -> None:
+    target.assert_text_free_durable(
+        {
+            "raw_training_text_persisted": False,
+            "records": [
+                {
+                    "record_id": "x",
+                    "payload_sha256": "0" * 64,
+                    "payload_bytes": 3,
+                }
+            ],
+        },
+        label="synthetic",
+    )
+
+
+@pytest.mark.parametrize(
+    "forbidden_key",
+    sorted(target._DURABLE_FORBIDDEN_TEXT_KEYS),
+)
+def test_text_free_durable_guard_rejects_nested_payload_text(
+    forbidden_key: str,
+) -> None:
+    with pytest.raises(
+        target.RadaPostData232Error,
+        match="raw-text-bearing durable key",
+    ):
+        target.assert_text_free_durable(
+            {"outer": [{"safe": {forbidden_key: "secret"}}]},
+            label="synthetic",
+        )
