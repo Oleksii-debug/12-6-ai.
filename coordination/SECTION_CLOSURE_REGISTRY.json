@@ -52,8 +52,19 @@
     {
       "number": 1,
       "title": "Єдина система ідентичностей і маніфестів",
-      "status": "UNVERIFIED",
-      "evidence": null
+      "status": "IN_PROGRESS",
+      "evidence": {
+        "candidate_branch": "section/1-unified-artifact-identities-v1",
+        "predecessor_candidate_sha": "84de775af5c3aa4e494e74eb5e94ff02e766aaef",
+        "implementation_paths": [
+          "src/twelve_six/artifact_identity.py",
+          "tests/test_artifact_identity_section1.py",
+          "docs/UNIFIED_ARTIFACT_IDENTITIES_SECTION1.md"
+        ],
+        "integrated_main_sha": null,
+        "pull_request": null,
+        "terminal_ci": null
+      }
     },
     {
       "number": 2,
