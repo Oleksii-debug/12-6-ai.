@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -704,3 +705,551 @@ def test_recipe_cli_refuses_oversized_authority_without_traceback(
     assert response["status"] == "FAIL"
     assert f"invalid {expected_label} JSON" in response["error"]
     assert "8 MiB input limit" in response["error"]
+
+
+def test_recipe_cli_loader_counts_utf8_bytes_not_characters(tmp_path: Path) -> None:
+    tool = _load_tool()
+    payload = b'{"text":"' + "ї".encode() * (
+        tool.MAX_AUTHORITY_JSON_BYTES // 2
+    ) + b'"}'
+    assert len(payload) > tool.MAX_AUTHORITY_JSON_BYTES
+    path = tmp_path / "multibyte.json"
+    path.write_bytes(payload)
+    with pytest.raises(ValueError, match="8 MiB input limit"):
+        tool._load_json(path)
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_never_echoes_untrusted_duplicate_member_names(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    secret = "NEVER_LOG_SECRET_JSON_MEMBER_987"
+    path = tmp_path / "secret-duplicate.json"
+    path.write_text(json.dumps({secret: 1})[:-1] + f',"{secret}":2}}', encoding="utf-8")
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_text(json.dumps(load_policy()), encoding="utf-8")
+    valid_bindings = bindings()
+    valid_trusted = trusted_authorities(valid_bindings)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(valid_bindings), encoding="utf-8")
+    trusted_path.write_text(json.dumps(valid_trusted), encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable, str(TOOL_PATH),
+            "--policy", str(path if bad_role == "policy" else policy_path),
+            "--bindings", str(path if bad_role == "bindings" else bindings_path),
+            "--trusted-authorities",
+            str(path if bad_role == "trusted-authorities" else trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(valid_trusted),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "duplicate object member" in response["error"]
+    assert secret not in completed.stdout
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("orphan_trusted", "--trusted-authorities requires --bindings"),
+        (
+            "orphan_identity",
+            "--expected-trusted-authorities-identity-sha256 requires --bindings",
+        ),
+        ("missing_trusted", "--trusted-authorities is required with --bindings"),
+        (
+            "missing_identity",
+            "--expected-trusted-authorities-identity-sha256 is required with --bindings",
+        ),
+    ],
+)
+def test_recipe_cli_missing_authority_arguments_are_machine_readable(
+    tmp_path: Path, case: str, expected: str,
+) -> None:
+    path = tmp_path / "valid.json"
+    path.write_text("{}", encoding="utf-8")
+    args = {
+        "orphan_trusted": ["--trusted-authorities", str(path)],
+        "orphan_identity": [
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ],
+        "missing_trusted": [
+            "--bindings", str(path),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ],
+        "missing_identity": [
+            "--bindings", str(path), "--trusted-authorities", str(path),
+        ],
+    }
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), *args[case]],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+    assert expected in response["error"]
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("--policy", "policy"),
+        ("--bindings", "bindings"),
+        ("--trusted-authorities", "trusted"),
+        ("--expected-trusted-authorities-identity-sha256", "identity"),
+    ],
+)
+def test_recipe_cli_refuses_repeated_authority_options_before_read(
+    tmp_path: Path, option: str, value: str,
+) -> None:
+    path = tmp_path / "valid.json"
+    path.write_text("{}", encoding="utf-8")
+    argument = "0" * 64 if value == "identity" else str(path)
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), f"{option}={argument}", option, argument],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+    assert "duplicate authority option" in response["error"]
+
+
+def test_recipe_cli_missing_authority_option_value_is_structured() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), "--bindings"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--unexpected=NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET"],
+        ["--pol=NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET"],
+        ["NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET"],
+        ["--policy", "nonexistent.json", "--unexpected", "NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET"],
+    ],
+)
+def test_recipe_cli_rejects_unknown_abbreviated_and_positional_arguments(
+    argv: list[str],
+) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(TOOL_PATH), *argv],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    assert "NEVER_ECHO_UNKNOWN_ARGUMENT_SECRET" not in completed.stdout
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+    assert "unrecognized authority option or argument" in response["error"]
+    assert "invalid policy JSON" not in response["error"]
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_redacts_unreadable_authority_file_paths(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    secret = "NEVER_LOG_SECRET_AUTHORITY_PATH_864"
+    missing = tmp_path / f"{secret}.json"
+    valid_bindings = bindings()
+    valid_trusted = trusted_authorities(valid_bindings)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(valid_bindings), encoding="utf-8")
+    trusted_path.write_text(json.dumps(valid_trusted), encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(missing)]
+    else:
+        command += [
+            "--bindings", str(missing if bad_role == "bindings" else bindings_path),
+            "--trusted-authorities",
+            str(missing if bad_role == "trusted-authorities" else trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(valid_trusted),
+        ]
+    completed = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert f"invalid {bad_role} JSON" in response["error"]
+    assert "authority input read failed (FileNotFoundError)" in response["error"]
+    assert secret not in completed.stdout
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_redacts_unknown_json_member_names_in_semantic_errors(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    secret = "NEVER_LOG_SECRET_AUTHORITY_KEY_864"
+    policy = load_policy()
+    valid_bindings = bindings()
+    valid_trusted = trusted_authorities(valid_bindings)
+    if bad_role == "policy":
+        policy[secret] = "secret value"
+    elif bad_role == "bindings":
+        valid_bindings[secret] = "secret value"
+    else:
+        valid_trusted[secret] = "secret value"
+    policy_path = tmp_path / "policy.json"
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    bindings_path.write_text(json.dumps(valid_bindings), encoding="utf-8")
+    trusted_path.write_text(json.dumps(valid_trusted), encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH), "--policy", str(policy_path)]
+    if bad_role != "policy":
+        command += [
+            "--bindings", str(bindings_path),
+            "--trusted-authorities", str(trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(valid_trusted),
+        ]
+    completed = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    label = "policy authority" if bad_role == "policy" else "terminal authority bindings"
+    assert f"invalid {label}" in response["error"]
+    assert "keys mismatch" in response["error"]
+    assert secret not in completed.stdout
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("orphan_trusted", "--trusted-authorities requires --bindings"),
+        ("orphan_identity", "--expected-trusted-authorities-identity-sha256 requires --bindings"),
+        ("missing_trusted", "--trusted-authorities is required with --bindings"),
+        (
+            "missing_identity",
+            "--expected-trusted-authorities-identity-sha256 is required with --bindings",
+        ),
+    ],
+)
+def test_recipe_cli_argument_dependencies_checked_before_any_file_read(
+    tmp_path: Path, case: str, expected: str,
+) -> None:
+    secret = "NEVER_READ_OR_ECHO_AUTHORITY_PATH_864"
+    missing = tmp_path / f"{secret}.json"
+    args = {
+        "orphan_trusted": ["--trusted-authorities", str(missing)],
+        "orphan_identity": [
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ],
+        "missing_trusted": [
+            "--bindings", str(missing),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ],
+        "missing_identity": [
+            "--bindings", str(missing),
+            "--trusted-authorities", str(missing),
+        ],
+    }
+    completed = subprocess.run(
+        [
+            sys.executable, str(TOOL_PATH), "--policy", str(missing),
+            *args[case],
+        ],
+        cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8",
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert "invalid authority arguments" in response["error"]
+    assert expected in response["error"]
+    assert "invalid policy JSON" not in response["error"]
+    assert secret not in completed.stdout
+
+
+@pytest.mark.parametrize("sign", ["", "-"])
+def test_recipe_cli_integer_bound_is_independent_of_python_default(
+    tmp_path: Path, sign: str,
+) -> None:
+    tool = _load_tool()
+    digits = "9" * tool.MAX_AUTHORITY_JSON_INTEGER_DIGITS
+    path = _write_json(tmp_path, '{"number":' + sign + digits + "}")
+    assert tool._load_json(path) == {"number": int(sign + digits)}
+    path = _write_json(tmp_path, '{"number":' + sign + digits + "9}")
+    with pytest.raises(ValueError, match="JSON integer exceeds 64 digits"):
+        tool._load_json(path)
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_refuses_huge_integer_for_every_authority_role(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    bad = tmp_path / "huge-integer.json"
+    bad.write_text('{"number":' + "9" * 100_000 + "}", encoding="utf-8")
+    valid_bindings = bindings()
+    valid_trusted = trusted_authorities(valid_bindings)
+    bindings_path = tmp_path / "bindings.json"
+    trusted_path = tmp_path / "trusted.json"
+    bindings_path.write_text(json.dumps(valid_bindings), encoding="utf-8")
+    trusted_path.write_text(json.dumps(valid_trusted), encoding="utf-8")
+    command = [sys.executable, str(TOOL_PATH)]
+    if bad_role == "policy":
+        command += ["--policy", str(bad)]
+    else:
+        command += [
+            "--bindings", str(bad if bad_role == "bindings" else bindings_path),
+            "--trusted-authorities",
+            str(bad if bad_role == "trusted-authorities" else trusted_path),
+            "--expected-trusted-authorities-identity-sha256",
+            identity_sha256(valid_trusted),
+        ]
+    completed = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8", env={**os.environ, "PYTHONINTMAXSTRDIGITS": "0"},
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert f"invalid {bad_role} JSON" in response["error"]
+    assert "JSON integer exceeds 64 digits" in response["error"]
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO unsupported on this OS")
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_refuses_fifo_inputs_without_hanging(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    tool = _load_tool()
+    fifo = tmp_path / "authority.fifo"
+    os.mkfifo(fifo)
+    with pytest.raises(ValueError, match="authority input must be a regular file"):
+        tool._load_json(fifo)
+
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_text(json.dumps(load_policy()), encoding="utf-8")
+    empty = tmp_path / "empty.json"
+    empty.write_text("{}", encoding="utf-8")
+    args = [sys.executable, str(TOOL_PATH), "--policy", str(
+        fifo if bad_role == "policy" else policy_path
+    )]
+    if bad_role != "policy":
+        args += [
+            "--bindings", str(fifo if bad_role == "bindings" else empty),
+            "--trusted-authorities", str(
+                fifo if bad_role == "trusted-authorities" else empty
+            ),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    completed = subprocess.run(
+        args, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8", timeout=5,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    response = json.loads(completed.stdout)
+    assert response["status"] == "FAIL"
+    assert f"invalid {bad_role} JSON" in response["error"]
+    assert "authority input must be a regular file" in response["error"]
+
+
+def test_recipe_cli_refuses_directory_instead_of_authority_file(
+    tmp_path: Path,
+) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="authority input must be a regular file"):
+        tool._load_json(tmp_path)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO unsupported on this OS")
+def test_recipe_cli_rechecks_open_descriptor_after_path_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = _load_tool()
+    regular = tmp_path / "normal.json"
+    regular.write_text("{}", encoding="utf-8")
+    fifo = tmp_path / "replacement.fifo"
+    os.mkfifo(fifo)
+    real_open = os.open
+
+    def swapped_open(path, flags):
+        if os.fspath(path) == os.fspath(regular):
+            return real_open(fifo, flags)
+        return real_open(path, flags)
+
+    monkeypatch.setattr(tool.os, "open", swapped_open)
+    with pytest.raises(ValueError, match="authority input must be a regular file"):
+        tool._load_json(regular)
+
+
+@pytest.mark.parametrize("role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_refuses_regular_file_swap_after_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str,
+) -> None:
+    tool = _load_tool()
+    selected = tmp_path / (role + "-selected.json")
+    selected.write_text("{}", encoding="utf-8")
+    replacement = tmp_path / (role + "-replacement.json")
+    replacement.write_text('{"attacker":"different regular file"}', encoding="utf-8")
+    assert selected.stat().st_ino != replacement.stat().st_ino
+    original_open = os.open
+
+    def swapped_open(path, flags):
+        if os.fspath(path) == os.fspath(selected):
+            return original_open(replacement, flags)
+        return original_open(path, flags)
+
+    monkeypatch.setattr(tool.os, "open", swapped_open)
+    with pytest.raises(ValueError, match="authority input changed between check and open"):
+        tool._load_json(selected)
+
+
+def test_recipe_cli_accepts_unchanged_regular_file_identity(tmp_path: Path) -> None:
+    tool = _load_tool()
+    selected = tmp_path / "authority.json"
+    selected.write_text('{"ok":true}', encoding="utf-8")
+    assert tool._load_json(selected) == {"ok": True}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation may require Windows privilege")
+def test_recipe_cli_preserves_regular_file_symlink_input(tmp_path: Path) -> None:
+    tool = _load_tool()
+    selected = tmp_path / "authority.json"
+    selected.write_text('{"ok":true}', encoding="utf-8")
+    alias = tmp_path / "authority-alias.json"
+    alias.symlink_to(selected)
+    assert tool._load_json(alias) == {"ok": True}
+
+
+@pytest.mark.parametrize("number", ["1e-4000", "-1e-4000", "0.0001e-4000"])
+def test_recipe_cli_strict_loader_rejects_float_underflow(
+    tmp_path: Path, number: str,
+) -> None:
+    tool = _load_tool()
+    with pytest.raises(ValueError, match="nonzero JSON number underflowed to zero"):
+        tool._load_json(_write_json(tmp_path, '{"value":' + number + "}"))
+
+
+@pytest.mark.parametrize("number", ["0e-4000", "-0.0e-4000", "0.000e4000"])
+def test_recipe_cli_strict_loader_preserves_exact_numeric_zero(
+    tmp_path: Path, number: str,
+) -> None:
+    tool = _load_tool()
+    assert tool._load_json(_write_json(tmp_path, '{"value":' + number + "}"))["value"] == 0.0
+
+
+@pytest.mark.parametrize("bad_role", ["policy", "bindings", "trusted-authorities"])
+def test_recipe_cli_rejects_underflow_for_each_authority_role(
+    tmp_path: Path, bad_role: str,
+) -> None:
+    invalid = tmp_path / "underflow.json"
+    invalid.write_text('{"value":1e-4000}', encoding="utf-8")
+    valid_policy = tmp_path / "policy.json"
+    valid_policy.write_text(json.dumps(load_policy()), encoding="utf-8")
+    empty = tmp_path / "empty.json"
+    empty.write_text("{}", encoding="utf-8")
+    args = [sys.executable, str(TOOL_PATH), "--policy", str(
+        invalid if bad_role == "policy" else valid_policy
+    )]
+    if bad_role != "policy":
+        args += [
+            "--bindings", str(invalid if bad_role == "bindings" else empty),
+            "--trusted-authorities", str(
+                invalid if bad_role == "trusted-authorities" else empty
+            ),
+            "--expected-trusted-authorities-identity-sha256", "0" * 64,
+        ]
+    completed = subprocess.run(
+        args, cwd=ROOT, check=False, capture_output=True, text=True,
+        encoding="utf-8", timeout=10,
+    )
+    assert completed.returncode == 2
+    assert completed.stderr == ""
+    result = json.loads(completed.stdout)
+    assert result["status"] == "FAIL"
+    assert f"invalid {bad_role} JSON" in result["error"]
+    assert "nonzero JSON number underflowed to zero" in result["error"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows may lock an open input for writing")
+def test_recipe_cli_rejects_inplace_mutation_during_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = _load_tool()
+    selected = tmp_path / "in-place-authority.json"
+    selected.write_text('{"original":true}', encoding="utf-8")
+    original_inode = selected.stat().st_ino
+    original_fdopen = os.fdopen
+
+    class MutatingSource:
+        def __init__(self, source):
+            self.source = source
+
+        def __enter__(self):
+            self.source.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.source.__exit__(*args)
+
+        def fileno(self):
+            return self.source.fileno()
+
+        def read(self, bound):
+            # A two-second mtime offset avoids filesystem timestamp granularity
+            # flakes when an in-place replacement has exactly the same byte size.
+            before = selected.stat()
+            selected.write_text('{"modified":true}', encoding="utf-8")
+            os.utime(selected, ns=(before.st_atime_ns, before.st_mtime_ns + 2_000_000_000))
+            assert selected.stat().st_ino == original_inode
+            return self.source.read(bound)
+
+    monkeypatch.setattr(tool.os, "fdopen", lambda fd, mode: MutatingSource(
+        original_fdopen(fd, mode)
+    ))
+    with pytest.raises(ValueError, match="authority input changed during read"):
+        tool._load_json(selected)

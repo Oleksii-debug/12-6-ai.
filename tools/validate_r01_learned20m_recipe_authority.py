@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +20,14 @@ from twelve_six.learned20m_recipe import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_POLICY = ROOT / "configs/research/r01_learned20m_recipe_authority_v1.json"
 MAX_AUTHORITY_JSON_BYTES = 8 * 1024 * 1024
+MAX_AUTHORITY_JSON_INTEGER_DIGITS = 64
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate object member: {key}")
+            raise ValueError("duplicate object member")
         result[key] = value
     return result
 
@@ -37,15 +40,48 @@ def _parse_finite_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ValueError("JSON number is not finite")
+    # The binary float zero must not erase a syntactically nonzero JSON value.
+    significand = value.split("e", 1)[0].split("E", 1)[0]
+    if parsed == 0.0 and any(digit in "123456789" for digit in significand):
+        raise ValueError("nonzero JSON number underflowed to zero")
     return parsed
+
+
+def _parse_bounded_int(value: str) -> int:
+    # Keep work bounded even if the interpreter's integer-string limit is disabled.
+    if len(value.removeprefix("-")) > MAX_AUTHORITY_JSON_INTEGER_DIGITS:
+        raise ValueError("JSON integer exceeds 64 digits")
+    return int(value)
+
+
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
+    # Atime can change during a legitimate read; size/mtime/ctime must not.
+    return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
 def _load_json(path: Path) -> Any:
     try:
         # A local authority file is untrusted until its identity and schema pass.
         # Bound the raw read before JSON parsing to avoid memory exhaustion.
-        with path.open("rb") as source:
+        # A FIFO or special device could block before the byte limit is checked.
+        # Precheck the path, then recheck descriptor type AND identity after open.
+        before = path.stat()
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("authority input must be a regular file")
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        with os.fdopen(os.open(path, flags), "rb") as source:
+            opened = os.fstat(source.fileno())
+            if not stat.S_ISREG(opened.st_mode):
+                raise ValueError("authority input must be a regular file")
+            # Type checks alone cannot detect a different regular file opened
+            # after a pathname swap; pin the actual prechecked file identity.
+            if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+                raise ValueError("authority input changed between check and open")
+            if _file_stamp(before) != _file_stamp(opened):
+                raise ValueError("authority input changed before open")
             raw = source.read(MAX_AUTHORITY_JSON_BYTES + 1)
+            if _file_stamp(os.fstat(source.fileno())) != _file_stamp(opened):
+                raise ValueError("authority input changed during read")
         if len(raw) > MAX_AUTHORITY_JSON_BYTES:
             raise ValueError("authority JSON exceeds 8 MiB input limit")
         return json.loads(
@@ -53,6 +89,7 @@ def _load_json(path: Path) -> Any:
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_constant,
             parse_float=_parse_finite_float,
+            parse_int=_parse_bounded_int,
         )
     except RecursionError as exc:
         # Limit only untrusted JSON decoding; preserve genuine validator errors.
@@ -60,26 +97,53 @@ def _load_json(path: Path) -> Any:
 
 
 def _print_input_failure(label: str, exc: BaseException) -> int:
+    # OS exceptions may embed an untrusted authority filename (or directory).
+    # Key-set validator errors may embed attacker-controlled JSON member names.
+    # Keep the failure class/contract useful without publishing either value.
+    if isinstance(exc, OSError):
+        reason = f"authority input read failed ({type(exc).__name__})"
+    else:
+        reason = str(exc)
+        if " keys mismatch; missing=" in reason:
+            reason = reason.split(" keys mismatch; missing=", 1)[0] + " keys mismatch"
     print(
         json.dumps(
-            {"status": "FAIL", "error": f"invalid {label}: {exc}"},
+            {"status": "FAIL", "error": f"invalid {label}: {reason}"},
             sort_keys=True,
         )
     )
     return 2
 
 
+class _StoreAuthorityOnce(argparse.Action):
+    """Reject ambiguous repeated authority flags, including --flag=value."""
+
+    def __call__(
+        self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
+        values: Any, option_string: str | None = None,
+    ) -> None:
+        marker = f"_r01_seen_{self.dest}"
+        if getattr(namespace, marker, False):
+            raise argparse.ArgumentError(self, "duplicate authority option")
+        setattr(namespace, marker, True)
+        setattr(namespace, self.dest, values)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
+    parser = argparse.ArgumentParser(exit_on_error=False, allow_abbrev=False)
+    parser.add_argument(
+        "--policy", type=Path, default=DEFAULT_POLICY, action=_StoreAuthorityOnce,
+    )
     parser.add_argument(
         "--bindings",
+        action=_StoreAuthorityOnce,
         type=Path,
         default=None,
         help="Optional terminal authority bindings JSON. Omit for checked-in blocked template.",
     )
     parser.add_argument(
         "--trusted-authorities",
+        action=_StoreAuthorityOnce,
         type=Path,
         default=None,
         help=(
@@ -89,6 +153,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--expected-trusted-authorities-identity-sha256",
+        action=_StoreAuthorityOnce,
         default=None,
         help=(
             "Externally pinned SHA-256 identity of the trusted-authorities document. "
@@ -96,7 +161,40 @@ def main() -> int:
             "either JSON input by this tool."
         ),
     )
-    args = parser.parse_args()
+    try:
+        args, unknown = parser.parse_known_args()
+    except argparse.ArgumentError as exc:
+        return _print_input_failure("authority arguments", exc)
+    if unknown:
+        # Reject unknown flags and positionals before opening any authority file.
+        # Never echo an untrusted argument: it may contain secret material.
+        return _print_input_failure(
+            "authority arguments", ValueError("unrecognized authority option or argument")
+        )
+
+    if args.bindings is None:
+        if args.trusted_authorities is not None:
+            return _print_input_failure(
+                "authority arguments", ValueError("--trusted-authorities requires --bindings")
+            )
+        if args.expected_trusted_authorities_identity_sha256 is not None:
+            return _print_input_failure(
+                "authority arguments",
+                ValueError("--expected-trusted-authorities-identity-sha256 requires --bindings"),
+            )
+    else:
+        if args.trusted_authorities is None:
+            return _print_input_failure(
+                "authority arguments",
+                ValueError("--trusted-authorities is required with --bindings"),
+            )
+        if args.expected_trusted_authorities_identity_sha256 is None:
+            return _print_input_failure(
+                "authority arguments",
+                ValueError(
+                    "--expected-trusted-authorities-identity-sha256 is required with --bindings"
+                ),
+            )
 
     try:
         policy = _load_json(args.policy)
@@ -107,20 +205,8 @@ def main() -> int:
     except (TypeError, ValueError) as exc:
         return _print_input_failure("policy authority", exc)
     if args.bindings is None:
-        if args.trusted_authorities is not None:
-            parser.error("--trusted-authorities requires --bindings")
-        if args.expected_trusted_authorities_identity_sha256 is not None:
-            parser.error(
-                "--expected-trusted-authorities-identity-sha256 requires --bindings"
-            )
         result = blocked_template(policy)
     else:
-        if args.trusted_authorities is None:
-            parser.error("--trusted-authorities is required with --bindings")
-        if args.expected_trusted_authorities_identity_sha256 is None:
-            parser.error(
-                "--expected-trusted-authorities-identity-sha256 is required with --bindings"
-            )
         try:
             bindings = _load_json(args.bindings)
         except (OSError, UnicodeError, ValueError) as exc:
