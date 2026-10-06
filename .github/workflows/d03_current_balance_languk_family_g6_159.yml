@@ -27,7 +27,7 @@ jobs:
     env:
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       PARENT_HEAD: "f6a2a440aacebec6a44a5f2ba955902970ff4d50"
-      RUNNER_BLOB: "e13180f2e742077ad084cc063dfdc410ac107667"
+      RUNNER_BLOB: "14fbd83e32af3ceb6b97052b401b972e80412215"
       GATE_BLOB: "ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5"
       POLICY_BLOB: "b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f"
       BASE_BALANCE_HEAD: "61a0cdb2239085dd5fe11af5af9a06e90cad4e33"
