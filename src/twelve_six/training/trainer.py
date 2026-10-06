@@ -3038,20 +3038,34 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "trainer restore config must use canonical TrainerConfig"
             )
-        if self._failure_reason is not None or self._update_incomplete:
+        entry_failure_reason = entry_attrs.get("_failure_reason")
+        entry_update_incomplete = entry_attrs.get("_update_incomplete")
+        if (
+            entry_failure_reason is not None
+            or type(entry_update_incomplete) is not bool
+            or entry_update_incomplete
+        ):
             raise TrainingStateInvalidError(
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
                 "and restore the verified model + trainer checkpoint"
             )
+        entry_counter_fields = (
+            "micro_step",
+            "optimizer_step",
+            "tokens_seen",
+            "_pending_tokens",
+        )
+        entry_counters = tuple(
+            entry_attrs.get(name) for name in entry_counter_fields
+        )
+        entry_pending_loss = entry_attrs.get("_pending_loss_sum")
         if (
-            self.micro_step != 0
-            or self.optimizer_step != 0
-            or self.tokens_seen != 0
-            or self._pending_tokens != 0
-            or self._pending_loss_sum != 0.0
+            any(type(value) is not int or value != 0 for value in entry_counters)
+            or type(entry_pending_loss) is not float
+            or entry_pending_loss != 0.0
             or any(
                 parameter.grad is not None
-                for _, parameter in self._canonical_model_members()[0]
+                for _, parameter in Trainer._canonical_model_members(self)[0]
             )
         ):
             raise TrainingStateInvalidError(
@@ -3077,16 +3091,13 @@ class Trainer:
             for name in required_policies
         }
         expected_preapply_state = {
-            name: copy.deepcopy(entry_attrs.get(name))
-            for name in (
-                "_failure_reason",
-                "_update_incomplete",
-                "micro_step",
-                "optimizer_step",
-                "tokens_seen",
-                "_pending_tokens",
-                "_pending_loss_sum",
-            )
+            "_failure_reason": entry_failure_reason,
+            "_update_incomplete": entry_update_incomplete,
+            "micro_step": entry_counters[0],
+            "optimizer_step": entry_counters[1],
+            "tokens_seen": entry_counters[2],
+            "_pending_tokens": entry_counters[3],
+            "_pending_loss_sum": entry_pending_loss,
         }
         expected_config_state = Trainer._canonical_config_state(
             expected_config

@@ -120,6 +120,52 @@ def _target_with_optimizer(
     return trainer, optimizer
 
 
+class _ForbiddenRestoreControlValue:
+    bool_calls = 0
+    eq_calls = 0
+    deepcopy_calls = 0
+
+    def __bool__(self) -> bool:
+        type(self).bool_calls += 1
+        return False
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        type(self).eq_calls += 1
+        return True
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "_ForbiddenRestoreControlValue":
+        del memo
+        type(self).deepcopy_calls += 1
+        return self
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["_update_incomplete", "micro_step", "_pending_loss_sum"],
+)
+def test_direct_restore_rejects_noncanonical_fresh_control_without_callbacks(
+    field: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    value = _ForbiddenRestoreControlValue()
+    _ForbiddenRestoreControlValue.bool_calls = 0
+    _ForbiddenRestoreControlValue.eq_calls = 0
+    _ForbiddenRestoreControlValue.deepcopy_calls = 0
+    setattr(target, field, value)
+
+    with pytest.raises(TrainingStateInvalidError):
+        target.load_state_dict(state)
+
+    assert _ForbiddenRestoreControlValue.bool_calls == 0
+    assert _ForbiddenRestoreControlValue.eq_calls == 0
+    assert _ForbiddenRestoreControlValue.deepcopy_calls == 0
+    assert target._failure_reason is None
+    assert not target.optimizer.state
+
+
 class _ForbiddenRestoreContractValue:
     deepcopy_calls = 0
     eq_calls = 0
