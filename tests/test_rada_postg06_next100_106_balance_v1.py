@@ -418,6 +418,9 @@ def test_execute_delegates_policy_without_widening_science(
     )
     values = target.execute(args)
     receipt = values["execution-receipt"]
+    assert receipt["next100_input_identity_sha256"] == target.sha256(
+        target.canonical(values["next100-input"])
+    )
     assert receipt["balance_status"] == (
         "BLOCKED_NO_NONZERO_POLICY_COMPLIANT_MIXTURE"
     )
@@ -476,6 +479,7 @@ def test_write_output_dir_is_immutable_and_resumable(tmp_path: Path) -> None:
         match="refusing to overwrite divergent durable evidence",
     ):
         target.write_output_dir(output, divergent)
+
 
 def test_resolve_existing_path_normalizes_existing_paths(tmp_path: Path) -> None:
     existing = tmp_path / "existing"
@@ -673,6 +677,7 @@ def test_write_output_dir_commits_receipt_last(
         "execution receipt",
     ]
 
+
 def test_compare_outputs_rejects_coherently_tampered_result_self_hash(
     tmp_path: Path,
 ) -> None:
@@ -691,6 +696,7 @@ def test_compare_outputs_rejects_coherently_tampered_result_self_hash(
         match="balance result self-hash mismatch",
     ):
         target.compare_outputs(a, b, tmp_path / "proof-result.json")
+
 
 def test_compare_outputs_rejects_coherently_tampered_next100_input(
     tmp_path: Path,
@@ -734,6 +740,7 @@ def test_compare_outputs_rejects_cross_binding_policy_drift(
         match="execution receipt balance-policy identity mismatch",
     ):
         target.compare_outputs(a, b, tmp_path / "proof-policy.json")
+
 
 def test_compare_outputs_enforces_checkout_provenance_before_proof_write(
     tmp_path: Path,
@@ -803,6 +810,7 @@ def test_compare_outputs_accepts_bound_checkout_provenance(
     assert calls == ["dependencies", "head:" + "c" * 40]
     assert proof_path.exists()
     assert proof["execution_head_sha"] == "c" * 40
+
 
 def test_write_output_dir_rejects_unbound_stale_file(tmp_path: Path) -> None:
     output = tmp_path / "stale-output"
