@@ -356,6 +356,83 @@ def test_cuda_process_environment_mismatch_explicit_opt_out(
 
 
 @pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    "phase",
+    ["preapply", "model_apply", "rng_replay"],
+)
+def test_cuda_process_environment_drift_during_restore_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    phase: str,
+) -> None:
+    key = "CUBLAS_WORKSPACE_CONFIG"
+    monkeypatch.delenv(key, raising=False)
+    checkpoint = tmp_path / f"cuda-environment-drift-{phase}"
+    config = TrainerConfig(max_steps=10, seed=719)
+
+    class EnvironmentDriftLinear(torch.nn.Linear):
+        def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
+            result = super().load_state_dict(state_dict, *args, **kwargs)
+            if phase == "model_apply":
+                monkeypatch.setenv(key, ":16:8")
+            return result
+
+    source_model = EnvironmentDriftLinear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+
+    target_model = EnvironmentDriftLinear(3, 3)
+    target = Trainer(target_model, config)
+
+    if phase == "preapply":
+        original_prepare = loader._prepare_model_weights
+
+        def drifting_prepare(*args: Any, **kwargs: Any):
+            result = original_prepare(*args, **kwargs)
+            monkeypatch.setenv(key, ":16:8")
+            return result
+
+        monkeypatch.setattr(loader, "_prepare_model_weights", drifting_prepare)
+    elif phase == "rng_replay":
+        original_restore = loader.restore_rng_state
+
+        def drifting_restore(state: Any):
+            result = original_restore(state)
+            monkeypatch.setenv(key, ":16:8")
+            return result
+
+        monkeypatch.setattr(loader, "restore_rng_state", drifting_restore)
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="CUDA process environment differs",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=True,
+        )
+
+    assert target._update_incomplete is True
+    if phase == "preapply":
+        assert target._failure_reason == "checkpoint_preapply_process_environment_drift"
+    else:
+        assert target._failure_reason == "checkpoint_restore_apply_failed"
+
+
+@pytest.mark.parametrize(
     ("mutation", "message"),
     [
         ({"CUBLAS_WORKSPACE_CONFIG": None}, "fields differ"),
