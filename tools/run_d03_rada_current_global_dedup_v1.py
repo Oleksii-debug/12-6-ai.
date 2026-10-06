@@ -67,6 +67,8 @@ EXPECTED_CURRENT_INVENTORY_SHA256 = (
     "468a3132819527e1ce2b3aa375a55a15d55b7af53e66bf06ae1e5a69daf73e7a"
 )
 EXPECTED_CURRENT_DUPLICATE_HASHES = 765
+CURRENT_REPLAY_EVIDENCE_STATUS = "CURRENT_SNAPSHOT_REPLAY_ZERO_CREDIT"
+MATCHER_ONLY_EVIDENCE_STATUS = "DEDICATED_TERMINAL"
 
 EXPECTED_COMBINED_OBJECTS = 101_995
 EXPECTED_COMBINED_DECLARED_BYTES = 198_398_557
@@ -334,6 +336,43 @@ def validate_current_projection(
     return sources, payloads, receipt
 
 
+def project_current_for_matcher(
+    current_sources: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Create an ephemeral V3-compatible projection without widening authority."""
+    require(bool(current_sources), "current Rada source projection empty")
+    projected: list[dict[str, Any]] = []
+    for row in current_sources:
+        require(type(row) is dict, "current Rada projected source row invalid")
+        require(
+            row.get("evidence_status") == CURRENT_REPLAY_EVIDENCE_STATUS,
+            "current Rada replay evidence status drift",
+        )
+        matcher_row = copy.deepcopy(row)
+        matcher_row["evidence_status"] = MATCHER_ONLY_EVIDENCE_STATUS
+        projected.append(matcher_row)
+
+    require(
+        all(
+            row.get("evidence_status") == CURRENT_REPLAY_EVIDENCE_STATUS
+            for row in current_sources
+        ),
+        "matcher projection mutated Product replay rows",
+    )
+    proof = {
+        "projection_scope": "GLOBAL_DEDUP_MATCHER_INPUT_ONLY",
+        "input_evidence_status": CURRENT_REPLAY_EVIDENCE_STATUS,
+        "matcher_evidence_status": MATCHER_ONLY_EVIDENCE_STATUS,
+        "projected_source_object_count": len(projected),
+        "source_admission_authority_granted": False,
+        "training_authority_granted": False,
+        "canonical_capacity_credited": 0,
+        "training_authorized_bytes": 0,
+        "tokenizer_fit_authorized": False,
+    }
+    return projected, proof
+
+
 def compose_current_graph(
     helper: ModuleType,
     base_inventory: Mapping[str, Any],
@@ -349,11 +388,16 @@ def compose_current_graph(
     require(len(current_ids) == len(current_sources), "current Rada source IDs duplicate")
     require(current_ids == set(current_payloads), "current Rada source/payload coverage mismatch")
     require(not (base_ids & current_ids), "current Rada source ID collides after replacement")
+    matcher_sources, matcher_projection = project_current_for_matcher(current_sources)
+    require(
+        {row["source_id"] for row in matcher_sources} == current_ids,
+        "matcher-only Rada projection changed source identities",
+    )
 
     inventory = copy.deepcopy(replacement_inventory)
     inventory["sources"] = [
         *copy.deepcopy(replacement_inventory["sources"]),
-        *copy.deepcopy(current_sources),
+        *matcher_sources,
     ]
     inventory["final_refresh_required"] = False
     inventory["terminal_refresh_rule"] = (
@@ -374,6 +418,10 @@ def compose_current_graph(
         helper.ROOT / helper.clean_successor.QUARANTINE_CONFIG_PATH
     )
     helper._verify_clean_payload_graph(inventory, payloads, quarantine_authority)
+    replacement_proof = {
+        **replacement_proof,
+        "matcher_only_status_projection": matcher_projection,
+    }
     return inventory, payloads, replacement_proof
 
 
@@ -382,6 +430,15 @@ def verify_report_current_rada(
     current_sources: list[dict[str, Any]],
     current_payloads: Mapping[str, bytes],
 ) -> dict[str, Mapping[str, Any]]:
+    require(report.get("local_free_only") is True, "matcher local-free boundary drift")
+    require(
+        report.get("model_training_executed") is False,
+        "matcher falsely claims model training",
+    )
+    require(
+        report.get("source_admission_authority") is False,
+        "matcher falsely grants source admission authority",
+    )
     require(report.get("source_count") == EXPECTED_COMBINED_OBJECTS, "report source count drift")
     terminal = report.get("terminal_candidates")
     require(type(terminal) is dict, "terminal matcher summary missing")
@@ -410,7 +467,15 @@ def verify_report_current_rada(
         require(type(observed) is dict, f"current Rada source absent from report: {source_id}")
         raw = current_payloads[source_id]
         raw_sha = sha256(raw)
-        for field in ("source_family", "modality", "evidence_status", "declared_capacity_bytes"):
+        require(
+            expected.get("evidence_status") == CURRENT_REPLAY_EVIDENCE_STATUS,
+            f"current Rada replay status drift: {source_id}",
+        )
+        require(
+            observed.get("evidence_status") == MATCHER_ONLY_EVIDENCE_STATUS,
+            f"current Rada matcher-only status drift: {source_id}",
+        )
+        for field in ("source_family", "modality", "declared_capacity_bytes"):
             require(
                 type(observed.get(field)) is type(expected.get(field))
                 and observed.get(field) == expected.get(field),
@@ -682,6 +747,8 @@ def execute(args: argparse.Namespace) -> None:
         "candidate_source_object_count": EXPECTED_CURRENT_OBJECTS,
         "candidate_payload_bytes": EXPECTED_CURRENT_PAYLOAD_BYTES,
         "replacement_proof": replacement_proof,
+        "matcher_source_admission_authority": False,
+        "matcher_model_training_executed": False,
         "combined_source_object_count": EXPECTED_COMBINED_OBJECTS,
         "combined_declared_capacity_bytes": EXPECTED_COMBINED_DECLARED_BYTES,
         "matcher_report_sha256": report.get("report_sha256"),
