@@ -2752,6 +2752,34 @@ class Trainer:
         then load the trainer state.
         """
         Trainer._require_canonical_checkpoint_authorities(self)
+        entry_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+        required_bindings = (
+            "model",
+            "optimizer",
+            "scheduler",
+            "scaler",
+            "config",
+            "device",
+        )
+        missing_bindings = [
+            name for name in required_bindings if name not in entry_attrs
+        ]
+        if missing_bindings:
+            raise TrainingStateInvalidError(
+                f"trainer restore binding fields are unavailable: {missing_bindings}"
+            )
+        required_policies = (
+            "_canonical_default_schedule",
+            "_canonical_unscheduled_default_optimizer",
+            "_canonical_default_optimizer_options",
+        )
+        missing_policies = [
+            name for name in required_policies if name not in entry_attrs
+        ]
+        if missing_policies:
+            raise TrainingStateInvalidError(
+                f"trainer restore policy fields are unavailable: {missing_policies}"
+            )
         if self._failure_reason is not None or self._update_incomplete:
             raise TrainingStateInvalidError(
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
