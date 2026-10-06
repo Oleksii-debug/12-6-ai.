@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 import pytest
 
@@ -13,6 +14,7 @@ from twelve_six.artifact_identity import (
     ParentBinding,
     bind_artifact,
     build_generation_identity_manifest,
+    parse_generation_identity_manifest,
     verify_parent_bindings,
 )
 from twelve_six.model import InitSpec, ModelSpec
@@ -254,6 +256,52 @@ def test_generation_manifest_rejects_wrong_parent_kind_even_with_valid_digest() 
 
     with pytest.raises(ValueError, match="must reference checkpoint"):
         GenerationIdentityManifest(schema_version=1, artifacts=tuple(manifests))
+
+
+def test_generation_manifest_strict_json_round_trip_preserves_identity() -> None:
+    generation = _generation("a")
+    encoded = generation.canonical_json_bytes()
+    decoded = parse_generation_identity_manifest(encoded)
+
+    assert decoded == generation
+    assert decoded.identity_sha256() == generation.identity_sha256()
+    assert hashlib.sha256(encoded).hexdigest() == generation.identity_sha256()
+
+
+def test_generation_manifest_strict_json_rejects_duplicate_members() -> None:
+    payload = b'{"schema_version":1,"schema_version":1,"artifacts":[]}'
+
+    with pytest.raises(ValueError, match="strict unambiguous"):
+        parse_generation_identity_manifest(payload)
+
+
+def test_generation_manifest_strict_json_rejects_unknown_fields_and_type_aliases() -> None:
+    generation = _generation("a")
+    payload = json.loads(generation.canonical_json_bytes())
+    payload["unexpected"] = True
+
+    with pytest.raises(ValueError, match="fields mismatch"):
+        parse_generation_identity_manifest(
+            json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        )
+
+    payload = json.loads(generation.canonical_json_bytes())
+    payload["schema_version"] = True
+    with pytest.raises(ValueError, match="schema_version"):
+        parse_generation_identity_manifest(
+            json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        )
+
+
+def test_generation_manifest_strict_json_rejects_nested_ref_extension() -> None:
+    generation = _generation("a")
+    payload = json.loads(generation.canonical_json_bytes())
+    payload["artifacts"][0]["artifact"]["unexpected"] = "resealed"
+
+    with pytest.raises(ValueError, match="ArtifactRef fields mismatch"):
+        parse_generation_identity_manifest(
+            json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        )
 
 
 def test_generation_manifest_is_deterministic_and_generation_sensitive() -> None:
