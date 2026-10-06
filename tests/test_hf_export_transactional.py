@@ -1199,3 +1199,130 @@ def test_hf_reader_ambient_exception_does_not_hide_close_failure(
     assert closed
     assert isinstance(caught.value.__cause__, OSError)
 
+class _FailingReadHandle:
+    def __init__(self, failure: BaseException):
+        self._failure = failure
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback):
+        return False
+
+    def read(self):
+        raise self._failure
+
+
+def test_hf_reader_fstat_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    name = "artifact.bin"
+    (root / name).write_bytes(b"exact artifact bytes")
+    failure = OSError("simulated HF artifact fstat failure")
+
+    def fail_fstat(_fd: int):
+        raise failure
+
+    monkeypatch.setattr(hf_export.os, "fstat", fail_fstat)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot inspect HF-style export artifact",
+    ) as caught:
+        hf_export._read_regular_bytes(root, name)
+
+    assert caught.value.__cause__ is failure
+
+
+def test_hf_reader_read_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    name = "artifact.bin"
+    (root / name).write_bytes(b"exact artifact bytes")
+    failure = OSError("simulated HF artifact read failure")
+
+    monkeypatch.setattr(
+        hf_export.os,
+        "fdopen",
+        lambda *_args, **_kwargs: _FailingReadHandle(failure),
+    )
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot read HF-style export artifact",
+    ) as caught:
+        hf_export._read_regular_bytes(root, name)
+
+    assert caught.value.__cause__ is failure
+
+
+def test_hf_reader_read_oserror_survives_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    name = "artifact.bin"
+    (root / name).write_bytes(b"exact artifact bytes")
+    failure = OSError("simulated HF artifact read failure")
+    real_close = hf_export.os.close
+    real_fstat = hf_export.os.fstat
+    closed: list[int] = []
+
+    monkeypatch.setattr(
+        hf_export.os,
+        "fdopen",
+        lambda *_args, **_kwargs: _FailingReadHandle(failure),
+    )
+    monkeypatch.setattr(
+        hf_export.os,
+        "close",
+        _close_then_raise_oserror(real_close, real_fstat, closed),
+    )
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot read HF-style export artifact",
+    ) as caught:
+        hf_export._read_regular_bytes(root, name)
+
+    assert caught.value.__cause__ is failure
+    assert closed
+    assert any(
+        "HF-style export artifact close also failed" in note
+        for note in getattr(caught.value, "__notes__", ())
+    )
+
+
+@pytest.mark.parametrize(
+    "interrupt_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_hf_reader_read_interrupt_retains_exact_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    root = tmp_path / "hf"
+    root.mkdir()
+    name = "artifact.bin"
+    (root / name).write_bytes(b"exact artifact bytes")
+    primary = interrupt_type("simulated HF artifact read interrupt")
+
+    monkeypatch.setattr(
+        hf_export.os,
+        "fdopen",
+        lambda *_args, **_kwargs: _FailingReadHandle(primary),
+    )
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._read_regular_bytes(root, name)
+
+    assert caught.value is primary
+
