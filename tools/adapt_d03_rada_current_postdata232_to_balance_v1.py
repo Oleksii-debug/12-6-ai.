@@ -44,6 +44,16 @@ EXPECTED_RADA_SLICE_SHA256 = (
 )
 FAMILY_VECTOR_SCHEMA = "12-6.d03-postmaterialization-family-vector.v1"
 INVENTORY_SCHEMA = "12-6.data526-record-inventory.v1"
+G05_G06_TWO_CLEAN_SCHEMA = (
+    "12-6.d03-rada-current-postdata232-g05-g06-two-clean.v1"
+)
+G05_G06_TWO_CLEAN_NEXT_GATE = "CURRENT_RADA_BALANCE_DIVERSITY_FAMILY_CAP_RETEST"
+G05_G06_BUNDLE_FILES = {
+    "evidence": "post-g05-g06-evidence.json",
+    "quality": "g05-authority.json",
+    "privacy": "g06-authority.json",
+    "survivor_inventory": "survivor-inventory.json",
+}
 
 EXPECTED_CANONICAL_BLOBS = {
     "src/twelve_six/__init__.py":
@@ -610,6 +620,201 @@ def verify_parent_receipt(
     )
 
 
+
+def verify_g05_g06_two_clean_proof(
+    proof: Mapping[str, Any],
+    *,
+    evidence: Mapping[str, Any],
+    expected_parent_execution_head: str,
+    expected_proof_identity_sha256: str,
+    expected_evidence_file_sha256: str,
+    expected_inventory_file_sha256: str,
+) -> None:
+    """Require terminal byte-identical independent G05/G06 executions."""
+
+    expected_fields = {
+        "schema_version",
+        "execution_head_sha",
+        "parent_execution_head_sha",
+        "parent_artifact_id",
+        "parent_artifact_zip_sha256",
+        "fresh_execution_count",
+        "independent_runner_jobs",
+        "byte_identical_outputs",
+        "output_file_sha256",
+        "evidence_identity_sha256",
+        "g05_execution_identity_sha256",
+        "g06_execution_identity_sha256",
+        "record_payload_jsonl_sha256",
+        "record_inventory_digest_sha256",
+        "payload_inventory_digest_sha256",
+        "payload_set_identity_sha256",
+        "record_count",
+        "total_payload_bytes",
+        "canonical_capacity_credited",
+        "training_authorized_bytes",
+        "authorized_unique_loss_positions",
+        "authorized_optimized_target_exposure",
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "scale_promotion_authorized",
+        "next_gate",
+        "proof_identity_sha256",
+    }
+    require(set(proof) == expected_fields, "G05/G06 two-clean proof fields drift")
+    require(
+        proof.get("schema_version") == G05_G06_TWO_CLEAN_SCHEMA,
+        "G05/G06 two-clean proof schema drift",
+    )
+    claimed = require_sha256(
+        proof.get("proof_identity_sha256"),
+        "G05/G06 two-clean proof identity",
+    )
+    core = dict(proof)
+    del core["proof_identity_sha256"]
+    require(
+        claimed == sha256(canonical(core)),
+        "G05/G06 two-clean proof self-hash mismatch",
+    )
+    require(
+        claimed
+        == require_sha256(
+            expected_proof_identity_sha256,
+            "expected G05/G06 two-clean proof identity",
+        ),
+        "G05/G06 two-clean proof identity is not independently expected",
+    )
+
+    expected_parent_execution_head = require_git_sha(
+        expected_parent_execution_head,
+        "expected parent G05/G06 execution head",
+    )
+    require(
+        proof.get("execution_head_sha") == expected_parent_execution_head,
+        "G05/G06 two-clean execution head drift",
+    )
+    require(
+        proof.get("parent_execution_head_sha") == PARENT_DATA232_HEAD,
+        "G05/G06 two-clean DATA232 parent head drift",
+    )
+    require(
+        proof.get("fresh_execution_count") == 2,
+        "G05/G06 two-clean fresh execution count drift",
+    )
+    require(
+        proof.get("independent_runner_jobs") is True,
+        "G05/G06 two-clean independent-runner proof missing",
+    )
+    require(
+        proof.get("byte_identical_outputs") is True,
+        "G05/G06 two-clean byte identity missing",
+    )
+
+    parent = evidence.get("parent")
+    g05 = evidence.get("g05")
+    g06 = evidence.get("g06")
+    survivor = evidence.get("survivor_inventory")
+    artifacts = evidence.get("durable_artifacts")
+    require(isinstance(parent, Mapping), "parent binding missing for two-clean proof")
+    require(isinstance(g05, Mapping), "G05 receipt missing for two-clean proof")
+    require(isinstance(g06, Mapping), "G06 receipt missing for two-clean proof")
+    require(
+        isinstance(survivor, Mapping),
+        "survivor receipt missing for two-clean proof",
+    )
+    require(
+        isinstance(artifacts, Mapping),
+        "durable artifacts missing for two-clean proof",
+    )
+
+    require(
+        proof.get("parent_artifact_id") == parent.get("artifact_id"),
+        "G05/G06 two-clean parent artifact ID drift",
+    )
+    require(
+        proof.get("parent_artifact_zip_sha256")
+        == parent.get("artifact_zip_sha256"),
+        "G05/G06 two-clean parent artifact ZIP drift",
+    )
+    expected_output_hashes = {
+        G05_G06_BUNDLE_FILES["evidence"]: require_sha256(
+            expected_evidence_file_sha256,
+            "expected G05/G06 evidence file SHA-256",
+        ),
+        G05_G06_BUNDLE_FILES["quality"]: require_sha256(
+            artifacts.get("g05_authority_file_sha256"),
+            "G05 authority file SHA-256",
+        ),
+        G05_G06_BUNDLE_FILES["privacy"]: require_sha256(
+            artifacts.get("g06_authority_file_sha256"),
+            "G06 authority file SHA-256",
+        ),
+        G05_G06_BUNDLE_FILES["survivor_inventory"]: require_sha256(
+            expected_inventory_file_sha256,
+            "expected survivor inventory file SHA-256",
+        ),
+    }
+    require(
+        proof.get("output_file_sha256") == expected_output_hashes,
+        "G05/G06 two-clean output-file roots drift",
+    )
+
+    bindings = {
+        "evidence_identity_sha256": evidence.get("evidence_identity_sha256"),
+        "g05_execution_identity_sha256": g05.get("execution_identity_sha256"),
+        "g06_execution_identity_sha256": g06.get("execution_identity_sha256"),
+        "record_payload_jsonl_sha256": survivor.get(
+            "record_payload_jsonl_sha256"
+        ),
+        "record_inventory_digest_sha256": survivor.get(
+            "record_inventory_digest_sha256"
+        ),
+        "payload_inventory_digest_sha256": survivor.get(
+            "payload_inventory_digest_sha256"
+        ),
+        "payload_set_identity_sha256": g06.get("payload_set_identity_sha256"),
+        "record_count": survivor.get("record_count"),
+        "total_payload_bytes": survivor.get("total_payload_bytes"),
+    }
+    for field, expected in bindings.items():
+        require(
+            proof.get(field) == expected,
+            f"G05/G06 two-clean binding drift: {field}",
+        )
+
+    zero_fields = (
+        "canonical_capacity_credited",
+        "training_authorized_bytes",
+        "authorized_unique_loss_positions",
+        "authorized_optimized_target_exposure",
+    )
+    false_fields = (
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "scale_promotion_authorized",
+    )
+    for field in zero_fields:
+        require(
+            type(proof.get(field)) is int and proof.get(field) == 0,
+            f"G05/G06 two-clean authority widened: {field}",
+        )
+    for field in false_fields:
+        require(
+            proof.get(field) is False,
+            f"G05/G06 two-clean truth boundary widened: {field}",
+        )
+    require(
+        proof.get("next_gate") == G05_G06_TWO_CLEAN_NEXT_GATE,
+        "G05/G06 two-clean next gate drift",
+    )
+
+
 def verify_inventory(
     inventory: Mapping[str, Any],
     *,
@@ -916,6 +1121,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
 
     evidence_raw = args.evidence.read_bytes()
     inventory_raw = args.inventory.read_bytes()
+    two_clean_raw = args.g05_g06_two_clean_proof.read_bytes()
     require(
         sha256(evidence_raw)
         == require_sha256(
@@ -932,8 +1138,20 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "parent inventory file SHA-256 drift",
     )
+    require(
+        sha256(two_clean_raw)
+        == require_sha256(
+            args.expected_g05_g06_two_clean_proof_file_sha256,
+            "expected G05/G06 two-clean proof file SHA-256",
+        ),
+        "G05/G06 two-clean proof file SHA-256 drift",
+    )
     evidence = load_json_bytes(evidence_raw, "parent evidence")
     inventory = load_json_bytes(inventory_raw, "survivor inventory")
+    two_clean_proof = load_json_bytes(
+        two_clean_raw,
+        "G05/G06 two-clean proof",
+    )
 
     expected_record_count = require_positive_int(
         args.expected_record_count,
@@ -987,6 +1205,17 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         ],
     )
 
+    verify_g05_g06_two_clean_proof(
+        two_clean_proof,
+        evidence=evidence,
+        expected_parent_execution_head=expected_parent_execution_head,
+        expected_proof_identity_sha256=(
+            args.expected_g05_g06_two_clean_proof_identity_sha256
+        ),
+        expected_evidence_file_sha256=args.expected_evidence_file_sha256,
+        expected_inventory_file_sha256=args.expected_inventory_file_sha256,
+    )
+
     vector = build_family_vector(
         evidence=evidence,
         inventory_rows=rows,
@@ -1025,6 +1254,15 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--evidence", type=Path, required=True)
     result.add_argument("--expected-parent-execution-head", required=True)
     result.add_argument("--inventory", type=Path, required=True)
+    result.add_argument("--g05-g06-two-clean-proof", type=Path, required=True)
+    result.add_argument(
+        "--expected-g05-g06-two-clean-proof-file-sha256",
+        required=True,
+    )
+    result.add_argument(
+        "--expected-g05-g06-two-clean-proof-identity-sha256",
+        required=True,
+    )
     result.add_argument("--expected-evidence-file-sha256", required=True)
     result.add_argument("--expected-evidence-identity-sha256", required=True)
     result.add_argument("--expected-inventory-file-sha256", required=True)
