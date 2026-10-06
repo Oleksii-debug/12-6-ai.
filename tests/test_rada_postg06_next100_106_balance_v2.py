@@ -1645,3 +1645,88 @@ def test_load_pinned_json_rejects_symlink(tmp_path: Path) -> None:
             label="symlink fixture",
         )
 
+def test_write_immutable_bytes_rejects_concurrent_divergent_final(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "evidence.json"
+    payload = target.canonical_line({"value": "expected"})
+    divergent = target.canonical_line({"value": "concurrent"})
+    actual_link = target.os.link
+    injected = False
+
+    def link_after_divergent_create(
+        source: object,
+        destination: object,
+        *,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal injected
+        if not injected and Path(destination) == output:
+            output.write_bytes(divergent)
+            injected = True
+        actual_link(
+            source,
+            destination,
+            follow_symlinks=follow_symlinks,
+        )
+
+    monkeypatch.setattr(target.os, "link", link_after_divergent_create)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="refusing to overwrite divergent durable evidence",
+    ):
+        target.write_immutable_bytes(output, payload, label="concurrent fixture")
+
+    assert injected is True
+    assert output.read_bytes() == divergent
+    assert output.with_name(output.name + ".tmp").read_bytes() == payload
+
+
+def test_write_immutable_bytes_accepts_concurrent_identical_final(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "evidence.json"
+    payload = target.canonical_line({"value": "identical"})
+    actual_link = target.os.link
+    injected = False
+
+    def link_after_identical_create(
+        source: object,
+        destination: object,
+        *,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal injected
+        if not injected and Path(destination) == output:
+            output.write_bytes(payload)
+            injected = True
+        actual_link(
+            source,
+            destination,
+            follow_symlinks=follow_symlinks,
+        )
+
+    monkeypatch.setattr(target.os, "link", link_after_identical_create)
+    target.write_immutable_bytes(output, payload, label="identical fixture")
+
+    assert injected is True
+    assert output.read_bytes() == payload
+    assert not output.with_name(output.name + ".tmp").exists()
+
+
+def test_write_immutable_bytes_cleans_matching_temp_after_published_final(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "evidence.json"
+    temp = output.with_name(output.name + ".tmp")
+    payload = target.canonical_line({"value": "recovered"})
+    output.write_bytes(payload)
+    temp.write_bytes(payload)
+
+    target.write_immutable_bytes(output, payload, label="recovery fixture")
+
+    assert output.read_bytes() == payload
+    assert not temp.exists()
+
