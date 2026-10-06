@@ -1,0 +1,285 @@
+name: D03 Lang-UK court current balance G6 159
+
+on:
+  pull_request:
+    branches:
+      - execution/languk-court-postdedup-clean-g6-158-20261006
+    paths:
+      - ".github/workflows/d03_current_balance_languk_family_g6_159.yml"
+      - "tools/run_d03_current_balance_languk_family_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-languk-current-balance-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-two-clean:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/languk-court-balance-g6-159-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "f6a2a440aacebec6a44a5f2ba955902970ff4d50"
+      RUNNER_BLOB: "14fbd83e32af3ceb6b97052b401b972e80412215"
+      GATE_BLOB: "ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5"
+      POLICY_BLOB: "b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f"
+      BASE_BALANCE_HEAD: "61a0cdb2239085dd5fe11af5af9a06e90cad4e33"
+      BASE_ARTIFACT_ID: "11424524623"
+      BASE_ARTIFACT_ZIP_SHA256: "bd89eab673c01fa216f71dbf847b393407ef5dc6a5e8441b22292fc32ceb2f6d"
+      BASE_COMPOSITION_FILE_SHA256: "d39805110049051d482114e65946acf171a27f20bc27b0cef21bd2df90ccb0cd"
+      BASE_NEXT100_FILE_SHA256: "777db6e8a3e9885f6901bf37032e8d813d7a47fe19e7057c03dc9fa707990554"
+      BASE_RECEIPT_FILE_SHA256: "90ad664fb90db031c342a99a7e49cb69fba7a1f03b091e2a703e8c527dcd9d8f"
+      LANGUK_ARTIFACT_ID: "11437606368"
+      LANGUK_ARTIFACT_ZIP_SHA256: "b75693caafd3a2d1457f5cc30376ea05644e76a07a55ee9833120190c924d01a"
+      LANGUK_EVIDENCE_FILE_SHA256: "01f4b4c1d43337a695f214d3c5419dd578b34deecf2f3099819702324fe686de"
+      LANGUK_PROOF_FILE_SHA256: "40477256507257d3dadc96b62408adb8f62968b367fa8eb72a61128e6a99217f"
+      PYTHONPATH: "src:tools"
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact execution closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          mapfile -t changed < <(git diff --name-only "$PARENT_HEAD"..HEAD | sort)
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = ".github/workflows/d03_current_balance_languk_family_g6_159.yml"
+          test "${changed[1]}" = "tools/run_d03_current_balance_languk_family_v1.py"
+          test "$(git hash-object tools/run_d03_current_balance_languk_family_v1.py)" = "$RUNNER_BLOB"
+          test "$(git hash-object tools/next100_106_balance_gate.py)" = "$GATE_BLOB"
+          test "$(git hash-object configs/data/next100_106_balance_gate_policy_v1.json)" = "$POLICY_BLOB"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile             tools/run_d03_current_balance_languk_family_v1.py             tools/next100_106_balance_gate.py
+          python -m pip install --disable-pip-version-check "ruff>=0.12"
+          ruff check tools/run_d03_current_balance_languk_family_v1.py
+
+      - name: Fetch and verify exact qualified parent artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/parents"
+          mkdir -p "$root/base" "$root/languk"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$root/base.zip"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BASE_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$root/base.zip" | cut -d' ' -f1)" = "$BASE_ARTIFACT_ZIP_SHA256"
+          unzip -q "$root/base.zip" -d "$root/base"
+          test "$(sha256sum "$root/base/composition.json" | cut -d' ' -f1)" = "$BASE_COMPOSITION_FILE_SHA256"
+          test "$(sha256sum "$root/base/next100-input.json" | cut -d' ' -f1)" = "$BASE_NEXT100_FILE_SHA256"
+          test "$(sha256sum "$root/base/execution-receipt.json" | cut -d' ' -f1)" = "$BASE_RECEIPT_FILE_SHA256"
+
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$root/languk.zip"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${LANGUK_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$root/languk.zip" | cut -d' ' -f1)" = "$LANGUK_ARTIFACT_ZIP_SHA256"
+          unzip -q "$root/languk.zip" -d "$root/languk"
+          test "$(sha256sum "$root/languk/output-a/evidence.json" | cut -d' ' -f1)" = "$LANGUK_EVIDENCE_FILE_SHA256"
+          test "$(sha256sum "$root/languk/languk-postdedup-clean-two-clean-proof.json" | cut -d' ' -f1)" = "$LANGUK_PROOF_FILE_SHA256"
+
+      - name: Execute two fresh deterministic balance compositions
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/parents"
+          for pass_id in 1 2; do
+            out="$RUNNER_TEMP/output-${pass_id}"
+            python tools/run_d03_current_balance_languk_family_v1.py               --base-composition-json "$root/base/composition.json"               --base-next100-json "$root/base/next100-input.json"               --base-receipt-json "$root/base/execution-receipt.json"               --languk-evidence-json "$root/languk/output-a/evidence.json"               --languk-proof-json "$root/languk/languk-postdedup-clean-two-clean-proof.json"               --execution-head "$EXECUTION_HEAD"               --output-dir "$out"
+          done
+          for name in combined-dedup-proof composition next100-input balance-result execution-receipt; do
+            cmp "$RUNNER_TEMP/output-1/${name}.json" "$RUNNER_TEMP/output-2/${name}.json"
+          done
+
+      - name: Require fail-closed rejection of mutated Lang-UK authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/parents"
+          mutated="$RUNNER_TEMP/mutated-languk.json"
+          python - "$root/languk/output-a/evidence.json" "$mutated" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          value["survivor_inventory"]["records"][0]["payload_bytes"] += 1
+          Path(sys.argv[2]).write_text(
+              json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          if python tools/run_d03_current_balance_languk_family_v1.py             --base-composition-json "$root/base/composition.json"             --base-next100-json "$root/base/next100-input.json"             --base-receipt-json "$root/base/execution-receipt.json"             --languk-evidence-json "$mutated"             --languk-proof-json "$root/languk/languk-postdedup-clean-two-clean-proof.json"             --execution-head "$EXECUTION_HEAD"             --output-dir "$RUNNER_TEMP/mutated-output"; then
+            echo "mutated Lang-UK authority unexpectedly accepted" >&2
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/mutated-output"
+
+      - name: Independently qualify exact 20M balance result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/output-1" "$EXECUTION_HEAD" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          head = sys.argv[2]
+          names = (
+              "combined-dedup-proof",
+              "composition",
+              "next100-input",
+              "balance-result",
+              "execution-receipt",
+          )
+          docs = {
+              name: json.loads((root / f"{name}.json").read_text(encoding="utf-8"))
+              for name in names
+          }
+          receipt = docs["execution-receipt"]
+          balance = docs["balance-result"]
+          composition = docs["composition"]
+          vector = docs["next100-input"]
+
+          assert receipt["execution_head_sha"] == head
+          assert receipt["balance_status"] == "TARGET_20M_SOURCE_MIX_FEASIBLE"
+          assert receipt["combined_record_count"] == 100608
+          assert receipt["combined_source_object_count"] == 100527
+          assert receipt["combined_total_payload_bytes"] == 208859647
+          assert receipt["raw_capacity_by_stratum"] == {
+              "ua": 189295052, "en": 15481867, "code": 4082728
+          }
+          assert receipt["family_minimum"] == {
+              "required_per_stratum": 2,
+              "observed": {"ua": 6, "en": 7, "code": 18},
+              "pass": True,
+          }
+          assert receipt["maximum_feasible_total_source_bytes"] == 20000000
+          assert receipt["maximum_feasible_stratum_bytes"] == {
+              "ua": 9000000, "en": 7000000, "code": 4000000
+          }
+          assert receipt["remaining_policy_mix_shortfall_bytes"] == 0
+          assert receipt["raw_gap_to_target_by_stratum"] == {"ua": 0, "en": 0, "code": 0}
+          assert balance["status"] == "TARGET_20M_SOURCE_MIX_FEASIBLE"
+          assert balance["maximum_feasible_total_source_bytes"] == 20000000
+          assert balance["maximum_feasible_stratum_bytes"] == {
+              "ua": 9000000, "en": 7000000, "code": 4000000
+          }
+          assert vector["totals"] == {
+              "total_unique_bytes": 208859647,
+              "by_stratum": {"ua": 189295052, "en": 15481867, "code": 4082728},
+              "family_count": {"ua": 6, "en": 7, "code": 18},
+          }
+
+          inventory = composition["combined_inventory"]
+          rows = inventory["records"]
+          assert len(rows) == 100608
+          assert len({row["record_id"] for row in rows}) == 100608
+          assert len({row["source_id"] for row in rows}) == 100527
+          assert len({row["payload_sha256"] for row in rows}) == 100608
+          assert sum(row["payload_bytes"] for row in rows) == 208859647
+
+          canonical = lambda value: json.dumps(
+              value,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          payload_projection = [
+              {
+                  "record_id": row["record_id"],
+                  "payload_sha256": row["payload_sha256"],
+                  "payload_bytes": row["payload_bytes"],
+              }
+              for row in rows
+          ]
+          assert hashlib.sha256(canonical(rows)).hexdigest() == inventory[
+              "record_inventory_digest_sha256"
+          ]
+          assert hashlib.sha256(canonical(payload_projection)).hexdigest() == inventory[
+              "payload_inventory_digest_sha256"
+          ]
+
+          identities = {
+              "combined-dedup-proof": "evidence_identity_sha256",
+              "composition": "composition_identity_sha256",
+              "balance-result": "result_identity_sha256",
+              "execution-receipt": "receipt_identity_sha256",
+          }
+          for name, field in identities.items():
+              value = dict(docs[name])
+              claimed = value.pop(field)
+              assert hashlib.sha256(canonical(value)).hexdigest() == claimed
+
+          zero = {
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "scale_promotion_authorized": False,
+          }
+          for value in (docs["combined-dedup-proof"], composition, receipt):
+              for key, expected in zero.items():
+                  if key in value:
+                      assert value[key] == expected
+          assert receipt["optimizer_updates_executed_on_real_targets"] == 0
+
+          forbidden = {
+              "text", "raw_text", "content", "payload",
+              "training_text", "evaluation_payload",
+          }
+          def walk(value):
+              if isinstance(value, dict):
+                  assert not (forbidden & set(value))
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          for value in docs.values():
+              walk(value)
+
+          print("D03_LANGUK_CURRENT_BALANCE_QUALIFIED")
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+
+      - name: Upload text-free qualified authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-current-balance-languk-family-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/output-1/combined-dedup-proof.json
+            ${{ runner.temp }}/output-1/composition.json
+            ${{ runner.temp }}/output-1/next100-input.json
+            ${{ runner.temp }}/output-1/balance-result.json
+            ${{ runner.temp }}/output-1/execution-receipt.json
+          if-no-files-found: error
+          retention-days: 90
