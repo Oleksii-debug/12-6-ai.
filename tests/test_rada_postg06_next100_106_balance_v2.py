@@ -680,6 +680,14 @@ def _write_two_clean_fixture(
         "dedup_authority": next100["dedup_authority"],
         "input_totals": next100["totals"],
         "status": "synthetic-status",
+        "maximum_feasible_total_source_bytes": 0,
+        "raw_capacity_by_stratum": {"ua": 0, "en": 0, "code": 0},
+        "raw_gap_to_target_by_stratum": {"ua": 1, "en": 1, "code": 1},
+        "family_minimum": {
+            "required_per_stratum": 2,
+            "observed": {"ua": 1, "en": 1, "code": 1},
+            "pass": False,
+        },
         "x": 3,
     }
     balance_result = {
