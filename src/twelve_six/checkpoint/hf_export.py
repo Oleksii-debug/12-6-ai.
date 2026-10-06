@@ -383,6 +383,29 @@ def _temporary_directory_identity(path: Path) -> tuple[int, int]:
     return observed.st_dev, observed.st_ino
 
 
+def _create_private_temp_directory(
+    *,
+    parent: Path,
+    prefix: str,
+    label: str,
+) -> tuple[Path, tuple[int, int]]:
+    """Create and identity-pin one empty private root before any payload write."""
+
+    path = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
+    try:
+        identity = _temporary_directory_identity(path)
+    except BaseException as exc:  # noqa: BLE001 - preserve process interrupts
+        try:
+            os.rmdir(path)
+        except BaseException as cleanup_exc:  # noqa: BLE001 - preserve primary
+            _add_failure_note_preserving_primary(
+                exc,
+                f"{label} identity-pin cleanup also failed: {cleanup_exc!r}",
+            )
+        raise
+    return path, identity
+
+
 def _remove_temp_path_strict(
     path: Path, *, label: str, expected_identity: tuple[int, int]
 ) -> None:
@@ -470,9 +493,16 @@ def _cleanup_temp_paths_strict(
         ) from first_failure
 
 
-def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> Path:
-    reference = Path(tempfile.mkdtemp(prefix=f".{name}.reference-", dir=parent))
-    reference_identity = _temporary_directory_identity(reference)
+def _materialize_verified_reference_with_identity(
+    verified: Any,
+    parent: Path,
+    name: str,
+) -> tuple[Path, tuple[int, int]]:
+    reference, reference_identity = _create_private_temp_directory(
+        parent=parent,
+        prefix=f".{name}.reference-",
+        label="verified checkpoint reference",
+    )
     try:
         manifest_bytes = verified._manifest_bytes
         (reference / MANIFEST_NAME).write_bytes(manifest_bytes)
@@ -483,10 +513,45 @@ def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> P
         for artifact in (WEIGHTS_NAME, STATE_TENSORS_NAME, STATE_TREE_NAME):
             (reference / artifact).write_bytes(verified._artifacts[artifact])
         prepare_checkpoint_load(reference)
-        return reference
+        return reference, reference_identity
     except BaseException as exc:
         _cleanup_temp_paths_strict(
             ((reference, "verified checkpoint reference", reference_identity),),
+            primary_exc=exc,
+        )
+        raise
+
+
+def _materialize_verified_reference(verified: Any, parent: Path, name: str) -> Path:
+    reference, _ = _materialize_verified_reference_with_identity(
+        verified,
+        parent,
+        name,
+    )
+    return reference
+
+
+def _materialize_hook_candidate_with_identity(
+    *,
+    parent: Path,
+    name: str,
+    weights: bytes,
+    config: bytes,
+    source_manifest: bytes,
+) -> tuple[Path, tuple[int, int]]:
+    candidate, candidate_identity = _create_private_temp_directory(
+        parent=parent,
+        prefix=f".{name}.hook-candidate-",
+        label="HF parity hook candidate",
+    )
+    try:
+        (candidate / EXPORTED_WEIGHTS_NAME).write_bytes(weights)
+        (candidate / EXPORTED_CONFIG_NAME).write_bytes(config)
+        (candidate / EXPORTED_SOURCE_MANIFEST_NAME).write_bytes(source_manifest)
+        return candidate, candidate_identity
+    except BaseException as exc:
+        _cleanup_temp_paths_strict(
+            ((candidate, "HF parity hook candidate", candidate_identity),),
             primary_exc=exc,
         )
         raise
@@ -500,19 +565,14 @@ def _materialize_hook_candidate(
     config: bytes,
     source_manifest: bytes,
 ) -> Path:
-    candidate = Path(tempfile.mkdtemp(prefix=f".{name}.hook-candidate-", dir=parent))
-    candidate_identity = _temporary_directory_identity(candidate)
-    try:
-        (candidate / EXPORTED_WEIGHTS_NAME).write_bytes(weights)
-        (candidate / EXPORTED_CONFIG_NAME).write_bytes(config)
-        (candidate / EXPORTED_SOURCE_MANIFEST_NAME).write_bytes(source_manifest)
-        return candidate
-    except BaseException as exc:
-        _cleanup_temp_paths_strict(
-            ((candidate, "HF parity hook candidate", candidate_identity),),
-            primary_exc=exc,
-        )
-        raise
+    candidate, _ = _materialize_hook_candidate_with_identity(
+        parent=parent,
+        name=name,
+        weights=weights,
+        config=config,
+        source_manifest=source_manifest,
+    )
+    return candidate
 
 
 def _publish_directory_noreplace(staging: Path, destination: Path) -> None:
@@ -629,20 +689,20 @@ def export_hf_directory(
         candidate_identity: tuple[int, int] | None = None
         parity_primary_exc: BaseException | None = None
         try:
-            reference = _materialize_verified_reference(
-                verified,
-                destination.parent,
-                destination.name,
+            reference, reference_identity = (
+                _materialize_verified_reference_with_identity(
+                    verified,
+                    destination.parent,
+                    destination.name,
+                )
             )
-            reference_identity = _temporary_directory_identity(reference)
-            candidate = _materialize_hook_candidate(
+            candidate, candidate_identity = _materialize_hook_candidate_with_identity(
                 parent=destination.parent,
                 name=destination.name,
                 weights=source_weights_bytes,
                 config=config_bytes,
                 source_manifest=source_manifest_bytes,
             )
-            candidate_identity = _temporary_directory_identity(candidate)
             result = parity_hook(reference, candidate)
             if not isinstance(result, Mapping):
                 raise TypeError("parity_hook must return a mapping")
@@ -683,13 +743,11 @@ def export_hf_directory(
         artifact=EXPORT_ATTESTATION_NAME,
     ) + b"\n"
 
-    staging = Path(
-        tempfile.mkdtemp(
-            prefix=f".{destination.name}.staging-",
-            dir=destination.parent,
-        )
+    staging, staging_identity = _create_private_temp_directory(
+        parent=destination.parent,
+        prefix=f".{destination.name}.staging-",
+        label="HF export staging",
     )
-    staging_identity = _temporary_directory_identity(staging)
     staging_primary_exc: BaseException | None = None
     try:
         (staging / EXPORTED_WEIGHTS_NAME).write_bytes(source_weights_bytes)
