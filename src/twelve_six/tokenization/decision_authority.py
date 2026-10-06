@@ -130,6 +130,25 @@ _EXPECTED_BYTE_MODULE_CONFIG = {
     "vocab_size": 256,
 }
 
+# Freeze the ambient call targets used by source-pinned byte.py. Function.__builtins__
+# identity alone is insufficient because the shared builtins mapping is mutable.
+_EXPECTED_BYTE_RUNTIME_BUILTINS = {
+    "RuntimeError": builtins.RuntimeError,
+    "TypeError": builtins.TypeError,
+    "ValueError": builtins.ValueError,
+    "bytearray": builtins.bytearray,
+    "bytes": builtins.bytes,
+    "int": builtins.int,
+    "isinstance": builtins.isinstance,
+    "len": builtins.len,
+    "list": builtins.list,
+    "range": builtins.range,
+    "str": builtins.str,
+}
+_EXPECTED_BYTE_JSON_DUMPS = json.dumps
+_EXPECTED_BYTE_HASHLIB_SHA1 = hashlib.sha1
+_EXPECTED_BYTE_HASHLIB_SHA256 = hashlib.sha256
+
 
 class TokenizerDecisionError(ValueError):
     """Raised when terminal tokenizer-decision evidence fails closed."""
@@ -283,6 +302,29 @@ def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
     return helpers
 
 
+def _verify_byte_tokenizer_runtime_dependencies() -> None:
+    """Bind mutable builtin and stdlib call targets used by canonical byte.py."""
+
+    builtins_state = vars(builtins)
+    for name, expected in _EXPECTED_BYTE_RUNTIME_BUILTINS.items():
+        if builtins_state.get(name) is not expected:
+            raise TokenizerDecisionError(
+                f"canonical byte tokenizer runtime dependency drift: builtins.{name}"
+            )
+    if json.dumps is not _EXPECTED_BYTE_JSON_DUMPS:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: json.dumps"
+        )
+    if hashlib.sha1 is not _EXPECTED_BYTE_HASHLIB_SHA1:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: hashlib.sha1"
+        )
+    if hashlib.sha256 is not _EXPECTED_BYTE_HASHLIB_SHA256:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: hashlib.sha256"
+        )
+
+
 def _verify_runtime_byte_tokenizer_module_state() -> None:
     """Bind mutable module state used by the source-pinned tokenizer runtime."""
 
@@ -409,6 +451,7 @@ def _verify_runtime_byte_tokenizer_method_defaults(
 def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
     """Bind the loaded runtime identity to the source-pinned byte baseline."""
 
+    _verify_byte_tokenizer_runtime_dependencies()
     implementation = _verify_canonical_byte_tokenizer_implementation()
     _verify_runtime_byte_tokenizer_module_state()
 

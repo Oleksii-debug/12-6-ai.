@@ -1140,3 +1140,87 @@ def test_bind_rejects_byte_helper_with_detached_captured_builtins(
         match=f"runtime module drift: {helper_name} builtins",
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+def test_bind_rejects_shared_builtin_member_drift_with_same_captured_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    encode = vars(authority.ByteTokenizer)["encode"]
+    original_list = builtins.list
+    observed_error = None
+    divergent = None
+    same_mapping = None
+    builtins.list = lambda _value: [999]
+    try:
+        divergent = byte_module.ByteTokenizer().encode("A")
+        same_mapping = encode.__builtins__ is vars(builtins)
+        try:
+            authority.bind_byte_baseline_decision(selection, application, **SHA)
+        except BaseException as exc:
+            observed_error = exc
+    finally:
+        builtins.list = original_list
+
+    assert divergent == [999]
+    assert same_mapping is True
+    assert type(observed_error) is authority.TokenizerDecisionError
+    assert str(observed_error) == (
+        "canonical byte tokenizer runtime dependency drift: builtins.list"
+    )
+
+
+@pytest.mark.parametrize(
+    ("dependency_name", "replacement"),
+    [
+        ("json.dumps", lambda *_args, **_kwargs: "{}"),
+        ("hashlib.sha1", lambda *_args, **_kwargs: object()),
+        ("hashlib.sha256", lambda *_args, **_kwargs: object()),
+    ],
+)
+def test_bind_rejects_mutated_shared_stdlib_dependency_member(
+    monkeypatch: pytest.MonkeyPatch,
+    dependency_name: str,
+    replacement,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    module_name, member = dependency_name.split(".", 1)
+    module = getattr(authority, module_name)
+    monkeypatch.setattr(module, member, replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=(
+            "canonical byte tokenizer runtime dependency drift: "
+            + dependency_name.replace(".", r"\.")
+        ),
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
