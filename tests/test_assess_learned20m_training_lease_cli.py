@@ -313,7 +313,7 @@ def test_cli_rejects_oversized_json_before_decode(
     assert captured.err == ""
     assert json.loads(captured.out) == {
         "contract_valid": False,
-        "error": "training lease input exceeds byte limit",
+        "error": f"{target} exceeds byte limit",
     }
 
 
