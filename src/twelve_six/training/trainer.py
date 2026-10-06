@@ -2917,6 +2917,8 @@ class Trainer:
         try:
             if isinstance(state, Mapping):
                 state = TrainerState(**state)
+            elif type(state) is not TrainerState:
+                raise TypeError("trainer state must be TrainerState or a mapping")
 
             if not _typed_state_equal(state.config, asdict(self.config)):
                 raise ValueError("trainer config mismatch; refusing unsafe resume")
