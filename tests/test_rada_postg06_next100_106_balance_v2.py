@@ -5,7 +5,6 @@ import copy
 import json
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
