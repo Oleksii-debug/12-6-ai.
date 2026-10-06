@@ -146,6 +146,30 @@ def _read_regular_bytes(root: Path, name: str) -> bytes:
                 ) from close_exc
 
 
+def _require_export_root_identity(
+    root: Path,
+    expected_identity: tuple[int, int],
+) -> None:
+    try:
+        observed = root.lstat()
+    except FileNotFoundError as exc:
+        raise CheckpointIntegrityError(
+            f"HF-style export directory disappeared while reading: {root}"
+        ) from exc
+    except OSError as exc:
+        raise CheckpointIntegrityError(
+            f"cannot inspect HF-style export directory while reading: {root}"
+        ) from exc
+    if (
+        stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISDIR(observed.st_mode)
+        or (observed.st_dev, observed.st_ino) != expected_identity
+    ):
+        raise CheckpointIntegrityError(
+            f"HF-style export directory identity changed while reading: {root}"
+        )
+
+
 def _read_export_snapshot(root: Path) -> dict[str, bytes]:
     try:
         root_stat = root.lstat()
@@ -159,19 +183,26 @@ def _read_export_snapshot(root: Path) -> dict[str, bytes]:
         raise CheckpointIntegrityError(
             "HF-style export root must be a real directory, not a symlink"
         )
+    root_identity = (root_stat.st_dev, root_stat.st_ino)
     try:
         names = {entry.name for entry in root.iterdir()}
     except OSError as exc:
         raise CheckpointIntegrityError(
             f"cannot enumerate HF-style export directory: {root}"
         ) from exc
+    _require_export_root_identity(root, root_identity)
     if names != _EXPORT_FILES:
         missing = sorted(_EXPORT_FILES - names)
         unexpected = sorted(names - _EXPORT_FILES)
         raise CheckpointIntegrityError(
             f"HF-style export inventory mismatch: missing={missing}, unexpected={unexpected}"
         )
-    return {name: _read_regular_bytes(root, name) for name in sorted(_EXPORT_FILES)}
+    payloads: dict[str, bytes] = {}
+    for name in sorted(_EXPORT_FILES):
+        _require_export_root_identity(root, root_identity)
+        payloads[name] = _read_regular_bytes(root, name)
+        _require_export_root_identity(root, root_identity)
+    return payloads
 
 
 def _strict_json_bytes(value: Any, *, artifact: str) -> bytes:
