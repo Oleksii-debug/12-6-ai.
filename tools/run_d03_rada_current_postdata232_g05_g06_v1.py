@@ -1030,6 +1030,10 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         )
         normalized_detectors[key] = value
 
+    quality_bytes = canonical_line(quality)
+    privacy_bytes = canonical_line(privacy)
+    survivor_inventory_bytes = canonical_line(survivor_inventory)
+
     evidence_core = {
         "schema_version": SCHEMA,
         "execution_profile": "LOCAL_FREE",
@@ -1072,6 +1076,14 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "detector_counts": dict(sorted(normalized_detectors.items())),
             "materialization": privacy_stats,
             "payload_delta_from_g05_retained_bytes": g06_payload_delta_bytes,
+        },
+        "durable_artifacts": {
+            "g05_authority_file_sha256": sha256(quality_bytes),
+            "g06_authority_file_sha256": sha256(privacy_bytes),
+            "survivor_inventory_file_sha256": sha256(
+                survivor_inventory_bytes
+            ),
+            "completion_marker": "POST_G05_G06_EVIDENCE_WRITTEN_LAST",
         },
         "survivor_inventory": {
             "record_count": survivor_inventory["record_count"],
@@ -1135,25 +1147,27 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         survivor_inventory,
         label="survivor inventory",
     )
-    write_immutable_bytes(
-        args.output_evidence,
-        canonical_line(output),
-        label="post-G05/G06 evidence",
-    )
+    # Child artifacts are committed first; the evidence receipt is the final
+    # completion marker and binds their exact canonical file bytes.
     write_immutable_bytes(
         args.output_quality,
-        canonical_line(quality),
+        quality_bytes,
         label="G05 authority",
     )
     write_immutable_bytes(
         args.output_privacy,
-        canonical_line(privacy),
+        privacy_bytes,
         label="G06 authority",
     )
     write_immutable_bytes(
         args.output_survivor_inventory,
-        canonical_line(survivor_inventory),
+        survivor_inventory_bytes,
         label="survivor inventory",
+    )
+    write_immutable_bytes(
+        args.output_evidence,
+        canonical_line(output),
+        label="post-G05/G06 evidence",
     )
     return output
 
