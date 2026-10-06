@@ -253,11 +253,11 @@ def test_complete_verified_checkpoint_replays_python_numpy_and_torch_cpu(
     ids=["adapter", "progress"],
 )
 @pytest.mark.parametrize(
-    "environment_key",
+    ("environment_key", "checkpoint_value", "live_value"),
     [
-        "CUBLAS_WORKSPACE_CONFIG",
-        "TORCH_ALLOW_TF32_CUBLAS_OVERRIDE",
-        "NVIDIA_TF32_OVERRIDE",
+        ("CUBLAS_WORKSPACE_CONFIG", ":16:8", ":4096:2"),
+        ("TORCH_ALLOW_TF32_CUBLAS_OVERRIDE", "0", "1"),
+        ("NVIDIA_TF32_OVERRIDE", "0", None),
     ],
 )
 def test_cuda_process_environment_mismatch_rejected_before_model_materialization(
@@ -266,10 +266,12 @@ def test_cuda_process_environment_mismatch_rejected_before_model_materialization
     checkpoint_identity: CheckpointIdentity,
     loader: Any,
     environment_key: str,
+    checkpoint_value: str,
+    live_value: str | None,
 ) -> None:
     checkpoint = tmp_path / "sealed-cuda-environment"
     with monkeypatch.context() as source_env:
-        source_env.setenv(environment_key, "checkpoint-value")
+        source_env.setenv(environment_key, checkpoint_value)
         config = TrainerConfig(max_steps=10, seed=703)
         source_model = torch.nn.Linear(3, 3)
         source = Trainer(source_model, config)
@@ -282,7 +284,10 @@ def test_cuda_process_environment_mismatch_rejected_before_model_materialization
     core.verify_checkpoint(checkpoint)
 
     with monkeypatch.context() as live_env:
-        live_env.setenv(environment_key, "different-live-value")
+        if live_value is None:
+            live_env.delenv(environment_key, raising=False)
+        else:
+            live_env.setenv(environment_key, live_value)
         target_model = torch.nn.Linear(3, 3)
         target = Trainer(target_model, config)
         before = [parameter.detach().clone() for parameter in target_model.parameters()]
