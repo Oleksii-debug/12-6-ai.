@@ -1183,6 +1183,97 @@ def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_rais
     assert not target.optimizer.state
 
 
+def test_direct_restore_poison_target_when_checkpoint_preflight_consumes_rng() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    rng_before = torch.get_rng_state().clone()
+
+    class RngMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            torch.rand(1)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=RngMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during checkpoint preflight",
+        ):
+            target.load_state_dict(hostile)
+
+        assert not torch.equal(torch.get_rng_state(), rng_before)
+        assert target._failure_reason == (
+            "trainer RNG state changed during checkpoint preflight"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_rng_state(rng_before)
+
+
+def test_direct_restore_poison_target_when_component_load_consumes_rng() -> None:
+    config = _config()
+    state = _clean_state(config)
+    model = nn.Linear(3, 2)
+
+    class RngMutatingAdamW(AdamW):
+        def load_state_dict(self, state_dict):
+            result = super().load_state_dict(state_dict)
+            torch.rand(1)
+            return result
+
+    optimizer = RngMutatingAdamW(
+        model.parameters(),
+        lr=config.learning_rate,
+        betas=config.betas,
+        eps=config.eps,
+        weight_decay=config.weight_decay,
+    )
+    target = Trainer(
+        model,
+        config,
+        optimizer=optimizer,
+        scheduler=None,
+    )
+    rng_before = torch.get_rng_state().clone()
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during load",
+        ):
+            target.load_state_dict(state)
+
+        assert not torch.equal(torch.get_rng_state(), rng_before)
+        assert target._failure_reason == (
+            "trainer state restore failed after possible partial apply"
+        )
+        assert target._update_incomplete is True
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="failed trainer cannot be repaired in place",
+        ):
+            target.load_state_dict(state)
+    finally:
+        torch.set_rng_state(rng_before)
+
+
 def test_direct_restore_rejects_entry_deterministic_policy_drift_before_state_access() -> None:
     config = _config()
     state = _clean_state(config)
