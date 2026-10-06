@@ -144,12 +144,13 @@ def _is_positive_int(value: Any) -> bool:
 
 
 def _is_positive_finite_number(value: Any) -> bool:
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-        and float(value) > 0.0
-    )
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        numeric = float(value)
+    except OverflowError:
+        return False
+    return math.isfinite(numeric) and numeric > 0.0
 
 
 def _valid_evidence_ref(value: Any) -> bool:
@@ -194,7 +195,9 @@ def _validate_measurements(measurements: Any) -> list[str]:
     return errors
 
 
-def _product_200m_target(roadmap: Mapping[str, Any]) -> int:
+def _product_200m_target(roadmap: Any) -> int:
+    if not isinstance(roadmap, Mapping):
+        raise FeasibilityPacketError("roadmap_not_object")
     route = roadmap.get("scale_route")
     if not isinstance(route, list):
         raise FeasibilityPacketError("roadmap_scale_route_missing")
@@ -293,8 +296,10 @@ def build_200m_feasibility_packet(
         errors.append("measurement_authority_invalid")
     elif measurement_authority.get("evidence_sha256") != measurements_sha256:
         errors.append("measurement_authority_payload_mismatch")
-    candidate_evidence = requirement_evidence.get(
-        "candidate_architecture_and_parameter_count"
+    candidate_evidence = (
+        requirement_evidence.get("candidate_architecture_and_parameter_count")
+        if isinstance(requirement_evidence, dict)
+        else None
     )
     if (
         isinstance(candidate_evidence, dict)
@@ -364,7 +369,7 @@ def expected_external_identities(packet: Mapping[str, Any]) -> dict[str, Any]:
 def validate_200m_feasibility_packet(
     packet: Any,
     *,
-    roadmap_snapshot: dict[str, Any],
+    roadmap_snapshot: Any,
     expected_packet_sha256: str,
     expected_roadmap_snapshot_sha256: str,
     expected_source_git_sha: str,
@@ -391,6 +396,8 @@ def validate_200m_feasibility_packet(
         errors.append("roadmap_id_mismatch")
     if not _is_git_sha(packet.get("source_git_sha")):
         errors.append("source_git_sha_invalid")
+    if not _is_git_sha(expected_source_git_sha):
+        errors.append("expected_source_git_sha_invalid")
     if packet.get("source_git_sha") != expected_source_git_sha:
         errors.append("source_git_sha_external_mismatch")
 
@@ -420,7 +427,16 @@ def validate_200m_feasibility_packet(
 
     learned_binding = packet.get("learned_20m_binding")
     errors.extend(_validate_learned_20m_binding(learned_binding))
-    learned = roadmap_snapshot.get("evidence_state", {}).get("learned_20m")
+    evidence_state = (
+        roadmap_snapshot.get("evidence_state")
+        if isinstance(roadmap_snapshot, dict)
+        else None
+    )
+    learned = (
+        evidence_state.get("learned_20m")
+        if isinstance(evidence_state, dict)
+        else None
+    )
     if isinstance(learned, dict):
         expected_binding = {
             "evidence_manifest_sha256": learned.get("evidence_manifest_sha256"),
@@ -443,6 +459,8 @@ def validate_200m_feasibility_packet(
         errors.append("measurements_20m_not_canonical_json")
     if packet.get("measurements_20m_sha256") != measurements_sha:
         errors.append("measurements_20m_sha256_recompute_mismatch")
+    if not _is_sha256(expected_measurements_20m_sha256):
+        errors.append("expected_measurements_20m_sha256_invalid")
     if packet.get("measurements_20m_sha256") != expected_measurements_20m_sha256:
         errors.append("measurements_20m_sha256_external_mismatch")
 
