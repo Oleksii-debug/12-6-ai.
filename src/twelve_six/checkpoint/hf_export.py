@@ -415,12 +415,20 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
 
     payloads = _read_export_snapshot(Path(directory))
     try:
-        checksum_parts = payloads[EXPORT_CHECKSUM_NAME].decode("ascii").strip().split()
+        checksum_text = payloads[EXPORT_CHECKSUM_NAME].decode("ascii")
     except UnicodeDecodeError as exc:
         raise CheckpointIntegrityError(f"{EXPORT_CHECKSUM_NAME} must be ASCII") from exc
-    if len(checksum_parts) != 2 or checksum_parts[1] != EXPORT_ATTESTATION_NAME:
+    checksum_suffix = f"  {EXPORT_ATTESTATION_NAME}\n"
+    if not checksum_text.endswith(checksum_suffix):
         raise CheckpointIntegrityError(f"invalid {EXPORT_CHECKSUM_NAME} format")
-    if checksum_parts[0] != sha256_bytes(payloads[EXPORT_ATTESTATION_NAME]):
+    checksum_digest = checksum_text[: -len(checksum_suffix)]
+    if (
+        len(checksum_digest) != 64
+        or checksum_digest != checksum_digest.lower()
+        or any(char not in "0123456789abcdef" for char in checksum_digest)
+    ):
+        raise CheckpointIntegrityError(f"invalid {EXPORT_CHECKSUM_NAME} format")
+    if checksum_digest != sha256_bytes(payloads[EXPORT_ATTESTATION_NAME]):
         raise CheckpointIntegrityError("HF-style export attestation checksum mismatch")
 
     source_manifest = _json_object(
