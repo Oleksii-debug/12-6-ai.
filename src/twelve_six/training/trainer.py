@@ -2800,6 +2800,33 @@ class Trainer:
                 "trainer state restore requires a fresh trainer with no consumed "
                 "exposure or pending gradients; restore the verified model too"
             )
+
+        expected_model = entry_attrs["model"]
+        expected_optimizer = entry_attrs["optimizer"]
+        expected_scheduler = entry_attrs["scheduler"]
+        expected_scaler = entry_attrs["scaler"]
+        expected_config = entry_attrs["config"]
+        expected_device = entry_attrs["device"]
+        expected_policy_state = {
+            name: copy.deepcopy(entry_attrs[name])
+            for name in required_policies
+        }
+        expected_preapply_state = {
+            name: copy.deepcopy(entry_attrs.get(name))
+            for name in (
+                "_failure_reason",
+                "_update_incomplete",
+                "micro_step",
+                "optimizer_step",
+                "tokens_seen",
+                "_pending_tokens",
+                "_pending_loss_sum",
+            )
+        }
+        expected_config_state = asdict(expected_config)
+        expected_model_fingerprint = Trainer._model_export_fingerprint(self)
+        expected_auxiliary_fingerprint = Trainer._checkpoint_auxiliary_fingerprint(self)
+
         if isinstance(state, Mapping):
             state = TrainerState(**state)
 
@@ -2871,12 +2898,6 @@ class Trainer:
             raise TrainingStateInvalidError(
                 f"trainer restore binding fields are unavailable: {missing_bindings}"
             )
-        expected_model = restore_attrs["model"]
-        expected_optimizer = restore_attrs["optimizer"]
-        expected_scheduler = restore_attrs["scheduler"]
-        expected_scaler = restore_attrs["scaler"]
-        expected_config = restore_attrs["config"]
-        expected_device = restore_attrs["device"]
         missing_policies = [
             name for name in required_policies if name not in restore_attrs
         ]
@@ -2884,25 +2905,6 @@ class Trainer:
             raise TrainingStateInvalidError(
                 f"trainer restore policy fields are unavailable: {missing_policies}"
             )
-        expected_policy_state = {
-            name: copy.deepcopy(restore_attrs[name])
-            for name in required_policies
-        }
-        expected_preapply_state = {
-            name: copy.deepcopy(restore_attrs.get(name))
-            for name in (
-                "_failure_reason",
-                "_update_incomplete",
-                "micro_step",
-                "optimizer_step",
-                "tokens_seen",
-                "_pending_tokens",
-                "_pending_loss_sum",
-            )
-        }
-        expected_config_state = asdict(expected_config)
-        expected_model_fingerprint = Trainer._model_export_fingerprint(self)
-        expected_auxiliary_fingerprint = Trainer._checkpoint_auxiliary_fingerprint(self)
 
         def _restore_component_bindings_changed() -> bool:
             current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
@@ -2918,38 +2920,38 @@ class Trainer:
                 )
             )
 
-        def _restore_preapply_drift_reason() -> str | None:
+        def _restore_preapply_drift_reason(phase: str) -> str | None:
             try:
                 Trainer._require_canonical_checkpoint_authorities(self)
             except BaseException:
-                return "trainer restore safety authority changed during loader lookup"
+                return f"trainer restore safety authority changed during {phase}"
             current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             if _restore_component_bindings_changed():
-                return "trainer restore component binding changed during loader lookup"
+                return f"trainer restore component binding changed during {phase}"
             if any(
                 not _typed_state_equal(current.get(name), expected)
                 for name, expected in expected_preapply_state.items()
             ):
-                return "trainer restore state changed during loader lookup"
+                return f"trainer restore state changed during {phase}"
             try:
                 if not _typed_state_equal(asdict(expected_config), expected_config_state):
-                    return "trainer restore config changed during loader lookup"
+                    return f"trainer restore config changed during {phase}"
                 if any(
                     name not in current
                     or not _typed_state_equal(current[name], expected)
                     for name, expected in expected_policy_state.items()
                 ):
-                    return "trainer restore policy changed during loader lookup"
+                    return f"trainer restore policy changed during {phase}"
                 Trainer._require_no_residual_model_gradients(self)
                 if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
-                    return "trainer model changed during loader lookup"
+                    return f"trainer model changed during {phase}"
                 if (
                     Trainer._checkpoint_auxiliary_fingerprint(self)
                     != expected_auxiliary_fingerprint
                 ):
-                    return "trainer auxiliary state changed during loader lookup"
+                    return f"trainer auxiliary state changed during {phase}"
             except BaseException:
-                return "trainer restore state became unobservable during loader lookup"
+                return f"trainer restore state became unobservable during {phase}"
             return None
 
         def _require_restore_component_bindings() -> None:
@@ -3020,6 +3022,11 @@ class Trainer:
                 )
             Trainer._require_no_residual_model_gradients(self)
 
+        drift_reason = _restore_preapply_drift_reason("checkpoint preflight")
+        if drift_reason is not None:
+            Trainer._mark_failed(self, drift_reason)
+            raise TrainingStateInvalidError(drift_reason)
+
         try:
             optimizer_loader = getattr(expected_optimizer, "load_state_dict", None)
             optimizer_zero_grad = getattr(expected_optimizer, "zero_grad", None)
@@ -3034,7 +3041,7 @@ class Trainer:
                 else getattr(expected_scaler, "load_state_dict", None)
             )
         except BaseException:
-            drift_reason = _restore_preapply_drift_reason()
+            drift_reason = _restore_preapply_drift_reason("loader lookup")
             if drift_reason is not None:
                 Trainer._mark_failed(self, drift_reason)
             raise
@@ -3055,7 +3062,7 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "trainer gradient scaler must provide load_state_dict()"
             )
-        drift_reason = _restore_preapply_drift_reason()
+        drift_reason = _restore_preapply_drift_reason("loader lookup")
         if drift_reason is not None:
             Trainer._mark_failed(self, drift_reason)
             raise TrainingStateInvalidError(drift_reason)
