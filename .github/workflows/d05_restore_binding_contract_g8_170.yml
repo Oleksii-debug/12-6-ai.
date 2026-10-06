@@ -1,0 +1,161 @@
+name: D05 restore-binding contract G8-170
+
+on:
+  pull_request:
+    branches:
+      - repair/2960-restore-binding-test-contract-g8-170-20261006
+    paths:
+      - ".github/workflows/d05_restore_binding_contract_g8_170.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d05-restore-binding-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: "941ddc732cadca7ad56603ef1bdb6c7493c058c7"
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+  PYTHONUTF8: "1"
+
+jobs:
+  linux-contract:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2961-restore-binding-contract-g8-170-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source and inherited closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$SOURCE_SHA" HEAD)" = "$SOURCE_SHA"
+          test "$(git diff --name-only "$SOURCE_SHA"..HEAD)" = ".github/workflows/d05_restore_binding_contract_g8_170.yml"
+          test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/trainer_adapter.py")" = "0bb33d13add14442eb14c139e5c715fd481eeb02"
+          test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/progress_trainer.py")" = "2e058e1810c1ebd37ba6fcab5d297443d479fc30"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_checkpoint_preapply_primary_failure.py")" = "f0dfac8b14a80c3921ae9a14b180bc3ef21f2576"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_checkpoint_failure_note_preservation.py")" = "8c2485445f45c9f4d945487ea2b0c2a210e375e2"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_checkpoint_ambient_rng_rollback_isolation.py")" = "02d3b0eef1576dcc4dc68ee920c69792160c9a44"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_checkpoint_cuda_rollback_fault_isolation.py")" = "7d5ac5a0ceceb7867f338eced02690437c146728"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_checkpoint_rng_completeness_d02.py")" = "51e1e74a8913060acc4f44e214d247585e8608dd"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_checkpoint_restore_binding_config_drift.py")" = "566fc807a79d4bc8626ca817f2289b381c15d840"
+          python -m py_compile src/twelve_six/checkpoint/trainer_adapter.py src/twelve_six/checkpoint/progress_trainer.py tests/test_checkpoint_preapply_primary_failure.py tests/test_checkpoint_failure_note_preservation.py tests/test_checkpoint_ambient_rng_rollback_isolation.py tests/test_checkpoint_cuda_rollback_fault_isolation.py tests/test_checkpoint_rng_completeness_d02.py tests/test_checkpoint_restore_binding_config_drift.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install focused test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Lint exact source and test closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check src/twelve_six/checkpoint/trainer_adapter.py src/twelve_six/checkpoint/progress_trainer.py tests/test_checkpoint_preapply_primary_failure.py tests/test_checkpoint_restore_binding_config_drift.py
+
+      - name: Execute inherited plus source-specific closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_checkpoint_preapply_primary_failure.py tests/test_checkpoint_failure_note_preservation.py tests/test_checkpoint_ambient_rng_rollback_isolation.py tests/test_checkpoint_cuda_rollback_fault_isolation.py tests/test_checkpoint_rng_completeness_d02.py tests/test_checkpoint_restore_binding_config_drift.py
+
+      - name: Prove Linux carrier remains clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          echo "D05_RESTORE_BINDING_CONTRACT_LINUX=PASS_ZERO_SCIENTIFIC_CREDIT"
+
+  windows-contract:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2961-restore-binding-contract-g8-170-20261006'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source and inherited closure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:EVENT_BASE_SHA -ne $env:SOURCE_SHA) { throw "base SHA drifted" }
+          if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA drifted" }
+          if ((git merge-base $env:SOURCE_SHA HEAD).Trim() -ne $env:SOURCE_SHA) { throw "carrier ancestry drifted" }
+          $changed = @(git diff --name-only "$env:SOURCE_SHA..HEAD")
+          if ($changed.Count -ne 1 -or $changed[0].Trim() -ne ".github/workflows/d05_restore_binding_contract_g8_170.yml") { throw "unexpected carrier delta: $changed" }
+          $checks = @{
+            "src/twelve_six/checkpoint/trainer_adapter.py" = "0bb33d13add14442eb14c139e5c715fd481eeb02"
+            "src/twelve_six/checkpoint/progress_trainer.py" = "2e058e1810c1ebd37ba6fcab5d297443d479fc30"
+            "tests/test_checkpoint_preapply_primary_failure.py" = "f0dfac8b14a80c3921ae9a14b180bc3ef21f2576"
+            "tests/test_checkpoint_failure_note_preservation.py" = "8c2485445f45c9f4d945487ea2b0c2a210e375e2"
+            "tests/test_checkpoint_ambient_rng_rollback_isolation.py" = "02d3b0eef1576dcc4dc68ee920c69792160c9a44"
+            "tests/test_checkpoint_cuda_rollback_fault_isolation.py" = "7d5ac5a0ceceb7867f338eced02690437c146728"
+            "tests/test_checkpoint_rng_completeness_d02.py" = "51e1e74a8913060acc4f44e214d247585e8608dd"
+            "tests/test_checkpoint_restore_binding_config_drift.py" = "566fc807a79d4bc8626ca817f2289b381c15d840"
+          }
+          foreach ($path in $checks.Keys) {
+            $actual = (git rev-parse "$($env:SOURCE_SHA):$path").Trim()
+            if ($actual -ne $checks[$path]) { throw "blob drifted for $path" }
+          }
+          python -m py_compile src/twelve_six/checkpoint/trainer_adapter.py src/twelve_six/checkpoint/progress_trainer.py tests/test_checkpoint_preapply_primary_failure.py tests/test_checkpoint_failure_note_preservation.py tests/test_checkpoint_ambient_rng_rollback_isolation.py tests/test_checkpoint_cuda_rollback_fault_isolation.py tests/test_checkpoint_rng_completeness_d02.py tests/test_checkpoint_restore_binding_config_drift.py
+          $dirty = git status --porcelain=v1 --untracked-files=all
+          if ($dirty) { throw "carrier dirty before execution: $dirty" }
+
+      - name: Install focused test dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint exact source and test closure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m ruff check src/twelve_six/checkpoint/trainer_adapter.py src/twelve_six/checkpoint/progress_trainer.py tests/test_checkpoint_preapply_primary_failure.py tests/test_checkpoint_restore_binding_config_drift.py
+
+      - name: Execute inherited plus source-specific closure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pytest -q tests/test_checkpoint_preapply_primary_failure.py tests/test_checkpoint_failure_note_preservation.py tests/test_checkpoint_ambient_rng_rollback_isolation.py tests/test_checkpoint_cuda_rollback_fault_isolation.py tests/test_checkpoint_rng_completeness_d02.py tests/test_checkpoint_restore_binding_config_drift.py
+
+      - name: Prove Windows carrier remains clean
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA changed" }
+          $dirty = git status --porcelain=v1 --untracked-files=all
+          if ($dirty) { throw "carrier dirty after execution: $dirty" }
+          Write-Output "D05_RESTORE_BINDING_CONTRACT_WINDOWS=PASS_ZERO_SCIENTIFIC_CREDIT"
