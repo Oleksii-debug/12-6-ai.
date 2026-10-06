@@ -1752,6 +1752,10 @@ def _preflight_trainer_state(
                             mode_exc,
                         )
                         raise
+                _assert_ambient_process_state_stable(
+                    ambient,
+                    expected_canonical=expected_canonical,
+                )
         except BaseException as exc:
             _poison_canonical_restore_failure(
                 trainer,
@@ -1954,6 +1958,30 @@ def _assert_checkpoint_numeric_policy_stable(
         )
 
 
+def _assert_ambient_process_state_stable(
+    state: Mapping[str, Any],
+    *,
+    expected_canonical: bool,
+) -> None:
+    """Require restore work to preserve caller-owned numeric/CUDA process state."""
+
+    if not expected_canonical:
+        return
+    try:
+        _assert_checkpoint_process_environment_stable(
+            state,
+            expected_canonical=True,
+        )
+        _assert_checkpoint_numeric_policy_stable(
+            state,
+            expected_canonical=True,
+        )
+    except CheckpointCompatibilityError as exc:
+        raise CheckpointCompatibilityError(
+            "live ambient torch/CUDA process state changed during checkpoint restore"
+        ) from exc
+
+
 def _snapshot_torch_policy(state: Mapping[str, Any]) -> tuple[bool, bool] | None:
     """Pin the live policy before any model or trainer loader can mutate it."""
 
@@ -2099,6 +2127,10 @@ def _restore_preapply_process_state(
                 policy[0],
                 warn_only=policy[1],
             )
+        _assert_ambient_process_state_stable(
+            ambient,
+            expected_canonical=expected_canonical,
+        )
     except BaseException as exc:
         _restore_ambient_rng_after_failed_apply(ambient, exc)
         _restore_initial_torch_policy(policy, exc)
@@ -2662,6 +2694,11 @@ def load_trainer_checkpoint(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
+        else:
+            _assert_ambient_process_state_stable(
+                ambient_before_apply,
+                expected_canonical=restore_bindings[0],
+            )
         if model_apply_authority is not None:
             try:
                 model_apply_authority(materialized)
@@ -2688,6 +2725,11 @@ def load_trainer_checkpoint(
             )
             _assert_checkpoint_numeric_policy_stable(
                 combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+        else:
+            _assert_ambient_process_state_stable(
+                ambient_before_apply,
                 expected_canonical=restore_bindings[0],
             )
         sealed_auxiliary_fingerprint = (
@@ -2743,6 +2785,11 @@ def load_trainer_checkpoint(
             sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             phase="final checkpoint restore seal",
         )
+        if not restore_rng:
+            _assert_ambient_process_state_stable(
+                ambient_before_apply,
+                expected_canonical=restore_bindings[0],
+            )
     except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)

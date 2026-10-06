@@ -32,6 +32,7 @@ from .expected_binding import (
 )
 from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
+    _assert_ambient_process_state_stable,
     _assert_bound_metadata,
     _assert_checkpoint_numeric_policy_stable,
     _assert_checkpoint_process_environment_stable,
@@ -354,6 +355,11 @@ def load_trainer_checkpoint(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
+        else:
+            _assert_ambient_process_state_stable(
+                ambient_before_apply,
+                expected_canonical=restore_bindings[0],
+            )
         if model_apply_authority is not None:
             try:
                 model_apply_authority(materialized)
@@ -380,6 +386,11 @@ def load_trainer_checkpoint(
             )
             _assert_checkpoint_numeric_policy_stable(
                 combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+        else:
+            _assert_ambient_process_state_stable(
+                ambient_before_apply,
                 expected_canonical=restore_bindings[0],
             )
         sealed_auxiliary_fingerprint = (
@@ -438,6 +449,11 @@ def load_trainer_checkpoint(
             sealed_auxiliary_fingerprint=sealed_auxiliary_fingerprint,
             phase="final checkpoint restore seal",
         )
+        if not restore_rng:
+            _assert_ambient_process_state_stable(
+                ambient_before_apply,
+                expected_canonical=restore_bindings[0],
+            )
     except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
