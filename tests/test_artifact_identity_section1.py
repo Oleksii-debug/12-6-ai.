@@ -105,15 +105,21 @@ def test_bind_artifact_canonicalizes_parent_role_order() -> None:
     tokenizer = _ref(ArtifactKind.TOKENIZER, "a")
     packing = _ref(ArtifactKind.PACKING, "a")
 
+    split_manifest = bind_artifact(split)
+    tokenizer_manifest = bind_artifact(tokenizer)
     manifest = bind_artifact(
         packing,
         parents={
-            "tokenizer": tokenizer,
-            "split": split,
+            "tokenizer": tokenizer_manifest,
+            "split": split_manifest,
         },
     )
 
     assert tuple(manifest.parents_by_role()) == ("split", "tokenizer")
+    assert manifest.parents_by_role() == {
+        "split": split,
+        "tokenizer": tokenizer,
+    }
 
 
 def test_artifact_manifest_rejects_ambiguous_parent_order_and_duplicates() -> None:
@@ -126,8 +132,8 @@ def test_artifact_manifest_rejects_ambiguous_parent_order_and_duplicates() -> No
             schema_version=1,
             artifact=packing,
             parents=(
-                ParentBinding("tokenizer", tokenizer),
-                ParentBinding("split", split),
+                ParentBinding("tokenizer", tokenizer, _sha("tokenizer-manifest")),
+                ParentBinding("split", split, _sha("split-manifest")),
             ),
         )
 
@@ -136,8 +142,8 @@ def test_artifact_manifest_rejects_ambiguous_parent_order_and_duplicates() -> No
             schema_version=1,
             artifact=packing,
             parents=(
-                ParentBinding("split", split),
-                ParentBinding("split", tokenizer),
+                ParentBinding("split", split, _sha("split-manifest")),
+                ParentBinding("split", tokenizer, _sha("tokenizer-manifest")),
             ),
         )
 
@@ -145,34 +151,37 @@ def test_artifact_manifest_rejects_ambiguous_parent_order_and_duplicates() -> No
 def test_verify_parent_bindings_rejects_role_and_identity_resealing() -> None:
     a = _refs("a")
     b = _refs("b")
+    a_split = bind_artifact(a[ArtifactKind.SPLIT])
+    a_tokenizer = bind_artifact(a[ArtifactKind.TOKENIZER])
+    b_split = bind_artifact(b[ArtifactKind.SPLIT])
     manifest = bind_artifact(
         a[ArtifactKind.PACKING],
         parents={
-            "split": a[ArtifactKind.SPLIT],
-            "tokenizer": a[ArtifactKind.TOKENIZER],
+            "split": a_split,
+            "tokenizer": a_tokenizer,
         },
     )
 
     verify_parent_bindings(
         manifest,
         expected_parents={
-            "split": a[ArtifactKind.SPLIT],
-            "tokenizer": a[ArtifactKind.TOKENIZER],
+            "split": a_split,
+            "tokenizer": a_tokenizer,
         },
     )
 
     with pytest.raises(ValueError, match="role set mismatch"):
         verify_parent_bindings(
             manifest,
-            expected_parents={"split": a[ArtifactKind.SPLIT]},
+            expected_parents={"split": a_split},
         )
 
-    with pytest.raises(ValueError, match="identity mismatch"):
+    with pytest.raises(ValueError, match="lineage mismatch"):
         verify_parent_bindings(
             manifest,
             expected_parents={
-                "split": b[ArtifactKind.SPLIT],
-                "tokenizer": a[ArtifactKind.TOKENIZER],
+                "split": b_split,
+                "tokenizer": a_tokenizer,
             },
         )
 
@@ -220,12 +229,12 @@ def test_generation_manifest_rejects_cross_generation_packing_parent() -> None:
     manifests[packing_index] = bind_artifact(
         a.artifact_ref(ArtifactKind.PACKING),
         parents={
-            "split": b.artifact_ref(ArtifactKind.SPLIT),
-            "tokenizer": a.artifact_ref(ArtifactKind.TOKENIZER),
+            "split": b.artifact_manifest(ArtifactKind.SPLIT),
+            "tokenizer": a.artifact_manifest(ArtifactKind.TOKENIZER),
         },
     )
 
-    with pytest.raises(ValueError, match="parent identity does not match generation"):
+    with pytest.raises(ValueError, match="parent lineage does not match generation"):
         GenerationIdentityManifest(schema_version=1, artifacts=tuple(manifests))
 
 
@@ -234,14 +243,21 @@ def test_generation_manifest_rejects_cross_generation_training_modelspec() -> No
     b = _generation("b")
     manifests = list(a.artifacts)
     training_index = CANONICAL_ARTIFACT_KINDS.index(ArtifactKind.TRAINING_RUN)
-    parents = a.artifact_manifest(ArtifactKind.TRAINING_RUN).parents_by_role()
-    parents["model_spec"] = b.artifact_ref(ArtifactKind.MODEL_SPEC)
+    parents = {
+        "corpus": a.artifact_manifest(ArtifactKind.CORPUS),
+        "exposure_ledger": a.artifact_manifest(ArtifactKind.EXPOSURE_LEDGER),
+        "init_spec": a.artifact_manifest(ArtifactKind.INIT_SPEC),
+        "model_spec": b.artifact_manifest(ArtifactKind.MODEL_SPEC),
+        "packing": a.artifact_manifest(ArtifactKind.PACKING),
+        "split": a.artifact_manifest(ArtifactKind.SPLIT),
+        "tokenizer": a.artifact_manifest(ArtifactKind.TOKENIZER),
+    }
     manifests[training_index] = bind_artifact(
         a.artifact_ref(ArtifactKind.TRAINING_RUN),
         parents=parents,
     )
 
-    with pytest.raises(ValueError, match="parent identity does not match generation"):
+    with pytest.raises(ValueError, match="parent lineage does not match generation"):
         GenerationIdentityManifest(schema_version=1, artifacts=tuple(manifests))
 
 
@@ -251,11 +267,60 @@ def test_generation_manifest_rejects_wrong_parent_kind_even_with_valid_digest() 
     export_index = CANONICAL_ARTIFACT_KINDS.index(ArtifactKind.EXPORT)
     manifests[export_index] = bind_artifact(
         a.artifact_ref(ArtifactKind.EXPORT),
-        parents={"checkpoint": a.artifact_ref(ArtifactKind.TRAINING_RUN)},
+        parents={"checkpoint": a.artifact_manifest(ArtifactKind.TRAINING_RUN)},
     )
 
     with pytest.raises(ValueError, match="must reference checkpoint"):
         GenerationIdentityManifest(schema_version=1, artifacts=tuple(manifests))
+
+
+def test_generation_rejects_resealed_parent_lineage_with_same_raw_artifact_identity() -> None:
+    generation = _generation("a")
+    corpus_b = bind_artifact(_ref(ArtifactKind.CORPUS, "b"))
+
+    canonical_tokenizer = generation.artifact_manifest(ArtifactKind.TOKENIZER)
+    resealed_tokenizer = bind_artifact(
+        canonical_tokenizer.artifact,
+        parents={"corpus": corpus_b},
+    )
+    assert resealed_tokenizer.artifact == canonical_tokenizer.artifact
+    assert (
+        resealed_tokenizer.manifest_identity_sha256()
+        != canonical_tokenizer.manifest_identity_sha256()
+    )
+
+    canonical_packing = generation.artifact_manifest(ArtifactKind.PACKING)
+    resealed_packing = bind_artifact(
+        canonical_packing.artifact,
+        parents={
+            "split": generation.artifact_manifest(ArtifactKind.SPLIT),
+            "tokenizer": resealed_tokenizer,
+        },
+    )
+    assert resealed_packing.artifact == canonical_packing.artifact
+    assert (
+        resealed_packing.manifest_identity_sha256()
+        != canonical_packing.manifest_identity_sha256()
+    )
+
+    manifests = list(generation.artifacts)
+    packing_index = CANONICAL_ARTIFACT_KINDS.index(ArtifactKind.PACKING)
+    manifests[packing_index] = resealed_packing
+    with pytest.raises(ValueError, match="parent lineage does not match generation"):
+        GenerationIdentityManifest(schema_version=1, artifacts=tuple(manifests))
+
+
+def test_parent_binding_durable_json_rejects_lineage_hash_reseal() -> None:
+    generation = _generation("a")
+    payload = json.loads(generation.canonical_json_bytes())
+    packing_index = CANONICAL_ARTIFACT_KINDS.index(ArtifactKind.PACKING)
+    packing = payload["artifacts"][packing_index]
+    packing["parents"][0]["manifest_identity_sha256"] = _sha("foreign-lineage")
+
+    with pytest.raises(ValueError, match="parent lineage does not match generation"):
+        parse_generation_identity_manifest(
+            json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        )
 
 
 def test_generation_manifest_strict_json_round_trip_preserves_identity() -> None:
