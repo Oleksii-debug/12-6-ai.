@@ -774,7 +774,7 @@ def _create_private_temp_directory(
     path = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
     try:
         identity = _temporary_directory_identity(path)
-    except BaseException as exc:  # noqa: BLE001 - preserve process interrupts
+    except BaseException as exc:
         try:
             os.rmdir(path)
         except BaseException as cleanup_exc:  # noqa: BLE001 - preserve primary
