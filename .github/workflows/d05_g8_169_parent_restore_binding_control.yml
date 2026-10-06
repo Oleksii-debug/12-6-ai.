@@ -1,5 +1,6 @@
 name: D05 G8-169 parent restore-binding control
 
+# Control-only carrier for inherited parent behavior.
 on:
   pull_request:
     branches:
