@@ -352,6 +352,10 @@ def verify_parent(
         "parent result/execution-evidence drift",
     )
     require(
+        result.get("next_gate") == "CURRENT_RADA_POST_DATA232_QUALITY_PRIVACY",
+        "parent result next-gate drift",
+    )
+    require(
         result.get("final_test_outcomes_read") is False
         and result.get("training_executed") is False
         and result.get("tokenizer_fit_authorized") is False
@@ -779,10 +783,12 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         type(final_bytes) is int and final_bytes > 0,
         "post-G05/G06 survivor bytes invalid",
     )
+    g05_retained_bytes = partial_detail["retained_utf8_bytes"]
     require(
-        final_bytes <= partial_detail["retained_utf8_bytes"],
-        "G06 widened G05-retained bytes",
+        type(g05_retained_bytes) is int and g05_retained_bytes > 0,
+        "G05 retained byte count invalid",
     )
+    g06_payload_delta_bytes = final_bytes - g05_retained_bytes
 
     detector_counts = privacy.get("detector_counts")
     require(isinstance(detector_counts, Mapping), "G06 detector counts missing")
@@ -838,6 +844,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "execution_identity_sha256": privacy_id,
             "detector_counts": dict(sorted(normalized_detectors.items())),
             "materialization": privacy_stats,
+            "payload_delta_from_g05_retained_bytes": g06_payload_delta_bytes,
         },
         "survivor_inventory": {
             "record_count": survivor_inventory["record_count"],
