@@ -31,6 +31,7 @@ if str(SRC) not in sys.path:
 
 SCHEMA = "12-6.d03-rada-current-postdata232-g05-g06-execution.v1"
 PARENT_EXECUTION_HEAD = "b66ac95e68f83641ff8134baabd55a29fd62b99f"
+UPSTREAM_GLOBAL_DEDUP_HEAD = "a4663e87b010b190343caf1d42784f5dc7984601"
 PRODUCT_DATA232_HEAD = "3bd56b62b318e1ecf5b1b5f16298a85350d31efb"
 EXPECTED_FULL_SELECTION_SHA256 = (
     "601398c39769dabb930997f25506eaaf71bd8960aa82d8af9c697d1cc4075e22"
@@ -423,6 +424,10 @@ def verify_parent(
         "parent result execution HEAD drift",
     )
     require(
+        result.get("parent_execution_head_sha") == UPSTREAM_GLOBAL_DEDUP_HEAD,
+        "parent result upstream global-dedup HEAD drift",
+    )
+    require(
         result.get("postdedup_inventory_identity_sha256") == inventory_id,
         "parent result inventory drift",
     )
@@ -447,6 +452,18 @@ def verify_parent(
     require(
         result.get("data232_execution_identity_sha256") == evidence_id,
         "parent result/execution-evidence drift",
+    )
+    require(
+        result.get("selection_validation_identity_sha256")
+        == report.get("selection_validation_identity")
+        and result.get("final_test_identity_sha256")
+        == report.get("final_test_identity"),
+        "parent result reserved-evaluation identity drift",
+    )
+    require(
+        result.get("counts") == evidence.get("counts")
+        and result.get("counts") == report.get("counts"),
+        "parent result/report/evidence count drift",
     )
     require(
         result.get("next_gate") == "CURRENT_RADA_POST_DATA232_QUALITY_PRIVACY",
@@ -482,6 +499,10 @@ def verify_parent(
         "parent proof execution HEAD drift",
     )
     require(
+        proof.get("parent_execution_head_sha") == UPSTREAM_GLOBAL_DEDUP_HEAD,
+        "parent proof upstream global-dedup HEAD drift",
+    )
+    require(
         proof.get("data232_report_sha256") == report_id
         and proof.get("data232_execution_identity_sha256") == evidence_id
         and proof.get("result_identity_sha256") == result_id,
@@ -505,8 +526,28 @@ def verify_parent(
         and proof.get("current_rada_slice_authority_sha256")
         == EXPECTED_RADA_SLICE_SHA256
         and proof.get("postdedup_inventory_identity_sha256") == inventory_id
-        and proof.get("training_handoff_identity_sha256") == handoff_id,
+        and proof.get("training_handoff_identity_sha256") == handoff_id
+        and proof.get("reserved_payload_binding_identity_sha256")
+        == result.get("reserved_payload_binding_identity_sha256"),
         "parent proof corpus-lineage drift",
+    )
+    counts = result.get("counts")
+    require(isinstance(counts, Mapping), "parent result counts missing")
+    proof_counts = {
+        "training_records": proof.get("training_records"),
+        "evaluation_records": proof.get("evaluation_records"),
+        "excluded_training_records": proof.get("excluded_training_records"),
+        "quarantined_source_families": proof.get(
+            "quarantined_source_families"
+        ),
+        "match_evidence_records": proof.get("match_evidence_records"),
+    }
+    require(
+        proof_counts == {
+            key: counts.get(key)
+            for key in proof_counts
+        },
+        "parent proof count projection drift",
     )
     require(
         proof.get("two_fresh_processes_byte_identical") is True,
