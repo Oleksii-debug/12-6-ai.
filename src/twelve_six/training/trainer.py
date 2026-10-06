@@ -10,7 +10,7 @@ import struct
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from enum import Enum
 from types import FunctionType, GetSetDescriptorType
 from typing import Any
@@ -2150,7 +2150,7 @@ class Trainer:
                 return
             if isinstance(value, Enum):
                 digest.update(
-                    f"{Trainer._type_identity(value)}:{value.name}".encode("utf-8")
+                    f"{Trainer._type_identity(value)}:{value.name}".encode()
                 )
                 return
             value_type = type(value)
@@ -2934,7 +2934,7 @@ class Trainer:
             model_before = Trainer._model_export_fingerprint(self)
             optimizer_before = Trainer._optimizer_live_fingerprint(self)
             scheduler_before = Trainer._canonical_lambda_lr_live_state(self)
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             # At a committed boundary, a failed canonical observation makes the
             # checkpoint boundary ambiguous and therefore requires recovery.
             Trainer._mark_failed(
@@ -2972,7 +2972,7 @@ class Trainer:
                     "checkpoint export changed live scheduler"
                 )
             _require_export_contract_unchanged("checkpoint preflight")
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             # Mid-accumulation was rejected above as the one retryable export
             # refusal. Any failure after committed-boundary observation means
             # the checkpoint boundary can no longer be trusted in-place.
@@ -3180,7 +3180,7 @@ class Trainer:
         def _restore_preapply_drift_reason(phase: str) -> str | None:
             try:
                 Trainer._require_canonical_checkpoint_authorities(self)
-            except BaseException:
+            except BaseException:  # noqa: BLE001 - fail closed on observer faults
                 return f"trainer restore safety authority changed during {phase}"
             current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             if _restore_component_bindings_changed():
@@ -3207,7 +3207,7 @@ class Trainer:
                         return f"trainer restore policy changed during {phase}"
                 try:
                     Trainer._require_deterministic_policy(self)
-                except BaseException:
+                except BaseException:  # noqa: BLE001 - fail closed on observer faults
                     return f"trainer deterministic policy changed during {phase}"
                 if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
                     return f"trainer autograd mode changed during {phase}"
@@ -3223,7 +3223,7 @@ class Trainer:
                     != expected_auxiliary_fingerprint
                 ):
                     return f"trainer auxiliary state changed during {phase}"
-            except BaseException:
+            except BaseException:  # noqa: BLE001 - fail closed on observer faults
                 return f"trainer restore state became unobservable during {phase}"
             return None
 
