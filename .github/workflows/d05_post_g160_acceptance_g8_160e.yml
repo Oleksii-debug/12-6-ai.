@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ruff check             src/twelve_six/checkpoint/core.py             src/twelve_six/checkpoint/progress_trainer.py             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/transactional_rng.py             src/twelve_six/training/trainer.py             tests/test_checkpoint_rng_completeness_d02.py             tests/test_checkpoint_transactional_rng.py             tests/test_trainer_direct_restore_binding.py             tests/test_checkpoint_load_result_aliasing.py             tools/run_checkpoint346_model341_current_d05_recovery_v8.py             tools/run_d05_windows_fresh_recovery_g8_159e.py
+          ruff check             src/twelve_six/checkpoint/core.py             src/twelve_six/checkpoint/progress_trainer.py             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/transactional_rng.py             src/twelve_six/training/trainer.py             tests/test_checkpoint_rng_completeness_d02.py             tests/test_checkpoint_transactional_rng.py             tests/test_trainer_direct_restore_binding.py             tests/test_checkpoint_load_result_aliasing.py
 
       - name: Execute focused checkpoint regressions
         shell: bash
