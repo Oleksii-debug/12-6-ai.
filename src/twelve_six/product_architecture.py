@@ -30,6 +30,12 @@ class ProductLayer(StrEnum):
 
 
 REQUIRED_LAYERS = frozenset(ProductLayer)
+BASE_ALLOWED_NEIGHBORS = frozenset(
+    {
+        ProductLayer.POST_BASE_LEARNING,
+        ProductLayer.MODEL_GATEWAY,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +48,8 @@ class ComponentBinding:
     implementation_version: str
 
     def __post_init__(self) -> None:
+        if not isinstance(self.layer, ProductLayer):
+            raise ValueError("layer must be a ProductLayer")
         if not self.component_id or not self.component_id.strip():
             raise ValueError("component_id must be non-empty")
         if not isinstance(self.contract_version, int) or isinstance(self.contract_version, bool):
@@ -70,6 +78,10 @@ class BoundaryContract:
     version: int
 
     def __post_init__(self) -> None:
+        if not isinstance(self.producer, ProductLayer) or not isinstance(
+            self.consumer, ProductLayer
+        ):
+            raise ValueError("boundary endpoints must be ProductLayer values")
         if self.producer == self.consumer:
             raise ValueError("boundary producer and consumer must be different layers")
         if not self.contract or not self.contract.strip():
@@ -114,7 +126,11 @@ REQUIRED_BOUNDARIES = (
 
 
 def _require_sha256(value: str, field_name: str) -> None:
-    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(char not in "0123456789abcdef" for char in value)
+    ):
         raise ValueError(f"{field_name} must be a lowercase hexadecimal SHA-256 digest")
 
 
@@ -157,8 +173,9 @@ class ProductArchitecture:
     """Executable architecture contract for the complete 12-6 AI system.
 
     The non-model graph is deliberately independent from the active Base-model
-    identity. A newly qualified checkpoint can therefore replace the cognitive
-    core without rewriting memory, tools, Live Agent, or Evolution components.
+    identity. A newly qualified checkpoint or scale can therefore replace the
+    cognitive core without rewriting memory, tools, Live Agent, or Evolution
+    components. All runtime access to Base is mediated through ModelGateway.
     """
 
     schema_version: int
@@ -191,6 +208,19 @@ class ProductArchitecture:
                     f"{required.contract}@v{required.version}"
                 )
 
+        for boundary in self.boundaries:
+            if boundary.producer is ProductLayer.BASE_MODEL:
+                other = boundary.consumer
+            elif boundary.consumer is ProductLayer.BASE_MODEL:
+                other = boundary.producer
+            else:
+                continue
+            if other not in BASE_ALLOWED_NEIGHBORS:
+                raise ValueError(
+                    "Base Model must remain isolated behind ModelGateway/Post-Base; "
+                    f"direct boundary to {other.value} is forbidden"
+                )
+
     def component(self, layer: ProductLayer) -> ComponentBinding:
         for binding in self.components:
             if binding.layer == layer:
@@ -202,12 +232,14 @@ class ProductArchitecture:
 
         return replace(self, active_model=model)
 
-    def non_model_identity_sha256(self) -> str:
-        components = sorted(
+    def _sorted_components(self) -> list[dict[str, Any]]:
+        return sorted(
             (binding.to_dict() for binding in self.components),
             key=lambda item: item["layer"],
         )
-        boundaries = sorted(
+
+    def _sorted_boundaries(self) -> list[dict[str, Any]]:
+        return sorted(
             (boundary.to_dict() for boundary in self.boundaries),
             key=lambda item: (
                 item["producer"],
@@ -216,17 +248,21 @@ class ProductArchitecture:
                 item["version"],
             ),
         )
+
+    def non_model_identity_sha256(self) -> str:
         return _canonical_json_sha256(
             {
                 "schema_version": self.schema_version,
-                "components": components,
-                "boundaries": boundaries,
+                "components": self._sorted_components(),
+                "boundaries": self._sorted_boundaries(),
             }
         )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
+            "components": self._sorted_components(),
+            "boundaries": self._sorted_boundaries(),
             "non_model_identity_sha256": self.non_model_identity_sha256(),
             "active_model": self.active_model.to_dict(),
         }
