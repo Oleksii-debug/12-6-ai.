@@ -33,7 +33,6 @@ from .expected_binding import (
 from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
     _assert_ambient_process_state_stable,
-    _assert_torch_execution_mode_stable,
     _assert_bound_metadata,
     _assert_checkpoint_numeric_policy_stable,
     _assert_checkpoint_process_environment_stable,
@@ -42,6 +41,7 @@ from .trainer_adapter import (
     _assert_native_d02_exact_live_state,
     _assert_native_d02_inert_live_state,
     _assert_native_d02_model_training_mode,
+    _assert_torch_execution_mode_stable,
     _assert_trainer_model_binding,
     _assert_trainer_restore_bindings,
     _bind_native_auxiliary_fingerprint,
