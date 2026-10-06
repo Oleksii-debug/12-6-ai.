@@ -87,6 +87,15 @@ The regression suite attempts caller-coherent generation mixing, including:
 
 All fail closed before a generation identity can be accepted.
 
+### Durable manifest boundary
+
+`GenerationIdentityManifest.canonical_json_bytes()` provides one canonical UTF-8 JSON
+serialization. `parse_generation_identity_manifest()` decodes that durable form with a
+bounded input size, duplicate-member rejection, standards-strict finite JSON handling and
+exact closed field sets at every nested manifest/reference level. The parsed object must
+re-satisfy the complete generation graph before it is accepted. The generation identity is
+the SHA-256 of those exact canonical bytes.
+
 ## Truth boundary
 
 This Section grants no corpus admission, tokenizer fitting, training, optimizer execution,
