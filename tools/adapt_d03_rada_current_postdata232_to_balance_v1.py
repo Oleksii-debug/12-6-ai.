@@ -272,7 +272,26 @@ def verify_parent_receipt(
     require(claimed == expected_identity, "parent evidence identity is not expected")
 
     parent = evidence.get("parent")
-    require(isinstance(parent, Mapping), "parent lineage missing")
+    require(
+        isinstance(parent, Mapping)
+        and set(parent)
+        == {
+            "execution_head_sha",
+            "product_data232_head_sha",
+            "artifact_id",
+            "artifact_zip_sha256",
+            "inventory_identity_sha256",
+            "training_handoff_identity_sha256",
+            "data232_report_sha256",
+            "data232_execution_identity_sha256",
+            "data232_result_identity_sha256",
+            "data232_two_clean_proof_identity_sha256",
+            "full_selection_projection_sha256",
+            "current_rada_slice_authority_sha256",
+            "two_fresh_data232_processes_byte_identical",
+        },
+        "parent lineage fields drift",
+    )
     require(
         parent.get("execution_head_sha") == PARENT_DATA232_HEAD
         and parent.get("product_data232_head_sha") == PRODUCT_DATA232_HEAD
@@ -283,6 +302,8 @@ def verify_parent_receipt(
         and parent.get("two_fresh_data232_processes_byte_identical") is True,
         "parent DATA232/global-dedup lineage drift",
     )
+    require_positive_int(parent.get("artifact_id"), "parent.artifact_id")
+    require_sha256(parent.get("artifact_zip_sha256"), "parent.artifact_zip_sha256")
     for field in (
         "inventory_identity_sha256",
         "training_handoff_identity_sha256",
@@ -292,6 +313,27 @@ def verify_parent_receipt(
         "data232_two_clean_proof_identity_sha256",
     ):
         require_sha256(parent.get(field), f"parent.{field}")
+
+    g05 = evidence.get("g05")
+    g06 = evidence.get("g06")
+    require(isinstance(g05, Mapping), "G05 receipt missing")
+    require(isinstance(g06, Mapping), "G06 receipt missing")
+    require_sha256(g05.get("input_rows_sha256"), "G05 input root")
+    require_sha256(g05.get("execution_identity_sha256"), "G05 execution identity")
+    require_sha256(g06.get("input_rows_sha256"), "G06 input root")
+    require_sha256(g06.get("execution_identity_sha256"), "G06 execution identity")
+
+    authority_blobs = evidence.get("authority_blobs")
+    require(
+        isinstance(authority_blobs, Mapping) and bool(authority_blobs),
+        "parent authority blob map missing",
+    )
+    for relative, blob in authority_blobs.items():
+        require(
+            isinstance(relative, str) and bool(relative),
+            "parent authority path missing",
+        )
+        require_git_sha(blob, f"parent authority blob {relative}")
 
     artifacts = evidence.get("durable_artifacts")
     require(
@@ -646,17 +688,20 @@ def write_immutable(path: Path, payload: bytes) -> None:
         return
     temp = path.with_name(path.name + ".tmp")
     require(not temp.exists() and not temp.is_symlink(), "output temp already exists")
+    created_temp = False
     try:
         with temp.open("xb") as handle:
+            created_temp = True
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         temp.replace(path)
     except OSError:
-        try:
-            temp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if created_temp:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise
 
 
