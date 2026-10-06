@@ -2836,12 +2836,27 @@ class Trainer:
         # opportunity after checkpoint preflight or silently redirect/mutate the
         # target while its loader is being resolved.
         restore_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
-        expected_model = restore_attrs.get("model")
-        expected_optimizer = restore_attrs.get("optimizer")
-        expected_scheduler = restore_attrs.get("scheduler")
-        expected_scaler = restore_attrs.get("scaler")
-        expected_config = restore_attrs.get("config")
-        expected_device = restore_attrs.get("device")
+        binding_fields = (
+            "model",
+            "optimizer",
+            "scheduler",
+            "scaler",
+            "config",
+            "device",
+        )
+        missing_bindings = [
+            name for name in binding_fields if name not in restore_attrs
+        ]
+        if missing_bindings:
+            raise TrainingStateInvalidError(
+                f"trainer restore binding fields are unavailable: {missing_bindings}"
+            )
+        expected_model = restore_attrs["model"]
+        expected_optimizer = restore_attrs["optimizer"]
+        expected_scheduler = restore_attrs["scheduler"]
+        expected_scaler = restore_attrs["scaler"]
+        expected_config = restore_attrs["config"]
+        expected_device = restore_attrs["device"]
         policy_fields = (
             "_canonical_default_schedule",
             "_canonical_unscheduled_default_optimizer",
