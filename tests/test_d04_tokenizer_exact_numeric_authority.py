@@ -1224,6 +1224,7 @@ def test_bind_rejects_mutated_shared_stdlib_dependency_member(
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
 
+
 @pytest.mark.parametrize(
     ("module_name", "expected_module"),
     [
@@ -1265,6 +1266,97 @@ def test_bind_rejects_dual_alias_stdlib_dependency_proxy(
             "canonical byte tokenizer runtime dependency drift: "
             f"{module_name} module"
         ),
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+def test_bind_rejects_identity_constructor_postflight_runtime_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original_init = authority._CanonicalTokenizerIdentity.__init__
+
+    def effectful_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+
+        def divergent_encode(
+            _self,
+            _text: str,
+            *,
+            add_bos: bool = False,
+            add_eos: bool = False,
+        ) -> list[int]:
+            del add_bos, add_eos
+            return [999]
+
+        monkeypatch.setattr(authority.ByteTokenizer, "encode", divergent_encode)
+
+    monkeypatch.setattr(
+        authority._CanonicalTokenizerIdentity,
+        "__init__",
+        effectful_init,
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: encode",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+
+def test_bind_rejects_identity_observer_postflight_runtime_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original_getattribute = authority._CanonicalTokenizerIdentity.__getattribute__
+    armed = True
+
+    def effectful_getattribute(self, name: str):
+        nonlocal armed
+        value = original_getattribute(self, name)
+        if armed and name == "version":
+            armed = False
+
+            def divergent_fertility(_self, _text: str) -> float:
+                return 999.0
+
+            monkeypatch.setattr(
+                authority.ByteTokenizer,
+                "fertility",
+                divergent_fertility,
+            )
+        return value
+
+    monkeypatch.setattr(
+        authority._CanonicalTokenizerIdentity,
+        "__getattribute__",
+        effectful_getattribute,
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: fertility",
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
 

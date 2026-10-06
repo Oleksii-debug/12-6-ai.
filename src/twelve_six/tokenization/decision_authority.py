@@ -458,12 +458,8 @@ def _verify_runtime_byte_tokenizer_method_defaults(
         )
 
 
-def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
-    """Bind the loaded runtime identity to the source-pinned byte baseline."""
-
-    _verify_byte_tokenizer_runtime_dependencies()
-    implementation = _verify_canonical_byte_tokenizer_implementation()
-    _verify_runtime_byte_tokenizer_module_state()
+def _verify_runtime_byte_tokenizer_class() -> None:
+    """Bind the live ByteTokenizer class to the source-pinned runtime contract."""
 
     # TokenizerIdentity intentionally omits several class-level protocol fields.
     # Constructor dispatch is part of the tokenizer runtime contract too. Both
@@ -528,6 +524,16 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
             )
         _verify_runtime_byte_tokenizer_method_defaults(name, runtime_method)
 
+
+def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
+    """Bind the loaded runtime identity to the source-pinned byte baseline."""
+
+    _verify_byte_tokenizer_runtime_dependencies()
+    implementation = _verify_canonical_byte_tokenizer_implementation()
+    _verify_runtime_byte_tokenizer_module_state()
+
+    _verify_runtime_byte_tokenizer_class()
+
     tokenizer = ByteTokenizer().identity
     for field in (
         "version",
@@ -560,6 +566,12 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime identity drift: special_tokens"
         )
+    # Identity construction/observation is effectful Python code. Re-seal the
+    # byte runtime after all identity reads so a same-object dependency cannot
+    # mutate a previously validated tokenizer and still publish authority.
+    _verify_byte_tokenizer_runtime_dependencies()
+    _verify_runtime_byte_tokenizer_module_state()
+    _verify_runtime_byte_tokenizer_class()
     return implementation, tokenizer
 
 
