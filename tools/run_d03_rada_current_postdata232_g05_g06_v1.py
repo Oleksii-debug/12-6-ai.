@@ -1133,7 +1133,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         expected_execution_identity_sha256=quality_id,
     )
 
-    quality_survivors, quality_stats, partial_detail = (
+    quality_survivors, _quality_stats, partial_detail = (
         _materialize_quality_survivors_with_partial(
             quality_inputs,
             metadata,
