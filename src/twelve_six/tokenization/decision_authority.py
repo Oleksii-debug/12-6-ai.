@@ -643,7 +643,10 @@ def _verify_selection(
     expected_balance_policy_identity_sha256: str,
     expected_balance_result_identity_sha256: str,
 ) -> tuple[str, dict[str, Any]]:
-    if not isinstance(selection, Mapping) or selection.get("schema") != SELECTION_SCHEMA:
+    if not isinstance(selection, Mapping):
+        raise TokenizerDecisionError("unsupported balanced-selection authority")
+    selection = dict(selection)
+    if selection.get("schema") != SELECTION_SCHEMA:
         raise TokenizerDecisionError("unsupported balanced-selection authority")
     try:
         _, totals = verify_balanced_selection(
@@ -662,8 +665,8 @@ def _verify_selection(
     except BalancedSplitApplicationError as exc:
         raise TokenizerDecisionError(str(exc)) from exc
     identity = _require_sha256(
-        selection.get("balanced_selection_identity_sha256"),
-        field="balanced_selection_identity_sha256",
+        expected_selection_identity_sha256,
+        field="expected_selection_identity_sha256",
     )
     return identity, totals
 
@@ -681,7 +684,10 @@ def _verify_split_application(
     expected_balance_policy_identity_sha256: str,
     expected_balance_result_identity_sha256: str,
 ) -> str:
-    if not isinstance(application, Mapping) or set(application) != _APPLICATION_KEYS:
+    if not isinstance(application, Mapping):
+        raise TokenizerDecisionError("split application fields are not closed-world")
+    application = dict(application)
+    if set(application) != _APPLICATION_KEYS:
         raise TokenizerDecisionError("split application fields are not closed-world")
     if application.get("schema") != APPLICATION_SCHEMA:
         raise TokenizerDecisionError("unsupported split-application authority")
@@ -766,7 +772,9 @@ def _verify_split_application(
             valid = False
         if not valid:
             raise TokenizerDecisionError(f"split application {application_field} drift")
-    return claimed_application
+    if _self_hash(application, "application_identity_sha256") != claimed_application:
+        raise TokenizerDecisionError("split application changed during verification")
+    return expected_application
 
 
 def _bind_upstreams(
@@ -832,6 +840,28 @@ def bind_byte_baseline_decision(
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
     _verify_byte_tokenizer_runtime_dependencies()
+    validated_upstreams = {
+        "retained_inventory_identity_sha256": _require_sha256(
+            expected_retained_inventory_identity_sha256,
+            field="expected_retained_inventory_identity_sha256",
+        ),
+        "decontamination_authority_sha256": _require_sha256(
+            expected_decontamination_authority_sha256,
+            field="expected_decontamination_authority_sha256",
+        ),
+        "dedup_authority_sha256": _require_sha256(
+            expected_dedup_authority_sha256,
+            field="expected_dedup_authority_sha256",
+        ),
+        "balance_policy_identity_sha256": _require_sha256(
+            expected_balance_policy_identity_sha256,
+            field="expected_balance_policy_identity_sha256",
+        ),
+        "balance_result_identity_sha256": _require_sha256(
+            expected_balance_result_identity_sha256,
+            field="expected_balance_result_identity_sha256",
+        ),
+    }
 
     (
         tokenizer_implementation_git_blob_sha1,
@@ -844,9 +874,9 @@ def bind_byte_baseline_decision(
         "decision": DECISION,
         "balanced_selection_identity_sha256": selection_identity,
         "split_application_identity_sha256": application_identity,
-        **{field: selection[field] for field in _UPSTREAM_IDENTITY_FIELDS},
+        **validated_upstreams,
         "canonical_split_git_blob_sha1": CANONICAL_SPLIT_GIT_BLOB_SHA1,
-        "split_spec_identity_sha256": application["split_spec_identity_sha256"],
+        "split_spec_identity_sha256": CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
         "canonical_byte_tokenizer_git_blob_sha1": tokenizer_implementation_git_blob_sha1,
         "tokenizer_version": tokenizer_identity["version"],
         "tokenizer_config_sha256": tokenizer_identity["config_sha256"],
@@ -899,6 +929,28 @@ def verify_byte_baseline_decision(
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
     _verify_byte_tokenizer_runtime_dependencies()
+    validated_upstreams = {
+        "retained_inventory_identity_sha256": _require_sha256(
+            expected_retained_inventory_identity_sha256,
+            field="expected_retained_inventory_identity_sha256",
+        ),
+        "decontamination_authority_sha256": _require_sha256(
+            expected_decontamination_authority_sha256,
+            field="expected_decontamination_authority_sha256",
+        ),
+        "dedup_authority_sha256": _require_sha256(
+            expected_dedup_authority_sha256,
+            field="expected_dedup_authority_sha256",
+        ),
+        "balance_policy_identity_sha256": _require_sha256(
+            expected_balance_policy_identity_sha256,
+            field="expected_balance_policy_identity_sha256",
+        ),
+        "balance_result_identity_sha256": _require_sha256(
+            expected_balance_result_identity_sha256,
+            field="expected_balance_result_identity_sha256",
+        ),
+    }
     if report.get("balanced_selection_identity_sha256") != selection_identity:
         raise TokenizerDecisionError("report balanced-selection identity mismatch")
     if report.get("split_application_identity_sha256") != application_identity:
@@ -909,10 +961,8 @@ def verify_byte_baseline_decision(
     )
     if report_split_spec_identity != CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
         raise TokenizerDecisionError("report split-spec authority identity drift")
-    if report_split_spec_identity != application.get("split_spec_identity_sha256"):
-        raise TokenizerDecisionError("report split-spec authority lineage mismatch")
-    for field in _UPSTREAM_IDENTITY_FIELDS:
-        if report.get(field) != selection.get(field):
+    for field, expected in validated_upstreams.items():
+        if report.get(field) != expected:
             raise TokenizerDecisionError(f"report {field} drift")
     if report.get("canonical_split_git_blob_sha1") != CANONICAL_SPLIT_GIT_BLOB_SHA1:
         raise TokenizerDecisionError("report split mechanics identity drift")
