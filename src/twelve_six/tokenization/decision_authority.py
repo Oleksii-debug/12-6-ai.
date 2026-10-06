@@ -789,8 +789,15 @@ def _bind_upstreams(
     expected_balance_policy_identity_sha256: str,
     expected_balance_result_identity_sha256: str,
 ) -> tuple[str, str]:
+    if not isinstance(selection, Mapping):
+        raise TokenizerDecisionError("unsupported balanced-selection authority")
+    if not isinstance(application, Mapping):
+        raise TokenizerDecisionError("split application fields are not closed-world")
+    selection_snapshot = dict(selection)
+    application_snapshot = dict(application)
+
     selection_identity, totals = _verify_selection(
-        selection,
+        selection_snapshot,
         expected_selection_identity_sha256=expected_selection_identity_sha256,
         expected_retained_inventory_identity_sha256=expected_retained_inventory_identity_sha256,
         expected_decontamination_authority_sha256=expected_decontamination_authority_sha256,
@@ -799,8 +806,8 @@ def _bind_upstreams(
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
     application_identity = _verify_split_application(
-        application,
-        selection,
+        application_snapshot,
+        selection_snapshot,
         totals,
         expected_application_identity_sha256=expected_application_identity_sha256,
         expected_selection_identity_sha256=expected_selection_identity_sha256,
@@ -910,7 +917,10 @@ def verify_byte_baseline_decision(
     """Verify decision identity and rebind the canonical upstream lineage."""
 
     _verify_byte_tokenizer_runtime_dependencies()
-    if not isinstance(report, Mapping) or set(report) != _REPORT_KEYS:
+    if not isinstance(report, Mapping):
+        raise TokenizerDecisionError("report fields are not closed-world")
+    report = dict(report)
+    if set(report) != _REPORT_KEYS:
         raise TokenizerDecisionError("report fields are not closed-world")
     if report.get("schema") != SCHEMA or report.get("status") != STATUS:
         raise TokenizerDecisionError("report schema/status mismatch")
