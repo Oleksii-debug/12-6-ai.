@@ -420,14 +420,19 @@ def build_200m_feasibility_packet(
         requirement_evidence,
         field="requirement_evidence",
     )
+    detached_source_git_sha = _detached_json_value(
+        source_git_sha,
+        field="source_git_sha",
+    )
+    detached_decision = _detached_json_value(decision, field="decision")
     return _build_200m_feasibility_packet_once(
         roadmap_snapshot=detached_roadmap,
-        source_git_sha=source_git_sha,
+        source_git_sha=detached_source_git_sha,
         candidate=detached_candidate,
         measurements_20m=detached_measurements,
         measurement_authority=detached_measurement_authority,
         requirement_evidence=detached_requirement_evidence,
-        decision=decision,
+        decision=detached_decision,
     )
 
 
@@ -731,6 +736,22 @@ def validate_200m_feasibility_packet(
             roadmap_snapshot,
             field="roadmap_snapshot",
         )
+        detached_expected_packet_sha256 = _detached_json_value(
+            expected_packet_sha256,
+            field="expected_packet_sha256",
+        )
+        detached_expected_roadmap_sha256 = _detached_json_value(
+            expected_roadmap_snapshot_sha256,
+            field="expected_roadmap_snapshot_sha256",
+        )
+        detached_expected_source_git_sha = _detached_json_value(
+            expected_source_git_sha,
+            field="expected_source_git_sha",
+        )
+        detached_expected_measurements_sha256 = _detached_json_value(
+            expected_measurements_20m_sha256,
+            field="expected_measurements_20m_sha256",
+        )
         detached_expected_requirements = expected_requirement_evidence_sha256
         if isinstance(expected_requirement_evidence_sha256, Mapping):
             detached_expected_requirements = _detached_json_value(
@@ -745,10 +766,10 @@ def validate_200m_feasibility_packet(
         _validate_200m_feasibility_packet_once(
             detached_packet,
             roadmap_snapshot=detached_roadmap,
-            expected_packet_sha256=expected_packet_sha256,
-            expected_roadmap_snapshot_sha256=expected_roadmap_snapshot_sha256,
-            expected_source_git_sha=expected_source_git_sha,
-            expected_measurements_20m_sha256=expected_measurements_20m_sha256,
+            expected_packet_sha256=detached_expected_packet_sha256,
+            expected_roadmap_snapshot_sha256=detached_expected_roadmap_sha256,
+            expected_source_git_sha=detached_expected_source_git_sha,
+            expected_measurements_20m_sha256=detached_expected_measurements_sha256,
             expected_requirement_evidence_sha256=detached_expected_requirements,
         )
     )

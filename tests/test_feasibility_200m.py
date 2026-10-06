@@ -146,6 +146,22 @@ class _CandidateMutatingOnParameterRead(dict):
         return value
 
 
+class _DecisionAlias(str):
+    def __hash__(self) -> int:
+        return hash("GO")
+
+    def __eq__(self, other: object) -> bool:
+        return other == "GO"
+
+
+class _ExternalIdentityAlias(str):
+    def __eq__(self, other: object) -> bool:
+        return True
+
+    def __ne__(self, other: object) -> bool:
+        return False
+
+
 def build() -> dict:
     return build_200m_feasibility_packet(
         roadmap_snapshot=roadmap(),
@@ -234,6 +250,72 @@ def test_validator_rechecks_stateful_candidate_after_detaching() -> None:
 
     errors = validate(packet, expected=expected)
     assert "candidate_parameter_count_invalid" in errors
+
+
+def test_builder_detaches_decision_scalar_before_second_pass() -> None:
+    with pytest.raises(FeasibilityPacketError, match="decision_invalid"):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=candidate(),
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=evidence(),
+            decision=_DecisionAlias("MAYBE"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "wrong_value", "expected_error"),
+    [
+        (
+            "expected_packet_sha256",
+            "0" * 64,
+            "packet_sha256_external_mismatch",
+        ),
+        (
+            "expected_roadmap_snapshot_sha256",
+            "0" * 64,
+            "roadmap_snapshot_sha256_external_mismatch",
+        ),
+        (
+            "expected_source_git_sha",
+            GIT_B,
+            "source_git_sha_external_mismatch",
+        ),
+        (
+            "expected_measurements_20m_sha256",
+            "0" * 64,
+            "measurements_20m_sha256_external_mismatch",
+        ),
+    ],
+)
+def test_validator_detaches_external_scalar_identities(
+    field: str,
+    wrong_value: str,
+    expected_error: str,
+) -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    arguments = {
+        "expected_packet_sha256": expected["packet_sha256"],
+        "expected_roadmap_snapshot_sha256": expected["roadmap_snapshot_sha256"],
+        "expected_source_git_sha": expected["source_git_sha"],
+        "expected_measurements_20m_sha256": expected[
+            "measurements_20m_sha256"
+        ],
+    }
+    arguments[field] = _ExternalIdentityAlias(wrong_value)
+
+    errors = validate_200m_feasibility_packet(
+        packet,
+        roadmap_snapshot=roadmap(),
+        expected_requirement_evidence_sha256=expected[
+            "requirement_evidence_sha256"
+        ],
+        **arguments,
+    )
+    assert expected_error in errors
 
 
 def test_canonical_hash_rejects_lone_surrogate_programmatic_text() -> None:

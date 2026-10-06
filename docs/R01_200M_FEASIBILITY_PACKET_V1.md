@@ -90,10 +90,13 @@ attacker-controlled roadmap identifiers.
 The retained-identity helper validates the trusted built packet before deriving
 the identity map, rejects scalar type aliases in authority fields, and is not a
 verification primitive. Programmatic build/verify paths first exercise the
-caller-owned state, then materialize one plain JSON snapshot and re-run the same
-contract. Stateful container subclasses therefore cannot change semantics between
-validation, hashing, and publication. Recursive/non-canonical programmatic inputs
-fail closed at the canonical-hash boundary.
+caller-owned state, then materialize plain JSON snapshots and re-run the same
+contract. Source/decision scalars and independently retained scalar identities
+are canonicalized too, so string subclasses cannot override hash/equality
+semantics between validation passes. Stateful container subclasses therefore
+cannot change semantics between validation, hashing, and publication.
+Recursive/non-canonical programmatic inputs fail closed at the canonical-hash
+boundary.
 
 Build and verify also reject canonical path collisions between their authority
 inputs and outputs. Authority inputs must name regular files directly: symbolic
