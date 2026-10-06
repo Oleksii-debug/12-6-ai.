@@ -45,7 +45,7 @@ jobs:
       NBU_INTAKE_PATH: configs/data/d03_ua_nbu_official_resolutions_intake_v1.json
       NBU_INTAKE_BLOB: b883cbdb489058e005e83f64ce11a67505e03778
 
-      RUNNER_BLOB: ca7264460db583b09c4bc4e466f06c24cc2f4a05
+      RUNNER_BLOB: c40a59b2964781993307f45d7e94d7354756df36
       GATE_BLOB: ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5
       POLICY_BLOB: b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f
 
@@ -384,6 +384,7 @@ jobs:
                   "code": 0,
               },
               "balance_status": "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA",
+              "next_scientific_gate": "ACQUIRE_MORE_DIVERSE_LAWFUL_UA_SOURCE_CAPACITY",
               "canonical_capacity_credited": 0,
               "training_authorized_bytes": 0,
               "authorized_unique_loss_positions": 0,
