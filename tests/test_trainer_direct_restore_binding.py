@@ -464,3 +464,106 @@ def test_direct_restore_rejects_zero_grad_auxiliary_drift() -> None:
         "trainer state restore failed after possible partial apply"
     )
     assert trainer._update_incomplete is True
+
+
+@pytest.mark.parametrize(
+    "authority",
+    [
+        "__getattribute__",
+        "__setattr__",
+        "_require_finite_committed_update",
+    ],
+)
+def test_direct_restore_rejects_subclass_safety_authority_override(
+    authority: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+
+    def passthrough_getattribute(self, name):
+        return object.__getattribute__(self, name)
+
+    def passthrough_setattr(self, name, value):
+        object.__setattr__(self, name, value)
+
+    if authority == "__getattribute__":
+        override = passthrough_getattribute
+    elif authority == "__setattr__":
+        override = passthrough_setattr
+    else:
+        override = lambda self: None
+
+    unsafe_type = type(
+        f"DirectRestoreUnsafe_{authority}",
+        (Trainer,),
+        {authority: override},
+    )
+    target = unsafe_type(nn.Linear(3, 2), config, scheduler=None)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match=f"native D02 safety authority must remain canonical: {authority}",
+    ):
+        Trainer.load_state_dict(target, state)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert not target.optimizer.state
+
+
+def test_direct_restore_rejects_instance_safety_shadow_then_allows_retry() -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    target._require_finite_committed_update = lambda: None
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match=(
+            "native D02 safety authority must remain canonical: "
+            "_require_finite_committed_update"
+        ),
+    ):
+        target.load_state_dict(state)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    del vars(target)["_require_finite_committed_update"]
+
+    target.load_state_dict(state)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+def test_direct_restore_allows_subclass_with_export_only_override() -> None:
+    class ExportOnlyTrainer(Trainer):
+        def state_dict(self):
+            return super().state_dict()
+
+    config = _config()
+    state = _clean_state(config)
+    target = ExportOnlyTrainer(nn.Linear(3, 2), config, scheduler=None)
+
+    Trainer.load_state_dict(target, state)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert (
+        target.micro_step,
+        target.optimizer_step,
+        target.tokens_seen,
+    ) == (
+        state.micro_step,
+        state.optimizer_step,
+        state.tokens_seen,
+    )
+
+
+def test_d05_uses_trainer_checkpoint_safety_authority_source() -> None:
+    from twelve_six.checkpoint import trainer_adapter
+
+    assert (
+        trainer_adapter._NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES
+        is Trainer._CHECKPOINT_SAFETY_AUTHORITIES
+    )
