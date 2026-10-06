@@ -955,3 +955,61 @@ def test_validator_deep_malformed_packet_never_leaks_recursion_error() -> None:
     assert "candidate_id_invalid" in errors
     assert "candidate_not_canonical_json" in errors
     assert "packet_not_canonical_json" in errors
+
+
+
+def test_roadmap_contract_error_does_not_echo_untrusted_backend_id() -> None:
+    bad = roadmap()
+    secret = "PRIVATE-BACKEND-ID"
+    backend = bad["portable_training_runner"]["backend_candidates"][0]
+    backend["id"] = secret
+    backend["canonical_now"] = True
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="^roadmap_contract_invalid$",
+    ) as exc_info:
+        build_200m_feasibility_packet(
+            roadmap_snapshot=bad,
+            source_git_sha=GIT_A,
+            candidate=candidate(),
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=evidence(),
+            decision="GO",
+        )
+    assert secret not in str(exc_info.value)
+
+
+def test_cli_verify_redacts_invalid_packet_sha256_from_report(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    roadmap_path = tmp_path / "roadmap.json"
+    packet_path = tmp_path / "packet.json"
+    expected_path = tmp_path / "expected.json"
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    secret = "PRIVATE-" + "X" * 1024
+    packet["packet_sha256"] = secret
+    roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
+    packet_path.write_text(json.dumps(packet), encoding="utf-8")
+    expected_path.write_text(json.dumps(expected), encoding="utf-8")
+
+    verify_args = cli._parser().parse_args(
+        [
+            "verify",
+            "--roadmap",
+            str(roadmap_path),
+            "--packet",
+            str(packet_path),
+            "--expected-identities",
+            str(expected_path),
+        ]
+    )
+    assert verify_args.run(verify_args) == 1
+    output = capsys.readouterr().out
+    assert secret not in output
+    report = json.loads(output)
+    assert report["packet_sha256"] is None
+    assert report["valid"] is False
