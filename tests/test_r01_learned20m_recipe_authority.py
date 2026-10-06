@@ -709,7 +709,7 @@ def test_recipe_cli_refuses_oversized_authority_without_traceback(
 
 def test_recipe_cli_loader_counts_utf8_bytes_not_characters(tmp_path: Path) -> None:
     tool = _load_tool()
-    payload = b'{"text":"' + "ї".encode("utf-8") * (
+    payload = b'{"text":"' + "ї".encode() * (
         tool.MAX_AUTHORITY_JSON_BYTES // 2
     ) + b'"}'
     assert len(payload) > tool.MAX_AUTHORITY_JSON_BYTES
