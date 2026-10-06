@@ -29,6 +29,17 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 POST_G06_SCHEMA = "12-6.d03-rada-current-postdata232-g05-g06-execution.v1"
+G05_G06_TWO_CLEAN_SCHEMA = (
+    "12-6.d03-rada-current-postdata232-g05-g06-two-clean.v1"
+)
+PARENT_DATA232_HEAD = "a7982bdfd1650b062808024856e13b1d8916a634"
+G05_G06_NEXT_GATE = "CURRENT_RADA_BALANCE_DIVERSITY_FAMILY_CAP_RETEST"
+G05_G06_BUNDLE_FILES = {
+    "evidence": "post-g05-g06-evidence.json",
+    "quality": "g05-authority.json",
+    "privacy": "g06-authority.json",
+    "survivor_inventory": "survivor-inventory.json",
+}
 FAMILY_VECTOR_SCHEMA = "12-6.d03-postmaterialization-family-vector.v1"
 COMPOSITION_SCHEMA = "12-6.d03-rada-post-g06-global-unique-composition.v1"
 RECEIPT_SCHEMA = "12-6.d03-rada-postg06-next100-106-execution.v1"
@@ -548,6 +559,178 @@ def verify_post_g06_receipt(
     }
 
 
+
+def verify_post_g06_two_clean_proof(
+    proof: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    family_vector: Mapping[str, Any],
+    *,
+    expected_proof_identity_sha256: str,
+    expected_evidence_file_sha256: str,
+) -> str:
+    expected_fields = {
+        "schema_version",
+        "execution_head_sha",
+        "parent_execution_head_sha",
+        "parent_artifact_id",
+        "parent_artifact_zip_sha256",
+        "fresh_execution_count",
+        "independent_runner_jobs",
+        "byte_identical_outputs",
+        "output_file_sha256",
+        "evidence_identity_sha256",
+        "g05_execution_identity_sha256",
+        "g06_execution_identity_sha256",
+        "record_payload_jsonl_sha256",
+        "record_inventory_digest_sha256",
+        "payload_inventory_digest_sha256",
+        "payload_set_identity_sha256",
+        "record_count",
+        "total_payload_bytes",
+        "canonical_capacity_credited",
+        "training_authorized_bytes",
+        "authorized_unique_loss_positions",
+        "authorized_optimized_target_exposure",
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "scale_promotion_authorized",
+        "next_gate",
+        "proof_identity_sha256",
+    }
+    require(set(proof) == expected_fields, "post-G06 two-clean proof fields drift")
+    require(
+        proof.get("schema_version") == G05_G06_TWO_CLEAN_SCHEMA,
+        "post-G06 two-clean proof schema drift",
+    )
+    claimed = require_sha256(
+        proof.get("proof_identity_sha256"),
+        "post-G06 two-clean proof identity",
+    )
+    require(
+        claimed == self_hash(proof, "proof_identity_sha256"),
+        "post-G06 two-clean proof self-hash mismatch",
+    )
+    require(
+        claimed
+        == require_sha256(
+            expected_proof_identity_sha256,
+            "expected post-G06 two-clean proof identity",
+        ),
+        "post-G06 two-clean proof identity differs from external expectation",
+    )
+    require(
+        proof.get("execution_head_sha") == evidence.get("execution_head_sha")
+        == family_vector.get("materialization_execution_head_sha"),
+        "post-G06 two-clean execution head drift",
+    )
+    require(
+        proof.get("parent_execution_head_sha") == PARENT_DATA232_HEAD,
+        "post-G06 two-clean DATA232 parent head drift",
+    )
+    require(proof.get("fresh_execution_count") == 2,
+            "post-G06 two-clean fresh execution count drift")
+    require(proof.get("independent_runner_jobs") is True,
+            "post-G06 two-clean independent-runner proof missing")
+    require(proof.get("byte_identical_outputs") is True,
+            "post-G06 two-clean byte identity missing")
+
+    parent = evidence.get("parent")
+    g05 = evidence.get("g05")
+    g06 = evidence.get("g06")
+    survivor = evidence.get("survivor_inventory")
+    artifacts = evidence.get("durable_artifacts")
+    require(isinstance(parent, Mapping), "post-G06 parent binding missing")
+    require(isinstance(g05, Mapping), "post-G06 G05 binding missing")
+    require(isinstance(g06, Mapping), "post-G06 G06 binding missing")
+    require(isinstance(survivor, Mapping), "post-G06 survivor binding missing")
+    require(isinstance(artifacts, Mapping), "post-G06 artifact binding missing")
+    require(
+        proof.get("parent_artifact_id") == parent.get("artifact_id"),
+        "post-G06 two-clean parent artifact ID drift",
+    )
+    require(
+        proof.get("parent_artifact_zip_sha256")
+        == parent.get("artifact_zip_sha256"),
+        "post-G06 two-clean parent artifact ZIP drift",
+    )
+    expected_outputs = {
+        G05_G06_BUNDLE_FILES["evidence"]: require_sha256(
+            expected_evidence_file_sha256,
+            "expected post-G06 evidence file SHA-256",
+        ),
+        G05_G06_BUNDLE_FILES["quality"]: require_sha256(
+            artifacts.get("g05_authority_file_sha256"),
+            "G05 authority file SHA-256",
+        ),
+        G05_G06_BUNDLE_FILES["privacy"]: require_sha256(
+            artifacts.get("g06_authority_file_sha256"),
+            "G06 authority file SHA-256",
+        ),
+        G05_G06_BUNDLE_FILES["survivor_inventory"]: require_sha256(
+            artifacts.get("survivor_inventory_file_sha256"),
+            "survivor inventory file SHA-256",
+        ),
+    }
+    require(
+        proof.get("output_file_sha256") == expected_outputs,
+        "post-G06 two-clean output-file roots drift",
+    )
+
+    bindings = {
+        "evidence_identity_sha256": evidence.get("evidence_identity_sha256"),
+        "g05_execution_identity_sha256": g05.get("execution_identity_sha256"),
+        "g06_execution_identity_sha256": g06.get("execution_identity_sha256"),
+        "record_payload_jsonl_sha256": survivor.get(
+            "record_payload_jsonl_sha256"
+        ),
+        "record_inventory_digest_sha256": survivor.get(
+            "record_inventory_digest_sha256"
+        ),
+        "payload_inventory_digest_sha256": survivor.get(
+            "payload_inventory_digest_sha256"
+        ),
+        "payload_set_identity_sha256": g06.get("payload_set_identity_sha256"),
+        "record_count": family_vector.get("record_count"),
+        "total_payload_bytes": family_vector.get("total_payload_bytes"),
+    }
+    for field, expected in bindings.items():
+        require(
+            proof.get(field) == expected,
+            f"post-G06 two-clean binding drift: {field}",
+        )
+
+    for field in (
+        "canonical_capacity_credited",
+        "training_authorized_bytes",
+        "authorized_unique_loss_positions",
+        "authorized_optimized_target_exposure",
+    ):
+        require(
+            type(proof.get(field)) is int and proof.get(field) == 0,
+            f"post-G06 two-clean authority widened: {field}",
+        )
+    for field in (
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "scale_promotion_authorized",
+    ):
+        require(
+            proof.get(field) is False,
+            f"post-G06 two-clean truth widened: {field}",
+        )
+    require(
+        proof.get("next_gate") == G05_G06_NEXT_GATE,
+        "post-G06 two-clean next gate drift",
+    )
+    return claimed
+
+
 def build_composition_proof(
     *,
     source_git_sha: str,
@@ -615,6 +798,24 @@ def execute(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
         family_vector,
         expected_evidence_identity_sha256=args.expected_post_g06_evidence_identity_sha256,
     )
+    post_g06_two_clean = load_pinned_json(
+        args.post_g06_two_clean_proof,
+        expected_file_sha256=args.expected_post_g06_two_clean_proof_file_sha256,
+        label="post-G06 two-clean proof",
+    )
+    post_g06_two_clean_identity = verify_post_g06_two_clean_proof(
+        post_g06_two_clean,
+        post_g06_evidence,
+        family_vector,
+        expected_proof_identity_sha256=(
+            args.expected_post_g06_two_clean_proof_identity_sha256
+        ),
+        expected_evidence_file_sha256=args.expected_post_g06_evidence_file_sha256,
+    )
+    post_g06 = {
+        **post_g06,
+        "two_clean_proof_identity_sha256": post_g06_two_clean_identity,
+    }
 
     upstream_evidence = load_pinned_json(
         args.upstream_global_dedup_evidence,
@@ -678,6 +879,9 @@ def execute(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
         "upstream_global_dedup_two_clean_identity_sha256": UPSTREAM_TWO_CLEAN_ID,
         "post_g06_evidence_identity_sha256": post_g06[
             "evidence_identity_sha256"
+        ],
+        "post_g06_two_clean_proof_identity_sha256": post_g06[
+            "two_clean_proof_identity_sha256"
         ],
         "family_vector_identity_sha256": family_identity,
         "composition_dedup_identity_sha256": composition[
@@ -965,6 +1169,15 @@ def compare_outputs(
         == receipt.get("post_g06_evidence_identity_sha256"),
         "post-G06 identity differs across evidence chain",
     )
+    post_g06_two_clean_id = require_sha256(
+        post_g06.get("two_clean_proof_identity_sha256"),
+        "composition post-G06 two-clean identity",
+    )
+    require(
+        post_g06_two_clean_id
+        == receipt.get("post_g06_two_clean_proof_identity_sha256"),
+        "post-G06 two-clean identity differs across evidence chain",
+    )
 
     upstream = composition.get("upstream_global_dedup")
     require(
@@ -1066,6 +1279,15 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--post-g06-evidence", type=Path, required=True)
     run.add_argument("--expected-post-g06-evidence-file-sha256", required=True)
     run.add_argument("--expected-post-g06-evidence-identity-sha256", required=True)
+    run.add_argument("--post-g06-two-clean-proof", type=Path, required=True)
+    run.add_argument(
+        "--expected-post-g06-two-clean-proof-file-sha256",
+        required=True,
+    )
+    run.add_argument(
+        "--expected-post-g06-two-clean-proof-identity-sha256",
+        required=True,
+    )
     run.add_argument("--upstream-global-dedup-evidence", type=Path, required=True)
     run.add_argument("--upstream-global-dedup-two-clean", type=Path, required=True)
     run.add_argument("--output-dir", type=Path, required=True)
