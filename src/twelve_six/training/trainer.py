@@ -2871,6 +2871,10 @@ class Trainer:
             )
 
         def _restore_preapply_drift_reason() -> str | None:
+            try:
+                Trainer._require_canonical_checkpoint_authorities(self)
+            except BaseException:
+                return "trainer restore safety authority changed during loader lookup"
             current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             if _restore_component_bindings_changed():
                 return "trainer restore component binding changed during loader lookup"
@@ -2913,6 +2917,7 @@ class Trainer:
         def _require_restore_control_state(
             expected_counters: tuple[int, int, int],
         ) -> None:
+            Trainer._require_canonical_checkpoint_authorities(self)
             _require_restore_component_bindings()
             current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             if not _typed_state_equal(
@@ -3044,7 +3049,10 @@ class Trainer:
             self._require_deterministic_policy()
             _require_restore_control_state(checkpoint_counters)
         except BaseException:
-            self._mark_failed("trainer state restore failed after possible partial apply")
+            Trainer._mark_failed(
+                self,
+                "trainer state restore failed after possible partial apply",
+            )
             raise
         self._update_incomplete = False
         self._failure_reason = None
