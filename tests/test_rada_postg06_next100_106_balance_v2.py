@@ -1730,3 +1730,67 @@ def test_write_immutable_bytes_cleans_matching_temp_after_published_final(
     assert output.read_bytes() == payload
     assert not temp.exists()
 
+def test_write_immutable_bytes_fsyncs_directory_after_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "durable.json"
+    payload = target.canonical_line({"value": "durable"})
+    calls: list[tuple[Path, str]] = []
+
+    def record_fsync(path: Path, *, label: str) -> None:
+        calls.append((path, label))
+
+    monkeypatch.setattr(target, "_fsync_directory", record_fsync)
+    target.write_immutable_bytes(output, payload, label="durability fixture")
+
+    assert output.read_bytes() == payload
+    assert [path for path, _ in calls] == [tmp_path, tmp_path]
+    assert calls[0][1].endswith("durable publication")
+    assert calls[1][1].endswith("temp cleanup")
+
+
+def test_write_immutable_bytes_fsyncs_directory_on_existing_final(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "existing.json"
+    payload = target.canonical_line({"value": "existing"})
+    output.write_bytes(payload)
+    calls: list[tuple[Path, str]] = []
+
+    def record_fsync(path: Path, *, label: str) -> None:
+        calls.append((path, label))
+
+    monkeypatch.setattr(target, "_fsync_directory", record_fsync)
+    target.write_immutable_bytes(output, payload, label="existing fixture")
+
+    assert output.read_bytes() == payload
+    assert calls == [(tmp_path, "existing fixture: durable evidence")]
+
+
+def test_write_immutable_bytes_recovers_matching_temp_creation_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "race.json"
+    temp = output.with_name(output.name + ".tmp")
+    payload = target.canonical_line({"value": "race"})
+    actual_open = Path.open
+    injected = False
+
+    def open_with_race(self: Path, *args, **kwargs):
+        nonlocal injected
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if self == temp and mode == "xb" and not injected:
+            with actual_open(temp, "wb") as handle:
+                handle.write(payload)
+            injected = True
+        return actual_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_with_race)
+    target.write_immutable_bytes(output, payload, label="temp race fixture")
+
+    assert injected is True
+    assert output.read_bytes() == payload
+    assert not temp.exists()
