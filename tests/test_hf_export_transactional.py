@@ -1925,3 +1925,67 @@ def test_hf_verifier_rejects_nonmapping_source_files_as_typed_integrity(
         match="exported source manifest files must be a mapping",
     ):
         verify_hf_directory(output)
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    (
+        ("unknown_field", "identity fields mismatch"),
+        ("bad_git_sha", "identity.git_sha"),
+        ("bad_tokenizer_hash", "identity.tokenizer_hash"),
+        ("bad_dataset_hash", "identity.dataset_manifest_hash"),
+        ("bad_run_hash", "identity.run_manifest_hash"),
+        ("bad_environment_lock_hash", "identity.environment_lock_hash"),
+        ("bool_parameter_count", "identity.parameter_count"),
+        ("negative_step", "identity.step and identity.tokens_seen"),
+        (
+            "bound_run_manifest_mismatch",
+            "identity.training_config run manifest hash disagrees with identity",
+        ),
+    ),
+)
+def test_hf_verifier_rejects_resealed_noncanonical_source_identity(
+    tmp_path: Path,
+    case: str,
+    expected: str,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(27.0), identity=identity("m"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    source_path = output / hf_export.EXPORTED_SOURCE_MANIFEST_NAME
+    source_manifest = json.loads(source_path.read_text(encoding="utf-8"))
+    source_identity = source_manifest["identity"]
+
+    if case == "unknown_field":
+        source_identity["training_authorized"] = True
+    elif case == "bad_git_sha":
+        source_identity["git_sha"] = "not-a-git-sha"
+    elif case == "bad_tokenizer_hash":
+        source_identity["tokenizer_hash"] = "g" * 64
+    elif case == "bad_dataset_hash":
+        source_identity["dataset_manifest_hash"] = "g" * 64
+    elif case == "bad_run_hash":
+        source_identity["run_manifest_hash"] = "g" * 64
+    elif case == "bad_environment_lock_hash":
+        source_identity["environment_lock_hash"] = "g" * 64
+    elif case == "bool_parameter_count":
+        source_identity["parameter_count"] = True
+    elif case == "negative_step":
+        source_identity["step"] = -1
+    elif case == "bound_run_manifest_mismatch":
+        source_identity["training_config"]["run_manifest_sha256"] = "5" * 64
+        source_identity["training_config_hash"] = hf_export.hash_json(
+            source_identity["training_config"]
+        )
+    else:
+        raise AssertionError(f"unhandled identity mutation case: {case}")
+
+    _reseal_hf_after_source_manifest_mutation(output, source_manifest)
+
+    with pytest.raises(CheckpointIntegrityError, match=expected):
+        verify_hf_directory(output)
