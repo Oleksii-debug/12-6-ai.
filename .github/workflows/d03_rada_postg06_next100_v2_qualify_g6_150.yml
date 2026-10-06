@@ -3,7 +3,7 @@ name: D03 Rada post-G06 NEXT100 V2 qualify G6 150
 on:
   pull_request:
     branches:
-      - execution/rada-postg06-next100-qualified-g6-150-20261006
+      - execution/rada-postg06-next100-qualified-g6-149-20261006
     paths:
       - ".github/workflows/d03_rada_postg06_next100_v2_qualify_g6_150.yml"
       - "tools/run_d03_rada_postg06_next100_106_balance_v2.py"
