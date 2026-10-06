@@ -102,7 +102,7 @@ def write_json(path: Path, value: Mapping[str, Any]) -> None:
     path.write_bytes(canonical(dict(value), newline=True))
 
 
-def _rounded(value: int | float) -> int | float:
+def _rounded(value: float) -> int | float:
     if isinstance(value, int):
         return value
     return round(float(value), 6)
