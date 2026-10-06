@@ -182,30 +182,38 @@ class ArtifactRef:
 
 @dataclass(frozen=True, slots=True)
 class ParentBinding:
-    """Named exact parent reference of a derived artifact."""
+    """Named exact parent reference plus the parent's transitive manifest identity."""
 
     role: str
     artifact: ArtifactRef
+    manifest_identity_sha256: str
 
     def __post_init__(self) -> None:
         if not isinstance(self.role, str) or _ROLE_RE.fullmatch(self.role) is None:
             raise ValueError("parent role must be canonical lower_snake_case")
         if not isinstance(self.artifact, ArtifactRef):
             raise ValueError("parent artifact must be an ArtifactRef")
+        _require_sha256("manifest_identity_sha256", self.manifest_identity_sha256)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "role": self.role,
             "artifact": self.artifact.to_dict(),
+            "manifest_identity_sha256": self.manifest_identity_sha256,
         }
 
     @classmethod
     def from_dict(cls, value: object) -> ParentBinding:
-        if not isinstance(value, dict) or set(value) != {"role", "artifact"}:
+        if not isinstance(value, dict) or set(value) != {
+            "role",
+            "artifact",
+            "manifest_identity_sha256",
+        }:
             raise ValueError("ParentBinding fields mismatch")
         return cls(
             role=value["role"],
             artifact=ArtifactRef.from_dict(value["artifact"]),
+            manifest_identity_sha256=value["manifest_identity_sha256"],
         )
 
 
@@ -253,6 +261,9 @@ class ArtifactManifest:
     def parents_by_role(self) -> dict[str, ArtifactRef]:
         return {parent.role: parent.artifact for parent in self.parents}
 
+    def parent_bindings_by_role(self) -> dict[str, ParentBinding]:
+        return {parent.role: parent for parent in self.parents}
+
     @classmethod
     def from_dict(cls, value: object) -> ArtifactManifest:
         if not isinstance(value, dict) or set(value) != {
@@ -274,14 +285,14 @@ class ArtifactManifest:
 def bind_artifact(
     artifact: ArtifactRef,
     *,
-    parents: Mapping[str, ArtifactRef] | None = None,
+    parents: Mapping[str, ArtifactManifest] | None = None,
 ) -> ArtifactManifest:
-    """Create a canonically ordered cross-binding around an existing identity."""
+    """Cross-bind an artifact to exact parent artifacts and their transitive lineages."""
 
     if not isinstance(artifact, ArtifactRef):
         raise ValueError("artifact must be an ArtifactRef")
     if parents is None:
-        normalized: dict[str, ArtifactRef] = {}
+        normalized: dict[str, ArtifactManifest] = {}
     else:
         if not isinstance(parents, Mapping):
             raise ValueError("parents must be a mapping")
@@ -289,15 +300,19 @@ def bind_artifact(
         for role, parent in parents.items():
             if not isinstance(role, str) or _ROLE_RE.fullmatch(role) is None:
                 raise ValueError("parent role must be canonical lower_snake_case")
-            if not isinstance(parent, ArtifactRef):
-                raise ValueError("parent mapping values must be ArtifactRef values")
+            if not isinstance(parent, ArtifactManifest):
+                raise ValueError("parent mapping values must be ArtifactManifest values")
             normalized[role] = parent
 
     return ArtifactManifest(
         schema_version=1,
         artifact=artifact,
         parents=tuple(
-            ParentBinding(role, normalized[role])
+            ParentBinding(
+                role=role,
+                artifact=normalized[role].artifact,
+                manifest_identity_sha256=normalized[role].manifest_identity_sha256(),
+            )
             for role in sorted(normalized)
         ),
     )
@@ -306,29 +321,35 @@ def bind_artifact(
 def verify_parent_bindings(
     manifest: ArtifactManifest,
     *,
-    expected_parents: Mapping[str, ArtifactRef],
+    expected_parents: Mapping[str, ArtifactManifest],
 ) -> None:
-    """Fail closed unless role names and exact versioned identities match."""
+    """Fail closed unless exact parent identities and transitive lineages match."""
 
     if not isinstance(manifest, ArtifactManifest):
         raise ValueError("manifest must be an ArtifactManifest")
     if not isinstance(expected_parents, Mapping):
         raise ValueError("expected_parents must be a mapping")
 
-    normalized: dict[str, ArtifactRef] = {}
+    normalized: dict[str, ArtifactManifest] = {}
     for role, parent in expected_parents.items():
         if not isinstance(role, str) or _ROLE_RE.fullmatch(role) is None:
             raise ValueError("expected parent role must be canonical lower_snake_case")
-        if not isinstance(parent, ArtifactRef):
-            raise ValueError("expected parent values must be ArtifactRef values")
+        if not isinstance(parent, ArtifactManifest):
+            raise ValueError("expected parent values must be ArtifactManifest values")
         normalized[role] = parent
 
-    observed = manifest.parents_by_role()
+    observed = manifest.parent_bindings_by_role()
     if set(observed) != set(normalized):
         raise ValueError("artifact parent role set mismatch")
     for role in sorted(normalized):
-        if observed[role] != normalized[role]:
-            raise ValueError(f"artifact parent identity mismatch for role: {role}")
+        parent = normalized[role]
+        expected = ParentBinding(
+            role=role,
+            artifact=parent.artifact,
+            manifest_identity_sha256=parent.manifest_identity_sha256(),
+        )
+        if observed[role] != expected:
+            raise ValueError(f"artifact parent lineage mismatch for role: {role}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,19 +381,24 @@ class GenerationIdentityManifest:
         for kind in CANONICAL_ARTIFACT_KINDS:
             manifest = by_kind[kind]
             expected_policy = _GENERATION_PARENT_POLICY[kind]
-            observed = manifest.parents_by_role()
+            observed = manifest.parent_bindings_by_role()
             if tuple(observed) != tuple(sorted(expected_policy)):
                 raise ValueError(f"{kind.value} parent role set is non-canonical")
             for role, parent_kind in expected_policy.items():
-                parent = observed[role]
-                if parent.kind is not parent_kind:
+                parent_binding = observed[role]
+                if parent_binding.artifact.kind is not parent_kind:
                     raise ValueError(
                         f"{kind.value}.{role} must reference {parent_kind.value}"
                     )
-                canonical_parent = by_kind[parent_kind].artifact
-                if parent != canonical_parent:
+                canonical_parent = by_kind[parent_kind]
+                expected_binding = ParentBinding(
+                    role=role,
+                    artifact=canonical_parent.artifact,
+                    manifest_identity_sha256=canonical_parent.manifest_identity_sha256(),
+                )
+                if parent_binding != expected_binding:
                     raise ValueError(
-                        f"{kind.value}.{role} parent identity does not match generation"
+                        f"{kind.value}.{role} parent lineage does not match generation"
                     )
 
     def to_dict(self) -> dict[str, Any]:
@@ -441,16 +467,17 @@ def build_generation_identity_manifest(
             raise ValueError(f"ref kind mismatch for key: {kind.value}")
         normalized[kind] = ref
 
-    manifests = []
+    manifests: list[ArtifactManifest] = []
+    manifests_by_kind: dict[ArtifactKind, ArtifactManifest] = {}
     for kind in CANONICAL_ARTIFACT_KINDS:
         policy = _GENERATION_PARENT_POLICY[kind]
-        manifests.append(
-            bind_artifact(
-                normalized[kind],
-                parents={
-                    role: normalized[parent_kind]
-                    for role, parent_kind in policy.items()
-                },
-            )
+        manifest = bind_artifact(
+            normalized[kind],
+            parents={
+                role: manifests_by_kind[parent_kind]
+                for role, parent_kind in policy.items()
+            },
         )
+        manifests.append(manifest)
+        manifests_by_kind[kind] = manifest
     return GenerationIdentityManifest(schema_version=1, artifacts=tuple(manifests))
