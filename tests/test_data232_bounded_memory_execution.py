@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -10,6 +11,8 @@ from twelve_six.data._data232_decontamination_matching import (
     _fingerprint,
     _iter_blocked_pairs,
     _iter_train_pairs,
+    _iter_viable_train_pairs,
+    _pair,
 )
 
 
@@ -256,12 +259,16 @@ def test_streaming_report_bytes_equal_materialized_incumbent_candidate_order(
         pairs = _legacy_blocked_pairs(left, right)
         return iter(sorted(pairs))
 
-    def materialized_train(rows: Sequence[dict[str, Any]]):
+    def materialized_train(
+        rows: Sequence[dict[str, Any]],
+        thresholds: Mapping[str, Any],
+    ):
+        del thresholds
         pairs = _legacy_train_pairs(rows)
         return iter(sorted(pairs))
 
     monkeypatch.setattr(authority, "_iter_blocked_pairs", materialized_blocked)
-    monkeypatch.setattr(authority, "_iter_train_pairs", materialized_train)
+    monkeypatch.setattr(authority, "_iter_viable_train_pairs", materialized_train)
     incumbent_order = _build_report(train, evaluation)
 
     assert json.dumps(streamed, sort_keys=True, separators=(",", ":")) == json.dumps(
@@ -270,3 +277,144 @@ def test_streaming_report_bytes_equal_materialized_incumbent_candidate_order(
         separators=(",", ":"),
     )
     assert streamed["report_sha256"] == incumbent_order["report_sha256"]
+
+def _matching_peer_pairs(
+    fingerprints: Sequence[dict[str, Any]],
+) -> tuple[set[tuple[int, int]], set[str]]:
+    pairs: set[tuple[int, int]] = set()
+    match_types: set[str] = set()
+    for left in range(len(fingerprints)):
+        for right in range(left + 1, len(fingerprints)):
+            evidence = _pair(
+                fingerprints[left],
+                fingerprints[right],
+                "peer",
+                DEFAULT_THRESHOLDS,
+            )
+            if evidence:
+                pairs.add((left, right))
+                match_types.update(item["match_type"] for item in evidence)
+    return pairs, match_types
+
+
+def test_viable_peer_filter_covers_every_incumbent_match_type() -> None:
+    natural = " ".join(f"natural{i}" for i in range(80))
+    mixed = " ".join(f"mixed{i}" for i in range(70))
+    rows = [
+        _row("raw-a", "same exact short text", source="a", family="a"),
+        _row("raw-b", "same exact short text", source="b", family="b"),
+        _row("norm-a", "Hello   WORLD", source="c", family="c"),
+        _row("norm-b", "hello world", source="d", family="d"),
+        _row("near-a", natural, source="e", family="e"),
+        _row(
+            "near-b",
+            natural.replace("natural41", "replacement41"),
+            source="f",
+            family="f",
+        ),
+        _row("mixed-a", mixed, source="g", family="g", modality="code"),
+        _row(
+            "mixed-b",
+            mixed.replace("mixed35", "replacement35"),
+            source="h",
+            family="h",
+            modality="en",
+        ),
+        _row(
+            "code-a",
+            "def compute(alpha, beta):\n"
+            "    total = alpha + beta\n"
+            "    if total > 10:\n"
+            "        return total * 3\n"
+            "    return total - 2\n",
+            source="repo-a",
+            family="repo-a",
+            modality="code",
+        ),
+        _row(
+            "code-b",
+            "def calculate(left, right):\n"
+            "    result = left + right\n"
+            "    if result > 999:\n"
+            "        return result * 44\n"
+            "    return result - 88\n",
+            source="repo-b",
+            family="repo-b",
+            modality="code",
+        ),
+    ]
+    fingerprints = [_fingerprint(row, DEFAULT_THRESHOLDS) for row in rows]
+    expected, match_types = _matching_peer_pairs(fingerprints)
+    viable = set(_iter_viable_train_pairs(fingerprints, DEFAULT_THRESHOLDS))
+
+    assert {
+        "raw_exact",
+        "normalized_exact",
+        "near_match",
+        "document_fragment",
+        "code_fork_copy",
+    } <= match_types
+    assert expected <= viable
+
+
+def test_viable_peer_filter_is_complete_on_deterministic_adversarial_sets() -> None:
+    rng = random.Random(232)
+    universe = [f"shingle-{index}" for index in range(48)]
+    skeleton_universe = [f"skeleton-{index}" for index in range(36)]
+
+    for round_index in range(6):
+        fingerprints: list[dict[str, Any]] = []
+        for index in range(64):
+            is_code = rng.randrange(3) == 0
+            content_count = rng.randrange(0, 31)
+            skeleton_count = rng.randrange(0, 25) if is_code else 0
+            fingerprints.append(
+                {
+                    "record": {
+                        "record_id": f"r{round_index}-{index}",
+                        "source_id": f"s{index}",
+                        "source_family": f"f{index % 9}",
+                        "modality": "code" if is_code else "en",
+                        "text": "",
+                    },
+                    "raw": f"raw-{rng.randrange(0, 41)}",
+                    "normalized": f"normalized-{rng.randrange(0, 43)}",
+                    "token_count": rng.randrange(0, 60),
+                    "shingles": frozenset(
+                        rng.sample(universe, content_count)
+                    ),
+                    "skeleton_token_count": rng.randrange(0, 50),
+                    "skeleton_shingles": frozenset(
+                        rng.sample(skeleton_universe, skeleton_count)
+                    ),
+                }
+            )
+
+        expected, _ = _matching_peer_pairs(fingerprints)
+        generated = list(
+            _iter_viable_train_pairs(fingerprints, DEFAULT_THRESHOLDS)
+        )
+        assert len(generated) == len(set(generated))
+        assert expected <= set(generated)
+
+
+def test_viable_peer_filter_prunes_common_shingle_false_candidates() -> None:
+    rows = [
+        _row(
+            f"record-{index}",
+            "common bridge anchor "
+            + " ".join(f"unique{index}_{part}" for part in range(45)),
+            source=f"source-{index}",
+            family=f"family-{index}",
+        )
+        for index in range(60)
+    ]
+    fingerprints = [_fingerprint(row, DEFAULT_THRESHOLDS) for row in rows]
+    incumbent = set(_iter_train_pairs(fingerprints))
+    viable = set(_iter_viable_train_pairs(fingerprints, DEFAULT_THRESHOLDS))
+    actual_matches, _ = _matching_peer_pairs(fingerprints)
+
+    assert len(incumbent) == 1770
+    assert actual_matches == set()
+    assert viable == set()
+

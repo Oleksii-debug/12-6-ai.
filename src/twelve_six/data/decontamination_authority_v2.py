@@ -16,7 +16,7 @@ from twelve_six.data._data232_decontamination_matching import (
     DecontaminationError,
     _fingerprint,
     _iter_blocked_pairs,
-    _iter_train_pairs,
+    _iter_viable_train_pairs,
     _pair,
     _thresholds,
     authority_composite_identity,
@@ -86,7 +86,7 @@ def build_report(
         if evidence:
             union("t:" + train_ids[i], "e:" + eval_ids[j])
             matches.extend(evidence)
-    for i, j in _iter_train_pairs(train):
+    for i, j in _iter_viable_train_pairs(train, t):
         evidence = _pair(train[i], train[j], "peer", t)
         if evidence:
             union("t:" + train_ids[i], "t:" + train_ids[j])
