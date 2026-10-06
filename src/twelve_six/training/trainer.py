@@ -163,6 +163,9 @@ class Trainer:
         "__getattribute__",
         "__setattr__",
         "_checkpoint_inert_copy",
+        "_checkpoint_rng_fingerprint",
+        "_checkpoint_autograd_mode",
+        "_checkpoint_numeric_policy",
         "_canonical_config_state",
         "_canonical_model_members",
         "_canonical_optimizer_storage",
@@ -369,6 +372,58 @@ class Trainer:
         raise TrainingStateInvalidError(
             f"{label} contains non-canonical value type: "
             f"{Trainer._type_identity(value)}"
+        )
+
+    @staticmethod
+    def _checkpoint_rng_fingerprint() -> str:
+        """Fingerprint process RNG state without advancing any stream."""
+
+        digest = hashlib.sha256()
+
+        def emit(label: bytes, payload: bytes) -> None:
+            digest.update(len(label).to_bytes(2, "big"))
+            digest.update(label)
+            digest.update(len(payload).to_bytes(8, "big"))
+            digest.update(payload)
+
+        emit(b"python", repr(random.getstate()).encode("utf-8"))
+
+        numpy_state = np.random.get_state()
+        emit(b"numpy-kind", str(numpy_state[0]).encode("utf-8"))
+        emit(b"numpy-state", np.ascontiguousarray(numpy_state[1]).tobytes())
+        emit(b"numpy-position", str(int(numpy_state[2])).encode("ascii"))
+        emit(b"numpy-has-gauss", b"1" if bool(numpy_state[3]) else b"0")
+        emit(b"numpy-cached-gauss", struct.pack("!d", float(numpy_state[4])))
+
+        cpu_state = torch.get_rng_state().detach().cpu().contiguous()
+        emit(b"torch-cpu", cpu_state.numpy().tobytes())
+
+        cuda_initialized = torch.cuda.is_initialized()
+        emit(b"torch-cuda-initialized", b"1" if cuda_initialized else b"0")
+        cuda_states = torch.cuda.get_rng_state_all() if cuda_initialized else []
+        emit(b"torch-cuda-count", str(len(cuda_states)).encode("ascii"))
+        for index, state in enumerate(cuda_states):
+            payload = state.detach().cpu().contiguous().numpy().tobytes()
+            emit(f"torch-cuda-{index}".encode("ascii"), payload)
+
+        return digest.hexdigest()
+
+    @staticmethod
+    def _checkpoint_autograd_mode() -> tuple[bool, bool]:
+        """Snapshot thread-local autograd modes without changing them."""
+
+        return (
+            bool(torch.is_grad_enabled()),
+            bool(torch.is_inference_mode_enabled()),
+        )
+
+    @staticmethod
+    def _checkpoint_numeric_policy() -> tuple[str, str]:
+        """Snapshot process-wide floating-point defaults used by training code."""
+
+        return (
+            str(torch.get_default_dtype()),
+            torch.get_float32_matmul_precision(),
         )
 
     @staticmethod
@@ -3077,6 +3132,9 @@ class Trainer:
         # before any untrusted state access so the same clean trainer can retry.
         Trainer._require_deterministic_policy(self)
         Trainer._require_model_training_mode(self)
+        expected_rng_fingerprint = Trainer._checkpoint_rng_fingerprint()
+        expected_autograd_mode = Trainer._checkpoint_autograd_mode()
+        expected_numeric_policy = Trainer._checkpoint_numeric_policy()
 
         expected_model = entry_attrs["model"]
         expected_optimizer = entry_attrs["optimizer"]
@@ -3151,6 +3209,12 @@ class Trainer:
                     Trainer._require_deterministic_policy(self)
                 except BaseException:
                     return f"trainer deterministic policy changed during {phase}"
+                if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
+                    return f"trainer autograd mode changed during {phase}"
+                if Trainer._checkpoint_numeric_policy() != expected_numeric_policy:
+                    return f"trainer numeric policy changed during {phase}"
+                if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
+                    return f"trainer RNG state changed during {phase}"
                 Trainer._require_no_residual_model_gradients(self)
                 if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
                     return f"trainer model changed during {phase}"
@@ -3373,6 +3437,24 @@ class Trainer:
                     raise TrainingStateInvalidError(
                         "trainer restore policy changed during load"
                     )
+            # Every effectful component loader must return under the same
+            # reproducibility policy and model mode before the next loader runs.
+            # The final validation below is too late: a later loader could observe
+            # an already-drifted process policy or eval-mode model.
+            Trainer._require_deterministic_policy(self)
+            Trainer._require_model_training_mode(self)
+            if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
+                raise TrainingStateInvalidError(
+                    "trainer autograd mode changed during load"
+                )
+            if Trainer._checkpoint_numeric_policy() != expected_numeric_policy:
+                raise TrainingStateInvalidError(
+                    "trainer numeric policy changed during load"
+                )
+            if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
+                raise TrainingStateInvalidError(
+                    "trainer RNG state changed during load"
+                )
             Trainer._require_no_residual_model_gradients(self)
 
         drift_reason = _restore_preapply_drift_reason("checkpoint preflight")
