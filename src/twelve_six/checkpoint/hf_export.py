@@ -105,15 +105,25 @@ def _read_regular_bytes(root: Path, name: str) -> bytes:
         ) from exc
     primary_exc: BaseException | None = None
     try:
-        opened = os.fstat(fd)
+        try:
+            opened = os.fstat(fd)
+        except OSError as exc:
+            raise CheckpointIntegrityError(
+                f"cannot inspect HF-style export artifact: {name}"
+            ) from exc
         if not stat.S_ISREG(opened.st_mode):
             raise CheckpointIntegrityError(f"HF-style export artifact changed type: {name}")
         if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
             raise CheckpointIntegrityError(
                 f"HF-style export artifact changed while opening: {name}"
             )
-        with os.fdopen(fd, "rb", closefd=False) as handle:
-            return handle.read()
+        try:
+            with os.fdopen(fd, "rb", closefd=False) as handle:
+                return handle.read()
+        except OSError as exc:
+            raise CheckpointIntegrityError(
+                f"cannot read HF-style export artifact: {name}"
+            ) from exc
     except BaseException as exc:
         primary_exc = exc
         raise
