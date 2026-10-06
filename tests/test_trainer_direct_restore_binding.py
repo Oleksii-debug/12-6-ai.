@@ -1037,3 +1037,28 @@ def test_direct_restore_rejects_config_subclass_before_attribute_dispatch() -> N
     assert target._update_incomplete is False
     assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
     assert not target.optimizer.state
+
+
+def test_direct_restore_rejects_duck_typed_state_without_attribute_dispatch() -> None:
+    config = _config()
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    observed: list[str] = []
+
+    class DuckState:
+        def __getattribute__(self, name: str):
+            if name.startswith("_"):
+                return object.__getattribute__(self, name)
+            observed.append(name)
+            raise AssertionError(f"unexpected state attribute access: {name}")
+
+    with pytest.raises(
+        TypeError,
+        match="trainer state must be TrainerState or a mapping",
+    ):
+        target.load_state_dict(DuckState())
+
+    assert observed == []
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert not target.optimizer.state
