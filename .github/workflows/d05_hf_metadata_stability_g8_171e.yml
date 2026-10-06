@@ -1,0 +1,138 @@
+name: D05 HF metadata stability G8-171e
+
+on:
+  pull_request:
+    branches:
+      - repair/3049-hf-metadata-stability-g8-171d-20261006
+    paths:
+      - ".github/workflows/d05_hf_metadata_stability_g8_171e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d05-hf-metadata-stability-171e-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: "c85da93c9ec0bb6b7d0688db80e57c83ec5f9822"
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+  PYTHONUTF8: "1"
+
+jobs:
+  linux-hf-metadata-stability:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/3053-hf-metadata-stability-g8-171e-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact HF metadata-stability source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$SOURCE_SHA" HEAD)" = "$SOURCE_SHA"
+          git diff --name-only "$SOURCE_SHA"..HEAD | sort > /tmp/changed.txt
+          printf '%s\n' '.github/workflows/d05_hf_metadata_stability_g8_171e.yml' > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+          test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/hf_export.py")" = "d446e55b90ed7828b5bcf8a6daadff6931cf319b"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_hf_export_transactional.py")" = "cf39e14b62a8224f10d563d4ea1989c857e385b6"
+          python -m py_compile src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Install focused test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Lint exact HF metadata-stability closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+      - name: Execute HF transactional regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_hf_export_transactional.py
+      - name: Prove Linux carrier remains clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          echo "D05_HF_METADATA_STABILITY_171E_LINUX=PASS_ZERO_SCIENTIFIC_CREDIT"
+
+  windows-hf-metadata-stability:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/3053-hf-metadata-stability-g8-171e-20261006'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact HF metadata-stability source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:EVENT_BASE_SHA -ne $env:SOURCE_SHA) { throw "base SHA drifted" }
+          if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA drifted" }
+          if ((git merge-base $env:SOURCE_SHA HEAD).Trim() -ne $env:SOURCE_SHA) { throw "carrier ancestry drifted" }
+          $changed = @(git diff --name-only "$env:SOURCE_SHA..HEAD" | Sort-Object)
+          $expected = @(".github/workflows/d05_hf_metadata_stability_g8_171e.yml")
+          if ($changed.Count -ne $expected.Count -or (Compare-Object $expected $changed)) {
+            throw "unexpected carrier delta: $changed"
+          }
+          $hfBlob = (git rev-parse "$($env:SOURCE_SHA):src/twelve_six/checkpoint/hf_export.py").Trim()
+          if ($hfBlob -ne "d446e55b90ed7828b5bcf8a6daadff6931cf319b") { throw "hf_export blob drifted" }
+          $testBlob = (git rev-parse "$($env:SOURCE_SHA):tests/test_hf_export_transactional.py").Trim()
+          if ($testBlob -ne "cf39e14b62a8224f10d563d4ea1989c857e385b6") { throw "HF test blob drifted" }
+          python -m py_compile src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+          $dirty = git status --porcelain=v1 --untracked-files=all
+          if ($dirty) { throw "carrier dirty before execution: $dirty" }
+      - name: Install focused test dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Lint exact HF metadata-stability closure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m ruff check src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+      - name: Execute HF transactional regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pytest -q tests/test_hf_export_transactional.py
+      - name: Prove Windows carrier remains clean
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA changed" }
+          $dirty = git status --porcelain=v1 --untracked-files=all
+          if ($dirty) { throw "carrier dirty after execution: $dirty" }
+          Write-Output "D05_HF_METADATA_STABILITY_171E_WINDOWS=PASS_ZERO_SCIENTIFIC_CREDIT"
