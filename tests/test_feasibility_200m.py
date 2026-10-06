@@ -722,6 +722,27 @@ def test_cli_json_reader_requests_nofollow_when_available(
         assert observed["flags"] & cli.os.O_NOFOLLOW
 
 
+def test_cli_json_reader_rejects_path_swap_after_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "input.json"
+    replacement = tmp_path / "replacement.json"
+    path.write_text('{"value":1}', encoding="utf-8")
+    replacement.write_text('{"value":2}', encoding="utf-8")
+    real_open = cli.os.open
+
+    def swapping_open(open_path: Path, flags: int) -> int:
+        descriptor = real_open(open_path, flags)
+        cli.os.replace(replacement, path)
+        return descriptor
+
+    monkeypatch.setattr(cli.os, "open", swapping_open)
+    with pytest.raises(ValueError, match="input_changed_during_read"):
+        cli._read_json(path, label="input")
+
+
 def test_cli_json_reader_rejects_oversized_input_before_decode(tmp_path: Path) -> None:
     cli = _load_cli()
     path = tmp_path / "oversized.json"
