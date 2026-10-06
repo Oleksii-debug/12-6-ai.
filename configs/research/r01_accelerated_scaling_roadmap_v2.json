@@ -184,6 +184,7 @@
     "gradient_accumulation_and_checkpointing_plan",
     "qualified_backend_evidence",
     "unique_data_supply_and_target_exposure",
+    "measured_20m_loss_vs_exposure_and_validation_behavior",
     "measured_20m_throughput_extrapolation",
     "local_free_and_free_gpu_execution_plan",
     "checkpoint_transport_and_resume_plan",
