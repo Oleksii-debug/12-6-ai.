@@ -763,6 +763,8 @@ class ApplyReproducibilityDriftAdamW(AdamW):
                 )
             elif self.mutation == "training_mode":
                 self.owner.model.eval()
+            elif self.mutation == "grad_mode":
+                torch.set_grad_enabled(not torch.is_grad_enabled())
             else:
                 raise AssertionError(
                     f"unknown reproducibility mutation: {self.mutation}"
@@ -830,6 +832,7 @@ def test_direct_restore_rejects_apply_time_state_drift(
     [
         ("determinism", "live PyTorch deterministic policy disagrees"),
         ("training_mode", "checkpoint model training mode must remain enabled"),
+        ("grad_mode", "trainer autograd mode changed during load"),
     ],
 )
 def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero_grad(
@@ -846,6 +849,7 @@ def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero
     optimizer.mutation = mutation
     expected_enabled = torch.are_deterministic_algorithms_enabled()
     expected_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    expected_grad_enabled = torch.is_grad_enabled()
 
     try:
         with pytest.raises(TrainingStateInvalidError, match=message):
@@ -855,6 +859,7 @@ def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero
             expected_enabled,
             warn_only=expected_warn_only,
         )
+        torch.set_grad_enabled(expected_grad_enabled)
 
     assert optimizer.guarded_zero_grad_calls == 0
     assert trainer._failure_reason == (
@@ -1403,6 +1408,50 @@ def test_checkpoint_rng_fingerprint_is_observer_only() -> None:
     assert numpy_after[2:] == numpy_before[2:]
     assert torch.equal(torch.get_rng_state(), torch_before)
     assert torch.cuda.is_initialized() is cuda_was_initialized
+
+
+def test_direct_restore_preflight_seals_autograd_mode() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    expected_grad_enabled = torch.is_grad_enabled()
+
+    class GradModeMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            torch.set_grad_enabled(not expected_grad_enabled)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=GradModeMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer autograd mode changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert torch.is_grad_enabled() is not expected_grad_enabled
+        assert target._failure_reason == (
+            "trainer autograd mode changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_grad_enabled(expected_grad_enabled)
 
 
 def test_direct_restore_poison_target_when_checkpoint_preflight_consumes_rng() -> None:
