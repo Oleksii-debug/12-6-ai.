@@ -338,7 +338,7 @@ def test_backend_training_compute_or_stage_self_promotion_is_rejected() -> None:
         expected = retained_identities_for_built_packet(packet)
         packet["authority_boundaries"][field] = bad
         packet["packet_sha256"] = compute_packet_sha256(packet)
-        assert "authority_boundaries_must_be_non_authorizing" in validate(
+        assert "authority_boundary_" in validate(
             packet, expected=expected
         )
 
@@ -791,7 +791,7 @@ def test_retained_identity_helper_rejects_resealed_non_authorizing_drift() -> No
     packet["packet_sha256"] = compute_packet_sha256(packet)
     with pytest.raises(
         FeasibilityPacketError,
-        match="authority_boundaries_must_be_non_authorizing",
+        match="authority_boundary_",
     ):
         retained_identities_for_built_packet(packet)
 
@@ -867,3 +867,68 @@ def test_validator_canonical_roadmap_type_errors_are_bounded(
         ],
     )
     assert "roadmap_not_at_200m_feasibility_boundary" in errors
+
+
+
+def test_validator_rejects_bool_schema_version_alias() -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    packet["schema_version"] = True
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+    errors = validate(packet, expected=expected)
+    assert "schema_version_mismatch" in errors
+
+
+def test_validator_rejects_float_roadmap_target_alias() -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    packet["roadmap_target_parameters"] = float(packet["roadmap_target_parameters"])
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+    errors = validate(packet, expected=expected)
+    assert "roadmap_target_parameters_invalid" in errors
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "error"),
+    [
+        (
+            "training_executed_by_packet",
+            0,
+            "authority_boundary_training_executed_by_packet_must_be_false",
+        ),
+        (
+            "paid_compute_authorized_by_packet",
+            0,
+            "authority_boundary_paid_compute_authorized_by_packet_must_be_false",
+        ),
+        (
+            "optimizer_updates_executed_by_packet",
+            False,
+            "authority_boundary_optimizer_updates_executed_by_packet_must_be_zero",
+        ),
+        (
+            "optimizer_updates_executed_by_packet",
+            0.0,
+            "authority_boundary_optimizer_updates_executed_by_packet_must_be_zero",
+        ),
+    ],
+)
+def test_validator_rejects_authority_boundary_scalar_aliases(
+    field: str,
+    bad: object,
+    error: str,
+) -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    packet["authority_boundaries"][field] = bad
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+    assert error in validate(packet, expected=expected)
+
+
+def test_retained_identity_helper_rejects_scalar_aliases() -> None:
+    packet = build()
+    packet["schema_version"] = True
+    packet["authority_boundaries"]["training_executed_by_packet"] = 0
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+    with pytest.raises(FeasibilityPacketError, match="schema_version_mismatch"):
+        retained_identities_for_built_packet(packet)
