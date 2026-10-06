@@ -346,14 +346,97 @@ def build_200m_feasibility_packet(
     return packet
 
 
+def _trusted_build_retention_errors(packet: Any) -> list[str]:
+    if not isinstance(packet, dict):
+        return ["packet_not_object"]
+    errors: list[str] = []
+    if set(packet) != _TOP_LEVEL_FIELDS:
+        errors.append("packet_fields_mismatch")
+    if packet.get("schema_version") != PACKET_SCHEMA_VERSION:
+        errors.append("schema_version_mismatch")
+    if packet.get("packet_kind") != PACKET_KIND:
+        errors.append("packet_kind_mismatch")
+    if packet.get("packet_status") != PACKET_STATUS:
+        errors.append("packet_status_mismatch")
+    if packet.get("repository") != r01.REPOSITORY:
+        errors.append("repository_mismatch")
+    if packet.get("roadmap_id") != r01.ROADMAP_ID:
+        errors.append("roadmap_id_mismatch")
+    if not _is_git_sha(packet.get("source_git_sha")):
+        errors.append("source_git_sha_invalid")
+    if not _is_sha256(packet.get("roadmap_snapshot_sha256")):
+        errors.append("roadmap_snapshot_sha256_invalid")
+    if not _is_positive_int(packet.get("roadmap_target_parameters")):
+        errors.append("roadmap_target_parameters_invalid")
+
+    learned_binding = packet.get("learned_20m_binding")
+    errors.extend(_validate_learned_20m_binding(learned_binding))
+
+    candidate_value = packet.get("candidate")
+    errors.extend(_validate_candidate(candidate_value))
+    measurements = packet.get("measurements_20m")
+    errors.extend(_validate_measurements(measurements))
+    try:
+        measurements_sha = canonical_sha256(measurements)
+    except FeasibilityPacketError:
+        measurements_sha = None
+        errors.append("measurements_20m_not_canonical_json")
+    if packet.get("measurements_20m_sha256") != measurements_sha:
+        errors.append("measurements_20m_sha256_recompute_mismatch")
+
+    measurement_authority = packet.get("measurement_authority")
+    if not _valid_evidence_ref(measurement_authority):
+        errors.append("measurement_authority_invalid")
+    elif measurement_authority.get("evidence_sha256") != measurements_sha:
+        errors.append("measurement_authority_payload_mismatch")
+
+    requirement_evidence = packet.get("requirement_evidence")
+    errors.extend(_validate_requirement_evidence(requirement_evidence))
+    if isinstance(requirement_evidence, dict) and isinstance(candidate_value, dict):
+        candidate_evidence = requirement_evidence.get(
+            "candidate_architecture_and_parameter_count"
+        )
+        if isinstance(candidate_evidence, dict):
+            try:
+                candidate_sha = canonical_sha256(candidate_value)
+            except FeasibilityPacketError:
+                candidate_sha = None
+                errors.append("candidate_not_canonical_json")
+            if candidate_evidence.get("evidence_sha256") != candidate_sha:
+                errors.append("candidate_architecture_evidence_payload_mismatch")
+
+    if packet.get("requirements_covered") != sorted(r01.REQUIRED_200M_FEASIBILITY):
+        errors.append("requirements_covered_mismatch")
+    if packet.get("decision") not in _ALLOWED_DECISIONS:
+        errors.append("decision_invalid")
+    boundaries = packet.get("authority_boundaries")
+    if not isinstance(boundaries, dict) or set(boundaries) != _BOUNDARY_FIELDS:
+        errors.append("authority_boundaries_fields_mismatch")
+    elif boundaries != _FALSE_BOUNDARIES:
+        errors.append("authority_boundaries_must_be_non_authorizing")
+
+    packet_sha = packet.get("packet_sha256")
+    if not _is_sha256(packet_sha):
+        errors.append("packet_sha256_invalid")
+    try:
+        recomputed_packet_sha = compute_packet_sha256(packet)
+    except FeasibilityPacketError:
+        recomputed_packet_sha = None
+        errors.append("packet_not_canonical_json")
+    if packet_sha != recomputed_packet_sha:
+        errors.append("packet_sha256_recompute_mismatch")
+    return sorted(set(errors))
+
+
 def retained_identities_for_built_packet(packet: Mapping[str, Any]) -> dict[str, Any]:
     """Derive identities to retain separately immediately after a trusted build."""
 
-    if not isinstance(packet, Mapping):
-        raise FeasibilityPacketError("packet_not_mapping")
-    requirement_evidence = packet.get("requirement_evidence")
-    if not isinstance(requirement_evidence, dict):
-        raise FeasibilityPacketError("requirement_evidence_not_object")
+    errors = _trusted_build_retention_errors(packet)
+    if errors:
+        raise FeasibilityPacketError(
+            "trusted_build_packet_invalid:" + ",".join(errors)
+        )
+    requirement_evidence = packet["requirement_evidence"]
     return {
         "packet_sha256": packet.get("packet_sha256"),
         "roadmap_snapshot_sha256": packet.get("roadmap_snapshot_sha256"),
