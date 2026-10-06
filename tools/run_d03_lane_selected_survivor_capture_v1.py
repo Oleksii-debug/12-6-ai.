@@ -25,14 +25,18 @@ TOOLS = Path(__file__).resolve().parent
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
-import run_d03_selected_raw_assembly_v1 as assembly_api
-import run_d03_selected_raw_materialization_plan_v1 as plan_api
-
 SCHEMA = "12-6.d03-lane-selected-survivor-capture.v1"
-PLAN_IDENTITY = assembly_api.PLAN_IDENTITY
+PLAN_SCHEMA = "12-6.d03-selected-raw-materialization-plan.v1"
+PLAN_IDENTITY = "ddf42773bb7ac4856e07c7b8e22b137581f02b79e231f0740b12e867c0981400"
+EXPECTED_SELECTED_RECORDS = 5_294
+EXPECTED_SELECTED_BYTES = 20_000_000
+EXPECTED_MISSING_RECORDS = 5_083
+EXPECTED_MISSING_BYTES = 16_417_002
 MAX_PLAN_BYTES = 2 * 1024 * 1024
 MAX_COMPOSITION_BYTES = 128 * 1024 * 1024
-RAW_KEYS = assembly_api.RAW_KEYS
+RAW_KEYS = frozenset(
+    {"record_id", "source_id", "family", "modality", "normalized_payload"}
+)
 _HEX40 = frozenset("0123456789abcdef")
 
 
@@ -91,6 +95,61 @@ def load_json(path: Path, *, max_bytes: int) -> dict[str, Any]:
     )
     require(type(value) is dict, f"JSON root must be object: {path}")
     return value
+
+
+def verify_plan(value: Mapping[str, Any]) -> None:
+    require(
+        value.get("schema_version") == PLAN_SCHEMA,
+        "plan schema drift",
+    )
+    claimed = value.get("plan_identity_sha256")
+    require(claimed == PLAN_IDENTITY, "plan identity drift")
+    core = dict(value)
+    del core["plan_identity_sha256"]
+    require(sha256(core) == claimed, "plan self-hash mismatch")
+    require(
+        value.get("selected_record_count") == EXPECTED_SELECTED_RECORDS,
+        "plan selected count drift",
+    )
+    require(
+        value.get("selected_source_bytes") == EXPECTED_SELECTED_BYTES,
+        "plan selected bytes drift",
+    )
+    require(
+        value.get("missing_record_count") == EXPECTED_MISSING_RECORDS,
+        "plan missing count drift",
+    )
+    require(
+        value.get("missing_payload_bytes") == EXPECTED_MISSING_BYTES,
+        "plan missing bytes drift",
+    )
+    require(
+        value.get("durable_output_contains_raw_payload") is False,
+        "plan raw boundary widened",
+    )
+    for key in (
+        "tokenizer_fit_authorized",
+        "training_executed",
+        "learned_weights_created",
+        "final_test_outcomes_read",
+        "paid_compute_used",
+        "scale_promotion_authorized",
+    ):
+        require(
+            value.get(key) is False,
+            f"plan truth boundary widened: {key}",
+        )
+    for key in (
+        "canonical_capacity_credited",
+        "training_authorized_bytes",
+        "authorized_unique_loss_positions",
+        "authorized_optimized_target_exposure",
+        "optimizer_updates_executed_on_real_targets",
+    ):
+        require(
+            type(value.get(key)) is int and value.get(key) == 0,
+            f"plan truth boundary widened: {key}",
+        )
 
 
 def _git_head(repo_root: Path) -> str:
@@ -174,7 +233,7 @@ def _plan_target(
     plan: Mapping[str, Any],
     families: frozenset[str],
 ) -> tuple[frozenset[str], int]:
-    assembly_api.verify_plan(plan)
+    verify_plan(plan)
     require(bool(families), "at least one required family is needed")
     family_plan = plan.get("family_materialization_plan")
     require(type(family_plan) is list, "family materialization plan missing")
@@ -556,8 +615,6 @@ def main() -> int:
         )
     except (
         CaptureError,
-        assembly_api.AssemblyError,
-        plan_api.PlanError,
         OSError,
         UnicodeError,
         json.JSONDecodeError,
