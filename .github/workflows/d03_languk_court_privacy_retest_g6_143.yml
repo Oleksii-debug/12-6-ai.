@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/d03_languk_court_privacy_retest_g6_143.yml"
       - "tools/run_d03_languk_court_privacy_retest_v1.py"
+      - "tests/test_d03_languk_court_privacy_retest_v1.py"
 
 permissions:
   actions: read
@@ -26,7 +27,11 @@ jobs:
     env:
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       BASE_HEAD: "019944d5fe12334791f05f1232d13de4a12e37d3"
-      SCRIPT_BLOB: "da2d904bf9ab67bf8b20acd8cdb6b09d33657736"
+      SCRIPT_BLOB: "c0527b5b9e51c84549eaf757e274a02c677ab5b2"
+      SOURCE_CONTRACT_RUNNER_BLOB: "5401881e170f2d1ae70e777a0cf3e2cfa152e8f6"
+      SOURCE_CONTRACT_CONFIG_BLOB: "b4ee7b0f698660145cb3c1db0f8ccb690c255a5e"
+      SOURCE_CONTRACT_TEST_BLOB: "68944b43c798a617a50cc0737d8737a77e877673"
+      REPAIR_TEST_BLOB: "39d16be7bcf02b5354d8bd67e6a2face6fae1e32"
       PARENT_AUDIT_HEAD: "0e682d8a63719063b7661600bf46e775b58ce823"
       PARENT_AUDIT_BLOB: "c88a2884f77f2c9747b56d7f08edfdf7b6478af2"
       EVAL290_HEAD: "029514654829cebc149cff6fc1fea2a8ba4fa566"
@@ -61,19 +66,24 @@ jobs:
           git diff --name-only "$BASE_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
           cat >"$RUNNER_TEMP/expected.txt" <<'EOF'
           .github/workflows/d03_languk_court_privacy_retest_g6_143.yml
+          tests/test_d03_languk_court_privacy_retest_v1.py
           tools/run_d03_languk_court_privacy_retest_v1.py
           EOF
           sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
           cmp "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
           test "$(git hash-object tools/run_d03_languk_court_privacy_retest_v1.py)" = "$SCRIPT_BLOB"
+          test "$(git hash-object tests/test_d03_languk_court_privacy_retest_v1.py)" = "$REPAIR_TEST_BLOB"
+          test "$(git hash-object tools/retest_d03_languk_supreme_court.py)" = "$SOURCE_CONTRACT_RUNNER_BLOB"
+          test "$(git hash-object configs/data/d03_languk_supreme_court_retest_v1.json)" = "$SOURCE_CONTRACT_CONFIG_BLOB"
+          test "$(git hash-object tests/test_d03_languk_supreme_court_retest.py)" = "$SOURCE_CONTRACT_TEST_BLOB"
           test "$(git hash-object src/twelve_six/data/document_quality.py)" = "b1461263034b4fb9510479b20c9697e22faa5f97"
           test "$(git hash-object src/twelve_six/data/quality_granularity.py)" = "513523b86824c423cad97352b3abb3d1241531b9"
           test "$(git hash-object src/twelve_six/data/quality_execution_authority.py)" = "4659a9d4aba49908f372250904a54361c8d8cf46"
           test "$(git hash-object src/twelve_six/data/privacy_execution_authority.py)" = "9215287e81c0a82f05ec8405dc4f34c60313c193"
           test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "bcc5938395724f6728ab212f98b39f2334b0f37d"
-          python -m py_compile tools/run_d03_languk_court_privacy_retest_v1.py
+          python -m py_compile tools/run_d03_languk_court_privacy_retest_v1.py tests/test_d03_languk_court_privacy_retest_v1.py
           python -m pip install --disable-pip-version-check "ruff>=0.12"
-          ruff check tools/run_d03_languk_court_privacy_retest_v1.py
+          ruff check tools/run_d03_languk_court_privacy_retest_v1.py tests/test_d03_languk_court_privacy_retest_v1.py
 
       - name: Checkout exact parent rights audit
         shell: bash
@@ -109,6 +119,15 @@ jobs:
           "$venv/bin/python" -m pip install \
             --disable-pip-version-check --require-hashes --no-deps -r "$lock"
           "$venv/bin/python" -c 'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+
+      - name: Regress exact source framing boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="$RUNNER_TEMP/eval290-venv"
+          PYTHONPATH="$GITHUB_WORKSPACE/src" "$venv/bin/python" -m pytest -q \
+            tests/test_d03_languk_supreme_court_retest.py \
+            tests/test_d03_languk_court_privacy_retest_v1.py
 
       - name: Download exact pinned source twice
         shell: bash
@@ -200,6 +219,12 @@ jobs:
           ):
               assert truth[key] is False
           assert report["durable_evidence_hash_only"] is True
+          assert material["source_contract_pass_records"] <= material["source_records"]
+          assert sum(material["source_contract_disposition_counts"].values()) == material["source_records"]
+          assert material["source_contract_disposition_counts"].get("accepted", 0) == material["source_contract_pass_records"]
+          assert material["source_contract_runner_blob"] == os.environ["SOURCE_CONTRACT_RUNNER_BLOB"]
+          assert material["source_contract_config_blob"] == os.environ["SOURCE_CONTRACT_CONFIG_BLOB"]
+          assert material["source_contract_terminal_nul_stripped_after_annotation_validation"] is True
           assert privacy_path.is_file()
           if material["selected_records"]:
               assert quality_path.is_file()
