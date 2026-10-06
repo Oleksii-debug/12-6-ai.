@@ -1005,7 +1005,7 @@ def test_native_checkpoint_save_rejects_eval_child_before_publication(
     [
         ("weight", "model changed during checkpoint model serialization"),
         ("counter", "post-load tokens_seen disagrees with checkpoint"),
-        ("mode", "requires model training mode"),
+        ("mode", "canonical trainer model contract changed during checkpoint restore"),
     ],
 )
 def test_native_checkpoint_save_rejects_model_export_drift_before_publication(
@@ -1319,17 +1319,19 @@ def test_native_checkpoint_save_rejects_subclass_export_model_mutation(
 
 
 @pytest.mark.parametrize(
-    ("mutation", "expected_error", "expected_message"),
+    ("mutation", "expected_error", "expected_message", "expected_failure_reason"),
     [
         (
             "optimizer",
             core.CheckpointCompatibilityError,
             "auxiliary state changed during checkpoint export",
+            "checkpoint_export_state_drift",
         ),
         (
             "scheduler",
             TrainingStateInvalidError,
             "scheduler chronology differs from committed optimizer step",
+            "checkpoint boundary has invalid optimizer or residual gradients",
         ),
     ],
 )
@@ -1338,6 +1340,7 @@ def test_native_checkpoint_save_rejects_subclass_export_auxiliary_mutation(
     mutation: str,
     expected_error: type[BaseException],
     expected_message: str,
+    expected_failure_reason: str,
 ) -> None:
     class MutatingExporter(Trainer):
         def state_dict(self) -> Any:
@@ -1367,7 +1370,7 @@ def test_native_checkpoint_save_rejects_subclass_export_auxiliary_mutation(
         )
 
     assert not checkpoint.exists()
-    assert target._failure_reason == "checkpoint_export_state_drift"
+    assert target._failure_reason == expected_failure_reason
     assert target._update_incomplete is True
 
 
@@ -1507,12 +1510,18 @@ def test_native_checkpoint_save_rejects_forged_model_state_dict(
         assert target._update_incomplete is True
 
 
-def test_native_checkpoint_save_rechecks_safety_after_temporary_subclass_bypass(
+def test_native_checkpoint_save_rejects_temporary_safety_authority_shadow(
     tmp_path: Path,
 ) -> None:
+    bypass_called = False
+
     class TemporarySafetyBypassTrainer(Trainer):
         def state_dict(self) -> Any:
-            vars(self)["_require_finite_committed_update"] = lambda: None
+            def forged_bypass() -> None:
+                nonlocal bypass_called
+                bypass_called = True
+
+            vars(self)["_require_finite_committed_update"] = forged_bypass
             try:
                 return super().state_dict()
             finally:
@@ -1527,7 +1536,13 @@ def test_native_checkpoint_save_rechecks_safety_after_temporary_subclass_bypass(
         target.model.weight.fill_(float("nan"))
     checkpoint = tmp_path / "temporary-safety-bypass-must-not-exist"
 
-    with pytest.raises(Exception, match="non-finite model weights"):
+    with pytest.raises(
+        core.CheckpointCompatibilityError,
+        match=(
+            "native D02 safety authority must remain canonical: "
+            "_require_finite_committed_update"
+        ),
+    ):
         trainer_adapter.save_trainer_checkpoint(
             checkpoint,
             model=target.model,
@@ -1537,10 +1552,8 @@ def test_native_checkpoint_save_rechecks_safety_after_temporary_subclass_bypass(
 
     assert not checkpoint.exists()
     assert "_require_finite_committed_update" not in vars(target)
-    assert (
-        target._failure_reason
-        == "checkpoint boundary has invalid optimizer or residual gradients"
-    )
+    assert bypass_called is False
+    assert target._failure_reason == "checkpoint_export_state_drift"
     assert target._update_incomplete is True
 
 
