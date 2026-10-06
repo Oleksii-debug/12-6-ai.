@@ -211,6 +211,19 @@ def test_complete_checkpoint_replays_torch_numeric_policy(
     loader: Any,
 ) -> None:
     ambient = core.capture_rng_state()
+
+    class PolicyObservingAdamW(torch.optim.AdamW):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.observed_numeric_policy: tuple[str, str] | None = None
+
+        def load_state_dict(self, state_dict: Any):
+            self.observed_numeric_policy = (
+                str(torch.get_default_dtype()),
+                torch.get_float32_matmul_precision(),
+            )
+            return super().load_state_dict(state_dict)
+
     try:
         torch.set_default_dtype(torch.float64)
         torch.set_float32_matmul_precision("high")
@@ -229,7 +242,18 @@ def test_complete_checkpoint_replays_torch_numeric_policy(
         torch.set_default_dtype(torch.float32)
         torch.set_float32_matmul_precision("highest")
         target_model = torch.nn.Linear(3, 3, dtype=torch.float32)
-        target = Trainer(target_model, config)
+        target_optimizer = PolicyObservingAdamW(
+            target_model.parameters(),
+            lr=config.learning_rate,
+            betas=config.betas,
+            eps=config.eps,
+            weight_decay=config.weight_decay,
+        )
+        target = Trainer(
+            target_model,
+            config,
+            optimizer=target_optimizer,
+        )
         loader.load_trainer_checkpoint(
             checkpoint,
             model=target_model,
@@ -237,6 +261,10 @@ def test_complete_checkpoint_replays_torch_numeric_policy(
             restore_rng=True,
         )
 
+        assert target_optimizer.observed_numeric_policy == (
+            "torch.float64",
+            "high",
+        )
         assert torch.get_default_dtype() is torch.float64
         assert torch.get_float32_matmul_precision() == "high"
         assert target._failure_reason is None
