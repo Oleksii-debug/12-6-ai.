@@ -16,7 +16,6 @@ from twelve_six.data._data232_decontamination_matching import (
     DecontaminationError,
     _fingerprint,
     _iter_blocked_pairs,
-    _iter_train_pairs,
     _iter_viable_train_pairs,
     _pair,
     _thresholds,
