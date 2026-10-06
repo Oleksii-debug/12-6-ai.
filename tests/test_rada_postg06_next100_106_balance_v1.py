@@ -437,9 +437,11 @@ def test_compare_outputs_requires_byte_identity_and_seals_proof(
     a.mkdir()
     b.mkdir()
     receipt_core = {
+        "schema": target.RECEIPT_SCHEMA,
         "execution_head_sha": "c" * 40,
         "balance_result_identity_sha256": "1" * 64,
         "balance_binding_identity_sha256": "2" * 64,
+        **target.ZERO_CREDIT,
     }
     receipt = {
         **receipt_core,
@@ -475,18 +477,28 @@ def test_compare_outputs_requires_byte_identity_and_seals_proof(
         target.compare_outputs(a, b, tmp_path / "second-proof.json")
 
 
-def test_write_output_dir_is_immutable(tmp_path: Path) -> None:
+def test_write_output_dir_is_immutable_and_resumable(tmp_path: Path) -> None:
     output = tmp_path / "out"
-    values = {"execution-receipt": {"value": 1}}
+    values = {
+        "composition-dedup-proof": {"value": 1},
+        "next100-input": {"value": 2},
+        "balance-result": {"value": 3},
+        "balance-binding": {"value": 4},
+        "execution-receipt": {"value": 5},
+    }
     target.write_output_dir(output, values)
     assert (output / "execution-receipt.json").read_bytes() == (
-        target.canonical_line({"value": 1})
+        target.canonical_line({"value": 5})
     )
+
+    target.write_output_dir(output, values)
+    divergent = copy.deepcopy(values)
+    divergent["balance-result"]["value"] = 99
     with pytest.raises(
         target.RadaPostG06BalanceError,
-        match="already exists",
+        match="refusing to overwrite divergent durable evidence",
     ):
-        target.write_output_dir(output, values)
+        target.write_output_dir(output, divergent)
 
 def test_resolve_existing_path_normalizes_existing_paths(tmp_path: Path) -> None:
     existing = tmp_path / "existing"
@@ -527,4 +539,101 @@ def test_verify_module_provenance_missing_file_fails_closed(
         match="module provenance drift: canonical.py",
     ):
         target.verify_module_provenance(MissingModule(), "canonical.py")
+
+def _write_two_clean_fixture(output: Path, *, zero_credit_override: dict | None = None) -> None:
+    output.mkdir()
+    receipt_core = {
+        "schema": target.RECEIPT_SCHEMA,
+        "execution_head_sha": "c" * 40,
+        "balance_result_identity_sha256": "1" * 64,
+        "balance_binding_identity_sha256": "2" * 64,
+        **target.ZERO_CREDIT,
+    }
+    if zero_credit_override:
+        receipt_core.update(zero_credit_override)
+    receipt = {
+        **receipt_core,
+        "receipt_identity_sha256": target.sha256(target.canonical(receipt_core)),
+    }
+    payloads = {
+        "composition-dedup-proof": {"x": 1},
+        "next100-input": {"x": 2},
+        "balance-result": {"x": 3},
+        "balance-binding": {"x": 4},
+        "execution-receipt": receipt,
+    }
+    for name, value in payloads.items():
+        (output / f"{name}.json").write_bytes(target.canonical_line(value))
+
+
+def test_compare_outputs_rejects_same_directory(tmp_path: Path) -> None:
+    output = tmp_path / "same"
+    _write_two_clean_fixture(output)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="two-clean output directories must be distinct",
+    ):
+        target.compare_outputs(output, output, tmp_path / "proof.json")
+
+
+def test_compare_outputs_rejects_coherently_resealed_zero_credit_drift(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-zero"
+    b = tmp_path / "b-zero"
+    override = {"training_executed": True}
+    _write_two_clean_fixture(a, zero_credit_override=override)
+    _write_two_clean_fixture(b, zero_credit_override=override)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="execution receipt zero-credit drift: training_executed",
+    ):
+        target.compare_outputs(a, b, tmp_path / "proof-zero.json")
+
+
+def test_write_output_dir_recovers_matching_interrupted_temp(tmp_path: Path) -> None:
+    output = tmp_path / "resume"
+    output.mkdir()
+    values = {
+        "composition-dedup-proof": {"value": 1},
+        "next100-input": {"value": 2},
+        "balance-result": {"value": 3},
+        "balance-binding": {"value": 4},
+        "execution-receipt": {"value": 5},
+    }
+    payload = target.canonical_line(values["composition-dedup-proof"])
+    temp = output / "composition-dedup-proof.json.tmp"
+    temp.write_bytes(payload)
+
+    target.write_output_dir(output, values)
+
+    assert (output / "composition-dedup-proof.json").read_bytes() == payload
+    assert not temp.exists()
+
+
+def test_write_output_dir_commits_receipt_last(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture(path: Path, payload: bytes, *, label: str) -> None:
+        labels.append(label)
+
+    monkeypatch.setattr(target, "write_immutable_bytes", capture)
+    values = {
+        "composition-dedup-proof": {"value": 1},
+        "next100-input": {"value": 2},
+        "balance-result": {"value": 3},
+        "balance-binding": {"value": 4},
+        "execution-receipt": {"value": 5},
+    }
+    target.write_output_dir(tmp_path / "ordered", values)
+    assert labels == [
+        "composition-dedup-proof",
+        "next100-input",
+        "balance-result",
+        "balance-binding",
+        "execution receipt",
+    ]
 
