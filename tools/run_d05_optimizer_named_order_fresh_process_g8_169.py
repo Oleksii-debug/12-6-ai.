@@ -106,7 +106,7 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def _read_json(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise RuntimeError(f"expected JSON object: {path}")
+        raise TypeError(f"expected JSON object: {path}")
     return data
 
 
