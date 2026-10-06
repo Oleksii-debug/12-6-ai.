@@ -2145,10 +2145,27 @@ class Trainer:
 
     def state_dict(self) -> TrainerState:
         """Return checkpoint-safe trainer state only after committed optimizer steps."""
+        # Reject an already-poisoned trainer before any fingerprint traversal.
+        # Fingerprints intentionally inspect optimizer/model ownership deeply; on
+        # a failed transition those structures may themselves be malformed and
+        # must not replace the authoritative recovery-required diagnostic with a
+        # lower-level ValueError/TypeError.
+        Trainer._assert_trainable(self)
+        # A normal incomplete accumulation is retryable and must fail before
+        # fingerprinting sees its legitimate pending gradients.
+        Trainer.assert_accumulation_boundary(self)
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
-        model_before = self._model_export_fingerprint()
-        optimizer_before = self._optimizer_live_fingerprint()
-        scheduler_before = self._canonical_lambda_lr_live_state()
+        try:
+            model_before = self._model_export_fingerprint()
+            optimizer_before = self._optimizer_live_fingerprint()
+            scheduler_before = self._canonical_lambda_lr_live_state()
+        except BaseException:
+            # At a committed boundary, malformed ownership/model/auxiliary
+            # state is no longer a retryable checkpoint observation.
+            self._mark_failed(
+                "checkpoint boundary has invalid optimizer or residual gradients"
+            )
+            raise
         self.assert_checkpoint_safe()
         if not _typed_state_equal(
             committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)

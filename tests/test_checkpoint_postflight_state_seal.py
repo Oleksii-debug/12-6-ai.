@@ -590,7 +590,7 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
     target = Trainer(_TinyLogits(), source.config, device="cpu")
     restore_rng = final_phase == "rng-replay"
     weight_before = target.model.weight.detach().clone()
-    lr_before = target.optimizer.param_groups[0]["lr"]
+    checkpoint_lr = source.optimizer.param_groups[0]["lr"]
     policy_before = (
         torch.are_deterministic_algorithms_enabled(),
         torch.is_deterministic_algorithms_warn_only_enabled(),
@@ -668,7 +668,7 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
     if mutation == "model":
         assert not torch.equal(target.model.weight.detach(), weight_before)
     elif mutation == "optimizer":
-        assert target.optimizer.param_groups[0]["lr"] == lr_before * 0.5
+        assert target.optimizer.param_groups[0]["lr"] == checkpoint_lr * 0.5
     elif mutation == "gradient":
         assert target.model.weight.grad is not None
         torch.testing.assert_close(
@@ -684,4 +684,3 @@ def test_final_effectful_resume_callout_cannot_hide_exact_state_drift(
         ) == policy_before
     assert vars(target)["_failure_reason"] == "checkpoint_restore_apply_failed"
     assert vars(target)["_update_incomplete"] is True
-

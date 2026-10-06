@@ -182,12 +182,18 @@ def test_post_backward_accounting_error_cannot_reuse_completed_gradients():
     before_weights = model.weight.detach().clone()
 
     trainer.optimizer.param_groups[0]["lr"] = "invalid-rate"
-    with pytest.raises(ValueError, match="convert string to float"):
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="default constant optimizer rate is malformed",
+    ):
         trainer.train_microbatch(_BATCH)
 
-    assert trainer.micro_step == 2  # Backward happened but no update was committed.
+    # The hardened first-party optimizer contract rejects before the second
+    # microbatch consumes exposure. The earlier pending accumulation is poisoned
+    # and its gradients are discarded rather than silently replayed.
+    assert trainer.micro_step == 1
     assert trainer.optimizer_step == 0
-    assert trainer.tokens_seen == 4
+    assert trainer.tokens_seen == 2
     torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
     assert model.weight.grad is None
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
@@ -675,18 +681,20 @@ def test_finite_gradients_with_overflowed_aggregate_norm_never_update_model():
 
 @pytest.mark.parametrize("unsafe_rate", [float("nan"), float("inf"), float("-inf"), -0.01])
 def test_runtime_unsafe_learning_rate_cannot_commit_optimizer_step(unsafe_rate):
-    from twelve_six.training import NonFiniteTrainingError
-
     model = _TinyLogitModel()
     trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
     before_weights = model.weight.detach().clone()
     trainer.optimizer.param_groups[0]["lr"] = unsafe_rate
 
-    with pytest.raises(NonFiniteTrainingError, match="learning rate must be finite"):
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="default constant optimizer rate differs from configured learning rate",
+    ):
         trainer.train_microbatch(_BATCH)
 
-    assert trainer.micro_step == 1
+    assert trainer.micro_step == 0
     assert trainer.optimizer_step == 0
+    assert trainer.tokens_seen == 0
     assert model.weight.grad is None
     torch.testing.assert_close(model.weight, before_weights, rtol=0, atol=0)
     with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
@@ -1184,7 +1192,10 @@ def test_checkpoint_export_rejects_residual_gradient_after_committed_step():
     trainer.train_microbatch(_BATCH)
     model.weight.grad = torch.ones_like(model.weight)
 
-    with pytest.raises(RuntimeError, match="residual model gradients"):
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="residual parameter gradients",
+    ):
         trainer.state_dict()
 
     assert trainer.optimizer_step == 1
@@ -1438,7 +1449,10 @@ def test_scheduler_corrupting_weights_after_optimizer_step_cannot_report_success
     model = _TinyLogitModel()
     config = TrainerConfig(max_steps=2, warmup_steps=1, scheduler="cosine", seed=17)
     trainer = Trainer(model, config)
+    real_scheduler_step = trainer.scheduler.step
+
     def corrupt_weights_after_scheduler():
+        real_scheduler_step()
         model.weight.data.fill_(float("inf"))
 
     monkeypatch.setattr(trainer.scheduler, "step", corrupt_weights_after_scheduler)
@@ -1610,8 +1624,10 @@ def test_scheduler_corrupting_model_buffer_poisoned_after_committed_step(
     model.register_buffer("running_statistic", torch.tensor(1.0))
     config = TrainerConfig(max_steps=2, warmup_steps=1, scheduler="cosine", seed=17)
     trainer = Trainer(model, config)
+    real_scheduler_step = trainer.scheduler.step
 
     def corrupt_buffer_after_scheduler():
+        real_scheduler_step()
         model.running_statistic.fill_(float("nan"))
 
     monkeypatch.setattr(trainer.scheduler, "step", corrupt_buffer_after_scheduler)
@@ -1706,8 +1722,6 @@ def test_restore_rejects_nonfinite_scheduler_base_lr():
     from copy import deepcopy
     from dataclasses import replace
 
-    from twelve_six.training import NonFiniteTrainingError
-
     config = TrainerConfig(max_steps=2, scheduler="cosine", warmup_steps=1, seed=17)
     original = Trainer(_TinyLogitModel(), config)
     original.train_microbatch(_BATCH)
@@ -1717,13 +1731,17 @@ def test_restore_rejects_nonfinite_scheduler_base_lr():
     corrupt_scheduler["base_lrs"] = [float("inf")]
     receiver = Trainer(_TinyLogitModel(), config)
 
-    with pytest.raises(NonFiniteTrainingError, match="scheduler has non-finite state"):
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="default scheduler rate differs from configured committed schedule",
+    ):
         receiver.load_state_dict(replace(snapshot, scheduler=corrupt_scheduler))
 
-    assert receiver._failure_reason.startswith("trainer state restore failed")
-    assert receiver._update_incomplete is True
-    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
-        receiver.state_dict()
+    assert receiver._failure_reason is None
+    assert receiver._update_incomplete is False
+    assert not receiver.optimizer.state
+    receiver.load_state_dict(snapshot)
+    assert receiver.state_dict().optimizer_step == snapshot.optimizer_step
 
 
 def test_scheduler_corrupting_internal_base_lrs_rejects_completed_update(

@@ -23,7 +23,7 @@ def _identity(parameter_count: int) -> CheckpointIdentity:
         run_manifest_hash="e" * 64,
         training_config={"probe": True},
         seed=17,
-        precision="float32",
+        precision="fp32",
         step=0,
         tokens_seen=0,
         optimizer={"name": "AdamW"},
