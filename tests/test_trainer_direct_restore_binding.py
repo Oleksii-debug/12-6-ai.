@@ -365,3 +365,102 @@ def test_direct_restore_preserves_lookup_exception_and_poisons_detected_drift() 
     assert trainer.tokens_seen == 1
     assert trainer._failure_reason == "trainer restore state changed during loader lookup"
     assert trainer._update_incomplete is False
+
+
+class ApplyStateDriftAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.mutation: str | None = None
+        self.armed = False
+
+    def load_state_dict(self, state_dict):
+        result = super().load_state_dict(state_dict)
+        if self.armed:
+            self.armed = False
+            assert self.owner is not None
+            if self.mutation == "counter":
+                self.owner.tokens_seen = 1
+            elif self.mutation == "config":
+                object.__setattr__(
+                    self.owner.config,
+                    "learning_rate",
+                    self.owner.config.learning_rate * 2.0,
+                )
+            elif self.mutation == "model":
+                with torch.no_grad():
+                    self.owner.model.weight.add_(1.0)
+            elif self.mutation == "auxiliary":
+                self.param_groups[0]["lr"] *= 0.5
+            elif self.mutation == "gradient":
+                self.owner.model.weight.grad = torch.ones_like(self.owner.model.weight)
+            else:
+                raise AssertionError(f"unknown apply mutation: {self.mutation}")
+        return result
+
+
+class ZeroGradAuxiliaryDriftAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.armed = False
+
+    def zero_grad(self, *args, **kwargs):
+        result = super().zero_grad(*args, **kwargs)
+        if self.armed:
+            self.armed = False
+            self.param_groups[0]["lr"] *= 0.5
+        return result
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("counter", "trainer restore counters changed during load"),
+        ("config", "trainer restore config changed during load"),
+        ("model", "trainer model changed during load"),
+        ("auxiliary", "optimizer export hyperparameters differ"),
+        ("gradient", "completed optimizer step left residual model gradients"),
+    ],
+)
+def test_direct_restore_rejects_apply_time_state_drift(
+    mutation: str,
+    message: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(ApplyStateDriftAdamW, config)
+    assert isinstance(optimizer, ApplyStateDriftAdamW)
+    optimizer.mutation = mutation
+
+    with pytest.raises((TrainingStateInvalidError, RuntimeError), match=message):
+        trainer.load_state_dict(state)
+
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
+    with pytest.raises(TrainingStateInvalidError, match="verified checkpoint"):
+        trainer.state_dict()
+    with pytest.raises(TrainingStateInvalidError, match="verified model"):
+        trainer.load_state_dict(state)
+
+
+def test_direct_restore_rejects_zero_grad_auxiliary_drift() -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(ZeroGradAuxiliaryDriftAdamW, config)
+    assert isinstance(optimizer, ZeroGradAuxiliaryDriftAdamW)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="optimizer export hyperparameters differ",
+    ):
+        trainer.load_state_dict(state)
+
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
