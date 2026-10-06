@@ -211,7 +211,7 @@ def pick_resource(package: dict, cfg: dict) -> dict:
             raise RuntimeError(f"locked resource id is not admissible: {expected_id}")
         return matches[0]
 
-    candidates = []
+    candidates: list[tuple[tuple[int, str], dict]] = []
     for resource in resources:
         if not is_admissible(resource):
             continue
@@ -219,11 +219,17 @@ def pick_resource(package: dict, cfg: dict) -> dict:
         folded = name.casefold()
         preference = int(any(fragment in folded for fragment in preferred))
         stamp = str(resource.get("last_modified") or resource.get("created") or "")
-        candidates.append((preference, stamp, name, resource))
+        candidates.append(((preference, stamp), resource))
     if not candidates:
         raise RuntimeError("no admissible resource candidate")
-    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
-    return candidates[0][3]
+    best_rank = max(rank for rank, _resource in candidates)
+    top_ranked = [
+        resource for rank, resource in candidates
+        if rank == best_rank
+    ]
+    if len(top_ranked) != 1:
+        raise RuntimeError("ambiguous top-ranked resource candidates")
+    return top_ranked[0]
 
 
 def candidate_record_lists(value: object) -> list[list[dict]]:

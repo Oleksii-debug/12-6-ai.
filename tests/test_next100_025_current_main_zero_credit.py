@@ -172,6 +172,37 @@ def test_current_csv_register_is_admissible_but_schema_and_archived_json_are_not
     assert selected["format"] == ".csv"
 
 
+def test_probe_rejects_ambiguous_equal_top_rank_resources() -> None:
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    current = _live_drift_resources()[0]
+    peer = {
+        **current,
+        "id": "current-csv-peer",
+        "name": "current register",
+        "url": "https://data.gov.ua/dataset/x/resource/current-csv-peer/download/register.csv",
+    }
+    package = {"resources": [current, peer]}
+
+    with pytest.raises(RuntimeError, match="ambiguous top-ranked resource candidates"):
+        snapshot.pick_resource(package, cfg)
+
+
+def test_probe_selects_unique_best_admissible_resource() -> None:
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    current = _live_drift_resources()[0]
+    older = {
+        **current,
+        "id": "older-csv",
+        "url": "https://data.gov.ua/dataset/x/resource/older-csv/download/register.csv",
+        "last_modified": "2026-09-02T11:38:00",
+    }
+    package = {"resources": [older, current]}
+
+    selected = snapshot.pick_resource(package, cfg)
+
+    assert selected["id"] == "current-csv"
+
+
 def test_locked_expected_id_cannot_bypass_archive_admissibility() -> None:
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
     cfg["mode"] = "LOCKED"
