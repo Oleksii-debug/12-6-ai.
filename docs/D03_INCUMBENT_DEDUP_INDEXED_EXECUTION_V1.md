@@ -13,13 +13,20 @@ This package changes **execution mechanics only**. It does not define a new dupl
 - equal `origin_key`;
 - equal raw SHA-256;
 - equal normalized SHA-256;
-- a shared content shingle within the natural/code modality class;
-- a shared code-skeleton shingle for code-copy candidates;
-- a shared normalized qualifying edge line for publisher-boilerplate candidates.
+- threshold-aware symmetric content-shingle prefixes within the natural/code modality
+  class. The execution floors are 0.88 natural and 0.90 code: each is runtime-checked
+  to be no stronger than both the incumbent fragment-containment predicate and the
+  containment lower bound implied by the incumbent near-match Jaccard predicate;
+- a 0.90 code-skeleton containment floor, runtime-checked below the containment lower
+  bound implied by the incumbent code-copy Jaccard predicate;
+- a weighted normalized-edge prefix whose omitted complement has fewer than 80
+  characters, so every publisher-boilerplate pair must intersect the retained prefix.
 
 Every retained pair is still passed to the exact incumbent `v1._pair_matches`. V3 stable-object and explicit-lineage matches remain delegated to exact `v3._lineage_matches`; capacity/independence summaries remain delegated to exact `v3._summary_for_ids`.
 
-If runtime source identity drifts, a relevant threshold becomes non-positive or type-coerced, the candidate budget is exceeded, or payload coverage differs, execution fails closed. The package never silently switches thresholds or drops a known candidate.
+Prefixes are chosen from the least-frequent postings deterministically, but rarity affects only execution order/width: the prefix cardinality proof is independent of token choice. Symmetric prefix-vs-full posting joins preserve containment candidates even when one document is much larger than the other. Exact-origin/raw/normalized indexes remain unchanged.
+
+If runtime source identity drifts, a relevant threshold becomes non-positive or type-coerced, the candidate, posting, or pair-expansion budget is exceeded, or payload coverage differs, execution fails closed. The package never silently switches thresholds or drops a known candidate.
 
 ## Differential qualification
 

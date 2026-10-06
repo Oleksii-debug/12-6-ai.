@@ -143,7 +143,10 @@ def test_executable_attestation_rejects_in_memory_callable_substitution(tmp_path
 
 @_isolated_indexed_test
 def test_candidate_index_contains_each_incumbent_necessary_condition():
-    shared_edge = "This shared publisher footer has comfortably more than thirty two characters."
+    shared_edge = (
+        "This shared publisher footer is deliberately longer than eighty normalized "
+        "characters so it can satisfy the incumbent boilerplate predicate."
+    )
     rows = [
         _fp("a", origin="same-origin"),
         _fp("b", origin="same-origin"),
@@ -205,6 +208,97 @@ def test_repeated_key_amplification_collapses_identical_bucket_signature():
     assert stats["unique_candidate_pairs"] == 45
     assert stats["pair_expansion_attempts"] == 45
     assert stats["unique_bucket_signatures"] == 1
+
+
+@_isolated_indexed_test
+def test_prefix_overlap_floors_are_conservative_against_pinned_predicates():
+    assert indexed._prefix_overlap_thresholds() == (0.88, 0.90, 0.90)
+
+
+@_isolated_indexed_test
+def test_high_frequency_single_shingle_noise_is_pruned_before_quadratic_pairs():
+    rows = []
+    for index in range(100):
+        shingles = frozenset(
+            {"shared-noise", *(f"unique-{index}-{offset}" for offset in range(20))}
+        )
+        rows.append(_fp(str(index), shingles=shingles))
+    pairs, stats = indexed.candidate_pair_indices_with_stats(FakeV1, rows)
+    assert pairs == []
+    assert stats["unique_candidate_pairs"] == 0
+
+
+@_isolated_indexed_test
+def test_threshold_boundary_content_and_skeleton_pairs_are_retained():
+    natural_large = frozenset(f"natural-{index}" for index in range(5))
+    natural_subset = frozenset(f"natural-{index}" for index in range(4))
+    code_large = frozenset(f"code-{index}" for index in range(100))
+    code_subset = frozenset(f"code-{index}" for index in range(86))
+    skeleton_large = frozenset(f"skeleton-{index}" for index in range(50))
+    skeleton_subset = frozenset(f"skeleton-{index}" for index in range(41))
+    rows = [
+        _fp("natural-a", shingles=natural_large),
+        _fp("natural-b", shingles=natural_subset),
+        _fp("code-a", modality="code", shingles=code_large, skeleton=skeleton_large),
+        _fp("code-b", modality="code", shingles=code_subset, skeleton=skeleton_subset),
+    ]
+    pairs = set(indexed.candidate_pair_indices(FakeV1, rows))
+    assert (0, 1) in pairs
+    assert (2, 3) in pairs
+
+
+@_isolated_indexed_test
+def test_fragment_containment_candidate_survives_low_jaccard():
+    large = frozenset(f"fragment-{index}" for index in range(100))
+    contained = frozenset(f"fragment-{index}" for index in range(20))
+    pairs = set(
+        indexed.candidate_pair_indices(
+            FakeV1,
+            [_fp("large", shingles=large), _fp("contained", shingles=contained)],
+        )
+    )
+    assert (0, 1) in pairs
+
+
+@_isolated_indexed_test
+def test_small_set_exhaustion_retains_every_natural_incumbent_overlap_candidate():
+    universe = tuple(f"token-{index}" for index in range(5))
+    subsets = [
+        frozenset(
+            universe[index]
+            for index in range(len(universe))
+            if mask & (1 << index)
+        )
+        for mask in range(1, 1 << len(universe))
+    ]
+    rows = [_fp(str(index), shingles=subset) for index, subset in enumerate(subsets)]
+    candidates = set(indexed.candidate_pair_indices(FakeV1, rows))
+
+    for left_index, left in enumerate(subsets):
+        for right_index in range(left_index + 1, len(subsets)):
+            right = subsets[right_index]
+            intersection = len(left & right)
+            containment = intersection / min(len(left), len(right))
+            jaccard = intersection / len(left | right)
+            near = jaccard >= indexed.EXPECTED_THRESHOLDS["natural_near_jaccard"]
+            fragment = (
+                containment
+                >= indexed.EXPECTED_THRESHOLDS["natural_fragment_containment"]
+            )
+            if near or fragment:
+                assert (left_index, right_index) in candidates
+
+
+@_isolated_indexed_test
+def test_boilerplate_weight_prefix_retains_multi_line_eighty_character_overlap():
+    shared_a = "A" * 40
+    shared_b = "B" * 45
+    rows = [
+        _fp("left", text=f"head\n{shared_a}\n{shared_b}\ntail"),
+        _fp("right", text=f"other\n{shared_a}\n{shared_b}\nend"),
+    ]
+    pairs = set(indexed.candidate_pair_indices(FakeV1, rows))
+    assert (0, 1) in pairs
 
 
 @_isolated_indexed_test
