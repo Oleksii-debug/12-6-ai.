@@ -164,6 +164,7 @@ class Trainer:
         "__setattr__",
         "_checkpoint_inert_copy",
         "_checkpoint_rng_fingerprint",
+        "_checkpoint_autograd_mode",
         "_canonical_config_state",
         "_canonical_model_members",
         "_canonical_optimizer_storage",
@@ -405,6 +406,15 @@ class Trainer:
             emit(f"torch-cuda-{index}".encode("ascii"), payload)
 
         return digest.hexdigest()
+
+    @staticmethod
+    def _checkpoint_autograd_mode() -> tuple[bool, bool]:
+        """Snapshot thread-local autograd modes without changing them."""
+
+        return (
+            bool(torch.is_grad_enabled()),
+            bool(torch.is_inference_mode_enabled()),
+        )
 
     @staticmethod
     def _canonical_config_state(config: Any) -> dict[str, Any]:
@@ -3113,6 +3123,7 @@ class Trainer:
         Trainer._require_deterministic_policy(self)
         Trainer._require_model_training_mode(self)
         expected_rng_fingerprint = Trainer._checkpoint_rng_fingerprint()
+        expected_autograd_mode = Trainer._checkpoint_autograd_mode()
 
         expected_model = entry_attrs["model"]
         expected_optimizer = entry_attrs["optimizer"]
@@ -3187,6 +3198,8 @@ class Trainer:
                     Trainer._require_deterministic_policy(self)
                 except BaseException:
                     return f"trainer deterministic policy changed during {phase}"
+                if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
+                    return f"trainer autograd mode changed during {phase}"
                 if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
                     return f"trainer RNG state changed during {phase}"
                 Trainer._require_no_residual_model_gradients(self)
@@ -3417,6 +3430,10 @@ class Trainer:
             # an already-drifted process policy or eval-mode model.
             Trainer._require_deterministic_policy(self)
             Trainer._require_model_training_mode(self)
+            if Trainer._checkpoint_autograd_mode() != expected_autograd_mode:
+                raise TrainingStateInvalidError(
+                    "trainer autograd mode changed during load"
+                )
             if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
                 raise TrainingStateInvalidError(
                     "trainer RNG state changed during load"
