@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: d03-rada-current-data232-g6-141-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   execute-two-clean:
