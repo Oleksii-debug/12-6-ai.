@@ -3411,6 +3411,12 @@ class Trainer:
                     raise TrainingStateInvalidError(
                         "trainer restore policy changed during load"
                     )
+            # Every effectful component loader must return under the same
+            # reproducibility policy and model mode before the next loader runs.
+            # The final validation below is too late: a later loader could observe
+            # an already-drifted process policy or eval-mode model.
+            Trainer._require_deterministic_policy(self)
+            Trainer._require_model_training_mode(self)
             if Trainer._checkpoint_rng_fingerprint() != expected_rng_fingerprint:
                 raise TrainingStateInvalidError(
                     "trainer RNG state changed during load"
