@@ -2946,6 +2946,21 @@ class Trainer:
             scheduler_state = copy.deepcopy(state.scheduler)
             scaler_state = copy.deepcopy(state.scaler)
 
+            Trainer._require_finite_state_tree(
+                optimizer_state,
+                "checkpoint optimizer",
+            )
+            if scheduler_state is not None:
+                Trainer._require_finite_state_tree(
+                    scheduler_state,
+                    "checkpoint scheduler",
+                )
+            if scaler_state is not None:
+                Trainer._require_finite_state_tree(
+                    scaler_state,
+                    "checkpoint gradient scaler",
+                )
+
             # Reject known contract mismatches before touching live component state.
             if (scheduler_state is None) != (self.scheduler is None):
                 raise ValueError("scheduler state/config mismatch")
