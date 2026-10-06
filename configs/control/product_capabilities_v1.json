@@ -1,0 +1,405 @@
+{
+  "schema_version": 1,
+  "observed_main_sha": "019944d5fe12334791f05f1232d13de4a12e37d3",
+  "observed_main_ci": {
+    "run_id": 37248299503,
+    "conclusion": "success"
+  },
+  "capabilities": [
+    {
+      "capability_id": "model-spec-identity",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.model.ModelSpec",
+      "dependencies": [],
+      "journey_ids": [
+        "developer-model-contract"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "model-resource-envelope",
+          "level": "component",
+          "command": "pytest -q tests/test_model341_current_main_resource_envelope_v1.py"
+        },
+        {
+          "vector_id": "model-resource-receipt",
+          "level": "integration",
+          "command": "pytest -q tests/test_model341_current_main_resource_receipt_v1.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "versioned ModelSpec identity usable by project-owned model and training surfaces",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "byte-tokenizer-runtime",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.tokenization.byte.ByteTokenizer",
+      "dependencies": [],
+      "journey_ids": [
+        "researcher-prepare-training-inputs"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "tokenizer-runtime",
+          "level": "component",
+          "command": "pytest -q tests/test_tokenization.py"
+        },
+        {
+          "vector_id": "tokenizer-migration",
+          "level": "integration",
+          "command": "pytest -q tests/test_tokenizer_migration_compatibility.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "project-owned byte tokenizer runtime and compatibility checks",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "deterministic-packing-mechanics",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.packing.manifest.PackingManifest",
+      "dependencies": [
+        "byte-tokenizer-runtime"
+      ],
+      "journey_ids": [
+        "researcher-prepare-training-inputs"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "packing-manifest",
+          "level": "component",
+          "command": "pytest -q tests/test_packing_manifest.py"
+        },
+        {
+          "vector_id": "packing-stream",
+          "level": "integration",
+          "command": "pytest -q tests/test_packing.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "deterministic packing mechanics over admitted tokenizer/split inputs",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "checkpoint-integrity-mechanics",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.checkpoint.core",
+      "dependencies": [
+        "model-spec-identity"
+      ],
+      "journey_ids": [
+        "operator-resume-checkpoint"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": true
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "checkpoint-schema",
+          "level": "component",
+          "command": "pytest -q tests/test_checkpoint_manifest_schema.py"
+        },
+        {
+          "vector_id": "checkpoint-roundtrip",
+          "level": "integration",
+          "command": "pytest -q tests/test_checkpointing.py tests/test_checkpoint_corruption_fail_closed.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "fail-closed checkpoint serialization, integrity validation and corruption rejection mechanics",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "windows-operator-cli-packaging",
+      "schema_version": 1,
+      "status": "AVAILABLE",
+      "component_contract": "twelve_six.windows_operator_cli",
+      "dependencies": [],
+      "journey_ids": [
+        "operator-windows-cli"
+      ],
+      "environments": [
+        {
+          "environment_id": "python-3.11",
+          "supported": true
+        },
+        {
+          "environment_id": "windows-11-physical",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "windows-preflight-contract",
+          "level": "component",
+          "command": "pytest -q tests/test_r01_windows_operator_preflight.py"
+        },
+        {
+          "vector_id": "windows-cli-packaging",
+          "level": "integration",
+          "command": "pytest -q tests/test_windows_operator_cli_packaging.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "main-ci",
+          "target": "github-actions:37248299503"
+        }
+      ],
+      "integrated_result": "packaged Python operator CLI mechanics; this does not claim physical Windows/NVDA acceptance",
+      "unavailable_reason": null
+    },
+    {
+      "capability_id": "replaceable-cognitive-core-shell",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.system_architecture.replace_cognitive_core",
+      "dependencies": [],
+      "journey_ids": [
+        "developer-replace-cognitive-core"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "section0-architecture",
+          "level": "component",
+          "command": "pytest -q tests/test_system_architecture_section0.py"
+        },
+        {
+          "vector_id": "section0-product-stack",
+          "level": "integration",
+          "command": "pytest -q tests/test_section_closure_registry.py tests/test_system_architecture_section0.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "section0-pr",
+          "target": "pull-request:3074"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Section 0 candidate PR #3074 is not yet integrated and terminally qualified on accepted main"
+    },
+    {
+      "capability_id": "unified-generation-identity",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "twelve_six.artifact_identity.GenerationIdentityManifest",
+      "dependencies": [
+        "replaceable-cognitive-core-shell"
+      ],
+      "journey_ids": [
+        "developer-replace-cognitive-core"
+      ],
+      "environments": [
+        {
+          "environment_id": "github-actions-ubuntu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [
+        {
+          "vector_id": "section1-identities",
+          "level": "component",
+          "command": "pytest -q tests/test_artifact_identity_section1.py"
+        },
+        {
+          "vector_id": "section1-stack",
+          "level": "integration",
+          "command": "pytest -q tests/test_section_closure_registry.py tests/test_artifact_identity_section1.py"
+        }
+      ],
+      "evidence_targets": [
+        {
+          "evidence_id": "section1-pr",
+          "target": "pull-request:3076"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Section 1 is a draft stacked candidate and cannot be accepted before Section 0"
+    },
+    {
+      "capability_id": "learned-20m-base",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "12-6.learned-20m-base",
+      "dependencies": [
+        "model-spec-identity",
+        "byte-tokenizer-runtime",
+        "deterministic-packing-mechanics",
+        "checkpoint-integrity-mechanics"
+      ],
+      "journey_ids": [
+        "operator-local-learned-model"
+      ],
+      "environments": [
+        {
+          "environment_id": "local-free-cpu",
+          "supported": false
+        },
+        {
+          "environment_id": "server-gpu",
+          "supported": false
+        }
+      ],
+      "test_vectors": [],
+      "evidence_targets": [
+        {
+          "evidence_id": "learned20m-gate",
+          "target": "section:53-57"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "No canonical lawful learned-20M weights have been integrated; current README stage is pre-learned-20M terminal qualification"
+    },
+    {
+      "capability_id": "windows-nvda-final-product",
+      "schema_version": 1,
+      "status": "UNAVAILABLE",
+      "component_contract": "12-6.windows-nvda-product",
+      "dependencies": [
+        "windows-operator-cli-packaging",
+        "learned-20m-base"
+      ],
+      "journey_ids": [
+        "operator-windows-product"
+      ],
+      "environments": [
+        {
+          "environment_id": "windows-11-physical",
+          "supported": false
+        }
+      ],
+      "test_vectors": [],
+      "evidence_targets": [
+        {
+          "evidence_id": "windows-nvda-gate",
+          "target": "section:87,90"
+        }
+      ],
+      "integrated_result": null,
+      "unavailable_reason": "Physical Windows 11/NVDA acceptance and packaged whole-product journey are not yet qualified"
+    }
+  ],
+  "journeys": [
+    {
+      "journey_id": "developer-model-contract",
+      "title": "Developer constructs and identifies a Base model contract",
+      "capability_ids": [
+        "model-spec-identity"
+      ]
+    },
+    {
+      "journey_id": "researcher-prepare-training-inputs",
+      "title": "Researcher tokenizes and deterministically packs admitted inputs",
+      "capability_ids": [
+        "byte-tokenizer-runtime",
+        "deterministic-packing-mechanics"
+      ]
+    },
+    {
+      "journey_id": "operator-resume-checkpoint",
+      "title": "Operator validates and resumes from a project checkpoint",
+      "capability_ids": [
+        "checkpoint-integrity-mechanics"
+      ]
+    },
+    {
+      "journey_id": "operator-windows-cli",
+      "title": "Operator invokes the packaged Windows-oriented CLI mechanics",
+      "capability_ids": [
+        "windows-operator-cli-packaging"
+      ]
+    },
+    {
+      "journey_id": "developer-replace-cognitive-core",
+      "title": "Developer replaces the cognitive core without rewriting the product shell",
+      "capability_ids": [
+        "replaceable-cognitive-core-shell",
+        "unified-generation-identity"
+      ]
+    },
+    {
+      "journey_id": "operator-local-learned-model",
+      "title": "Operator runs a canonical learned-20M Base locally",
+      "capability_ids": [
+        "learned-20m-base"
+      ]
+    },
+    {
+      "journey_id": "operator-windows-product",
+      "title": "NVDA user runs the packaged Windows whole-product journey",
+      "capability_ids": [
+        "windows-operator-cli-packaging",
+        "learned-20m-base",
+        "windows-nvda-final-product"
+      ]
+    }
+  ]
+}
