@@ -1,0 +1,59 @@
+name: D05 save autograd seal G8-164e
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.16"
+          cache: pip
+
+      - name: Bind exact stacked save source and focused closure
+        env:
+          SOURCE_SHA: 3ad69f8300cb7c699233a3d0cdaa0997c6210b6b
+          TRAINER_ADAPTER_BLOB: 740f6c0acbfcf67fa8ee91c70e1730991858830b
+          PROGRESS_TRAINER_BLOB: 194549e472e4973e69d56d4b03710f10e65c739e
+          TEST_BLOB: d52009f2bb8fc3aa65b6afe006fb71ed7c32a66f
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git hash-object src/twelve_six/checkpoint/trainer_adapter.py)" = "$TRAINER_ADAPTER_BLOB"
+          test "$(git hash-object src/twelve_six/checkpoint/progress_trainer.py)" = "$PROGRESS_TRAINER_BLOB"
+          test "$(git hash-object tests/test_checkpoint_rng_completeness_d02.py)" = "$TEST_BLOB"
+
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Compile focused Python paths
+        run: |
+          python -m py_compile             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/progress_trainer.py             tests/test_checkpoint_rng_completeness_d02.py
+
+      - name: Lint exact stacked closure
+        run: |
+          python -m ruff check             src/twelve_six/checkpoint/trainer_adapter.py             src/twelve_six/checkpoint/progress_trainer.py             tests/test_checkpoint_rng_completeness_d02.py
+
+      - name: Execute save publication and restore regressions
+        run: |
+          python -m pytest -q tests/test_checkpoint_rng_completeness_d02.py
+
+      - name: Prove carrier remains clean
+        run: |
+          test -z "$(git status --porcelain)"
