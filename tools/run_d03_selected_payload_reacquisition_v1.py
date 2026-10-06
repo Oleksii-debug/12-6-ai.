@@ -485,11 +485,23 @@ def reproduce_post_qp_payloads(
         expected_input_rows_sha256=projection_sha,
         expected_execution_identity_sha256=quality_identity,
     )
-    quality_survivors, _quality_stats = clean._materialize_quality_survivors(
-        quality_inputs,
-        metadata,
-        quality,
+    partial_materializer = getattr(
+        module,
+        "_materialize_quality_survivors_with_partial",
+        None,
     )
+    if partial_materializer is None:
+        quality_survivors, _quality_stats = clean._materialize_quality_survivors(
+            quality_inputs,
+            metadata,
+            quality,
+        )
+    else:
+        quality_survivors, _quality_stats, _partial_detail = partial_materializer(
+            quality_inputs,
+            metadata,
+            quality,
+        )
 
     privacy_inputs = clean._quality_records_for_privacy(quality_survivors)
     privacy_projection = clean._input_projection(privacy_inputs)
