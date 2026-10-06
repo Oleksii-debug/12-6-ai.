@@ -1,0 +1,227 @@
+name: D03 selected raw assembly G6 161
+
+on:
+  pull_request:
+    branches:
+      - execution/3063-selected-raw-plan-g6-160-20261006
+    paths:
+      - ".github/workflows/d03_selected_raw_assembly_g6_161.yml"
+      - "tools/run_d03_selected_raw_assembly_v1.py"
+      - "tests/test_run_d03_selected_raw_assembly_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-selected-raw-assembly-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-selected-raw-assembly:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/3068-selected-raw-rematerialization-g6-161-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "ec125c5368d99bde15c5d297496437caca7e5b03"
+      PLAN_RUNNER_BLOB: "5a24c137d6368538f170cdd6c8fdf8709a43f7c0"
+      ASSEMBLER_BLOB: "e1e428a6d26c96f52cf900018d4e3da3cd21963f"
+      TEST_BLOB: "6b428fd35363a28a0469272e5cc502ba53720f98"
+      PLAN_ARTIFACT_ID: "11443423543"
+      PLAN_ZIP_SHA256: "9717f36a4956aba5432f111a0bf58f6aa70dc752bcd28676203da825124eec01"
+      PLAN_FILE_SHA256: "8e526a876ea2a2a05ee55847d5669b594acd6c72f13861b690a30b69ef42b996"
+      EXPECTED_PLAN_ID: "ddf42773bb7ac4856e07c7b8e22b137581f02b79e231f0740b12e867c0981400"
+      BALANCE_ARTIFACT_ID: "11441000276"
+      BALANCE_ZIP_SHA256: "85ae6ace4914cd8fae86cef71b8ac63cf73c97b1386ff7e01a716692ddce6c10"
+      COMPOSITION_FILE_SHA256: "8a737ca830d0e98095b258c31bb1fc6f5e0c294384484b3f266dad654522850e"
+      BALANCE_FILE_SHA256: "655eee7aa4fd0aeb7d124405a420a7148efb0474951f9843e0476bc4f05b56d4"
+      BASE_ARTIFACT_ID: "11181030848"
+      BASE_ZIP_SHA256: "3eef740b52e9db962b01b63a0a48474f735694dca4c3848e3e9c53d8cd7f1988"
+      BASE_RAW_SHA256: "3aa6235e07da4fa50c9642639cc0d93d7da22a6b602d822c7c7ca6e1f4a7486a"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact child scope and run focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          mapfile -t changed < <(git diff --name-only "$PARENT_HEAD"..HEAD | sort)
+          test "${#changed[@]}" -eq 3
+          test "${changed[0]}" = ".github/workflows/d03_selected_raw_assembly_g6_161.yml"
+          test "${changed[1]}" = "tests/test_run_d03_selected_raw_assembly_v1.py"
+          test "${changed[2]}" = "tools/run_d03_selected_raw_assembly_v1.py"
+          test "$(git hash-object tools/run_d03_selected_raw_materialization_plan_v1.py)" = "$PLAN_RUNNER_BLOB"
+          test "$(git hash-object tools/run_d03_selected_raw_assembly_v1.py)" = "$ASSEMBLER_BLOB"
+          test "$(git hash-object tests/test_run_d03_selected_raw_assembly_v1.py)" = "$TEST_BLOB"
+          python -m py_compile             tools/run_d03_selected_raw_materialization_plan_v1.py             tools/run_d03_selected_raw_assembly_v1.py             tests/test_run_d03_selected_raw_assembly_v1.py
+          python -m pip install --disable-pip-version-check "ruff>=0.12" pytest
+          ruff check             tools/run_d03_selected_raw_materialization_plan_v1.py             tools/run_d03_selected_raw_assembly_v1.py             tests/test_run_d03_selected_raw_assembly_v1.py
+          PYTHONPATH="$GITHUB_WORKSPACE/src"             pytest -q tests/test_run_d03_selected_raw_assembly_v1.py
+
+      - name: Fetch exact passed raw plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/plan"
+          mkdir -p "$root"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$root/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PLAN_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$root/artifact.zip" | cut -d' ' -f1)" = "$PLAN_ZIP_SHA256"
+          test "$(zipinfo -1 "$root/artifact.zip")" = "plan-1.json"
+          unzip -p "$root/artifact.zip" plan-1.json > "$root/plan.json"
+          test "$(sha256sum "$root/plan.json" | cut -d' ' -f1)" = "$PLAN_FILE_SHA256"
+
+      - name: Fetch exact qualified balance authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/balance"
+          mkdir -p "$root"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$root/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BALANCE_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$root/artifact.zip" | cut -d' ' -f1)" = "$BALANCE_ZIP_SHA256"
+          unzip -p "$root/artifact.zip" composition.json > "$root/composition.json"
+          unzip -p "$root/artifact.zip" balance-result.json > "$root/balance-result.json"
+          test "$(sha256sum "$root/composition.json" | cut -d' ' -f1)" = "$COMPOSITION_FILE_SHA256"
+          test "$(sha256sum "$root/balance-result.json" | cut -d' ' -f1)" = "$BALANCE_FILE_SHA256"
+
+      - name: Fetch exact retained base raw authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/base"
+          mkdir -p "$root"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$root/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BASE_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$root/artifact.zip" | cut -d' ' -f1)" = "$BASE_ZIP_SHA256"
+          unzip -p "$root/artifact.zip" survivor_records.jsonl > "$root/survivor_records.jsonl"
+          test "$(sha256sum "$root/survivor_records.jsonl" | cut -d' ' -f1)" = "$BASE_RAW_SHA256"
+
+      - name: Prove exact-artifact tamper rejection after base authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -             "$RUNNER_TEMP/plan/plan.json"             "$RUNNER_TEMP/balance/composition.json"             "$RUNNER_TEMP/tampered-rematerialized.jsonl" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          plan = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          composition = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          record_id = plan["family_materialization_plan"][0]["missing_record_ids"][0]
+          authority = next(
+              row
+              for row in composition["combined_inventory"]["records"]
+              if row["record_id"] == record_id
+          )
+          fake = {
+              "record_id": authority["record_id"],
+              "source_id": authority["source_id"],
+              "family": authority["family"],
+              "modality": authority["modality"],
+              "normalized_payload": "x" * authority["payload_bytes"],
+          }
+          Path(sys.argv[3]).write_text(
+              json.dumps(
+                  fake,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+          if PYTHONPATH="$GITHUB_WORKSPACE/src"             python tools/run_d03_selected_raw_assembly_v1.py               --plan-json "$RUNNER_TEMP/plan/plan.json"               --composition-json "$RUNNER_TEMP/balance/composition.json"               --balance-result-json "$RUNNER_TEMP/balance/balance-result.json"               --base-raw-jsonl "$RUNNER_TEMP/base/survivor_records.jsonl"               --rematerialized-jsonl "$RUNNER_TEMP/tampered-rematerialized.jsonl"               --output-raw-jsonl "$RUNNER_TEMP/selected-raw.jsonl"               --output-receipt "$RUNNER_TEMP/assembly-receipt.json"; then
+            echo "tampered rematerialized payload unexpectedly accepted" >&2
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/selected-raw.jsonl"
+          test ! -e "$RUNNER_TEMP/assembly-receipt.json"
+
+      - name: Publish text-free qualification receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/plan/plan.json" "$RUNNER_TEMP/qualification.json" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          plan = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          core = {
+              "schema_version": "12-6.d03-selected-raw-assembly-qualification.v1",
+              "status": "PASS_FAIL_CLOSED_ASSEMBLY_BOUNDARY",
+              "execution_head_sha": os.environ["EXECUTION_HEAD"],
+              "parent_head_sha": os.environ["PARENT_HEAD"],
+              "plan_identity_sha256": os.environ["EXPECTED_PLAN_ID"],
+              "assembler_git_blob_sha1": os.environ["ASSEMBLER_BLOB"],
+              "test_git_blob_sha1": os.environ["TEST_BLOB"],
+              "selected_record_count": plan["selected_record_count"],
+              "selected_source_bytes": plan["selected_source_bytes"],
+              "base_selected_record_count": plan["base_raw_authority"]["selected_record_count"],
+              "base_selected_payload_bytes": plan["base_raw_authority"]["selected_payload_bytes"],
+              "missing_record_count": plan["missing_record_count"],
+              "missing_payload_bytes": plan["missing_payload_bytes"],
+              "tampered_missing_payload_rejected": True,
+              "raw_payload_published": False,
+              "cluster_safe_split_complete": False,
+              "tokenizer_fit_authorized": False,
+              "authorized_optimized_target_exposure": 0,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "scale_promotion_authorized": False,
+          }
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          value = {
+              **core,
+              "qualification_identity_sha256": hashlib.sha256(raw).hexdigest(),
+          }
+          Path(sys.argv[2]).write_text(
+              json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+          rm -rf "$RUNNER_TEMP/base" "$RUNNER_TEMP/balance" "$RUNNER_TEMP/plan"
+          rm -f "$RUNNER_TEMP/tampered-rematerialized.jsonl"
+          test ! -e "$RUNNER_TEMP/selected-raw.jsonl"
+          test -s "$RUNNER_TEMP/qualification.json"
+
+      - name: Upload text-free qualification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-selected-raw-assembly-qualification-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/qualification.json
+          if-no-files-found: error
+          retention-days: 90
