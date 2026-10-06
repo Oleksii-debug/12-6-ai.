@@ -1829,6 +1829,16 @@ def _assert_d02_checkpoint_rng_policy(
             "canonical trainer configuration"
         )
 
+    missing_numeric_policy = sorted(
+        {"default_dtype", "float32_matmul_precision"} - torch_state.keys()
+    )
+    if missing_numeric_policy:
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint is missing torch numeric RNG policy "
+            f"fields: {missing_numeric_policy}; load with restore_rng=False to "
+            "opt out of exact replay"
+        )
+
     # A sealed V1 artifact can be valid while omitting one or more streams.
     # Replaying only the available streams silently changes the next batch.
     missing = sorted({"python", "numpy"} - rng_state.keys())
@@ -1934,6 +1944,27 @@ def _restore_ambient_rng_after_failed_apply(
         except BaseException as rollback_exc:  # noqa: BLE001
             exc.add_note(
                 f"PyTorch CUDA RNG rollback on device {index} also failed: "
+                f"{rollback_exc!r}"
+            )
+    if "default_dtype" in torch_state:
+        try:
+            _core._restore_torch_default_dtype(
+                torch,
+                torch_state["default_dtype"],
+            )
+        except BaseException as rollback_exc:  # noqa: BLE001
+            exc.add_note(
+                f"PyTorch default-dtype rollback also failed: {rollback_exc!r}"
+            )
+    if "float32_matmul_precision" in torch_state:
+        try:
+            _core._restore_torch_matmul_precision(
+                torch,
+                torch_state["float32_matmul_precision"],
+            )
+        except BaseException as rollback_exc:  # noqa: BLE001
+            exc.add_note(
+                "PyTorch float32-matmul-precision rollback also failed: "
                 f"{rollback_exc!r}"
             )
 
