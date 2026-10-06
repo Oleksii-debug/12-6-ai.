@@ -388,8 +388,35 @@ jobs:
             mkdir -p "$out"
             PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools"               python tools/run_d03_rada_current_data232_handoff_v1.py execute-data232                 --expected-execution-head "$EXECUTION_HEAD"                 --inventory-json "$RUNNER_TEMP/current-rada-inventory.json"                 --handoff-json "$RUNNER_TEMP/current-rada-handoff.json"                 --training-records-jsonl "$RUNNER_TEMP/current-rada-training-records.jsonl"                 --evaluation-records-jsonl "$RUNNER_TEMP/evaluation_records.jsonl"                 --reserved-binding-json "$RUNNER_TEMP/composed_reserved_binding.json"                 --expected-inventory-identity-sha256 "$INVENTORY_ID"                 --expected-handoff-identity-sha256 "$HANDOFF_ID"                 --expected-reserved-binding-identity-sha256 "$COMPOSED_BINDING_ID"                 --expected-selection-validation-identity-sha256 "$EXPECTED_SELECTION_ID"                 --expected-final-test-identity-sha256 "$EXPECTED_FINAL_ID"                 --output-report "$out/data232-report.json"                 --output-execution-evidence "$out/data232-execution-evidence.json"                 --output-result "$out/result.json"
           }
-          run_once "$RUNNER_TEMP/output-a"
-          run_once "$RUNNER_TEMP/output-b"
+          run_once "$RUNNER_TEMP/output-a" >"$RUNNER_TEMP/data232-a.log" 2>&1 &
+          pid_a=$!
+          run_once "$RUNNER_TEMP/output-b" >"$RUNNER_TEMP/data232-b.log" 2>&1 &
+          pid_b=$!
+
+          heartbeat() {
+            while kill -0 "$pid_a" 2>/dev/null || kill -0 "$pid_b" 2>/dev/null; do
+              date -u +"DATA232 heartbeat %Y-%m-%dT%H:%M:%SZ"
+              ps -o pid=,etimes=,rss=,vsz=,pcpu=,pmem=,cmd= -p "$pid_a,$pid_b" || true
+              sleep 60
+            done
+          }
+          heartbeat &
+          heartbeat_pid=$!
+
+          status_a=0
+          status_b=0
+          wait "$pid_a" || status_a=$?
+          wait "$pid_b" || status_b=$?
+          kill "$heartbeat_pid" 2>/dev/null || true
+          wait "$heartbeat_pid" 2>/dev/null || true
+
+          cat "$RUNNER_TEMP/data232-a.log"
+          cat "$RUNNER_TEMP/data232-b.log"
+          if [ "$status_a" -ne 0 ] || [ "$status_b" -ne 0 ]; then
+            echo "DATA232 fresh-process failure: pass-a=$status_a pass-b=$status_b" >&2
+            exit 1
+          fi
+
           cmp "$RUNNER_TEMP/output-a/data232-report.json" "$RUNNER_TEMP/output-b/data232-report.json"
           cmp "$RUNNER_TEMP/output-a/data232-execution-evidence.json" "$RUNNER_TEMP/output-b/data232-execution-evidence.json"
           cmp "$RUNNER_TEMP/output-a/result.json" "$RUNNER_TEMP/output-b/result.json"
