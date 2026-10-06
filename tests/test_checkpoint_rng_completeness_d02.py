@@ -317,6 +317,45 @@ def test_cuda_process_environment_mismatch_rejected_before_model_materialization
 
 
 @pytest.mark.parametrize(
+    "loader",
+    [trainer_adapter, progress_trainer],
+    ids=["adapter", "progress"],
+)
+def test_cuda_process_environment_mismatch_explicit_opt_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+) -> None:
+    checkpoint = tmp_path / "sealed-cuda-environment-opt-out"
+    with monkeypatch.context() as source_env:
+        source_env.setenv("CUBLAS_WORKSPACE_CONFIG", ":16:8")
+        config = TrainerConfig(max_steps=10, seed=703)
+        source_model = torch.nn.Linear(3, 3)
+        source = Trainer(source_model, config)
+        trainer_adapter.save_trainer_checkpoint(
+            checkpoint,
+            model=source_model,
+            trainer=source,
+            identity=checkpoint_identity,
+        )
+
+    with monkeypatch.context() as live_env:
+        live_env.setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:2")
+        target_model = torch.nn.Linear(3, 3)
+        target = Trainer(target_model, config)
+        result = loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=False,
+        )
+        assert result.manifest["identity"]["step"] == 0
+        assert target._failure_reason is None
+        assert target._update_incomplete is False
+
+
+@pytest.mark.parametrize(
     ("mutation", "message"),
     [
         ({"CUBLAS_WORKSPACE_CONFIG": None}, "fields differ"),
