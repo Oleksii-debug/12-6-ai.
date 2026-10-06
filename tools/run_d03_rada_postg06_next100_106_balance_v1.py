@@ -700,25 +700,59 @@ def execute(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
     }
 
 
-def write_output_dir(path: Path, values: Mapping[str, Mapping[str, Any]]) -> None:
-    names = (
-        "composition-dedup-proof",
-        "next100-input",
-        "balance-result",
-        "balance-binding",
-        "execution-receipt",
+OUTPUT_NAMES = (
+    "composition-dedup-proof",
+    "next100-input",
+    "balance-result",
+    "balance-binding",
+    "execution-receipt",
+)
+
+
+def _verify_output_directory(
+    path: Path,
+    *,
+    allow_interrupted_temps: bool,
+    require_complete: bool,
+) -> None:
+    expected = {f"{name}.json" for name in OUTPUT_NAMES}
+    temp_names = {name + ".tmp" for name in expected}
+    allowed = expected | temp_names if allow_interrupted_temps else expected
+    observed: set[str] = set()
+    for entry in path.iterdir():
+        require(
+            entry.is_file() and not entry.is_symlink(),
+            "output directory contains non-regular entry",
+        )
+        observed.add(entry.name)
+    require(
+        observed <= allowed,
+        "output directory contains unexpected entries",
     )
-    require(set(values) == set(names), "output bundle key set drift")
+    if require_complete:
+        require(
+            observed == expected,
+            "output directory bundle is incomplete",
+        )
+
+
+def write_output_dir(path: Path, values: Mapping[str, Mapping[str, Any]]) -> None:
+    require(set(values) == set(OUTPUT_NAMES), "output bundle key set drift")
     require(not path.is_symlink(), "output directory must not be a symlink")
     if path.exists():
         require(path.is_dir(), "output path is not a directory")
     else:
         path.mkdir(parents=True)
+    _verify_output_directory(
+        path,
+        allow_interrupted_temps=True,
+        require_complete=False,
+    )
 
     # Commit child artifacts first and the bound receipt last. This permits
     # deterministic restart after an interrupted partial bundle without ever
     # publishing a receipt before its children are durable.
-    for name in names[:-1]:
+    for name in OUTPUT_NAMES[:-1]:
         write_immutable_bytes(
             path / f"{name}.json",
             canonical_line(values[name]),
@@ -728,6 +762,11 @@ def write_output_dir(path: Path, values: Mapping[str, Mapping[str, Any]]) -> Non
         path / "execution-receipt.json",
         canonical_line(values["execution-receipt"]),
         label="execution receipt",
+    )
+    _verify_output_directory(
+        path,
+        allow_interrupted_temps=False,
+        require_complete=True,
     )
 
 
@@ -755,16 +794,19 @@ def compare_outputs(
         "two-clean output directories must be distinct",
     )
 
-    names = (
-        "composition-dedup-proof",
-        "next100-input",
-        "balance-result",
-        "balance-binding",
-        "execution-receipt",
+    _verify_output_directory(
+        output_a,
+        allow_interrupted_temps=False,
+        require_complete=True,
+    )
+    _verify_output_directory(
+        output_b,
+        allow_interrupted_temps=False,
+        require_complete=True,
     )
     hashes: dict[str, str] = {}
     parsed: dict[str, dict[str, Any]] = {}
-    for name in names:
+    for name in OUTPUT_NAMES:
         a = _read_regular_bytes(
             output_a / f"{name}.json",
             label=f"two-clean A {name}",
