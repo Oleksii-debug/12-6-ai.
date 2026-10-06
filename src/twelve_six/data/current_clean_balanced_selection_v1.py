@@ -1,9 +1,11 @@
 """Materialize the exact current-clean record selection required by canonical split.
 
 This module is a record-granularity realization seam only. It does not change the
-canonical NEXT100-106 balance policy or the canonical split algorithm. A terminal
-family-byte allocation is accepted only when whole authenticated survivor records can
-realize every allocated family byte exactly. Otherwise the seam fails closed.
+canonical NEXT100-106 balance policy or the canonical split algorithm. It first realizes
+the deterministic family-byte witness exactly. If that source-byte witness is not
+whole-record representable, it may re-realize the same exact stratum target only when
+every authenticated family in that stratum is already wholly below the canonical
+per-family cap. Otherwise the seam fails closed.
 """
 
 from __future__ import annotations
