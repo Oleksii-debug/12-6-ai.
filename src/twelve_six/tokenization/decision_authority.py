@@ -19,6 +19,7 @@ from twelve_six.data.balanced_split_application_v1 import (
     verify_balanced_selection,
 )
 
+from . import base as base_module
 from . import byte as byte_module
 from .base import TokenizerIdentity as _CanonicalTokenizerIdentity
 from .byte import ByteTokenizer
@@ -343,7 +344,10 @@ def _verify_runtime_byte_tokenizer_module_state() -> None:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime module drift: ByteTokenizer"
         )
-    if module_state.get("TokenizerIdentity") is not _CanonicalTokenizerIdentity:
+    if (
+        _CanonicalTokenizerIdentity is not base_module.TokenizerIdentity
+        or module_state.get("TokenizerIdentity") is not base_module.TokenizerIdentity
+    ):
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime module drift: TokenizerIdentity"
         )
@@ -525,16 +529,10 @@ def _verify_runtime_byte_tokenizer_class() -> None:
         _verify_runtime_byte_tokenizer_method_defaults(name, runtime_method)
 
 
-def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
-    """Bind the loaded runtime identity to the source-pinned byte baseline."""
+def _snapshot_verified_tokenizer_identity(tokenizer: Any) -> dict[str, object]:
+    """Copy canonical identity values so no live object is trusted after reseal."""
 
-    _verify_byte_tokenizer_runtime_dependencies()
-    implementation = _verify_canonical_byte_tokenizer_implementation()
-    _verify_runtime_byte_tokenizer_module_state()
-
-    _verify_runtime_byte_tokenizer_class()
-
-    tokenizer = ByteTokenizer().identity
+    snapshot: dict[str, object] = {}
     for field in (
         "version",
         "config_sha256",
@@ -549,32 +547,45 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, Any]:
             raise TokenizerDecisionError(
                 f"canonical byte tokenizer runtime identity drift: {field}"
             )
-    special_tokens = tokenizer.special_tokens
-    if not isinstance(special_tokens, Mapping):
+        snapshot[field] = observed
+
+    special_tokens = getattr(tokenizer, "special_tokens")
+    if type(special_tokens) is not MappingProxyType or dict(special_tokens):
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime identity drift: special_tokens"
         )
-    try:
-        normalized_special_tokens = dict(special_tokens)
-    except (TypeError, ValueError, RuntimeError) as exc:
-        raise TokenizerDecisionError(
-            "canonical byte tokenizer runtime identity drift: special_tokens"
-        ) from exc
-    if normalized_special_tokens != _EXPECTED_TOKENIZER_RUNTIME_IDENTITY[
-        "special_tokens"
-    ]:
-        raise TokenizerDecisionError(
-            "canonical byte tokenizer runtime identity drift: special_tokens"
-        )
-    # Identity construction/observation is effectful Python code. Re-seal the
-    # byte runtime after all identity reads so a same-object dependency cannot
-    # mutate a previously validated tokenizer and still publish authority.
+    snapshot["special_tokens"] = {}
+    return snapshot
+
+
+def _verified_canonical_byte_tokenizer_identity() -> tuple[str, dict[str, object]]:
+    """Bind the loaded runtime identity to the source-pinned byte baseline."""
+
+    _verify_byte_tokenizer_runtime_dependencies()
+    implementation = _verify_canonical_byte_tokenizer_implementation()
+    _verify_runtime_byte_tokenizer_module_state()
+    _verify_runtime_byte_tokenizer_class()
+
+    tokenizer = ByteTokenizer().identity
+    first_snapshot = _snapshot_verified_tokenizer_identity(tokenizer)
+
+    # Identity construction/observation is effectful Python code. Re-seal after
+    # the first observation, then observe once more and perform a final re-seal.
+    # Callers consume only the detached snapshot, never the live identity object.
     _verify_byte_tokenizer_runtime_dependencies()
     _verify_runtime_byte_tokenizer_module_state()
     _verify_runtime_byte_tokenizer_class()
-    return implementation, tokenizer
 
+    final_snapshot = _snapshot_verified_tokenizer_identity(tokenizer)
+    if final_snapshot != first_snapshot:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime identity observation drift"
+        )
 
+    _verify_byte_tokenizer_runtime_dependencies()
+    _verify_runtime_byte_tokenizer_module_state()
+    _verify_runtime_byte_tokenizer_class()
+    return implementation, final_snapshot
 def _verify_selection(
     selection: Mapping[str, Any],
     *,
@@ -775,7 +786,7 @@ def bind_byte_baseline_decision(
 
     (
         tokenizer_implementation_git_blob_sha1,
-        tokenizer,
+        tokenizer_identity,
     ) = _verified_canonical_byte_tokenizer_identity()
 
     core: dict[str, Any] = {
@@ -788,12 +799,12 @@ def bind_byte_baseline_decision(
         "canonical_split_git_blob_sha1": CANONICAL_SPLIT_GIT_BLOB_SHA1,
         "split_spec_identity_sha256": application["split_spec_identity_sha256"],
         "canonical_byte_tokenizer_git_blob_sha1": tokenizer_implementation_git_blob_sha1,
-        "tokenizer_version": tokenizer.version,
-        "tokenizer_config_sha256": tokenizer.config_sha256,
-        "tokenizer_vocab_sha256": tokenizer.vocab_sha256,
-        "vocab_size": tokenizer.vocab_size,
-        "normalization": tokenizer.normalization,
-        "encoding": tokenizer.encoding,
+        "tokenizer_version": tokenizer_identity["version"],
+        "tokenizer_config_sha256": tokenizer_identity["config_sha256"],
+        "tokenizer_vocab_sha256": tokenizer_identity["vocab_sha256"],
+        "vocab_size": tokenizer_identity["vocab_size"],
+        "normalization": tokenizer_identity["normalization"],
+        "encoding": tokenizer_identity["encoding"],
         "tokenizer_fit_executed": False,
         "training_authorized_by_this_report": False,
         "compute_authorized_by_this_report": False,
@@ -855,16 +866,16 @@ def verify_byte_baseline_decision(
 
     (
         tokenizer_implementation_git_blob_sha1,
-        tokenizer,
+        tokenizer_identity,
     ) = _verified_canonical_byte_tokenizer_identity()
     expected_tokenizer = {
         "canonical_byte_tokenizer_git_blob_sha1": tokenizer_implementation_git_blob_sha1,
-        "tokenizer_version": tokenizer.version,
-        "tokenizer_config_sha256": tokenizer.config_sha256,
-        "tokenizer_vocab_sha256": tokenizer.vocab_sha256,
-        "vocab_size": tokenizer.vocab_size,
-        "normalization": tokenizer.normalization,
-        "encoding": tokenizer.encoding,
+        "tokenizer_version": tokenizer_identity["version"],
+        "tokenizer_config_sha256": tokenizer_identity["config_sha256"],
+        "tokenizer_vocab_sha256": tokenizer_identity["vocab_sha256"],
+        "vocab_size": tokenizer_identity["vocab_size"],
+        "normalization": tokenizer_identity["normalization"],
+        "encoding": tokenizer_identity["encoding"],
     }
     for key, expected in expected_tokenizer.items():
         observed = report.get(key)

@@ -1360,3 +1360,137 @@ def test_bind_rejects_identity_observer_postflight_runtime_mutation(
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
 
+
+def test_bind_rejects_dual_alias_tokenizer_identity_class_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import base as base_module
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    class ReplacementIdentity:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    canonical_identity = base_module.TokenizerIdentity
+    monkeypatch.setattr(
+        authority,
+        "_CanonicalTokenizerIdentity",
+        ReplacementIdentity,
+    )
+    monkeypatch.setattr(byte_module, "TokenizerIdentity", ReplacementIdentity)
+
+    forged = byte_module.ByteTokenizer().identity
+    assert type(forged) is ReplacementIdentity
+    assert forged.version == "s0-byte-v1"
+    assert authority._CanonicalTokenizerIdentity is byte_module.TokenizerIdentity
+    assert byte_module.TokenizerIdentity is not canonical_identity
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime module drift: TokenizerIdentity",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+
+def test_bind_rejects_second_identity_observation_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original_getattribute = authority._CanonicalTokenizerIdentity.__getattribute__
+    version_reads = 0
+
+    def staged_getattribute(self, name: str):
+        nonlocal version_reads
+        value = original_getattribute(self, name)
+        if name == "version":
+            version_reads += 1
+            if version_reads == 2:
+                return "forged-byte-v2"
+        return value
+
+    monkeypatch.setattr(
+        authority._CanonicalTokenizerIdentity,
+        "__getattribute__",
+        staged_getattribute,
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime identity drift: version",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+    assert version_reads == 2
+
+
+def test_bind_reseals_after_second_identity_observation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+    original_getattribute = authority._CanonicalTokenizerIdentity.__getattribute__
+    version_reads = 0
+
+    def staged_getattribute(self, name: str):
+        nonlocal version_reads
+        value = original_getattribute(self, name)
+        if name == "version":
+            version_reads += 1
+            if version_reads == 2:
+
+                def divergent_fertility(_self, _text: str) -> float:
+                    return 999.0
+
+                monkeypatch.setattr(
+                    authority.ByteTokenizer,
+                    "fertility",
+                    divergent_fertility,
+                )
+        return value
+
+    monkeypatch.setattr(
+        authority._CanonicalTokenizerIdentity,
+        "__getattribute__",
+        staged_getattribute,
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime implementation drift: fertility",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+    assert version_reads == 2
