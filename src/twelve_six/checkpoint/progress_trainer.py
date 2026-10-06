@@ -481,6 +481,7 @@ def load_trainer_checkpoint(
             execution_mode_before_apply,
             exc,
             operation="checkpoint restore apply",
+            expected_canonical=restore_bindings[0],
         )
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
