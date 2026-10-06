@@ -704,3 +704,22 @@ def test_durable_bundle_commits_receipt_last(
         "survivor inventory",
         "post-G05/G06 evidence",
     ]
+
+
+
+def test_durable_bundle_rejects_output_path_alias(tmp_path: Path) -> None:
+    shared = tmp_path / "shared.json"
+    with pytest.raises(
+        target.RadaPostData232Error,
+        match="pairwise distinct",
+    ):
+        target.commit_durable_bundle(
+            evidence_path=shared,
+            evidence_bytes=b"e",
+            quality_path=shared,
+            quality_bytes=b"q",
+            privacy_path=tmp_path / "privacy.json",
+            privacy_bytes=b"p",
+            survivor_inventory_path=tmp_path / "inventory.json",
+            survivor_inventory_bytes=b"i",
+        )
