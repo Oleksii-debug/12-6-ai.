@@ -1,0 +1,92 @@
+name: D03 Rada post-G06 adapter qualify G6 149
+
+on:
+  pull_request:
+    branches:
+      - execution/rada-postg06-balance-adapter-matrix-g6-149b-20261006
+    paths:
+      - ".github/workflows/d03_rada_postg06_adapter_qualify_g6_149.yml"
+      - "tools/adapt_d03_rada_current_postdata232_to_balance_v1.py"
+      - "tests/test_rada_current_postdata232_balance_adapter_v1.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-rada-postg06-adapter-qualify-g6-149-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-adapter:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/rada-postg06-adapter-qualify-g6-149-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "039ae67cfd0a1393936c49a7bf463f5f68927a03"
+      ADAPTER_BLOB: "a09aa2345820bf8c9aba9725dd05635160f86783"
+      TEST_BLOB: "d7397c98b79362d1ba6627137e7b1a359f0beab3"
+
+    steps:
+      - name: Checkout exact qualification head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+          cache: pip
+
+      - name: Bind exact adapter parent and scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          git diff --name-only "$PARENT_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
+          cat > "$RUNNER_TEMP/expected.txt" <<'EOF'
+          .github/workflows/d03_rada_postg06_adapter_qualify_g6_149.yml
+          EOF
+          sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
+          cmp "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+          test "$(git hash-object tools/adapt_d03_rada_current_postdata232_to_balance_v1.py)" = "$ADAPTER_BLOB"
+          test "$(git hash-object tests/test_rada_current_postdata232_balance_adapter_v1.py)" = "$TEST_BLOB"
+
+      - name: Install canonical current test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -e '.[dev]'
+
+      - name: Compile adapter and focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/adapt_d03_rada_current_postdata232_to_balance_v1.py \
+            tests/test_rada_current_postdata232_balance_adapter_v1.py
+
+      - name: Lint adapter and focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check \
+            tools/adapt_d03_rada_current_postdata232_to_balance_v1.py \
+            tests/test_rada_current_postdata232_balance_adapter_v1.py
+
+      - name: Run focused adapter qualification tests
+        shell: bash
+        env:
+          PYTHONPATH: src
+          TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_rada_current_postdata232_balance_adapter_v1.py
