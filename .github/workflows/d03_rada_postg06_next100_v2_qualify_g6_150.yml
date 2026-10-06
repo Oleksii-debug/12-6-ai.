@@ -1,0 +1,97 @@
+name: D03 Rada post-G06 NEXT100 V2 qualify G6 150
+
+on:
+  pull_request:
+    branches:
+      - execution/rada-postg06-next100-qualified-g6-149-20261006
+    paths:
+      - ".github/workflows/d03_rada_postg06_next100_v2_qualify_g6_150.yml"
+      - "tools/run_d03_rada_postg06_next100_106_balance_v2.py"
+      - "tests/test_rada_postg06_next100_106_balance_v2.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d03-rada-postg06-next100-v2-qualify-g6-150-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-v2:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/rada-postg06-next100-v2-qualify-g6-150-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "fbeeaba49c682adac36f65959ab7d896443dc8b0"
+      RUNNER_BLOB: "451c31974db5d7ef5d6da90e5db78cdef32faf68"
+      TEST_BLOB: "2d7b5dedbc2a9a38619734aad99680c18ce1f510"
+
+    steps:
+      - name: Checkout exact qualification head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+          cache: pip
+
+      - name: Bind exact V2 parent and scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          git diff --name-only "$PARENT_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
+          cat > "$RUNNER_TEMP/expected.txt" <<'EOF'
+          .github/workflows/d03_rada_postg06_next100_v2_qualify_g6_150.yml
+          EOF
+          sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
+          cmp "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+          test "$(git hash-object tools/run_d03_rada_postg06_next100_106_balance_v2.py)" = "$RUNNER_BLOB"
+          test "$(git hash-object tests/test_rada_postg06_next100_106_balance_v2.py)" = "$TEST_BLOB"
+
+      - name: Install canonical current test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -e '.[dev]'
+
+      - name: Compile V2 runner and focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            tools/run_d03_rada_postg06_next100_106_balance_v2.py \
+            tests/test_rada_postg06_next100_106_balance_v2.py
+
+      - name: Diagnose exact Ruff import fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check --fix \
+            tools/run_d03_rada_postg06_next100_106_balance_v2.py \
+            tests/test_rada_postg06_next100_106_balance_v2.py
+          git diff -- \
+            tools/run_d03_rada_postg06_next100_106_balance_v2.py \
+            tests/test_rada_postg06_next100_106_balance_v2.py
+          echo "diagnostic-only run; do not qualify mutated workspace" >&2
+          exit 1
+
+      - name: Run focused V2 qualification tests
+        shell: bash
+        env:
+          PYTHONPATH: src
+          TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_rada_postg06_next100_106_balance_v2.py
