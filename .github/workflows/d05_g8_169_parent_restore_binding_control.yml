@@ -1,0 +1,57 @@
+name: D05 G8-169 parent restore-binding control
+
+# Control-only carrier for inherited parent behavior.
+on:
+  pull_request:
+    branches:
+      - repair/2940-core-rng-failure-note-g8-168-20261006
+    paths:
+      - ".github/workflows/d05_g8_169_parent_restore_binding_control.yml"
+
+permissions:
+  contents: read
+
+env:
+  PARENT_SHA: "1927c304e14bc09e3cb18f10c2c338c5c18b0ee9"
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+  PYTHONUTF8: "1"
+
+jobs:
+  inherited-control:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2946-parent-control-g8-169c-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact inherited parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$PARENT_SHA"
+          test "$(git merge-base "$PARENT_SHA" HEAD)" = "$PARENT_SHA"
+          test "$(git diff --name-only "$PARENT_SHA"..HEAD)" = ".github/workflows/d05_g8_169_parent_restore_binding_control.yml"
+
+      - name: Install test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Run inherited restore-binding suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_checkpoint_restore_binding_config_drift.py
