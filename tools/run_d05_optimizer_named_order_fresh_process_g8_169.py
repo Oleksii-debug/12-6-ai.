@@ -6,12 +6,15 @@ import argparse
 import hashlib
 import json
 import os
+import pickle
+import random
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 
 from twelve_six.checkpoint import (
@@ -71,6 +74,29 @@ def _identity() -> CheckpointIdentity:
 def _tensor_sha256(value: torch.Tensor) -> str:
     payload = value.detach().cpu().contiguous().numpy().tobytes()
     return hashlib.sha256(payload).hexdigest()
+
+
+def _rng_hashes() -> dict[str, str]:
+    python_payload = pickle.dumps(
+        random.getstate(),
+        protocol=pickle.HIGHEST_PROTOCOL,
+    )
+    numpy_state = np.random.get_state()
+    numpy_payload = pickle.dumps(
+        (
+            numpy_state[0],
+            numpy_state[1].tobytes(),
+            numpy_state[2],
+            numpy_state[3],
+            numpy_state[4],
+        ),
+        protocol=pickle.HIGHEST_PROTOCOL,
+    )
+    return {
+        "python": hashlib.sha256(python_payload).hexdigest(),
+        "numpy": hashlib.sha256(numpy_payload).hexdigest(),
+        "torch_cpu": _tensor_sha256(torch.random.get_rng_state()),
+    }
 
 
 def _model_hashes(model: _TwoNamedParameters) -> dict[str, str]:
@@ -210,6 +236,10 @@ def _consumer_reversed(root: Path, *, multiple_groups: bool) -> None:
         reverse=True,
         multiple_groups=multiple_groups,
     )
+    random.seed(913)
+    np.random.seed(917)
+    torch.manual_seed(919)
+    before_rng = _rng_hashes()
     before_model = _model_hashes(model)
     try:
         trainer_adapter.load_trainer_checkpoint(
@@ -217,7 +247,7 @@ def _consumer_reversed(root: Path, *, multiple_groups: bool) -> None:
             model=model,
             trainer=target,
             strict_model=False,
-            restore_rng=False,
+            restore_rng=True,
         )
     except CheckpointCompatibilityError as exc:
         if "optimizer parameter order" not in str(exc):
@@ -227,6 +257,8 @@ def _consumer_reversed(root: Path, *, multiple_groups: bool) -> None:
     else:
         raise RuntimeError("reversed same-shape optimizer order was accepted")
 
+    if _rng_hashes() != before_rng:
+        raise RuntimeError("reversed-order refusal mutated ambient RNG state")
     if _model_hashes(model) != before_model:
         raise RuntimeError("reversed-order refusal mutated model weights")
     if target.optimizer.state:
@@ -241,6 +273,7 @@ def _consumer_reversed(root: Path, *, multiple_groups: bool) -> None:
         {
             "pid": os.getpid(),
             "reversed_order_failed_closed": True,
+            "rng_unchanged": True,
             "target_unchanged": True,
         },
     )
@@ -309,6 +342,7 @@ def _orchestrate(output: Path) -> None:
                 "reversed_order_failed_closed": (
                     reversed_result["reversed_order_failed_closed"]
                 ),
+                "reversed_rng_unchanged": reversed_result["rng_unchanged"],
                 "reversed_target_unchanged": reversed_result["target_unchanged"],
                 "expected_names": producer["expected_names"],
             }
