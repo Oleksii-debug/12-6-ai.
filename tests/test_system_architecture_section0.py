@@ -115,6 +115,42 @@ def test_manifest_rejects_missing_or_duplicate_boundary_contracts() -> None:
         )
 
 
+def test_manifest_rejects_boundary_semantic_resealing() -> None:
+    canonical = canonical_system_architecture_v1()
+    first = canonical.boundaries[0]
+    resealed = TypedBoundary(
+        first.name,
+        SystemPlane.BASE_MODEL,
+        SystemPlane.PERSISTENT_COGNITION,
+        first.interface,
+    )
+
+    with pytest.raises(ValueError, match="semantics are non-canonical"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=(resealed, *canonical.boundaries[1:]),
+        )
+
+
+def test_manifest_rejects_interface_resealing_under_canonical_boundary_name() -> None:
+    canonical = canonical_system_architecture_v1()
+    first = canonical.boundaries[0]
+    resealed = TypedBoundary(
+        first.name,
+        first.producer,
+        first.consumer,
+        InterfaceContract("twelve_six.model_gateway", 2),
+    )
+
+    with pytest.raises(ValueError, match="semantics are non-canonical"):
+        SystemArchitectureManifest(
+            schema_version=1,
+            planes=canonical.planes,
+            boundaries=(resealed, *canonical.boundaries[1:]),
+        )
+
+
 def test_typed_boundary_rejects_self_edge_and_wrong_types() -> None:
     contract = InterfaceContract("test.contract", 1)
 
