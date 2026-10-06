@@ -250,10 +250,16 @@ def _stream_regular_sha256(
             ) from exc
         if not stat.S_ISREG(opened.st_mode):
             raise CheckpointIntegrityError(f"HF-style export artifact changed type: {name}")
-        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+        opened_identity = (opened.st_dev, opened.st_ino)
+        if (before.st_dev, before.st_ino) != opened_identity:
             raise CheckpointIntegrityError(
                 f"HF-style export artifact changed while opening: {name}"
             )
+        opened_fingerprint = (
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_ctime_ns,
+        )
 
         digest = hashlib.sha256()
         byte_count = 0
@@ -269,6 +275,45 @@ def _stream_regular_sha256(
             raise CheckpointIntegrityError(
                 f"cannot read HF-style export artifact: {name}"
             ) from exc
+
+        try:
+            after = os.fstat(fd)
+        except OSError as exc:
+            raise CheckpointIntegrityError(
+                f"cannot re-inspect HF-style export artifact: {name}"
+            ) from exc
+        after_fingerprint = (
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        if (
+            not stat.S_ISREG(after.st_mode)
+            or (after.st_dev, after.st_ino) != opened_identity
+            or after_fingerprint != opened_fingerprint
+        ):
+            raise CheckpointIntegrityError(
+                f"HF-style export artifact changed while reading: {name}"
+            )
+
+        try:
+            current = path.lstat()
+        except FileNotFoundError as exc:
+            raise CheckpointIntegrityError(
+                f"HF-style export artifact disappeared while reading: {name}"
+            ) from exc
+        except OSError as exc:
+            raise CheckpointIntegrityError(
+                f"cannot re-inspect HF-style export artifact path: {name}"
+            ) from exc
+        if (
+            stat.S_ISLNK(current.st_mode)
+            or not stat.S_ISREG(current.st_mode)
+            or (current.st_dev, current.st_ino) != opened_identity
+        ):
+            raise CheckpointIntegrityError(
+                f"HF-style export artifact changed while reading: {name}"
+            )
         return digest.hexdigest(), byte_count
     except BaseException as exc:
         primary_exc = exc
@@ -729,7 +774,7 @@ def _create_private_temp_directory(
     path = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
     try:
         identity = _temporary_directory_identity(path)
-    except BaseException as exc:  # noqa: BLE001 - preserve process interrupts
+    except BaseException as exc:
         try:
             os.rmdir(path)
         except BaseException as cleanup_exc:  # noqa: BLE001 - preserve primary
