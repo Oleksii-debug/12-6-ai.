@@ -2192,7 +2192,7 @@ def test_hf_bounded_read_rejects_growth_after_stale_fstat(
         )
 
 
-def test_hf_snapshot_streams_model_weights_outside_metadata_read_cap(
+def test_hf_snapshot_reads_only_bounded_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -2205,9 +2205,7 @@ def test_hf_snapshot_streams_model_weights_outside_metadata_read_cap(
         hf_config={"model_type": "twelve_six_export_transactional"},
     )
     real_read = hf_export._read_regular_bytes
-    real_stream = hf_export._stream_regular_sha256
     observed_limits: dict[str, int | None] = {}
-    streamed: list[str] = []
 
     def observe_limit(
         root: Path,
@@ -2219,16 +2217,14 @@ def test_hf_snapshot_streams_model_weights_outside_metadata_read_cap(
         observed_limits[name] = max_bytes
         return real_read(root, name, max_bytes=max_bytes)
 
-    def observe_stream(root: Path, name: str):
-        streamed.append(name)
-        return real_stream(root, name)
+    def forbid_weight_stream(*_args, **_kwargs):
+        raise AssertionError("metadata snapshot must not read model weights")
 
     monkeypatch.setattr(hf_export, "_read_regular_bytes", observe_limit)
-    monkeypatch.setattr(hf_export, "_stream_regular_sha256", observe_stream)
+    monkeypatch.setattr(hf_export, "_stream_regular_sha256", forbid_weight_stream)
 
     hf_export._read_export_snapshot(output)
 
-    assert streamed == [hf_export.EXPORTED_WEIGHTS_NAME]
     assert hf_export.EXPORTED_WEIGHTS_NAME not in observed_limits
     assert observed_limits[hf_export.EXPORT_CHECKSUM_NAME] == 256
     for name in (
@@ -2345,6 +2341,117 @@ def test_hf_streamed_weight_interrupt_retains_exact_identity(
         hf_export._stream_regular_sha256(root, name)
 
     assert caught.value is primary
+
+@pytest.mark.parametrize(
+    ("artifact_name", "replacement", "expected"),
+    (
+        (
+            hf_export.EXPORT_CHECKSUM_NAME,
+            b"invalid checksum\n",
+            "invalid 12-6-export.sha256 format",
+        ),
+        (
+            hf_export.EXPORTED_SOURCE_MANIFEST_NAME,
+            b"{invalid-json\n",
+            "12-6-checkpoint-manifest.json is not valid strict UTF-8 JSON",
+        ),
+        (
+            hf_export.EXPORTED_CONFIG_NAME,
+            b"{invalid-json\n",
+            "config.json is not valid strict UTF-8 JSON",
+        ),
+    ),
+)
+def test_hf_verifier_rejects_bad_metadata_before_weight_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact_name: str,
+    replacement: bytes,
+    expected: str,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(29.5), identity=identity("r"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    (output / artifact_name).write_bytes(replacement)
+
+    def forbid_weight_stream(*_args, **_kwargs):
+        raise AssertionError("invalid bounded metadata must fail before weight scan")
+
+    monkeypatch.setattr(hf_export, "_stream_regular_sha256", forbid_weight_stream)
+
+    with pytest.raises(CheckpointIntegrityError, match=expected):
+        verify_hf_directory(output)
+
+
+def test_hf_verifier_streams_weights_once_after_metadata_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(29.75), identity=identity("s"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    real_stream = hf_export._stream_regular_sha256
+    streamed: list[str] = []
+
+    def observe_stream(root: Path, name: str):
+        streamed.append(name)
+        return real_stream(root, name)
+
+    monkeypatch.setattr(hf_export, "_stream_regular_sha256", observe_stream)
+
+    verify_hf_directory(output)
+
+    assert streamed == [hf_export.EXPORTED_WEIGHTS_NAME]
+
+
+def test_hf_verifier_rejects_root_replacement_before_weight_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    moved = tmp_path / "hf-original"
+    save_checkpoint(checkpoint, model=Model(29.875), identity=identity("t"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    real_snapshot = hf_export._read_export_snapshot
+    streamed = False
+
+    def replace_after_metadata(path: Path):
+        payloads, root_identity = real_snapshot(path)
+        path.rename(moved)
+        path.mkdir()
+        return payloads, root_identity
+
+    def observe_stream(*_args, **_kwargs):
+        nonlocal streamed
+        streamed = True
+        raise AssertionError("replaced root must fail before weight stream")
+
+    monkeypatch.setattr(hf_export, "_read_export_snapshot", replace_after_metadata)
+    monkeypatch.setattr(hf_export, "_stream_regular_sha256", observe_stream)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export directory identity changed while reading",
+    ):
+        verify_hf_directory(output)
+
+    assert not streamed
+
 
 def test_hf_snapshot_rejects_seventh_inventory_entry(
     tmp_path: Path,

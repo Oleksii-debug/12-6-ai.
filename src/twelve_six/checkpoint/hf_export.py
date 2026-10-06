@@ -312,7 +312,7 @@ def _require_export_root_identity(
         )
 
 
-def _read_export_snapshot(root: Path) -> tuple[dict[str, bytes], str, int]:
+def _read_export_snapshot(root: Path) -> tuple[dict[str, bytes], tuple[int, int]]:
     try:
         root_stat = root.lstat()
     except FileNotFoundError as exc:
@@ -346,27 +346,22 @@ def _read_export_snapshot(root: Path) -> tuple[dict[str, bytes], str, int]:
             f"HF-style export inventory mismatch: missing={missing}, unexpected={unexpected}"
         )
     payloads: dict[str, bytes] = {}
-    weights_sha256: str | None = None
-    weights_bytes: int | None = None
     for name in sorted(_EXPORT_FILES):
-        _require_export_root_identity(root, root_identity)
         if name == EXPORTED_WEIGHTS_NAME:
-            weights_sha256, weights_bytes = _stream_regular_sha256(root, name)
-        else:
-            max_bytes = (
-                _MAX_EXPORT_CHECKSUM_BYTES
-                if name == EXPORT_CHECKSUM_NAME
-                else _MAX_EXPORT_METADATA_BYTES
-            )
-            payloads[name] = _read_regular_bytes(
-                root,
-                name,
-                max_bytes=max_bytes,
-            )
+            continue
         _require_export_root_identity(root, root_identity)
-    if weights_sha256 is None or weights_bytes is None:
-        raise CheckpointIntegrityError("HF-style export weights were not observed")
-    return payloads, weights_sha256, weights_bytes
+        max_bytes = (
+            _MAX_EXPORT_CHECKSUM_BYTES
+            if name == EXPORT_CHECKSUM_NAME
+            else _MAX_EXPORT_METADATA_BYTES
+        )
+        payloads[name] = _read_regular_bytes(
+            root,
+            name,
+            max_bytes=max_bytes,
+        )
+        _require_export_root_identity(root, root_identity)
+    return payloads, root_identity
 
 
 def _strict_json_bytes(value: Any, *, artifact: str) -> bytes:
@@ -531,7 +526,8 @@ def _validate_source_manifest_identity(identity: dict[str, Any]) -> None:
 def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     """Verify one exact HF-style export directory without trusting path metadata."""
 
-    payloads, weights_sha, weights_bytes = _read_export_snapshot(Path(directory))
+    root = Path(directory)
+    payloads, root_identity = _read_export_snapshot(root)
     try:
         checksum_text = payloads[EXPORT_CHECKSUM_NAME].decode("ascii")
     except UnicodeDecodeError as exc:
@@ -577,6 +573,14 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         raise CheckpointIntegrityError("source manifest is missing canonical weights record")
 
     _json_object(payloads[EXPORTED_CONFIG_NAME], artifact=EXPORTED_CONFIG_NAME)
+
+    _require_export_root_identity(root, root_identity)
+    weights_sha, weights_bytes = _stream_regular_sha256(
+        root,
+        EXPORTED_WEIGHTS_NAME,
+    )
+    _require_export_root_identity(root, root_identity)
+
     config_sha = sha256_bytes(payloads[EXPORTED_CONFIG_NAME])
     source_manifest_sha = sha256_bytes(payloads[EXPORTED_SOURCE_MANIFEST_NAME])
     parity_sha = sha256_bytes(payloads[PARITY_REQUEST_NAME])
