@@ -330,6 +330,8 @@ def capture_rng_state() -> dict[str, Any]:
         "deterministic_warn_only": bool(
             torch.is_deterministic_algorithms_warn_only_enabled()
         ),
+        "default_dtype": str(torch.get_default_dtype()),
+        "float32_matmul_precision": torch.get_float32_matmul_precision(),
     }
     if torch.cuda.is_available():
         torch_state["cuda"] = torch.cuda.get_rng_state_all()
@@ -370,6 +372,27 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
             raise CheckpointCompatibilityError(
                 "checkpoint torch deterministic_warn_only must be a boolean"
             )
+    if "default_dtype" in torch_state:
+        default_dtype = torch_state["default_dtype"]
+        if type(default_dtype) is not str or default_dtype not in {
+            "torch.float16",
+            "torch.float32",
+            "torch.float64",
+            "torch.bfloat16",
+        }:
+            raise CheckpointCompatibilityError(
+                "checkpoint torch default_dtype is invalid"
+            )
+    if "float32_matmul_precision" in torch_state:
+        matmul_precision = torch_state["float32_matmul_precision"]
+        if type(matmul_precision) is not str or matmul_precision not in {
+            "highest",
+            "high",
+            "medium",
+        }:
+            raise CheckpointCompatibilityError(
+                "checkpoint torch float32_matmul_precision is invalid"
+            )
     try:
         torch = importlib.import_module("torch")
     except ModuleNotFoundError as exc:
@@ -406,8 +429,26 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
                 ) from exc
 
 
+def _restore_torch_default_dtype(torch: Any, dtype_name: str) -> None:
+    """Restore an already-validated torch default dtype by canonical name."""
+
+    dtype = {
+        "torch.float16": torch.float16,
+        "torch.float32": torch.float32,
+        "torch.float64": torch.float64,
+        "torch.bfloat16": torch.bfloat16,
+    }[dtype_name]
+    torch.set_default_dtype(dtype)
+
+
+def _restore_torch_matmul_precision(torch: Any, precision: str) -> None:
+    """Restore an already-validated float32 matmul precision policy."""
+
+    torch.set_float32_matmul_precision(precision)
+
+
 def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
-    """Restore captured RNG streams and report the exact restored scope."""
+    """Restore captured RNG streams and process policy; report RNG scope."""
 
     _preflight_rng_state(state)
     scope = {"python": False, "numpy": False, "torch_cpu": False, "torch_cuda_devices": 0}
@@ -439,6 +480,13 @@ def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
             torch_state.get("deterministic_algorithms", False),
             warn_only=deterministic_warn_only,
         )
+        if "default_dtype" in torch_state:
+            _restore_torch_default_dtype(torch, torch_state["default_dtype"])
+        if "float32_matmul_precision" in torch_state:
+            _restore_torch_matmul_precision(
+                torch,
+                torch_state["float32_matmul_precision"],
+            )
     return scope
 
 
