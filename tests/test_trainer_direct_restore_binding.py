@@ -849,3 +849,96 @@ def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_rais
     )
     assert target._update_incomplete is False
     assert not target.optimizer.state
+
+
+def test_direct_restore_rejects_entry_deterministic_policy_drift_before_state_access() -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    expected_enabled = torch.are_deterministic_algorithms_enabled()
+    expected_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+
+    class StateAccessTrap(dict):
+        def keys(self):
+            raise AssertionError("checkpoint state must not be accessed")
+
+    hostile_state = StateAccessTrap(
+        micro_step=state.micro_step,
+        optimizer_step=state.optimizer_step,
+        tokens_seen=state.tokens_seen,
+        optimizer=state.optimizer,
+        scheduler=state.scheduler,
+        scaler=state.scaler,
+        config=state.config,
+    )
+
+    try:
+        torch.use_deterministic_algorithms(
+            not expected_enabled,
+            warn_only=expected_warn_only,
+        )
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="live PyTorch deterministic policy disagrees",
+        ):
+            target.load_state_dict(hostile_state)
+
+        assert target._failure_reason is None
+        assert target._update_incomplete is False
+        assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+        assert not target.optimizer.state
+    finally:
+        torch.use_deterministic_algorithms(
+            expected_enabled,
+            warn_only=expected_warn_only,
+        )
+
+    target.load_state_dict(state)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+def test_direct_restore_poison_target_when_payload_drifts_deterministic_policy() -> None:
+    from dataclasses import replace
+
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    expected_enabled = torch.are_deterministic_algorithms_enabled()
+    expected_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+
+    class PolicyMutatingOptimizerState(dict):
+        armed = True
+
+        def get(self, key, default=None):
+            if self.armed and key == "param_groups":
+                self.armed = False
+                torch.use_deterministic_algorithms(
+                    not expected_enabled,
+                    warn_only=expected_warn_only,
+                )
+                raise RuntimeError("optimizer preflight changed deterministic policy")
+            return super().get(key, default)
+
+    hostile_state = replace(
+        state,
+        optimizer=PolicyMutatingOptimizerState(state.optimizer),
+    )
+
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="optimizer preflight changed deterministic policy",
+        ):
+            target.load_state_dict(hostile_state)
+    finally:
+        torch.use_deterministic_algorithms(
+            expected_enabled,
+            warn_only=expected_warn_only,
+        )
+
+    assert target._failure_reason == (
+        "trainer deterministic policy changed during checkpoint preflight"
+    )
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
