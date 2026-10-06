@@ -1859,6 +1859,11 @@ def _reseal_hf_after_source_manifest_mutation(
         ("extra_file", "file inventory mismatch"),
         ("record_extra_field", "fields mismatch"),
         ("serialization_drift", "serialization declaration is noncanonical"),
+        ("bool_format_version", "format_version must be an integer"),
+        ("float_format_version", "format_version must be an integer"),
+        ("invalid_created_at", "created_at_utc is not canonical UTC"),
+        ("offset_created_at", "created_at_utc is not canonical UTC"),
+        ("nonstring_created_at", "created_at_utc is not canonical UTC"),
     ),
 )
 def test_hf_verifier_rejects_resealed_noncanonical_source_manifest(
@@ -1890,12 +1895,45 @@ def test_hf_verifier_rejects_resealed_noncanonical_source_manifest(
         source_manifest["files"][hf_export.WEIGHTS_NAME]["unexpected"] = False
     elif case == "serialization_drift":
         source_manifest["serialization"]["pickle"] = True
+    elif case == "bool_format_version":
+        source_manifest["format_version"] = True
+    elif case == "float_format_version":
+        source_manifest["format_version"] = 1.0
+    elif case == "invalid_created_at":
+        source_manifest["created_at_utc"] = "not-a-timestamp"
+    elif case == "offset_created_at":
+        source_manifest["created_at_utc"] = "2026-10-06T17:00:00+00:00"
+    elif case == "nonstring_created_at":
+        source_manifest["created_at_utc"] = 0
     else:
         raise AssertionError(f"unhandled mutation case: {case}")
 
     _reseal_hf_after_source_manifest_mutation(output, source_manifest)
 
     with pytest.raises(CheckpointIntegrityError, match=expected):
+        verify_hf_directory(output)
+
+
+def test_hf_verifier_preserves_unsupported_integer_source_version_semantics(
+    tmp_path: Path,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(25.5), identity=identity("n"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    source_path = output / hf_export.EXPORTED_SOURCE_MANIFEST_NAME
+    source_manifest = json.loads(source_path.read_text(encoding="utf-8"))
+    source_manifest["format_version"] = 2
+    _reseal_hf_after_source_manifest_mutation(output, source_manifest)
+
+    with pytest.raises(
+        hf_export.CheckpointCompatibilityError,
+        match="unsupported checkpoint format",
+    ):
         verify_hf_directory(output)
 
 
