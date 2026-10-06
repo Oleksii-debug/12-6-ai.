@@ -45,6 +45,11 @@ STATE_TREE_NAME = "state.json"
 _PAYLOAD_NAMES = frozenset({WEIGHTS_NAME, STATE_TENSORS_NAME, STATE_TREE_NAME})
 _DIRECTORY_NAMES = frozenset({MANIFEST_NAME, MANIFEST_CHECKSUM_NAME, *_PAYLOAD_NAMES})
 _HEX = frozenset("0123456789abcdef")
+_TORCH_PROCESS_ENVIRONMENT_KEYS = (
+    "CUBLAS_WORKSPACE_CONFIG",
+    "TORCH_ALLOW_TF32_CUBLAS_OVERRIDE",
+    "NVIDIA_TF32_OVERRIDE",
+)
 
 
 class CheckpointError(RuntimeError):
@@ -311,6 +316,53 @@ def environment_snapshot() -> dict[str, Any]:
     }
 
 
+def _capture_torch_process_environment() -> dict[str, str | None]:
+    """Capture CUDA/cuBLAS environment inputs that can override torch policy."""
+
+    return {
+        key: os.environ.get(key)
+        for key in _TORCH_PROCESS_ENVIRONMENT_KEYS
+    }
+
+
+def _preflight_torch_process_environment(state: Any) -> None:
+    """Validate a complete environment snapshot without mutating the process."""
+
+    if not isinstance(state, Mapping):
+        raise CheckpointCompatibilityError(
+            "checkpoint torch cuda_environment must be a mapping"
+        )
+    expected = set(_TORCH_PROCESS_ENVIRONMENT_KEYS)
+    if set(state) != expected:
+        raise CheckpointCompatibilityError(
+            "checkpoint torch cuda_environment fields differ from the supported contract"
+        )
+    for key in _TORCH_PROCESS_ENVIRONMENT_KEYS:
+        value = state[key]
+        if value is not None and type(value) is not str:
+            raise CheckpointCompatibilityError(
+                f"checkpoint torch cuda_environment {key} must be a string or null"
+            )
+
+
+def _assert_torch_process_environment_matches(state: Mapping[str, Any]) -> None:
+    """Reject a fresh-process environment mismatch before live state apply."""
+
+    _preflight_torch_process_environment(state)
+    live = _capture_torch_process_environment()
+    if dict(state) != live:
+        changed = [
+            key
+            for key in _TORCH_PROCESS_ENVIRONMENT_KEYS
+            if state[key] != live[key]
+        ]
+        raise CheckpointCompatibilityError(
+            "checkpoint CUDA process environment differs from the live process: "
+            f"{changed}; restart with the checkpoint environment or load with "
+            "restore_rng=False to opt out of exact replay"
+        )
+
+
 def capture_rng_state() -> dict[str, Any]:
     """Capture Python, NumPy, and available PyTorch RNG state."""
 
@@ -330,6 +382,13 @@ def capture_rng_state() -> dict[str, Any]:
         "deterministic_warn_only": bool(
             torch.is_deterministic_algorithms_warn_only_enabled()
         ),
+        "default_dtype": str(torch.get_default_dtype()),
+        "float32_matmul_precision": torch.get_float32_matmul_precision(),
+        "cudnn_allow_tf32": bool(torch.backends.cudnn.allow_tf32),
+        "cudnn_enabled": bool(torch.backends.cudnn.enabled),
+        "cudnn_deterministic": bool(torch.backends.cudnn.deterministic),
+        "cudnn_benchmark": bool(torch.backends.cudnn.benchmark),
+        "cuda_environment": _capture_torch_process_environment(),
     }
     if torch.cuda.is_available():
         torch_state["cuda"] = torch.cuda.get_rng_state_all()
@@ -370,6 +429,40 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
             raise CheckpointCompatibilityError(
                 "checkpoint torch deterministic_warn_only must be a boolean"
             )
+    if "default_dtype" in torch_state:
+        default_dtype = torch_state["default_dtype"]
+        if type(default_dtype) is not str or default_dtype not in {
+            "torch.float16",
+            "torch.float32",
+            "torch.float64",
+            "torch.bfloat16",
+        }:
+            raise CheckpointCompatibilityError(
+                "checkpoint torch default_dtype is invalid"
+            )
+    if "float32_matmul_precision" in torch_state:
+        matmul_precision = torch_state["float32_matmul_precision"]
+        if type(matmul_precision) is not str or matmul_precision not in {
+            "highest",
+            "high",
+            "medium",
+        }:
+            raise CheckpointCompatibilityError(
+                "checkpoint torch float32_matmul_precision is invalid"
+            )
+    if "cudnn_allow_tf32" in torch_state:
+        cudnn_allow_tf32 = torch_state["cudnn_allow_tf32"]
+        if type(cudnn_allow_tf32) is not bool:
+            raise CheckpointCompatibilityError(
+                "checkpoint torch cudnn_allow_tf32 must be a boolean"
+            )
+    for field in ("cudnn_enabled", "cudnn_deterministic", "cudnn_benchmark"):
+        if field in torch_state and type(torch_state[field]) is not bool:
+            raise CheckpointCompatibilityError(
+                f"checkpoint torch {field} must be a boolean"
+            )
+    if "cuda_environment" in torch_state:
+        _preflight_torch_process_environment(torch_state["cuda_environment"])
     try:
         torch = importlib.import_module("torch")
     except ModuleNotFoundError as exc:
@@ -406,8 +499,50 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
                 ) from exc
 
 
+def _restore_torch_default_dtype(torch: Any, dtype_name: str) -> None:
+    """Restore an already-validated torch default dtype by canonical name."""
+
+    dtype = {
+        "torch.float16": torch.float16,
+        "torch.float32": torch.float32,
+        "torch.float64": torch.float64,
+        "torch.bfloat16": torch.bfloat16,
+    }[dtype_name]
+    torch.set_default_dtype(dtype)
+
+
+def _restore_torch_matmul_precision(torch: Any, precision: str) -> None:
+    """Restore an already-validated float32 matmul precision policy."""
+
+    torch.set_float32_matmul_precision(precision)
+
+
+def _restore_torch_cudnn_allow_tf32(torch: Any, allow: bool) -> None:
+    """Restore the validated cuDNN TF32 convolution policy."""
+
+    torch.backends.cudnn.allow_tf32 = allow
+
+
+def _restore_torch_cudnn_enabled(torch: Any, enabled: bool) -> None:
+    """Restore whether cuDNN is enabled."""
+
+    torch.backends.cudnn.enabled = enabled
+
+
+def _restore_torch_cudnn_deterministic(torch: Any, deterministic: bool) -> None:
+    """Restore the cuDNN deterministic-convolution policy."""
+
+    torch.backends.cudnn.deterministic = deterministic
+
+
+def _restore_torch_cudnn_benchmark(torch: Any, benchmark: bool) -> None:
+    """Restore the cuDNN convolution autotuner policy."""
+
+    torch.backends.cudnn.benchmark = benchmark
+
+
 def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
-    """Restore captured RNG streams and report the exact restored scope."""
+    """Restore captured RNG streams and process policy; report RNG scope."""
 
     _preflight_rng_state(state)
     scope = {"python": False, "numpy": False, "torch_cpu": False, "torch_cuda_devices": 0}
@@ -439,6 +574,30 @@ def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
             torch_state.get("deterministic_algorithms", False),
             warn_only=deterministic_warn_only,
         )
+        if "default_dtype" in torch_state:
+            _restore_torch_default_dtype(torch, torch_state["default_dtype"])
+        if "float32_matmul_precision" in torch_state:
+            _restore_torch_matmul_precision(
+                torch,
+                torch_state["float32_matmul_precision"],
+            )
+        if "cudnn_allow_tf32" in torch_state:
+            _restore_torch_cudnn_allow_tf32(
+                torch,
+                torch_state["cudnn_allow_tf32"],
+            )
+        if "cudnn_enabled" in torch_state:
+            _restore_torch_cudnn_enabled(torch, torch_state["cudnn_enabled"])
+        if "cudnn_deterministic" in torch_state:
+            _restore_torch_cudnn_deterministic(
+                torch,
+                torch_state["cudnn_deterministic"],
+            )
+        if "cudnn_benchmark" in torch_state:
+            _restore_torch_cudnn_benchmark(
+                torch,
+                torch_state["cudnn_benchmark"],
+            )
     return scope
 
 
@@ -1149,7 +1308,7 @@ def save_checkpoint(
             # that callback itself consumes RNG or changes torch policy.
             try:
                 _restore_checkpoint_save_rng(entry_rng, entry_warn_only)
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 raise CheckpointError(
                     "checkpoint save could not restore entry RNG state "
                     "after final validation"
