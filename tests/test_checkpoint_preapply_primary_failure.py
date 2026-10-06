@@ -72,7 +72,7 @@ def test_trainer_adapter_loader_passes_primary_into_prebind_finalizer(
         "_snapshot_trainer_restore_bindings",
         lambda trainer: (False, {}),
     )
-    monkeypatch.setattr(trainer_adapter, "capture_rng_state", lambda: {})
+    monkeypatch.setattr(trainer_adapter, "capture_rng_state", dict)
     monkeypatch.setattr(
         trainer_adapter,
         "_snapshot_torch_policy",
@@ -133,7 +133,7 @@ def test_progress_loader_passes_primary_into_prebind_finalizer(
         "_snapshot_trainer_restore_bindings",
         lambda trainer: (False, {}),
     )
-    monkeypatch.setattr(progress_trainer._core, "capture_rng_state", lambda: {})
+    monkeypatch.setattr(progress_trainer._core, "capture_rng_state", dict)
     monkeypatch.setattr(
         progress_trainer,
         "_snapshot_torch_policy",
@@ -198,7 +198,7 @@ def test_save_export_passes_primary_into_process_state_finalizer(
     monkeypatch.setattr(
         trainer_adapter,
         "_bind_trainer_state_exporter",
-        lambda trainer: lambda: {},
+        lambda trainer: dict,
     )
     monkeypatch.setattr(
         trainer_adapter,
