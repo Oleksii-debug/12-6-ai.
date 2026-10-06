@@ -788,3 +788,64 @@ def test_direct_restore_rejects_effectful_state_deepcopy_before_loader_lookup() 
     assert target._failure_reason == "trainer model changed during checkpoint preflight"
     assert target._update_incomplete is False
     assert not target.optimizer.state
+
+
+def test_direct_restore_poison_target_when_state_mapping_decode_mutates_then_raises() -> None:
+    from collections.abc import Mapping
+
+    config = _config()
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+
+    class ExplodingStateMapping(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            raise KeyError(key)
+
+        def __iter__(self):
+            return iter(())
+
+        def __len__(self) -> int:
+            return 0
+
+        def keys(self):
+            target.tokens_seen = 1
+            raise RuntimeError("state mapping decode exploded")
+
+    with pytest.raises(RuntimeError, match="state mapping decode exploded"):
+        target.load_state_dict(ExplodingStateMapping())
+
+    assert target.tokens_seen == 1
+    assert target._failure_reason == (
+        "trainer restore state changed during checkpoint payload preflight"
+    )
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+
+def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_raises() -> None:
+    from dataclasses import replace
+
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+
+    class ExplodingOptimizerState(dict):
+        armed = True
+
+        def get(self, key, default=None):
+            if self.armed and key == "param_groups":
+                self.armed = False
+                target.tokens_seen = 1
+                raise RuntimeError("optimizer preflight exploded")
+            return super().get(key, default)
+
+    hostile_state = replace(state, optimizer=ExplodingOptimizerState(state.optimizer))
+
+    with pytest.raises(RuntimeError, match="optimizer preflight exploded"):
+        target.load_state_dict(hostile_state)
+
+    assert target.tokens_seen == 1
+    assert target._failure_reason == (
+        "trainer restore state changed during checkpoint payload preflight"
+    )
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
