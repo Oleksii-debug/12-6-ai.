@@ -74,13 +74,18 @@ jobs:
             tools/run_d03_rada_postg06_next100_106_balance_v2.py \
             tests/test_rada_postg06_next100_106_balance_v2.py
 
-      - name: Lint V2 runner and focused tests
+      - name: Diagnose exact Ruff import fix
         shell: bash
         run: |
           set -euo pipefail
-          ruff check \
+          ruff check --fix \
             tools/run_d03_rada_postg06_next100_106_balance_v2.py \
             tests/test_rada_postg06_next100_106_balance_v2.py
+          git diff -- \
+            tools/run_d03_rada_postg06_next100_106_balance_v2.py \
+            tests/test_rada_postg06_next100_106_balance_v2.py
+          echo "diagnostic-only run; do not qualify mutated workspace" >&2
+          exit 1
 
       - name: Run focused V2 qualification tests
         shell: bash
