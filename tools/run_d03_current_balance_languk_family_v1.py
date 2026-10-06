@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compose the qualified current balance with the qualified Lang-UK court family.
 
 Execution-only, zero-credit carrier. It authenticates the exact #2954 current-balance
@@ -15,8 +14,9 @@ import json
 import math
 import sys
 from collections import defaultdict
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
