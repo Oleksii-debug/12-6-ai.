@@ -98,6 +98,38 @@ def sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+_DURABLE_FORBIDDEN_TEXT_KEYS = frozenset(
+    {
+        "text",
+        "raw_text",
+        "source_text",
+        "content",
+        "payload_text",
+        "normalized_payload",
+        "preview",
+        "matched_value",
+        "secret_value",
+    }
+)
+
+
+def assert_text_free_durable(value: Any, *, label: str) -> None:
+    def walk(item: Any, path: str) -> None:
+        if isinstance(item, Mapping):
+            for key, child in item.items():
+                normalized = str(key).casefold()
+                require(
+                    normalized not in _DURABLE_FORBIDDEN_TEXT_KEYS,
+                    f"{label}: raw-text-bearing durable key at {path}.{key}",
+                )
+                walk(child, f"{path}.{key}")
+        elif isinstance(item, (list, tuple)):
+            for index, child in enumerate(item):
+                walk(child, f"{path}[{index}]")
+
+    walk(value, "$")
+
+
 def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
     """Atomically create deterministic evidence or resume an identical write."""
     require(not path.is_symlink(), f"{label}: output path must not be a symlink")
@@ -1096,6 +1128,13 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         **evidence_core,
         "evidence_identity_sha256": sha256(canonical(evidence_core)),
     }
+    assert_text_free_durable(output, label="post-G05/G06 evidence")
+    assert_text_free_durable(quality, label="G05 authority")
+    assert_text_free_durable(privacy, label="G06 authority")
+    assert_text_free_durable(
+        survivor_inventory,
+        label="survivor inventory",
+    )
     write_immutable_bytes(
         args.output_evidence,
         canonical_line(output),
