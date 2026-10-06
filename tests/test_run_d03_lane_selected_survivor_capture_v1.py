@@ -88,7 +88,7 @@ def _synthetic_plan_verifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        RUNNER.assembly_api,
+        RUNNER,
         "verify_plan",
         lambda _value: None,
     )
