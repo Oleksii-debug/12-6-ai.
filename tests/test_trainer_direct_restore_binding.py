@@ -765,6 +765,20 @@ class ApplyReproducibilityDriftAdamW(AdamW):
                 self.owner.model.eval()
             elif self.mutation == "grad_mode":
                 torch.set_grad_enabled(not torch.is_grad_enabled())
+            elif self.mutation == "default_dtype":
+                replacement = (
+                    torch.float64
+                    if torch.get_default_dtype() is not torch.float64
+                    else torch.float32
+                )
+                torch.set_default_dtype(replacement)
+            elif self.mutation == "matmul_precision":
+                replacement = (
+                    "high"
+                    if torch.get_float32_matmul_precision() == "highest"
+                    else "highest"
+                )
+                torch.set_float32_matmul_precision(replacement)
             else:
                 raise AssertionError(
                     f"unknown reproducibility mutation: {self.mutation}"
@@ -833,6 +847,8 @@ def test_direct_restore_rejects_apply_time_state_drift(
         ("determinism", "live PyTorch deterministic policy disagrees"),
         ("training_mode", "checkpoint model training mode must remain enabled"),
         ("grad_mode", "trainer autograd mode changed during load"),
+        ("default_dtype", "trainer numeric policy changed during load"),
+        ("matmul_precision", "trainer numeric policy changed during load"),
     ],
 )
 def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero_grad(
@@ -850,6 +866,8 @@ def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero
     expected_enabled = torch.are_deterministic_algorithms_enabled()
     expected_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     expected_grad_enabled = torch.is_grad_enabled()
+    expected_default_dtype = torch.get_default_dtype()
+    expected_matmul_precision = torch.get_float32_matmul_precision()
 
     try:
         with pytest.raises(TrainingStateInvalidError, match=message):
@@ -860,6 +878,8 @@ def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero
             warn_only=expected_warn_only,
         )
         torch.set_grad_enabled(expected_grad_enabled)
+        torch.set_default_dtype(expected_default_dtype)
+        torch.set_float32_matmul_precision(expected_matmul_precision)
 
     assert optimizer.guarded_zero_grad_calls == 0
     assert trainer._failure_reason == (
@@ -1408,6 +1428,53 @@ def test_checkpoint_rng_fingerprint_is_observer_only() -> None:
     assert numpy_after[2:] == numpy_before[2:]
     assert torch.equal(torch.get_rng_state(), torch_before)
     assert torch.cuda.is_initialized() is cuda_was_initialized
+
+
+def test_direct_restore_preflight_seals_numeric_policy() -> None:
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    expected_dtype = torch.get_default_dtype()
+
+    class NumericPolicyMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            replacement = (
+                torch.float64 if expected_dtype is not torch.float64 else torch.float32
+            )
+            torch.set_default_dtype(replacement)
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=NumericPolicyMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer numeric policy changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert torch.get_default_dtype() is not expected_dtype
+        assert target._failure_reason == (
+            "trainer numeric policy changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+        assert not target.optimizer.state
+    finally:
+        torch.set_default_dtype(expected_dtype)
 
 
 def test_direct_restore_preflight_seals_autograd_mode() -> None:
