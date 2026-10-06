@@ -629,7 +629,7 @@ def _write_two_clean_fixture(
     post_g06_identity = "6" * 64
     post_g06_two_clean_identity = "5" * 64
     composition_core = {
-        "schema": "synthetic-composition",
+        "schema": target.COMPOSITION_SCHEMA,
         "execution_head_sha": execution_head,
         "upstream_global_dedup": {
             "evidence_identity_sha256": target.UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID,
@@ -640,7 +640,12 @@ def _write_two_clean_fixture(
             "two_clean_proof_identity_sha256": post_g06_two_clean_identity,
         },
         "family_vector_identity_sha256": family_identity,
-        "x": 1,
+        "materialization_identity_sha256": post_g06_identity,
+        "record_count": 3,
+        "total_payload_bytes": 3000,
+        "cross_transform_exact_payload_collision_free": True,
+        "semantics": target.COMPOSITION_SEMANTICS,
+        "terminal_verdict": "PASS",
         **target.ZERO_CREDIT,
     }
     composition = {
