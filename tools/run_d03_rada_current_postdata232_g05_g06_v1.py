@@ -301,6 +301,14 @@ def verify_parent(
         and _SHA64.fullmatch(evidence_id) is not None,
         "parent DATA-232 execution identity malformed",
     )
+    require(
+        report.get("status") in {"PASS_CLEAN", "PASS_WITH_EXCLUSIONS"},
+        "parent DATA-232 report is not terminal PASS",
+    )
+    require(
+        evidence.get("status") == report.get("status"),
+        "parent DATA-232 report/evidence status drift",
+    )
 
     result_id = verify_self_hash(
         result,
@@ -645,6 +653,15 @@ def materialize_quality_survivors_with_partial(
 
 def execute(args: argparse.Namespace) -> dict[str, Any]:
     authority_blobs = verify_local_authority(args.expected_execution_head)
+    require(
+        type(args.parent_artifact_id) is int and args.parent_artifact_id > 0,
+        "parent artifact ID must be a positive exact integer",
+    )
+    require(
+        isinstance(args.expected_parent_artifact_zip_sha256, str)
+        and _SHA64.fullmatch(args.expected_parent_artifact_zip_sha256) is not None,
+        "parent artifact ZIP SHA-256 malformed",
+    )
     training = load_jsonl(args.training_records_jsonl, "training records")
     inventory = load_json(
         args.parent_inventory_json,
@@ -822,7 +839,16 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "detector_counts": dict(sorted(normalized_detectors.items())),
             "materialization": privacy_stats,
         },
-        "survivor_inventory": survivor_inventory,
+        "survivor_inventory": {
+            "record_count": survivor_inventory["record_count"],
+            "total_payload_bytes": survivor_inventory["total_payload_bytes"],
+            "record_inventory_digest_sha256": survivor_inventory[
+                "record_inventory_digest_sha256"
+            ],
+            "payload_inventory_digest_sha256": survivor_inventory[
+                "payload_inventory_digest_sha256"
+            ],
+        },
         "counts": {
             "input_training_records": len(training),
             "data232_excluded_records": data232_excluded,
@@ -871,6 +897,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
     args.output_evidence.parent.mkdir(parents=True, exist_ok=True)
     args.output_quality.parent.mkdir(parents=True, exist_ok=True)
     args.output_privacy.parent.mkdir(parents=True, exist_ok=True)
+    args.output_survivor_inventory.parent.mkdir(parents=True, exist_ok=True)
     args.output_evidence.write_bytes(canonical_line(output))
     args.output_quality.write_bytes(canonical_line(quality))
     args.output_privacy.write_bytes(canonical_line(privacy))
