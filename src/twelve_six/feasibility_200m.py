@@ -463,6 +463,7 @@ def build_200m_feasibility_packet(
         decision=detached_decision,
     )
 
+
 def _trusted_build_retention_errors(packet: Any) -> list[str]:
     if not isinstance(packet, dict):
         return ["packet_not_object"]
