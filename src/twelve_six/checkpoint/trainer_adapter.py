@@ -2207,6 +2207,7 @@ def _restore_preapply_process_state(
     policy: tuple[bool, bool] | None,
     trainer: Any,
     *,
+    primary_exc: BaseException | None = None,
     execution_mode: tuple[bool, bool] | None = None,
     expected_canonical: bool | None = None,
 ) -> None:
@@ -2240,6 +2241,13 @@ def _restore_preapply_process_state(
             reason="checkpoint_preapply_rng_rollback_failed",
             exc=exc,
         )
+        if primary_exc is not None:
+            _add_failure_note_preserving_primary(
+                primary_exc,
+                "pre-application process-state restoration also failed: "
+                f"{exc!r}",
+            )
+            return
         raise
 
 
@@ -2404,6 +2412,7 @@ def save_trainer_checkpoint(
         export_policy = _snapshot_torch_policy(export_ambient)
         export_execution_mode = _snapshot_torch_execution_mode()
         export_started = False
+        export_primary_exc: BaseException | None = None
         try:
             entry_model_fingerprint = (
                 model_fingerprint()
@@ -2437,6 +2446,7 @@ def save_trainer_checkpoint(
                     "canonical trainer auxiliary state changed during checkpoint export"
                 )
         except BaseException as exc:
+            export_primary_exc = exc
             _note_restore_binding_drift(trainer, save_bindings, exc)
             if export_started:
                 _poison_canonical_restore_failure(
@@ -2451,6 +2461,7 @@ def save_trainer_checkpoint(
                 export_ambient,
                 export_policy,
                 trainer,
+                primary_exc=export_primary_exc,
                 execution_mode=export_execution_mode,
                 expected_canonical=save_bindings[0],
             )
@@ -2644,6 +2655,7 @@ def load_trainer_checkpoint(
     prebind_ambient = capture_rng_state()
     prebind_policy = _snapshot_torch_policy(prebind_ambient)
     prebind_execution_mode = _snapshot_torch_execution_mode()
+    prebind_primary_exc: BaseException | None = None
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
         model_apply_authority = _bind_native_model_export_validator(trainer)
@@ -2651,6 +2663,7 @@ def load_trainer_checkpoint(
         auxiliary_fingerprint = _bind_native_auxiliary_fingerprint(trainer)
         restore_live_authorities = _bind_native_export_live_authorities(trainer)
     except BaseException as exc:
+        prebind_primary_exc = exc
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2658,6 +2671,7 @@ def load_trainer_checkpoint(
             prebind_ambient,
             prebind_policy,
             trainer,
+            primary_exc=prebind_primary_exc,
             execution_mode=prebind_execution_mode,
             expected_canonical=restore_bindings[0],
         )
@@ -2683,10 +2697,12 @@ def load_trainer_checkpoint(
     preio_ambient = capture_rng_state()
     preio_policy = _snapshot_torch_policy(preio_ambient)
     preio_execution_mode = _snapshot_torch_execution_mode()
+    preio_primary_exc: BaseException | None = None
     try:
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
     except BaseException as exc:
+        preio_primary_exc = exc
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2694,6 +2710,7 @@ def load_trainer_checkpoint(
             preio_ambient,
             preio_policy,
             trainer,
+            primary_exc=preio_primary_exc,
             execution_mode=preio_execution_mode,
             expected_canonical=restore_bindings[0],
         )
@@ -2739,6 +2756,7 @@ def load_trainer_checkpoint(
     preapply_ambient = capture_rng_state()
     preapply_policy = _snapshot_torch_policy(preapply_ambient)
     preapply_execution_mode = _snapshot_torch_execution_mode()
+    preapply_primary_exc: BaseException | None = None
     try:
         # Loader lookup/signature inspection can execute descriptors or proxies.
         # Bind both effectful restore interfaces before model materialization, then
@@ -2772,6 +2790,7 @@ def load_trainer_checkpoint(
         _preflight_trainer_target(trainer)
         _assert_trainer_restore_bindings(trainer, restore_bindings)
     except BaseException as exc:
+        preapply_primary_exc = exc
         _note_restore_binding_drift(trainer, restore_bindings, exc)
         raise
     finally:
@@ -2779,6 +2798,7 @@ def load_trainer_checkpoint(
             preapply_ambient,
             preapply_policy,
             trainer,
+            primary_exc=preapply_primary_exc,
             execution_mode=preapply_execution_mode,
             expected_canonical=restore_bindings[0],
         )
