@@ -16,6 +16,7 @@ import ssl
 import sys
 import time
 from collections.abc import Mapping
+from http.client import RemoteDisconnected
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
@@ -184,7 +185,7 @@ def reconstruct_v8_with_bounded_tls_retry(
     bulk_workspace: Path,
     config: Mapping[str, Any],
 ) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
-    """Replay exact V7 with the already-qualified bounded TLS-EOF transport retry."""
+    """Replay exact V7 with bounded same-URL TLS-EOF/remote-disconnect retry."""
 
     original_capture = v8._capture_terminal_v7
 
@@ -201,7 +202,7 @@ def reconstruct_v8_with_bounded_tls_retry(
                 try:
                     return original_fetch(url)
                 except OSError as exc:
-                    retryable = (
+                    retryable = isinstance(exc, RemoteDisconnected) or (
                         isinstance(exc, URLError)
                         and isinstance(exc.reason, ssl.SSLEOFError)
                     )
