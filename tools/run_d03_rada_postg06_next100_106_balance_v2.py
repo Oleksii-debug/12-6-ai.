@@ -108,6 +108,13 @@ ZERO_CREDIT = {
     "scale_promotion_authorized": False,
 }
 
+POST_G06_EXPECTED_CONTENT_BOUNDARY = {
+    "raw_training_text_persisted": False,
+    "raw_evaluation_text_persisted": False,
+    "raw_survivor_text_persisted": False,
+    "durable_output_text_free": True,
+}
+
 POST_G06_EXPECTED_TRUTH_BOUNDARY = {
     "current_rada_data232_parent_two_clean_complete": True,
     "canonical_quality_privacy_executed": True,
@@ -556,8 +563,10 @@ def verify_post_g06_receipt(
             survivor.get(field) == family_vector.get(field),
             f"post-G06/family-vector cross-bind drift: {field}",
         )
-    require(evidence.get("content_boundary", {}).get("raw_survivor_text_persisted") is False,
-            "post-G06 receipt persisted raw survivor text")
+    require(
+        evidence.get("content_boundary") == POST_G06_EXPECTED_CONTENT_BOUNDARY,
+        "post-G06 content boundary drift",
+    )
     truth = evidence.get("truth_boundary")
     require(
         truth == POST_G06_EXPECTED_TRUTH_BOUNDARY,
@@ -1169,6 +1178,33 @@ def compare_outputs(
     )
 
     receipt = parsed["execution-receipt"]
+    expected_receipt_fields = {
+        "schema",
+        "execution_profile",
+        "execution_head_sha",
+        "upstream_global_dedup_evidence_identity_sha256",
+        "upstream_global_dedup_two_clean_identity_sha256",
+        "post_g06_evidence_identity_sha256",
+        "post_g06_two_clean_proof_identity_sha256",
+        "family_vector_identity_sha256",
+        "composition_dedup_identity_sha256",
+        "next100_input_identity_sha256",
+        "balance_policy_identity_sha256",
+        "balance_result_identity_sha256",
+        "balance_binding_identity_sha256",
+        "balance_status",
+        "maximum_feasible_total_source_bytes",
+        "raw_capacity_by_stratum",
+        "raw_gap_to_target_by_stratum",
+        "family_minimum",
+        "next_scientific_gate",
+        *ZERO_CREDIT.keys(),
+        "receipt_identity_sha256",
+    }
+    require(
+        set(receipt) == expected_receipt_fields,
+        "execution receipt fields drift",
+    )
     require(receipt.get("schema") == RECEIPT_SCHEMA, "execution receipt schema mismatch")
     receipt_identity = require_sha256(
         receipt.get("receipt_identity_sha256"),
@@ -1302,6 +1338,10 @@ def compare_outputs(
     core: dict[str, Any] = {
         "schema": REPEAT_SCHEMA,
         "execution_head_sha": receipt["execution_head_sha"],
+        "checkout_provenance_verified": enforce_checkout_provenance,
+        "terminal_verdict": (
+            "PASS" if enforce_checkout_provenance else "UNVERIFIED_TEST_ONLY"
+        ),
         "fresh_process_count": 2,
         "independent_runner_jobs": True,
         "runner_instance_identities": {
