@@ -186,24 +186,34 @@ def load_pinned_json(
 
 
 def _git(*args: str) -> str:
-    return subprocess.check_output(
-        ["git", *args],
-        cwd=ROOT,
-        text=True,
-        encoding="utf-8",
-    ).strip()
+    try:
+        return subprocess.check_output(
+            ["git", *args],
+            cwd=ROOT,
+            text=True,
+            encoding="utf-8",
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        operation = args[0] if args else "command"
+        raise RadaPostG06BalanceError(
+            f"git {operation} failed"
+        ) from exc
 
 
 def verify_source_head(source_git_sha: str) -> str:
     expected = require_git_sha(source_git_sha, "source_git_sha")
     require(_git("rev-parse", "HEAD") == expected, "execution HEAD drift")
-    ancestry = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", STACK_BASE_HEAD, expected],
-        cwd=ROOT,
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    try:
+        ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", STACK_BASE_HEAD, expected],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        raise RadaPostG06BalanceError("git merge-base failed") from exc
     require(
         ancestry.returncode == 0,
         "execution HEAD is outside the exact post-G06 balance-adapter stack",
