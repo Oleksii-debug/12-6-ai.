@@ -120,6 +120,68 @@ def _target_with_optimizer(
     return trainer, optimizer
 
 
+class _ForbiddenRestoreContractValue:
+    deepcopy_calls = 0
+    eq_calls = 0
+
+    def __deepcopy__(
+        self,
+        memo: dict[int, object],
+    ) -> "_ForbiddenRestoreContractValue":
+        del memo
+        type(self).deepcopy_calls += 1
+        return self
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        type(self).eq_calls += 1
+        return True
+
+
+def test_direct_restore_rejects_noncanonical_config_without_callbacks() -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    value = _ForbiddenRestoreContractValue()
+    _ForbiddenRestoreContractValue.deepcopy_calls = 0
+    _ForbiddenRestoreContractValue.eq_calls = 0
+    object.__setattr__(target.config, "seed", value)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint config field seed contains non-canonical value type",
+    ):
+        target.load_state_dict(state)
+
+    assert _ForbiddenRestoreContractValue.deepcopy_calls == 0
+    assert _ForbiddenRestoreContractValue.eq_calls == 0
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+
+def test_direct_restore_rejects_noncanonical_policy_without_callbacks() -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    value = _ForbiddenRestoreContractValue()
+    _ForbiddenRestoreContractValue.deepcopy_calls = 0
+    _ForbiddenRestoreContractValue.eq_calls = 0
+    target._canonical_default_optimizer_options["eps"] = value
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="trainer restore policy .* contains non-canonical value type",
+    ):
+        target.load_state_dict(state)
+
+    assert _ForbiddenRestoreContractValue.deepcopy_calls == 0
+    assert _ForbiddenRestoreContractValue.eq_calls == 0
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+
 def test_direct_restore_requires_training_mode_and_allows_retry() -> None:
     config = _config()
     state = _clean_state(config)
