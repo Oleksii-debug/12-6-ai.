@@ -348,3 +348,72 @@ def test_immutable_writer_rejects_divergent_interrupted_temp(
             b"fresh\n",
             label="synthetic",
         )
+
+
+
+def _zero_credit_truth() -> dict[str, object]:
+    return {
+        "canonical_capacity_credited": 0,
+        "authorized_optimized_target_exposure": 0,
+        "authorized_unique_loss_positions": 0,
+        "authorized_training_exposure": 0,
+        "tokenizer_fit_authorized": False,
+        "training_executed": False,
+        "learned_weights_created": False,
+        "final_test_outcomes_read": False,
+        "paid_compute_used": False,
+        "scale_promotion_authorized": False,
+        "model_architecture_or_hyperparameters_selected": False,
+    }
+
+
+def test_zero_credit_truth_accepts_exact_parent_boundary() -> None:
+    target.verify_zero_credit_truth(
+        _zero_credit_truth(),
+        label="synthetic",
+        require_model_selection_false=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("canonical_capacity_credited", 1),
+        ("authorized_optimized_target_exposure", 1),
+        ("authorized_unique_loss_positions", 1),
+        ("authorized_training_exposure", 1),
+        ("tokenizer_fit_authorized", True),
+        ("training_executed", True),
+        ("learned_weights_created", True),
+        ("final_test_outcomes_read", True),
+        ("paid_compute_used", True),
+        ("scale_promotion_authorized", True),
+        ("model_architecture_or_hyperparameters_selected", True),
+    ],
+)
+def test_zero_credit_truth_rejects_every_authority_widening(
+    field: str,
+    value: object,
+) -> None:
+    truth = _zero_credit_truth()
+    truth[field] = value
+    with pytest.raises(target.RadaPostData232Error):
+        target.verify_zero_credit_truth(
+            truth,
+            label="synthetic",
+            require_model_selection_false=True,
+        )
+
+
+def test_zero_credit_truth_rejects_boolean_zero_impostor() -> None:
+    truth = _zero_credit_truth()
+    truth["authorized_training_exposure"] = False
+    with pytest.raises(
+        target.RadaPostData232Error,
+        match="authorized_training_exposure",
+    ):
+        target.verify_zero_credit_truth(
+            truth,
+            label="synthetic",
+            require_model_selection_false=True,
+        )
