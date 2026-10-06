@@ -675,6 +675,73 @@ def test_restore_failure_note_attachment_cannot_mask_primary_failure(
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
+def test_restore_failure_rollback_note_cannot_mask_primary_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+) -> None:
+    checkpoint = tmp_path / "hostile-failure-note-rollback"
+    config = TrainerConfig(max_steps=10, seed=703)
+    hostile_hook_calls: list[str] = []
+
+    class HostileNoteError(RuntimeError):
+        def add_note(self, note: str) -> None:
+            hostile_hook_calls.append(note)
+            raise RuntimeError("hostile add_note hook executed")
+
+    failure = HostileNoteError("primary restore failure must survive rollback")
+
+    def fail_ambient_restore(state: Any) -> None:
+        del state
+        raise RuntimeError("forced ambient rollback failure")
+
+    class FailingDriftLinear(torch.nn.Linear):
+        def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
+            super().load_state_dict(state_dict, *args, **kwargs)
+            monkeypatch.setattr(core, "restore_rng_state", fail_ambient_restore)
+            torch.set_grad_enabled(not torch.is_grad_enabled())
+            raise failure
+
+    source_model = FailingDriftLinear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+
+    target_model = FailingDriftLinear(3, 3)
+    target = Trainer(target_model, config)
+    entry_grad_enabled = torch.is_grad_enabled()
+    try:
+        with pytest.raises(
+            HostileNoteError,
+            match="primary restore failure must survive rollback",
+        ) as caught:
+            loader.load_trainer_checkpoint(
+                checkpoint,
+                model=target_model,
+                trainer=target,
+                restore_rng=False,
+            )
+        assert caught.value is failure
+        assert hostile_hook_calls == []
+        assert any(
+            "Ambient RNG rollback also failed" in note
+            for note in getattr(caught.value, "__notes__", ())
+        )
+    finally:
+        torch.set_grad_enabled(entry_grad_enabled)
+
+    assert target._failure_reason == "checkpoint_restore_apply_failed"
+    assert target._update_incomplete is True
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
 @pytest.mark.parametrize("restore_rng", [False, True], ids=["opt-out", "replay"])
 def test_public_restore_preserves_caller_inference_mode(
     tmp_path: Path,
