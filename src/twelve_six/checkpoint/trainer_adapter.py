@@ -2018,9 +2018,12 @@ def _note_torch_execution_mode_drift(
     exc: BaseException,
     *,
     operation: str,
+    expected_canonical: bool,
 ) -> None:
-    """Attach execution-mode drift evidence without masking a primary failure."""
+    """Attach canonical execution-mode drift evidence without masking failure."""
 
+    if not expected_canonical:
+        return
     try:
         live = _snapshot_torch_execution_mode()
     except BaseException as mode_exc:  # noqa: BLE001 - preserve primary failure
@@ -2907,6 +2910,7 @@ def load_trainer_checkpoint(
             execution_mode_before_apply,
             exc,
             operation="checkpoint restore apply",
+            expected_canonical=restore_bindings[0],
         )
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
