@@ -14,11 +14,11 @@ from twelve_six.data._data232_decontamination_matching import (
     NORMALIZATION,
     SCHEMA,
     DecontaminationError,
-    _blocked_pairs,
     _fingerprint,
+    _iter_blocked_pairs,
+    _iter_train_pairs,
     _pair,
     _thresholds,
-    _train_pairs,
     authority_composite_identity,
     sha256_bytes,
     stable_identity,
@@ -81,12 +81,12 @@ def build_report(
             parent[max(ra, rb)] = min(ra, rb)
 
     matches = []
-    for i, j in sorted(_blocked_pairs(train, evaluation)):
+    for i, j in _iter_blocked_pairs(train, evaluation):
         evidence = _pair(train[i], evaluation[j], "eval", t)
         if evidence:
             union("t:" + train_ids[i], "e:" + eval_ids[j])
             matches.extend(evidence)
-    for i, j in sorted(_train_pairs(train)):
+    for i, j in _iter_train_pairs(train):
         evidence = _pair(train[i], train[j], "peer", t)
         if evidence:
             union("t:" + train_ids[i], "t:" + train_ids[j])
