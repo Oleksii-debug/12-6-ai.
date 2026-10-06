@@ -2829,6 +2829,59 @@ class Trainer:
                     "trainer restore component binding changed during load"
                 )
 
+        preapply_counters = (
+            expected_preapply_state["micro_step"],
+            expected_preapply_state["optimizer_step"],
+            expected_preapply_state["tokens_seen"],
+        )
+        preapply_pending = (
+            expected_preapply_state["_pending_tokens"],
+            expected_preapply_state["_pending_loss_sum"],
+        )
+
+        def _require_restore_control_state(
+            expected_counters: tuple[int, int, int],
+        ) -> None:
+            _require_restore_component_bindings()
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            if not _typed_state_equal(
+                current.get("_failure_reason"),
+                expected_preapply_state["_failure_reason"],
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer restore failure marker changed during load"
+                )
+            if current.get("_update_incomplete") is not True:
+                raise TrainingStateInvalidError(
+                    "trainer restore transaction marker changed during load"
+                )
+            if not _typed_state_equal(
+                (
+                    current.get("micro_step"),
+                    current.get("optimizer_step"),
+                    current.get("tokens_seen"),
+                ),
+                expected_counters,
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer restore counters changed during load"
+                )
+            if not _typed_state_equal(
+                (
+                    current.get("_pending_tokens"),
+                    current.get("_pending_loss_sum"),
+                ),
+                preapply_pending,
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer restore pending accounting changed during load"
+                )
+            if not _typed_state_equal(asdict(expected_config), expected_config_state):
+                raise TrainingStateInvalidError(
+                    "trainer restore config changed during load"
+                )
+            Trainer._require_no_residual_model_gradients(self)
+
         try:
             optimizer_loader = getattr(expected_optimizer, "load_state_dict", None)
             optimizer_zero_grad = getattr(expected_optimizer, "zero_grad", None)
@@ -2869,36 +2922,56 @@ class Trainer:
             Trainer._mark_failed(self, drift_reason)
             raise TrainingStateInvalidError(drift_reason)
 
+        checkpoint_counters = (
+            state.micro_step,
+            state.optimizer_step,
+            state.tokens_seen,
+        )
         self._update_incomplete = True
         try:
             optimizer_loader(optimizer_state)
-            _require_restore_component_bindings()
+            _require_restore_control_state(preapply_counters)
             self._require_optimizer_parameter_coverage()
             if expected_scheduler is not None and scheduler_state is not None:
                 assert scheduler_loader is not None
                 scheduler_loader(scheduler_state)
-                _require_restore_component_bindings()
+                _require_restore_control_state(preapply_counters)
             if scaler_state is not None:
                 assert scaler_loader is not None
                 scaler_loader(scaler_state)
-                _require_restore_component_bindings()
+                _require_restore_control_state(preapply_counters)
 
             self.micro_step = state.micro_step
             self.optimizer_step = state.optimizer_step
             self.tokens_seen = state.tokens_seen
             self._pending_tokens = 0
             self._pending_loss_sum = 0.0
-            _require_restore_component_bindings()
+            _require_restore_control_state(checkpoint_counters)
             optimizer_zero_grad(set_to_none=True)
-            _require_restore_component_bindings()
+            _require_restore_control_state(checkpoint_counters)
+
+            if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
+                raise TrainingStateInvalidError(
+                    "trainer model changed during load"
+                )
+
             # PyTorch's load_state_dict accepts NaN optimizer moments and
             # malformed-but-type-compatible group rates. A restore must not
             # return a supposedly checkpoint-safe trainer with those values.
             self._require_finite_auxiliary_state()
             self._require_finite_committed_update()
             self._require_no_residual_model_gradients()
+            Trainer._require_exported_optimizer_matches_live(self, optimizer_state)
+            Trainer._require_exported_scheduler_matches_live(self, scheduler_state)
+            if scaler_state is None:
+                if Trainer._canonical_scaler_live_state(self):
+                    raise TrainingStateInvalidError(
+                        "gradient scaler restore differs from live state"
+                    )
+            else:
+                Trainer._require_exported_scaler_matches_live(self, scaler_state)
             self._require_deterministic_policy()
-            _require_restore_component_bindings()
+            _require_restore_control_state(checkpoint_counters)
         except BaseException:
             self._mark_failed("trainer state restore failed after possible partial apply")
             raise
