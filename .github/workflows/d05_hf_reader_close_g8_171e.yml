@@ -1,0 +1,138 @@
+name: D05 HF reader close G8-171e
+
+on:
+  pull_request:
+    branches:
+      - repair/2976-hf-reader-close-primary-g8-171d-20261006
+    paths:
+      - ".github/workflows/d05_hf_reader_close_g8_171e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d05-hf-reader-close-171e-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: "b4460931280148af16155b31b7c7e8473d42e745"
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+  PYTHONUTF8: "1"
+
+jobs:
+  linux-hf-reader:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2977-hf-reader-close-primary-g8-171e-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact HF reader source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$SOURCE_SHA" HEAD)" = "$SOURCE_SHA"
+          git diff --name-only "$SOURCE_SHA"..HEAD | sort > /tmp/changed.txt
+          printf '%s\n' '.github/workflows/d05_hf_reader_close_g8_171e.yml' > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+          test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/hf_export.py")" = "34579954f73a9d24d80997016bbf9c17ee63615b"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_hf_export_transactional.py")" = "2347c58b98470f2a5cd49dc6a4ff8f07204d8ded"
+          python -m py_compile src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+      - name: Install focused test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Lint exact HF reader closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+      - name: Execute HF transactional regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_hf_export_transactional.py
+      - name: Prove Linux carrier remains clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          echo "D05_HF_READER_CLOSE_171E_LINUX=PASS_ZERO_SCIENTIFIC_CREDIT"
+
+  windows-hf-reader:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2977-hf-reader-close-primary-g8-171e-20261006'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact HF reader source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:EVENT_BASE_SHA -ne $env:SOURCE_SHA) { throw "base SHA drifted" }
+          if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA drifted" }
+          if ((git merge-base $env:SOURCE_SHA HEAD).Trim() -ne $env:SOURCE_SHA) { throw "carrier ancestry drifted" }
+          $changed = @(git diff --name-only "$env:SOURCE_SHA..HEAD" | Sort-Object)
+          $expected = @(".github/workflows/d05_hf_reader_close_g8_171e.yml")
+          if ($changed.Count -ne $expected.Count -or (Compare-Object $expected $changed)) {
+            throw "unexpected carrier delta: $changed"
+          }
+          $hfBlob = (git rev-parse "$($env:SOURCE_SHA):src/twelve_six/checkpoint/hf_export.py").Trim()
+          if ($hfBlob -ne "34579954f73a9d24d80997016bbf9c17ee63615b") { throw "hf_export blob drifted" }
+          $testBlob = (git rev-parse "$($env:SOURCE_SHA):tests/test_hf_export_transactional.py").Trim()
+          if ($testBlob -ne "2347c58b98470f2a5cd49dc6a4ff8f07204d8ded") { throw "HF test blob drifted" }
+          python -m py_compile src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+          $dirty = git status --porcelain=v1 --untracked-files=all
+          if ($dirty) { throw "carrier dirty before execution: $dirty" }
+      - name: Install focused test dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Lint exact HF reader closure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m ruff check src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+      - name: Execute HF transactional regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pytest -q tests/test_hf_export_transactional.py
+      - name: Prove Windows carrier remains clean
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA changed" }
+          $dirty = git status --porcelain=v1 --untracked-files=all
+          if ($dirty) { throw "carrier dirty after execution: $dirty" }
+          Write-Output "D05_HF_READER_CLOSE_171E_WINDOWS=PASS_ZERO_SCIENTIFIC_CREDIT"
