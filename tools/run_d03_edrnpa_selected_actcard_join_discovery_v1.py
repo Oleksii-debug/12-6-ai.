@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Discover the exact selected EDRNPA text-to-act-card join without admitting data.
 
 This zero-credit execution tool reconstructs the exact pinned 176-row text
