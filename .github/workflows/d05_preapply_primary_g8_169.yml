@@ -1,5 +1,6 @@
 name: D05 preapply primary preservation G8-169
 
+# Exact-head qualification-only carrier; never merge into production.
 on:
   pull_request:
     branches:
