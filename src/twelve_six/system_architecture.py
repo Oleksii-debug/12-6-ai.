@@ -163,8 +163,8 @@ class SystemArchitectureManifest:
             raise ValueError("system architecture must contain exactly seven required planes")
         if len(set(self.planes)) != len(self.planes):
             raise ValueError("system architecture planes must be unique")
-        if set(self.planes) != set(_REQUIRED_PLANES):
-            raise ValueError("system architecture plane set is incomplete or non-canonical")
+        if self.planes != _REQUIRED_PLANES:
+            raise ValueError("system architecture plane order or set is non-canonical")
 
         names = [boundary.name for boundary in self.boundaries]
         if len(set(names)) != len(names):
@@ -177,8 +177,8 @@ class SystemArchitectureManifest:
             if boundary.producer not in plane_set or boundary.consumer not in plane_set:
                 raise ValueError("typed boundary refers to a plane outside the manifest")
 
-        if set(names) != set(_REQUIRED_BOUNDARY_SPECS):
-            raise ValueError("system architecture typed-boundary set is incomplete or non-canonical")
+        if names != list(_REQUIRED_BOUNDARY_SPECS):
+            raise ValueError("system architecture typed-boundary order or set is non-canonical")
 
         observed_specs = {
             boundary.name: (
@@ -316,6 +316,13 @@ class ProductAssembly:
             raise ValueError("shell must be a RuntimeShellContract")
         if not isinstance(self.core_binding, CognitiveCoreBinding):
             raise ValueError("core_binding must be a CognitiveCoreBinding")
+        architecture_gateway = next(
+            boundary.interface
+            for boundary in self.architecture.boundaries
+            if boundary.name == "base_to_gateway"
+        )
+        if self.shell.gateway_api != architecture_gateway:
+            raise ValueError("runtime shell gateway contract is incompatible with architecture")
         if self.core_binding.gateway_api != self.shell.gateway_api:
             raise ValueError("cognitive core gateway contract is incompatible with runtime shell")
 
@@ -351,6 +358,13 @@ class CoreReplacementReceipt:
             raise ValueError("core replacement receipt cannot claim a changed runtime shell")
         if self.shell_rewrite_required is not False:
             raise ValueError("canonical core replacement must not require a runtime-shell rewrite")
+        expected_surfaces = ("gateway", "memory", "tools", "voice", "ui", "orchestration")
+        observed_surfaces = tuple(surface for surface, _ in self.preserved_surface_identities)
+        if observed_surfaces != expected_surfaces:
+            raise ValueError("preserved surface identity set or order is non-canonical")
+        for surface, identity in self.preserved_surface_identities:
+            _require_nonempty_text("surface", surface)
+            _require_sha256(f"{surface}_identity_sha256", identity)
 
     def to_dict(self) -> dict[str, Any]:
         return {
