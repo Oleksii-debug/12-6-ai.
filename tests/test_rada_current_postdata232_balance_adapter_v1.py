@@ -584,7 +584,7 @@ def test_stack_base_is_valid_current_parent_ancestor() -> None:
 def test_nonexistent_terminal_parent_head_is_rejected() -> None:
     with pytest.raises(
         target.CurrentRadaBalanceAdapterError,
-        match="outside the stacked",
+        match="outside the terminal #2915/#2920 G05/G06 lineage",
     ):
         target.verify_parent_execution_ancestry("f" * 40)
 
