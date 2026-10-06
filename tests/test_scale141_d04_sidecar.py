@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
+import subprocess
+import sys
+from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 import pytest
 import torch
 from torch import nn
 
 from twelve_six.checkpoint import (
     D04_RESUME_BINDING_SCHEMA,
+    CheckpointCompatibilityError,
     CheckpointIdentity,
     load_trainer_checkpoint,
     save_trainer_checkpoint,
@@ -24,6 +31,10 @@ from twelve_six.scale141_recovery import (
 )
 from twelve_six.scale141_resume_sidecar import ResumeSidecarContext
 from twelve_six.training import Trainer, TrainerConfig
+from twelve_six.trusted_parent_recovery_binding import (
+    trusted_parent_recovery_binding_from_resolution,
+    trusted_recovery_authority_token,
+)
 
 SOURCE_SHA = "2" * 40
 RUN_HASH = "3" * 64
@@ -67,6 +78,7 @@ def _identity(model: TinyLM, trainer: Trainer, cfg: TrainerConfig) -> Checkpoint
         dataset_manifest_hash=DATA_HASH,
         run_manifest_hash=RUN_HASH,
         training_config={
+            "run_id": "R01-REAL-FRESH-PROCESS-D04",
             "trainer": asdict(cfg),
             "data": {
                 "resume_binding_schema": D04_RESUME_BINDING_SCHEMA,
@@ -108,6 +120,41 @@ def _state_hash(value: dict[str, object]) -> str:
         + "\n"
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _stable_digest(value: Any) -> str:
+    digest = hashlib.sha256()
+
+    def visit(item: Any) -> None:
+        if torch.is_tensor(item):
+            tensor = item.detach().cpu().contiguous()
+            digest.update(b"T")
+            digest.update(str(tensor.dtype).encode("ascii"))
+            digest.update(repr(tuple(tensor.shape)).encode("ascii"))
+            digest.update(tensor.numpy().tobytes())
+            return
+        if isinstance(item, Mapping):
+            digest.update(b"D")
+            for key in sorted(item, key=lambda candidate: repr(candidate)):
+                visit(key)
+                visit(item[key])
+            return
+        if isinstance(item, list):
+            digest.update(b"L")
+            for child in item:
+                visit(child)
+            return
+        if isinstance(item, tuple):
+            digest.update(b"U")
+            for child in item:
+                visit(child)
+            return
+        digest.update(type(item).__name__.encode("utf-8"))
+        digest.update(b":")
+        digest.update(repr(item).encode("utf-8"))
+
+    visit(value)
+    return digest.hexdigest()
 
 
 def _resume_state(context: ResumeSidecarContext) -> dict[str, object]:
@@ -186,6 +233,8 @@ def test_sidecar_publishes_after_manifest_and_resolves_exact_d04_state(tmp_path:
         model=fresh_model,
         trainer=fresh_trainer,
         restore_rng=False,
+        expected_checkpoint_id=reference["checkpoint_id"],
+        expected_manifest_sha256=reference["manifest_sha256"],
         expected_git_sha=SOURCE_SHA,
         expected_run_manifest_hash=RUN_HASH,
         expected_step=trainer.optimizer_step,
@@ -284,3 +333,238 @@ def test_interruption_after_sidecar_keeps_last_known_good_and_cleanup_removes_or
     assert not (root / "generations/generation-00000002").exists()
     assert not (root / "resume-states/generation-00000002").exists()
     assert resolve_recovery_generation(root, expected_reference=first).resume_state is not None
+
+
+
+def test_metadata_compatible_alternate_checkpoint_rejected_before_mutation(
+    tmp_path: Path,
+) -> None:
+    model_a, trainer_a, cfg_a = _stack()
+    _step(trainer_a)
+    reference_a = _publish(tmp_path / "trusted", model_a, trainer_a, cfg_a)
+
+    model_b, trainer_b, cfg_b = _stack()
+    _step(trainer_b)
+    with torch.no_grad():
+        first_parameter = next(model_b.parameters())
+        first_parameter.view(-1)[0].add_(0.125)
+    reference_b = _publish(tmp_path / "alternate", model_b, trainer_b, cfg_b)
+
+    assert reference_b["checkpoint_id"] != reference_a["checkpoint_id"]
+    assert reference_b["manifest_sha256"] != reference_a["manifest_sha256"]
+    resolution_b = resolve_recovery_generation(
+        tmp_path / "alternate",
+        expected_reference=reference_b,
+    )
+
+    target_model, target_trainer, _ = _stack()
+    model_before = {
+        name: tensor.detach().clone()
+        for name, tensor in target_model.state_dict().items()
+    }
+    counters_before = (
+        target_trainer.micro_step,
+        target_trainer.optimizer_step,
+        target_trainer.tokens_seen,
+    )
+    rng_before = torch.get_rng_state().clone()
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="checkpoint_id does not match the independently expected D05 identity",
+    ):
+        load_trainer_checkpoint(
+            resolution_b.path,
+            model=target_model,
+            trainer=target_trainer,
+            restore_rng=True,
+            expected_checkpoint_id=reference_a["checkpoint_id"],
+            expected_manifest_sha256=reference_a["manifest_sha256"],
+            expected_git_sha=SOURCE_SHA,
+            expected_run_manifest_hash=RUN_HASH,
+            expected_step=trainer_a.optimizer_step,
+            expected_tokens_seen=trainer_a.tokens_seen,
+            expected_ledger_identity_sha256=LEDGER_HASH,
+            expected_materialization_identity_sha256=MATERIALIZATION_HASH,
+            expected_packing_identity_sha256=PACKING_IDENTITY_HASH,
+            expected_exposure_plan_identity_sha256=EXPOSURE_PLAN_HASH,
+            expected_ordered_next_exposure_identity_sha256=ORDERED_NEXT_HASH,
+        )
+
+    for name, tensor in target_model.state_dict().items():
+        assert torch.equal(tensor, model_before[name])
+    assert (
+        target_trainer.micro_step,
+        target_trainer.optimizer_step,
+        target_trainer.tokens_seen,
+    ) == counters_before
+    assert torch.equal(torch.get_rng_state(), rng_before)
+
+
+def test_fresh_process_restores_exact_d05_d04_trainer_and_rng_state(
+    tmp_path: Path,
+) -> None:
+    random.seed(211)
+    np.random.seed(211)
+    model, trainer, cfg = _stack()
+    _step(trainer)
+    root = tmp_path / "fresh-process"
+    reference = _publish(root, model, trainer, cfg)
+    resolution = resolve_recovery_generation(root, expected_reference=reference)
+    placeholder_authority = {
+        "repository": "Oleksii-debug/12-6-ai.",
+        "git_sha": SOURCE_SHA,
+        "evidence_sha256": "0" * 64,
+        "workflow_run_id": 1811,
+        "workflow_conclusion": "success",
+        "terminal": True,
+    }
+    projected = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class="OTHER_FREE",
+        provider_id="GITHUB_ACTIONS_STANDARD_LINUX_X64",
+        provider_session_id="fresh-process-b",
+        previous_provider_session_id="publisher-process-a",
+        terminal_recovery_authority=placeholder_authority,
+    )
+    authority = dict(placeholder_authority)
+    authority["evidence_sha256"] = projected["binding_sha256"]
+    trusted = trusted_parent_recovery_binding_from_resolution(
+        resolution,
+        provider_class="OTHER_FREE",
+        provider_id="GITHUB_ACTIONS_STANDARD_LINUX_X64",
+        provider_session_id="fresh-process-b",
+        previous_provider_session_id="publisher-process-a",
+        terminal_recovery_authority=authority,
+    )
+
+    expected = {
+        "model_state_sha256": _stable_digest(model.state_dict()),
+        "trainer_state_sha256": _stable_digest(trainer.state_dict()),
+        "micro_step": trainer.micro_step,
+        "optimizer_step": trainer.optimizer_step,
+        "tokens_seen": trainer.tokens_seen,
+        "checkpoint_id": reference["checkpoint_id"],
+        "manifest_sha256": reference["manifest_sha256"],
+        "d04_state_identity_sha256": reference["resume_state"][
+            "state_identity_sha256"
+        ],
+        "ordered_next_exposure_identity_sha256": reference["resume_state"][
+            "ordered_next_exposure_identity_sha256"
+        ],
+        "trusted_parent_binding_sha256": trusted["binding_sha256"],
+        "trusted_parent_checkpoint_id": trusted["checkpoint_id"],
+        "trusted_parent_manifest_sha256": trusted["checkpoint_manifest_sha256"],
+        "trusted_recovery_authority_token": trusted_recovery_authority_token(authority),
+        "rng_probe": {
+            "python": random.random(),
+            "numpy": float(np.random.random()),
+            "torch": float(torch.rand(1).item()),
+        },
+    }
+
+    _step(trainer, 1)
+    with pytest.raises(RecoveryPointerUpdateInterrupted, match="after D04 sidecar"):
+        _publish(
+            root,
+            model,
+            trainer,
+            cfg,
+            failpoint="after_sidecar_before_pointer",
+        )
+    still_current = resolve_recovery_generation(root, expected_reference=reference)
+    assert still_current.reference["checkpoint_id"] == reference["checkpoint_id"]
+    assert (root / "generations/generation-00000002").is_dir()
+    assert (root / "resume-states/generation-00000002").is_dir()
+
+    reference_path = tmp_path / "reference.json"
+    reference_path.write_text(
+        json.dumps(reference, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    worker = (
+        Path(__file__).parent
+        / "helpers"
+        / "pr1811_fresh_resume_worker.py"
+    )
+    completed = subprocess.run(
+        [sys.executable, str(worker), str(root), str(reference_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    observed = json.loads(completed.stdout)
+    assert observed == expected
+
+
+@pytest.mark.parametrize(
+    ("expected_field", "message"),
+    [
+        (
+            "expected_checkpoint_id",
+            "checkpoint_id does not match the independently expected D05 identity",
+        ),
+        (
+            "expected_manifest_sha256",
+            "manifest SHA-256 does not match the independently expected D05 identity",
+        ),
+    ],
+)
+def test_exact_d05_identity_mismatch_rejects_before_restore_mutation(
+    tmp_path: Path,
+    expected_field: str,
+    message: str,
+) -> None:
+    model, trainer, cfg = _stack()
+    _step(trainer)
+    root = tmp_path / expected_field
+    reference = _publish(root, model, trainer, cfg)
+    resolution = resolve_recovery_generation(root, expected_reference=reference)
+
+    fresh_model, fresh_trainer, _ = _stack()
+    model_before = {
+        name: tensor.detach().clone()
+        for name, tensor in fresh_model.state_dict().items()
+    }
+    trainer_before = (
+        fresh_trainer.micro_step,
+        fresh_trainer.optimizer_step,
+        fresh_trainer.tokens_seen,
+    )
+    rng_before = torch.get_rng_state().clone()
+
+    kwargs = {
+        "expected_checkpoint_id": reference["checkpoint_id"],
+        "expected_manifest_sha256": reference["manifest_sha256"],
+    }
+    actual = kwargs[expected_field]
+    replacement = "0" * 64 if actual != "0" * 64 else "f" * 64
+    kwargs[expected_field] = replacement
+
+    with pytest.raises(CheckpointCompatibilityError, match=message):
+        load_trainer_checkpoint(
+            resolution.path,
+            model=fresh_model,
+            trainer=fresh_trainer,
+            restore_rng=True,
+            expected_git_sha=SOURCE_SHA,
+            expected_run_manifest_hash=RUN_HASH,
+            expected_step=trainer.optimizer_step,
+            expected_tokens_seen=trainer.tokens_seen,
+            expected_ledger_identity_sha256=LEDGER_HASH,
+            expected_materialization_identity_sha256=MATERIALIZATION_HASH,
+            expected_packing_identity_sha256=PACKING_IDENTITY_HASH,
+            expected_exposure_plan_identity_sha256=EXPOSURE_PLAN_HASH,
+            expected_ordered_next_exposure_identity_sha256=ORDERED_NEXT_HASH,
+            **kwargs,
+        )
+
+    for name, tensor in fresh_model.state_dict().items():
+        assert torch.equal(tensor, model_before[name])
+    assert (
+        fresh_trainer.micro_step,
+        fresh_trainer.optimizer_step,
+        fresh_trainer.tokens_seen,
+    ) == trainer_before
+    assert torch.equal(torch.get_rng_state(), rng_before)

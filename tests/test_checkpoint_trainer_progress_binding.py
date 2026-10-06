@@ -149,6 +149,7 @@ def test_trainer_exact_positive_progress_restores_once(tmp_path: Path) -> None:
         ),
         ("expected_split_identity", "", "expected_split_identity"),
         ("expected_packing_version", "", "expected_packing_version"),
+        ("expected_previous_run_id", "", "expected_previous_run_id"),
     ],
 )
 def test_malformed_canonical_expectation_rejected_before_snapshot_or_mutation(
@@ -180,6 +181,43 @@ def test_malformed_canonical_expectation_rejected_before_snapshot_or_mutation(
     np.testing.assert_array_equal(model.weights, before)
     assert model.loads == 0
     assert trainer.loads == 0
+
+
+def test_trainer_previous_run_id_is_bound_before_mutation(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoint"
+    save_trainer_checkpoint(
+        checkpoint,
+        model=NumpyModel([1.0, 2.0, 3.0]),
+        trainer=GenericTrainer(),
+        identity=identity(training_config={"steps": 10, "run_id": "run-parent-a"}),
+    )
+    model = NumpyModel([9.0, 9.0, 9.0])
+    trainer = GenericTrainer()
+    before = model.weights.copy()
+
+    with pytest.raises(CheckpointCompatibilityError, match="previous run id"):
+        load_trainer_checkpoint(
+            checkpoint,
+            model=model,
+            trainer=trainer,
+            restore_rng=False,
+            expected_previous_run_id="run-parent-b",
+        )
+
+    np.testing.assert_array_equal(model.weights, before)
+    assert model.loads == 0
+    assert trainer.loads == 0
+
+    result = load_trainer_checkpoint(
+        checkpoint,
+        model=model,
+        trainer=trainer,
+        restore_rng=False,
+        expected_previous_run_id="run-parent-a",
+    )
+    assert result.manifest["identity"]["training_config"]["run_id"] == "run-parent-a"
+    assert model.loads == 1
+    assert trainer.loads == 1
 
 
 def test_equal_malformed_nested_provenance_cannot_self_confirm(tmp_path: Path) -> None:
