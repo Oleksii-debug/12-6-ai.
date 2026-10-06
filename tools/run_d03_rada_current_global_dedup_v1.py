@@ -15,12 +15,16 @@ import copy
 import hashlib
 import importlib.util
 import json
+import ssl
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+from urllib.error import URLError
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -546,6 +550,78 @@ def write_json(path: Path, value: Mapping[str, Any]) -> None:
     path.write_bytes(canonical(dict(value)) + b"\n")
 
 
+def reconstruct_with_bounded_transport_retry(
+    helper: ModuleType,
+    *,
+    v7_root: Path,
+    bulk_workspace: Path,
+    config: Mapping[str, Any],
+) -> tuple[Any, dict[str, Any], dict[str, bytes], dict[str, Any]]:
+    """Replay exact V7 with bounded retry for transport-only fetch failures.
+
+    The frozen historical fetcher, acquisition URLs, normal TLS verification,
+    source hashes, rights gates and matcher semantics stay unchanged. Only a
+    timeout or TLS EOF may retry, at most three attempts on the same URL.
+    """
+    historical_v8 = helper.v8
+    original_capture = historical_v8._capture_terminal_v7
+
+    def capture_with_retry(
+        historical_root: Path,
+        historical_config: Mapping[str, Any],
+    ) -> tuple[Any, dict[str, Any], dict[str, Any], dict[str, bytes]]:
+        historical_v7 = historical_v8._load_v7(historical_root)
+        fetch_module = historical_v7.v6.v5.v1
+        original_fetch = fetch_module.fetch_exact_source
+
+        def retry_fetch(url: str) -> bytes:
+            for attempt in range(1, 4):
+                try:
+                    return original_fetch(url)
+                except OSError as exc:
+                    retryable = (
+                        isinstance(exc, (TimeoutError, ssl.SSLEOFError))
+                        or (
+                            isinstance(exc, URLError)
+                            and isinstance(
+                                exc.reason,
+                                (TimeoutError, ssl.SSLEOFError),
+                            )
+                        )
+                    )
+                    if retryable and attempt < 3:
+                        time.sleep(0.25 * attempt)
+                        continue
+                    try:
+                        host = urlsplit(url).hostname or "unknown"
+                    except ValueError:
+                        host = "invalid-url"
+                    url_sha256 = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                    exc.add_note(
+                        "historical V7 source fetch failed: "
+                        f"host={host}; acquisition_url_sha256={url_sha256}; "
+                        f"attempts={attempt}"
+                    )
+                    raise
+            raise AssertionError("unreachable historical fetch attempt state")
+
+        fetch_module.fetch_exact_source = retry_fetch
+        try:
+            return original_capture(historical_root, historical_config)
+        finally:
+            fetch_module.fetch_exact_source = original_fetch
+
+    historical_v8._capture_terminal_v7 = capture_with_retry
+    try:
+        return helper._reconstruct_v8_with_historical_namespace(
+            v7_root=v7_root,
+            bulk_workspace=bulk_workspace,
+            config=config,
+        )
+    finally:
+        historical_v8._capture_terminal_v7 = original_capture
+
+
 def execute(args: argparse.Namespace) -> None:
     verify_product_parent(args.expected_execution_head)
     helper = load_helper(args.nbu_helper_root)
@@ -560,7 +636,8 @@ def execute(args: argparse.Namespace) -> None:
         args.nbu_helper_root / "configs/data/next100_065f_global_dedup_v8.json"
     )
     matcher, base_inventory, base_payloads, removal = (
-        helper._reconstruct_v8_with_historical_namespace(
+        reconstruct_with_bounded_transport_retry(
+            helper,
             v7_root=args.v7_root,
             bulk_workspace=args.bulk_workspace,
             config=config,
