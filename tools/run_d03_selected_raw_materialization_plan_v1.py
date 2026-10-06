@@ -14,8 +14,9 @@ import argparse
 import hashlib
 import json
 from collections import defaultdict
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping, NoReturn
+from typing import Any, NoReturn
 
 from twelve_six.data.current_clean_balanced_selection_v1 import _exact_record_subset
 
