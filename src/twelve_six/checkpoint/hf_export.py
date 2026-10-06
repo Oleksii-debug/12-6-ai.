@@ -103,6 +103,7 @@ def _read_regular_bytes(root: Path, name: str) -> bytes:
         raise CheckpointIntegrityError(
             f"cannot safely open HF-style export artifact: {name}"
         ) from exc
+    primary_exc: BaseException | None = None
     try:
         opened = os.fstat(fd)
         if not stat.S_ISREG(opened.st_mode):
@@ -113,8 +114,22 @@ def _read_regular_bytes(root: Path, name: str) -> bytes:
             )
         with os.fdopen(fd, "rb", closefd=False) as handle:
             return handle.read()
+    except BaseException as exc:
+        primary_exc = exc
+        raise
     finally:
-        os.close(fd)
+        try:
+            os.close(fd)
+        except OSError as close_exc:
+            if primary_exc is not None:
+                _add_failure_note_preserving_primary(
+                    primary_exc,
+                    f"HF-style export artifact close also failed: {close_exc!r}",
+                )
+            else:
+                raise CheckpointIntegrityError(
+                    f"cannot close HF-style export artifact: {name}"
+                ) from close_exc
 
 
 def _read_export_snapshot(root: Path) -> dict[str, bytes]:
