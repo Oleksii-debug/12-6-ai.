@@ -13,6 +13,7 @@ import hashlib
 import json
 import statistics
 import sys
+import unicodedata
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -118,6 +119,16 @@ def numeric_summary(values: Sequence[int | float]) -> dict[str, int | float]:
         "median": _rounded(statistics.median(ordered)),
         "max": _rounded(ordered[-1]),
     }
+
+
+def aggregate_disallowed_control_codepoints(texts: Sequence[str]) -> dict[str, int]:
+    """Count forbidden Cc code points without emitting source text or record identity."""
+    counts: Counter[str] = Counter()
+    for text in texts:
+        for char in text:
+            if unicodedata.category(char) == "Cc" and char not in "\n\t":
+                counts[f"U+{ord(char):04X}"] += 1
+    return dict(sorted(counts.items()))
 
 
 def _selected_rows(source_rows: Sequence[Mapping[str, str]]) -> list[Mapping[str, str]]:
@@ -368,6 +379,10 @@ def run(args: argparse.Namespace) -> None:
         for row in selected
     ]
     aggregate = aggregate_decisions(decisions)
+    control_codepoints = aggregate_disallowed_control_codepoints(
+        [row["normalized_text"] for row in selected]
+    )
+    need(bool(control_codepoints), "expected forbidden control code points missing")
     need(
         aggregate["documents"] == EXPECTED_RECORDS,
         "diagnostic document count drift",
@@ -406,6 +421,8 @@ def run(args: argparse.Namespace) -> None:
         },
         "diagnostic": {
             **aggregate,
+            "disallowed_control_codepoint_counts": control_codepoints,
+            "disallowed_control_occurrences": sum(control_codepoints.values()),
             "documents_at_or_below_window_trigger": sum(
                 d.features.chars <= granularity.natural_window_trigger_chars
                 for d in decisions
