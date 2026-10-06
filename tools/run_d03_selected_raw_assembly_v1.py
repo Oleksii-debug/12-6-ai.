@@ -22,7 +22,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
-import run_d03_selected_raw_materialization_plan_v1 as plan_api
+TOOLS = Path(__file__).resolve().parent
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
+import run_d03_selected_raw_materialization_plan_v1 as plan_api  # noqa: E402
 
 SCHEMA = "12-6.d03-selected-raw-assembly.v1"
 PLAN_IDENTITY = "ddf42773bb7ac4856e07c7b8e22b137581f02b79e231f0740b12e867c0981400"
