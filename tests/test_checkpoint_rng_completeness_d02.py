@@ -523,7 +523,8 @@ def test_public_restore_preserves_caller_no_grad_mode(
 
 
 @pytest.mark.parametrize(
-    "phase", ["trainer_export", "model_validator"],
+    "phase",
+    ["trainer_export", "model_state_dict", "model_validator", "prepublish"],
 )
 @pytest.mark.parametrize(
     "mutation", ["grad_enabled", "inference_mode"],
@@ -572,7 +573,16 @@ def test_checkpoint_save_rejects_autograd_execution_mode_drift(
             "_bind_trainer_state_exporter",
             bind_drifting_exporter,
         )
-    else:
+    elif phase == "model_state_dict":
+        original_state_dict = model.state_dict
+
+        def drifting_model_state_dict(*args: Any, **kwargs: Any) -> Any:
+            state = original_state_dict(*args, **kwargs)
+            mutate_execution_mode()
+            return state
+
+        monkeypatch.setattr(model, "state_dict", drifting_model_state_dict)
+    elif phase == "model_validator":
         original_bind = trainer_adapter._bind_native_model_export_validator
 
         def bind_drifting_validator(target: Any) -> Any:
@@ -591,6 +601,19 @@ def test_checkpoint_save_rejects_autograd_execution_mode_drift(
             trainer_adapter,
             "_bind_native_model_export_validator",
             bind_drifting_validator,
+        )
+    else:
+        original_exact_live = trainer_adapter._assert_native_d02_exact_live_state
+
+        def drifting_prepublish(*args: Any, **kwargs: Any) -> Any:
+            result = original_exact_live(*args, **kwargs)
+            mutate_execution_mode()
+            return result
+
+        monkeypatch.setattr(
+            trainer_adapter,
+            "_assert_native_d02_exact_live_state",
+            drifting_prepublish,
         )
 
     try:
