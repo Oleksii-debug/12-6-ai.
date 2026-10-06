@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -21,6 +22,21 @@ GIT_B = "b" * 40
 SHA_A = "a" * 64
 SHA_B = "b" * 64
 ROADMAP_PATH = Path("configs/research/r01_accelerated_scaling_roadmap_v2.json")
+CLI_PATH = (
+    Path(__file__).resolve().parents[1] / "tools" / "build_200m_feasibility_packet.py"
+)
+
+
+def _load_cli():
+    spec = importlib.util.spec_from_file_location(
+        "build_200m_feasibility_packet",
+        CLI_PATH,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def authority(
@@ -388,3 +404,61 @@ def test_expected_identity_map_must_cover_every_requirement() -> None:
     assert "expected_requirement_evidence_sha256_fields_mismatch" in validate(
         packet, expected=expected
     )
+
+
+def test_cli_json_reader_accepts_small_regular_utf8_json(tmp_path: Path) -> None:
+    cli = _load_cli()
+    path = tmp_path / "input.json"
+    path.write_text('{"value":1}', encoding="utf-8")
+    assert cli._read_json(path, label="input") == {"value": 1}
+
+
+def test_cli_json_reader_rejects_oversized_input_before_decode(tmp_path: Path) -> None:
+    cli = _load_cli()
+    path = tmp_path / "oversized.json"
+    path.write_bytes(b" " * (cli.MAX_INPUT_BYTES + 1))
+    with pytest.raises(ValueError, match="input_exceeds_byte_limit"):
+        cli._read_json(path, label="input")
+
+
+def test_cli_json_reader_redacts_duplicate_member_name(tmp_path: Path) -> None:
+    cli = _load_cli()
+    path = tmp_path / "duplicate.json"
+    secret = "PRIVATE-KEY-NAME"
+    path.write_text(
+        '{"' + secret + '":1,"' + secret + '":2}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate_json_key") as exc_info:
+        cli._read_json(path, label="input")
+    assert secret not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        ('{"value":1e400}', "json_number_not_finite"),
+        ('{"value":1e-9999}', "json_number_underflow"),
+        ('{"value":' + "9" * 65 + "}", "json_integer_too_large"),
+    ],
+)
+def test_cli_json_reader_rejects_unsafe_numbers(
+    tmp_path: Path,
+    payload: str,
+    error: str,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "number.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError, match=error):
+        cli._read_json(path, label="input")
+
+
+def test_cli_json_reader_converts_excessive_nesting_to_bounded_error(
+    tmp_path: Path,
+) -> None:
+    cli = _load_cli()
+    path = tmp_path / "deep.json"
+    path.write_text("[" * 10_000 + "]" * 10_000, encoding="utf-8")
+    with pytest.raises(ValueError, match="input_json_too_deep"):
+        cli._read_json(path, label="input")
