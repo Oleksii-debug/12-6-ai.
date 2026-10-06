@@ -950,3 +950,97 @@ def test_malformed_primary_notes_do_not_mask_cleanup_double_fault(
 
     assert primary.__notes__ == "malformed-note-storage"
 
+
+@pytest.mark.parametrize(
+    "interrupt_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_cleanup_later_interrupt_outranks_earlier_ordinary_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    first = tmp_path / ".hf.cleanup-first"
+    second = tmp_path / ".hf.cleanup-second"
+    first.mkdir()
+    second.mkdir()
+    identities = {
+        first: hf_export._temporary_directory_identity(first),
+        second: hf_export._temporary_directory_identity(second),
+    }
+    primary = interrupt_type("second cleanup interrupted")
+    seen: list[Path] = []
+
+    def fail_cleanup(
+        path: Path,
+        *,
+        label: str,
+        expected_identity: tuple[int, int],
+    ):
+        assert expected_identity == identities[path]
+        seen.append(path)
+        if path == first:
+            raise OSError(f"{label} ordinary failure")
+        if path == second:
+            raise primary
+        raise AssertionError(f"unexpected cleanup path: {path}")
+
+    monkeypatch.setattr(hf_export, "_remove_temp_path_strict", fail_cleanup)
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._cleanup_temp_paths_strict(
+            (
+                (first, "first root", identities[first]),
+                (second, "second root", identities[second]),
+            )
+        )
+
+    assert caught.value is primary
+    assert seen == [first, second]
+    assert any(
+        "first root cleanup also failed while second root raised" in note
+        for note in getattr(primary, "__notes__", ())
+    )
+
+
+def test_cleanup_multiple_ordinary_failures_remain_integrity_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    first = tmp_path / ".hf.cleanup-first-ordinary"
+    second = tmp_path / ".hf.cleanup-second-ordinary"
+    first.mkdir()
+    second.mkdir()
+    identities = {
+        first: hf_export._temporary_directory_identity(first),
+        second: hf_export._temporary_directory_identity(second),
+    }
+    seen: list[Path] = []
+
+    def fail_cleanup(
+        path: Path,
+        *,
+        label: str,
+        expected_identity: tuple[int, int],
+    ):
+        assert expected_identity == identities[path]
+        seen.append(path)
+        raise OSError(f"{label} ordinary failure")
+
+    monkeypatch.setattr(hf_export, "_remove_temp_path_strict", fail_cleanup)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="temporary cleanup failed for: first root, second root",
+    ) as caught:
+        hf_export._cleanup_temp_paths_strict(
+            (
+                (first, "first root", identities[first]),
+                (second, "second root", identities[second]),
+            )
+        )
+
+    assert seen == [first, second]
+    assert isinstance(caught.value.__cause__, OSError)
+    assert str(caught.value.__cause__) == "first root ordinary failure"
+

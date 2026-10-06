@@ -402,9 +402,31 @@ def _cleanup_temp_paths_strict(
                     f"{label} cleanup also failed: {cleanup_exc!r}",
                 )
             return
+        first_interrupt = next(
+            (
+                (label, cleanup_exc)
+                for label, cleanup_exc in failures
+                if isinstance(
+                    cleanup_exc,
+                    (KeyboardInterrupt, SystemExit, GeneratorExit),
+                )
+            ),
+            None,
+        )
+        if first_interrupt is not None:
+            interrupt_label, interrupt_exc = first_interrupt
+            for label, cleanup_exc in failures:
+                if cleanup_exc is interrupt_exc:
+                    continue
+                _add_failure_note_preserving_primary(
+                    interrupt_exc,
+                    (
+                        f"{label} cleanup also failed while "
+                        f"{interrupt_label} raised: {cleanup_exc!r}"
+                    ),
+                )
+            raise interrupt_exc
         first_failure = failures[0][1]
-        if isinstance(first_failure, (KeyboardInterrupt, SystemExit, GeneratorExit)):
-            raise first_failure
         raise CheckpointIntegrityError(
             f"temporary cleanup failed for: {labels}"
         ) from first_failure
