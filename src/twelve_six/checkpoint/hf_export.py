@@ -91,6 +91,10 @@ def _read_regular_bytes(root: Path, name: str) -> bytes:
         before = path.lstat()
     except FileNotFoundError as exc:
         raise CheckpointIntegrityError(f"missing HF-style export artifact: {name}") from exc
+    except OSError as exc:
+        raise CheckpointIntegrityError(
+            f"cannot inspect HF-style export artifact: {name}"
+        ) from exc
     if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
         raise CheckpointIntegrityError(
             f"HF-style export artifact must be a regular non-symlink file: {name}"
@@ -147,11 +151,20 @@ def _read_export_snapshot(root: Path) -> dict[str, bytes]:
         root_stat = root.lstat()
     except FileNotFoundError as exc:
         raise CheckpointIntegrityError(f"HF-style export directory does not exist: {root}") from exc
+    except OSError as exc:
+        raise CheckpointIntegrityError(
+            f"cannot inspect HF-style export directory: {root}"
+        ) from exc
     if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
         raise CheckpointIntegrityError(
             "HF-style export root must be a real directory, not a symlink"
         )
-    names = {entry.name for entry in root.iterdir()}
+    try:
+        names = {entry.name for entry in root.iterdir()}
+    except OSError as exc:
+        raise CheckpointIntegrityError(
+            f"cannot enumerate HF-style export directory: {root}"
+        ) from exc
     if names != _EXPORT_FILES:
         missing = sorted(_EXPORT_FILES - names)
         unexpected = sorted(names - _EXPORT_FILES)
