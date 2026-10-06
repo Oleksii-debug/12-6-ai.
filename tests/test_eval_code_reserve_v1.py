@@ -209,6 +209,40 @@ def test_strict_authority_loader_redacts_duplicate_secret_key(
     assert secret not in str(caught.value)
 
 
+def test_strict_authority_loader_redacts_secret_path_and_nested_key_on_unicode(
+    tmp_path: Path,
+) -> None:
+    secret_path = "PRIVATE_FINAL_TEST_PATH_998877"
+    secret_key = "PRIVATE_FINAL_TEST_KEY_665544"
+    path = tmp_path / f"{secret_path}.json"
+    path.write_bytes(
+        ('{"' + secret_key + '":"\\ud800"}').encode("ascii")
+    )
+
+    with pytest.raises(ValueError, match="contains invalid UTF-8") as caught:
+        validator._load_mapping(path)
+
+    diagnostic = str(caught.value)
+    assert secret_path not in diagnostic
+    assert secret_key not in diagnostic
+
+
+def test_strict_authority_loader_redacts_secret_path_for_non_object_root(
+    tmp_path: Path,
+) -> None:
+    secret_path = "PRIVATE_FINAL_TEST_PATH_ROOT_443322"
+    path = tmp_path / f"{secret_path}.json"
+    path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=r"^EVAL647 authority must contain a JSON object$",
+    ) as caught:
+        validator._load_mapping(path)
+
+    assert secret_path not in str(caught.value)
+
+
 @pytest.mark.parametrize("negative", [False, True])
 def test_strict_authority_loader_bounds_integer_before_conversion(
     tmp_path: Path,

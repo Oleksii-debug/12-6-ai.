@@ -258,6 +258,15 @@ def test_bad_selection_lock_fails_closed(field: str, value: object) -> None:
         authorize_final_test_reporting(policy(), item)
 
 
+def test_unknown_authority_key_diagnostic_redacts_untrusted_name() -> None:
+    secret = "PRIVATE_FINAL_TEST_TOKEN_DO_NOT_LOG_998877"
+    item = policy()
+    item[secret] = "sensitive"
+    with pytest.raises(EvaluationFirewallError, match="policy keys drift") as caught:
+        validate_policy(item)
+    assert secret not in str(caught.value)
+
+
 def test_unknown_selection_lock_field_fails_closed() -> None:
     item = lock()
     item["final_test_score"] = 0.1

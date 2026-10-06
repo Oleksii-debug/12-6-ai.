@@ -313,6 +313,25 @@ def test_cli_duplicate_member_refusal_does_not_echo_untrusted_key(
     assert secret_key not in result.stdout
 
 
+def test_cli_unknown_policy_key_does_not_echo_untrusted_name(
+    tmp_path: Path,
+) -> None:
+    secret = "PRIVATE_FINAL_TEST_TOKEN_DO_NOT_LOG_998877"
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    policy[secret] = "sensitive"
+    path = tmp_path / "unknown-secret-key.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+
+    result = _run_cli(path)
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "FAIL"
+    assert payload["error"] == "policy keys drift"
+    assert secret not in result.stdout
+
+
 def test_policy_loader_rejects_oversized_input_before_json_decode(
     tmp_path: Path,
 ) -> None:
