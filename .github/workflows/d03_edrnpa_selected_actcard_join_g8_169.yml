@@ -24,8 +24,8 @@ env:
   POLICY_BLOB: "5f42cd3c20edad4b513857249f2c52d9efd4d82d"
   POLICY_VERIFIER_BLOB: "95b52b98421e3e7861216a4f1f50c840aaed310c"
   PARENT_DISCOVERY_BLOB: "71c4cb8acf0ddaf09a27289533d492cdd92ccda1"
-  JOIN_RUNNER_BLOB: "3efee6459b6d6cb238a1070e686a42e1e70286b1"
-  JOIN_TEST_BLOB: "b2e715d45d3461920f84dd61ce319dcdcbaef0f6"
+  JOIN_RUNNER_BLOB: "35d2be178566928c951ee47b8c4413cd41b77279"
+  JOIN_TEST_BLOB: "1ee5abda117059f6d8c7143c242196a534eb52cd"
   SOURCE_BYTES: "611865397"
   SOURCE_MD5: "0ea96e1582e5584ced79be1027f0ae55"
   SOURCE_SHA256: "a87b23eff3aadd2ff2dbed24cdeaaaf37862ecebe65b5f1edad02d5a95cde431"
@@ -183,6 +183,10 @@ jobs:
               "380939a9ef8f67dcfb55912c010941f08d35b868267116d927603e988e710cca"
           ):
               raise SystemExit("selected inventory identity drift")
+          if candidate["selected_payload_identity_sha256"] != (
+              "9b1c7b65a71f36ebd3c99273abf3e9f4c3c1885c96432d65761275e37e0b4435"
+          ):
+              raise SystemExit("selected payload identity drift")
           if candidate["report_identity_sha256"] != (
               "f5668ad4ddb3ce7ed0cd0130377f803ddbcebfb5b547c6757176efa8043122a6"
           ):
@@ -214,6 +218,10 @@ jobs:
               discovery["discovery_identity_sha256"]
           ):
               raise SystemExit("receipt/discovery cross-bind drift")
+          if receipt["candidate_selected_payload_identity_sha256"] != (
+              "9b1c7b65a71f36ebd3c99273abf3e9f4c3c1885c96432d65761275e37e0b4435"
+          ):
+              raise SystemExit("receipt selected payload identity drift")
 
           join = discovery["selected_text_to_act_card_join"]
           allowed_statuses = {
