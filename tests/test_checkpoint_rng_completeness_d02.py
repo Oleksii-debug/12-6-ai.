@@ -245,6 +245,46 @@ def test_complete_checkpoint_replays_torch_numeric_policy(
         core.restore_rng_state(ambient)
 
 
+def test_checkpoint_save_is_numeric_policy_neutral(
+    tmp_path: Path,
+    checkpoint_identity: CheckpointIdentity,
+) -> None:
+    ambient = core.capture_rng_state()
+
+    class EffectfulLinear(torch.nn.Linear):
+        def state_dict(self, *args: Any, **kwargs: Any):
+            torch.set_default_dtype(torch.float32)
+            torch.set_float32_matmul_precision("highest")
+            return super().state_dict(*args, **kwargs)
+
+    try:
+        torch.set_default_dtype(torch.float64)
+        torch.set_float32_matmul_precision("high")
+        model = EffectfulLinear(3, 3, dtype=torch.float32)
+        checkpoint = tmp_path / "numeric-policy-neutral-save"
+
+        def final_validator() -> None:
+            torch.set_default_dtype(torch.float32)
+            torch.set_float32_matmul_precision("medium")
+
+        core.save_checkpoint(
+            checkpoint,
+            model=model,
+            trainer_state={},
+            identity=checkpoint_identity,
+            post_rng_prepublish_validator=final_validator,
+        )
+
+        assert torch.get_default_dtype() is torch.float64
+        assert torch.get_float32_matmul_precision() == "high"
+        verified = core.prepare_checkpoint_load(checkpoint)
+        _, decoded = core._decode_verified_state(verified)
+        assert decoded["rng"]["torch"]["default_dtype"] == "torch.float64"
+        assert decoded["rng"]["torch"]["float32_matmul_precision"] == "high"
+    finally:
+        core.restore_rng_state(ambient)
+
+
 def test_generic_legacy_rng_restore_preserves_live_numeric_policy() -> None:
     ambient = core.capture_rng_state()
     try:
