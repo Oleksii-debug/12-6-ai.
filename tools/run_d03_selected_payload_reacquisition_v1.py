@@ -431,11 +431,118 @@ def _common(args: argparse.Namespace) -> tuple[Any, dict[str, dict[str, Any]]]:
     return module, selected
 
 
+def reproduce_post_qp_payloads(
+    module: Any,
+    source_rows: Sequence[Mapping[str, Any]],
+    source_payloads: Mapping[str, bytes],
+) -> dict[str, bytes]:
+    """Reproduce G05/G06 survivor bytes without re-opening evaluation payloads.
+
+    DATA-232 only removes complete records; it does not transform survivor text.
+    For reacquisition, run the exact lane-owned G05/G06 implementation over the
+    authenticated post-global-dedup source bytes, then accept only rows whose
+    final bytes independently match the #3045 selected inventory. This function
+    creates no replacement scientific authority: its generated Q/P identities
+    are intentionally local to the reacquisition process.
+    """
+
+    built = module.build_training_authorities(
+        list(source_rows),
+        source_payloads,
+    )
+    require(
+        isinstance(built, tuple) and len(built) >= 1 and type(built[0]) is list,
+        "lane training-authority builder returned unexpected shape",
+    )
+    training_records = built[0]
+    clean = module.clean
+
+    quality_inputs, metadata, excluded = clean._post_decontamination_records(
+        training_records,
+        {"excluded_records": []},
+    )
+    require(excluded == 0, "reacquisition-only decontamination projection drift")
+    projection = clean._input_projection(quality_inputs)
+    projection_sha = clean._sha256(clean._cjson(projection))
+    reacquisition_manifest = sha256(
+        b"12-6.selected-payload-reacquisition.no-data232-transform.v1"
+    )
+    quality = clean.build_quality_execution_authority(
+        quality_inputs,
+        input_manifest_sha256=reacquisition_manifest,
+        expected_input_rows_sha256=projection_sha,
+    )
+    quality_identity = quality.get("execution_identity_sha256")
+    require(
+        type(quality_identity) is str
+        and SHA64.fullmatch(quality_identity) is not None,
+        "reacquisition quality identity malformed",
+    )
+    clean.verify_quality_execution_authority(
+        quality,
+        quality_inputs,
+        expected_input_manifest_sha256=reacquisition_manifest,
+        expected_input_rows_sha256=projection_sha,
+        expected_execution_identity_sha256=quality_identity,
+    )
+    quality_survivors, _quality_stats = clean._materialize_quality_survivors(
+        quality_inputs,
+        metadata,
+        quality,
+    )
+
+    privacy_inputs = clean._quality_records_for_privacy(quality_survivors)
+    privacy_projection = clean._input_projection(privacy_inputs)
+    privacy_projection_sha = clean._sha256(clean._cjson(privacy_projection))
+    privacy = clean.build_privacy_execution_authority(
+        privacy_inputs,
+        expected_input_rows_sha256=privacy_projection_sha,
+    )
+    privacy_identity = privacy.get("execution_identity_sha256")
+    require(
+        type(privacy_identity) is str
+        and SHA64.fullmatch(privacy_identity) is not None,
+        "reacquisition privacy identity malformed",
+    )
+    clean.verify_privacy_execution_authority(
+        privacy,
+        privacy_inputs,
+        expected_input_rows_sha256=privacy_projection_sha,
+        expected_execution_identity_sha256=privacy_identity,
+    )
+    final_survivors, _privacy_stats = clean._materialize_privacy_survivors(
+        quality_survivors,
+        privacy,
+    )
+
+    result: dict[str, bytes] = {}
+    for row in final_survivors:
+        record_id = row.get("record_id")
+        payload = row.get("normalized_payload")
+        require(
+            type(record_id) is str and record_id,
+            "post-QP survivor record_id invalid",
+        )
+        require(
+            type(payload) is str and payload,
+            f"post-QP survivor payload missing: {record_id}",
+        )
+        require(record_id not in result, f"post-QP survivor replay: {record_id}")
+        raw = payload.encode("utf-8")
+        require(
+            raw.decode("utf-8", errors="strict") == payload,
+            f"post-QP survivor UTF-8 drift: {record_id}",
+        )
+        result[record_id] = raw
+    require(result, "post-QP reacquisition produced no survivors")
+    return result
+
+
 def run_code(args: argparse.Namespace) -> Mapping[str, bytes]:
     module, _selected = _common(args)
     module.verify_local_authority(LANES["code"]["head"])
-    _rows, payloads, _authority = module.acquire_delta_sources()
-    return payloads
+    rows, payloads, _authority = module.acquire_delta_sources()
+    return reproduce_post_qp_payloads(module, rows, payloads)
 
 
 def run_ubuntu(args: argparse.Namespace) -> Mapping[str, bytes]:
@@ -446,11 +553,11 @@ def run_ubuntu(args: argparse.Namespace) -> Mapping[str, bytes]:
         args.parent_evidence,
         args.parent_proof,
     )
-    _rows, payloads, _authority = module.acquire_ubuntu_survivors(
+    rows, payloads, _authority = module.acquire_ubuntu_survivors(
         candidate_jsonl=args.candidate_jsonl,
         expected_survivors=parent_rows,
     )
-    return payloads
+    return reproduce_post_qp_payloads(module, rows, payloads)
 
 
 def run_loc(args: argparse.Namespace) -> Mapping[str, bytes]:
@@ -461,7 +568,7 @@ def run_loc(args: argparse.Namespace) -> Mapping[str, bytes]:
         args.parent_evidence,
         args.parent_proof,
     )
-    _rows, payloads, _authority = module.reconstruct_exact_survivors(
+    rows, payloads, _authority = module.reconstruct_exact_survivors(
         survivor_ids=survivor_ids,
         clean_training_records=args.clean_training_records,
         clean_training_handoff=args.clean_training_handoff,
@@ -470,7 +577,7 @@ def run_loc(args: argparse.Namespace) -> Mapping[str, bytes]:
         loc_candidate=args.loc_candidate,
         loc_report=args.loc_report,
     )
-    return payloads
+    return reproduce_post_qp_payloads(module, rows, payloads)
 
 
 def run_languk(args: argparse.Namespace) -> Mapping[str, bytes]:
@@ -481,12 +588,12 @@ def run_languk(args: argparse.Namespace) -> Mapping[str, bytes]:
         args.parent_evidence,
         args.parent_proof,
     )
-    _rows, payloads, _authority = module.acquire_languk_survivors(
+    rows, payloads, _authority = module.acquire_languk_survivors(
         source_parquet=args.source_parquet,
         parent_survivors=parent,
         expected_survivor_ids=survivor_ids,
     )
-    return payloads
+    return reproduce_post_qp_payloads(module, rows, payloads)
 
 
 def run_lesia(args: argparse.Namespace) -> Mapping[str, bytes]:
@@ -497,12 +604,12 @@ def run_lesia(args: argparse.Namespace) -> Mapping[str, bytes]:
         args.parent_evidence,
         args.parent_proof,
     )
-    _rows, payloads, _authority = module.acquire_lesia_survivors(
+    rows, payloads, _authority = module.acquire_lesia_survivors(
         candidate_jsonl=args.candidate_jsonl,
         materialization_report_json=args.materialization_report_json,
         parent_rows=parent_rows,
     )
-    return payloads
+    return reproduce_post_qp_payloads(module, rows, payloads)
 
 
 def run_nbu(args: argparse.Namespace) -> Mapping[str, bytes]:
@@ -513,13 +620,13 @@ def run_nbu(args: argparse.Namespace) -> Mapping[str, bytes]:
         args.parent_evidence,
         args.parent_proof,
     )
-    _rows, payloads, _authority = module.acquire_nbu_survivors(
+    rows, payloads, _authority = module.acquire_nbu_survivors(
         candidate_jsonl=args.candidate_jsonl,
         materialization_report_json=args.materialization_report_json,
         nbu_intake_path=args.nbu_intake_path,
         parent_rows=parent_rows,
     )
-    return payloads
+    return reproduce_post_qp_payloads(module, rows, payloads)
 
 
 def run_franko(args: argparse.Namespace) -> Mapping[str, bytes]:
@@ -530,13 +637,13 @@ def run_franko(args: argparse.Namespace) -> Mapping[str, bytes]:
         args.parent_evidence,
         args.parent_proof,
     )
-    _rows, payloads, _authority = module.acquire_franko_survivors(
+    rows, payloads, _authority = module.acquire_franko_survivors(
         candidate_jsonl=args.candidate_jsonl,
         historical_terminal_evidence_json=args.historical_terminal_evidence_json,
         fresh_execution_authority_json=args.fresh_execution_authority_json,
         expected_survivor_ids=survivor_ids,
     )
-    return payloads
+    return reproduce_post_qp_payloads(module, rows, payloads)
 
 
 def run_rada(args: argparse.Namespace) -> Mapping[str, bytes]:
