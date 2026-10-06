@@ -680,22 +680,14 @@ def execute(
         "base declared-capacity drift",
     )
 
-    extension_sources, extension_payloads, intake_receipt = reproduce_source_candidate(
-        source_parquet
-    )
-    inventory, payloads = compose_graph(
-        base_inventory,
-        base_payloads,
-        extension_sources,
-        extension_payloads,
-    )
-    require(len(payloads) == EXPECTED_COMBINED_OBJECTS, "combined object-count drift")
-    require(
-        incumbent._declared_capacity_bytes(inventory, payloads, label="combined graph")
-        == EXPECTED_COMBINED_BYTES,
-        "combined declared-capacity drift",
-    )
-
+    # Attest and execute the exact incumbent base before source-local Lang-UK
+    # work can retain any unrelated runtime objects.  The returned V3 match rows
+    # contain the literal score=1.0 from _lineage_matches; on CPython 3.11,
+    # marshal-v4 reference encoding is refcount-sensitive.  Preserve the exact
+    # verified report bytes/self-hash, then release the match-bearing object before
+    # the next unchanged strict attestation.  This is the already-qualified D03
+    # lifetime pattern used by the Ubuntu/Caselaw carriers; no attester semantics
+    # or matcher bytes are changed.
     indexed.attest_incumbent_runtime(matcher)
     base_report = indexed.audit_payloads_indexed(
         matcher,
@@ -711,6 +703,24 @@ def execute(
     require(
         type(base_report_sha256) is str and len(base_report_sha256) == 64,
         "base report identity invalid",
+    )
+    base_report_bytes = canonical(base_report)
+    del base_report
+
+    extension_sources, extension_payloads, intake_receipt = reproduce_source_candidate(
+        source_parquet
+    )
+    inventory, payloads = compose_graph(
+        base_inventory,
+        base_payloads,
+        extension_sources,
+        extension_payloads,
+    )
+    require(len(payloads) == EXPECTED_COMBINED_OBJECTS, "combined object-count drift")
+    require(
+        incumbent._declared_capacity_bytes(inventory, payloads, label="combined graph")
+        == EXPECTED_COMBINED_BYTES,
+        "combined declared-capacity drift",
     )
 
     indexed.attest_incumbent_runtime(matcher)
@@ -835,9 +845,25 @@ def execute(
         **evidence_core,
         "evidence_identity_sha256": sha256(canonical(evidence_core)),
     }
+    # Reconstruct publication data only after the final strict runtime attestation.
+    # JSON decoding cannot retain references to V3 code-object literal constants;
+    # byte-identical canonicalization and the original self-hash are required.
+    try:
+        published_base_report = json.loads(base_report_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LangUkGlobalDedupError("frozen base report is not strict UTF-8 JSON") from exc
+    require(type(published_base_report) is dict, "frozen base report root invalid")
+    require(
+        canonical(published_base_report) == base_report_bytes,
+        "frozen base report canonical bytes drift",
+    )
+    require(
+        published_base_report.get("report_sha256") == base_report_sha256,
+        "frozen base report identity drift",
+    )
     incumbent._publish_json_outputs(
         (
-            (output_base_report, dict(base_report)),
+            (output_base_report, published_base_report),
             (output_combined_report, dict(combined_report)),
             (output_survivors, survivors),
             (output_evidence, evidence),
