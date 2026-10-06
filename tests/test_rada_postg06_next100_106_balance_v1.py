@@ -111,16 +111,7 @@ def _post_g06(vector: dict[str, object]) -> dict[str, object]:
             "raw_survivor_text_persisted": False,
             "durable_output_text_free": True,
         },
-        "truth_boundary": {
-            "canonical_capacity_credited": 0,
-            "training_authorized_bytes": 0,
-            "authorized_unique_loss_positions": 0,
-            "authorized_optimized_target_exposure": 0,
-            "tokenizer_fit_authorized": False,
-            "training_executed": False,
-            "final_test_outcomes_read": False,
-            "paid_compute_used": False,
-        },
+        "truth_boundary": dict(target.POST_G06_EXPECTED_TRUTH_BOUNDARY),
         "next_gate": "CURRENT_RADA_BALANCE_DIVERSITY_FAMILY_CAP_RETEST",
     }
     evidence = {
@@ -1324,3 +1315,39 @@ def test_compare_outputs_rejects_same_runner_identity(
             runner_b_identity="github-run:synthetic/job",
             independent_runner_jobs=True,
         )
+
+
+def test_post_g06_receipt_rejects_coherently_resealed_scale_widening() -> None:
+    vector = _family_vector()
+    evidence = _post_g06(vector)
+    evidence["truth_boundary"]["scale_promotion_authorized"] = True
+    core = dict(evidence)
+    core.pop("evidence_identity_sha256")
+    evidence["evidence_identity_sha256"] = target.sha256(
+        target.canonical(core)
+    )
+    vector["materialization_identity_sha256"] = evidence[
+        "evidence_identity_sha256"
+    ]
+    vector_core = dict(vector)
+    vector_core.pop("family_vector_identity_sha256")
+    vector["family_vector_identity_sha256"] = target.sha256(
+        target.canonical(vector_core)
+    )
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="post-G06 truth boundary drift",
+    ):
+        target.verify_post_g06_receipt(
+            evidence,
+            vector,
+            expected_evidence_identity_sha256=evidence[
+                "evidence_identity_sha256"
+            ],
+        )
+
+
+def test_zero_credit_boundary_explicitly_blocks_scale_and_optimizer() -> None:
+    assert target.ZERO_CREDIT["optimizer_updates_executed_on_real_targets"] == 0
+    assert target.ZERO_CREDIT["foreign_pretrained_weights_used"] is False
+    assert target.ZERO_CREDIT["scale_promotion_authorized"] is False
