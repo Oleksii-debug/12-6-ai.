@@ -83,7 +83,14 @@ PYTHONPATH=src python tools/build_200m_feasibility_packet.py verify \
 
 The verify command emits one machine-readable JSON line and returns `0` only for
 an error-free packet. Duplicate JSON keys and non-finite JSON constants fail
-closed at the CLI boundary.
+closed at the CLI boundary. Invalid packet hashes are never echoed into the
+machine-readable report, and roadmap contract failures do not echo
+attacker-controlled roadmap identifiers.
+
+The retained-identity helper validates the trusted built packet before deriving
+the identity map, rejects scalar type aliases in authority fields, and is not a
+verification primitive. Recursive/non-canonical programmatic inputs fail closed
+at the canonical-hash boundary.
 
 Build and verify also reject canonical path collisions between their authority
 inputs and outputs. Output publication renders before touching the destination,
