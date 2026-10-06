@@ -2070,3 +2070,141 @@ def test_bind_source_compile_bypasses_path_string_dispatch(
         == authority.CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1
     )
 
+def test_dual_byte_tokenizer_alias_rebind_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ForgedTokenizer:
+        pass
+
+    monkeypatch.setattr(authority, "ByteTokenizer", ForgedTokenizer)
+    monkeypatch.setattr(authority.byte_module, "ByteTokenizer", ForgedTokenizer)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="verifier root drift: ByteTokenizer",
+    ):
+        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+
+
+def test_upstream_selection_verifier_rebind_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        authority,
+        "verify_balanced_selection",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            {},
+        ),
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="verifier root drift: verify_balanced_selection",
+    ):
+        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+
+
+@pytest.mark.parametrize(
+    ("root_name", "replacement"),
+    [
+        ("STATUS", "FORGED"),
+        ("CANONICAL_SPLIT_SPEC_IDENTITY_SHA256", "f" * 64),
+        ("_EXPECTED_BYTE_SOURCE_PATH_TEXT", "forged-byte.py"),
+    ],
+)
+def test_scalar_authority_root_rebind_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    root_name: str,
+    replacement: str,
+) -> None:
+    monkeypatch.setattr(authority, root_name, replacement)
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match=f"verifier root drift: {root_name}",
+    ):
+        authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+
+
+@pytest.mark.parametrize("builtin_name", ["property", "staticmethod"])
+def test_descriptor_builtin_rebind_fails_closed(builtin_name: str) -> None:
+    import builtins
+
+    original = getattr(builtins, builtin_name)
+    observed_error = None
+    setattr(builtins, builtin_name, object())
+    try:
+        try:
+            authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+        except BaseException as exc:
+            observed_error = exc
+    finally:
+        setattr(builtins, builtin_name, original)
+
+    assert type(observed_error) is authority.TokenizerDecisionError
+    assert str(observed_error) == (
+        "canonical byte tokenizer runtime dependency drift: "
+        f"builtins.{builtin_name}"
+    )
+
+
+def test_bind_upstreams_reseals_after_selection_verifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def verify_selection(*_args, **_kwargs):
+        authority.STATUS = "FORGED"
+        return SHA["expected_selection_identity_sha256"], {}
+
+    monkeypatch.setattr(authority, "_verify_selection", verify_selection)
+    monkeypatch.setattr(
+        authority,
+        "_verify_split_application",
+        lambda *_args, **_kwargs: pytest.fail(
+            "application verifier must not run after root drift"
+        ),
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="verifier root drift: STATUS",
+    ):
+        authority._bind_upstreams(
+            {"sentinel": "selection"},
+            {"sentinel": "application"},
+            **SHA,
+        )
+
+
+def test_bind_upstreams_reseals_after_application_verifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        authority,
+        "_verify_selection",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            {},
+        ),
+    )
+
+    def verify_application(*_args, **_kwargs):
+        authority.STATUS = "FORGED"
+        return SHA["expected_application_identity_sha256"]
+
+    monkeypatch.setattr(
+        authority,
+        "_verify_split_application",
+        verify_application,
+    )
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="verifier root drift: STATUS",
+    ):
+        authority._bind_upstreams(
+            {"sentinel": "selection"},
+            {"sentinel": "application"},
+            **SHA,
+        )
+
