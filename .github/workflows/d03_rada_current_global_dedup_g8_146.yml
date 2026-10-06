@@ -44,6 +44,7 @@ jobs:
       PRODUCT_HEAD: "d34f5cf35cc53724d3b1f93967a29fe901c5342c"
       PRODUCT_CORE_BLOB: "b7bb13c7a96f6c8e9a7f88d940aab0d0ed6a93e7"
       PRODUCT_TEST_BLOB: "6edf89014d9b059639067567ce6da57b50216b8d"
+      PRODUCT_DIRECT_IMPORT_TEST_BLOB: "0b19707229b255f7d09c789bf2eb6cb43285abac"
       PRODUCT_FACADE_BLOB: "f75336008839198b6d46bea4954f120e2d81613c"
 
     steps:
@@ -94,15 +95,19 @@ jobs:
           test "$(git rev-parse FETCH_HEAD)" = "$PRODUCT_HEAD"
           test "$(git rev-parse "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py")" = "$PRODUCT_CORE_BLOB"
           test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_indexed_execution.py")" = "$PRODUCT_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_direct_import_behavior.py")" = "$PRODUCT_DIRECT_IMPORT_TEST_BLOB"
           test "$(git rev-parse "$PRODUCT_HEAD:src/twelve_six/data/incumbent_dedup_indexed_execution.py")" = "$PRODUCT_FACADE_BLOB"
           git show "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py"             > "$RUNNER_TEMP/product-indexed-core.py"
           git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_indexed_execution.py"             > "$RUNNER_TEMP/test_product_indexed_execution.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_direct_import_behavior.py"             > "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py"
           test "$(git hash-object "$RUNNER_TEMP/product-indexed-core.py")" = "$PRODUCT_CORE_BLOB"
           test "$(git hash-object "$RUNNER_TEMP/test_product_indexed_execution.py")" = "$PRODUCT_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py")" = "$PRODUCT_DIRECT_IMPORT_TEST_BLOB"
           cp "$RUNNER_TEMP/product-indexed-core.py"             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py
           test "$(git hash-object src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py)" = "$PRODUCT_CORE_BLOB"
           test "$(git hash-object src/twelve_six/data/incumbent_dedup_indexed_execution.py)" = "$PRODUCT_FACADE_BLOB"
-          python -m py_compile             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py             src/twelve_six/data/incumbent_dedup_indexed_execution.py             "$RUNNER_TEMP/test_product_indexed_execution.py"
+          python -m py_compile             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py             src/twelve_six/data/incumbent_dedup_indexed_execution.py             "$RUNNER_TEMP/test_product_indexed_execution.py" \
+            "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py"
 
       - name: Checkout frozen historical QP mechanics
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
