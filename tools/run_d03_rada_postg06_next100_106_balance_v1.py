@@ -95,10 +95,35 @@ ZERO_CREDIT = {
     "authorized_optimized_target_exposure": 0,
     "tokenizer_fit_authorized": False,
     "model_training_authorized": False,
+    "optimizer_updates_executed_on_real_targets": 0,
     "training_executed": False,
     "learned_weights_created": False,
     "final_test_outcomes_read": False,
     "paid_compute_used": False,
+    "foreign_pretrained_weights_used": False,
+    "scale_promotion_authorized": False,
+}
+
+POST_G06_EXPECTED_TRUTH_BOUNDARY = {
+    "current_rada_data232_parent_two_clean_complete": True,
+    "canonical_quality_privacy_executed": True,
+    "balance_diversity_retest_complete": False,
+    "family_caps_complete": False,
+    "cluster_safe_split_complete": False,
+    "deterministic_pack_two_clean_complete": False,
+    "positive_exact_unique_loss_ledger": False,
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": False,
+    "optimizer_updates_executed_on_real_targets": 0,
+    "training_executed": False,
+    "learned_weights_created": False,
+    "final_test_outcomes_read": False,
+    "paid_compute_used": False,
+    "foreign_pretrained_weights_used": False,
+    "scale_promotion_authorized": False,
 }
 
 
@@ -530,17 +555,10 @@ def verify_post_g06_receipt(
     require(evidence.get("content_boundary", {}).get("raw_survivor_text_persisted") is False,
             "post-G06 receipt persisted raw survivor text")
     truth = evidence.get("truth_boundary")
-    require(isinstance(truth, Mapping), "post-G06 truth boundary missing")
-    for field, expected in (
-        ("canonical_capacity_credited", 0),
-        ("training_authorized_bytes", 0),
-        ("authorized_optimized_target_exposure", 0),
-        ("tokenizer_fit_authorized", False),
-        ("training_executed", False),
-        ("final_test_outcomes_read", False),
-        ("paid_compute_used", False),
-    ):
-        require(truth.get(field) == expected, f"post-G06 truth widened: {field}")
+    require(
+        truth == POST_G06_EXPECTED_TRUTH_BOUNDARY,
+        "post-G06 truth boundary drift",
+    )
     require(
         evidence.get("next_gate") == "CURRENT_RADA_BALANCE_DIVERSITY_FAMILY_CAP_RETEST",
         "post-G06 next gate drift",
