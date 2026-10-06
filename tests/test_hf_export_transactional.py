@@ -2270,6 +2270,173 @@ def test_hf_streamed_weight_digest_is_exact_across_multiple_chunks(
     assert byte_count == len(payload)
 
 
+def test_hf_streamed_weight_rejects_persistent_path_identity_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    artifact = root / name
+    artifact.write_bytes(b"streamed weights")
+    real_lstat = Path.lstat
+    checks = 0
+
+    def drift_after_open(path: Path):
+        nonlocal checks
+        observed = real_lstat(path)
+        if path == artifact:
+            checks += 1
+            if checks == 2:
+                return SimpleNamespace(
+                    st_mode=observed.st_mode,
+                    st_dev=observed.st_dev,
+                    st_ino=observed.st_ino + 1,
+                )
+        return observed
+
+    monkeypatch.setattr(Path, "lstat", drift_after_open)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export artifact changed while reading",
+    ):
+        hf_export._stream_regular_sha256(root, name)
+
+    assert checks == 2
+
+
+def test_hf_streamed_weight_rejects_descriptor_stat_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    (root / name).write_bytes(b"streamed weights")
+    real_fstat = hf_export.os.fstat
+    checks = 0
+
+    def drift_after_stream(fd: int):
+        nonlocal checks
+        observed = real_fstat(fd)
+        checks += 1
+        if checks == 2:
+            return SimpleNamespace(
+                st_mode=observed.st_mode,
+                st_dev=observed.st_dev,
+                st_ino=observed.st_ino,
+                st_size=observed.st_size,
+                st_mtime_ns=observed.st_mtime_ns + 1,
+                st_ctime_ns=observed.st_ctime_ns,
+            )
+        return observed
+
+    monkeypatch.setattr(hf_export.os, "fstat", drift_after_stream)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export artifact changed while reading",
+    ):
+        hf_export._stream_regular_sha256(root, name)
+
+    assert checks == 2
+
+
+def test_hf_streamed_weight_postread_fstat_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    (root / name).write_bytes(b"streamed weights")
+    failure = OSError("simulated post-read fstat failure")
+    real_fstat = hf_export.os.fstat
+    checks = 0
+
+    def fail_postread_fstat(fd: int):
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            raise failure
+        return real_fstat(fd)
+
+    monkeypatch.setattr(hf_export.os, "fstat", fail_postread_fstat)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot re-inspect HF-style export artifact",
+    ) as caught:
+        hf_export._stream_regular_sha256(root, name)
+
+    assert caught.value.__cause__ is failure
+
+
+def test_hf_streamed_weight_postread_lstat_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    artifact = root / name
+    artifact.write_bytes(b"streamed weights")
+    failure = OSError("simulated post-read lstat failure")
+    real_lstat = Path.lstat
+    checks = 0
+
+    def fail_postread_lstat(path: Path):
+        nonlocal checks
+        if path == artifact:
+            checks += 1
+            if checks == 2:
+                raise failure
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_postread_lstat)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot re-inspect HF-style export artifact path",
+    ) as caught:
+        hf_export._stream_regular_sha256(root, name)
+
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    "interrupt_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_hf_streamed_weight_postread_interrupt_retains_exact_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    name = hf_export.EXPORTED_WEIGHTS_NAME
+    (root / name).write_bytes(b"streamed weights")
+    primary = interrupt_type("simulated post-read streamed weight interruption")
+    real_fstat = hf_export.os.fstat
+    checks = 0
+
+    def interrupt_postread_fstat(fd: int):
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            raise primary
+        return real_fstat(fd)
+
+    monkeypatch.setattr(hf_export.os, "fstat", interrupt_postread_fstat)
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._stream_regular_sha256(root, name)
+
+    assert caught.value is primary
+
+
 def test_hf_streamed_weight_read_oserror_is_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
