@@ -332,6 +332,7 @@ def capture_rng_state() -> dict[str, Any]:
         ),
         "default_dtype": str(torch.get_default_dtype()),
         "float32_matmul_precision": torch.get_float32_matmul_precision(),
+        "cudnn_allow_tf32": bool(torch.backends.cudnn.allow_tf32),
     }
     if torch.cuda.is_available():
         torch_state["cuda"] = torch.cuda.get_rng_state_all()
@@ -393,6 +394,12 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
             raise CheckpointCompatibilityError(
                 "checkpoint torch float32_matmul_precision is invalid"
             )
+    if "cudnn_allow_tf32" in torch_state:
+        cudnn_allow_tf32 = torch_state["cudnn_allow_tf32"]
+        if type(cudnn_allow_tf32) is not bool:
+            raise CheckpointCompatibilityError(
+                "checkpoint torch cudnn_allow_tf32 must be a boolean"
+            )
     try:
         torch = importlib.import_module("torch")
     except ModuleNotFoundError as exc:
@@ -447,6 +454,12 @@ def _restore_torch_matmul_precision(torch: Any, precision: str) -> None:
     torch.set_float32_matmul_precision(precision)
 
 
+def _restore_torch_cudnn_allow_tf32(torch: Any, allow: bool) -> None:
+    """Restore the validated cuDNN TF32 convolution policy."""
+
+    torch.backends.cudnn.allow_tf32 = allow
+
+
 def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
     """Restore captured RNG streams and process policy; report RNG scope."""
 
@@ -486,6 +499,11 @@ def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
             _restore_torch_matmul_precision(
                 torch,
                 torch_state["float32_matmul_precision"],
+            )
+        if "cudnn_allow_tf32" in torch_state:
+            _restore_torch_cudnn_allow_tf32(
+                torch,
+                torch_state["cudnn_allow_tf32"],
             )
     return scope
 

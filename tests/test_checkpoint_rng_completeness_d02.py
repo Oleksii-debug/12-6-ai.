@@ -64,13 +64,13 @@ def _seal_checkpoint(
     elif missing == "warn_only":
         deliberately_incomplete["torch"] = dict(captured["torch"])
         deliberately_incomplete["torch"].pop("deterministic_warn_only")
-    elif missing in {"default_dtype", "matmul_precision"}:
+    elif missing in {"default_dtype", "matmul_precision", "cudnn_tf32"}:
         deliberately_incomplete["torch"] = dict(captured["torch"])
-        field = (
-            "default_dtype"
-            if missing == "default_dtype"
-            else "float32_matmul_precision"
-        )
+        field = {
+            "default_dtype": "default_dtype",
+            "matmul_precision": "float32_matmul_precision",
+            "cudnn_tf32": "cudnn_allow_tf32",
+        }[missing]
         deliberately_incomplete["torch"].pop(field)
     elif missing is not None:
         deliberately_incomplete.pop(missing)
@@ -87,12 +87,12 @@ def _seal_checkpoint(
         assert "cuda" not in decoded["rng"]["torch"]
     elif missing == "warn_only":
         assert "deterministic_warn_only" not in decoded["rng"]["torch"]
-    elif missing in {"default_dtype", "matmul_precision"}:
-        field = (
-            "default_dtype"
-            if missing == "default_dtype"
-            else "float32_matmul_precision"
-        )
+    elif missing in {"default_dtype", "matmul_precision", "cudnn_tf32"}:
+        field = {
+            "default_dtype": "default_dtype",
+            "matmul_precision": "float32_matmul_precision",
+            "cudnn_tf32": "cudnn_allow_tf32",
+        }[missing]
         assert field not in decoded["rng"]["torch"]
     elif missing is not None:
         assert missing not in decoded["rng"]
@@ -104,7 +104,7 @@ def _seal_checkpoint(
 )
 @pytest.mark.parametrize(
     "missing",
-    ["python", "numpy", "cuda", "default_dtype", "matmul_precision"],
+    ["python", "numpy", "cuda", "default_dtype", "matmul_precision", "cudnn_tf32"],
 )
 def test_incomplete_but_verified_rng_rejected_before_model_materialization(
     tmp_path: Path,
@@ -139,7 +139,7 @@ def test_incomplete_but_verified_rng_rejected_before_model_materialization(
 )
 @pytest.mark.parametrize(
     "missing",
-    ["python", "numpy", "cuda", "default_dtype", "matmul_precision"],
+    ["python", "numpy", "cuda", "default_dtype", "matmul_precision", "cudnn_tf32"],
 )
 def test_explicit_rng_opt_out_retains_existing_checkpoint_compatibility(
     tmp_path: Path,
@@ -215,18 +215,20 @@ def test_complete_checkpoint_replays_torch_numeric_policy(
     class PolicyObservingAdamW(torch.optim.AdamW):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
-            self.observed_numeric_policy: tuple[str, str] | None = None
+            self.observed_numeric_policy: tuple[str, str, bool] | None = None
 
         def load_state_dict(self, state_dict: Any):
             self.observed_numeric_policy = (
                 str(torch.get_default_dtype()),
                 torch.get_float32_matmul_precision(),
+                bool(torch.backends.cudnn.allow_tf32),
             )
             return super().load_state_dict(state_dict)
 
     try:
         torch.set_default_dtype(torch.float64)
         torch.set_float32_matmul_precision("high")
+        torch.backends.cudnn.allow_tf32 = False
         config = TrainerConfig(max_steps=10, seed=703)
         source_model = torch.nn.Linear(3, 3, dtype=torch.float32)
         source = Trainer(source_model, config)
@@ -241,6 +243,7 @@ def test_complete_checkpoint_replays_torch_numeric_policy(
 
         torch.set_default_dtype(torch.float32)
         torch.set_float32_matmul_precision("highest")
+        torch.backends.cudnn.allow_tf32 = True
         target_model = torch.nn.Linear(3, 3, dtype=torch.float32)
         target_optimizer = PolicyObservingAdamW(
             target_model.parameters(),
@@ -264,9 +267,11 @@ def test_complete_checkpoint_replays_torch_numeric_policy(
         assert target_optimizer.observed_numeric_policy == (
             "torch.float64",
             "high",
+            False,
         )
         assert torch.get_default_dtype() is torch.float64
         assert torch.get_float32_matmul_precision() == "high"
+        assert torch.backends.cudnn.allow_tf32 is False
         assert target._failure_reason is None
         assert target._update_incomplete is False
     finally:
@@ -283,17 +288,20 @@ def test_checkpoint_save_is_numeric_policy_neutral(
         def state_dict(self, *args: Any, **kwargs: Any):
             torch.set_default_dtype(torch.float32)
             torch.set_float32_matmul_precision("highest")
+            torch.backends.cudnn.allow_tf32 = True
             return super().state_dict(*args, **kwargs)
 
     try:
         torch.set_default_dtype(torch.float64)
         torch.set_float32_matmul_precision("high")
+        torch.backends.cudnn.allow_tf32 = False
         model = EffectfulLinear(3, 3, dtype=torch.float32)
         checkpoint = tmp_path / "numeric-policy-neutral-save"
 
         def final_validator() -> None:
             torch.set_default_dtype(torch.float32)
             torch.set_float32_matmul_precision("medium")
+            torch.backends.cudnn.allow_tf32 = True
 
         core.save_checkpoint(
             checkpoint,
@@ -305,10 +313,12 @@ def test_checkpoint_save_is_numeric_policy_neutral(
 
         assert torch.get_default_dtype() is torch.float64
         assert torch.get_float32_matmul_precision() == "high"
+        assert torch.backends.cudnn.allow_tf32 is False
         verified = core.prepare_checkpoint_load(checkpoint)
         _, decoded = core._decode_verified_state(verified)
         assert decoded["rng"]["torch"]["default_dtype"] == "torch.float64"
         assert decoded["rng"]["torch"]["float32_matmul_precision"] == "high"
+        assert decoded["rng"]["torch"]["cudnn_allow_tf32"] is False
     finally:
         core.restore_rng_state(ambient)
 
@@ -320,13 +330,16 @@ def test_generic_legacy_rng_restore_preserves_live_numeric_policy() -> None:
         legacy["torch"] = dict(legacy["torch"])
         legacy["torch"].pop("default_dtype")
         legacy["torch"].pop("float32_matmul_precision")
+        legacy["torch"].pop("cudnn_allow_tf32")
 
         torch.set_default_dtype(torch.float64)
         torch.set_float32_matmul_precision("high")
+        torch.backends.cudnn.allow_tf32 = False
         core.restore_rng_state(legacy)
 
         assert torch.get_default_dtype() is torch.float64
         assert torch.get_float32_matmul_precision() == "high"
+        assert torch.backends.cudnn.allow_tf32 is False
     finally:
         core.restore_rng_state(ambient)
 
@@ -336,6 +349,7 @@ def test_generic_legacy_rng_restore_preserves_live_numeric_policy() -> None:
     [
         ("default_dtype", "torch.int32", "default_dtype"),
         ("float32_matmul_precision", "fastest", "float32_matmul_precision"),
+        ("cudnn_allow_tf32", "yes", "cudnn_allow_tf32"),
     ],
 )
 def test_invalid_numeric_policy_rejected_before_torch_rng_mutation(
@@ -350,6 +364,7 @@ def test_invalid_numeric_policy_rejected_before_torch_rng_mutation(
     cpu_before = torch.get_rng_state().clone()
     dtype_before = torch.get_default_dtype()
     precision_before = torch.get_float32_matmul_precision()
+    cudnn_tf32_before = torch.backends.cudnn.allow_tf32
 
     try:
         with pytest.raises(CheckpointCompatibilityError, match=message):
@@ -358,6 +373,7 @@ def test_invalid_numeric_policy_rejected_before_torch_rng_mutation(
         torch.testing.assert_close(torch.get_rng_state(), cpu_before, rtol=0, atol=0)
         assert torch.get_default_dtype() is dtype_before
         assert torch.get_float32_matmul_precision() == precision_before
+        assert torch.backends.cudnn.allow_tf32 is cudnn_tf32_before
     finally:
         core.restore_rng_state(ambient)
 
@@ -413,6 +429,46 @@ def test_failed_apply_numeric_policy_rollback_isolates_setter_fault(
             assert torch.get_default_dtype() is torch.float64
             assert torch.get_float32_matmul_precision() == "highest"
             assert any("float32-matmul-precision rollback" in note for note in notes)
+    finally:
+        core.restore_rng_state(ambient)
+
+
+def test_failed_apply_cudnn_tf32_rollback_fault_keeps_other_numeric_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ambient = core.capture_rng_state()
+    try:
+        torch.set_default_dtype(torch.float64)
+        torch.set_float32_matmul_precision("high")
+        torch.backends.cudnn.allow_tf32 = False
+        expected = core.capture_rng_state()
+
+        torch.set_default_dtype(torch.float32)
+        torch.set_float32_matmul_precision("highest")
+        torch.backends.cudnn.allow_tf32 = True
+        primary = RuntimeError("injected checkpoint apply failure")
+
+        def fail_cudnn_tf32(*_args: Any, **_kwargs: Any) -> None:
+            raise OSError("injected cuDNN TF32 rollback failure")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                core,
+                "_restore_torch_cudnn_allow_tf32",
+                fail_cudnn_tf32,
+            )
+            trainer_adapter._restore_ambient_rng_after_failed_apply(
+                expected,
+                primary,
+            )
+
+        assert torch.get_default_dtype() is torch.float64
+        assert torch.get_float32_matmul_precision() == "high"
+        assert torch.backends.cudnn.allow_tf32 is True
+        assert any(
+            "cuDNN TF32 rollback" in note
+            for note in getattr(primary, "__notes__", ())
+        )
     finally:
         core.restore_rng_state(ambient)
 

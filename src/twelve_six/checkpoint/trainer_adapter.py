@@ -1830,7 +1830,8 @@ def _assert_d02_checkpoint_rng_policy(
         )
 
     missing_numeric_policy = sorted(
-        {"default_dtype", "float32_matmul_precision"} - torch_state.keys()
+        {"default_dtype", "float32_matmul_precision", "cudnn_allow_tf32"}
+        - torch_state.keys()
     )
     if missing_numeric_policy:
         raise CheckpointCompatibilityError(
@@ -1967,6 +1968,17 @@ def _restore_ambient_rng_after_failed_apply(
                 "PyTorch float32-matmul-precision rollback also failed: "
                 f"{rollback_exc!r}"
             )
+    if "cudnn_allow_tf32" in torch_state:
+        try:
+            _core._restore_torch_cudnn_allow_tf32(
+                torch,
+                torch_state["cudnn_allow_tf32"],
+            )
+        except BaseException as rollback_exc:  # noqa: BLE001
+            exc.add_note(
+                "PyTorch cuDNN TF32 rollback also failed: "
+                f"{rollback_exc!r}"
+            )
 
 
 def _restore_preapply_process_state(
@@ -2018,6 +2030,11 @@ def _restore_checkpoint_numeric_policy_for_apply(
         _core._restore_torch_matmul_precision(
             torch,
             torch_state["float32_matmul_precision"],
+        )
+    if "cudnn_allow_tf32" in torch_state:
+        _core._restore_torch_cudnn_allow_tf32(
+            torch,
+            torch_state["cudnn_allow_tf32"],
         )
 
 
