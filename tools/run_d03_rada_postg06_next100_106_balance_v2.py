@@ -14,6 +14,7 @@ import importlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -216,14 +217,78 @@ def load_json_bytes(raw: bytes, label: str) -> dict[str, Any]:
     return value
 
 
+def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _read_stable_regular_bytes(path: Path, *, label: str) -> bytes:
+    """Read one regular file through a held descriptor and reject pathname drift."""
+    try:
+        before = os.stat(path, follow_symlinks=False)
+    except OSError as exc:
+        raise RadaPostG06BalanceError(f"{label}: file invalid") from exc
+    require(stat.S_ISREG(before.st_mode), f"{label}: file invalid")
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise RadaPostG06BalanceError(f"{label}: file open failed") from exc
+
+    try:
+        opened = os.fstat(descriptor)
+        require(stat.S_ISREG(opened.st_mode), f"{label}: opened object is not regular")
+        require(
+            _stat_identity(opened) == _stat_identity(before),
+            f"{label}: file changed before open",
+        )
+
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+
+        after_descriptor = os.fstat(descriptor)
+        try:
+            after_path = os.stat(path, follow_symlinks=False)
+        except OSError as exc:
+            raise RadaPostG06BalanceError(
+                f"{label}: pathname changed during read"
+            ) from exc
+        require(
+            _stat_identity(after_descriptor) == _stat_identity(opened),
+            f"{label}: file changed during read",
+        )
+        require(
+            stat.S_ISREG(after_path.st_mode)
+            and _stat_identity(after_path) == _stat_identity(opened),
+            f"{label}: pathname changed during read",
+        )
+        return b"".join(chunks)
+    except OSError as exc:
+        raise RadaPostG06BalanceError(f"{label}: file read failed") from exc
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+
 def load_pinned_json(
     path: Path,
     *,
     expected_file_sha256: str,
     label: str,
 ) -> dict[str, Any]:
-    require(path.is_file() and not path.is_symlink(), f"{label} file invalid")
-    raw = path.read_bytes()
+    raw = _read_stable_regular_bytes(path, label=f"{label} file")
     require(
         sha256(raw) == require_sha256(expected_file_sha256, f"{label} file SHA"),
         f"{label} file SHA-256 drift",
@@ -321,11 +386,7 @@ def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
 
 
 def _read_regular_bytes(path: Path, *, label: str) -> bytes:
-    require(
-        path.is_file() and not path.is_symlink(),
-        f"{label}: file invalid",
-    )
-    return path.read_bytes()
+    return _read_stable_regular_bytes(path, label=label)
 
 
 def verify_module_provenance(module: Any, relative: str) -> None:
