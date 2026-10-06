@@ -37,7 +37,7 @@ _UPSTREAM_IDENTITY_FIELDS = (
     "balance_policy_identity_sha256",
     "balance_result_identity_sha256",
 )
-_APPLICATION_KEYS = {
+_APPLICATION_KEYS = frozenset({
     "schema",
     "status",
     "balanced_selection_identity_sha256",
@@ -51,8 +51,8 @@ _APPLICATION_KEYS = {
     "split_family",
     "claim_boundary",
     "application_identity_sha256",
-}
-_REPORT_KEYS = {
+})
+_REPORT_KEYS = frozenset({
     "schema",
     "status",
     "decision",
@@ -73,8 +73,8 @@ _REPORT_KEYS = {
     "compute_authorized_by_this_report",
     "authorized_optimized_target_exposure",
     "decision_identity_sha256",
-}
-_ZERO_CREDIT_BOUNDARY = {
+})
+_ZERO_CREDIT_BOUNDARY = MappingProxyType({
     "training_eligible": False,
     "evaluation_eligible": False,
     "tokenizer_fit_authorized": False,
@@ -82,21 +82,21 @@ _ZERO_CREDIT_BOUNDARY = {
     "paid_compute_authorized": False,
     "final_test_outcomes_read": False,
     "authorized_optimized_target_exposure": 0,
-}
+})
 # These values are intentionally literal and independent of the already-loaded
 # byte module. The checked source blob is one authority; mutable Python module
 # globals must not be able to redefine the expected runtime baseline before
 # this module is imported or reloaded.
-_EXPECTED_TOKENIZER_RUNTIME_IDENTITY = {
+_EXPECTED_TOKENIZER_RUNTIME_IDENTITY = MappingProxyType({
     "version": "s0-byte-v1",
     "config_sha256": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
     "vocab_sha256": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
     "vocab_size": 256,
     "normalization": "none",
     "encoding": "utf-8",
-    "special_tokens": {},
-}
-_EXPECTED_TOKENIZER_CLASS_STATE = {
+    "special_tokens": MappingProxyType({}),
+})
+_EXPECTED_TOKENIZER_CLASS_STATE = MappingProxyType({
     "pad_id": None,
     "bos_id": None,
     "eos_id": None,
@@ -105,38 +105,38 @@ _EXPECTED_TOKENIZER_CLASS_STATE = {
     "vocab_size": 256,
     "normalization": "none",
     "encoding": "utf-8",
-}
-_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS = {
+})
+_EXPECTED_TOKENIZER_METHOD_KWDEFAULTS = MappingProxyType({
     "__init__": None,
     "identity": None,
-    "encode": {"add_bos": False, "add_eos": False},
-    "decode": {"skip_special_tokens": True, "errors": "strict"},
+    "encode": MappingProxyType({"add_bos": False, "add_eos": False}),
+    "decode": MappingProxyType({"skip_special_tokens": True, "errors": "strict"}),
     "oov_count": None,
     "fertility": None,
-}
-_EXPECTED_BYTE_MODULE_CONSTANTS = {
+})
+_EXPECTED_BYTE_MODULE_CONSTANTS = MappingProxyType({
     "BYTE_TOKENIZER_VERSION": "s0-byte-v1",
     "BYTE_TOKENIZER_HASH": "b04055c1061dd641dcab7cb9d62a931f09b8d1a070140a926ceb4e91d73ca8e1",
     "BYTE_VOCAB_HASH": "905ed40bb42cc4d550e228ff5f24158d504b38e8ed5974dfa3077bd5867ad571",
-}
-_EXPECTED_BYTE_MODULE_CONFIG = {
+})
+_EXPECTED_BYTE_MODULE_CONFIG = MappingProxyType({
     "schema_version": 1,
     "tokenizer_version": "s0-byte-v1",
     "type": "utf8-byte",
     "normalization": "none",
     "encoding": "utf-8",
-    "special_tokens": {},
+    "special_tokens": MappingProxyType({}),
     "byte_offset": 0,
     "byte_values": 256,
     "vocab_size": 256,
-}
+})
 
 # Freeze ambient call targets used by source-pinned byte.py and by this verifier.
 # Function.__builtins__ identity alone is insufficient because the shared builtins
 # mapping is mutable, including helpers such as compile/vars/type used to prove the
 # live runtime still matches the pinned source.
 _EXPECTED_BUILTINS_MODULE = builtins
-_EXPECTED_BYTE_RUNTIME_BUILTINS = {
+_EXPECTED_BYTE_RUNTIME_BUILTINS = MappingProxyType({
     "RuntimeError": builtins.RuntimeError,
     "TypeError": builtins.TypeError,
     "ValueError": builtins.ValueError,
@@ -158,7 +158,7 @@ _EXPECTED_BYTE_RUNTIME_BUILTINS = {
     "str": builtins.str,
     "type": builtins.type,
     "vars": builtins.vars,
-}
+})
 _EXPECTED_BYTE_SOURCE_PATH = _BYTE_TOKENIZER_SOURCE_PATH
 _EXPECTED_BYTE_SOURCE_PATH_TEXT = str(_BYTE_TOKENIZER_SOURCE_PATH)
 _EXPECTED_BYTE_SOURCE_PATH_CLASS = type(_BYTE_TOKENIZER_SOURCE_PATH)
@@ -453,7 +453,11 @@ def _verify_runtime_byte_tokenizer_module_state() -> None:
         )
     for field, expected in _EXPECTED_BYTE_MODULE_CONFIG.items():
         observed = observed_config[field]
-        if type(observed) is not type(expected) or observed != expected:
+        if isinstance(expected, MappingProxyType):
+            valid = type(observed) is dict and observed == dict(expected)
+        else:
+            valid = type(observed) is type(expected) and observed == expected
+        if not valid:
             raise TokenizerDecisionError(
                 "canonical byte tokenizer runtime module drift: _CONFIG"
             )
