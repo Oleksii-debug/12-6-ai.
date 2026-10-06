@@ -1567,6 +1567,7 @@ def test_bind_rejects_tokenizer_base_module_alias_replacement(
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
 
+
 @pytest.mark.parametrize(
     "builtin_name",
     ["all", "any", "compile", "dict", "getattr", "object", "set", "type", "vars"],
@@ -1579,7 +1580,10 @@ def test_bind_rejects_mutated_verifier_builtin_dependency(builtin_name: str) -> 
         "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
     }
     original = builtins.__dict__[builtin_name]
-    replacement = lambda *_args, **_kwargs: None
+
+    def replacement(*_args, **_kwargs):
+        return None
+
     observed_error = None
     builtins.__dict__[builtin_name] = replacement
     try:
