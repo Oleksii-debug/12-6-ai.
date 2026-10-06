@@ -312,22 +312,24 @@ def test_failed_apply_numeric_policy_rollback_isolates_setter_fault(
         torch.set_float32_matmul_precision("highest")
         primary = RuntimeError("injected checkpoint apply failure")
 
+        def fail_default_dtype(*_args: Any, **_kwargs: Any) -> None:
+            raise OSError("injected default-dtype rollback failure")
+
+        def fail_matmul_precision(*_args: Any, **_kwargs: Any) -> None:
+            raise OSError("injected matmul-precision rollback failure")
+
         with monkeypatch.context() as patch:
             if fault == "default_dtype":
                 patch.setattr(
                     core,
                     "_restore_torch_default_dtype",
-                    lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                        OSError("injected default-dtype rollback failure")
-                    ),
+                    fail_default_dtype,
                 )
             else:
                 patch.setattr(
                     core,
                     "_restore_torch_matmul_precision",
-                    lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                        OSError("injected matmul-precision rollback failure")
-                    ),
+                    fail_matmul_precision,
                 )
             trainer_adapter._restore_ambient_rng_after_failed_apply(
                 expected,
