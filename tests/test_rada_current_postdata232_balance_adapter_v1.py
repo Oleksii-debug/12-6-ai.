@@ -71,7 +71,7 @@ def _receipt(
     core: dict[str, object] = {
         "schema_version": target.PARENT_SCHEMA,
         "execution_profile": "LOCAL_FREE",
-        "execution_head_sha": target.PARENT_G05_G06_HEAD,
+        "execution_head_sha": target.STACK_BASE_HEAD,
         "parent": {
             "execution_head_sha": target.PARENT_DATA232_HEAD,
             "product_data232_head_sha": target.PRODUCT_DATA232_HEAD,
@@ -173,6 +173,7 @@ def _args(
     return argparse.Namespace(
         evidence=evidence_path,
         inventory=inventory_path,
+        expected_parent_execution_head=target.STACK_BASE_HEAD,
         expected_evidence_file_sha256=_sha(evidence_path.read_bytes()),
         expected_evidence_identity_sha256=receipt[
             "evidence_identity_sha256"
