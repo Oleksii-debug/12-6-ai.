@@ -6,6 +6,7 @@ on:
       - repair/2952-hf-cleanup-primary-preservation-g8-170-20261006
     paths:
       - ".github/workflows/d05_hf_cleanup_g8_170.yml"
+      - "tests/test_hf_export_cleanup_qualification_g8_170.py"
 
 permissions:
   contents: read
@@ -48,11 +49,15 @@ jobs:
           test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
           test "$(git merge-base "$SOURCE_SHA" HEAD)" = "$SOURCE_SHA"
           git diff --name-only "$SOURCE_SHA"..HEAD | sort > /tmp/changed.txt
-          printf '%s\n' ".github/workflows/d05_hf_cleanup_g8_170.yml" > /tmp/expected.txt
+          cat >/tmp/expected.txt <<'EOF'
+          .github/workflows/d05_hf_cleanup_g8_170.yml
+          tests/test_hf_export_cleanup_qualification_g8_170.py
+          EOF
+          sort -o /tmp/expected.txt /tmp/expected.txt
           cmp /tmp/expected.txt /tmp/changed.txt
           test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/hf_export.py")" = "d50d05057c52a9d1003916bab31ff55c7941e5c2"
           test "$(git rev-parse "$SOURCE_SHA:tests/test_hf_export_transactional.py")" = "89960c098c090e4c7ee9ee86a83ed1e038cc7732"
-          python -m py_compile             src/twelve_six/checkpoint/hf_export.py             tests/test_hf_export_transactional.py
+          python -m py_compile src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py tests/test_hf_export_cleanup_qualification_g8_170.py
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
       - name: Install focused test dependencies
@@ -66,13 +71,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m ruff check             src/twelve_six/checkpoint/hf_export.py             tests/test_hf_export_transactional.py
+          python -m ruff check src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py tests/test_hf_export_cleanup_qualification_g8_170.py
 
       - name: Execute HF cleanup transaction regressions
         shell: bash
         run: |
           set -euo pipefail
-          python -m pytest -q tests/test_hf_export_transactional.py
+          python -m pytest -q tests/test_hf_export_transactional.py tests/test_hf_export_cleanup_qualification_g8_170.py
 
       - name: Prove Linux carrier remains clean
         shell: bash
@@ -108,15 +113,19 @@ jobs:
           if ($env:EVENT_BASE_SHA -ne $env:SOURCE_SHA) { throw "base SHA drifted" }
           if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA drifted" }
           if ((git merge-base $env:SOURCE_SHA HEAD).Trim() -ne $env:SOURCE_SHA) { throw "carrier ancestry drifted" }
-          $changed = @(git diff --name-only "$env:SOURCE_SHA..HEAD")
-          if ($changed.Count -ne 1 -or $changed[0].Trim() -ne ".github/workflows/d05_hf_cleanup_g8_170.yml") {
+          $changed = @(git diff --name-only "$env:SOURCE_SHA..HEAD" | Sort-Object)
+          $expected = @(
+            ".github/workflows/d05_hf_cleanup_g8_170.yml",
+            "tests/test_hf_export_cleanup_qualification_g8_170.py"
+          )
+          if ($changed.Count -ne $expected.Count -or (Compare-Object $expected $changed)) {
             throw "unexpected carrier delta: $changed"
           }
           $hfBlob = (git rev-parse "$($env:SOURCE_SHA):src/twelve_six/checkpoint/hf_export.py").Trim()
           if ($hfBlob -ne "d50d05057c52a9d1003916bab31ff55c7941e5c2") { throw "hf_export blob drifted" }
           $testBlob = (git rev-parse "$($env:SOURCE_SHA):tests/test_hf_export_transactional.py").Trim()
           if ($testBlob -ne "89960c098c090e4c7ee9ee86a83ed1e038cc7732") { throw "HF transactional test blob drifted" }
-          python -m py_compile src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+          python -m py_compile src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py tests/test_hf_export_cleanup_qualification_g8_170.py
           $dirty = git status --porcelain=v1 --untracked-files=all
           if ($dirty) { throw "carrier dirty before execution: $dirty" }
 
@@ -131,13 +140,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python -m ruff check src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py
+          python -m ruff check src/twelve_six/checkpoint/hf_export.py tests/test_hf_export_transactional.py tests/test_hf_export_cleanup_qualification_g8_170.py
 
       - name: Execute HF cleanup transaction regressions
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pytest -q tests/test_hf_export_transactional.py
+          python -m pytest -q tests/test_hf_export_transactional.py tests/test_hf_export_cleanup_qualification_g8_170.py
 
       - name: Prove Windows carrier remains clean
         shell: pwsh
