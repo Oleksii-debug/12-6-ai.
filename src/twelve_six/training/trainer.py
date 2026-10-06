@@ -158,6 +158,44 @@ class Trainer:
     boundary-safe reusable loop without owning dataset iteration semantics.
     """
 
+    _CHECKPOINT_SAFETY_AUTHORITIES = (
+        "__dict__",
+        "__getattribute__",
+        "__setattr__",
+        "_canonical_model_members",
+        "_canonical_optimizer_storage",
+        "_canonical_scheduler_storage",
+        "_canonical_scaler_storage",
+        "_canonical_scaler_live_state",
+        "_canonical_lambda_lr_live_state",
+        "_optimizer_live_fingerprint",
+        "_model_export_fingerprint",
+        "_checkpoint_auxiliary_fingerprint",
+        "_require_exported_model_matches_live",
+        "_require_exported_scheduler_matches_live",
+        "_require_exported_scaler_matches_live",
+        "_require_exported_optimizer_matches_live",
+        "_exact_export_leaf_equal",
+        "assert_accumulation_boundary",
+        "assert_checkpoint_safe",
+        "_assert_trainable",
+        "_require_finite_auxiliary_state",
+        "_require_finite_committed_update",
+        "_require_no_residual_model_gradients",
+        "_require_deterministic_policy",
+        "_require_optimizer_parameter_coverage",
+        "_require_safe_optimizer_hyperparameters",
+        "_require_default_optimizer_options",
+        "_require_constant_default_rate",
+        "_require_finite_state_tree",
+        "_require_checkpoint_scaler_state",
+        "_require_default_schedule_rates",
+        "_require_checkpoint_scheduler_chronology",
+        "_require_optimizer_state_parameter_order",
+        "_optimizer_parameter_name_groups",
+        "_mark_failed",
+    )
+
     def __init__(
         self,
         model: nn.Module,
@@ -273,6 +311,38 @@ class Trainer:
                 f"{label} instance storage must be a dictionary"
             )
         return attrs
+
+    def _require_canonical_checkpoint_authorities(self) -> None:
+        """Reject native subclass/instance replacement of checkpoint safety code."""
+
+        trainer_type = type(self)
+        trainer_mro = type.__getattribute__(trainer_type, "__mro__")
+        canonical_mro = type.__getattribute__(Trainer, "__mro__")
+        if Trainer not in trainer_mro:
+            raise TrainingStateInvalidError(
+                "native D02 checkpoint safety lineage is unavailable"
+            )
+        instance_attrs = Trainer._raw_instance_dict(
+            self,
+            Trainer,
+            label="trainer",
+        )
+
+        def resolve_static(mro: tuple[type, ...], name: str) -> Any | None:
+            for owner in mro:
+                namespace = type.__getattribute__(owner, "__dict__")
+                if name in namespace:
+                    return namespace[name]
+            return None
+
+        for name in Trainer._CHECKPOINT_SAFETY_AUTHORITIES:
+            if name in instance_attrs or (
+                resolve_static(trainer_mro, name)
+                is not resolve_static(canonical_mro, name)
+            ):
+                raise TrainingStateInvalidError(
+                    f"native D02 safety authority must remain canonical: {name}"
+                )
 
     def _canonical_model_members(
         self,
@@ -2681,6 +2751,7 @@ class Trainer:
         restored. Construct a fresh Trainer around the verified checkpoint model and
         then load the trainer state.
         """
+        Trainer._require_canonical_checkpoint_authorities(self)
         if self._failure_reason is not None or self._update_incomplete:
             raise TrainingStateInvalidError(
                 "failed trainer cannot be repaired in place; construct a fresh trainer "
