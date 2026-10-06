@@ -523,6 +523,87 @@ def _validate_source_manifest_identity(identity: dict[str, Any]) -> None:
     _validate_manifest_identity(identity)
 
 
+def _validate_parity_request_metadata(
+    parity: dict[str, Any],
+    *,
+    checkpoint_id: str,
+    weights_sha: str,
+    config_sha: str,
+) -> None:
+    _require_exact_fields(
+        parity,
+        _PARITY_REQUEST_FIELDS,
+        artifact=PARITY_REQUEST_NAME,
+    )
+    if parity.get("schema") != "12-6.export-parity-request.v2":
+        raise CheckpointCompatibilityError("unsupported export parity request schema")
+    expected_parity = {
+        "checkpoint_id": checkpoint_id,
+        "reference_weights_sha256": weights_sha,
+        "candidate_weights_sha256": weights_sha,
+        "candidate_config_sha256": config_sha,
+        "required_checks": _REQUIRED_PARITY_CHECKS,
+        "authority": "D07_or_independent_parity_harness",
+    }
+    for field, expected in expected_parity.items():
+        if parity.get(field) != expected:
+            raise CheckpointIntegrityError(
+                f"export parity request {field} mismatch"
+            )
+    status = parity.get("status")
+    hook_result = parity.get("hook_result")
+    if status == "NOT_TESTED":
+        if hook_result is not None:
+            raise CheckpointIntegrityError(
+                "NOT_TESTED parity request cannot attach hook evidence"
+            )
+    elif status == "EXTERNAL_EVIDENCE_ATTACHED":
+        if not isinstance(hook_result, dict):
+            raise CheckpointIntegrityError(
+                "EXTERNAL_EVIDENCE_ATTACHED parity request requires mapping evidence"
+            )
+    else:
+        raise CheckpointIntegrityError(
+            f"unsupported export parity status: {status!r}"
+        )
+
+
+def _validate_export_attestation_metadata(
+    attestation: dict[str, Any],
+    *,
+    checkpoint_id: str,
+    source_manifest_sha: str,
+    weights_sha: str,
+    config_sha: str,
+    parity_sha: str,
+) -> None:
+    _require_exact_fields(
+        attestation,
+        _ATTESTATION_FIELDS,
+        artifact=EXPORT_ATTESTATION_NAME,
+    )
+    if attestation.get("schema") != "12-6.hf-style-export.v2":
+        raise CheckpointCompatibilityError(
+            "unsupported HF-style export attestation schema"
+        )
+    if attestation.get("compatibility") != _COMPATIBILITY:
+        raise CheckpointIntegrityError(
+            "HF-style export compatibility claims changed unexpectedly"
+        )
+    expected_attestation = {
+        "checkpoint_id": checkpoint_id,
+        "source_manifest_sha256": source_manifest_sha,
+        "model_safetensors_sha256": weights_sha,
+        "config_sha256": config_sha,
+        "parity_request_sha256": parity_sha,
+    }
+    for field, expected in expected_attestation.items():
+        if attestation.get(field) != expected:
+            raise CheckpointIntegrityError(
+                f"HF-style export attestation {field} mismatch"
+            )
+
+
 def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     """Verify one exact HF-style export directory without trusting path metadata."""
 
@@ -573,6 +654,33 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         raise CheckpointIntegrityError("source manifest is missing canonical weights record")
 
     _json_object(payloads[EXPORTED_CONFIG_NAME], artifact=EXPORTED_CONFIG_NAME)
+    config_sha = sha256_bytes(payloads[EXPORTED_CONFIG_NAME])
+    source_manifest_sha = sha256_bytes(payloads[EXPORTED_SOURCE_MANIFEST_NAME])
+    parity_sha = sha256_bytes(payloads[PARITY_REQUEST_NAME])
+    canonical_weights_sha = weights_record["sha256"]
+
+    parity = _json_object(
+        payloads[PARITY_REQUEST_NAME],
+        artifact=PARITY_REQUEST_NAME,
+    )
+    _validate_parity_request_metadata(
+        parity,
+        checkpoint_id=checkpoint_id,
+        weights_sha=canonical_weights_sha,
+        config_sha=config_sha,
+    )
+    attestation = _json_object(
+        payloads[EXPORT_ATTESTATION_NAME],
+        artifact=EXPORT_ATTESTATION_NAME,
+    )
+    _validate_export_attestation_metadata(
+        attestation,
+        checkpoint_id=checkpoint_id,
+        source_manifest_sha=source_manifest_sha,
+        weights_sha=canonical_weights_sha,
+        config_sha=config_sha,
+        parity_sha=parity_sha,
+    )
 
     _require_export_root_identity(root, root_identity)
     weights_sha, weights_bytes = _stream_regular_sha256(
@@ -581,10 +689,7 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     )
     _require_export_root_identity(root, root_identity)
 
-    config_sha = sha256_bytes(payloads[EXPORTED_CONFIG_NAME])
-    source_manifest_sha = sha256_bytes(payloads[EXPORTED_SOURCE_MANIFEST_NAME])
-    parity_sha = sha256_bytes(payloads[PARITY_REQUEST_NAME])
-    if weights_record.get("sha256") != weights_sha:
+    if canonical_weights_sha != weights_sha:
         raise CheckpointIntegrityError(
             "exported model.safetensors differs from canonical weights hash"
         )
@@ -592,61 +697,6 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         raise CheckpointIntegrityError(
             "exported model.safetensors differs from canonical byte length"
         )
-
-    parity = _json_object(payloads[PARITY_REQUEST_NAME], artifact=PARITY_REQUEST_NAME)
-    _require_exact_fields(
-        parity,
-        _PARITY_REQUEST_FIELDS,
-        artifact=PARITY_REQUEST_NAME,
-    )
-    if parity.get("schema") != "12-6.export-parity-request.v2":
-        raise CheckpointCompatibilityError("unsupported export parity request schema")
-    expected_parity = {
-        "checkpoint_id": checkpoint_id,
-        "reference_weights_sha256": weights_sha,
-        "candidate_weights_sha256": weights_sha,
-        "candidate_config_sha256": config_sha,
-        "required_checks": _REQUIRED_PARITY_CHECKS,
-        "authority": "D07_or_independent_parity_harness",
-    }
-    for field, expected in expected_parity.items():
-        if parity.get(field) != expected:
-            raise CheckpointIntegrityError(f"export parity request {field} mismatch")
-    status = parity.get("status")
-    hook_result = parity.get("hook_result")
-    if status == "NOT_TESTED":
-        if hook_result is not None:
-            raise CheckpointIntegrityError("NOT_TESTED parity request cannot attach hook evidence")
-    elif status == "EXTERNAL_EVIDENCE_ATTACHED":
-        if not isinstance(hook_result, dict):
-            raise CheckpointIntegrityError(
-                "EXTERNAL_EVIDENCE_ATTACHED parity request requires mapping evidence"
-            )
-    else:
-        raise CheckpointIntegrityError(f"unsupported export parity status: {status!r}")
-
-    attestation = _json_object(
-        payloads[EXPORT_ATTESTATION_NAME], artifact=EXPORT_ATTESTATION_NAME
-    )
-    _require_exact_fields(
-        attestation,
-        _ATTESTATION_FIELDS,
-        artifact=EXPORT_ATTESTATION_NAME,
-    )
-    if attestation.get("schema") != "12-6.hf-style-export.v2":
-        raise CheckpointCompatibilityError("unsupported HF-style export attestation schema")
-    if attestation.get("compatibility") != _COMPATIBILITY:
-        raise CheckpointIntegrityError("HF-style export compatibility claims changed unexpectedly")
-    expected_attestation = {
-        "checkpoint_id": checkpoint_id,
-        "source_manifest_sha256": source_manifest_sha,
-        "model_safetensors_sha256": weights_sha,
-        "config_sha256": config_sha,
-        "parity_request_sha256": parity_sha,
-    }
-    for field, expected in expected_attestation.items():
-        if attestation.get(field) != expected:
-            raise CheckpointIntegrityError(f"HF-style export attestation {field} mismatch")
     return attestation
 
 

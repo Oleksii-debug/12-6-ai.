@@ -31,8 +31,16 @@ class Model:
 
 
 def identity(fill: str = "a") -> CheckpointIdentity:
+    if len(fill) != 1:
+        raise ValueError("identity fixture fill must be one character")
+    git_fill = fill.lower()
+    git_sha = (
+        git_fill * 40
+        if git_fill in "0123456789abcdef"
+        else f"{ord(fill):040x}"
+    )
     return CheckpointIdentity(
-        git_sha=fill * 40,
+        git_sha=git_sha,
         model_spec={"model_type": "twelve_six_export_transactional"},
         parameter_count=1,
         tokenizer_hash="1" * 64,
@@ -47,6 +55,15 @@ def identity(fill: str = "a") -> CheckpointIdentity:
         optimizer={"name": "none"},
         scheduler=None,
     )
+
+
+def test_identity_fixture_nonhex_label_has_canonical_git_sha():
+    observed = identity("g").git_sha
+
+    assert observed == f"{ord('g'):040x}"
+    assert len(observed) == 40
+    assert observed == observed.lower()
+    assert all(char in "0123456789abcdef" for char in observed)
 
 
 def snapshot_tree(root: Path) -> dict[str, bytes]:
@@ -2360,6 +2377,11 @@ def test_hf_streamed_weight_interrupt_retains_exact_identity(
             b"{invalid-json\n",
             "config.json is not valid strict UTF-8 JSON",
         ),
+        (
+            hf_export.PARITY_REQUEST_NAME,
+            b"{invalid-json\n",
+            "12-6-parity-request.json is not valid strict UTF-8 JSON",
+        ),
     ),
 )
 def test_hf_verifier_rejects_bad_metadata_before_weight_stream(
@@ -2381,6 +2403,85 @@ def test_hf_verifier_rejects_bad_metadata_before_weight_stream(
 
     def forbid_weight_stream(*_args, **_kwargs):
         raise AssertionError("invalid bounded metadata must fail before weight scan")
+
+    monkeypatch.setattr(hf_export, "_stream_regular_sha256", forbid_weight_stream)
+
+    with pytest.raises(CheckpointIntegrityError, match=expected):
+        verify_hf_directory(output)
+
+
+def test_hf_verifier_rejects_parity_weight_binding_before_weight_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(29.625), identity=identity("u"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    parity_path = output / hf_export.PARITY_REQUEST_NAME
+    parity = json.loads(parity_path.read_text(encoding="utf-8"))
+    parity["candidate_weights_sha256"] = "0" * 64
+    parity_path.write_bytes(
+        hf_export._strict_json_bytes(
+            parity,
+            artifact=hf_export.PARITY_REQUEST_NAME,
+        )
+        + b"\n"
+    )
+
+    def forbid_weight_stream(*_args, **_kwargs):
+        raise AssertionError("bad parity binding must fail before weight scan")
+
+    monkeypatch.setattr(hf_export, "_stream_regular_sha256", forbid_weight_stream)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="export parity request candidate_weights_sha256 mismatch",
+    ):
+        verify_hf_directory(output)
+
+
+@pytest.mark.parametrize("case", ("invalid_json", "weight_binding"))
+def test_hf_verifier_rejects_resealed_bad_attestation_before_weight_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(29.6875), identity=identity("v"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    attestation_path = output / hf_export.EXPORT_ATTESTATION_NAME
+    if case == "invalid_json":
+        attestation_bytes = b"{invalid-json\n"
+        expected = "12-6-export.json is not valid strict UTF-8 JSON"
+    else:
+        attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+        attestation["model_safetensors_sha256"] = "0" * 64
+        attestation_bytes = hf_export._strict_json_bytes(
+            attestation,
+            artifact=hf_export.EXPORT_ATTESTATION_NAME,
+        ) + b"\n"
+        expected = "HF-style export attestation model_safetensors_sha256 mismatch"
+    attestation_path.write_bytes(attestation_bytes)
+    (output / hf_export.EXPORT_CHECKSUM_NAME).write_text(
+        (
+            f"{hf_export.sha256_bytes(attestation_bytes)}  "
+            f"{hf_export.EXPORT_ATTESTATION_NAME}\n"
+        ),
+        encoding="ascii",
+    )
+
+    def forbid_weight_stream(*_args, **_kwargs):
+        raise AssertionError("bad attestation must fail before weight scan")
 
     monkeypatch.setattr(hf_export, "_stream_regular_sha256", forbid_weight_stream)
 
