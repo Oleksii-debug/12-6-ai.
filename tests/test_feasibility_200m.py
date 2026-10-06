@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
 
@@ -183,6 +184,33 @@ class _IterationTrapList(list):
 
 class _StringAlias(str):
     pass
+
+
+class _MappingTrap(Mapping[str, object]):
+    callback_calls = 0
+
+    def __getitem__(self, key: str) -> object:
+        del key
+        type(self).callback_calls += 1
+        raise AssertionError("custom mapping callback executed")
+
+    def __iter__(self):
+        type(self).callback_calls += 1
+        raise AssertionError("custom mapping callback executed")
+
+    def __len__(self) -> int:
+        type(self).callback_calls += 1
+        raise AssertionError("custom mapping callback executed")
+
+
+def test_packet_hash_rejects_custom_mapping_before_callback() -> None:
+    trapped = _MappingTrap()
+    _MappingTrap.callback_calls = 0
+
+    with pytest.raises(FeasibilityPacketError, match="packet_not_plain_json"):
+        compute_packet_sha256(trapped)
+
+    assert _MappingTrap.callback_calls == 0
 
 
 def test_builder_blocks_coherent_deepcopy_mutation_before_callback() -> None:
@@ -1125,6 +1153,125 @@ def test_cli_build_does_not_publish_packet_if_identity_write_fails(
 
     assert packet_path.read_text(encoding="utf-8") == "previous-packet\n"
     assert not expected_path.exists()
+
+
+
+
+def test_cli_build_packet_failure_restores_previous_identity_map(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    roadmap_path = tmp_path / "roadmap.json"
+    input_path = tmp_path / "input.json"
+    packet_path = tmp_path / "packet.json"
+    expected_path = tmp_path / "expected.json"
+    roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
+    input_path.write_text(json.dumps(_cli_request()), encoding="utf-8")
+    packet_path.write_text("previous-packet\n", encoding="utf-8")
+    expected_path.write_text("previous-identities\n", encoding="utf-8")
+    real_write_json = cli._write_json
+
+    def fail_packet_write(path: Path, value: object, *, label: str) -> None:
+        if label == "output":
+            raise ValueError("simulated_packet_write_failure")
+        real_write_json(path, value, label=label)
+
+    monkeypatch.setattr(cli, "_write_json", fail_packet_write)
+    args = cli._parser().parse_args(
+        [
+            "build",
+            "--roadmap",
+            str(roadmap_path),
+            "--input",
+            str(input_path),
+            "--output",
+            str(packet_path),
+            "--external-identities",
+            str(expected_path),
+        ]
+    )
+    with pytest.raises(ValueError, match="simulated_packet_write_failure"):
+        args.run(args)
+
+    assert packet_path.read_text(encoding="utf-8") == "previous-packet\n"
+    assert expected_path.read_text(encoding="utf-8") == "previous-identities\n"
+    assert list(tmp_path.glob(".expected.json.*.rollback")) == []
+
+
+def test_cli_build_packet_failure_removes_new_identity_map(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    roadmap_path = tmp_path / "roadmap.json"
+    input_path = tmp_path / "input.json"
+    packet_path = tmp_path / "packet.json"
+    expected_path = tmp_path / "expected.json"
+    roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
+    input_path.write_text(json.dumps(_cli_request()), encoding="utf-8")
+    packet_path.write_text("previous-packet\n", encoding="utf-8")
+    real_write_json = cli._write_json
+
+    def fail_packet_write(path: Path, value: object, *, label: str) -> None:
+        if label == "output":
+            raise ValueError("simulated_packet_write_failure")
+        real_write_json(path, value, label=label)
+
+    monkeypatch.setattr(cli, "_write_json", fail_packet_write)
+    args = cli._parser().parse_args(
+        [
+            "build",
+            "--roadmap",
+            str(roadmap_path),
+            "--input",
+            str(input_path),
+            "--output",
+            str(packet_path),
+            "--external-identities",
+            str(expected_path),
+        ]
+    )
+    with pytest.raises(ValueError, match="simulated_packet_write_failure"):
+        args.run(args)
+
+    assert packet_path.read_text(encoding="utf-8") == "previous-packet\n"
+    assert not expected_path.exists()
+    assert list(tmp_path.glob(".expected.json.*.rollback")) == []
+
+
+def test_cli_build_preflights_packet_destination_before_identity_replacement(
+    tmp_path: Path,
+) -> None:
+    cli = _load_cli()
+    roadmap_path = tmp_path / "roadmap.json"
+    input_path = tmp_path / "input.json"
+    packet_path = tmp_path / "packet.json"
+    expected_path = tmp_path / "expected.json"
+    roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
+    input_path.write_text(json.dumps(_cli_request()), encoding="utf-8")
+    packet_path.mkdir()
+    expected_path.write_text("previous-identities\n", encoding="utf-8")
+
+    args = cli._parser().parse_args(
+        [
+            "build",
+            "--roadmap",
+            str(roadmap_path),
+            "--input",
+            str(input_path),
+            "--output",
+            str(packet_path),
+            "--external-identities",
+            str(expected_path),
+        ]
+    )
+    with pytest.raises(ValueError, match="output_destination_not_regular_file"):
+        args.run(args)
+
+    assert packet_path.is_dir()
+    assert expected_path.read_text(encoding="utf-8") == "previous-identities\n"
+    assert list(tmp_path.glob(".expected.json.*.rollback")) == []
 
 
 def test_cli_verify_malformed_roadmap_reports_invalid_not_crash(
