@@ -1,0 +1,237 @@
+name: D03 record-aware realization G8 172
+
+on:
+  pull_request:
+    branches:
+      - repair/2583-record-aware-realization-g8-172-20261006
+    paths:
+      - ".github/workflows/d03_record_aware_realization_g8_172.yml"
+      - "tools/qualify_d03_record_aware_realization_v2.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-record-aware-realization-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-real-record-sizes:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/3064-record-aware-realization-g8-172-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "8f27e9d6d5d78f870359775f20d6da97a9684249"
+      RUNNER_BLOB: "cc2cfad5c9f25d87f0c17d49a5ad80157724db40"
+      PRODUCT_RUNTIME_BLOB: "27e6e344411b68bcf20b6c280692287bdf625139"
+      PRODUCT_RUNTIME_PATH: "src/twelve_six/data/current_clean_balanced_selection_v1.py"
+      BALANCE_ARTIFACT_ID: "11441000276"
+      BALANCE_ARTIFACT_ZIP_SHA256: "85ae6ace4914cd8fae86cef71b8ac63cf73c97b1386ff7e01a716692ddce6c10"
+      COMPOSITION_FILE_SHA256: "8a737ca830d0e98095b258c31bb1fc6f5e0c294384484b3f266dad654522850e"
+      BALANCE_FILE_SHA256: "655eee7aa4fd0aeb7d124405a420a7148efb0474951f9843e0476bc4f05b56d4"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout exact qualification head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact qualification closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          mapfile -t changed < <(git diff --name-only "$PARENT_HEAD"..HEAD | sort)
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = ".github/workflows/d03_record_aware_realization_g8_172.yml"
+          test "${changed[1]}" = "tools/qualify_d03_record_aware_realization_v2.py"
+          test "$(git hash-object tools/qualify_d03_record_aware_realization_v2.py)" = "$RUNNER_BLOB"
+          test "$(git hash-object "$PRODUCT_RUNTIME_PATH")" = "$PRODUCT_RUNTIME_BLOB"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          python -m py_compile "$PRODUCT_RUNTIME_PATH"
+          python -m py_compile tools/qualify_d03_record_aware_realization_v2.py
+          python -m pip install --disable-pip-version-check "ruff==0.16.10"
+          ruff check "$PRODUCT_RUNTIME_PATH" tools/qualify_d03_record_aware_realization_v2.py
+
+      - name: Fetch exact qualified 20M balance artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/balance"
+          mkdir -p "$root"
+          curl --fail --location --retry 5 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o "$RUNNER_TEMP/balance.zip" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BALANCE_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$RUNNER_TEMP/balance.zip" | cut -d' ' -f1)" = "$BALANCE_ARTIFACT_ZIP_SHA256"
+          unzip -q "$RUNNER_TEMP/balance.zip" -d "$root"
+          test "$(sha256sum "$root/composition.json" | cut -d' ' -f1)" = "$COMPOSITION_FILE_SHA256"
+          test "$(sha256sum "$root/balance-result.json" | cut -d' ' -f1)" = "$BALANCE_FILE_SHA256"
+
+      - name: Execute two fresh Product-realization qualifications
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/balance"
+          for pass_id in 1 2; do
+            PYTHONPATH="src:." python tools/qualify_d03_record_aware_realization_v2.py \
+              --composition-json "$root/composition.json" \
+              --balance-result-json "$root/balance-result.json" \
+              --output "$RUNNER_TEMP/record-aware-${pass_id}.json"
+          done
+          cmp "$RUNNER_TEMP/record-aware-1.json" "$RUNNER_TEMP/record-aware-2.json"
+
+      - name: Require fail-closed mutated authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/balance"
+          python - "$root/composition.json" "$RUNNER_TEMP/mutated-composition.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          value["combined_inventory"]["records"][0]["payload_bytes"] += 1
+          Path(sys.argv[2]).write_text(
+              json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+          if PYTHONPATH="src:." python tools/qualify_d03_record_aware_realization_v2.py \
+            --composition-json "$RUNNER_TEMP/mutated-composition.json" \
+            --balance-result-json "$root/balance-result.json" \
+            --output "$RUNNER_TEMP/mutated-composition-output.json"; then
+            echo "mutated composition unexpectedly accepted" >&2
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/mutated-composition-output.json"
+
+          python - "$root/balance-result.json" "$RUNNER_TEMP/mutated-balance.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          value["maximum_feasible_total_source_bytes"] -= 100
+          Path(sys.argv[2]).write_text(
+              json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+          if PYTHONPATH="src:." python tools/qualify_d03_record_aware_realization_v2.py \
+            --composition-json "$root/composition.json" \
+            --balance-result-json "$RUNNER_TEMP/mutated-balance.json" \
+            --output "$RUNNER_TEMP/mutated-balance-output.json"; then
+            echo "mutated balance unexpectedly accepted" >&2
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/mutated-balance-output.json"
+
+      - name: Independently require repaired physical result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/record-aware-1.json" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          core = dict(value)
+          claimed = core.pop("qualification_identity_sha256")
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          assert hashlib.sha256(raw).hexdigest() == claimed
+          assert value["terminal_verdict"] == "PASS_RECORD_AWARE_REALIZATION"
+          assert value["selection_realization_policy"] == (
+              "record-id-ascending-policy-cap-aware-whole-record-subset-v2"
+          )
+          assert value["selected_source_bytes"] == 20_000_000
+          assert value["target_stratum_bytes"] == {
+              "ua": 9_000_000,
+              "en": 7_000_000,
+              "code": 4_000_000,
+          }
+          expected_caps = {"ua": 5_000_000, "en": 4_200_000, "code": 2_400_000}
+          for stratum, expected_target in value["target_stratum_bytes"].items():
+              result = value["strata"][stratum]
+              assert result["target_bytes"] == expected_target
+              assert result["selected_family_count"] >= 2
+              assert result["maximum_selected_family_bytes"] <= expected_caps[stratum]
+          assert value["strata"]["code"]["continuous_family_witness_matched"] is False
+
+          zero = {
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "scale_promotion_authorized": False,
+          }
+          for key, expected in zero.items():
+              assert value[key] == expected
+          print("D03_RECORD_AWARE_REALIZATION_PHYSICALLY_QUALIFIED")
+          print(
+              json.dumps(
+                  {
+                      "qualification_identity_sha256": claimed,
+                      "selected_source_bytes": value["selected_source_bytes"],
+                      "selected_record_count": value["selected_record_count"],
+                      "code_continuous_witness_matched": value["strata"]["code"][
+                          "continuous_family_witness_matched"
+                      ],
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+
+      - name: Upload text-free qualification authority
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-record-aware-realization-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/record-aware-1.json
+          if-no-files-found: error
+          retention-days: 90
