@@ -333,6 +333,9 @@ def capture_rng_state() -> dict[str, Any]:
         "default_dtype": str(torch.get_default_dtype()),
         "float32_matmul_precision": torch.get_float32_matmul_precision(),
         "cudnn_allow_tf32": bool(torch.backends.cudnn.allow_tf32),
+        "cudnn_enabled": bool(torch.backends.cudnn.enabled),
+        "cudnn_deterministic": bool(torch.backends.cudnn.deterministic),
+        "cudnn_benchmark": bool(torch.backends.cudnn.benchmark),
     }
     if torch.cuda.is_available():
         torch_state["cuda"] = torch.cuda.get_rng_state_all()
@@ -400,6 +403,11 @@ def _preflight_rng_state(state: Mapping[str, Any]) -> None:
             raise CheckpointCompatibilityError(
                 "checkpoint torch cudnn_allow_tf32 must be a boolean"
             )
+    for field in ("cudnn_enabled", "cudnn_deterministic", "cudnn_benchmark"):
+        if field in torch_state and type(torch_state[field]) is not bool:
+            raise CheckpointCompatibilityError(
+                f"checkpoint torch {field} must be a boolean"
+            )
     try:
         torch = importlib.import_module("torch")
     except ModuleNotFoundError as exc:
@@ -460,6 +468,24 @@ def _restore_torch_cudnn_allow_tf32(torch: Any, allow: bool) -> None:
     torch.backends.cudnn.allow_tf32 = allow
 
 
+def _restore_torch_cudnn_enabled(torch: Any, enabled: bool) -> None:
+    """Restore whether cuDNN is enabled."""
+
+    torch.backends.cudnn.enabled = enabled
+
+
+def _restore_torch_cudnn_deterministic(torch: Any, deterministic: bool) -> None:
+    """Restore the cuDNN deterministic-convolution policy."""
+
+    torch.backends.cudnn.deterministic = deterministic
+
+
+def _restore_torch_cudnn_benchmark(torch: Any, benchmark: bool) -> None:
+    """Restore the cuDNN convolution autotuner policy."""
+
+    torch.backends.cudnn.benchmark = benchmark
+
+
 def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
     """Restore captured RNG streams and process policy; report RNG scope."""
 
@@ -504,6 +530,18 @@ def restore_rng_state(state: Mapping[str, Any]) -> dict[str, Any]:
             _restore_torch_cudnn_allow_tf32(
                 torch,
                 torch_state["cudnn_allow_tf32"],
+            )
+        if "cudnn_enabled" in torch_state:
+            _restore_torch_cudnn_enabled(torch, torch_state["cudnn_enabled"])
+        if "cudnn_deterministic" in torch_state:
+            _restore_torch_cudnn_deterministic(
+                torch,
+                torch_state["cudnn_deterministic"],
+            )
+        if "cudnn_benchmark" in torch_state:
+            _restore_torch_cudnn_benchmark(
+                torch,
+                torch_state["cudnn_benchmark"],
             )
     return scope
 
