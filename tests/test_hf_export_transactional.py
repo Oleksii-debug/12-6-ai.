@@ -1594,3 +1594,75 @@ def test_private_root_identity_cleanup_double_fault_preserves_primary(
                 real_rmdir(path_item)
 
 
+def test_direct_materializer_helpers_preserve_path_return_contract(
+    tmp_path: Path,
+):
+    checkpoint = tmp_path / "checkpoint"
+    save_checkpoint(checkpoint, model=Model(18.0), identity=identity("f"))
+    verified = hf_export.prepare_checkpoint_load(checkpoint)
+
+    reference = hf_export._materialize_verified_reference(
+        verified,
+        tmp_path,
+        "hf",
+    )
+    candidate = hf_export._materialize_hook_candidate(
+        parent=tmp_path,
+        name="hf",
+        weights=b"weights",
+        config=b"{}",
+        source_manifest=b"{}",
+    )
+
+    assert isinstance(reference, Path)
+    assert isinstance(candidate, Path)
+
+    reference_identity = hf_export._temporary_directory_identity(reference)
+    candidate_identity = hf_export._temporary_directory_identity(candidate)
+    hf_export._cleanup_temp_paths_strict(
+        (
+            (candidate, "HF parity hook candidate", candidate_identity),
+            (reference, "verified checkpoint reference", reference_identity),
+        )
+    )
+
+
+def test_export_pins_each_private_root_identity_exactly_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(19.0), identity=identity("1"))
+    real_identity = hf_export._temporary_directory_identity
+    seen: list[str] = []
+
+    def observe_identity(path: Path):
+        if ".reference-" in path.name:
+            seen.append("reference")
+        elif ".hook-candidate-" in path.name:
+            seen.append("candidate")
+        elif ".staging-" in path.name:
+            seen.append("staging")
+        return real_identity(path)
+
+    def parity_hook(_reference: Path, _candidate: Path):
+        return {"status": "PASS", "evidence_ref": "identity-count-regression"}
+
+    monkeypatch.setattr(
+        hf_export,
+        "_temporary_directory_identity",
+        observe_identity,
+    )
+
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+        parity_hook=parity_hook,
+    )
+
+    assert seen == ["reference", "candidate", "staging"]
+    verify_hf_directory(output)
+
+
