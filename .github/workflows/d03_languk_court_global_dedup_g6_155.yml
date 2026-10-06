@@ -28,7 +28,7 @@ jobs:
     env:
       EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
       PARENT_SOURCE_HEAD: "c0c39803063b44b87b5256ca8934345b3af0dc9e"
-      RUNNER_BLOB: "c28d048b51fca3e2a55891fd3c37b5262d63121d"
+      RUNNER_BLOB: "cc8dab20676d8a6befeae02a1878fff1711bd363"
       SOURCE_RUNNER_BLOB: "c0527b5b9e51c84549eaf757e274a02c677ab5b2"
       V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
       POPPLER_VERSION: "25.06.0"
