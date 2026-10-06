@@ -139,6 +139,10 @@ def _is_sha256(value: Any) -> bool:
     return isinstance(value, str) and _SHA256_RE.fullmatch(value) is not None
 
 
+def _is_allowed_decision(value: Any) -> bool:
+    return isinstance(value, str) and value in _ALLOWED_DECISIONS
+
+
 def _is_positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
@@ -217,12 +221,18 @@ def _product_200m_target(roadmap: Any) -> int:
 def _require_buildable_roadmap(roadmap: Any) -> None:
     if not isinstance(roadmap, dict):
         raise FeasibilityPacketError("roadmap_not_object")
-    contract_errors = r01.validate_roadmap(roadmap)
+    try:
+        contract_errors = r01.validate_roadmap(roadmap)
+    except Exception as exc:
+        raise FeasibilityPacketError("roadmap_contract_validation_failed") from exc
     if contract_errors:
         raise FeasibilityPacketError(
             "roadmap_contract_invalid:" + ",".join(sorted(set(contract_errors)))
         )
-    assessment = r01.assess_roadmap(roadmap)
+    try:
+        assessment = r01.assess_roadmap(roadmap)
+    except Exception as exc:
+        raise FeasibilityPacketError("roadmap_assessment_failed") from exc
     if (
         not assessment.contract_valid
         or not assessment.terminal_20m_proven
@@ -306,7 +316,7 @@ def build_200m_feasibility_packet(
         and candidate_evidence.get("evidence_sha256") != candidate_sha256
     ):
         errors.append("candidate_architecture_evidence_payload_mismatch")
-    if decision not in _ALLOWED_DECISIONS:
+    if not _is_allowed_decision(decision):
         errors.append("decision_invalid")
     if errors:
         raise FeasibilityPacketError(",".join(sorted(set(errors))))
@@ -407,7 +417,7 @@ def _trusted_build_retention_errors(packet: Any) -> list[str]:
 
     if packet.get("requirements_covered") != sorted(r01.REQUIRED_200M_FEASIBILITY):
         errors.append("requirements_covered_mismatch")
-    if packet.get("decision") not in _ALLOWED_DECISIONS:
+    if not _is_allowed_decision(packet.get("decision")):
         errors.append("decision_invalid")
     boundaries = packet.get("authority_boundaries")
     if not isinstance(boundaries, dict) or set(boundaries) != _BOUNDARY_FIELDS:
@@ -590,7 +600,7 @@ def validate_200m_feasibility_packet(
 
     if packet.get("requirements_covered") != sorted(r01.REQUIRED_200M_FEASIBILITY):
         errors.append("requirements_covered_mismatch")
-    if packet.get("decision") not in _ALLOWED_DECISIONS:
+    if not _is_allowed_decision(packet.get("decision")):
         errors.append("decision_invalid")
 
     boundaries = packet.get("authority_boundaries")
