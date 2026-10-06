@@ -1,0 +1,994 @@
+#!/usr/bin/env python3
+"""CHECKPOINT-346 current-D05 bounded MODEL-341 recovery qualification (V8 carrier).
+
+This is checkpoint/recovery mechanics only. It executes exactly three optimizer
+updates over deterministic synthetic token IDs:
+1) parent step 1, then public D05 save_trainer_checkpoint();
+2) parent step 2 as uninterrupted reference;
+3) a distinct Python child process uses public D05 load_trainer_checkpoint()
+   to restore step 1 and repeats step 2.
+
+The canonical MODEL-341 JSON configuration is read from a separately pinned
+MODEL-341 carrier checkout. All executable model/trainer/checkpoint code is
+imported from a separately pinned current D05 Product checkout.
+
+This grants no corpus, tokenizer-fit, model-training, learned-weight, final-test,
+paid-compute, or scale-promotion credit.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import random
+import subprocess
+import sys
+import tempfile
+import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import torch
+
+D05_RUNTIME_SHA = os.environ.get("D05_RUNTIME_SHA", "")
+if len(D05_RUNTIME_SHA) != 40 or any(
+    character not in "0123456789abcdef" for character in D05_RUNTIME_SHA
+):
+    raise RuntimeError("D05_RUNTIME_SHA must be an exact lowercase 40-hex commit SHA")
+QUALIFICATION_CARRIER_SHA = os.environ.get("QUALIFICATION_CARRIER_SHA", "")
+if len(QUALIFICATION_CARRIER_SHA) != 40 or any(
+    character not in "0123456789abcdef" for character in QUALIFICATION_CARRIER_SHA
+):
+    raise RuntimeError(
+        "QUALIFICATION_CARRIER_SHA must be an exact lowercase 40-hex commit SHA"
+    )
+QUALIFICATION_RUNNER_BLOB = os.environ.get("QUALIFICATION_RUNNER_BLOB", "")
+if len(QUALIFICATION_RUNNER_BLOB) != 40 or any(
+    character not in "0123456789abcdef" for character in QUALIFICATION_RUNNER_BLOB
+):
+    raise RuntimeError(
+        "QUALIFICATION_RUNNER_BLOB must be an exact lowercase 40-hex git blob SHA"
+    )
+QUALIFICATION_ROOT = Path(__file__).resolve().parents[1]
+QUALIFICATION_RUNNER_PATH = "tools/run_checkpoint346_model341_current_d05_recovery_v8.py"
+MODEL341_CARRIER_SHA = "f151c77a8ef8721f0f568509147b1a5f961ae6c7"
+MODEL341_CANDIDATE_BLOB = "69e3cbd5f5c83c9d3d529a2a6376db3055979c40"
+EXPECTED_PARAMETERS = 20_613_440
+EXPECTED_MODEL_ID = "fbff24d561a2818453554d58ca23fc6ace3303b078f1935a8576c4565bd92441"
+EXPECTED_INIT_ID = "86483c6df623e80cab2f73aba718863fce18af6fe3b12430c1348414d92b48a5"
+SEED = 346_341
+TREE_HASH_SCHEME = "sha256:length-prefixed-structural-v2"
+SYNTHETIC_DATASET_HASH = hashlib.sha256(
+    b"checkpoint346-current-d05-synthetic-mechanics-only-dataset-v1"
+).hexdigest()
+SYNTHETIC_RUN_HASH = hashlib.sha256(
+    b"checkpoint346-current-d05-synthetic-mechanics-only-run-v1"
+).hexdigest()
+SYNTHETIC_TOKENIZER_HASH = hashlib.sha256(
+    b"checkpoint346-byte-tokenizer-mechanics-identity-v1"
+).hexdigest()
+SYNTHETIC_VOCAB_HASH = hashlib.sha256(
+    b"checkpoint346-byte-vocab-0-255-mechanics-v1"
+).hexdigest()
+
+
+def _json_write(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _sha_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _git_head(root: Path) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        text=True,
+        timeout=10,
+    ).strip()
+
+
+def _git_blob(root: Path, relative: str) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(root), "hash-object", relative],
+        text=True,
+        timeout=10,
+    ).strip()
+
+
+def _peak_rss_bytes() -> int | None:
+    try:
+        import resource
+    except ImportError:
+        return None
+    value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform.startswith("linux"):
+        return int(value) * 1024
+    if sys.platform == "darwin":
+        return int(value)
+    return None
+
+
+def _linux_proc_memory_bytes() -> dict[str, int] | None:
+    """Read current/peak resident memory without claiming cross-platform equivalence."""
+
+    if not sys.platform.startswith("linux"):
+        return None
+    status = Path("/proc/self/status")
+    try:
+        lines = status.read_text(encoding="ascii").splitlines()
+    except OSError:
+        return None
+    values: dict[str, int] = {}
+    for line in lines:
+        if line.startswith("VmRSS:") or line.startswith("VmHWM:"):
+            name, raw = line.split(":", 1)
+            fields = raw.split()
+            if len(fields) != 2 or fields[1] != "kB":
+                raise RuntimeError(f"unexpected /proc memory field: {line!r}")
+            values[name] = int(fields[0]) * 1024
+    if set(values) != {"VmRSS", "VmHWM"}:
+        raise RuntimeError("/proc/self/status is missing VmRSS or VmHWM")
+    return {
+        "current_rss_bytes": values["VmRSS"],
+        "peak_rss_bytes": values["VmHWM"],
+    }
+
+
+def _tree_hash(value: Any) -> str:
+    """Length-delimited structural SHA-256 for checkpoint and RNG state."""
+    digest = hashlib.sha256()
+
+    def emit(tag: bytes, payload: bytes = b"") -> None:
+        digest.update(len(tag).to_bytes(2, "big"))
+        digest.update(tag)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+
+    def walk(obj: Any) -> None:
+        if isinstance(obj, torch.Tensor):
+            tensor = obj.detach().cpu().contiguous()
+            emit(b"tensor.dtype", str(tensor.dtype).encode("utf-8"))
+            emit(
+                b"tensor.shape",
+                json.dumps(
+                    list(tensor.shape),
+                    separators=(",", ":"),
+                ).encode("ascii"),
+            )
+            if tensor.dtype == torch.bfloat16:
+                payload = tensor.view(torch.uint16).numpy().tobytes()
+            else:
+                payload = tensor.numpy().tobytes()
+            emit(b"tensor.data", payload)
+            return
+        if isinstance(obj, np.ndarray):
+            array = np.ascontiguousarray(obj)
+            emit(b"numpy.dtype", str(array.dtype).encode("utf-8"))
+            emit(
+                b"numpy.shape",
+                json.dumps(
+                    list(array.shape),
+                    separators=(",", ":"),
+                ).encode("ascii"),
+            )
+            emit(b"numpy.data", array.tobytes())
+            return
+        if isinstance(obj, dict):
+            emit(b"dict", len(obj).to_bytes(8, "big"))
+            keys = sorted(
+                obj,
+                key=lambda item: (
+                    type(item).__module__,
+                    type(item).__qualname__,
+                    _tree_hash(item),
+                ),
+            )
+            for key in keys:
+                walk(key)
+                walk(obj[key])
+            return
+        if isinstance(obj, list):
+            emit(b"list", len(obj).to_bytes(8, "big"))
+            for item in obj:
+                walk(item)
+            return
+        if isinstance(obj, tuple):
+            emit(b"tuple", len(obj).to_bytes(8, "big"))
+            for item in obj:
+                walk(item)
+            return
+        if isinstance(obj, bytes):
+            emit(b"bytes", obj)
+            return
+        emit(
+            (
+                "scalar:"
+                + type(obj).__module__
+                + "."
+                + type(obj).__qualname__
+            ).encode("utf-8"),
+            repr(obj).encode("utf-8"),
+        )
+
+    walk(value)
+    return digest.hexdigest()
+
+
+def _assert_tree_hash_domain_separation() -> None:
+    """Catch the exact nested-container ambiguity that existed in V7."""
+
+    collision_pairs = [
+        ([[], []], [[[]]]),
+        (((), ()), (((),),)),
+        ([(), []], [([],)]),
+    ]
+    for left, right in collision_pairs:
+        if _tree_hash(left) == _tree_hash(right):
+            raise AssertionError(
+                "structural hash failed nested-container domain separation"
+            )
+
+def _rng_probe_from_state(state: dict[str, Any]) -> dict[str, Any]:
+    py = random.Random()
+    py.setstate(state["python"])
+    np_probe = np.random.RandomState()
+    np_probe.set_state(state["numpy"])
+    torch_probe = torch.Generator(device="cpu")
+    torch_probe.set_state(state["torch"]["cpu"].cpu())
+    return {
+        "python": [py.random(), py.random()],
+        "numpy": np_probe.random_sample(2).tolist(),
+        "torch_cpu": torch.rand(2, generator=torch_probe).tolist(),
+    }
+
+
+def _install_runtime(runtime_root: Path) -> None:
+    src = runtime_root / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+
+
+def _load_runtime(runtime_root: Path) -> dict[str, Any]:
+    _install_runtime(runtime_root)
+    from twelve_six.checkpoint import (
+        CheckpointCompatibilityError,
+        CheckpointIdentity,
+        capture_rng_state,
+        load_trainer_checkpoint,
+        save_trainer_checkpoint,
+    )
+    from twelve_six.model import TwelveSixDecoder, count_trainable_parameters, load_stage_config
+    from twelve_six.training.config import TrainerConfig
+    from twelve_six.training.trainer import Trainer
+
+    return {
+        "CheckpointCompatibilityError": CheckpointCompatibilityError,
+        "CheckpointIdentity": CheckpointIdentity,
+        "capture_rng_state": capture_rng_state,
+        "load_trainer_checkpoint": load_trainer_checkpoint,
+        "save_trainer_checkpoint": save_trainer_checkpoint,
+        "TwelveSixDecoder": TwelveSixDecoder,
+        "count_trainable_parameters": count_trainable_parameters,
+        "load_stage_config": load_stage_config,
+        "TrainerConfig": TrainerConfig,
+        "Trainer": Trainer,
+    }
+
+
+def _assert_checkout_roots(runtime_root: Path, model341_root: Path) -> None:
+    if _git_head(QUALIFICATION_ROOT) != QUALIFICATION_CARRIER_SHA:
+        raise AssertionError("qualification carrier checkout SHA drifted")
+    if _git_blob(QUALIFICATION_ROOT, QUALIFICATION_RUNNER_PATH) != QUALIFICATION_RUNNER_BLOB:
+        raise AssertionError("qualification runner blob drifted")
+    if _git_head(runtime_root) != D05_RUNTIME_SHA:
+        raise AssertionError("D05 runtime checkout SHA drifted")
+    if _git_head(model341_root) != MODEL341_CARRIER_SHA:
+        raise AssertionError("MODEL-341 carrier checkout SHA drifted")
+    if (
+        _git_blob(
+            model341_root,
+            "configs/candidates/model341_20m_candidate_a.json",
+        )
+        != MODEL341_CANDIDATE_BLOB
+    ):
+        raise AssertionError("MODEL-341 candidate config blob drifted")
+
+
+def _stage_and_config(
+    model341_root: Path,
+    rt: dict[str, Any],
+) -> tuple[Any, Any, Path]:
+    candidate = model341_root / "configs/candidates/model341_20m_candidate_a.json"
+    stage = rt["load_stage_config"](candidate)
+    assert stage.canonical_base == "random_init"
+    assert stage.expected_parameters == EXPECTED_PARAMETERS
+    assert stage.model.parameter_count() == EXPECTED_PARAMETERS
+    assert stage.model.identity_sha256() == EXPECTED_MODEL_ID
+    assert stage.init.identity_sha256() == EXPECTED_INIT_ID
+    config = rt["TrainerConfig"](
+        learning_rate=1e-4,
+        weight_decay=0.0,
+        betas=(0.9, 0.95),
+        eps=1e-8,
+        max_steps=2,
+        warmup_steps=0,
+        scheduler="constant",
+        gradient_accumulation_steps=1,
+        gradient_clip_norm=1.0,
+        precision="fp32",
+        seed=SEED,
+        deterministic_algorithms=True,
+        deterministic_warn_only=False,
+    )
+    return stage, config, candidate
+
+
+def _new_trainer(
+    stage: Any,
+    config: Any,
+    rt: dict[str, Any],
+    init_seed: int,
+) -> Any:
+    random.seed(init_seed)
+    np.random.seed(init_seed)
+    torch.manual_seed(init_seed)
+    model = rt["TwelveSixDecoder"](stage.model, stage.init)
+    assert rt["count_trainable_parameters"](model) == EXPECTED_PARAMETERS
+    return rt["Trainer"](model, config, device="cpu")
+
+
+def _batch() -> dict[str, torch.Tensor]:
+    # Sequence length 2 minimizes mechanics cost while retaining one causal target.
+    return {"input_ids": torch.tensor([[17, 91]], dtype=torch.long)}
+
+
+def _trainer_state_mapping(trainer: Any) -> dict[str, Any]:
+    state = trainer.state_dict()
+    return {
+        "micro_step": state.micro_step,
+        "optimizer_step": state.optimizer_step,
+        "tokens_seen": state.tokens_seen,
+        "optimizer": state.optimizer,
+        "scheduler": state.scheduler,
+        "scaler": state.scaler,
+        "config": state.config,
+    }
+
+
+def _summary(
+    trainer: Any,
+    metrics: Any,
+    rng_probe: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "loss": metrics.loss,
+        "update_loss": metrics.update_loss,
+        "optimizer_step": trainer.optimizer_step,
+        "micro_step": trainer.micro_step,
+        "tokens_seen": trainer.tokens_seen,
+        "model_state_sha256": _tree_hash(trainer.model.state_dict()),
+        "optimizer_state_sha256": _tree_hash(trainer.optimizer.state_dict()),
+        "trainer_state_sha256": _tree_hash(_trainer_state_mapping(trainer)),
+        "rng_probe_before_step": rng_probe,
+    }
+
+
+def _fresh_target_snapshot(trainer: Any, rt: dict[str, Any]) -> dict[str, Any]:
+    """Seal all recovery-relevant fresh-target state around fail-closed preflight."""
+
+    scheduler_state = (
+        None if trainer.scheduler is None else trainer.scheduler.state_dict()
+    )
+    scaler_state = None if trainer.scaler is None else trainer.scaler.state_dict()
+    return {
+        "model": _tree_hash(trainer.model.state_dict()),
+        "optimizer": _tree_hash(trainer.optimizer.state_dict()),
+        "scheduler": _tree_hash(scheduler_state),
+        "scaler": _tree_hash(scaler_state),
+        "counters": [
+            trainer.micro_step,
+            trainer.optimizer_step,
+            trainer.tokens_seen,
+        ],
+        "pending_tokens": trainer._pending_tokens,
+        "pending_loss_sum": trainer._pending_loss_sum,
+        "failure_reason": trainer._failure_reason,
+        "update_incomplete": trainer._update_incomplete,
+        "model_training": trainer.model.training,
+        "deterministic_policy": [
+            torch.are_deterministic_algorithms_enabled(),
+            torch.is_deterministic_algorithms_warn_only_enabled(),
+        ],
+        "rng": _tree_hash(rt["capture_rng_state"]()),
+    }
+
+
+def _identity(stage: Any, config: Any, trainer: Any, rt: dict[str, Any]) -> Any:
+    return rt["CheckpointIdentity"](
+        git_sha=D05_RUNTIME_SHA,
+        model_spec=stage.model.to_dict(),
+        parameter_count=EXPECTED_PARAMETERS,
+        tokenizer_hash=SYNTHETIC_TOKENIZER_HASH,
+        tokenizer_vocab_hash=SYNTHETIC_VOCAB_HASH,
+        dataset_manifest_hash=SYNTHETIC_DATASET_HASH,
+        run_manifest_hash=SYNTHETIC_RUN_HASH,
+        training_config=asdict(config),
+        seed=SEED,
+        precision="fp32",
+        step=trainer.optimizer_step,
+        tokens_seen=trainer.tokens_seen,
+        optimizer={
+            "name": "AdamW",
+            "scope": "synthetic_checkpoint_mechanics_only",
+        },
+        scheduler=None,
+    )
+
+
+def _load_expected(
+    *,
+    rt: dict[str, Any],
+    checkpoint: Path,
+    trainer: Any,
+    checkpoint_id: str,
+    manifest_sha256: str,
+    run_manifest_hash: str,
+) -> Any:
+    return rt["load_trainer_checkpoint"](
+        checkpoint,
+        model=trainer.model,
+        trainer=trainer,
+        strict_model=True,
+        restore_rng=True,
+        expected_checkpoint_id=checkpoint_id,
+        expected_manifest_sha256=manifest_sha256,
+        expected_git_sha=D05_RUNTIME_SHA,
+        expected_model_spec_hash=EXPECTED_MODEL_ID,
+        expected_tokenizer_hash=SYNTHETIC_TOKENIZER_HASH,
+        expected_tokenizer_vocab_hash=SYNTHETIC_VOCAB_HASH,
+        expected_dataset_manifest_hash=SYNTHETIC_DATASET_HASH,
+        expected_run_manifest_hash=run_manifest_hash,
+        expected_seed=SEED,
+        expected_step=1,
+        expected_tokens_seen=1,
+    )
+
+
+def _validate_report_contract(report: dict[str, Any]) -> None:
+    """Reject internally contradictory PASS reports before publication."""
+
+    if report.get("verdict") != "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS":
+        raise AssertionError("qualification report verdict is not PASS")
+
+    runtime = report["runtime"]
+    if runtime["product_pr"] != 2778 or runtime["git_sha"] != D05_RUNTIME_SHA:
+        raise AssertionError("qualification runtime binding is contradictory")
+    if runtime["qualification_git_sha"] != QUALIFICATION_CARRIER_SHA:
+        raise AssertionError("qualification carrier binding is contradictory")
+    if runtime["qualification_runner_blob_sha"] != QUALIFICATION_RUNNER_BLOB:
+        raise AssertionError("qualification runner binding is contradictory")
+    if runtime["public_save_api"] != "save_trainer_checkpoint":
+        raise AssertionError("qualification save API binding is contradictory")
+    if runtime["public_restore_api"] != "load_trainer_checkpoint":
+        raise AssertionError("qualification restore API binding is contradictory")
+
+    model341 = report["model341"]
+    if model341["carrier_git_sha"] != MODEL341_CARRIER_SHA:
+        raise AssertionError("MODEL-341 carrier binding is contradictory")
+    if model341["candidate_blob_sha"] != MODEL341_CANDIDATE_BLOB:
+        raise AssertionError("MODEL-341 candidate binding is contradictory")
+    if model341["parameter_count"] != EXPECTED_PARAMETERS:
+        raise AssertionError("MODEL-341 parameter count is contradictory")
+    if model341["model_identity_sha256"] != EXPECTED_MODEL_ID:
+        raise AssertionError("MODEL-341 model identity is contradictory")
+    if model341["init_identity_sha256"] != EXPECTED_INIT_ID:
+        raise AssertionError("MODEL-341 init identity is contradictory")
+    if model341["canonical_base"] != "random_init":
+        raise AssertionError("MODEL-341 canonical base is contradictory")
+
+    execution = report["execution"]
+    required_true = (
+        "local_free",
+        "synthetic_mechanics_only",
+        "fresh_process_distinct",
+        "same_next_step_equal",
+        "binding_mismatch_failed_closed",
+        "binding_mismatch_retry_same_target",
+        "exact_checkpoint_id_bound",
+        "exact_manifest_sha256_bound",
+        "exact_full_rng_state_equal",
+        "structural_hash_self_test",
+    )
+    if not all(execution[name] is True for name in required_true):
+        raise AssertionError("qualification execution flags contradict PASS")
+    if execution["state_hash_scheme"] != TREE_HASH_SCHEME:
+        raise AssertionError("qualification state-hash scheme is contradictory")
+    if (
+        execution["optimizer_updates_total"] != 3
+        or execution["parent_updates"] != 2
+        or execution["fresh_process_resumed_updates"] != 1
+    ):
+        raise AssertionError("qualification update-count boundary is contradictory")
+    if execution["rng_scope_restored"] != {
+        "numpy": True,
+        "python": True,
+        "torch_cpu": True,
+    }:
+        raise AssertionError("qualification RNG scope is contradictory")
+
+    baseline = report["baseline_step2"]
+    resumed = report["resumed_step2"]
+    if baseline != resumed:
+        raise AssertionError("PASS report contains unequal baseline/resumed state")
+    rng_hash = baseline.get("rng_state_sha256")
+    if not isinstance(rng_hash, str) or len(rng_hash) != 64:
+        raise AssertionError("PASS report lacks exact RNG-state identity")
+    if resumed.get("rng_state_sha256") != rng_hash:
+        raise AssertionError("PASS report RNG-state identity is contradictory")
+    if execution["full_rng_state_sha256"] != rng_hash:
+        raise AssertionError("execution RNG-state identity is contradictory")
+
+    checkpoint = report["checkpoint"]
+    identity = checkpoint["identity"]
+    if identity["git_sha"] != runtime["git_sha"]:
+        raise AssertionError("checkpoint/runtime git binding is contradictory")
+    if identity["model_spec_hash"] != model341["model_identity_sha256"]:
+        raise AssertionError("checkpoint/model identity binding is contradictory")
+    if identity["parameter_count"] != model341["parameter_count"]:
+        raise AssertionError("checkpoint parameter count is contradictory")
+    checkpoint_bytes = sum(
+        entry["bytes"] for entry in checkpoint["files"].values()
+    )
+    resources = report["resource_observation"]
+    if resources["checkpoint_total_bytes"] != checkpoint_bytes:
+        raise AssertionError("checkpoint byte accounting is contradictory")
+    if not str(resources["platform"]).startswith("linux"):
+        raise AssertionError("qualification resource platform is contradictory")
+    for name in ("parent_peak_rss_bytes", "fresh_child_peak_rss_bytes"):
+        if not isinstance(resources[name], int) or resources[name] <= 0:
+            raise AssertionError(f"{name} must be a positive integer")
+
+    expected_credit = {
+        "real_corpus_used": False,
+        "training_authorized_corpus_used": False,
+        "optimized_target_exposure": 0,
+        "model_training_credit": False,
+        "learned_weights_created": False,
+        "final_test_read": False,
+        "paid_compute_used": False,
+        "foreign_pretrained_weights": False,
+        "tokenizer_fit_authorized": False,
+        "scale_promotion_authorized": False,
+    }
+    if report["scientific_credit"] != expected_credit:
+        raise AssertionError("scientific-credit boundary is contradictory")
+
+    expected_limits = {
+        "maximum_optimizer_updates": 3,
+        "long_campaign": False,
+        "selection_or_recipe_tuning": False,
+        "learned20m_terminal_claim": False,
+        "model341_current_d05_recovery_mechanics_only": True,
+    }
+    if report["limits"] != expected_limits:
+        raise AssertionError("qualification limits are contradictory")
+
+
+def child_main(args: argparse.Namespace) -> int:
+    _assert_tree_hash_domain_separation()
+    runtime_root = Path(args.runtime_root).resolve()
+    model341_root = Path(args.model341_root).resolve()
+    _assert_checkout_roots(runtime_root, model341_root)
+    rt = _load_runtime(runtime_root)
+    stage, config, _ = _stage_and_config(model341_root, rt)
+    trainer = _new_trainer(stage, config, rt, init_seed=SEED + 999)
+
+    checkpoint = Path(args.checkpoint).resolve()
+    before_wrong_binding = _fresh_target_snapshot(trainer, rt)
+
+    binding_fail_closed = False
+    try:
+        _load_expected(
+            rt=rt,
+            checkpoint=checkpoint,
+            trainer=trainer,
+            checkpoint_id=args.expected_checkpoint_id,
+            manifest_sha256=args.expected_manifest_sha256,
+            run_manifest_hash="f" * 64,
+        )
+    except rt["CheckpointCompatibilityError"]:
+        binding_fail_closed = True
+    if not binding_fail_closed:
+        raise AssertionError("wrong run-manifest binding did not fail closed")
+
+    after_wrong_binding = _fresh_target_snapshot(trainer, rt)
+    if after_wrong_binding != before_wrong_binding:
+        raise AssertionError(
+            "wrong run-manifest preflight mutated fresh restore target or RNG"
+        )
+
+    memory_before_load = _linux_proc_memory_bytes()
+    load_started = time.perf_counter()
+    loaded = _load_expected(
+        rt=rt,
+        checkpoint=checkpoint,
+        trainer=trainer,
+        checkpoint_id=args.expected_checkpoint_id,
+        manifest_sha256=args.expected_manifest_sha256,
+        run_manifest_hash=SYNTHETIC_RUN_HASH,
+    )
+    load_seconds = time.perf_counter() - load_started
+    memory_after_load = _linux_proc_memory_bytes()
+
+    if trainer.optimizer_step != 1 or trainer.micro_step != 1 or trainer.tokens_seen != 1:
+        raise AssertionError("restored canonical trainer counters differ from step-1 checkpoint")
+
+    restored_rng = rt["capture_rng_state"]()
+    restored_rng_sha256 = _tree_hash(restored_rng)
+    probe = _rng_probe_from_state(restored_rng)
+    metrics = trainer.train_microbatch(_batch())
+    memory_after_resumed_step = _linux_proc_memory_bytes()
+    child = _summary(trainer, metrics, probe)
+    child.update(
+        {
+            "pid": os.getpid(),
+            "parent_pid": os.getppid(),
+            "binding_mismatch_failed_closed": binding_fail_closed,
+            "binding_mismatch_retry_same_target": True,
+            "binding_mismatch_unchanged_scope": sorted(before_wrong_binding),
+            "restored_rng_scope": {
+                "python": "python" in loaded.rng_state,
+                "numpy": "numpy" in loaded.rng_state,
+                "torch_cpu": (
+                    "torch" in loaded.rng_state
+                    and "cpu" in loaded.rng_state["torch"]
+                ),
+            },
+            "rng_state_sha256": restored_rng_sha256,
+            "load_trainer_checkpoint_seconds": load_seconds,
+            "peak_rss_bytes": _peak_rss_bytes(),
+            "memory_before_load": memory_before_load,
+            "memory_after_load": memory_after_load,
+            "memory_after_resumed_step": memory_after_resumed_step,
+        }
+    )
+    _json_write(Path(args.child_output), child)
+    return 0
+
+
+def parent_main(args: argparse.Namespace) -> int:
+    _assert_tree_hash_domain_separation()
+    runtime_root = Path(args.runtime_root).resolve()
+    model341_root = Path(args.model341_root).resolve()
+    if not runtime_root.is_dir():
+        raise FileNotFoundError(f"D05 runtime root missing: {runtime_root}")
+    if not model341_root.is_dir():
+        raise FileNotFoundError(f"MODEL-341 root missing: {model341_root}")
+    _assert_checkout_roots(runtime_root, model341_root)
+
+    rt = _load_runtime(runtime_root)
+    stage, config, _candidate = _stage_and_config(model341_root, rt)
+
+    with tempfile.TemporaryDirectory(prefix="checkpoint346-current-d05-model341-") as temp:
+        work = Path(temp)
+        checkpoint = work / "step-000001"
+        child_output = work / "child.json"
+
+        trainer = _new_trainer(stage, config, rt, init_seed=SEED)
+        first = trainer.train_microbatch(_batch())
+        if first.optimizer_step != 1:
+            raise AssertionError("parent step 1 did not commit exactly one optimizer update")
+
+        save_started = time.perf_counter()
+        checkpoint_manifest = rt["save_trainer_checkpoint"](
+            checkpoint,
+            model=trainer.model,
+            trainer=trainer,
+            identity=_identity(stage, config, trainer, rt),
+        )
+        save_seconds = time.perf_counter() - save_started
+        checkpoint_id = checkpoint_manifest["checkpoint_id"]
+        manifest_path = checkpoint / "manifest.json"
+        manifest_sha256 = _sha_file(manifest_path)
+
+        parent_rng = rt["capture_rng_state"]()
+        rng_probe = _rng_probe_from_state(parent_rng)
+        baseline_rng_sha256 = _tree_hash(parent_rng)
+        baseline_step_started = time.perf_counter()
+        second = trainer.train_microbatch(_batch())
+        baseline_step_seconds = time.perf_counter() - baseline_step_started
+        baseline = _summary(trainer, second, rng_probe)
+        baseline["rng_state_sha256"] = baseline_rng_sha256
+        parent_peak_rss_bytes = _peak_rss_bytes()
+
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--child",
+            "--runtime-root",
+            str(runtime_root),
+            "--model341-root",
+            str(model341_root),
+            "--checkpoint",
+            str(checkpoint),
+            "--expected-checkpoint-id",
+            checkpoint_id,
+            "--expected-manifest-sha256",
+            manifest_sha256,
+            "--child-output",
+            str(child_output),
+        ]
+        completed = subprocess.run(command, check=False)
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"fresh child public-D05 restore failed with exit code "
+                f"{completed.returncode}"
+            )
+        child = json.loads(child_output.read_text(encoding="utf-8"))
+
+        comparison_keys = [
+            "loss",
+            "update_loss",
+            "optimizer_step",
+            "micro_step",
+            "tokens_seen",
+            "model_state_sha256",
+            "optimizer_state_sha256",
+            "trainer_state_sha256",
+            "rng_probe_before_step",
+            "rng_state_sha256",
+        ]
+        mismatches = {
+            key: {"baseline": baseline[key], "resumed": child[key]}
+            for key in comparison_keys
+            if baseline[key] != child[key]
+        }
+        if mismatches:
+            raise AssertionError(
+                "same-next-step continuation mismatch: "
+                + json.dumps(mismatches, sort_keys=True)
+            )
+
+        checkpoint_files = {
+            path.name: {
+                "bytes": path.stat().st_size,
+                "sha256": _sha_file(path),
+            }
+            for path in sorted(checkpoint.iterdir())
+            if path.is_file()
+        }
+        checkpoint_total_bytes = sum(
+            item["bytes"] for item in checkpoint_files.values()
+        )
+        parent_peak = parent_peak_rss_bytes
+        child_peak = child["peak_rss_bytes"]
+        child_memory_before = child["memory_before_load"]
+        child_memory_after = child["memory_after_load"]
+        child_memory_after_step = child["memory_after_resumed_step"]
+        if (
+            child_memory_before is None
+            or child_memory_after is None
+            or child_memory_after_step is None
+        ):
+            raise AssertionError("Linux /proc memory telemetry is unavailable")
+        resume_hwm_growth = max(
+            0,
+            child_memory_after["peak_rss_bytes"]
+            - child_memory_before["peak_rss_bytes"],
+        )
+        resume_current_rss_delta = (
+            child_memory_after["current_rss_bytes"]
+            - child_memory_before["current_rss_bytes"]
+        )
+        concurrent_upper = (
+            parent_peak + child_peak
+            if isinstance(parent_peak, int) and isinstance(child_peak, int)
+            else None
+        )
+
+        report = {
+            "schema": "checkpoint346.model341-current-d05-recovery-qualification.v1",
+            "verdict": "PASS_MODEL341_CURRENT_D05_RECOVERY_MECHANICS",
+            "runtime": {
+                "product_pr": 2778,
+                "git_sha": D05_RUNTIME_SHA,
+                "qualification_git_sha": QUALIFICATION_CARRIER_SHA,
+                "qualification_runner_blob_sha": QUALIFICATION_RUNNER_BLOB,
+                "model_blob_sha": _git_blob(
+                    runtime_root,
+                    "src/twelve_six/model.py",
+                ),
+                "trainer_blob_sha": _git_blob(
+                    runtime_root,
+                    "src/twelve_six/training/trainer.py",
+                ),
+                "checkpoint_core_blob_sha": _git_blob(
+                    runtime_root,
+                    "src/twelve_six/checkpoint/core.py",
+                ),
+                "trainer_adapter_blob_sha": _git_blob(
+                    runtime_root,
+                    "src/twelve_six/checkpoint/trainer_adapter.py",
+                ),
+                "progress_trainer_blob_sha": _git_blob(
+                    runtime_root,
+                    "src/twelve_six/checkpoint/progress_trainer.py",
+                ),
+                "public_save_api": "save_trainer_checkpoint",
+                "public_restore_api": "load_trainer_checkpoint",
+            },
+            "model341": {
+                "carrier_pr": 802,
+                "carrier_git_sha": MODEL341_CARRIER_SHA,
+                "candidate_path": (
+                    "configs/candidates/model341_20m_candidate_a.json"
+                ),
+                "candidate_blob_sha": MODEL341_CANDIDATE_BLOB,
+                "model_identity_sha256": stage.model.identity_sha256(),
+                "init_identity_sha256": stage.init.identity_sha256(),
+                "parameter_count": EXPECTED_PARAMETERS,
+                "canonical_base": stage.canonical_base,
+                "execution_model_code_source": "D05_RUNTIME",
+            },
+            "execution": {
+                "local_free": True,
+                "device": "cpu",
+                "precision": "fp32",
+                "synthetic_mechanics_only": True,
+                "optimizer_updates_total": 3,
+                "parent_updates": 2,
+                "fresh_process_resumed_updates": 1,
+                "parent_pid": os.getpid(),
+                "fresh_child_pid": child["pid"],
+                "fresh_process_distinct": child["pid"] != os.getpid(),
+                "checkpoint_step": 1,
+                "final_step": 2,
+                "same_next_step_equal": True,
+                "binding_mismatch_failed_closed": child[
+                    "binding_mismatch_failed_closed"
+                ],
+                "binding_mismatch_retry_same_target": child[
+                    "binding_mismatch_retry_same_target"
+                ],
+                "binding_mismatch_unchanged_scope": child[
+                    "binding_mismatch_unchanged_scope"
+                ],
+                "exact_checkpoint_id_bound": True,
+                "exact_manifest_sha256_bound": True,
+                "rng_scope_restored": child["restored_rng_scope"],
+                "exact_full_rng_state_equal": (
+                    baseline["rng_state_sha256"] == child["rng_state_sha256"]
+                ),
+                "full_rng_state_sha256": baseline["rng_state_sha256"],
+                "state_hash_scheme": TREE_HASH_SCHEME,
+                "structural_hash_self_test": True,
+            },
+            "resource_observation": {
+                "platform": sys.platform,
+                "checkpoint_total_bytes": checkpoint_total_bytes,
+                "parent_peak_rss_bytes": parent_peak,
+                "fresh_child_peak_rss_bytes": child_peak,
+                "fresh_child_before_load": child_memory_before,
+                "fresh_child_after_load": child_memory_after,
+                "fresh_child_after_resumed_step": child_memory_after_step,
+                "fresh_child_resume_hwm_growth_bytes": resume_hwm_growth,
+                "fresh_child_resume_current_rss_delta_bytes": resume_current_rss_delta,
+                "concurrent_process_peak_rss_upper_bound_bytes": concurrent_upper,
+                "save_trainer_checkpoint_seconds": save_seconds,
+                "load_trainer_checkpoint_seconds": child[
+                    "load_trainer_checkpoint_seconds"
+                ],
+                "baseline_step2_seconds": baseline_step_seconds,
+                "measurement_scope": (
+                    "single Ubuntu runner observation; ru_maxrss plus "
+                    "/proc/self/status VmRSS/VmHWM around fresh-process restore; "
+                    "observed HWM growth can be zero when an earlier process peak "
+                    "dominates; not a 200M/1B feasibility claim"
+                ),
+            },
+            "baseline_step2": baseline,
+            "resumed_step2": {
+                key: child[key] for key in comparison_keys
+            },
+            "checkpoint": {
+                "checkpoint_id": checkpoint_id,
+                "manifest_sha256": manifest_sha256,
+                "identity": checkpoint_manifest["identity"],
+                "files": checkpoint_files,
+            },
+            "scientific_credit": {
+                "real_corpus_used": False,
+                "training_authorized_corpus_used": False,
+                "optimized_target_exposure": 0,
+                "model_training_credit": False,
+                "learned_weights_created": False,
+                "final_test_read": False,
+                "paid_compute_used": False,
+                "foreign_pretrained_weights": False,
+                "tokenizer_fit_authorized": False,
+                "scale_promotion_authorized": False,
+            },
+            "limits": {
+                "maximum_optimizer_updates": 3,
+                "long_campaign": False,
+                "selection_or_recipe_tuning": False,
+                "learned20m_terminal_claim": False,
+                "model341_current_d05_recovery_mechanics_only": True,
+            },
+        }
+        _validate_report_contract(report)
+        report_bytes = json.dumps(
+            report,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        report["identity_sha256"] = hashlib.sha256(report_bytes).hexdigest()
+        _json_write(Path(args.output), report)
+        print(
+            json.dumps(
+                {
+                    "verdict": report["verdict"],
+                    "identity_sha256": report["identity_sha256"],
+                    "optimizer_updates_total": 3,
+                    "same_next_step_equal": True,
+                    "binding_mismatch_failed_closed": True,
+                    "exact_full_rng_state_equal": True,
+                    "public_d05_save_restore": True,
+                    "checkpoint_total_bytes": checkpoint_total_bytes,
+                    "parent_peak_rss_bytes": parent_peak,
+                    "fresh_child_peak_rss_bytes": child_peak,
+                },
+                sort_keys=True,
+            )
+        )
+    return 0
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--runtime-root", required=True)
+    parser.add_argument("--model341-root", required=True)
+    parser.add_argument("--output")
+    parser.add_argument("--child", action="store_true")
+    parser.add_argument("--checkpoint")
+    parser.add_argument("--expected-checkpoint-id")
+    parser.add_argument("--expected-manifest-sha256")
+    parser.add_argument("--child-output")
+    args = parser.parse_args(argv)
+    if args.child:
+        missing = [
+            name
+            for name in (
+                "checkpoint",
+                "expected_checkpoint_id",
+                "expected_manifest_sha256",
+                "child_output",
+            )
+            if not getattr(args, name)
+        ]
+        if missing:
+            parser.error(
+                "--child requires --checkpoint, --expected-checkpoint-id, "
+                "--expected-manifest-sha256 and --child-output"
+            )
+    elif not args.output:
+        parser.error("parent mode requires --output")
+    return args
+
+
+if __name__ == "__main__":
+    parsed = parse_args()
+    raise SystemExit(child_main(parsed) if parsed.child else parent_main(parsed))
