@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -11,6 +12,47 @@ from typing import Any
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ROLE_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_MAX_MANIFEST_BYTES = 1024 * 1024
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON object member")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> Any:
+    raise ValueError("non-finite JSON constants are not allowed")
+
+
+def _finite_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("non-finite JSON numbers are not allowed")
+    return parsed
+
+
+def _strict_json_object(data: bytes) -> dict[str, Any]:
+    if not isinstance(data, bytes):
+        raise ValueError("manifest input must be bytes")
+    if len(data) > _MAX_MANIFEST_BYTES:
+        raise ValueError("manifest exceeds maximum encoded size")
+    try:
+        text = data.decode("utf-8", errors="strict")
+        value = json.loads(
+            text,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+            parse_float=_finite_json_float,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError("manifest is not strict unambiguous UTF-8 JSON") from exc
+    if not isinstance(value, dict):
+        raise ValueError("manifest root must be a JSON object")
+    return value
 
 
 def _canonical_json_sha256(value: Any) -> str:
@@ -119,6 +161,24 @@ class ArtifactRef:
             "identity_sha256": self.identity_sha256,
         }
 
+    @classmethod
+    def from_dict(cls, value: object) -> ArtifactRef:
+        if not isinstance(value, dict) or set(value) != {
+            "kind",
+            "schema_version",
+            "identity_sha256",
+        }:
+            raise ValueError("ArtifactRef fields mismatch")
+        try:
+            kind = ArtifactKind(value["kind"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ArtifactRef kind is unsupported") from exc
+        return cls(
+            kind=kind,
+            schema_version=value["schema_version"],
+            identity_sha256=value["identity_sha256"],
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ParentBinding:
@@ -138,6 +198,15 @@ class ParentBinding:
             "role": self.role,
             "artifact": self.artifact.to_dict(),
         }
+
+    @classmethod
+    def from_dict(cls, value: object) -> ParentBinding:
+        if not isinstance(value, dict) or set(value) != {"role", "artifact"}:
+            raise ValueError("ParentBinding fields mismatch")
+        return cls(
+            role=value["role"],
+            artifact=ArtifactRef.from_dict(value["artifact"]),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +252,23 @@ class ArtifactManifest:
 
     def parents_by_role(self) -> dict[str, ArtifactRef]:
         return {parent.role: parent.artifact for parent in self.parents}
+
+    @classmethod
+    def from_dict(cls, value: object) -> ArtifactManifest:
+        if not isinstance(value, dict) or set(value) != {
+            "schema_version",
+            "artifact",
+            "parents",
+        }:
+            raise ValueError("ArtifactManifest fields mismatch")
+        parents = value["parents"]
+        if not isinstance(parents, list):
+            raise ValueError("ArtifactManifest parents must be a JSON array")
+        return cls(
+            schema_version=value["schema_version"],
+            artifact=ArtifactRef.from_dict(value["artifact"]),
+            parents=tuple(ParentBinding.from_dict(parent) for parent in parents),
+        )
 
 
 def bind_artifact(
@@ -307,6 +393,33 @@ class GenerationIdentityManifest:
         if not isinstance(kind, ArtifactKind):
             raise ValueError("kind must be an ArtifactKind")
         return self.artifacts[CANONICAL_ARTIFACT_KINDS.index(kind)]
+
+    def canonical_json_bytes(self) -> bytes:
+        return json.dumps(
+            self.to_dict(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+
+    @classmethod
+    def from_dict(cls, value: object) -> GenerationIdentityManifest:
+        if not isinstance(value, dict) or set(value) != {"schema_version", "artifacts"}:
+            raise ValueError("GenerationIdentityManifest fields mismatch")
+        artifacts = value["artifacts"]
+        if not isinstance(artifacts, list):
+            raise ValueError("GenerationIdentityManifest artifacts must be a JSON array")
+        return cls(
+            schema_version=value["schema_version"],
+            artifacts=tuple(ArtifactManifest.from_dict(item) for item in artifacts),
+        )
+
+
+def parse_generation_identity_manifest(data: bytes) -> GenerationIdentityManifest:
+    """Decode and validate one durable closed-world generation manifest."""
+
+    return GenerationIdentityManifest.from_dict(_strict_json_object(data))
 
 
 def build_generation_identity_manifest(
