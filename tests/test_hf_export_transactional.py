@@ -2108,3 +2108,120 @@ def test_hf_verifier_rejects_resealed_noncanonical_source_identity(
 
     with pytest.raises(CheckpointIntegrityError, match=expected):
         verify_hf_directory(output)
+
+@pytest.mark.parametrize(
+    "artifact_name",
+    (
+        hf_export.EXPORTED_CONFIG_NAME,
+        hf_export.EXPORTED_SOURCE_MANIFEST_NAME,
+        hf_export.PARITY_REQUEST_NAME,
+        hf_export.EXPORT_ATTESTATION_NAME,
+        hf_export.EXPORT_CHECKSUM_NAME,
+    ),
+)
+def test_hf_snapshot_rejects_oversized_metadata_before_parse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact_name: str,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(28.0), identity=identity("o"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+
+    if artifact_name == hf_export.EXPORT_CHECKSUM_NAME:
+        limit = (output / artifact_name).stat().st_size
+        monkeypatch.setattr(hf_export, "_MAX_EXPORT_CHECKSUM_BYTES", limit)
+    else:
+        metadata_names = (
+            hf_export.EXPORTED_CONFIG_NAME,
+            hf_export.EXPORTED_SOURCE_MANIFEST_NAME,
+            hf_export.PARITY_REQUEST_NAME,
+            hf_export.EXPORT_ATTESTATION_NAME,
+        )
+        limit = max((output / name).stat().st_size for name in metadata_names)
+        monkeypatch.setattr(hf_export, "_MAX_EXPORT_METADATA_BYTES", limit)
+
+    (output / artifact_name).write_bytes(b"x" * (limit + 1))
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match=f"HF-style export artifact exceeds read limit: {artifact_name}",
+    ):
+        hf_export._read_export_snapshot(output)
+
+
+def test_hf_bounded_read_rejects_growth_after_stale_fstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    artifact = root / "metadata.json"
+    artifact.write_bytes(b"x" * 33)
+    real_fstat = hf_export.os.fstat
+
+    def stale_small_fstat(fd: int):
+        observed = real_fstat(fd)
+        return SimpleNamespace(
+            st_mode=observed.st_mode,
+            st_dev=observed.st_dev,
+            st_ino=observed.st_ino,
+            st_size=0,
+        )
+
+    monkeypatch.setattr(hf_export.os, "fstat", stale_small_fstat)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export artifact exceeds read limit: metadata.json",
+    ):
+        hf_export._read_regular_bytes(
+            root,
+            "metadata.json",
+            max_bytes=32,
+        )
+
+
+def test_hf_snapshot_keeps_model_weights_outside_metadata_read_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(29.0), identity=identity("p"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    real_read = hf_export._read_regular_bytes
+    observed_limits: dict[str, int | None] = {}
+
+    def observe_limit(
+        root: Path,
+        name: str,
+        *,
+        max_bytes: int | None = None,
+    ):
+        observed_limits[name] = max_bytes
+        return real_read(root, name, max_bytes=max_bytes)
+
+    monkeypatch.setattr(hf_export, "_read_regular_bytes", observe_limit)
+
+    hf_export._read_export_snapshot(output)
+
+    assert observed_limits[hf_export.EXPORTED_WEIGHTS_NAME] is None
+    assert observed_limits[hf_export.EXPORT_CHECKSUM_NAME] == 256
+    for name in (
+        hf_export.EXPORTED_CONFIG_NAME,
+        hf_export.EXPORTED_SOURCE_MANIFEST_NAME,
+        hf_export.PARITY_REQUEST_NAME,
+        hf_export.EXPORT_ATTESTATION_NAME,
+    ):
+        assert observed_limits[name] == 8 * 1024 * 1024
+

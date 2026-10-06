@@ -49,6 +49,8 @@ _EXPORT_FILES = frozenset(
         PARITY_REQUEST_NAME,
     }
 )
+_MAX_EXPORT_METADATA_BYTES = 8 * 1024 * 1024
+_MAX_EXPORT_CHECKSUM_BYTES = 256
 _REQUIRED_PARITY_CHECKS = [
     "prompt_token_identity",
     "next_token_logit_parity",
@@ -131,7 +133,12 @@ _SOURCE_IDENTITY_FIELDS = frozenset(
 ParityHook = Callable[[Path, Path], Mapping[str, Any]]
 
 
-def _read_regular_bytes(root: Path, name: str) -> bytes:
+def _read_regular_bytes(
+    root: Path,
+    name: str,
+    *,
+    max_bytes: int | None = None,
+) -> bytes:
     path = root / name
     try:
         before = path.lstat()
@@ -167,13 +174,25 @@ def _read_regular_bytes(root: Path, name: str) -> bytes:
             raise CheckpointIntegrityError(
                 f"HF-style export artifact changed while opening: {name}"
             )
+        if max_bytes is not None and opened.st_size > max_bytes:
+            raise CheckpointIntegrityError(
+                f"HF-style export artifact exceeds read limit: {name}"
+            )
         try:
             with os.fdopen(fd, "rb", closefd=False) as handle:
-                return handle.read()
+                if max_bytes is None:
+                    data = handle.read()
+                else:
+                    data = handle.read(max_bytes + 1)
         except OSError as exc:
             raise CheckpointIntegrityError(
                 f"cannot read HF-style export artifact: {name}"
             ) from exc
+        if max_bytes is not None and len(data) > max_bytes:
+            raise CheckpointIntegrityError(
+                f"HF-style export artifact exceeds read limit: {name}"
+            )
+        return data
     except BaseException as exc:
         primary_exc = exc
         raise
@@ -246,7 +265,17 @@ def _read_export_snapshot(root: Path) -> dict[str, bytes]:
     payloads: dict[str, bytes] = {}
     for name in sorted(_EXPORT_FILES):
         _require_export_root_identity(root, root_identity)
-        payloads[name] = _read_regular_bytes(root, name)
+        if name == EXPORTED_WEIGHTS_NAME:
+            max_bytes = None
+        elif name == EXPORT_CHECKSUM_NAME:
+            max_bytes = _MAX_EXPORT_CHECKSUM_BYTES
+        else:
+            max_bytes = _MAX_EXPORT_METADATA_BYTES
+        payloads[name] = _read_regular_bytes(
+            root,
+            name,
+            max_bytes=max_bytes,
+        )
         _require_export_root_identity(root, root_identity)
     return payloads
 
