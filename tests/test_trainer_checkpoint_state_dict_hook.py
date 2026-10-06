@@ -124,6 +124,38 @@ def test_effectful_optimizer_state_dict_never_publishes_unsafe_snapshot(
         ("device", "checkpoint export binding changed during checkpoint export"),
     ],
 )
+def test_effectful_optimizer_export_cannot_forge_final_model_observer(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    expected_model_fingerprint = Trainer._model_export_fingerprint(trainer)
+    original_state_dict = trainer.optimizer.state_dict
+
+    def install_forged_observer() -> dict[str, Any]:
+        snapshot = original_state_dict()
+        trainer.model.weight.data.add_(0.25)
+        trainer._model_export_fingerprint = lambda: expected_model_fingerprint
+        return snapshot
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", install_forged_observer)
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint export changed model weights or buffers",
+    ):
+        trainer.state_dict()
+
+    assert "_model_export_fingerprint" in vars(trainer)
+    assert trainer._failure_reason == (
+        "checkpoint state extraction failed after possible mutation"
+    )
+
+
 def test_effectful_optimizer_export_cannot_drift_checkpoint_contract(
     monkeypatch: pytest.MonkeyPatch,
     preserve_process_state: Any,

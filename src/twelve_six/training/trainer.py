@@ -2699,6 +2699,7 @@ class Trainer:
         }
 
         def _require_export_contract_unchanged(phase: str) -> None:
+            Trainer._require_canonical_checkpoint_authorities(self)
             current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
             if any(
                 name not in current or current[name] is not expected
@@ -2725,9 +2726,9 @@ class Trainer:
 
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
         try:
-            model_before = self._model_export_fingerprint()
-            optimizer_before = self._optimizer_live_fingerprint()
-            scheduler_before = self._canonical_lambda_lr_live_state()
+            model_before = Trainer._model_export_fingerprint(self)
+            optimizer_before = Trainer._optimizer_live_fingerprint(self)
+            scheduler_before = Trainer._canonical_lambda_lr_live_state(self)
         except BaseException:  # noqa: BLE001
             # At a committed boundary, a failed canonical observation makes the
             # checkpoint boundary ambiguous and therefore requires recovery.
@@ -2737,31 +2738,31 @@ class Trainer:
             )
             raise
         try:
-            self.assert_checkpoint_safe()
+            Trainer.assert_checkpoint_safe(self)
             if not _typed_state_equal(
                 committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
             ):
-                self._mark_failed("checkpoint preflight changed committed counters")
+                Trainer._mark_failed(self, "checkpoint preflight changed committed counters")
                 raise TrainingStateInvalidError(
                     "checkpoint export changed committed counters"
                 )
-            if self._model_export_fingerprint() != model_before:
-                self._mark_failed("checkpoint preflight changed model weights or buffers")
+            if Trainer._model_export_fingerprint(self) != model_before:
+                Trainer._mark_failed(self, "checkpoint preflight changed model weights or buffers")
                 raise TrainingStateInvalidError(
                     "checkpoint export changed model weights or buffers"
                 )
             if (
                 optimizer_before is not None
-                and self._optimizer_live_fingerprint() != optimizer_before
+                and Trainer._optimizer_live_fingerprint(self) != optimizer_before
             ):
-                self._mark_failed("checkpoint preflight changed live optimizer state")
+                Trainer._mark_failed(self, "checkpoint preflight changed live optimizer state")
                 raise TrainingStateInvalidError(
                     "checkpoint preflight changed optimizer state"
                 )
             if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
-                scheduler_before, self._canonical_lambda_lr_live_state()
+                scheduler_before, Trainer._canonical_lambda_lr_live_state(self)
             ):
-                self._mark_failed("checkpoint preflight changed live scheduler")
+                Trainer._mark_failed(self, "checkpoint preflight changed live scheduler")
                 raise TrainingStateInvalidError(
                     "checkpoint export changed live scheduler"
                 )
@@ -2778,7 +2779,7 @@ class Trainer:
         try:
             optimizer_state = copy.deepcopy(self.optimizer.state_dict())
             saved_groups = optimizer_state.get("param_groups")
-            name_groups = self._optimizer_parameter_name_groups()
+            name_groups = Trainer._optimizer_parameter_name_groups(self)
             if not isinstance(saved_groups, list) or len(saved_groups) != len(name_groups):
                 raise TrainingStateInvalidError(
                     "optimizer state cannot bind named parameter groups"
@@ -2803,22 +2804,22 @@ class Trainer:
             )
             # State-dict hooks can mutate weights, moments, gradients or policy.
             # Refuse publication unless the extracted state remains checkpoint-safe.
-            self.assert_checkpoint_safe()
+            Trainer.assert_checkpoint_safe(self)
             # Hooks can also return a detached, corrupt snapshot without
             # changing their live component. Validate the bytes to publish.
-            self._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
-            self._require_exported_optimizer_matches_live(snapshot.optimizer)
+            Trainer._require_finite_state_tree(snapshot.optimizer, "checkpoint optimizer")
+            Trainer._require_exported_optimizer_matches_live(self, snapshot.optimizer)
             if snapshot.scheduler is not None:
-                self._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
+                Trainer._require_finite_state_tree(snapshot.scheduler, "checkpoint scheduler")
             # A hook may suppress the second export entirely. Even a missing
             # snapshot must agree with whether a live component exists.
-            self._require_exported_scheduler_matches_live(snapshot.scheduler)
+            Trainer._require_exported_scheduler_matches_live(self, snapshot.scheduler)
             if snapshot.scaler is not None:
-                self._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
-            self._require_exported_scaler_matches_live(snapshot.scaler)
+                Trainer._require_finite_state_tree(snapshot.scaler, "checkpoint gradient scaler")
+            Trainer._require_exported_scaler_matches_live(self, snapshot.scaler)
             if (
                 optimizer_before is not None
-                and self._optimizer_live_fingerprint() != optimizer_before
+                and Trainer._optimizer_live_fingerprint(self) != optimizer_before
             ):
                 raise TrainingStateInvalidError(
                     "checkpoint export changed optimizer state"
@@ -2829,19 +2830,19 @@ class Trainer:
                 committed_before, (self.micro_step, self.optimizer_step, self.tokens_seen)
             ):
                 raise TrainingStateInvalidError("checkpoint export changed committed counters")
-            if self._model_export_fingerprint() != model_before:
+            if Trainer._model_export_fingerprint(self) != model_before:
                 raise TrainingStateInvalidError(
                     "checkpoint export changed model weights or buffers"
                 )
             if scheduler_before is not None and not Trainer._exact_export_leaf_equal(
-                scheduler_before, self._canonical_lambda_lr_live_state()
+                scheduler_before, Trainer._canonical_lambda_lr_live_state(self)
             ):
                 raise TrainingStateInvalidError(
                     "checkpoint scheduler export differs from live committed state"
                 )
             _require_export_contract_unchanged("checkpoint export")
         except BaseException:
-            self._mark_failed("checkpoint state extraction failed after possible mutation")
+            Trainer._mark_failed(self, "checkpoint state extraction failed after possible mutation")
             raise
         return snapshot
 
