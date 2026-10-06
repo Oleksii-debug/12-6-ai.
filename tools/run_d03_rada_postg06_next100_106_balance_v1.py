@@ -64,6 +64,12 @@ PINNED_BLOBS = {
         "ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5",
     "configs/data/next100_106_balance_gate_policy_v1.json":
         "b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f",
+    "src/twelve_six/__init__.py":
+        "5433166c507bc845bd12d8d5c4145f1fbedda204",
+    "src/twelve_six/data/trusted_family_authority_v1.py":
+        "9382332d2d0d5c09aa5582e6f949b1630c459cbb",
+    "src/twelve_six/data/postdecontam_balance_projection_v1.py":
+        "8512a7363cb3953c46d7072cb4b3c09c86751236",
     "src/twelve_six/data/postmaterialization_balance_projection_v1.py":
         "62a6640ad5911e21f406ef12c1b0d7e5e5b1afef",
 }
@@ -220,18 +226,76 @@ def verify_module_provenance(module: Any, relative: str) -> None:
     )
 
 
+def _clear_canonical_module_cache() -> None:
+    for module_name in (
+        "tools.next100_106_balance_gate",
+        "twelve_six.data.postmaterialization_balance_projection_v1",
+        "twelve_six.data.postdecontam_balance_projection_v1",
+        "twelve_six.data.trusted_family_authority_v1",
+    ):
+        cached = sys.modules.pop(module_name, None)
+        if cached is None or "." not in module_name:
+            continue
+        parent_name, attribute = module_name.rsplit(".", 1)
+        parent = sys.modules.get(parent_name)
+        if parent is not None and getattr(parent, attribute, None) is cached:
+            delattr(parent, attribute)
+    importlib.invalidate_caches()
+
+
 def load_canonical_authorities() -> tuple[Any, Any, dict[str, Any]]:
     verify_dependency_blobs()
-    importlib.invalidate_caches()
+    import twelve_six
+
+    verify_module_provenance(twelve_six, "src/twelve_six/__init__.py")
+    expected_package = (ROOT / "src/twelve_six").resolve(strict=True)
+    require(
+        [Path(value).resolve(strict=True) for value in twelve_six.__path__]
+        == [expected_package],
+        "canonical twelve_six package search path drift",
+    )
+    data_package = importlib.import_module("twelve_six.data")
+    expected_data = (ROOT / "src/twelve_six/data").resolve(strict=True)
+    require(
+        [Path(value).resolve(strict=True) for value in data_package.__path__]
+        == [expected_data],
+        "canonical twelve_six.data package search path drift",
+    )
+
+    _clear_canonical_module_cache()
     gate = importlib.import_module("tools.next100_106_balance_gate")
+    trusted = importlib.import_module(
+        "twelve_six.data.trusted_family_authority_v1"
+    )
+    projection = importlib.import_module(
+        "twelve_six.data.postdecontam_balance_projection_v1"
+    )
     bridge = importlib.import_module(
         "twelve_six.data.postmaterialization_balance_projection_v1"
     )
-    verify_module_provenance(gate, "tools/next100_106_balance_gate.py")
-    verify_module_provenance(
-        bridge,
-        "src/twelve_six/data/postmaterialization_balance_projection_v1.py",
+    for module, relative in (
+        (gate, "tools/next100_106_balance_gate.py"),
+        (trusted, "src/twelve_six/data/trusted_family_authority_v1.py"),
+        (
+            projection,
+            "src/twelve_six/data/postdecontam_balance_projection_v1.py",
+        ),
+        (
+            bridge,
+            "src/twelve_six/data/postmaterialization_balance_projection_v1.py",
+        ),
+    ):
+        verify_module_provenance(module, relative)
+    require(
+        bridge.TRUSTED_FAMILY_SEMANTICS is trusted.TRUSTED_FAMILY_SEMANTICS
+        and projection.TRUSTED_FAMILY_SEMANTICS is trusted.TRUSTED_FAMILY_SEMANTICS,
+        "canonical trusted-family object split across balance modules",
     )
+    require(
+        bridge.ProjectionError is projection.ProjectionError,
+        "canonical projection exception identity drift",
+    )
+
     policy_path = ROOT / "configs/data/next100_106_balance_gate_policy_v1.json"
     policy = load_json_bytes(policy_path.read_bytes(), "NEXT100-106 policy")
     gate.validate_policy(policy)
