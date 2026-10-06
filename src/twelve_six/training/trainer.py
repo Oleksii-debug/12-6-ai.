@@ -2792,9 +2792,9 @@ class Trainer:
                 # Never trust caller-provided param_names over live model identity.
                 saved_group["param_names"] = names
             snapshot = TrainerState(
-                micro_step=self.micro_step,
-                optimizer_step=self.optimizer_step,
-                tokens_seen=self.tokens_seen,
+                micro_step=committed_before[0],
+                optimizer_step=committed_before[1],
+                tokens_seen=committed_before[2],
                 optimizer=optimizer_state,
                 scheduler=(
                     None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())

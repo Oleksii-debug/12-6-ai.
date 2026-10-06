@@ -124,6 +124,41 @@ def test_effectful_optimizer_state_dict_never_publishes_unsafe_snapshot(
         ("device", "checkpoint export binding changed during checkpoint export"),
     ],
 )
+def test_transient_counter_drift_cannot_forge_exported_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    assert trainer.train_microbatch(_BATCH).optimizer_stepped
+    committed = (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen)
+    original_optimizer_export = trainer.optimizer.state_dict
+    original_scaler_export = trainer.scaler.state_dict
+
+    def drift_counters() -> dict[str, Any]:
+        snapshot = original_optimizer_export()
+        trainer.micro_step = 9
+        trainer.optimizer_step = 9
+        trainer.tokens_seen = 99
+        return snapshot
+
+    def restore_counters() -> dict[str, Any]:
+        trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen = committed
+        return original_scaler_export()
+
+    monkeypatch.setattr(trainer.optimizer, "state_dict", drift_counters)
+    monkeypatch.setattr(trainer.scaler, "state_dict", restore_counters)
+    snapshot = trainer.state_dict()
+
+    assert (snapshot.micro_step, snapshot.optimizer_step, snapshot.tokens_seen) == committed
+    assert (trainer.micro_step, trainer.optimizer_step, trainer.tokens_seen) == committed
+    assert trainer._failure_reason is None
+
+
 def test_effectful_optimizer_export_cannot_forge_final_model_observer(
     monkeypatch: pytest.MonkeyPatch,
     preserve_process_state: Any,
