@@ -52,8 +52,19 @@
     {
       "number": 1,
       "title": "Єдина система ідентичностей і маніфестів",
-      "status": "UNVERIFIED",
-      "evidence": null
+      "status": "READY_AFTER_PREDECESSOR",
+      "evidence": {
+        "candidate_branch": "section/1-unified-identity-manifest-v1",
+        "stacked_on_section_0_head": "84de775af5c3aa4e494e74eb5e94ff02e766aaef",
+        "implementation_paths": [
+          "src/twelve_six/identity_manifest.py",
+          "tests/test_identity_manifest.py"
+        ],
+        "pull_request": null,
+        "terminal_ci": null,
+        "integrated_main_sha": null,
+        "sequential_note": "Prepared only; revalidate against accepted main after Section 0 DONE before promotion."
+      }
     },
     {
       "number": 2,
