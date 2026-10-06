@@ -723,3 +723,43 @@ def test_durable_bundle_rejects_output_path_alias(tmp_path: Path) -> None:
             survivor_inventory_path=tmp_path / "inventory.json",
             survivor_inventory_bytes=b"i",
         )
+
+
+
+def test_project_import_parser_covers_supported_forms() -> None:
+    source = """
+from twelve_six.data.alpha import value
+from twelve_six.data import beta, gamma
+import twelve_six.data.delta
+"""
+    assert target._project_import_paths(source, label="synthetic.py") == {
+        "src/twelve_six/data/alpha.py",
+        "src/twelve_six/data/beta.py",
+        "src/twelve_six/data/gamma.py",
+        "src/twelve_six/data/delta.py",
+    }
+
+
+def test_project_import_parser_rejects_wildcard() -> None:
+    with pytest.raises(
+        target.RadaPostData232Error,
+        match="wildcard project import is not auditable",
+    ):
+        target._project_import_paths(
+            "from twelve_six.data import *\n",
+            label="synthetic.py",
+        )
+
+
+def test_declared_dependency_import_closure_is_fully_pinned() -> None:
+    allowed = set(target.EXPECTED_DEPENDENCY_BLOBS)
+    carrier = "tools/run_d03_rada_current_postdata232_g05_g06_v1.py"
+    for relative in sorted(allowed | {carrier}):
+        source = (target.ROOT / relative).read_text(
+            encoding="utf-8",
+            errors="strict",
+        )
+        assert target._project_import_paths(
+            source,
+            label=relative,
+        ) <= allowed
