@@ -37,9 +37,14 @@ from twelve_six.data.postmaterialization_balance_projection_v1 import (
 from twelve_six.data.trusted_family_authority_v1 import TRUSTED_FAMILY_SEMANTICS
 
 SELECTION_SCHEMA = "12-6.d03-balanced-selection-authority.v1"
-SELECTION_REALIZATION_POLICY = "record-id-ascending-exact-family-byte-subset-v1"
+LEGACY_SELECTION_REALIZATION_POLICY = "record-id-ascending-exact-family-byte-subset-v1"
+SELECTION_REALIZATION_POLICY = "record-id-ascending-policy-cap-aware-whole-record-subset-v2"
 DEFAULT_MAX_EXACT_SUBSET_STATES = 250_000
 DEFAULT_MAX_EXACT_SUBSET_EXPANSIONS = 5_000_000
+DEFAULT_EXACT_SUBSET_MAX_TARGET_BYTES = 5_000_000
+DEFAULT_EXACT_SUBSET_BLOCK_RECORDS = 2_048
+DEFAULT_EXACT_SUBSET_MAX_CHECKPOINT_BYTES = 128 * 1024 * 1024
+_BIT_REVERSE_TABLE = bytes(int(f"{value:08b}"[::-1], 2) for value in range(256))
 _ALLOWED_ALLOCATION_FIELDS = {
     "family_id",
     "stratum",
@@ -215,7 +220,7 @@ def _exact_record_subset(
     if target not in parent:
         raise ProjectionError(
             f"allocation[{family}] has no exact whole-record realization under "
-            f"{SELECTION_REALIZATION_POLICY}"
+            f"{LEGACY_SELECTION_REALIZATION_POLICY}"
         )
 
     selected_indexes: list[int] = []
@@ -229,6 +234,282 @@ def _exact_record_subset(
         cursor = previous
     selected_indexes.reverse()
     return [ordered[index] for index in selected_indexes]
+
+
+class _ExactSubsetSearchError(ProjectionError):
+    """Raised when a bounded exact-subset search has no safe result."""
+
+
+def _reverse_low_bits(bits: int, width: int) -> int:
+    """Reverse exactly width low-order bits using byte-table operations."""
+
+    if width <= 0:
+        return 0
+    byte_count = (width + 7) // 8
+    raw = bits.to_bytes(byte_count, "little")
+    reversed_bytes = raw.translate(_BIT_REVERSE_TABLE)[::-1]
+    reversed_value = int.from_bytes(reversed_bytes, "little")
+    return reversed_value >> (byte_count * 8 - width)
+
+
+def _reachable_subset_bits(weights: Sequence[int], target: int) -> int:
+    """Return the exact subset-sum reachability bitset through target."""
+
+    mask = (1 << (target + 1)) - 1
+    reachable = 1
+    for weight in weights:
+        if weight <= target:
+            reachable |= (reachable << weight) & mask
+    return reachable
+
+
+def _reconstruct_block_subset(weights: Sequence[int], target: int) -> list[int]:
+    """Reconstruct one deterministic exact subset inside one bounded block."""
+
+    if target == 0:
+        return []
+    total = sum(weights)
+    if target > total:
+        raise _ExactSubsetSearchError("block target exceeds block capacity")
+    if target == total:
+        return list(range(len(weights)))
+    if len(weights) == 1:
+        if weights[0] == target:
+            return [0]
+        raise _ExactSubsetSearchError("block target has no exact subset")
+
+    midpoint = len(weights) // 2
+    left = weights[:midpoint]
+    right = weights[midpoint:]
+    left_bits = _reachable_subset_bits(left, target)
+    right_bits = _reachable_subset_bits(right, target)
+    candidates = left_bits & _reverse_low_bits(right_bits, target + 1)
+    if not candidates:
+        raise _ExactSubsetSearchError("block reconstruction found no exact split")
+
+    # Prefer the largest contribution from the earlier half. Combined with the
+    # outer earliest-prefix rule, this makes reconstruction deterministic.
+    left_target = candidates.bit_length() - 1
+    left_indexes = _reconstruct_block_subset(left, left_target)
+    right_indexes = _reconstruct_block_subset(right, target - left_target)
+    return left_indexes + [midpoint + index for index in right_indexes]
+
+
+def _bounded_exact_record_subset(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    target_bytes: int,
+    label: str,
+    max_target_bytes: int = DEFAULT_EXACT_SUBSET_MAX_TARGET_BYTES,
+    block_records: int = DEFAULT_EXACT_SUBSET_BLOCK_RECORDS,
+    max_checkpoint_bytes: int = DEFAULT_EXACT_SUBSET_MAX_CHECKPOINT_BYTES,
+) -> list[dict[str, Any]]:
+    """Return a deterministic exact whole-record subset under explicit bounds."""
+
+    target = _require_nonnegative_int(target_bytes, f"{label}.target_bytes")
+    target_limit = _require_nonnegative_int(max_target_bytes, "max_target_bytes")
+    block_size = _require_nonnegative_int(block_records, "block_records")
+    checkpoint_limit = _require_nonnegative_int(
+        max_checkpoint_bytes,
+        "max_checkpoint_bytes",
+    )
+    if target <= 0:
+        raise ProjectionError(f"{label} target must be positive")
+    if target_limit <= 0 or block_size <= 0 or checkpoint_limit <= 0:
+        raise ProjectionError("bounded exact-subset limits must be positive")
+
+    ordered = [dict(row) for row in sorted(rows, key=lambda item: str(item["record_id"]))]
+    weights: list[int] = []
+    for row in ordered:
+        weight = _require_nonnegative_int(row.get("payload_bytes"), "payload_bytes")
+        if weight <= 0:
+            raise ProjectionError("selected survivor payload_bytes must be positive")
+        weights.append(weight)
+
+    total = sum(weights)
+    if target > total:
+        raise ProjectionError(f"{label} exceeds authenticated record capacity")
+    if target == total:
+        return ordered
+
+    complement = total - target < target
+    solve_target = total - target if complement else target
+    if solve_target > target_limit:
+        raise _ExactSubsetSearchError(
+            f"{label} bounded exact-subset target exceeds {target_limit} bytes"
+        )
+
+    checkpoint_count = (len(ordered) + block_size - 1) // block_size + 1
+    checkpoint_bytes = (solve_target + 8) // 8
+    estimated_checkpoint_bytes = checkpoint_count * checkpoint_bytes
+    if estimated_checkpoint_bytes > checkpoint_limit:
+        raise _ExactSubsetSearchError(
+            f"{label} bounded exact-subset checkpoint budget exceeded"
+        )
+
+    mask = (1 << (solve_target + 1)) - 1
+    reachable = 1
+    checkpoints = [reachable]
+    block_ranges: list[tuple[int, int]] = []
+    for start in range(0, len(ordered), block_size):
+        stop = min(start + block_size, len(ordered))
+        processed_stop = start
+        for index in range(start, stop):
+            weight = weights[index]
+            if weight <= solve_target:
+                reachable |= (reachable << weight) & mask
+            processed_stop = index + 1
+            if (reachable >> solve_target) & 1:
+                break
+        block_ranges.append((start, processed_stop))
+        checkpoints.append(reachable)
+        if (reachable >> solve_target) & 1:
+            break
+
+    if not ((reachable >> solve_target) & 1):
+        raise _ExactSubsetSearchError(f"{label} has no exact whole-record realization")
+
+    cursor = solve_target
+    chosen_indexes: list[int] = []
+    for block_index in range(len(block_ranges) - 1, -1, -1):
+        if cursor == 0:
+            break
+        prefix = checkpoints[block_index]
+        if (prefix >> cursor) & 1:
+            continue
+
+        start, stop = block_ranges[block_index]
+        chunk_weights = weights[start:stop]
+        chunk_bits = _reachable_subset_bits(chunk_weights, cursor)
+        prefix_mask = (1 << (cursor + 1)) - 1
+        aligned_prefix = _reverse_low_bits(prefix & prefix_mask, cursor + 1)
+        candidates = chunk_bits & aligned_prefix
+        if not candidates:
+            raise ProjectionError(f"{label} exact-subset checkpoint reconstruction failed")
+        contribution_bit = candidates & -candidates
+        contribution = contribution_bit.bit_length() - 1
+        local_indexes = _reconstruct_block_subset(chunk_weights, contribution)
+        chosen_indexes.extend(start + index for index in local_indexes)
+        cursor -= contribution
+
+    if cursor != 0:
+        raise ProjectionError(f"{label} exact-subset reconstruction did not reach zero")
+
+    chosen = set(chosen_indexes)
+    if complement:
+        result = [row for index, row in enumerate(ordered) if index not in chosen]
+    else:
+        result = [ordered[index] for index in sorted(chosen)]
+    if sum(int(row["payload_bytes"]) for row in result) != target:
+        raise ProjectionError(f"{label} exact-subset reconstruction byte mismatch")
+    return result
+
+
+def _allocation_caps_by_stratum(
+    allocations: Mapping[str, Mapping[str, Any]],
+) -> dict[str, int]:
+    caps: defaultdict[str, set[int]] = defaultdict(set)
+    for family, allocation in allocations.items():
+        stratum = _require_text(allocation.get("stratum"), f"allocation[{family}].stratum")
+        cap = _require_nonnegative_int(
+            allocation.get("effective_family_cap_bytes"),
+            f"allocation[{family}].effective_family_cap_bytes",
+        )
+        caps[stratum].add(cap)
+
+    expected = {"ua", "en", "code"}
+    if set(caps) != expected:
+        raise ProjectionError("balance allocation does not cover every required stratum")
+    result: dict[str, int] = {}
+    for stratum in sorted(expected):
+        if len(caps[stratum]) != 1:
+            raise ProjectionError(f"balance allocation family cap drift: {stratum}")
+        result[stratum] = next(iter(caps[stratum]))
+    return result
+
+
+def _select_stratum_records(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    stratum: str,
+    allocations: Mapping[str, Mapping[str, Any]],
+    target_bytes: int,
+    family_cap_bytes: int,
+) -> list[dict[str, Any]]:
+    """Realize one exact stratum without weakening the authenticated family cap."""
+
+    target = _require_nonnegative_int(target_bytes, f"stratum[{stratum}].target_bytes")
+    cap = _require_nonnegative_int(
+        family_cap_bytes,
+        f"stratum[{stratum}].family_cap_bytes",
+    )
+    if target <= 0 or cap <= 0:
+        raise ProjectionError(f"stratum[{stratum}] target/cap must be positive")
+
+    stratum_allocations = {
+        family: allocation
+        for family, allocation in allocations.items()
+        if allocation["stratum"] == stratum
+    }
+    if not stratum_allocations:
+        raise ProjectionError(f"stratum[{stratum}] has no authenticated allocation")
+
+    by_family: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    for raw in rows:
+        row = dict(raw)
+        family = _require_text(row.get("family"), "family")
+        row_stratum = _STRATUM_TO_BALANCE.get(str(row.get("stratum")))
+        if row_stratum != stratum:
+            raise ProjectionError(f"stratum[{stratum}] received foreign survivor row")
+        by_family[family].append(row)
+
+    try:
+        canonical: list[dict[str, Any]] = []
+        for family in sorted(stratum_allocations):
+            candidates = by_family.get(family, [])
+            if not candidates:
+                raise ProjectionError(
+                    f"allocated family has no authenticated survivor rows: {family}"
+                )
+            canonical.extend(
+                _bounded_exact_record_subset(
+                    candidates,
+                    target_bytes=int(stratum_allocations[family]["allocated_bytes"]),
+                    label=f"allocation[{family}]",
+                )
+            )
+        if sum(int(row["payload_bytes"]) for row in canonical) != target:
+            raise ProjectionError(f"stratum[{stratum}] canonical allocation total drift")
+        return canonical
+    except _ExactSubsetSearchError as canonical_error:
+        # The continuous family-byte witness can be impossible at whole-record
+        # granularity. Decouple from that witness only when every physical family
+        # in this stratum is already wholly below the authenticated family cap;
+        # then any record subset is cap-safe by construction.
+        full_family_bytes = {
+            family: sum(int(row["payload_bytes"]) for row in family_rows)
+            for family, family_rows in by_family.items()
+        }
+        over_cap = sorted(
+            family for family, total in full_family_bytes.items() if total > cap
+        )
+        if over_cap:
+            raise ProjectionError(
+                f"stratum[{stratum}] cannot safely decouple record realization "
+                f"from family allocation; full family exceeds cap: {over_cap[0]}"
+            ) from canonical_error
+
+        selected = _bounded_exact_record_subset(
+            rows,
+            target_bytes=target,
+            label=f"stratum[{stratum}]",
+        )
+        selected_family_bytes: defaultdict[str, int] = defaultdict(int)
+        for row in selected:
+            selected_family_bytes[str(row["family"])] += int(row["payload_bytes"])
+        if any(total > cap for total in selected_family_bytes.values()):
+            raise ProjectionError(f"stratum[{stratum}] record selection exceeds family cap")
+        return selected
 
 
 def _validated_allocations(
@@ -425,21 +706,31 @@ def build_current_clean_balanced_selection(
     )
 
     allocations = _validated_allocations(balance_result, family_vector)
-    by_family: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    allocation_caps = _allocation_caps_by_stratum(allocations)
+    rows_by_stratum: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in survivor_rows:
-        by_family[row["family"]].append(row)
+        balance_stratum = _STRATUM_TO_BALANCE[str(row["stratum"])]
+        rows_by_stratum[balance_stratum].append(row)
+
+    expected_strata = balance_result.get("maximum_feasible_stratum_bytes")
+    if not isinstance(expected_strata, Mapping):
+        raise ProjectionError("balance result maximum stratum bytes are missing")
 
     selected: list[dict[str, Any]] = []
-    for family in sorted(allocations):
-        candidates = by_family.get(family, [])
-        if not candidates:
-            raise ProjectionError(f"allocated family has no authenticated survivor rows: {family}")
-        chosen = _exact_record_subset(
-            candidates,
-            target_bytes=int(allocations[family]["allocated_bytes"]),
-            family=family,
+    for stratum in ("ua", "en", "code"):
+        target = _require_nonnegative_int(
+            expected_strata.get(stratum),
+            f"maximum_feasible_stratum_bytes.{stratum}",
         )
-        selected.extend(chosen)
+        selected.extend(
+            _select_stratum_records(
+                rows_by_stratum[stratum],
+                stratum=stratum,
+                allocations=allocations,
+                target_bytes=target,
+                family_cap_bytes=allocation_caps[stratum],
+            )
+        )
 
     selected.sort(key=lambda row: row["record_id"])
     if len({row["record_id"] for row in selected}) != len(selected):
@@ -447,6 +738,7 @@ def build_current_clean_balanced_selection(
 
     family_bytes: defaultdict[str, int] = defaultdict(int)
     stratum_bytes: defaultdict[str, int] = defaultdict(int)
+    balance_stratum_bytes: defaultdict[str, int] = defaultdict(int)
     output_rows: list[dict[str, Any]] = []
     for row in selected:
         output = {
@@ -469,10 +761,36 @@ def build_current_clean_balanced_selection(
         output_rows.append(output)
         family_bytes[row["family"]] += int(row["payload_bytes"])
         stratum_bytes[row["stratum"]] += int(row["payload_bytes"])
+        balance_stratum_bytes[_STRATUM_TO_BALANCE[str(row["stratum"])]] += int(
+            row["payload_bytes"]
+        )
 
-    for family, allocation in allocations.items():
-        if family_bytes[family] != allocation["allocated_bytes"]:
-            raise ProjectionError(f"balanced selection family allocation mismatch: {family}")
+    selected_families_by_stratum: defaultdict[str, set[str]] = defaultdict(set)
+    for family, selected_bytes in family_bytes.items():
+        authority = TRUSTED_FAMILY_SEMANTICS.get(family)
+        if authority is None:
+            raise ProjectionError(f"selected family absent from trusted authority: {family}")
+        balance_stratum = _STRATUM_TO_BALANCE[str(authority["stratum"])]
+        if selected_bytes > allocation_caps[balance_stratum]:
+            raise ProjectionError(f"balanced selection family cap exceeded: {family}")
+        selected_families_by_stratum[balance_stratum].add(family)
+
+    family_minimum = balance_result.get("family_minimum")
+    if not isinstance(family_minimum, Mapping):
+        raise ProjectionError("balance result family minimum is missing")
+    minimum_families = _require_nonnegative_int(
+        family_minimum.get("required_per_stratum"),
+        "family_minimum.required_per_stratum",
+    )
+    for stratum in ("ua", "en", "code"):
+        expected_bytes = _require_nonnegative_int(
+            expected_strata.get(stratum),
+            f"maximum_feasible_stratum_bytes.{stratum}",
+        )
+        if balance_stratum_bytes[stratum] != expected_bytes:
+            raise ProjectionError(f"balanced selection stratum allocation mismatch: {stratum}")
+        if len(selected_families_by_stratum[stratum]) < minimum_families:
+            raise ProjectionError(f"balanced selection family minimum mismatch: {stratum}")
 
     source_bytes = sum(row["payload_bytes"] for row in output_rows)
     if source_bytes != balance_result.get("maximum_feasible_total_source_bytes"):
