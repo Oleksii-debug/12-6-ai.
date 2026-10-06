@@ -2939,16 +2939,23 @@ class Trainer:
             if state.optimizer_step > self.config.max_steps:
                 raise ValueError("checkpoint optimizer_step exceeds configured max_steps")
 
-            # Reject known contract mismatches before touching optimizer state.
-            if (state.scheduler is None) != (self.scheduler is None):
+            # Take ownership before semantic preflight. The external payload may
+            # expose effectful/mutable Mapping or sequence subclasses; validation
+            # must apply to the exact detached snapshot that will later be loaded.
+            optimizer_state = copy.deepcopy(dict(state.optimizer))
+            scheduler_state = copy.deepcopy(state.scheduler)
+            scaler_state = copy.deepcopy(state.scaler)
+
+            # Reject known contract mismatches before touching live component state.
+            if (scheduler_state is None) != (self.scheduler is None):
                 raise ValueError("scheduler state/config mismatch")
-            self._require_checkpoint_scaler_state(state.scaler)
+            self._require_checkpoint_scaler_state(scaler_state)
             # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal
             # parameter identity. Reject missing/reordered names before mutation.
-            self._require_optimizer_state_parameter_order(state.optimizer)
-            self._require_safe_optimizer_hyperparameters(state.optimizer)
+            self._require_optimizer_state_parameter_order(optimizer_state)
+            self._require_safe_optimizer_hyperparameters(optimizer_state)
             self._require_checkpoint_scheduler_chronology(
-                state.scheduler, state.optimizer_step, state.optimizer,
+                scheduler_state, state.optimizer_step, optimizer_state,
             )
 
             # From the first component load onward a failure may leave optimizer,
@@ -2959,12 +2966,6 @@ class Trainer:
             # live PyTorch optimizer: uninterrupted training does not carry this key,
             # and retaining it would make a resumed raw optimizer state differ from
             # the exact uninterrupted state despite identical numerical dynamics.
-            # Treat the decoded/caller-provided payload as external ownership.
-            # PyTorch optimizers may retain tensor objects from load_state_dict(), and
-            # schedulers may retain mutable list objects. Without defensive copies,
-            # mutating a successful LoadResult (or a direct caller's input mapping)
-            # could silently change the already-accepted live resume state.
-            optimizer_state = copy.deepcopy(dict(state.optimizer))
             optimizer_state["param_groups"] = [
                 {
                     key: value
@@ -2973,8 +2974,6 @@ class Trainer:
                 }
                 for group in optimizer_state["param_groups"]
             ]
-            scheduler_state = copy.deepcopy(state.scheduler)
-            scaler_state = copy.deepcopy(state.scaler)
         except BaseException:
             drift_reason = _restore_preapply_drift_reason("checkpoint preflight")
             if drift_reason is not None:
