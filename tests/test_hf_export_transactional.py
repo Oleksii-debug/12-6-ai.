@@ -312,6 +312,87 @@ def test_export_verifier_rejects_attestation_tamper(tmp_path: Path):
         verify_hf_directory(output)
 
 
+@pytest.mark.parametrize(
+    "case",
+    (
+        "single_space",
+        "tab_separator",
+        "leading_space",
+        "trailing_space",
+        "extra_newline",
+        "uppercase_digest",
+        "nonhex_digest",
+        "short_digest",
+    ),
+)
+def test_export_verifier_rejects_noncanonical_checksum_bytes(
+    tmp_path: Path,
+    case: str,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(6.25), identity=identity("7"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+
+    attestation = (output / hf_export.EXPORT_ATTESTATION_NAME).read_bytes()
+    digest = hf_export.sha256_bytes(attestation)
+    if case == "single_space":
+        checksum = f"{digest} {hf_export.EXPORT_ATTESTATION_NAME}\n"
+    elif case == "tab_separator":
+        checksum = f"{digest}\t{hf_export.EXPORT_ATTESTATION_NAME}\n"
+    elif case == "leading_space":
+        checksum = f" {digest}  {hf_export.EXPORT_ATTESTATION_NAME}\n"
+    elif case == "trailing_space":
+        checksum = f"{digest}  {hf_export.EXPORT_ATTESTATION_NAME} \n"
+    elif case == "extra_newline":
+        checksum = f"{digest}  {hf_export.EXPORT_ATTESTATION_NAME}\n\n"
+    elif case == "uppercase_digest":
+        checksum = f"{'A' * 64}  {hf_export.EXPORT_ATTESTATION_NAME}\n"
+    elif case == "nonhex_digest":
+        checksum = f"{'g' * 64}  {hf_export.EXPORT_ATTESTATION_NAME}\n"
+    elif case == "short_digest":
+        checksum = f"{'0' * 63}  {hf_export.EXPORT_ATTESTATION_NAME}\n"
+    else:
+        raise AssertionError(f"unhandled checksum case: {case}")
+
+    (output / hf_export.EXPORT_CHECKSUM_NAME).write_text(
+        checksum,
+        encoding="ascii",
+    )
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="invalid 12-6-export.sha256 format",
+    ):
+        verify_hf_directory(output)
+
+
+def test_export_verifier_preserves_canonical_wrong_checksum_diagnostic(
+    tmp_path: Path,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(6.5), identity=identity("8"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+
+    (output / hf_export.EXPORT_CHECKSUM_NAME).write_text(
+        f"{'0' * 64}  {hf_export.EXPORT_ATTESTATION_NAME}\n",
+        encoding="ascii",
+    )
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="attestation checksum mismatch",
+    ):
+        verify_hf_directory(output)
+
+
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlink support unavailable")
 def test_export_verifier_rejects_symlink_payload(tmp_path: Path):
     checkpoint = tmp_path / "checkpoint"
