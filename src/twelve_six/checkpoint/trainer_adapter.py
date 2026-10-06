@@ -1908,7 +1908,22 @@ def _assert_checkpoint_process_environment_stable(
         )
     _core._assert_torch_process_environment_matches(cuda_environment)
 
-    required_numeric = (
+
+def _assert_checkpoint_numeric_policy_stable(
+    state: Mapping[str, Any],
+    *,
+    expected_canonical: bool,
+) -> None:
+    """Require live floating-point process policy to equal the checkpoint."""
+
+    if not expected_canonical:
+        return
+    torch_state = state.get("torch")
+    if not isinstance(torch_state, Mapping):
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint torch process state is unavailable"
+        )
+    required = (
         "default_dtype",
         "float32_matmul_precision",
         "cudnn_allow_tf32",
@@ -1916,16 +1931,14 @@ def _assert_checkpoint_process_environment_stable(
         "cudnn_deterministic",
         "cudnn_benchmark",
     )
-    missing_numeric = [
-        field for field in required_numeric if field not in torch_state
-    ]
-    if missing_numeric:
+    missing = [field for field in required if field not in torch_state]
+    if missing:
         raise CheckpointCompatibilityError(
             "canonical trainer checkpoint numeric policy is incomplete: "
-            f"{missing_numeric}"
+            f"{missing}"
         )
     torch = importlib.import_module("torch")
-    live_numeric = {
+    live = {
         "default_dtype": str(torch.get_default_dtype()),
         "float32_matmul_precision": torch.get_float32_matmul_precision(),
         "cudnn_allow_tf32": bool(torch.backends.cudnn.allow_tf32),
@@ -1933,15 +1946,11 @@ def _assert_checkpoint_process_environment_stable(
         "cudnn_deterministic": bool(torch.backends.cudnn.deterministic),
         "cudnn_benchmark": bool(torch.backends.cudnn.benchmark),
     }
-    drifted_numeric = [
-        field
-        for field in required_numeric
-        if live_numeric[field] != torch_state[field]
-    ]
-    if drifted_numeric:
+    drifted = [field for field in required if live[field] != torch_state[field]]
+    if drifted:
         raise CheckpointCompatibilityError(
             "checkpoint torch numeric policy differs from the live process: "
-            f"{drifted_numeric}"
+            f"{drifted}"
         )
 
 
@@ -2639,9 +2648,17 @@ def load_trainer_checkpoint(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
+            _assert_checkpoint_numeric_policy_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
         model_apply(materialized)
         if restore_rng:
             _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
@@ -2666,6 +2683,10 @@ def load_trainer_checkpoint(
         load_trainer_state(trainer_state)
         if restore_rng:
             _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
@@ -2696,6 +2717,10 @@ def load_trainer_checkpoint(
                 initial_policy=policy_before_apply,
             )
             _assert_checkpoint_process_environment_stable(
+                combined_state["rng"],
+                expected_canonical=restore_bindings[0],
+            )
+            _assert_checkpoint_numeric_policy_stable(
                 combined_state["rng"],
                 expected_canonical=restore_bindings[0],
             )
