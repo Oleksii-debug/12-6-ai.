@@ -345,6 +345,32 @@ def _resolve_existing_path(raw_path: str, error: str) -> Path:
         raise RadaPostG06BalanceError(error) from exc
 
 
+def _fsync_directory(path: Path, *, label: str) -> None:
+    """Persist directory metadata; fail closed on POSIX fsync errors."""
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        if os.name == "nt":
+            return
+        raise RadaPostG06BalanceError(
+            f"{label}: directory open for fsync failed"
+        ) from exc
+    try:
+        os.fsync(descriptor)
+    except OSError as exc:
+        if os.name != "nt":
+            raise RadaPostG06BalanceError(
+                f"{label}: directory fsync failed"
+            ) from exc
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+
 def _publish_temp_without_overwrite(
     temp: Path,
     path: Path,
@@ -373,12 +399,20 @@ def _publish_temp_without_overwrite(
         published == payload,
         f"{label}: published durable evidence drift",
     )
+    _fsync_directory(
+        path.parent,
+        label=f"{label}: durable publication",
+    )
     try:
         temp.unlink()
     except OSError as exc:
         raise RadaPostG06BalanceError(
             f"{label}: published evidence temp cleanup failed"
         ) from exc
+    _fsync_directory(
+        path.parent,
+        label=f"{label}: temp cleanup",
+    )
 
 
 def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
@@ -410,6 +444,10 @@ def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
                 raise RadaPostG06BalanceError(
                     f"{label}: interrupted temp cleanup failed"
                 ) from exc
+        _fsync_directory(
+            path.parent,
+            label=f"{label}: durable evidence",
+        )
         return
 
     if temp.exists() or temp.is_symlink():
@@ -431,6 +469,16 @@ def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        _publish_temp_without_overwrite(temp, path, payload, label=label)
+    except FileExistsError:
+        interrupted = _read_stable_regular_bytes(
+            temp,
+            label=f"{label}: raced temp evidence",
+        )
+        require(
+            interrupted == payload,
+            f"{label}: divergent raced temp evidence",
+        )
         _publish_temp_without_overwrite(temp, path, payload, label=label)
     except OSError:
         if created_temp:
