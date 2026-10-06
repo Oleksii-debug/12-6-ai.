@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Bind current-Rada post-DATA232 G05/G06 survivors to the merged balance vector.
 
 This execution-only adapter authenticates the exact text-free G05/G06 receipt and
@@ -154,8 +153,7 @@ def _git(*args: str) -> str:
         ["git", *args],
         cwd=ROOT,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
     require(
@@ -170,8 +168,7 @@ def _git_is_ancestor(ancestor: str, descendant: str) -> bool:
         ["git", "merge-base", "--is-ancestor", ancestor, descendant],
         cwd=ROOT,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
     return proc.returncode == 0
@@ -1235,7 +1232,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         all(
             "normalized_payload" not in row
             and "text" not in row
-            for row in inventory_rows
+            for row in rows
         ),
         "raw survivor payload leaked into durable adapter state",
     )
