@@ -2519,16 +2519,33 @@ def save_trainer_checkpoint(
             )
             raise
 
-    return save_checkpoint(
-        directory,
-        model=model,
-        trainer_state=state,
-        identity=identity,
-        overwrite=overwrite,
-        model_export_validator=model_export_validator,
-        prepublish_validator=prepublish_validator,
-        post_rng_prepublish_validator=post_rng_prepublish_validator,
-    )
+    try:
+        return save_checkpoint(
+            directory,
+            model=model,
+            trainer_state=state,
+            identity=identity,
+            overwrite=overwrite,
+            model_export_validator=model_export_validator,
+            prepublish_validator=prepublish_validator,
+            post_rng_prepublish_validator=post_rng_prepublish_validator,
+        )
+    except BaseException as exc:
+        if save_bindings[0]:
+            try:
+                assert_export_execution_mode()
+            except CheckpointCompatibilityError as mode_exc:
+                _poison_canonical_restore_failure(
+                    trainer,
+                    expected_canonical=True,
+                    reason="checkpoint_export_state_drift",
+                    exc=mode_exc,
+                )
+                exc.add_note(
+                    "checkpoint save also leaked caller-owned torch execution "
+                    f"mode: {mode_exc}"
+                )
+        raise
 
 
 def load_trainer_checkpoint(
