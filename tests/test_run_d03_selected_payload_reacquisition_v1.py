@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -100,6 +101,135 @@ def fixture_documents(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, dict, byte
 
 def write_json(path: Path, value: dict) -> None:
     path.write_bytes(canonical(value) + b"\n")
+
+
+def test_reproduce_post_qp_payloads_returns_transformed_survivor_bytes() -> None:
+    class CleanStub:
+        @staticmethod
+        def _post_decontamination_records(records, report):
+            assert report == {"excluded_records": []}
+            record = records[0]
+            return (
+                [{"id": record["record_id"], "text": record["text"], "mode": "code"}],
+                {
+                    record["record_id"]: {
+                        "source_id": record["source_id"],
+                        "family": record["source_family"],
+                        "mode": "code",
+                    }
+                },
+                0,
+            )
+
+        @staticmethod
+        def _input_projection(records):
+            return list(records)
+
+        @staticmethod
+        def _cjson(value):
+            return canonical(value)
+
+        @staticmethod
+        def _sha256(raw):
+            return hashlib.sha256(raw).hexdigest()
+
+        @staticmethod
+        def build_quality_execution_authority(
+            records,
+            *,
+            input_manifest_sha256,
+            expected_input_rows_sha256,
+        ):
+            assert records
+            assert len(input_manifest_sha256) == 64
+            assert len(expected_input_rows_sha256) == 64
+            return {"execution_identity_sha256": "a" * 64}
+
+        @staticmethod
+        def verify_quality_execution_authority(*args, **kwargs):
+            assert args
+            assert kwargs["expected_execution_identity_sha256"] == "a" * 64
+
+        @staticmethod
+        def _materialize_quality_survivors(records, metadata, quality):
+            assert quality["execution_identity_sha256"] == "a" * 64
+            row = records[0]
+            return (
+                [
+                    {
+                        "record_id": row["id"],
+                        "source_id": metadata[row["id"]]["source_id"],
+                        "family": metadata[row["id"]]["family"],
+                        "modality": "code",
+                        "normalized_payload": row["text"],
+                    }
+                ],
+                {},
+            )
+
+        @staticmethod
+        def _quality_records_for_privacy(records):
+            return [
+                {
+                    "id": row["record_id"],
+                    "text": row["normalized_payload"],
+                    "mode": row["modality"],
+                }
+                for row in records
+            ]
+
+        @staticmethod
+        def build_privacy_execution_authority(
+            records,
+            *,
+            expected_input_rows_sha256,
+        ):
+            assert records
+            assert len(expected_input_rows_sha256) == 64
+            return {"execution_identity_sha256": "b" * 64}
+
+        @staticmethod
+        def verify_privacy_execution_authority(*args, **kwargs):
+            assert args
+            assert kwargs["expected_execution_identity_sha256"] == "b" * 64
+
+        @staticmethod
+        def _materialize_privacy_survivors(records, privacy):
+            assert privacy["execution_identity_sha256"] == "b" * 64
+            changed = dict(records[0])
+            changed["normalized_payload"] = "redacted"
+            return [changed], {"g06_redacted_records": 1}
+
+    def build_training_authorities(rows, payloads):
+        assert rows == [{"source_id": "source-a"}]
+        assert payloads == {"source-a": b"raw"}
+        return (
+            [
+                {
+                    "record_id": "record-a",
+                    "source_id": "source-a",
+                    "source_family": "family-a",
+                    "modality": "code",
+                    "text": "raw",
+                }
+            ],
+            {},
+            {},
+            {},
+            "x",
+            "y",
+        )
+
+    module = SimpleNamespace(
+        build_training_authorities=build_training_authorities,
+        clean=CleanStub,
+    )
+    result = reacquire.reproduce_post_qp_payloads(
+        module,
+        [{"source_id": "source-a"}],
+        {"source-a": b"raw"},
+    )
+    assert result == {"record-a": b"redacted"}
 
 
 def test_selected_context_binds_family_projection_and_materializer_head(
