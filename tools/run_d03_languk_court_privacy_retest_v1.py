@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -47,6 +48,10 @@ SOURCE_BYTES = 20_220_778
 FAMILY = "ua.languk.supreme-court-decisions"
 MAX_RECORDS = 256
 PYARROW_VERSION = "25.0.1"
+SOURCE_CONTRACT_RUNNER_PATH = "tools/retest_d03_languk_supreme_court.py"
+SOURCE_CONTRACT_CONFIG_PATH = "configs/data/d03_languk_supreme_court_retest_v1.json"
+SOURCE_CONTRACT_RUNNER_BLOB = "5401881e170f2d1ae70e777a0cf3e2cfa152e8f6"
+SOURCE_CONTRACT_CONFIG_BLOB = "b4ee7b0f698660145cb3c1db0f8ccb690c255a5e"
 
 EXPECTED_DEPENDENCY_BLOBS = {
     "src/twelve_six/data/document_quality.py": "b1461263034b4fb9510479b20c9697e22faa5f97",
@@ -54,6 +59,8 @@ EXPECTED_DEPENDENCY_BLOBS = {
     "src/twelve_six/data/quality_execution_authority.py": "4659a9d4aba49908f372250904a54361c8d8cf46",
     "src/twelve_six/data/privacy_execution_authority.py": "9215287e81c0a82f05ec8405dc4f34c60313c193",
     "src/twelve_six/data/privacy_filter_v3.py": "bcc5938395724f6728ab212f98b39f2334b0f37d",
+    SOURCE_CONTRACT_RUNNER_PATH: SOURCE_CONTRACT_RUNNER_BLOB,
+    SOURCE_CONTRACT_CONFIG_PATH: SOURCE_CONTRACT_CONFIG_BLOB,
 }
 
 _TRUTH = {
@@ -187,6 +194,85 @@ def normalize_text(value: str) -> str:
     return unicodedata.normalize("NFKC", text)
 
 
+def _load_source_contract() -> tuple[Any, Mapping[str, Any]]:
+    path = ROOT / SOURCE_CONTRACT_RUNNER_PATH
+    spec = importlib.util.spec_from_file_location("languk_source_contract", path)
+    need(spec is not None and spec.loader is not None, "source contract import unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        cfg = module.load_config(ROOT / SOURCE_CONTRACT_CONFIG_PATH)
+    except module.RetestError as exc:
+        raise LangUkCourtRetestError("source contract config rejected") from exc
+    return module, cfg
+
+
+def _prepare_source_row(
+    row: Mapping[str, Any],
+    *,
+    source_contract: Any,
+    source_contract_config: Mapping[str, Any],
+    row_index: int,
+) -> tuple[dict[str, str] | None, str]:
+    expected_fields = tuple(source_contract.EXPECTED_FIELDS)
+    need(
+        set(row) == set(expected_fields),
+        f"row {row_index}: source annotation schema drift",
+    )
+    raw_id = row.get("id")
+    need(
+        isinstance(raw_id, str) and raw_id.isdigit(),
+        f"row {row_index}: source id must be decimal string",
+    )
+    source_index = row.get("__index_level_0__")
+    need(
+        isinstance(source_index, int)
+        and not isinstance(source_index, bool)
+        and source_index >= 0,
+        f"row {row_index}: source index invalid",
+    )
+    raw_text = row.get("text")
+    need(
+        isinstance(raw_text, str) and bool(raw_text),
+        f"row {row_index}: text missing",
+    )
+    try:
+        raw_text.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise LangUkCourtRetestError(
+            f"row {row_index}: text is not strict UTF-8"
+        ) from exc
+
+    try:
+        source_contract._validate_marker_prefix_consistency(
+            raw_text, source_contract_config
+        )
+        source_contract._validate_occurrences(row, raw_text)
+    except source_contract.RetestError:
+        return None, "annotation_contract_inconsistent"
+
+    framing = source_contract_config["source_text_framing"]
+    terminal_nul = source_contract.TERMINAL_NUL
+    if (
+        raw_text.count(terminal_nul) != framing["required_count_per_row"]
+        or not raw_text.endswith(terminal_nul)
+    ):
+        return None, "source_text_framing_inconsistent"
+
+    stripped = raw_text[:-1]
+    if source_contract.CONTROL_RE.search(stripped):
+        return None, "control_character"
+
+    normalized = source_contract.normalize(stripped)
+    need(terminal_nul not in normalized, f"row {row_index}: terminal sentinel leaked")
+    return {
+        "source_id": raw_id,
+        "raw_text": raw_text,
+        "normalized_text": normalized,
+        "record_id": record_id(raw_id),
+    }, "accepted"
+
+
 def stable_id_key(value: str) -> tuple[int, Any, str]:
     if value.isascii() and value.isdigit():
         return (0, int(value), value)
@@ -233,13 +319,18 @@ def ua_stats(texts: Sequence[str]) -> dict[str, int]:
     }
 
 
-def load_source(path: Path) -> list[dict[str, str]]:
+def load_source(
+    path: Path,
+) -> tuple[list[dict[str, str]], dict[str, int], int]:
     try:
         raw = path.read_bytes()
     except OSError as exc:
         raise LangUkCourtRetestError("cannot read pinned parquet") from exc
     need(len(raw) == SOURCE_BYTES, "source byte count drift")
     need(sha256(raw) == SOURCE_SHA256, "source SHA-256 drift")
+
+    source_contract, source_contract_config = _load_source_contract()
+    expected_fields = tuple(source_contract.EXPECTED_FIELDS)
 
     try:
         import pyarrow
@@ -250,45 +341,56 @@ def load_source(path: Path) -> list[dict[str, str]]:
 
     try:
         parquet = pq.ParquetFile(path)
-        names = set(parquet.schema_arrow.names)
-        need({"id", "text"}.issubset(names), "parquet id/text schema missing")
-        table = parquet.read(columns=["id", "text"])
-        ids = table.column("id").to_pylist()
-        texts = table.column("text").to_pylist()
+        names = tuple(parquet.schema_arrow.names)
+        need(names == expected_fields, "parquet annotation schema drift")
+        table = parquet.read(columns=list(expected_fields))
+        source_objects = table.to_pylist()
     except LangUkCourtRetestError:
         raise
     except Exception as exc:
-        raise LangUkCourtRetestError("cannot materialize exact parquet id/text columns") from exc
+        raise LangUkCourtRetestError(
+            "cannot materialize exact annotated parquet"
+        ) from exc
 
-    need(len(ids) == len(texts) and bool(ids), "parquet row count invalid")
+    need(bool(source_objects), "parquet row count invalid")
     rows: list[dict[str, str]] = []
+    dispositions: dict[str, int] = {}
     seen: set[str] = set()
-    for index, (raw_id, raw_text) in enumerate(zip(ids, texts, strict=True)):
-        need(raw_id is not None, f"row {index}: id missing")
-        source_id = str(raw_id)
-        need(bool(source_id), f"row {index}: id empty")
-        need(source_id not in seen, f"duplicate source id: {source_id}")
-        need(isinstance(raw_text, str) and bool(raw_text), f"row {index}: text missing")
-        try:
-            raw_text.encode("utf-8", errors="strict")
-        except UnicodeEncodeError as exc:
-            raise LangUkCourtRetestError(f"row {index}: text is not strict UTF-8") from exc
-        seen.add(source_id)
-        rows.append(
-            {
-                "source_id": source_id,
-                "raw_text": raw_text,
-                "normalized_text": normalize_text(raw_text),
-                "record_id": record_id(source_id),
-            }
+    for index, source_object in enumerate(source_objects):
+        need(isinstance(source_object, Mapping), f"row {index}: parquet row invalid")
+        raw_id = source_object.get("id")
+        need(
+            isinstance(raw_id, str) and raw_id.isdigit(),
+            f"row {index}: source id must be decimal string",
         )
-    return sorted(rows, key=lambda row: stable_id_key(row["source_id"]))
+        need(raw_id not in seen, f"duplicate source id: {raw_id}")
+        seen.add(raw_id)
+
+        prepared, disposition = _prepare_source_row(
+            source_object,
+            source_contract=source_contract,
+            source_contract_config=source_contract_config,
+            row_index=index,
+        )
+        dispositions[disposition] = dispositions.get(disposition, 0) + 1
+        if prepared is not None:
+            rows.append(prepared)
+
+    need(sum(dispositions.values()) == len(source_objects), "source disposition mismatch")
+    need(bool(rows), "source framing/annotation contract retained zero rows")
+    return (
+        sorted(rows, key=lambda row: stable_id_key(row["source_id"])),
+        dict(sorted(dispositions.items())),
+        len(source_objects),
+    )
 
 
 def run(args: argparse.Namespace) -> None:
     dependency_blobs = bind_execution_head(args.expected_execution_head)
     verify_parent_audit(args.parent_audit)
-    source_rows = load_source(args.source_parquet)
+    source_rows, source_contract_counts, source_total_records = load_source(
+        args.source_parquet
+    )
 
     privacy_inputs = [
         {"id": row["record_id"], "text": row["normalized_text"], "mode": "uk"}
@@ -392,7 +494,12 @@ def run(args: argparse.Namespace) -> None:
         },
         "dependency_git_blobs": dependency_blobs,
         "materialization": {
-            "source_records": len(source_rows),
+            "source_records": source_total_records,
+            "source_contract_pass_records": len(source_rows),
+            "source_contract_disposition_counts": source_contract_counts,
+            "source_contract_runner_blob": SOURCE_CONTRACT_RUNNER_BLOB,
+            "source_contract_config_blob": SOURCE_CONTRACT_CONFIG_BLOB,
+            "source_contract_terminal_nul_stripped_after_annotation_validation": True,
             "privacy_input_rows_sha256": privacy_input_root,
             "privacy_execution_identity_sha256": privacy["execution_identity_sha256"],
             "privacy_action_counts": actions,
@@ -444,7 +551,8 @@ def run(args: argparse.Namespace) -> None:
         json.dumps(
             {
                 "status": "RETEST_EXECUTED_ZERO_CREDIT",
-                "source_records": len(source_rows),
+                "source_records": source_total_records,
+                "source_contract_pass_records": len(source_rows),
                 "privacy_actions": actions,
                 "selected_records": len(selected),
                 "report_identity_sha256": report["report_identity_sha256"],
