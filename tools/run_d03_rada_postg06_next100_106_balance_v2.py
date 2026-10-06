@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Bind post-G06 current-Rada physical capacity to canonical NEXT100-106 balance.
 
 Execution-only bridge. It authenticates the already-terminal current-Rada global
