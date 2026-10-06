@@ -526,12 +526,34 @@ def _write_two_clean_fixture(output: Path, *, zero_credit_override: dict | None 
             target.canonical(composition_core)
         ),
     }
-    result_core = {"schema_version": "synthetic-result", "x": 3}
+    next100 = {
+        "schema_version": "synthetic-next100",
+        "dedup_authority": {"worker_id": "dedup", "terminal_verdict": "PASS"},
+        "totals": {"total_unique_bytes": 2},
+        "x": 2,
+    }
+    next100_identity = target.sha256(target.canonical(next100))
+    policy_identity = "9" * 64
+    result_core = {
+        "schema_version": "synthetic-result",
+        "policy_identity_sha256": policy_identity,
+        "dedup_authority": next100["dedup_authority"],
+        "input_totals": next100["totals"],
+        "status": "synthetic-status",
+        "x": 3,
+    }
     balance_result = {
         **result_core,
         "result_identity_sha256": target.sha256(target.canonical(result_core)),
     }
-    binding_core = {"schema": "synthetic-binding", "x": 4}
+    binding_core = {
+        "schema": "synthetic-binding",
+        "family_vector_identity_sha256": "8" * 64,
+        "next100_input_identity_sha256": next100_identity,
+        "balance_policy_identity_sha256": policy_identity,
+        "balance_status": balance_result["status"],
+        "x": 4,
+    }
     balance_binding = {
         **binding_core,
         "binding_identity_sha256": target.sha256(
@@ -544,6 +566,12 @@ def _write_two_clean_fixture(output: Path, *, zero_credit_override: dict | None 
         "composition_dedup_identity_sha256": composition[
             "evidence_identity_sha256"
         ],
+        "next100_input_identity_sha256": next100_identity,
+        "family_vector_identity_sha256": balance_binding[
+            "family_vector_identity_sha256"
+        ],
+        "balance_policy_identity_sha256": policy_identity,
+        "balance_status": balance_result["status"],
         "balance_result_identity_sha256": balance_result[
             "result_identity_sha256"
         ],
@@ -560,15 +588,13 @@ def _write_two_clean_fixture(output: Path, *, zero_credit_override: dict | None 
     }
     payloads = {
         "composition-dedup-proof": composition,
-        "next100-input": {"x": 2},
+        "next100-input": next100,
         "balance-result": balance_result,
         "balance-binding": balance_binding,
         "execution-receipt": receipt,
     }
     for name, value in payloads.items():
         (output / f"{name}.json").write_bytes(target.canonical_line(value))
-
-
 def test_compare_outputs_rejects_same_directory(tmp_path: Path) -> None:
     output = tmp_path / "same"
     _write_two_clean_fixture(output)
@@ -658,4 +684,47 @@ def test_compare_outputs_rejects_coherently_tampered_result_self_hash(
         match="balance result self-hash mismatch",
     ):
         target.compare_outputs(a, b, tmp_path / "proof-result.json")
+
+def test_compare_outputs_rejects_coherently_tampered_next100_input(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-next100"
+    b = tmp_path / "b-next100"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "next100-input.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["x"] = 200
+        path.write_bytes(target.canonical_line(value))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="balance binding next100-input identity mismatch",
+    ):
+        target.compare_outputs(a, b, tmp_path / "proof-next100.json")
+
+
+def test_compare_outputs_rejects_cross_binding_policy_drift(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-policy"
+    b = tmp_path / "b-policy"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "execution-receipt.json"
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt["balance_policy_identity_sha256"] = "7" * 64
+        receipt["receipt_identity_sha256"] = target.self_hash(
+            receipt,
+            "receipt_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(receipt))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="execution receipt balance-policy identity mismatch",
+    ):
+        target.compare_outputs(a, b, tmp_path / "proof-policy.json")
 
