@@ -1202,7 +1202,7 @@ def test_compare_outputs_rejects_nonreproducible_canonical_replay(
 
 
 def test_matrix_adapter_stack_root_is_pinned() -> None:
-    assert target.STACK_BASE_HEAD == "fa7c0a0d879873fdb05020b397c1bae217ec630a"
+    assert target.STACK_BASE_HEAD == "38d06a6090a233d321c871d6b8d806241ea99f57"
 
 
 def test_post_g06_two_clean_proof_rejects_nonindependent_reseal() -> None:
