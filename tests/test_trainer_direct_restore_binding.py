@@ -261,7 +261,7 @@ class _ForbiddenRestoreControlValue:
         type(self).eq_calls += 1
         return True
 
-    def __deepcopy__(self, memo: dict[int, object]) -> "_ForbiddenRestoreControlValue":
+    def __deepcopy__(self, memo: dict[int, object]) -> _ForbiddenRestoreControlValue:
         del memo
         type(self).deepcopy_calls += 1
         return self
@@ -300,7 +300,7 @@ class _ForbiddenRestoreContractValue:
     def __deepcopy__(
         self,
         memo: dict[int, object],
-    ) -> "_ForbiddenRestoreContractValue":
+    ) -> _ForbiddenRestoreContractValue:
         del memo
         type(self).deepcopy_calls += 1
         return self
@@ -1567,9 +1567,9 @@ def test_direct_restore_poison_target_when_checkpoint_preflight_consumes_rng() -
 
 def test_direct_restore_preflight_seals_python_and_numpy_rng() -> None:
     import random
+    from dataclasses import replace
 
     import numpy as np
-    from dataclasses import replace
 
     config = TrainerConfig(
         learning_rate=1e-3,
