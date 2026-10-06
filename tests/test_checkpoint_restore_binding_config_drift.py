@@ -1537,7 +1537,7 @@ def test_native_checkpoint_save_rejects_temporary_safety_authority_shadow(
     checkpoint = tmp_path / "temporary-safety-bypass-must-not-exist"
 
     with pytest.raises(
-        core.CheckpointCompatibilityError,
+        TrainingStateInvalidError,
         match=(
             "native D02 safety authority must remain canonical: "
             "_require_finite_committed_update"
