@@ -16,7 +16,7 @@ from typing import Any
 
 SCHEMA = "12-6.d03-rada-current-training-rights.v1"
 EVIDENCE_SCHEMA = "12-6.d03-rada-current-training-rights-evidence.v1"
-AUTHORITY_ID = "582cf513e61b5427065150a072e7f3131aefec17b349a31e1bf1b7ce3d779ef6"
+AUTHORITY_ID = "12545d142b5288f34aba0fa7c743891da03e4d640d60775d1da024c20f839913"
 REPLAY_BLOB = "9953940072fdd973cd6c83eb5899314d3484da30"
 REPLAY_ID = "543f9cdd5a9aacaf2cc00b5d4057ad8b142aa685870545cff8bd518f8085055e"
 RIGHTS_BLOB = "4a6cb0bd6b009ef36c9d2fb712967a4ae1cbfe0b"

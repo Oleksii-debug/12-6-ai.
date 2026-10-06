@@ -38,7 +38,7 @@
     "scope": "ARTIFACT_RETENTION_AND_REPRODUCIBILITY_ONLY"
   },
   "official_portal_recheck": {
-    "url": "https://data.rada.gov.ua/open/data/en/laws-texts/page?lang=en",
+    "url": "https://data.rada.gov.ua/open/data/en/laws-texts/sort2",
     "allowed_host": "data.rada.gov.ua",
     "max_response_bytes": 8388608,
     "required_semantics": {
@@ -90,5 +90,5 @@
     "paid_compute_used": false,
     "scale_promotion_authorized": false
   },
-  "authority_identity_sha256": "582cf513e61b5427065150a072e7f3131aefec17b349a31e1bf1b7ce3d779ef6"
+  "authority_identity_sha256": "12545d142b5288f34aba0fa7c743891da03e4d640d60775d1da024c20f839913"
 }
