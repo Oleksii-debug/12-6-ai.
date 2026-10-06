@@ -1594,3 +1594,142 @@ def test_private_root_identity_cleanup_double_fault_preserves_primary(
                 real_rmdir(path_item)
 
 
+
+
+def test_hf_snapshot_rejects_root_replacement_after_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    root = tmp_path / "hf"
+    moved = tmp_path / "hf-original"
+    save_checkpoint(checkpoint, model=Model(21.0), identity=identity("g"))
+    export_hf_directory(
+        checkpoint,
+        root,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    real_iterdir = Path.iterdir
+
+    def replace_after_inventory(path: Path):
+        entries = list(real_iterdir(path))
+        if path == root:
+            path.rename(moved)
+            path.mkdir()
+        return iter(entries)
+
+    monkeypatch.setattr(Path, "iterdir", replace_after_inventory)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export directory identity changed while reading",
+    ):
+        hf_export._read_export_snapshot(root)
+
+
+def test_hf_snapshot_rejects_root_replacement_during_artifact_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    root = tmp_path / "hf"
+    moved = tmp_path / "hf-original"
+    save_checkpoint(checkpoint, model=Model(22.0), identity=identity("h"))
+    export_hf_directory(
+        checkpoint,
+        root,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    real_read = hf_export._read_regular_bytes
+    replaced = False
+
+    def replace_after_first_read(path: Path, name: str):
+        nonlocal replaced
+        data = real_read(path, name)
+        if path == root and not replaced:
+            path.rename(moved)
+            path.mkdir()
+            replaced = True
+        return data
+
+    monkeypatch.setattr(hf_export, "_read_regular_bytes", replace_after_first_read)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="HF-style export directory identity changed while reading",
+    ):
+        hf_export._read_export_snapshot(root)
+
+    assert replaced
+
+
+def test_hf_snapshot_recheck_oserror_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    root = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(23.0), identity=identity("i"))
+    export_hf_directory(
+        checkpoint,
+        root,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    failure = OSError("simulated HF root identity recheck failure")
+    real_lstat = Path.lstat
+    root_checks = 0
+
+    def fail_root_recheck(path: Path):
+        nonlocal root_checks
+        if path == root:
+            root_checks += 1
+            if root_checks == 2:
+                raise failure
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_root_recheck)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="cannot inspect HF-style export directory while reading",
+    ) as caught:
+        hf_export._read_export_snapshot(root)
+
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    "interrupt_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_hf_snapshot_recheck_interrupt_retains_exact_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    checkpoint = tmp_path / "checkpoint"
+    root = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(24.0), identity=identity("j"))
+    export_hf_directory(
+        checkpoint,
+        root,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    primary = interrupt_type("simulated HF root identity recheck interrupt")
+    real_lstat = Path.lstat
+    root_checks = 0
+
+    def interrupt_root_recheck(path: Path):
+        nonlocal root_checks
+        if path == root:
+            root_checks += 1
+            if root_checks == 2:
+                raise primary
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", interrupt_root_recheck)
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._read_export_snapshot(root)
+
+    assert caught.value is primary
