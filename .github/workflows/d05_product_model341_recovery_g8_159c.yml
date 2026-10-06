@@ -102,19 +102,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          .checkpoint346-v9-runtime/bin/python             tools/run_checkpoint346_model341_current_d05_recovery_v8.py             --runtime-root d05-runtime             --model341-root model341-carrier             --output checkpoint346-v10-result.json
+          .checkpoint346-v10-runtime/bin/python             tools/run_checkpoint346_model341_current_d05_recovery_v8.py             --runtime-root d05-runtime             --model341-root model341-carrier             --output checkpoint346-v10-result.json
 
       - name: Enforce exact-head mechanics-only result contract
         shell: bash
         run: |
           set -euo pipefail
-          .checkpoint346-v9-runtime/bin/python - <<'PY'
+          .checkpoint346-v10-runtime/bin/python - <<'PY'
           import importlib.util
           import json
           import os
           from pathlib import Path
 
-          path = Path("checkpoint346-v9-result.json")
+          path = Path("checkpoint346-v10-result.json")
           report = json.loads(path.read_text(encoding="utf-8"))
           tool_path = Path("tools/run_checkpoint346_model341_current_d05_recovery_v8.py")
           spec = importlib.util.spec_from_file_location("checkpoint346_v10", tool_path)
@@ -157,8 +157,8 @@ jobs:
         with:
           name: d05-current-head-model341-${{ github.event.pull_request.head.sha }}
           path: |
-            checkpoint346-v9-result.json
-            checkpoint346-v9-environment.json
+            checkpoint346-v10-result.json
+            checkpoint346-v10-environment.json
           retention-days: 30
           compression-level: 9
           if-no-files-found: error
