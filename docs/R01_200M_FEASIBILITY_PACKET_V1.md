@@ -42,8 +42,9 @@ A verifier must receive expected identities from an independent retained source.
 Do **not** derive the expected identities from the packet being verified and then
 treat that as independent validation.
 
-`expected_external_identities(packet)` is a transport helper for a trusted
-builder/operator to persist those identities separately at build time. The
+`retained_identities_for_built_packet(packet)` is a transport helper only for a
+trusted builder/operator to persist those identities separately immediately after
+building the packet. It must never be called on a packet supplied for verification. The
 validator requires the retained packet hash, roadmap-snapshot hash, source Git
 SHA, measurement hash, and every requirement-evidence hash. A coherently edited
 and resealed packet therefore fails against stale retained expectations.
