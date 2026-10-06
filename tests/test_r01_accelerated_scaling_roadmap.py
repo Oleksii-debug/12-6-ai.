@@ -327,6 +327,18 @@ def test_learned_terminal_rejects_unrelated_audit_authority() -> None:
         assert not assess_roadmap(data).contract_valid
 
 
+def test_200m_feasibility_contract_requires_measured_loss_validation_behavior() -> None:
+    data = _load()
+    requirement = "measured_20m_loss_vs_exposure_and_validation_behavior"
+    assert requirement in r01.REQUIRED_200M_FEASIBILITY
+    assert requirement in data["feasibility_200m_requirements"]
+
+    data["feasibility_200m_requirements"].remove(requirement)
+    errors = validate_roadmap(data)
+    assert "feasibility_200m_requirements_incomplete" in errors
+    assert not assess_roadmap(data).contract_valid
+
+
 def test_go_200m_feasibility_only_opens_explicit_authorization_request() -> None:
     data = _load()
     _pass_learned(data, "learned_20m")

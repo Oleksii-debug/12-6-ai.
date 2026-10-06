@@ -17,6 +17,12 @@ The active route is:
 
 This is explicit supersession for **post-20M routing only**. Corpus identity, decontamination, split/packing, unique loss accounting, tokenizer identity, checkpoint recovery, evaluation isolation, measured pilots, exact lineage and independent audit remain mandatory.
 
+The ~200M feasibility decision must explicitly carry measured learned-20M
+loss-vs-exposure and validation behavior as its own evidence dimension, alongside
+throughput/resource extrapolation. Terminal learned-20M evidence is a prerequisite,
+not permission to omit the observed learning/validation behavior from the scale
+decision. This evidence requirement does not authorize training or compute.
+
 ## Executable decision
 
 Run from an installed development environment:
