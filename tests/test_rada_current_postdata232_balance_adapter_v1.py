@@ -178,6 +178,73 @@ def _write_inputs(
     return evidence_path, inventory_path, receipt, inventory, jsonl_sha
 
 
+def _two_clean_proof(
+    receipt: dict[str, object],
+    *,
+    evidence_path: Path,
+    inventory_path: Path,
+) -> dict[str, object]:
+    parent = receipt["parent"]
+    g05 = receipt["g05"]
+    g06 = receipt["g06"]
+    survivor = receipt["survivor_inventory"]
+    artifacts = receipt["durable_artifacts"]
+    core: dict[str, object] = {
+        "schema_version": target.G05_G06_TWO_CLEAN_SCHEMA,
+        "execution_head_sha": receipt["execution_head_sha"],
+        "parent_execution_head_sha": target.PARENT_DATA232_HEAD,
+        "parent_artifact_id": parent["artifact_id"],
+        "parent_artifact_zip_sha256": parent["artifact_zip_sha256"],
+        "fresh_execution_count": 2,
+        "independent_runner_jobs": True,
+        "byte_identical_outputs": True,
+        "output_file_sha256": {
+            target.G05_G06_BUNDLE_FILES["evidence"]: _sha(
+                evidence_path.read_bytes()
+            ),
+            target.G05_G06_BUNDLE_FILES["quality"]: artifacts[
+                "g05_authority_file_sha256"
+            ],
+            target.G05_G06_BUNDLE_FILES["privacy"]: artifacts[
+                "g06_authority_file_sha256"
+            ],
+            target.G05_G06_BUNDLE_FILES["survivor_inventory"]: _sha(
+                inventory_path.read_bytes()
+            ),
+        },
+        "evidence_identity_sha256": receipt["evidence_identity_sha256"],
+        "g05_execution_identity_sha256": g05["execution_identity_sha256"],
+        "g06_execution_identity_sha256": g06["execution_identity_sha256"],
+        "record_payload_jsonl_sha256": survivor[
+            "record_payload_jsonl_sha256"
+        ],
+        "record_inventory_digest_sha256": survivor[
+            "record_inventory_digest_sha256"
+        ],
+        "payload_inventory_digest_sha256": survivor[
+            "payload_inventory_digest_sha256"
+        ],
+        "payload_set_identity_sha256": g06["payload_set_identity_sha256"],
+        "record_count": survivor["record_count"],
+        "total_payload_bytes": survivor["total_payload_bytes"],
+        "canonical_capacity_credited": 0,
+        "training_authorized_bytes": 0,
+        "authorized_unique_loss_positions": 0,
+        "authorized_optimized_target_exposure": 0,
+        "tokenizer_fit_authorized": False,
+        "training_executed": False,
+        "learned_weights_created": False,
+        "final_test_outcomes_read": False,
+        "paid_compute_used": False,
+        "scale_promotion_authorized": False,
+        "next_gate": target.G05_G06_TWO_CLEAN_NEXT_GATE,
+    }
+    return {
+        **core,
+        "proof_identity_sha256": _sha(target.canonical(core)),
+    }
+
+
 def _args(
     tmp_path: Path,
     evidence_path: Path,
@@ -186,9 +253,23 @@ def _args(
     inventory: dict[str, object],
     jsonl_sha: str,
 ) -> argparse.Namespace:
+    proof = _two_clean_proof(
+        receipt,
+        evidence_path=evidence_path,
+        inventory_path=inventory_path,
+    )
+    proof_path = tmp_path / "g05-g06-two-clean-proof.json"
+    proof_path.write_bytes(target.canonical_line(proof))
     return argparse.Namespace(
         evidence=evidence_path,
         inventory=inventory_path,
+        g05_g06_two_clean_proof=proof_path,
+        expected_g05_g06_two_clean_proof_file_sha256=_sha(
+            proof_path.read_bytes()
+        ),
+        expected_g05_g06_two_clean_proof_identity_sha256=proof[
+            "proof_identity_sha256"
+        ],
         expected_parent_execution_head=target.STACK_BASE_HEAD,
         expected_evidence_file_sha256=_sha(evidence_path.read_bytes()),
         expected_evidence_identity_sha256=receipt[
@@ -681,3 +762,135 @@ def test_inventory_cross_binds_parent_payload_set_identity() -> None:
 def test_matrix_successor_exact_roots_are_pinned() -> None:
     assert target.STACK_BASE_HEAD == "c28145343956bcd93b8bba29066f4f2ac22d842a"
     assert target.PARENT_DATA232_HEAD == "a7982bdfd1650b062808024856e13b1d8916a634"
+
+
+def _reseal_two_clean_proof(
+    args: argparse.Namespace,
+    mutate,
+) -> dict[str, object]:
+    proof = json.loads(
+        args.g05_g06_two_clean_proof.read_text(encoding="utf-8")
+    )
+    mutate(proof)
+    core = dict(proof)
+    core.pop("proof_identity_sha256", None)
+    proof["proof_identity_sha256"] = _sha(target.canonical(core))
+    args.g05_g06_two_clean_proof.write_bytes(target.canonical_line(proof))
+    args.expected_g05_g06_two_clean_proof_file_sha256 = _sha(
+        args.g05_g06_two_clean_proof.read_bytes()
+    )
+    args.expected_g05_g06_two_clean_proof_identity_sha256 = proof[
+        "proof_identity_sha256"
+    ]
+    return proof
+
+
+def test_two_clean_proof_rejects_nonindependent_runners_after_coherent_reseal(
+    tmp_path: Path,
+) -> None:
+    paths = _write_inputs(tmp_path)
+    args = _args(tmp_path, *paths)
+    _reseal_two_clean_proof(
+        args,
+        lambda proof: proof.__setitem__("independent_runner_jobs", False),
+    )
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="independent-runner proof missing",
+    ):
+        target.execute(args)
+
+
+def test_two_clean_proof_rejects_wrong_fresh_execution_count(
+    tmp_path: Path,
+) -> None:
+    paths = _write_inputs(tmp_path)
+    args = _args(tmp_path, *paths)
+    _reseal_two_clean_proof(
+        args,
+        lambda proof: proof.__setitem__("fresh_execution_count", 1),
+    )
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="fresh execution count drift",
+    ):
+        target.execute(args)
+
+
+def test_two_clean_proof_rejects_output_root_drift_after_coherent_reseal(
+    tmp_path: Path,
+) -> None:
+    paths = _write_inputs(tmp_path)
+    args = _args(tmp_path, *paths)
+
+    def mutate(proof: dict[str, object]) -> None:
+        output_roots = proof["output_file_sha256"]
+        output_roots[target.G05_G06_BUNDLE_FILES["evidence"]] = "0" * 64
+
+    _reseal_two_clean_proof(args, mutate)
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="output-file roots drift",
+    ):
+        target.execute(args)
+
+
+def test_two_clean_proof_rejects_g05_identity_drift_after_coherent_reseal(
+    tmp_path: Path,
+) -> None:
+    paths = _write_inputs(tmp_path)
+    args = _args(tmp_path, *paths)
+    _reseal_two_clean_proof(
+        args,
+        lambda proof: proof.__setitem__(
+            "g05_execution_identity_sha256",
+            "0" * 64,
+        ),
+    )
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="binding drift: g05_execution_identity_sha256",
+    ):
+        target.execute(args)
+
+
+def test_two_clean_proof_rejects_truth_boundary_widening(
+    tmp_path: Path,
+) -> None:
+    paths = _write_inputs(tmp_path)
+    args = _args(tmp_path, *paths)
+    _reseal_two_clean_proof(
+        args,
+        lambda proof: proof.__setitem__("training_executed", True),
+    )
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="truth boundary widened: training_executed",
+    ):
+        target.execute(args)
+
+
+def test_two_clean_proof_identity_requires_independent_expectation(
+    tmp_path: Path,
+) -> None:
+    paths = _write_inputs(tmp_path)
+    args = _args(tmp_path, *paths)
+    args.expected_g05_g06_two_clean_proof_identity_sha256 = "0" * 64
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="identity is not independently expected",
+    ):
+        target.execute(args)
+
+
+def test_two_clean_proof_file_hash_requires_independent_expectation(
+    tmp_path: Path,
+) -> None:
+    paths = _write_inputs(tmp_path)
+    args = _args(tmp_path, *paths)
+    args.expected_g05_g06_two_clean_proof_file_sha256 = "0" * 64
+    with pytest.raises(
+        target.CurrentRadaBalanceAdapterError,
+        match="proof file SHA-256 drift",
+    ):
+        target.execute(args)
