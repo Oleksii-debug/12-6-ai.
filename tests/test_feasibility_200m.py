@@ -138,6 +138,14 @@ def evidence(candidate_value: dict | None = None) -> dict:
     return refs
 
 
+class _CandidateMutatingOnParameterRead(dict):
+    def get(self, key: object, default: object = None) -> object:
+        value = super().get(key, default)
+        if key == "parameter_count":
+            super().__setitem__("parameter_count", -1)
+        return value
+
+
 def build() -> dict:
     return build_200m_feasibility_packet(
         roadmap_snapshot=roadmap(),
@@ -178,6 +186,59 @@ def test_build_is_deterministic_and_external_validation_passes() -> None:
     assert first["roadmap_snapshot_sha256"] == canonical_sha256(roadmap())
     assert first["requirements_covered"] == sorted(r01.REQUIRED_200M_FEASIBILITY)
     assert validate(first) == []
+
+
+def test_builder_rechecks_stateful_candidate_after_detaching() -> None:
+    invalid_candidate = candidate()
+    invalid_candidate["parameter_count"] = -1
+    changing_candidate = _CandidateMutatingOnParameterRead(candidate())
+
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="candidate_parameter_count_invalid",
+    ):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=changing_candidate,
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=evidence(invalid_candidate),
+            decision="GO",
+        )
+    assert changing_candidate["parameter_count"] == -1
+
+
+def test_validator_rechecks_stateful_candidate_after_detaching() -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    invalid_candidate = candidate()
+    invalid_candidate["parameter_count"] = -1
+    invalid_candidate_sha = canonical_sha256(invalid_candidate)
+
+    packet["candidate"] = _CandidateMutatingOnParameterRead(candidate())
+    packet["requirement_evidence"][
+        "candidate_architecture_and_parameter_count"
+    ]["evidence_sha256"] = invalid_candidate_sha
+
+    invalid_materialized = deepcopy(packet)
+    invalid_materialized["candidate"] = invalid_candidate
+    invalid_materialized["packet_sha256"] = compute_packet_sha256(
+        invalid_materialized
+    )
+    packet["packet_sha256"] = invalid_materialized["packet_sha256"]
+    expected["packet_sha256"] = invalid_materialized["packet_sha256"]
+    expected["requirement_evidence_sha256"][
+        "candidate_architecture_and_parameter_count"
+    ] = invalid_candidate_sha
+
+    errors = validate(packet, expected=expected)
+    assert "candidate_parameter_count_invalid" in errors
+
+
+def test_canonical_hash_rejects_lone_surrogate_programmatic_text() -> None:
+    with pytest.raises(FeasibilityPacketError, match="value_not_canonical_json"):
+        canonical_sha256({"value": "\ud800"})
 
 
 def test_learned_binding_consumes_canonical_crossbound_authorities() -> None:
