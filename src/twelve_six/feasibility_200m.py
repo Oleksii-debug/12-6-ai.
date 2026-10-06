@@ -111,7 +111,7 @@ def _canonical_json_bytes(value: Any) -> bytes:
             allow_nan=False,
         )
         return rendered.encode("utf-8")
-    except (RecursionError, TypeError, UnicodeError, ValueError) as exc:
+    except (RecursionError, TypeError, ValueError) as exc:
         raise FeasibilityPacketError("value_not_canonical_json") from exc
 
 
@@ -126,7 +126,7 @@ def _detached_json_value(value: Any, *, field: str) -> Any:
 
     try:
         return json.loads(_canonical_json_bytes(value))
-    except (FeasibilityPacketError, ValueError) as exc:
+    except ValueError as exc:
         raise FeasibilityPacketError(f"{field}_not_canonical_json") from exc
 
 
