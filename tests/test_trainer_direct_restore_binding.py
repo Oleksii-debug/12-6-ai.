@@ -989,3 +989,51 @@ def test_direct_restore_rejects_late_marker_storage_descriptor_before_mutation()
         trainer_adapter._assert_native_d02_checkpoint_safety_lineage(target)
 
     assert torch.equal(target.model.weight.detach(), before)
+
+
+def test_direct_restore_rejects_config_subclass_before_attribute_dispatch() -> None:
+    observed: list[str] = []
+
+    class HostileConfig(TrainerConfig):
+        def __getattribute__(self, name: str):
+            if name in {
+                "learning_rate",
+                "max_steps",
+                "gradient_accumulation_steps",
+                "deterministic_algorithms",
+                "deterministic_warn_only",
+            }:
+                observed.append(name)
+            return super().__getattribute__(name)
+
+    canonical = _config()
+    hostile = HostileConfig(
+        learning_rate=canonical.learning_rate,
+        weight_decay=canonical.weight_decay,
+        betas=canonical.betas,
+        eps=canonical.eps,
+        max_steps=canonical.max_steps,
+        warmup_steps=canonical.warmup_steps,
+        scheduler=canonical.scheduler,
+        gradient_accumulation_steps=canonical.gradient_accumulation_steps,
+        gradient_clip_norm=canonical.gradient_clip_norm,
+        precision=canonical.precision,
+        seed=canonical.seed,
+        deterministic_algorithms=canonical.deterministic_algorithms,
+        deterministic_warn_only=canonical.deterministic_warn_only,
+    )
+    state = _clean_state(canonical)
+    target = Trainer(nn.Linear(3, 2), hostile, scheduler=None)
+    observed.clear()
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="trainer restore config must use canonical TrainerConfig",
+    ):
+        target.load_state_dict(state)
+
+    assert observed == []
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert (target.micro_step, target.optimizer_step, target.tokens_seen) == (0, 0, 0)
+    assert not target.optimizer.state
