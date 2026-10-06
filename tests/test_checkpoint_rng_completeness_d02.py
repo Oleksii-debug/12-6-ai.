@@ -934,6 +934,67 @@ def test_checkpoint_save_failure_poisoned_when_model_export_leaks_execution_mode
     assert trainer._update_incomplete is True
 
 
+@pytest.mark.parametrize(
+    "broken_notes", [False, True], ids=["hostile-hook", "bad-storage"]
+)
+def test_checkpoint_save_failure_note_attachment_cannot_mask_primary_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    broken_notes: bool,
+) -> None:
+    checkpoint = tmp_path / f"save-hostile-failure-note-{broken_notes}"
+    config = TrainerConfig(max_steps=10, seed=703)
+    model = torch.nn.Linear(3, 3)
+    trainer = Trainer(model, config)
+    original_state_dict = model.state_dict
+    hostile_hook_calls: list[str] = []
+    entry_grad_enabled = torch.is_grad_enabled()
+
+    class HostileNoteError(RuntimeError):
+        def add_note(self, note: str) -> None:
+            hostile_hook_calls.append(note)
+            raise RuntimeError("hostile add_note hook executed")
+
+    failure = HostileNoteError("primary save failure must survive")
+    if broken_notes:
+        failure.__notes__ = "attacker-controlled non-list"
+
+    def drifting_failing_state_dict(*args: Any, **kwargs: Any) -> Any:
+        original_state_dict(*args, **kwargs)
+        torch.set_grad_enabled(not torch.is_grad_enabled())
+        raise failure
+
+    monkeypatch.setattr(model, "state_dict", drifting_failing_state_dict)
+
+    try:
+        with pytest.raises(
+            HostileNoteError,
+            match="primary save failure must survive",
+        ) as caught:
+            trainer_adapter.save_trainer_checkpoint(
+                checkpoint,
+                model=model,
+                trainer=trainer,
+                identity=checkpoint_identity,
+            )
+        assert caught.value is failure
+        assert hostile_hook_calls == []
+        if not broken_notes:
+            notes = getattr(caught.value, "__notes__", ())
+            assert any(
+                "checkpoint save also leaked caller-owned torch execution mode"
+                in note
+                for note in notes
+            )
+    finally:
+        torch.set_grad_enabled(entry_grad_enabled)
+
+    assert not checkpoint.exists()
+    assert trainer._failure_reason == "checkpoint_export_state_drift"
+    assert trainer._update_incomplete is True
+
+
 def test_checkpoint_save_preserves_caller_no_grad_mode(
     tmp_path: Path,
     checkpoint_identity: CheckpointIdentity,
