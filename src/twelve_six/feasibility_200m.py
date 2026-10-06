@@ -110,7 +110,7 @@ def _canonical_json_bytes(value: Any) -> bytes:
             ensure_ascii=False,
             allow_nan=False,
         )
-    except (TypeError, ValueError) as exc:
+    except (RecursionError, TypeError, ValueError) as exc:
         raise FeasibilityPacketError("value_not_canonical_json") from exc
     return rendered.encode("utf-8")
 
