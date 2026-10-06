@@ -1021,6 +1021,13 @@ def compare_outputs(
     if enforce_checkout_provenance:
         verify_dependency_blobs()
         verify_source_head(str(receipt["execution_head_sha"]))
+        gate, _bridge, policy = load_canonical_authorities()
+        gate.validate_vector(next100_input)
+        replayed_result = gate.evaluate(policy, next100_input)
+        require(
+            canonical(replayed_result) == canonical(balance_result),
+            "balance result is not a deterministic replay of canonical gate",
+        )
 
     core: dict[str, Any] = {
         "schema": REPEAT_SCHEMA,
