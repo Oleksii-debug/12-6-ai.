@@ -369,37 +369,136 @@ jobs:
           test "$(sha256sum /tmp/current-rada-a.jsonl | cut -d' ' -f1)" = \
             "$ACCEPTED_JSONL_SHA256"
 
-      - name: Cross-bind exact expected local two-clean result
+      - name: Cross-bind replay to Product-carried authority
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib
           import json
           from pathlib import Path
 
-          def canonical(value):
-              return json.dumps(
-                  value,
-                  ensure_ascii=False,
-                  sort_keys=True,
-                  separators=(",", ":"),
-              ).encode("utf-8")
-
-          evidence = json.loads(
+          authority = json.loads(
               Path(
-                  "evidence/d03_rada_bulk/current_snapshot_local_two_clean_g8_143.json"
+                  "evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json"
               ).read_text(encoding="utf-8")
           )
           replay = json.loads(Path("/tmp/replay-a.json").read_text(encoding="utf-8"))
-          claimed = evidence.pop("evidence_identity_sha256")
-          if hashlib.sha256(canonical(evidence)).hexdigest() != claimed:
-              raise SystemExit("local evidence self-identity mismatch")
-          if claimed != "5fbcb694e005b40db37232132d84fefdaa2fe428700368d4d63365ef3886bf38":
-              raise SystemExit("unexpected local evidence identity")
-          for section in ("normalization", "quality_privacy"):
-              if replay[section] != evidence[section]:
-                  raise SystemExit(f"GitHub replay differs from local {section}")
+
+          expected_authority = (
+              "543f9cdd5a9aacaf2cc00b5d4057ad8b142aa685870545cff8bd518f8085055e"
+          )
+          if authority.get("authority_identity_sha256") != expected_authority:
+              raise SystemExit("Product replay authority identity drift")
+
+          github_reexecution = authority.get("github_reexecution")
+          if not isinstance(github_reexecution, dict):
+              raise SystemExit("Product replay execution binding missing")
+          expected_execution = {
+              "pr": 2806,
+              "head_sha": "839be52926e07d69e8d5b9875101c65da1e475b0",
+              "workflow_run_id": 37367953460,
+              "job_id": 111957620578,
+              "artifact_id": 11372000691,
+              "artifact_digest_sha256": (
+                  "c74bb46d81a816c9bacfc27773b14f6348cf8bf2d6c473e72f2cccd7053d092f"
+              ),
+              "local_measurement_identity_sha256": (
+                  "5fbcb694e005b40db37232132d84fefdaa2fe428700368d4d63365ef3886bf38"
+              ),
+              "conclusion": "success",
+              "fresh_replay_count": 2,
+              "replays_byte_identical": True,
+          }
+          for key, expected in expected_execution.items():
+              observed = github_reexecution.get(key)
+              if type(observed) is not type(expected) or observed != expected:
+                  raise SystemExit(f"Product replay execution binding drift: {key}")
+
+          gate = authority.get("consumer_gate")
+          if not isinstance(gate, dict):
+              raise SystemExit("Product consumer gate missing")
+          if gate.get("allowed_next_consumer") != "CURRENT_GLOBAL_CROSS_SOURCE_DEDUP_ONLY":
+              raise SystemExit("Product consumer gate widened")
+          for key in (
+              "current_source_eval_decontamination_executed",
+              "current_source_global_dedup_executed",
+              "current_source_rights_recheck_for_training_executed",
+              "production_qp_authority_established",
+          ):
+              if gate.get(key) is not False:
+                  raise SystemExit(f"Product consumer gate drift: {key}")
+
+          source = authority.get("source")
+          if not isinstance(source, dict):
+              raise SystemExit("Product source binding missing")
+          expected_source = {
+              "source_archive_bytes": 46774786,
+              "source_archive_sha256": (
+                  "9f937b3283dd2d9508a0a92442fc007e7e6d373a17d3d50fa428e324cb2fa290"
+              ),
+              "rights_scope": "ARTIFACT_RETENTION_AND_REPRODUCIBILITY_ONLY",
+              "downstream_rights_and_provenance_recheck_required": True,
+              "bulk_corpus_admission_granted": False,
+              "training_authority_granted": False,
+          }
+          for key, expected in expected_source.items():
+              observed = source.get(key)
+              if type(observed) is not type(expected) or observed != expected:
+                  raise SystemExit(f"Product source binding drift: {key}")
+
+          normalization = authority.get("normalization")
+          quality = authority.get("quality_privacy")
+          if not isinstance(normalization, dict) or not isinstance(quality, dict):
+              raise SystemExit("Product replay measurements missing")
+
+          normalization_map = {
+              "record_count": "record_count",
+              "nonempty_record_count": "nonempty_record_count",
+              "payload_utf8_bytes": "normalized_bytes_observed_not_credited",
+              "jsonl_file_bytes": "jsonl_file_bytes",
+              "jsonl_sha256": "jsonl_sha256",
+              "inventory_sha256": "normalized_record_inventory_sha256",
+              "source_encoding_counts": "source_encoding_counts",
+          }
+          for authority_key, replay_key in normalization_map.items():
+              expected = normalization.get(authority_key)
+              observed = replay["normalization"].get(replay_key)
+              if type(observed) is not type(expected) or observed != expected:
+                  raise SystemExit(
+                      f"GitHub replay differs from Product normalization: {authority_key}"
+                  )
+
+          quality_map = {
+              "total_chunks": "total_chunks",
+              "accepted_chunk_count": "accepted_chunk_count",
+              "rejected_chunk_count": "rejected_chunk_count",
+              "zero_chunk_parent_count": "zero_chunk_parent_count",
+              "accepted_payload_utf8_bytes": "accepted_bytes_observed_not_credited",
+              "accepted_source_encoding_counts": "accepted_source_encoding_counts",
+              "accepted_jsonl_file_bytes": "accepted_jsonl_file_bytes",
+              "accepted_jsonl_sha256": "accepted_jsonl_sha256",
+              "accepted_inventory_sha256": "accepted_inventory_sha256",
+              "exact_duplicate_payload_hashes_observed_not_removed": (
+                  "exact_duplicate_accepted_hashes_observed_not_removed"
+              ),
+          }
+          for authority_key, replay_key in quality_map.items():
+              expected = quality.get(authority_key)
+              observed = replay["quality_privacy"].get(replay_key)
+              if type(observed) is not type(expected) or observed != expected:
+                  raise SystemExit(
+                      f"GitHub replay differs from Product quality/privacy: {authority_key}"
+                  )
+
+          rejection_reasons = replay["quality_privacy"].get("rejection_reasons")
+          if not isinstance(rejection_reasons, dict):
+              raise SystemExit("replay rejection reasons missing")
+          if (
+              any(type(value) is not int or value < 0 for value in rejection_reasons.values())
+              or sum(rejection_reasons.values()) != quality["rejected_chunk_count"]
+          ):
+              raise SystemExit("replay rejection accounting drift")
+
           truth = replay["truth_boundary"]
           if truth["canonical_capacity_credited"] != 0:
               raise SystemExit("capacity widened")
@@ -409,10 +508,31 @@ jobs:
               raise SystemExit("tokenizer authority widened")
           if truth["production_qp_authority_established"] is not False:
               raise SystemExit("mechanics replay became false Product authority")
+
+          product_truth = authority.get("truth_boundary")
+          if not isinstance(product_truth, dict):
+              raise SystemExit("Product truth boundary missing")
+          for key, expected in (
+              ("authorized_optimized_target_exposure", 0),
+              ("canonical_capacity_credited", 0),
+              ("training_authorized_bytes", 0),
+              ("tokenizer_fit_authorized", False),
+              ("training_executed", False),
+              ("learned_weights_created", False),
+              ("final_test_outcomes_read", False),
+              ("paid_compute_used", False),
+          ):
+              observed = product_truth.get(key)
+              if type(observed) is not type(expected) or observed != expected:
+                  raise SystemExit(f"Product truth boundary widened: {key}")
+
           summary = {
-              "schema_version": "12-6.d03-rada-current-snapshot-github-replay.v1",
-              "status": "TWO_CLEAN_GITHUB_MECHANICS_REPLAY_ZERO_CREDIT",
-              "local_evidence_identity_sha256": claimed,
+              "schema_version": "12-6.d03-rada-current-snapshot-github-replay.v2",
+              "status": "TWO_CLEAN_GITHUB_MECHANICS_REPLAY_PRODUCT_BOUND_ZERO_CREDIT",
+              "product_authority_identity_sha256": expected_authority,
+              "prior_local_measurement_identity_sha256": github_reexecution[
+                  "local_measurement_identity_sha256"
+              ],
               "normalization": replay["normalization"],
               "quality_privacy": replay["quality_privacy"],
               "truth_boundary": truth,
@@ -422,6 +542,7 @@ jobs:
               encoding="utf-8",
           )
           print("CURRENT_RADA_TWO_CLEAN_GITHUB_REPLAY=PASS")
+          print("PRODUCT_AUTHORITY_BOUND=true")
           print("NORMALIZED_BYTES=211492947")
           print("QP_ACCEPTED_BYTES=192393157")
           print("CAPACITY_CREDIT=0")
