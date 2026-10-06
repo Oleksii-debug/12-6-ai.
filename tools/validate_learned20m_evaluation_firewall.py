@@ -6,6 +6,7 @@ import json
 import math
 import os
 import stat
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -88,11 +89,30 @@ def _load_policy(path: Path) -> dict[str, Any]:
     return value
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--repo-root", type=Path, default=ROOT)
     parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
-    args = parser.parse_args()
+
+    known_options = {
+        option
+        for action in parser._actions
+        for option in action.option_strings
+        if option.startswith("--")
+    }
+    seen: set[str] = set()
+    for raw in sys.argv[1:]:
+        option = raw.split("=", 1)[0]
+        if option not in known_options:
+            continue
+        if option in seen:
+            parser.error(f"argument {option}: may not be repeated")
+        seen.add(option)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = _parse_args()
     path = args.policy if args.policy.is_absolute() else args.repo_root / args.policy
     try:
         policy = _load_policy(path)

@@ -746,3 +746,40 @@ def test_eval647_cli_keeps_existing_valid_output(
     result = json.loads(output.out)
     assert result["reserved_objects"] == 2
     assert result["selection_validation_records_authorized"] == 0
+
+
+def test_strict_authority_loader_redacts_secret_path_on_non_object_root(
+    tmp_path: Path,
+) -> None:
+    secret = "DO-NOT-LOG-eval647-secret-path-token"
+    path = tmp_path / f"{secret}.json"
+    path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError) as captured:
+        validator._load_mapping(path)
+
+    assert str(captured.value) == "EVAL647 authority must contain a JSON object"
+    assert secret not in str(captured.value)
+
+
+def test_eval647_cli_redacts_secret_path_on_non_object_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    secret = "DO-NOT-LOG-eval647-secret-path-token"
+    path = tmp_path / f"{secret}.json"
+    path.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(validator, "DEFAULT_MANIFEST", path)
+    monkeypatch.setattr(validator, "DEFAULT_EVIDENCE", EVIDENCE)
+
+    assert validator.main() == 2
+    output = capsys.readouterr()
+    assert output.err == ""
+    result = json.loads(output.out)
+    assert result["status"] == "BLOCKED_INVALID_EVAL647_AUTHORITY"
+    assert result["error"] == "EVAL647 authority must contain a JSON object"
+    assert secret not in output.out
+    assert result["selection_validation_records_authorized"] == 0
+    assert result["model_training_authorized"] is False
+    assert result["final_test_outcomes_read"] is False
