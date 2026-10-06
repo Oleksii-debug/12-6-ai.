@@ -3202,8 +3202,28 @@ class Trainer:
             # expose effectful/mutable Mapping or sequence subclasses; validation
             # must apply to the exact detached snapshot that will later be loaded.
             optimizer_state = copy.deepcopy(dict(state.optimizer))
+            drift_reason = _restore_preapply_drift_reason(
+                "optimizer payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
+
             scheduler_state = copy.deepcopy(state.scheduler)
+            drift_reason = _restore_preapply_drift_reason(
+                "scheduler payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
+
             scaler_state = copy.deepcopy(state.scaler)
+            drift_reason = _restore_preapply_drift_reason(
+                "scaler payload ownership"
+            )
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+                raise TrainingStateInvalidError(drift_reason)
 
             Trainer._require_finite_state_tree(
                 optimizer_state,
@@ -3221,7 +3241,7 @@ class Trainer:
                 )
 
             # Reject known contract mismatches before touching live component state.
-            if (scheduler_state is None) != (self.scheduler is None):
+            if (scheduler_state is None) != (expected_scheduler is None):
                 raise ValueError("scheduler state/config mismatch")
             Trainer._require_checkpoint_scaler_state(self, scaler_state)
             # PyTorch maps optimizer slot IDs by group position, ignoring shape-equal

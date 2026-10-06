@@ -28,7 +28,7 @@ QUALIFICATION_ROOT = Path(__file__).resolve().parents[1]
 QUALIFICATION_RUNNER_PATH = "tools/run_d05_windows_fresh_recovery_g8_156.py"
 PRODUCT_PR = 2778
 EXPECTED_BLOBS = {
-    "src/twelve_six/training/trainer.py": "27cc8dac41e08d479193214dde3a6dba2fd69dc9",
+    "src/twelve_six/training/trainer.py": "1495581ea7feec6a5eb45dbd88a93524ea2941b3",
     "src/twelve_six/checkpoint/core.py": "915eec641d90ed4f22e6e52dc5fda6f75969876e",
     "src/twelve_six/checkpoint/trainer_adapter.py": "9d47a7b86a2f883f8d09709e820c411dffcb388f",
     "src/twelve_six/checkpoint/progress_trainer.py": "917d5b108e83105383e21e167609dac0bea93498",
