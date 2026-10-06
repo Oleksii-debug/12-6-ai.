@@ -793,6 +793,16 @@ class ApplyReproducibilityDriftAdamW(AdamW):
                     else "highest"
                 )
                 torch.set_float32_matmul_precision(replacement)
+            elif self.mutation == "cudnn_tf32":
+                torch.backends.cudnn.allow_tf32 = not torch.backends.cudnn.allow_tf32
+            elif self.mutation == "cudnn_enabled":
+                torch.backends.cudnn.enabled = not torch.backends.cudnn.enabled
+            elif self.mutation == "cudnn_deterministic":
+                torch.backends.cudnn.deterministic = (
+                    not torch.backends.cudnn.deterministic
+                )
+            elif self.mutation == "cudnn_benchmark":
+                torch.backends.cudnn.benchmark = not torch.backends.cudnn.benchmark
             else:
                 raise AssertionError(
                     f"unknown reproducibility mutation: {self.mutation}"
@@ -868,6 +878,10 @@ def test_direct_restore_rejects_apply_time_state_drift(
         ("grad_mode", "trainer autograd mode changed during load"),
         ("default_dtype", "trainer numeric policy changed during load"),
         ("matmul_precision", "trainer numeric policy changed during load"),
+        ("cudnn_tf32", "trainer numeric policy changed during load"),
+        ("cudnn_enabled", "trainer numeric policy changed during load"),
+        ("cudnn_deterministic", "trainer numeric policy changed during load"),
+        ("cudnn_benchmark", "trainer numeric policy changed during load"),
     ],
 )
 def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero_grad(
@@ -887,6 +901,10 @@ def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero
     expected_grad_enabled = torch.is_grad_enabled()
     expected_default_dtype = torch.get_default_dtype()
     expected_matmul_precision = torch.get_float32_matmul_precision()
+    expected_cudnn_tf32 = torch.backends.cudnn.allow_tf32
+    expected_cudnn_enabled = torch.backends.cudnn.enabled
+    expected_cudnn_deterministic = torch.backends.cudnn.deterministic
+    expected_cudnn_benchmark = torch.backends.cudnn.benchmark
 
     try:
         with pytest.raises(TrainingStateInvalidError, match=message):
@@ -899,6 +917,10 @@ def test_direct_restore_rejects_post_component_reproducibility_drift_before_zero
         torch.set_grad_enabled(expected_grad_enabled)
         torch.set_default_dtype(expected_default_dtype)
         torch.set_float32_matmul_precision(expected_matmul_precision)
+        torch.backends.cudnn.allow_tf32 = expected_cudnn_tf32
+        torch.backends.cudnn.enabled = expected_cudnn_enabled
+        torch.backends.cudnn.deterministic = expected_cudnn_deterministic
+        torch.backends.cudnn.benchmark = expected_cudnn_benchmark
 
     assert optimizer.guarded_zero_grad_calls == 0
     assert trainer._failure_reason == (
