@@ -146,6 +146,104 @@ class _CandidateMutatingOnParameterRead(dict):
         return value
 
 
+class _DeepcopyTrapDict(dict):
+    deepcopy_calls = 0
+
+    def __deepcopy__(self, memo: dict[int, object]) -> dict:
+        del memo
+        type(self).deepcopy_calls += 1
+        raise AssertionError("custom deepcopy callback executed")
+
+
+def test_builder_never_executes_candidate_deepcopy_callback() -> None:
+    trapped = _DeepcopyTrapDict(candidate())
+    _DeepcopyTrapDict.deepcopy_calls = 0
+
+    with pytest.raises(FeasibilityPacketError, match="candidate_not_plain_json"):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=trapped,
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=evidence(),
+            decision="GO",
+        )
+
+    assert _DeepcopyTrapDict.deepcopy_calls == 0
+
+
+def test_builder_never_executes_nested_deepcopy_callback() -> None:
+    refs = evidence()
+    key = sorted(refs)[0]
+    refs[key] = _DeepcopyTrapDict(refs[key])
+    _DeepcopyTrapDict.deepcopy_calls = 0
+
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="requirement_evidence_not_plain_json",
+    ):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=candidate(),
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=refs,
+            decision="GO",
+        )
+
+    assert _DeepcopyTrapDict.deepcopy_calls == 0
+
+
+def test_retained_identity_helper_rejects_custom_container_without_callback() -> None:
+    trapped = _DeepcopyTrapDict(build())
+    _DeepcopyTrapDict.deepcopy_calls = 0
+
+    with pytest.raises(FeasibilityPacketError, match="packet_not_plain_json"):
+        retained_identities_for_built_packet(trapped)
+
+    assert _DeepcopyTrapDict.deepcopy_calls == 0
+
+
+def test_validator_rejects_custom_container_without_callback() -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    trapped = _DeepcopyTrapDict(packet)
+    _DeepcopyTrapDict.deepcopy_calls = 0
+
+    errors = validate_200m_feasibility_packet(
+        trapped,
+        roadmap_snapshot=roadmap(),
+        expected_packet_sha256=expected["packet_sha256"],
+        expected_roadmap_snapshot_sha256=expected["roadmap_snapshot_sha256"],
+        expected_source_git_sha=expected["source_git_sha"],
+        expected_measurements_20m_sha256=expected["measurements_20m_sha256"],
+        expected_requirement_evidence_sha256=expected[
+            "requirement_evidence_sha256"
+        ],
+    )
+
+    assert errors == ["programmatic_input_not_plain_json"]
+    assert _DeepcopyTrapDict.deepcopy_calls == 0
+
+
+def test_builder_rejects_cyclic_plain_json_tree_without_recursion_error() -> None:
+    cyclic_candidate = candidate()
+    cyclic_candidate["cycle"] = cyclic_candidate
+
+    with pytest.raises(FeasibilityPacketError, match="candidate_not_plain_json"):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=cyclic_candidate,
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=evidence(),
+            decision="GO",
+        )
+
+
 def build() -> dict:
     return build_200m_feasibility_packet(
         roadmap_snapshot=roadmap(),
@@ -188,14 +286,13 @@ def test_build_is_deterministic_and_external_validation_passes() -> None:
     assert validate(first) == []
 
 
-def test_builder_rechecks_stateful_candidate_after_detaching() -> None:
-    invalid_candidate = candidate()
-    invalid_candidate["parameter_count"] = -1
+
+def test_builder_rejects_stateful_candidate_before_semantic_access() -> None:
     changing_candidate = _CandidateMutatingOnParameterRead(candidate())
 
     with pytest.raises(
         FeasibilityPacketError,
-        match="candidate_parameter_count_invalid",
+        match="candidate_not_plain_json",
     ):
         build_200m_feasibility_packet(
             roadmap_snapshot=roadmap(),
@@ -203,39 +300,21 @@ def test_builder_rechecks_stateful_candidate_after_detaching() -> None:
             candidate=changing_candidate,
             measurements_20m=measurements(),
             measurement_authority=measurement_authority(),
-            requirement_evidence=evidence(invalid_candidate),
+            requirement_evidence=evidence(),
             decision="GO",
         )
-    assert changing_candidate["parameter_count"] == -1
+    assert changing_candidate["parameter_count"] == 203_000_000
 
-
-def test_validator_rechecks_stateful_candidate_after_detaching() -> None:
+def test_validator_rejects_stateful_candidate_before_semantic_access() -> None:
     packet = build()
     expected = retained_identities_for_built_packet(packet)
-    invalid_candidate = candidate()
-    invalid_candidate["parameter_count"] = -1
-    invalid_candidate_sha = canonical_sha256(invalid_candidate)
-
-    packet["candidate"] = _CandidateMutatingOnParameterRead(candidate())
-    packet["requirement_evidence"][
-        "candidate_architecture_and_parameter_count"
-    ]["evidence_sha256"] = invalid_candidate_sha
-
-    invalid_materialized = deepcopy(packet)
-    invalid_materialized["candidate"] = invalid_candidate
-    invalid_materialized["packet_sha256"] = compute_packet_sha256(
-        invalid_materialized
-    )
-    packet["packet_sha256"] = invalid_materialized["packet_sha256"]
-    expected["packet_sha256"] = invalid_materialized["packet_sha256"]
-    expected["requirement_evidence_sha256"][
-        "candidate_architecture_and_parameter_count"
-    ] = invalid_candidate_sha
+    changing_candidate = _CandidateMutatingOnParameterRead(candidate())
+    packet["candidate"] = changing_candidate
 
     errors = validate(packet, expected=expected)
-    assert "candidate_parameter_count_invalid" in errors
 
-
+    assert errors == ["programmatic_input_not_plain_json"]
+    assert changing_candidate["parameter_count"] == 203_000_000
 def test_canonical_hash_rejects_lone_surrogate_programmatic_text() -> None:
     with pytest.raises(FeasibilityPacketError, match="value_not_canonical_json"):
         canonical_sha256({"value": "\ud800"})
@@ -1047,9 +1126,7 @@ def test_validator_deep_malformed_packet_never_leaks_recursion_error() -> None:
     expected = retained_identities_for_built_packet(packet)
     packet["candidate"]["candidate_id"] = _deep_list(10_000)
     errors = validate(packet, expected=expected)
-    assert "candidate_id_invalid" in errors
-    assert "candidate_not_canonical_json" in errors
-    assert "packet_not_canonical_json" in errors
+    assert errors == ["programmatic_input_not_canonical_json"]
 
 
 
