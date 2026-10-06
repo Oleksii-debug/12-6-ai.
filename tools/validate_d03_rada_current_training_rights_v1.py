@@ -7,9 +7,6 @@ import hashlib
 import html
 import json
 import re
-import urllib.error
-import urllib.parse
-import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -135,8 +132,15 @@ def validate_registry(value: Mapping[str, Any], raw: bytes) -> None:
     rights = row.get("rights")
     require(isinstance(family, Mapping) and family.get("family_id") == FAMILY and family.get("family_identity_sha256") == FAMILY_ID, "DATA-287 family drift")
     require(isinstance(rights, Mapping), "DATA-287 rights missing")
-    require(rights.get("model_training", {}).get("status") == "ALLOWED", "DATA-287 training authority not ALLOWED")
-    require(rights.get("evaluation", {}).get("status") == "NOT_SEPARATELY_ADMITTED", "DATA-287 evaluation boundary drift")
+    training = rights.get("model_training")
+    evaluation = rights.get("evaluation")
+    require(isinstance(training, Mapping), "DATA-287 model-training rights invalid")
+    require(isinstance(evaluation, Mapping), "DATA-287 evaluation rights invalid")
+    require(training.get("status") == "ALLOWED", "DATA-287 training authority not ALLOWED")
+    require(
+        evaluation.get("status") == "NOT_SEPARATELY_ADMITTED",
+        "DATA-287 evaluation boundary drift",
+    )
 
 
 def page_text(raw: bytes) -> str:
@@ -169,21 +173,6 @@ def evaluate_portal(raw: bytes, markers: Mapping[str, Any]) -> dict[str, Any]:
     return {"page_sha256": hashlib.sha256(raw).hexdigest(), "semantic_projection": projection, "semantic_identity_sha256": digest(projection)}
 
 
-def fetch_portal(url: str, host: str, limit: int) -> bytes:
-    parsed = urllib.parse.urlsplit(url)
-    require(parsed.scheme == "https" and parsed.hostname == host, "portal URL outside allowed HTTPS host")
-    request = urllib.request.Request(url, headers={"User-Agent": "12-6-ai-rights-recheck/1.0", "Accept": "text/html"})
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            final = urllib.parse.urlsplit(response.geturl())
-            require(final.scheme == "https" and final.hostname == host, "portal redirect left allowed HTTPS host")
-            raw = response.read(limit + 1)
-    except (OSError, urllib.error.URLError) as exc:
-        raise RightsRecheckError("cannot fetch official portal evidence") from exc
-    require(0 < len(raw) <= limit, "portal response size invalid")
-    return raw
-
-
 def build_evidence(config: Mapping[str, Any], portal: Mapping[str, Any] | None) -> dict[str, Any]:
     core = {
         "schema_version": EVIDENCE_SCHEMA,
@@ -210,6 +199,7 @@ def main() -> int:
     parser.add_argument("--rights-policy", type=Path, required=True)
     parser.add_argument("--prior-registry", type=Path, required=True)
     parser.add_argument("--live", action="store_true")
+    parser.add_argument("--portal-html", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
@@ -224,7 +214,13 @@ def main() -> int:
         portal = None
         if args.live:
             spec = config["official_portal_recheck"]
-            portal = evaluate_portal(fetch_portal(str(spec["url"]), str(spec["allowed_host"]), int(spec["max_response_bytes"])), spec["required_semantics"])
+            require(args.portal_html is not None, "--live requires --portal-html")
+            portal_raw = args.portal_html.read_bytes()
+            require(
+                0 < len(portal_raw) <= int(spec["max_response_bytes"]),
+                "portal response size invalid",
+            )
+            portal = evaluate_portal(portal_raw, spec["required_semantics"])
         evidence = build_evidence(config, portal)
         if args.output:
             write(args.output, evidence)

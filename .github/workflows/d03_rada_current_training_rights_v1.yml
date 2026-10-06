@@ -31,6 +31,8 @@ jobs:
       DATA287_HEAD: b0523ccbc4b957615aac849d476cfa851be87578
       DATA287_BLOB: 21fe6485aa9eaa0945837efce54c69cfc1098472
       GITHUB_TOKEN: ${{ github.token }}
+      PORTAL_URL: https://data.rada.gov.ua/open/data/en/laws-texts/sort2
+      PORTAL_HOST: data.rada.gov.ua
 
     steps:
       - name: Checkout exact execution head
@@ -112,13 +114,39 @@ jobs:
         run: |
           set -euo pipefail
           for suffix in a b; do
+            page="$RUNNER_TEMP/portal-${suffix}.html"
+            effective="$RUNNER_TEMP/portal-${suffix}.url"
+            curl --fail --silent --show-error --location \
+              --proto '=https' --proto-redir '=https' \
+              --retry 4 --retry-all-errors --connect-timeout 10 --max-time 60 \
+              --max-filesize 8388608 \
+              --user-agent 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/154 Safari/537.36' \
+              --header 'Accept: text/html,application/xhtml+xml' \
+              --output "$page" --write-out '%{url_effective}' \
+              "$PORTAL_URL" >"$effective"
+            python - "$effective" "$page" <<'PY'
+          import os
+          import sys
+          import urllib.parse
+          from pathlib import Path
+
+          effective = Path(sys.argv[1]).read_text(encoding="utf-8").strip()
+          parsed = urllib.parse.urlsplit(effective)
+          if parsed.scheme != "https" or parsed.hostname != os.environ["PORTAL_HOST"]:
+              raise SystemExit("official portal redirect left allowed HTTPS host")
+          size = Path(sys.argv[2]).stat().st_size
+          if not 0 < size <= 8_388_608:
+              raise SystemExit("official portal response size invalid")
+          PY
             python tools/validate_d03_rada_current_training_rights_v1.py \
               --config configs/data/d03_rada_current_training_rights_v1.json \
               --replay-authority evidence/d03_rada_bulk/current_snapshot_github_replay_authority_v1.json \
               --rights-policy configs/data/d03_rada_bulk_fresh_snapshot_rights_v2.json \
               --prior-registry "$RUNNER_TEMP/data287.json" \
               --live \
+              --portal-html "$page" \
               --output "$RUNNER_TEMP/rights-${suffix}.json"
+            rm -f "$page"
           done
 
       - name: Require two semantic observations to converge
