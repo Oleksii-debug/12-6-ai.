@@ -38,7 +38,12 @@ def _trainer(
     *,
     reverse: bool = False,
     multiple_groups: bool = False,
+    use_default: bool = False,
 ) -> Trainer:
+    if use_default:
+        if reverse or multiple_groups:
+            raise ValueError("default optimizer mode cannot reorder or split groups")
+        return Trainer(model, config, device="cpu")
     if multiple_groups:
         groups = [
             {"params": [model.right if reverse else model.left]},
@@ -136,11 +141,21 @@ def _read_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def _producer(root: Path, *, multiple_groups: bool) -> None:
+def _producer(
+    root: Path,
+    *,
+    multiple_groups: bool,
+    use_default: bool = False,
+) -> None:
     checkpoint = root / "checkpoint"
     config = TrainerConfig(seed=703, max_steps=3)
     model = _TwoNamedParameters()
-    source = _trainer(model, config, multiple_groups=multiple_groups)
+    source = _trainer(
+        model,
+        config,
+        multiple_groups=multiple_groups,
+        use_default=use_default,
+    )
     model.left.grad = torch.ones(3)
     model.right.grad = torch.full((3,), 9.0)
     source.optimizer.step()
@@ -188,11 +203,21 @@ def _producer(root: Path, *, multiple_groups: bool) -> None:
     )
 
 
-def _consumer_valid(root: Path, *, multiple_groups: bool) -> None:
+def _consumer_valid(
+    root: Path,
+    *,
+    multiple_groups: bool,
+    use_default: bool = False,
+) -> None:
     expected = _read_json(root / "producer.json")
     config = TrainerConfig(seed=703, max_steps=3)
     model = _TwoNamedParameters()
-    target = _trainer(model, config, multiple_groups=multiple_groups)
+    target = _trainer(
+        model,
+        config,
+        multiple_groups=multiple_groups,
+        use_default=use_default,
+    )
 
     trainer_adapter.load_trainer_checkpoint(
         root / "checkpoint",
@@ -284,6 +309,7 @@ def _run_child(
     *,
     phase: str,
     multiple_groups: bool,
+    use_default: bool = False,
 ) -> None:
     command = [
         sys.executable,
@@ -293,7 +319,7 @@ def _run_child(
         "--root",
         str(root),
         "--groups",
-        "two" if multiple_groups else "one",
+        "default" if use_default else ("two" if multiple_groups else "one"),
     ]
     completed = subprocess.run(
         command,
@@ -313,6 +339,30 @@ def _orchestrate(output: Path) -> None:
     child_pids: list[int] = []
     with tempfile.TemporaryDirectory(prefix="d05 optimizer named order ") as raw:
         base = Path(raw)
+
+        default_root = base / "default-one-group"
+        default_root.mkdir()
+        for phase in ("producer", "consumer-valid"):
+            _run_child(
+                default_root,
+                phase=phase,
+                multiple_groups=False,
+                use_default=True,
+            )
+        default_producer = _read_json(default_root / "producer.json")
+        default_valid = _read_json(default_root / "consumer-valid.json")
+        default_pids = [
+            int(default_producer["pid"]),
+            int(default_valid["pid"]),
+        ]
+        child_pids.extend(default_pids)
+        modes["default-one-group"] = {
+            "fresh_process_pids": default_pids,
+            "same_optimizer_moments": default_valid["same_optimizer_moments"],
+            "same_next_update": default_valid["same_next_update"],
+            "expected_names": default_producer["expected_names"],
+        }
+
         for mode, multiple_groups in (
             ("one-group", False),
             ("two-groups", True),
@@ -384,7 +434,7 @@ def main() -> None:
         choices=("producer", "consumer-valid", "consumer-reversed"),
     )
     parser.add_argument("--root", type=Path)
-    parser.add_argument("--groups", choices=("one", "two"))
+    parser.add_argument("--groups", choices=("default", "one", "two"))
     args = parser.parse_args()
 
     if args.phase is None:
@@ -395,11 +445,20 @@ def main() -> None:
 
     if args.root is None or args.groups is None:
         parser.error("--root and --groups are required for child phases")
+    use_default = args.groups == "default"
     multiple_groups = args.groups == "two"
     if args.phase == "producer":
-        _producer(args.root, multiple_groups=multiple_groups)
+        _producer(
+            args.root,
+            multiple_groups=multiple_groups,
+            use_default=use_default,
+        )
     elif args.phase == "consumer-valid":
-        _consumer_valid(args.root, multiple_groups=multiple_groups)
+        _consumer_valid(
+            args.root,
+            multiple_groups=multiple_groups,
+            use_default=use_default,
+        )
     else:
         _consumer_reversed(args.root, multiple_groups=multiple_groups)
 
