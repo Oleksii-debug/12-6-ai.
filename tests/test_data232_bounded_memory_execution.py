@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from twelve_six.data import decontamination_authority_v2 as authority
 from twelve_six.data._data232_decontamination_matching import (
     DEFAULT_THRESHOLDS,
     _fingerprint,
@@ -166,3 +168,105 @@ def test_streamed_candidate_relations_do_not_duplicate_pairs() -> None:
     assert len(peer) == len(set(peer))
     assert set(blocked) == _legacy_blocked_pairs(train, evaluation)
     assert set(peer) == _legacy_train_pairs(train)
+
+
+def _authorities() -> dict[str, Any]:
+    return {
+        "schema": "12-6.data232-reserved-authorities.v1",
+        "authorities": [
+            {
+                "authority_id": "selection",
+                "identity_sha256": "1" * 64,
+                "role": "selection_validation",
+                "source_sha": "a" * 40,
+            },
+            {
+                "authority_id": "final",
+                "identity_sha256": "2" * 64,
+                "role": "final_test",
+                "source_sha": "b" * 40,
+            },
+        ],
+    }
+
+
+def _build_report(
+    train: Sequence[Mapping[str, Any]],
+    evaluation: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    return authority.build_report(
+        train,
+        evaluation,
+        training_corpus_identity="3" * 64,
+        selection_validation_identity="4" * 64,
+        final_test_identity="5" * 64,
+        authorities=_authorities(),
+        quarantine_cross_source_families=True,
+    )
+
+
+def test_streaming_report_bytes_equal_materialized_incumbent_candidate_order(
+    monkeypatch: Any,
+) -> None:
+    base = " ".join(f"chain{i}" for i in range(80))
+    train = [
+        _row("t0", base, source="publisher-a", family="family-a"),
+        _row(
+            "t1",
+            base.replace("chain10", "bridge10"),
+            source="mirror-b",
+            family="family-b",
+        ),
+        _row("t2", "independent clean sibling", source="publisher-a", family="family-a"),
+        _row(
+            "t3",
+            "def compute(alpha, beta):\n"
+            "    total = alpha + beta\n"
+            "    if total > 10:\n"
+            "        return total * 3\n"
+            "    return total - 2\n",
+            source="repo-a",
+            family="repo-a",
+            modality="code",
+        ),
+    ]
+    evaluation = [
+        _row(
+            "e0",
+            base.replace("chain10", "bridge10").replace("chain35", "eval35"),
+            source="eval",
+            family="eval",
+        ),
+        _row(
+            "e1",
+            "def calculate(left, right):\n"
+            "    result = left + right\n"
+            "    if result > 999:\n"
+            "        return result * 44\n"
+            "    return result - 88\n",
+            source="eval-code",
+            family="eval-code",
+            modality="code",
+        ),
+    ]
+
+    streamed = _build_report(train, evaluation)
+
+    def materialized_blocked(left: Sequence[dict[str, Any]], right: Sequence[dict[str, Any]]):
+        pairs = _legacy_blocked_pairs(left, right)
+        return iter(sorted(pairs))
+
+    def materialized_train(rows: Sequence[dict[str, Any]]):
+        pairs = _legacy_train_pairs(rows)
+        return iter(sorted(pairs))
+
+    monkeypatch.setattr(authority, "_iter_blocked_pairs", materialized_blocked)
+    monkeypatch.setattr(authority, "_iter_train_pairs", materialized_train)
+    incumbent_order = _build_report(train, evaluation)
+
+    assert json.dumps(streamed, sort_keys=True, separators=(",", ":")) == json.dumps(
+        incumbent_order,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert streamed["report_sha256"] == incumbent_order["report_sha256"]
