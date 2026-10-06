@@ -1429,3 +1429,194 @@ def test_hf_snapshot_inventory_interrupt_retains_exact_identity(
 
     assert caught.value is primary
 
+
+
+@pytest.mark.parametrize(
+    "interrupt_type",
+    [KeyboardInterrupt, SystemExit, GeneratorExit],
+)
+def test_reference_identity_pin_interrupt_cleans_empty_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_type: type[BaseException],
+):
+    primary = interrupt_type("reference identity pin interrupted")
+    real_identity = hf_export._temporary_directory_identity
+    created: list[Path] = []
+
+    def fail_reference_identity(path: Path):
+        if ".reference-" in path.name:
+            created.append(path)
+            raise primary
+        return real_identity(path)
+
+    monkeypatch.setattr(
+        hf_export,
+        "_temporary_directory_identity",
+        fail_reference_identity,
+    )
+
+    with pytest.raises(interrupt_type) as caught:
+        hf_export._materialize_verified_reference(
+            SimpleNamespace(_manifest_bytes=b"{}", _artifacts={}),
+            tmp_path,
+            "hf",
+        )
+
+    assert caught.value is primary
+    assert created
+    assert all(not path.exists() for path in created)
+
+
+def test_candidate_identity_pin_failure_cleans_empty_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = RuntimeError("candidate identity pin failed")
+    real_identity = hf_export._temporary_directory_identity
+    created: list[Path] = []
+
+    def fail_candidate_identity(path: Path):
+        if ".hook-candidate-" in path.name:
+            created.append(path)
+            raise primary
+        return real_identity(path)
+
+    monkeypatch.setattr(
+        hf_export,
+        "_temporary_directory_identity",
+        fail_candidate_identity,
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        hf_export._materialize_hook_candidate(
+            parent=tmp_path,
+            name="hf",
+            weights=b"weights",
+            config=b"{}",
+            source_manifest=b"{}",
+        )
+
+    assert caught.value is primary
+    assert created
+    assert all(not path.exists() for path in created)
+
+
+def test_staging_identity_pin_failure_cleans_empty_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(19.0), identity=identity("e"))
+    primary = RuntimeError("staging identity pin failed")
+    real_identity = hf_export._temporary_directory_identity
+    created: list[Path] = []
+
+    def fail_staging_identity(path: Path):
+        if ".staging-" in path.name:
+            created.append(path)
+            raise primary
+        return real_identity(path)
+
+    monkeypatch.setattr(
+        hf_export,
+        "_temporary_directory_identity",
+        fail_staging_identity,
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        export_hf_directory(
+            checkpoint,
+            output,
+            hf_config={"model_type": "twelve_six_export_transactional"},
+        )
+
+    assert caught.value is primary
+    assert not output.exists()
+    assert created
+    assert all(not path.exists() for path in created)
+
+
+def test_identity_pin_cleanup_double_fault_preserves_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = RuntimeError("identity pin primary")
+    real_identity = hf_export._temporary_directory_identity
+    real_rmdir = hf_export.os.rmdir
+    created: list[Path] = []
+
+    def fail_candidate_identity(path: Path):
+        if ".hook-candidate-" in path.name:
+            created.append(path)
+            raise primary
+        return real_identity(path)
+
+    def fail_identity_cleanup(path):
+        if ".hook-candidate-" in Path(path).name:
+            raise OSError("identity-pin cleanup double-fault")
+        return real_rmdir(path)
+
+    monkeypatch.setattr(
+        hf_export,
+        "_temporary_directory_identity",
+        fail_candidate_identity,
+    )
+    monkeypatch.setattr(hf_export.os, "rmdir", fail_identity_cleanup)
+
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            hf_export._materialize_hook_candidate(
+                parent=tmp_path,
+                name="hf",
+                weights=b"weights",
+                config=b"{}",
+                source_manifest=b"{}",
+            )
+
+        assert caught.value is primary
+        assert any(
+            "identity-pin cleanup also failed" in note
+            for note in getattr(primary, "__notes__", ())
+        )
+        assert created
+        assert all(path.exists() for path in created)
+    finally:
+        for path in created:
+            if path.exists():
+                real_rmdir(path)
+
+
+def test_parity_export_reuses_creation_identity_without_populated_repin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(20.0), identity=identity("f"))
+    real_identity = hf_export._temporary_directory_identity
+
+    def reject_populated_repin(path: Path):
+        if path.exists() and path.is_dir() and any(path.iterdir()):
+            raise AssertionError("populated private root must not be re-pinned")
+        return real_identity(path)
+
+    monkeypatch.setattr(
+        hf_export,
+        "_temporary_directory_identity",
+        reject_populated_repin,
+    )
+
+    published = export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+        parity_hook=lambda _reference, _candidate: {"checked": True},
+    )
+
+    assert published == output
+    assert verify_hf_directory(output)["checkpoint_id"]
+    assert not list(tmp_path.glob(".hf.reference-*"))
+    assert not list(tmp_path.glob(".hf.hook-candidate-*"))
+    assert not list(tmp_path.glob(".hf.staging-*"))
