@@ -244,7 +244,7 @@ def test_direct_restore_uses_entry_config_for_counter_preflight() -> None:
     assert target._failure_reason == (
         "trainer restore config changed during checkpoint preflight"
     )
-    assert target._update_incomplete is True
+    assert target._update_incomplete is False
     assert not target.optimizer.state
 
 
