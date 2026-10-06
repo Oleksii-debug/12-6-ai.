@@ -137,7 +137,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
-          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          test "$(git ls-files --others --exclude-standard)" = "d05-optimizer-named-order-linux.json"
 
       - name: Upload Linux evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -209,8 +210,12 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           if ((git rev-parse HEAD).Trim() -ne $env:QUALIFICATION_CARRIER_SHA) { throw "carrier SHA changed" }
-          $dirty = git status --porcelain=v1 --untracked-files=all
-          if ($dirty) { throw "carrier dirty after execution: $dirty" }
+          $trackedDirty = git status --porcelain=v1 --untracked-files=no
+          if ($trackedDirty) { throw "tracked carrier dirty after execution: $trackedDirty" }
+          $untracked = @(git ls-files --others --exclude-standard)
+          if ($untracked.Count -ne 1 -or $untracked[0].Trim() -ne "d05-optimizer-named-order-windows.json") {
+            throw "unexpected untracked files after execution: $untracked"
+          }
 
       - name: Upload Windows evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
