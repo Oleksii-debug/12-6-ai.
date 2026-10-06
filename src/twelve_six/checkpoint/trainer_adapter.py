@@ -549,7 +549,7 @@ def _preflight_trainer_state(
         try:
             try:
                 _core.restore_rng_state(ambient)
-            except BaseException as rng_exc:  # noqa: BLE001
+            except BaseException as rng_exc:
                 _restore_ambient_rng_after_failed_apply(ambient, rng_exc)
                 # A secondary policy rollback fault must not hide the primary
                 # failed/interrupted RNG rollback or its preflight context.
@@ -576,13 +576,13 @@ def _preflight_trainer_state(
                             bool(torch_state["deterministic_algorithms"]),
                             warn_only=warn_only,
                         )
-                    except BaseException as mode_exc:  # noqa: BLE001
+                    except BaseException as mode_exc:
                         _restore_initial_torch_policy(
                             (bool(torch_state["deterministic_algorithms"]), warn_only),
                             mode_exc,
                         )
                         raise
-        except BaseException:  # noqa: BLE001
+        except BaseException:
             if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
                 if trainer._failure_reason is None:
                     trainer._failure_reason = "checkpoint_preflight_rng_rollback_failed"
