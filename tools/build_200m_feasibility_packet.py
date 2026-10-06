@@ -193,14 +193,14 @@ def _write_json(path: Path, value: Any, *, label: str) -> None:
 
 
 def _build(args: argparse.Namespace) -> int:
-    named_paths = [
-        ("roadmap", args.roadmap),
-        ("build_input", args.input),
-        ("output", args.output),
-    ]
-    if args.external_identities is not None:
-        named_paths.append(("external_identities", args.external_identities))
-    _require_distinct_paths(named_paths)
+    _require_distinct_paths(
+        [
+            ("roadmap", args.roadmap),
+            ("build_input", args.input),
+            ("output", args.output),
+            ("external_identities", args.external_identities),
+        ]
+    )
 
     roadmap = _read_json(args.roadmap, label="roadmap")
     request = _read_json(args.input, label="build_input")
@@ -215,13 +215,13 @@ def _build(args: argparse.Namespace) -> int:
         requirement_evidence=request["requirement_evidence"],
         decision=request["decision"],
     )
+    retained_identities = retained_identities_for_built_packet(packet)
+    _write_json(
+        args.external_identities,
+        retained_identities,
+        label="external_identities",
+    )
     _write_json(args.output, packet, label="output")
-    if args.external_identities is not None:
-        _write_json(
-            args.external_identities,
-            retained_identities_for_built_packet(packet),
-            label="external_identities",
-        )
     print(packet["packet_sha256"])
     return 0
 
@@ -281,7 +281,7 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--roadmap", type=Path, required=True)
     build.add_argument("--input", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
-    build.add_argument("--external-identities", type=Path)
+    build.add_argument("--external-identities", type=Path, required=True)
     build.set_defaults(run=_build)
 
     verify = subparsers.add_parser("verify")

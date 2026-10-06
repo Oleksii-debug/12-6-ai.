@@ -61,6 +61,11 @@ PYTHONPATH=src python tools/build_200m_feasibility_packet.py build \
   --external-identities /path/to/feasibility-200m.expected.json
 ```
 
+The build command requires `--external-identities`. A successful CLI build
+therefore always has an independently retained identity-map destination; stdout
+alone is not treated as sufficient retention. The identity map is published
+before the packet, so an identity-publication failure cannot expose a new packet.
+
 The build input must contain exactly:
 
 ```text

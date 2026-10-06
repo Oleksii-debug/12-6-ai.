@@ -988,6 +988,7 @@ def test_cli_main_wrong_requirement_type_returns_bounded_error(
     roadmap_path = tmp_path / "roadmap.json"
     input_path = tmp_path / "input.json"
     output_path = tmp_path / "packet.json"
+    expected_path = tmp_path / "expected.json"
     request = _cli_request()
     request["requirement_evidence"] = []
     roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
@@ -1004,12 +1005,15 @@ def test_cli_main_wrong_requirement_type_returns_bounded_error(
             str(input_path),
             "--output",
             str(output_path),
+            "--external-identities",
+            str(expected_path),
         ],
     )
     assert cli.main() == 2
     captured = capsys.readouterr()
     assert "requirement_evidence_not_object" in captured.err
     assert not output_path.exists()
+    assert not expected_path.exists()
 
 
 def test_cli_build_path_collision_preserves_authority_input(
@@ -1020,6 +1024,7 @@ def test_cli_build_path_collision_preserves_authority_input(
     cli = _load_cli()
     roadmap_path = tmp_path / "roadmap.json"
     input_path = tmp_path / "input.json"
+    expected_path = tmp_path / "expected.json"
     roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
     original = json.dumps(_cli_request(), sort_keys=True)
     input_path.write_text(original, encoding="utf-8")
@@ -1035,12 +1040,70 @@ def test_cli_build_path_collision_preserves_authority_input(
             str(input_path),
             "--output",
             str(input_path),
+            "--external-identities",
+            str(expected_path),
         ],
     )
     assert cli.main() == 2
     captured = capsys.readouterr()
     assert "output_path_collides_with_build_input" in captured.err
     assert input_path.read_text(encoding="utf-8") == original
+
+
+def test_cli_build_requires_external_identity_destination() -> None:
+    cli = _load_cli()
+    with pytest.raises(SystemExit):
+        cli._parser().parse_args(
+            [
+                "build",
+                "--roadmap",
+                "roadmap.json",
+                "--input",
+                "input.json",
+                "--output",
+                "packet.json",
+            ]
+        )
+
+
+def test_cli_build_does_not_publish_packet_if_identity_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _load_cli()
+    roadmap_path = tmp_path / "roadmap.json"
+    input_path = tmp_path / "input.json"
+    packet_path = tmp_path / "packet.json"
+    expected_path = tmp_path / "expected.json"
+    roadmap_path.write_text(json.dumps(roadmap()), encoding="utf-8")
+    input_path.write_text(json.dumps(_cli_request()), encoding="utf-8")
+    packet_path.write_text("previous-packet\n", encoding="utf-8")
+    real_write_json = cli._write_json
+
+    def fail_identity_write(path: Path, value: object, *, label: str) -> None:
+        if label == "external_identities":
+            raise ValueError("simulated_identity_write_failure")
+        real_write_json(path, value, label=label)
+
+    monkeypatch.setattr(cli, "_write_json", fail_identity_write)
+    args = cli._parser().parse_args(
+        [
+            "build",
+            "--roadmap",
+            str(roadmap_path),
+            "--input",
+            str(input_path),
+            "--output",
+            str(packet_path),
+            "--external-identities",
+            str(expected_path),
+        ]
+    )
+    with pytest.raises(ValueError, match="simulated_identity_write_failure"):
+        args.run(args)
+
+    assert packet_path.read_text(encoding="utf-8") == "previous-packet\n"
+    assert not expected_path.exists()
 
 
 def test_cli_verify_malformed_roadmap_reports_invalid_not_crash(
