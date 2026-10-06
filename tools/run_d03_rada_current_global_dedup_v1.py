@@ -39,6 +39,7 @@ PARENT_RIGHTS_BLOB = "4a6cb0bd6b009ef36c9d2fb712967a4ae1cbfe0b"
 
 NBU_HELPER_HEAD = "b5235cfd83852854e345dea6c2e89cfbcd1cef79"
 NBU_HELPER_BLOB = "dc0ed88924610fc7ac19ba4fc7d960d8679c9742"
+V7_HEAD = "d3333ec1b4a508df232a5aefccd6686adda745fb"
 NBU_HELPER_PATH = "tools/run_d03_nbu_current40_global_dedup_v1.py"
 
 EXPECTED_BASE_OBJECTS = 263
@@ -444,6 +445,25 @@ def survivor_authority(
         is_hex(selection_id, 64) and selection_id == sha256(canonical(selection_core)),
         "selection projection self-hash mismatch",
     )
+    require(
+        selection.get("pre_dedup_source_object_count") == EXPECTED_COMBINED_OBJECTS,
+        "selection pre-dedup object count drift",
+    )
+    require(
+        selection.get("pre_dedup_declared_capacity_bytes")
+        == EXPECTED_COMBINED_DECLARED_BYTES,
+        "selection pre-dedup bytes drift",
+    )
+    require(
+        selection.get("post_dedup_declared_capacity_bytes")
+        == report["terminal_candidates"]["conservative_unique_capacity_bytes_after"],
+        "selection post-dedup bytes drift",
+    )
+    require(
+        selection.get("duplicate_discount_bytes")
+        == report["terminal_candidates"]["duplicate_discount_bytes"],
+        "selection duplicate discount drift",
+    )
     survivor_ids = selection.get("survivor_source_ids")
     require(
         type(survivor_ids) is list
@@ -528,6 +548,10 @@ def write_json(path: Path, value: Mapping[str, Any]) -> None:
 def execute(args: argparse.Namespace) -> None:
     verify_product_parent(args.expected_execution_head)
     helper = load_helper(args.nbu_helper_root)
+    require(
+        git("rev-parse", "HEAD", cwd=args.v7_root) == V7_HEAD,
+        "historical V7 HEAD drift",
+    )
     current_sources, current_payloads, projection_receipt = validate_current_projection(
         args.candidate_jsonl
     )
@@ -572,7 +596,7 @@ def execute(args: argparse.Namespace) -> None:
         "parent_replay_authority_identity_sha256": PARENT_AUTHORITY_ID,
         "nbu_helper_head_sha": NBU_HELPER_HEAD,
         "nbu_helper_blob_sha1": NBU_HELPER_BLOB,
-        "v7_head_sha": git("rev-parse", "HEAD", cwd=args.v7_root),
+        "v7_head_sha": V7_HEAD,
         "projection_receipt_identity_sha256": projection_receipt.get(
             "receipt_identity_sha256"
         ),
