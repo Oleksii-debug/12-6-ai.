@@ -30,7 +30,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-PARENT_G05_G06_HEAD = "f3adefadf5a7061e498969a23e3535024a62a275"
+STACK_BASE_HEAD = "f3adefadf5a7061e498969a23e3535024a62a275"
 PARENT_SCHEMA = "12-6.d03-rada-current-postdata232-g05-g06-execution.v1"
 PARENT_DATA232_HEAD = "b66ac95e68f83641ff8134baabd55a29fd62b99f"
 PRODUCT_DATA232_HEAD = "3bd56b62b318e1ecf5b1b5f16298a85350d31efb"
@@ -220,6 +220,7 @@ EXPECTED_TRUTH_BOUNDARY = {
 def verify_parent_receipt(
     evidence: Mapping[str, Any],
     *,
+    expected_parent_execution_head: str,
     expected_evidence_identity_sha256: str,
     expected_inventory_file_sha256: str,
     expected_record_payload_jsonl_sha256: str,
@@ -255,8 +256,12 @@ def verify_parent_receipt(
     )
     require(evidence.get("schema_version") == PARENT_SCHEMA, "parent schema drift")
     require(evidence.get("execution_profile") == "LOCAL_FREE", "parent profile drift")
+    expected_execution_head = require_git_sha(
+        expected_parent_execution_head,
+        "expected parent G05/G06 execution head",
+    )
     require(
-        evidence.get("execution_head_sha") == PARENT_G05_G06_HEAD,
+        evidence.get("execution_head_sha") == expected_execution_head,
         "parent G05/G06 execution head drift",
     )
     claimed = require_sha256(
@@ -600,6 +605,7 @@ def build_family_vector(
     inventory_rows: list[dict[str, Any]],
     trusted: Mapping[str, Mapping[str, Any]],
     trusted_root_fn: Any,
+    materialization_execution_head: str,
 ) -> dict[str, Any]:
     by_family_bytes: dict[tuple[str, str], int] = defaultdict(int)
     by_family_records: dict[tuple[str, str], int] = defaultdict(int)
@@ -633,11 +639,11 @@ def build_family_vector(
     vector: dict[str, Any] = {
         "schema": FAMILY_VECTOR_SCHEMA,
         "status": "PASS",
-        "source_git_sha": PARENT_G05_G06_HEAD,
+        "source_git_sha": materialization_execution_head,
         "materialization_identity_sha256": evidence[
             "evidence_identity_sha256"
         ],
-        "materialization_execution_head_sha": PARENT_G05_G06_HEAD,
+        "materialization_execution_head_sha": materialization_execution_head,
         "record_payload_jsonl_sha256": survivor[
             "record_payload_jsonl_sha256"
         ],
@@ -747,8 +753,13 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         "expected source object count",
     )
 
+    expected_parent_execution_head = require_git_sha(
+        args.expected_parent_execution_head,
+        "expected parent G05/G06 execution head",
+    )
     verify_parent_receipt(
         evidence,
+        expected_parent_execution_head=expected_parent_execution_head,
         expected_evidence_identity_sha256=(
             args.expected_evidence_identity_sha256
         ),
@@ -784,6 +795,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         inventory_rows=rows,
         trusted=trusted,
         trusted_root_fn=trusted_root_fn,
+        materialization_execution_head=expected_parent_execution_head,
     )
     identity = vector["family_vector_identity_sha256"]
     canonical_verify(vector, expected_identity_sha256=identity)
@@ -814,6 +826,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     result.add_argument("--evidence", type=Path, required=True)
+    result.add_argument("--expected-parent-execution-head", required=True)
     result.add_argument("--inventory", type=Path, required=True)
     result.add_argument("--expected-evidence-file-sha256", required=True)
     result.add_argument("--expected-evidence-identity-sha256", required=True)
