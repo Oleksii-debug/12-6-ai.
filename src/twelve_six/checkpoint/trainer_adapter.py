@@ -2581,9 +2581,10 @@ def save_trainer_checkpoint(
                     reason="checkpoint_export_state_drift",
                     exc=mode_exc,
                 )
-                exc.add_note(
+                _add_failure_note_preserving_primary(
+                    exc,
                     "checkpoint save also leaked caller-owned torch execution "
-                    f"mode: {mode_exc}"
+                    f"mode: {mode_exc}",
                 )
         raise
 
