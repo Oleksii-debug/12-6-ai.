@@ -19,6 +19,7 @@ import ssl
 import subprocess
 import sys
 import time
+from collections import Counter, defaultdict
 from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
@@ -373,6 +374,577 @@ def project_current_for_matcher(
     return projected, proof
 
 
+PREFIX_FILTER_ALGORITHM = "INCUMBENT_V1_CONSERVATIVE_RARE_PREFIX_V1"
+PREFIX_NATURAL_OVERLAP_NUMERATOR = 88
+PREFIX_NATURAL_OVERLAP_DENOMINATOR = 100
+PREFIX_CODE_OVERLAP_NUMERATOR = 90
+PREFIX_CODE_OVERLAP_DENOMINATOR = 100
+PREFIX_CODE_SKELETON_OVERLAP_NUMERATOR = 90
+PREFIX_CODE_SKELETON_OVERLAP_DENOMINATOR = 100
+PREFIX_EDGE_SHARED_CHARACTERS = 80
+_PREFIX_FILTER_LAST_STATS: dict[str, int | str] | None = None
+
+
+def _positive_exact_int(value: object, label: str) -> int:
+    require(type(value) is int and value > 0, f"{label} must be a positive exact int")
+    return int(value)
+
+
+def _ceil_ratio(numerator: int, denominator: int, count: int) -> int:
+    require(
+        type(numerator) is int
+        and type(denominator) is int
+        and type(count) is int
+        and numerator > 0
+        and denominator > 0
+        and numerator <= denominator
+        and count >= 0,
+        "invalid prefix-overlap ratio",
+    )
+    return (numerator * count + denominator - 1) // denominator
+
+
+def _verify_prefix_threshold_contract(v1: Any) -> None:
+    thresholds = getattr(v1, "DEFAULT_THRESHOLDS", None)
+    require(type(thresholds) is dict, "incumbent threshold vector missing")
+
+    natural_near = thresholds.get("natural_near_jaccard")
+    natural_fragment = thresholds.get("natural_fragment_containment")
+    code_near = thresholds.get("code_near_jaccard")
+    code_fragment = thresholds.get("code_fragment_containment")
+    code_copy = thresholds.get("code_copy_jaccard")
+    for label, value in (
+        ("natural_near_jaccard", natural_near),
+        ("natural_fragment_containment", natural_fragment),
+        ("code_near_jaccard", code_near),
+        ("code_fragment_containment", code_fragment),
+        ("code_copy_jaccard", code_copy),
+    ):
+        require(type(value) is float and 0.0 < value <= 1.0, f"{label} threshold drift")
+
+    natural_q = PREFIX_NATURAL_OVERLAP_NUMERATOR / PREFIX_NATURAL_OVERLAP_DENOMINATOR
+    code_q = PREFIX_CODE_OVERLAP_NUMERATOR / PREFIX_CODE_OVERLAP_DENOMINATOR
+    skeleton_q = (
+        PREFIX_CODE_SKELETON_OVERLAP_NUMERATOR
+        / PREFIX_CODE_SKELETON_OVERLAP_DENOMINATOR
+    )
+    # For Jaccard J, every positive pair satisfies
+    # intersection/min(|A|,|B|) >= 2J/(1+J).  Fragment containment directly
+    # lower-bounds the same ratio.  These carrier ratios are deliberately no
+    # stronger than either incumbent-positive path.
+    require(
+        natural_q <= float(natural_fragment)
+        and natural_q <= (2.0 * float(natural_near)) / (1.0 + float(natural_near)),
+        "natural prefix ratio is not a conservative incumbent necessary condition",
+    )
+    require(
+        code_q <= float(code_fragment)
+        and code_q <= (2.0 * float(code_near)) / (1.0 + float(code_near)),
+        "code prefix ratio is not a conservative incumbent necessary condition",
+    )
+    require(
+        skeleton_q <= (2.0 * float(code_copy)) / (1.0 + float(code_copy)),
+        "code-skeleton prefix ratio is not a conservative incumbent necessary condition",
+    )
+
+
+def _prefix_candidate_pairs(
+    v1: Any,
+    fingerprints: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...] | Any,
+    *,
+    max_candidate_pairs: int,
+    max_index_postings: int,
+    max_pair_expansions: int,
+    edge_lines: Any,
+) -> tuple[list[tuple[int, int]], dict[str, int | str]]:
+    """Conservative stronger blocking; exact pair decisions remain incumbent V1."""
+    candidate_limit = _positive_exact_int(max_candidate_pairs, "max_candidate_pairs")
+    posting_limit = _positive_exact_int(max_index_postings, "max_index_postings")
+    expansion_limit = _positive_exact_int(max_pair_expansions, "max_pair_expansions")
+    _verify_prefix_threshold_contract(v1)
+
+    count = len(fingerprints)
+    require(count > 0, "prefix matcher fingerprint vector empty")
+    packed: set[int] = set()
+    work: dict[str, int | str] = {
+        "algorithm": PREFIX_FILTER_ALGORITHM,
+        "source_count": count,
+        "index_postings": 0,
+        "pair_expansion_attempts": 0,
+        "frequency_scan_items": 0,
+        "prefix_queries": 0,
+        "exact_bucket_signatures": 0,
+        "edge_prefix_sources": 0,
+    }
+
+    def source_id(index: int) -> str:
+        row = fingerprints[index].get("row")
+        require(type(row) is dict, "prefix matcher row missing")
+        value = row.get("source_id")
+        require(type(value) is str and value, "prefix matcher source id missing")
+        return value
+
+    def add_pair(left: int, right: int) -> None:
+        if left == right:
+            return
+        if left > right:
+            left, right = right, left
+        packed.add(left * count + right)
+        if len(packed) > candidate_limit:
+            raise RadaCurrentGlobalDedupError(
+                f"prefix candidate pair budget exceeded: >{candidate_limit}"
+            )
+
+    def reserve_expansions(amount: int, label: str) -> None:
+        require(type(amount) is int and amount >= 0, f"{label} expansion count invalid")
+        current = int(work["pair_expansion_attempts"])
+        if current + amount > expansion_limit:
+            raise RadaCurrentGlobalDedupError(
+                f"{label} pair expansion work budget exceeded: >{expansion_limit}"
+            )
+        work["pair_expansion_attempts"] = current + amount
+
+    def post(
+        index_map: dict[str, list[int]],
+        key: str,
+        index: int,
+        label: str,
+    ) -> None:
+        current = int(work["index_postings"])
+        if current >= posting_limit:
+            raise RadaCurrentGlobalDedupError(
+                f"{label} index posting work budget exceeded: >{posting_limit}"
+            )
+        index_map[key].append(index)
+        work["index_postings"] = current + 1
+
+    # Exact/origin relations are independent of modality and must never be
+    # pruned by the overlap filter.
+    exact_maps: list[dict[str, list[int]]] = [
+        defaultdict(list),
+        defaultdict(list),
+        defaultdict(list),
+    ]
+    for index, item in enumerate(fingerprints):
+        row = item.get("row")
+        require(type(row) is dict, "prefix matcher row invalid")
+        origin = row.get("origin_key")
+        raw_sha = item.get("raw_sha256")
+        normalized_sha = item.get("normalized_sha256")
+        for label, value, index_map in (
+            ("origin", origin, exact_maps[0]),
+            ("raw", raw_sha, exact_maps[1]),
+            ("normalized", normalized_sha, exact_maps[2]),
+        ):
+            require(type(value) is str and value, f"prefix matcher {label} key invalid")
+            post(index_map, value, index, f"exact-{label}")
+
+    seen_exact_buckets: set[tuple[int, ...]] = set()
+    for index_map in exact_maps:
+        for bucket in index_map.values():
+            unique = tuple(sorted(set(bucket)))
+            if len(unique) < 2 or unique in seen_exact_buckets:
+                continue
+            seen_exact_buckets.add(unique)
+            work["exact_bucket_signatures"] = int(work["exact_bucket_signatures"]) + 1
+            expansion = len(unique) * (len(unique) - 1) // 2
+            reserve_expansions(expansion, "exact-bucket")
+            for offset, left in enumerate(unique):
+                for right in unique[offset + 1 :]:
+                    add_pair(left, right)
+
+    def add_high_overlap_candidates(
+        indices: list[int],
+        *,
+        field: str,
+        numerator: int,
+        denominator: int,
+        label: str,
+    ) -> None:
+        if not indices:
+            return
+        frequencies: Counter[str] = Counter()
+        values_by_index: dict[int, frozenset[str]] = {}
+        for index in indices:
+            values = fingerprints[index].get(field)
+            require(
+                isinstance(values, frozenset)
+                and all(type(value) is str for value in values),
+                f"{label} set shape drift",
+            )
+            values_by_index[index] = values
+            frequencies.update(values)
+            scanned = int(work["frequency_scan_items"]) + len(values)
+            if scanned > posting_limit:
+                raise RadaCurrentGlobalDedupError(
+                    f"{label} frequency scan work budget exceeded: >{posting_limit}"
+                )
+            work["frequency_scan_items"] = scanned
+
+        # Descending cardinality means the current item is always the smaller
+        # (or equal-size) side of every previously indexed pair.  If an incumbent
+        # positive pair requires R shared values from that smaller set, then a
+        # prefix of |S|-R+1 rare-first values must intersect the larger full set.
+        ordered_indices = sorted(
+            indices,
+            key=lambda index: (-len(values_by_index[index]), source_id(index)),
+        )
+        full_index: dict[str, list[int]] = defaultdict(list)
+        for index in ordered_indices:
+            values = values_by_index[index]
+            if values:
+                ordered_values = sorted(
+                    values,
+                    key=lambda value: (frequencies[value], value),
+                )
+                required_overlap = _ceil_ratio(numerator, denominator, len(values))
+                prefix_length = len(values) - required_overlap + 1
+                require(
+                    1 <= prefix_length <= len(values),
+                    f"{label} prefix length invalid",
+                )
+                prefix = ordered_values[:prefix_length]
+                work["prefix_queries"] = int(work["prefix_queries"]) + len(prefix)
+                for value in prefix:
+                    bucket = full_index.get(value, ())
+                    reserve_expansions(len(bucket), f"{label}-prefix")
+                    for prior in bucket:
+                        add_pair(prior, index)
+                for value in ordered_values:
+                    post(full_index, value, index, f"{label}-full")
+            else:
+                # Empty shingle sets cannot satisfy positive Jaccard/containment.
+                continue
+
+    natural_indices: list[int] = []
+    code_indices: list[int] = []
+    for index, item in enumerate(fingerprints):
+        row = item.get("row")
+        require(type(row) is dict, "prefix matcher modality row invalid")
+        modality = row.get("modality")
+        require(type(modality) is str and modality, "prefix matcher modality missing")
+        (code_indices if modality == "code" else natural_indices).append(index)
+
+    add_high_overlap_candidates(
+        natural_indices,
+        field="shingles",
+        numerator=PREFIX_NATURAL_OVERLAP_NUMERATOR,
+        denominator=PREFIX_NATURAL_OVERLAP_DENOMINATOR,
+        label="natural-content",
+    )
+    add_high_overlap_candidates(
+        code_indices,
+        field="shingles",
+        numerator=PREFIX_CODE_OVERLAP_NUMERATOR,
+        denominator=PREFIX_CODE_OVERLAP_DENOMINATOR,
+        label="code-content",
+    )
+    add_high_overlap_candidates(
+        code_indices,
+        field="skeleton_shingles",
+        numerator=PREFIX_CODE_SKELETON_OVERLAP_NUMERATOR,
+        denominator=PREFIX_CODE_SKELETON_OVERLAP_DENOMINATOR,
+        label="code-skeleton",
+    )
+
+    # Publisher boilerplate is report-significant even though it does not collapse
+    # capacity.  A positive pair has >=80 shared normalized edge-line characters.
+    # For each current source, choose a rare-first prefix whose excluded suffix has
+    # <80 total characters.  A positive pair therefore must share at least one
+    # prefix line with the previously indexed full edge set.
+    edge_sets: dict[int, frozenset[str]] = {}
+    edge_frequencies: Counter[str] = Counter()
+    for index, item in enumerate(fingerprints):
+        text_value = item.get("text")
+        require(type(text_value) is str, "prefix matcher text missing")
+        values = edge_lines(v1, text_value)
+        require(
+            isinstance(values, frozenset)
+            and all(type(value) is str and 32 <= len(value) <= 320 for value in values),
+            "edge-line set shape drift",
+        )
+        edge_sets[index] = values
+        edge_frequencies.update(values)
+        scanned = int(work["frequency_scan_items"]) + len(values)
+        if scanned > posting_limit:
+            raise RadaCurrentGlobalDedupError(
+                f"edge frequency scan work budget exceeded: >{posting_limit}"
+            )
+        work["frequency_scan_items"] = scanned
+
+    edge_index: dict[str, list[int]] = defaultdict(list)
+    for index in sorted(range(count), key=source_id):
+        values = edge_sets[index]
+        ordered_values = sorted(
+            values,
+            key=lambda value: (edge_frequencies[value], value),
+        )
+        total_weight = sum(len(value) for value in ordered_values)
+        if total_weight >= PREFIX_EDGE_SHARED_CHARACTERS:
+            remaining = total_weight
+            prefix: list[str] = []
+            for value in ordered_values:
+                prefix.append(value)
+                remaining -= len(value)
+                if remaining < PREFIX_EDGE_SHARED_CHARACTERS:
+                    break
+            require(prefix, "edge prefix unexpectedly empty")
+            work["edge_prefix_sources"] = int(work["edge_prefix_sources"]) + 1
+            work["prefix_queries"] = int(work["prefix_queries"]) + len(prefix)
+            for value in prefix:
+                bucket = edge_index.get(value, ())
+                reserve_expansions(len(bucket), "edge-prefix")
+                for prior in bucket:
+                    add_pair(prior, index)
+        for value in ordered_values:
+            post(edge_index, value, index, "edge-full")
+
+    pairs = [
+        (value // count, value % count)
+        for value in sorted(packed)
+    ]
+    work["unique_candidate_pairs"] = len(pairs)
+    work["candidate_limit"] = candidate_limit
+    work["index_posting_limit"] = posting_limit
+    work["pair_expansion_limit"] = expansion_limit
+    return pairs, work
+
+
+def _run_prefix_filter_selftest(v1: Any, edge_lines: Any) -> dict[str, int]:
+    """Differential bounded fixture: every incumbent V1 match must remain reachable."""
+    def fp(
+        source_id: str,
+        *,
+        modality: str = "text",
+        origin: str | None = None,
+        raw: str | None = None,
+        normalized: str | None = None,
+        shingles: frozenset[str] | None = None,
+        tokens: tuple[str, ...] | None = None,
+        skeleton: tuple[str, ...] | None = None,
+        skeleton_shingles: frozenset[str] | None = None,
+        text_value: str = "short synthetic fixture",
+    ) -> dict[str, Any]:
+        return {
+            "row": {
+                "source_id": source_id,
+                "source_family": "synthetic-prefix-selftest",
+                "modality": modality,
+                "origin_key": origin or f"origin:{source_id}",
+            },
+            "text": text_value,
+            "raw_sha256": raw or ("a" * 63 + source_id[-1]),
+            "normalized_sha256": normalized or ("b" * 63 + source_id[-1]),
+            "tokens": tokens or tuple(f"t{source_id}-{i}" for i in range(24)),
+            "shingles": shingles or frozenset({f"s{source_id}-{i}" for i in range(12)}),
+            "skeleton": skeleton or tuple(f"k{source_id}-{i}" for i in range(24)),
+            "skeleton_shingles": skeleton_shingles
+            or frozenset({f"ks{source_id}-{i}" for i in range(12)}),
+        }
+
+    fixtures: list[list[dict[str, Any]]] = []
+
+    fixtures.append([
+        fp("e0", origin="shared-origin"),
+        fp("e1", origin="shared-origin"),
+    ])
+    fixtures.append([
+        fp("r0", raw="c" * 64),
+        fp("r1", raw="c" * 64),
+    ])
+    fixtures.append([
+        fp("n0", raw="d" * 64, normalized="e" * 64),
+        fp("n1", raw="f" * 64, normalized="e" * 64),
+    ])
+
+    natural_common = frozenset({f"natural-common-{i}" for i in range(9)})
+    fixtures.append([
+        fp("j0", shingles=natural_common | {"natural-left"}),
+        fp("j1", shingles=natural_common | {"natural-right"}),
+    ])
+    fragment_common = frozenset({f"fragment-common-{i}" for i in range(9)})
+    fixtures.append([
+        fp(
+            "f0",
+            shingles=fragment_common | {"fragment-left"},
+            tokens=tuple(f"f0-token-{i}" for i in range(24)),
+        ),
+        fp(
+            "f1",
+            shingles=fragment_common
+            | frozenset({f"fragment-right-{i}" for i in range(11)}),
+            tokens=tuple(f"f1-token-{i}" for i in range(24)),
+        ),
+    ])
+
+    code_common = frozenset({f"code-common-{i}" for i in range(13)})
+    fixtures.append([
+        fp("c0", modality="code", shingles=code_common | {"code-left"}),
+        fp("c1", modality="code", shingles=code_common | {"code-right"}),
+    ])
+    code_fragment_common = frozenset({f"code-fragment-common-{i}" for i in range(9)})
+    fixtures.append([
+        fp(
+            "g0",
+            modality="code",
+            shingles=code_fragment_common | {"code-fragment-left"},
+            tokens=tuple(f"g0-token-{i}" for i in range(24)),
+        ),
+        fp(
+            "g1",
+            modality="code",
+            shingles=code_fragment_common
+            | frozenset({f"code-fragment-right-{i}" for i in range(11)}),
+            tokens=tuple(f"g1-token-{i}" for i in range(24)),
+        ),
+    ])
+    skeleton_common = frozenset({f"skeleton-common-{i}" for i in range(10)})
+    fixtures.append([
+        fp(
+            "k0",
+            modality="code",
+            skeleton=tuple(f"k0-skeleton-{i}" for i in range(24)),
+            skeleton_shingles=skeleton_common | {"skeleton-left"},
+        ),
+        fp(
+            "k1",
+            modality="code",
+            skeleton=tuple(f"k1-skeleton-{i}" for i in range(24)),
+            skeleton_shingles=skeleton_common | {"skeleton-right"},
+        ),
+    ])
+
+    shared_line_a = "A" * 45
+    shared_line_b = "B" * 45
+    fixtures.append([
+        fp(
+            "p0",
+            text_value="\n".join([shared_line_a, shared_line_b, "left-only-" + "L" * 40]),
+        ),
+        fp(
+            "p1",
+            text_value="\n".join([shared_line_a, shared_line_b, "right-only-" + "R" * 40]),
+        ),
+    ])
+
+    positive_pairs = 0
+    candidate_pairs = 0
+    for fixture in fixtures:
+        expected = {
+            (left, right)
+            for left in range(len(fixture))
+            for right in range(left + 1, len(fixture))
+            if v1._pair_matches(fixture[left], fixture[right])
+        }
+        candidates, _stats = _prefix_candidate_pairs(
+            v1,
+            fixture,
+            max_candidate_pairs=1_000,
+            max_index_postings=100_000,
+            max_pair_expansions=100_000,
+            edge_lines=edge_lines,
+        )
+        observed = set(candidates)
+        require(
+            expected <= observed,
+            "prefix selftest pruned an incumbent-positive pair",
+        )
+        positive_pairs += len(expected)
+        candidate_pairs += len(observed)
+
+    require(positive_pairs >= 9, "prefix selftest did not exercise all incumbent match families")
+    return {
+        "fixture_groups": len(fixtures),
+        "incumbent_positive_pairs": positive_pairs,
+        "prefix_candidate_pairs": candidate_pairs,
+    }
+
+
+def execute_prefix_filtered_matcher(
+    helper: ModuleType,
+    matcher: Any,
+    inventory: Mapping[str, Any],
+    payloads: Mapping[str, bytes],
+    *,
+    max_candidate_pairs: int,
+    max_index_postings: int,
+    max_pair_expansions: int,
+) -> tuple[dict[str, Any], float, dict[str, int | str], dict[str, int]]:
+    """Use stronger necessary-condition blocking while preserving qualified report logic."""
+    indexed = helper.indexed
+    core = getattr(indexed, "_core", None)
+    require(core is not None, "indexed executor core missing")
+    original = getattr(core, "candidate_pair_indices", None)
+    require(callable(original), "indexed candidate generator missing")
+    require(
+        getattr(indexed, "candidate_pair_indices", None) is original,
+        "indexed facade/core candidate generator identity drift",
+    )
+    edge_lines = getattr(core, "_edge_lines", None)
+    require(callable(edge_lines), "indexed edge-line helper missing")
+
+    # Complete exact incumbent runtime attestation before installing the
+    # execution-only stronger necessary-condition generator.
+    indexed.attest_incumbent_runtime(matcher)
+    selftest = _run_prefix_filter_selftest(matcher.v1, edge_lines)
+
+    global _PREFIX_FILTER_LAST_STATS
+    _PREFIX_FILTER_LAST_STATS = None
+
+    def replacement(
+        v1: Any,
+        fingerprints: Any,
+        *,
+        max_candidate_pairs: int = 5_000_000,
+        max_index_postings: int = 100_000_000,
+        max_pair_expansions: int = 100_000_000,
+    ) -> list[tuple[int, int]]:
+        pairs, stats = _prefix_candidate_pairs(
+            v1,
+            fingerprints,
+            max_candidate_pairs=max_candidate_pairs,
+            max_index_postings=max_index_postings,
+            max_pair_expansions=max_pair_expansions,
+            edge_lines=edge_lines,
+        )
+        global _PREFIX_FILTER_LAST_STATS
+        _PREFIX_FILTER_LAST_STATS = stats
+        return pairs
+
+    core.candidate_pair_indices = replacement
+    try:
+        started = time.perf_counter()
+        report = indexed.audit_payloads_indexed(
+            matcher,
+            inventory,
+            payloads,
+            max_candidate_pairs=max_candidate_pairs,
+            max_index_postings=max_index_postings,
+            max_pair_expansions=max_pair_expansions,
+        )
+        elapsed = time.perf_counter() - started
+    finally:
+        core.candidate_pair_indices = original
+
+    require(
+        getattr(core, "candidate_pair_indices", None) is original,
+        "indexed candidate generator restore failed",
+    )
+    stats = _PREFIX_FILTER_LAST_STATS
+    require(type(stats) is dict, "prefix matcher work telemetry missing")
+    require(
+        stats.get("algorithm") == PREFIX_FILTER_ALGORITHM,
+        "prefix matcher algorithm telemetry drift",
+    )
+    require(
+        type(stats.get("unique_candidate_pairs")) is int
+        and 0 <= int(stats["unique_candidate_pairs"]) <= max_candidate_pairs,
+        "prefix matcher candidate count invalid",
+    )
+    matcher.verify_report(report)
+    return report, elapsed, stats, selftest
+
+
 def compose_current_graph(
     helper: ModuleType,
     base_inventory: Mapping[str, Any],
@@ -716,7 +1288,8 @@ def execute(args: argparse.Namespace) -> None:
         current_sources,
         current_payloads,
     )
-    report, _elapsed = helper._execute_indexed_matcher(
+    report, _elapsed, prefix_stats, prefix_selftest = execute_prefix_filtered_matcher(
+        helper,
         matcher,
         inventory,
         payloads,
@@ -752,6 +1325,14 @@ def execute(args: argparse.Namespace) -> None:
         "combined_source_object_count": EXPECTED_COMBINED_OBJECTS,
         "combined_declared_capacity_bytes": EXPECTED_COMBINED_DECLARED_BYTES,
         "matcher_report_sha256": report.get("report_sha256"),
+        "candidate_filter": {
+            "algorithm": PREFIX_FILTER_ALGORITHM,
+            "work_telemetry": prefix_stats,
+            "bounded_differential_selftest": prefix_selftest,
+            "pair_decision_authority": "EXACT_INCUMBENT_V1_PAIR_MATCHES",
+            "lineage_and_report_authority": "QUALIFIED_INCUMBENT_INDEXED_EXECUTOR",
+            "science_changed": False,
+        },
         "survivor_authority_sha256": authority["survivor_authority_sha256"],
         "current_rada_survivor_source_object_count": authority[
             "current_rada_survivor_source_object_count"
@@ -795,6 +1376,10 @@ def execute(args: argparse.Namespace) -> None:
         "CURRENT_RADA_SURVIVOR_DECLARED_BYTES="
         + str(authority["current_rada_survivor_declared_capacity_bytes"])
     )
+    print("PREFIX_FILTER=" + PREFIX_FILTER_ALGORITHM)
+    print("PREFIX_CANDIDATE_PAIRS=" + str(prefix_stats["unique_candidate_pairs"]))
+    print("PREFIX_PAIR_EXPANSIONS=" + str(prefix_stats["pair_expansion_attempts"]))
+    print("PREFIX_INDEX_POSTINGS=" + str(prefix_stats["index_postings"]))
     print("CAPACITY_CREDIT=0")
     print("RIGHTS_RECHECK_REQUIRED=true")
 
