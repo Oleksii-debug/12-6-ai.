@@ -273,7 +273,6 @@ def _verify_expected_root_integrity(
 
 
 def _canonical_json(value: Mapping[str, Any]) -> str:
-    _verify_byte_tokenizer_runtime_dependencies()
     try:
         rendered = _EXPECTED_BYTE_JSON_DUMPS(
             value, sort_keys=True, separators=(",", ":"),
@@ -281,20 +280,15 @@ def _canonical_json(value: Mapping[str, Any]) -> str:
         )
         # UTF-8 is the identity encoding; lone surrogates are not valid evidence.
         rendered.encode("utf-8")
+        return rendered
     except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
         raise TokenizerDecisionError("authority must be strict UTF-8 JSON") from exc
-    _verify_byte_tokenizer_runtime_dependencies()
-    return rendered
 
 
 def authority_sha256(value: Mapping[str, Any]) -> str:
     """Return the SHA-256 identity of a canonical JSON mapping."""
 
-    _verify_byte_tokenizer_runtime_dependencies()
-    digest = _EXPECTED_BYTE_HASHLIB_SHA256
-    rendered = _canonical_json(value)
-    _verify_byte_tokenizer_runtime_dependencies()
-    return digest(rendered.encode()).hexdigest()
+    return _EXPECTED_BYTE_HASHLIB_SHA256(_canonical_json(value).encode()).hexdigest()
 
 
 def _self_hash(value: Mapping[str, Any], identity_field: str) -> str:
