@@ -26,6 +26,7 @@ from .core import (
     CheckpointCompatibilityError,
     CheckpointIntegrityError,
     _add_failure_note_preserving_primary,
+    _validate_manifest_identity,
     hash_json,
     prepare_checkpoint_load,
     sha256_bytes,
@@ -101,6 +102,31 @@ _SOURCE_SERIALIZATION = {
     "state_tree": "canonical-json",
     "pickle": False,
 }
+_SOURCE_IDENTITY_FIELDS = frozenset(
+    {
+        "git_sha",
+        "model_spec",
+        "model_spec_hash",
+        "parameter_count",
+        "tokenizer_hash",
+        "tokenizer_vocab_hash",
+        "dataset_manifest_hash",
+        "run_manifest_hash",
+        "training_config",
+        "training_config_hash",
+        "seed",
+        "optimizer",
+        "optimizer_hash",
+        "scheduler",
+        "scheduler_hash",
+        "precision",
+        "step",
+        "tokens_seen",
+        "environment",
+        "environment_hash",
+        "environment_lock_hash",
+    }
+)
 ParityHook = Callable[[Path, Path], Mapping[str, Any]]
 
 
@@ -352,21 +378,12 @@ def _validate_source_manifest_structure(
 
 
 def _validate_source_manifest_identity(identity: dict[str, Any]) -> None:
-    hash_pairs = (
-        ("model_spec", "model_spec_hash"),
-        ("training_config", "training_config_hash"),
-        ("optimizer", "optimizer_hash"),
-        ("scheduler", "scheduler_hash"),
-        ("environment", "environment_hash"),
+    _require_exact_fields(
+        identity,
+        _SOURCE_IDENTITY_FIELDS,
+        artifact=f"{EXPORTED_SOURCE_MANIFEST_NAME}:identity",
     )
-    for payload_key, hash_key in hash_pairs:
-        value = identity.get(hash_key)
-        if not isinstance(value, str) or len(value) != 64 or value != value.lower():
-            raise CheckpointIntegrityError(f"exported source manifest has invalid {hash_key}")
-        if hash_json(identity.get(payload_key)) != value:
-            raise CheckpointIntegrityError(
-                f"exported source manifest {hash_key} does not match {payload_key}"
-            )
+    _validate_manifest_identity(identity)
 
 
 def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
