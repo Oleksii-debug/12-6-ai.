@@ -162,6 +162,8 @@ class Trainer:
         "__dict__",
         "__getattribute__",
         "__setattr__",
+        "_checkpoint_inert_copy",
+        "_canonical_config_state",
         "_canonical_model_members",
         "_canonical_optimizer_storage",
         "_canonical_scheduler_storage",
@@ -330,6 +332,82 @@ class Trainer:
                 f"{label} instance storage must be a dictionary"
             )
         return attrs
+
+    @staticmethod
+    def _checkpoint_inert_copy(value: Any, *, label: str) -> Any:
+        """Copy small checkpoint contract values without user callbacks."""
+
+        value_type = type(value)
+        if value is None or value_type in {bool, int, str}:
+            return value
+        if value_type is float:
+            if not math.isfinite(value):
+                raise TrainingStateInvalidError(
+                    f"{label} contains a non-finite float"
+                )
+            return value
+        if value_type is tuple:
+            return tuple(
+                Trainer._checkpoint_inert_copy(
+                    item,
+                    label=f"{label} tuple item",
+                )
+                for item in value
+            )
+        if value_type is dict:
+            result: dict[str, Any] = {}
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise TrainingStateInvalidError(
+                        f"{label} keys must be canonical strings"
+                    )
+                result[key] = Trainer._checkpoint_inert_copy(
+                    item,
+                    label=f"{label}.{key}",
+                )
+            return result
+        raise TrainingStateInvalidError(
+            f"{label} contains non-canonical value type: "
+            f"{Trainer._type_identity(value)}"
+        )
+
+    @staticmethod
+    def _canonical_config_state(config: Any) -> dict[str, Any]:
+        """Snapshot TrainerConfig slots without dataclass deepcopy callbacks."""
+
+        if type(config) is not TrainerConfig:
+            raise TrainingStateInvalidError(
+                "checkpoint config must use canonical TrainerConfig"
+            )
+        names = (
+            "learning_rate",
+            "weight_decay",
+            "betas",
+            "eps",
+            "max_steps",
+            "warmup_steps",
+            "scheduler",
+            "gradient_accumulation_steps",
+            "gradient_clip_norm",
+            "precision",
+            "seed",
+            "deterministic_algorithms",
+            "deterministic_warn_only",
+        )
+        state = {
+            name: Trainer._checkpoint_inert_copy(
+                object.__getattribute__(config, name),
+                label=f"checkpoint config field {name}",
+            )
+            for name in names
+        }
+        try:
+            TrainerConfig(**state)
+        except (TypeError, ValueError) as exc:
+            raise TrainingStateInvalidError(
+                "checkpoint config values are not canonical"
+            ) from exc
+        return state
 
     def _require_canonical_checkpoint_authorities(self) -> None:
         """Reject native subclass/instance replacement of checkpoint safety code."""
@@ -2743,7 +2821,9 @@ class Trainer:
             raise TrainingStateInvalidError(
                 "trainer checkpoint export config must use canonical TrainerConfig"
             )
-        expected_export_config_state = asdict(expected_export_config)
+        expected_export_config_state = Trainer._canonical_config_state(
+            expected_export_config
+        )
         export_policy_fields = (
             "_canonical_default_schedule",
             "_canonical_unscheduled_default_optimizer",
@@ -2758,7 +2838,10 @@ class Trainer:
                 f"{missing_export_policies}"
             )
         expected_export_policies = {
-            name: copy.deepcopy(export_attrs[name])
+            name: Trainer._checkpoint_inert_copy(
+                export_attrs[name],
+                label=f"checkpoint export policy {name}",
+            )
             for name in export_policy_fields
         }
 
@@ -2773,20 +2856,23 @@ class Trainer:
                     f"trainer checkpoint export binding changed during {phase}"
                 )
             if not _typed_state_equal(
-                asdict(expected_export_config),
+                Trainer._canonical_config_state(expected_export_config),
                 expected_export_config_state,
             ):
                 raise TrainingStateInvalidError(
                     f"trainer checkpoint export config changed during {phase}"
                 )
-            if any(
-                name not in current
-                or not _typed_state_equal(current[name], expected)
-                for name, expected in expected_export_policies.items()
-            ):
-                raise TrainingStateInvalidError(
-                    f"trainer checkpoint export policy changed during {phase}"
-                )
+            for name, expected in expected_export_policies.items():
+                if name not in current or not _typed_state_equal(
+                    Trainer._checkpoint_inert_copy(
+                        current[name],
+                        label=f"checkpoint export policy {name}",
+                    ),
+                    expected,
+                ):
+                    raise TrainingStateInvalidError(
+                        f"trainer checkpoint export policy changed during {phase}"
+                    )
 
         committed_before = (self.micro_step, self.optimizer_step, self.tokens_seen)
         try:
@@ -2864,7 +2950,7 @@ class Trainer:
                     None if self.scheduler is None else copy.deepcopy(self.scheduler.state_dict())
                 ),
                 scaler=None if self.scaler is None else copy.deepcopy(self.scaler.state_dict()),
-                config=copy.deepcopy(expected_export_config_state),
+                config=dict(expected_export_config_state),
             )
             # State-dict hooks can mutate weights, moments, gradients or policy.
             # Refuse publication unless the extracted state remains checkpoint-safe.
@@ -2984,7 +3070,10 @@ class Trainer:
         expected_scaler = entry_attrs["scaler"]
         expected_device = entry_attrs["device"]
         expected_policy_state = {
-            name: copy.deepcopy(entry_attrs[name])
+            name: Trainer._checkpoint_inert_copy(
+                entry_attrs[name],
+                label=f"trainer restore policy {name}",
+            )
             for name in required_policies
         }
         expected_preapply_state = {
@@ -2999,7 +3088,9 @@ class Trainer:
                 "_pending_loss_sum",
             )
         }
-        expected_config_state = asdict(expected_config)
+        expected_config_state = Trainer._canonical_config_state(
+            expected_config
+        )
         expected_model_fingerprint = Trainer._model_export_fingerprint(self)
         expected_auxiliary_fingerprint = Trainer._checkpoint_auxiliary_fingerprint(self)
 
@@ -3031,14 +3122,20 @@ class Trainer:
             ):
                 return f"trainer restore state changed during {phase}"
             try:
-                if not _typed_state_equal(asdict(expected_config), expected_config_state):
-                    return f"trainer restore config changed during {phase}"
-                if any(
-                    name not in current
-                    or not _typed_state_equal(current[name], expected)
-                    for name, expected in expected_policy_state.items()
+                if not _typed_state_equal(
+                    Trainer._canonical_config_state(expected_config),
+                    expected_config_state,
                 ):
-                    return f"trainer restore policy changed during {phase}"
+                    return f"trainer restore config changed during {phase}"
+                for name, expected in expected_policy_state.items():
+                    if name not in current or not _typed_state_equal(
+                        Trainer._checkpoint_inert_copy(
+                            current[name],
+                            label=f"trainer restore policy {name}",
+                        ),
+                        expected,
+                    ):
+                        return f"trainer restore policy changed during {phase}"
                 try:
                     Trainer._require_deterministic_policy(self)
                 except BaseException:
@@ -3061,7 +3158,14 @@ class Trainer:
             elif type(state) is not TrainerState:
                 raise TypeError("trainer state must be TrainerState or a mapping")
 
-            if not _typed_state_equal(state.config, asdict(self.config)):
+            checkpoint_config_state = Trainer._checkpoint_inert_copy(
+                state.config,
+                label="checkpoint trainer config",
+            )
+            if type(checkpoint_config_state) is not dict or not _typed_state_equal(
+                checkpoint_config_state,
+                expected_config_state,
+            ):
                 raise ValueError("trainer config mismatch; refusing unsafe resume")
             # Validate exact counter types before any optimizer/scheduler/scaler mutation.
             # Python considers False == 0 and 0.0 == 0; those are not durable
@@ -3214,18 +3318,24 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "trainer restore pending accounting changed during load"
                 )
-            if not _typed_state_equal(asdict(expected_config), expected_config_state):
+            if not _typed_state_equal(
+                Trainer._canonical_config_state(expected_config),
+                expected_config_state,
+            ):
                 raise TrainingStateInvalidError(
                     "trainer restore config changed during load"
                 )
-            if any(
-                name not in current
-                or not _typed_state_equal(current[name], expected)
-                for name, expected in expected_policy_state.items()
-            ):
-                raise TrainingStateInvalidError(
-                    "trainer restore policy changed during load"
-                )
+            for name, expected in expected_policy_state.items():
+                if name not in current or not _typed_state_equal(
+                    Trainer._checkpoint_inert_copy(
+                        current[name],
+                        label=f"trainer restore policy {name}",
+                    ),
+                    expected,
+                ):
+                    raise TrainingStateInvalidError(
+                        "trainer restore policy changed during load"
+                    )
             Trainer._require_no_residual_model_gradients(self)
 
         drift_reason = _restore_preapply_drift_reason("checkpoint preflight")

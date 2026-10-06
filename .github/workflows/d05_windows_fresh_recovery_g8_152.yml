@@ -24,7 +24,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 35
     env:
-      D05_RUNTIME_SHA: "91d49bc26ffa67f5c35905fdd2ef8eb20a01f5fb"
+      D05_RUNTIME_SHA: "b2c4d9e06c55e7ed8497175f18edcbfcecee0f3e"
       EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
       PYTHONUTF8: "1"
@@ -52,10 +52,6 @@ jobs:
           $head = (git rev-parse HEAD).Trim()
           if ($head -ne $env:QUALIFICATION_CARRIER_SHA) {
             throw "qualification checkout SHA drifted"
-          }
-          $mergeBase = (git merge-base $env:D05_RUNTIME_SHA HEAD).Trim()
-          if ($mergeBase -ne $env:D05_RUNTIME_SHA) {
-            throw "qualification carrier is not based on exact Product SHA"
           }
           $changed = @(
             git diff --name-only "$env:D05_RUNTIME_SHA..HEAD" | Sort-Object

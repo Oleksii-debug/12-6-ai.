@@ -258,6 +258,76 @@ def test_effectful_optimizer_export_cannot_forge_final_model_observer(
     )
 
 
+class _ForbiddenCheckpointContractValue:
+    deepcopy_calls = 0
+    eq_calls = 0
+
+    def __deepcopy__(
+        self,
+        memo: dict[int, Any],
+    ) -> "_ForbiddenCheckpointContractValue":
+        del memo
+        type(self).deepcopy_calls += 1
+        return self
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        type(self).eq_calls += 1
+        return True
+
+
+def test_direct_export_rejects_noncanonical_config_without_callbacks(
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    value = _ForbiddenCheckpointContractValue()
+    _ForbiddenCheckpointContractValue.deepcopy_calls = 0
+    _ForbiddenCheckpointContractValue.eq_calls = 0
+    object.__setattr__(trainer.config, "seed", value)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint config field seed contains non-canonical value type",
+    ):
+        trainer.state_dict()
+
+    assert _ForbiddenCheckpointContractValue.deepcopy_calls == 0
+    assert _ForbiddenCheckpointContractValue.eq_calls == 0
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+
+
+def test_direct_export_rejects_noncanonical_policy_without_callbacks(
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    value = _ForbiddenCheckpointContractValue()
+    _ForbiddenCheckpointContractValue.deepcopy_calls = 0
+    _ForbiddenCheckpointContractValue.eq_calls = 0
+    trainer._canonical_default_optimizer_options["eps"] = value
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="checkpoint export policy .* contains non-canonical value type",
+    ):
+        trainer.state_dict()
+
+    assert _ForbiddenCheckpointContractValue.deepcopy_calls == 0
+    assert _ForbiddenCheckpointContractValue.eq_calls == 0
+    assert trainer._failure_reason is None
+    assert trainer._update_incomplete is False
+
+
 def test_effectful_optimizer_export_cannot_drift_checkpoint_contract(
     monkeypatch: pytest.MonkeyPatch,
     preserve_process_state: Any,
