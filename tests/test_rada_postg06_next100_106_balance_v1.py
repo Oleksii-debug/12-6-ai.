@@ -487,3 +487,44 @@ def test_write_output_dir_is_immutable(tmp_path: Path) -> None:
         match="already exists",
     ):
         target.write_output_dir(output, values)
+
+def test_resolve_existing_path_normalizes_existing_paths(tmp_path: Path) -> None:
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    assert target._resolve_existing_path(
+        str(existing),
+        "canonical path missing",
+    ) == existing.resolve(strict=True)
+
+
+def test_resolve_existing_path_maps_missing_paths_to_domain_error(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="canonical path missing",
+    ):
+        target._resolve_existing_path(
+            str(tmp_path / "missing"),
+            "canonical path missing",
+        )
+
+
+def test_verify_module_provenance_missing_file_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = tmp_path / "canonical.py"
+    expected.write_text("x = 1\n", encoding="utf-8")
+    missing = tmp_path / "missing.py"
+
+    class MissingModule:
+        __file__ = str(missing)
+
+    monkeypatch.setattr(target, "ROOT", tmp_path)
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="module provenance drift: canonical.py",
+    ):
+        target.verify_module_provenance(MissingModule(), "canonical.py")
+
