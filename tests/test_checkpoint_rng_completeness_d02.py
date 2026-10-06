@@ -210,6 +210,166 @@ def test_explicit_rng_opt_out_retains_existing_checkpoint_compatibility(
 @pytest.mark.parametrize(
     "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
 )
+def test_rng_opt_out_rejects_preflight_cuda_environment_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+) -> None:
+    key = "CUBLAS_WORKSPACE_CONFIG"
+    ambient = core.capture_rng_state()
+    initial = ambient["torch"]["cuda_environment"][key]
+    replacement = ":16:8" if initial != ":16:8" else ":4096:8"
+    checkpoint = tmp_path / "opt-out-preflight-environment-drift"
+    config = TrainerConfig(max_steps=10, seed=703)
+    source_model = torch.nn.Linear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+
+    target_model = torch.nn.Linear(3, 3)
+    target = Trainer(target_model, config)
+    original_preflight = trainer_adapter._preflight_optimizer_state
+
+    def drifting_preflight(*args: Any, **kwargs: Any) -> Any:
+        result = original_preflight(*args, **kwargs)
+        monkeypatch.setenv(key, replacement)
+        return result
+
+    def forbidden_materialization(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("ambient drift must reject before model materialization")
+
+    monkeypatch.setattr(
+        trainer_adapter,
+        "_preflight_optimizer_state",
+        drifting_preflight,
+    )
+    monkeypatch.setattr(loader, "_prepare_model_weights", forbidden_materialization)
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="live ambient torch/CUDA process state changed",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=False,
+        )
+
+    assert target._failure_reason == "checkpoint_preflight_rng_rollback_failed"
+    assert target._update_incomplete is True
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
+@pytest.mark.parametrize(
+    ("phase", "mutation"),
+    [
+        ("model_apply", "default_dtype"),
+        ("model_apply", "cudnn_benchmark"),
+        ("model_apply", "cuda_environment"),
+        ("trainer_apply", "cuda_environment"),
+    ],
+)
+def test_rng_opt_out_rejects_application_ambient_process_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint_identity: CheckpointIdentity,
+    loader: Any,
+    phase: str,
+    mutation: str,
+) -> None:
+    key = "CUBLAS_WORKSPACE_CONFIG"
+    checkpoint = tmp_path / f"opt-out-{phase}-{mutation}"
+    config = TrainerConfig(max_steps=10, seed=703)
+
+    def mutate_process_state() -> None:
+        if mutation == "default_dtype":
+            replacement = (
+                torch.float64
+                if torch.get_default_dtype() is not torch.float64
+                else torch.float32
+            )
+            torch.set_default_dtype(replacement)
+        elif mutation == "cudnn_benchmark":
+            torch.backends.cudnn.benchmark = not torch.backends.cudnn.benchmark
+        elif mutation == "cuda_environment":
+            current = core.capture_rng_state()["torch"]["cuda_environment"][key]
+            replacement = ":16:8" if current != ":16:8" else ":4096:8"
+            monkeypatch.setenv(key, replacement)
+        else:
+            raise AssertionError(f"unknown mutation: {mutation}")
+
+    class DriftLinear(torch.nn.Linear):
+        def load_state_dict(self, state_dict: Any, *args: Any, **kwargs: Any):
+            result = super().load_state_dict(state_dict, *args, **kwargs)
+            if phase == "model_apply":
+                mutate_process_state()
+            return result
+
+    source_model = DriftLinear(3, 3)
+    source = Trainer(source_model, config)
+    trainer_adapter.save_trainer_checkpoint(
+        checkpoint,
+        model=source_model,
+        trainer=source,
+        identity=checkpoint_identity,
+    )
+
+    target_model = DriftLinear(3, 3)
+    target = Trainer(target_model, config)
+    ambient = core.capture_rng_state()
+
+    if phase == "trainer_apply":
+        original_bind = loader._bind_trainer_state_loader
+
+        def bind_drifting_loader(trainer: Any) -> Any:
+            apply_state = original_bind(trainer)
+
+            def drifting_apply(state: Any) -> Any:
+                result = apply_state(state)
+                mutate_process_state()
+                return result
+
+            return drifting_apply
+
+        monkeypatch.setattr(
+            loader,
+            "_bind_trainer_state_loader",
+            bind_drifting_loader,
+        )
+
+    with pytest.raises(
+        CheckpointCompatibilityError,
+        match="live ambient torch/CUDA process state changed",
+    ):
+        loader.load_trainer_checkpoint(
+            checkpoint,
+            model=target_model,
+            trainer=target,
+            restore_rng=False,
+        )
+
+    assert target._failure_reason == "checkpoint_restore_apply_failed"
+    assert target._update_incomplete is True
+    if mutation == "default_dtype":
+        assert str(torch.get_default_dtype()) == ambient["torch"]["default_dtype"]
+    elif mutation == "cudnn_benchmark":
+        assert (
+            bool(torch.backends.cudnn.benchmark)
+            == ambient["torch"]["cudnn_benchmark"]
+        )
+
+
+@pytest.mark.parametrize(
+    "loader", [trainer_adapter, progress_trainer], ids=["adapter", "progress"],
+)
 def test_complete_verified_checkpoint_replays_python_numpy_and_torch_cpu(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
