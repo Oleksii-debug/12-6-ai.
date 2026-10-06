@@ -1494,3 +1494,75 @@ def test_bind_reseals_after_second_identity_observation(
     ):
         authority.bind_byte_baseline_decision(selection, application, **SHA)
     assert version_reads == 2
+
+
+def test_bind_rejects_triple_alias_tokenizer_identity_class_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from twelve_six.tokenization import base as base_module
+    from twelve_six.tokenization import byte as byte_module
+
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    class ReplacementIdentity:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    canonical_identity = authority._EXPECTED_TOKENIZER_IDENTITY_CLASS
+    monkeypatch.setattr(
+        authority,
+        "_CanonicalTokenizerIdentity",
+        ReplacementIdentity,
+    )
+    monkeypatch.setattr(byte_module, "TokenizerIdentity", ReplacementIdentity)
+    monkeypatch.setattr(base_module, "TokenizerIdentity", ReplacementIdentity)
+
+    assert authority._CanonicalTokenizerIdentity is byte_module.TokenizerIdentity
+    assert byte_module.TokenizerIdentity is base_module.TokenizerIdentity
+    assert base_module.TokenizerIdentity is not canonical_identity
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime module drift: TokenizerIdentity",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+
+def test_bind_rejects_tokenizer_base_module_alias_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        ),
+    )
+
+    class BaseProxy:
+        TokenizerIdentity = authority._EXPECTED_TOKENIZER_IDENTITY_CLASS
+
+    monkeypatch.setattr(authority, "base_module", BaseProxy())
+
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="runtime dependency drift: base module",
+    ):
+        authority.bind_byte_baseline_decision(selection, application, **SHA)

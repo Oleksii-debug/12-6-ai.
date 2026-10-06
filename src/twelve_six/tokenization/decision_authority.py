@@ -146,6 +146,8 @@ _EXPECTED_BYTE_RUNTIME_BUILTINS = {
     "range": builtins.range,
     "str": builtins.str,
 }
+_EXPECTED_TOKENIZER_BASE_MODULE = base_module
+_EXPECTED_TOKENIZER_IDENTITY_CLASS = _CanonicalTokenizerIdentity
 _EXPECTED_BYTE_JSON_MODULE = json
 _EXPECTED_BYTE_HASHLIB_MODULE = hashlib
 _EXPECTED_BYTE_JSON_DUMPS = json.dumps
@@ -308,6 +310,10 @@ def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
 def _verify_byte_tokenizer_runtime_dependencies() -> None:
     """Bind mutable builtin and stdlib call targets used by canonical byte.py."""
 
+    if base_module is not _EXPECTED_TOKENIZER_BASE_MODULE:
+        raise TokenizerDecisionError(
+            "canonical byte tokenizer runtime dependency drift: base module"
+        )
     builtins_state = vars(builtins)
     for name, expected in _EXPECTED_BYTE_RUNTIME_BUILTINS.items():
         if builtins_state.get(name) is not expected:
@@ -345,8 +351,10 @@ def _verify_runtime_byte_tokenizer_module_state() -> None:
             "canonical byte tokenizer runtime module drift: ByteTokenizer"
         )
     if (
-        _CanonicalTokenizerIdentity is not base_module.TokenizerIdentity
-        or module_state.get("TokenizerIdentity") is not base_module.TokenizerIdentity
+        base_module.TokenizerIdentity is not _EXPECTED_TOKENIZER_IDENTITY_CLASS
+        or _CanonicalTokenizerIdentity is not _EXPECTED_TOKENIZER_IDENTITY_CLASS
+        or module_state.get("TokenizerIdentity")
+        is not _EXPECTED_TOKENIZER_IDENTITY_CLASS
     ):
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime module drift: TokenizerIdentity"
