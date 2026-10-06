@@ -1,0 +1,88 @@
+name: D05 restore failure execution-mode seal G8-166a
+
+on:
+  pull_request:
+    branches:
+      - repair/2902-restore-failure-execution-mode-g8-166-20261006
+    paths:
+      - ".github/workflows/d05_restore_failure_execution_mode_g8_166a.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d05-restore-failure-mode-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: "fe77d2fa9c3c9e78ced6c234d7b5d9d96d30c5bd"
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+  PYTHONUTF8: "1"
+
+jobs:
+  focused-linux:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2909-restore-failure-mode-g8-166a-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source and qualification closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$SOURCE_SHA" HEAD)" = "$SOURCE_SHA"
+          changed="$(git diff --name-only "$SOURCE_SHA"..HEAD)"
+          test "$changed" = ".github/workflows/d05_restore_failure_execution_mode_g8_166a.yml"
+          test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/trainer_adapter.py")" = "c753785b022e96206f973b81a5676a99ab46383a"
+          test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/progress_trainer.py")" = "0b1a0b5c5077ff0ab1479764bcfd65b17f62a02d"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_checkpoint_rng_completeness_d02.py")" = "9a8f561c0895cb71dbc1f77fb0fc24d8f57b94ae"
+          python -m py_compile \
+            src/twelve_six/checkpoint/trainer_adapter.py \
+            src/twelve_six/checkpoint/progress_trainer.py \
+            tests/test_checkpoint_rng_completeness_d02.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install focused test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Lint exact source closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check \
+            src/twelve_six/checkpoint/trainer_adapter.py \
+            src/twelve_six/checkpoint/progress_trainer.py \
+            tests/test_checkpoint_rng_completeness_d02.py
+
+      - name: Execute checkpoint restore regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_checkpoint_rng_completeness_d02.py
+
+      - name: Prove carrier remains clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
