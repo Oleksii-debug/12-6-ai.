@@ -9,7 +9,7 @@ from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from fractions import Fraction
 from heapq import nsmallest
-from typing import Any
+from typing import Any, TypeVar
 
 SCHEMA = "12-6.data232-decontamination-report.v2"
 ALGORITHM = "data232-deterministic-overlap-cluster-v2"
@@ -189,6 +189,7 @@ def _pair(train: dict[str, Any], other: dict[str, Any], other_kind: str, t: Mapp
 
 _Posting = int | list[int]
 _CandidateKey = tuple[str, str]
+_PostingKey = TypeVar("_PostingKey")
 
 
 def _candidate_keys(fp: Mapping[str, Any]) -> Iterator[_CandidateKey]:
@@ -202,8 +203,8 @@ def _candidate_keys(fp: Mapping[str, Any]) -> Iterator[_CandidateKey]:
 
 
 def _append_posting(
-    index: dict[_CandidateKey, _Posting],
-    key: _CandidateKey,
+    index: dict[_PostingKey, _Posting],
+    key: _PostingKey,
     record_index: int,
 ) -> None:
     """Store singleton postings without allocating a set per unique shingle."""
