@@ -124,6 +124,73 @@ def test_effectful_optimizer_state_dict_never_publishes_unsafe_snapshot(
         ("device", "checkpoint export binding changed during checkpoint export"),
     ],
 )
+def test_transient_scheduler_storage_shadow_cannot_forge_snapshot(
+    preserve_process_state: Any,
+) -> None:
+    import copy
+
+    del preserve_process_state
+    model = _Logits()
+    config = TrainerConfig(seed=703, max_steps=2)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=config.learning_rate,
+        betas=config.betas,
+        eps=config.eps,
+        weight_decay=config.weight_decay,
+    )
+
+    class ForgingScheduler(torch.optim.lr_scheduler.LambdaLR):
+        calls = 0
+        owner: Trainer | None = None
+
+        def state_dict(self):
+            type(self).calls += 1
+            snapshot = copy.deepcopy(super().state_dict())
+            if type(self).calls == 2:
+                snapshot["base_lrs"] = [rate + 0.125 for rate in snapshot["base_lrs"]]
+            elif type(self).calls == 3:
+                owner = type(self).owner
+                assert owner is not None
+                raw = Trainer._canonical_scheduler_storage(owner)
+                assert raw is not None
+                forged_live = dict(raw)
+                forged_live["base_lrs"] = [
+                    rate + 0.125 for rate in forged_live["base_lrs"]
+                ]
+
+                def one_shot_storage():
+                    del vars(owner)["_canonical_scheduler_storage"]
+                    return forged_live
+
+                owner._canonical_scheduler_storage = one_shot_storage
+            return snapshot
+
+    scheduler = ForgingScheduler(optimizer, lr_lambda=lambda _step: 1.0)
+    trainer = Trainer(
+        model,
+        config,
+        optimizer=optimizer,
+        scheduler=scheduler,
+    )
+    ForgingScheduler.owner = trainer
+    ForgingScheduler.calls = 0
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="scheduler export differs from live state",
+        ):
+            trainer.state_dict()
+    finally:
+        ForgingScheduler.owner = None
+        ForgingScheduler.calls = 0
+
+    assert "_canonical_scheduler_storage" in vars(trainer)
+    assert trainer._failure_reason == (
+        "checkpoint state extraction failed after possible mutation"
+    )
+
+
 def test_transient_counter_drift_cannot_forge_exported_progress(
     monkeypatch: pytest.MonkeyPatch,
     preserve_process_state: Any,

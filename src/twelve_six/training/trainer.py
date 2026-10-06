@@ -560,7 +560,7 @@ class Trainer:
     def _canonical_scaler_live_state(self) -> dict[str, Any]:
         """Derive GradScaler checkpoint fields from raw trainer-owned storage."""
 
-        attrs = self._canonical_scaler_storage()
+        attrs = Trainer._canonical_scaler_storage(self)
         enabled = attrs.get("_enabled")
         if type(enabled) is not bool:
             raise TrainingStateInvalidError(
@@ -2247,7 +2247,7 @@ class Trainer:
         saved_groups = exported.get("param_groups") if isinstance(exported, Mapping) else None
         if not isinstance(saved_state, Mapping) or not isinstance(saved_groups, list):
             raise TrainingStateInvalidError("optimizer export is not canonical")
-        live_state, live_groups = self._canonical_optimizer_storage()
+        live_state, live_groups = Trainer._canonical_optimizer_storage(self)
         if len(saved_groups) != len(live_groups):
             raise TrainingStateInvalidError("optimizer export group count differs")
         present: set[int] = set()
@@ -2581,7 +2581,7 @@ class Trainer:
         """Refuse finite, detached GradScaler statistics that cannot replay."""
         if not isinstance(exported, Mapping):
             raise TrainingStateInvalidError("gradient scaler export is not canonical")
-        expected = self._canonical_scaler_live_state()
+        expected = Trainer._canonical_scaler_live_state(self)
         if not Trainer._exact_export_leaf_equal(exported, expected):
             raise TrainingStateInvalidError(
                 "gradient scaler export differs from live state"
@@ -2601,7 +2601,7 @@ class Trainer:
             return
         if not isinstance(exported, Mapping):
             raise TrainingStateInvalidError("scheduler export is not canonical")
-        raw_live = self._canonical_scheduler_storage()
+        raw_live = Trainer._canonical_scheduler_storage(self)
         if raw_live is None:
             raise TrainingStateInvalidError("scheduler live storage is unavailable")
         live = {
