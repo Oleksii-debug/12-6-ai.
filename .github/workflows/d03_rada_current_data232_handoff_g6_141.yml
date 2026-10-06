@@ -3,7 +3,7 @@ name: D03 current Rada DATA232 handoff G6 141
 on:
   pull_request:
     branches:
-      - execution/rada-current-data232-handoff-g6-141-20261006
+      - compat/2841-data232-import-isolation-g8-154-20261006
     paths:
       - ".github/workflows/d03_rada_current_data232_handoff_g6_141.yml"
       - "tools/run_d03_rada_current_data232_handoff_v1.py"
@@ -20,7 +20,7 @@ jobs:
   execute-two-clean:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.head_ref == 'compat/2841-data232-import-isolation-g8-154-20261006'
+      github.head_ref == 'execution/rada-data232-bounded-memory-g6-143-20261006'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -75,6 +75,9 @@ jobs:
           git diff --name-only "$PARENT_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
           cat >"$RUNNER_TEMP/expected.txt" <<'EOF'
           .github/workflows/d03_rada_current_data232_handoff_g6_141.yml
+          src/twelve_six/data/_data232_decontamination_matching.py
+          src/twelve_six/data/decontamination_authority_v2.py
+          tests/test_data232_bounded_memory_execution.py
           tools/run_d03_rada_current_data232_handoff_v1.py
           EOF
           sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
@@ -82,6 +85,9 @@ jobs:
           test "$(git hash-object tools/run_d03_rada_current_data232_handoff_v1.py)" = "$RUNNER_BLOB"
           test "$(git hash-object tools/run_d03_rada_current_global_dedup_v1.py)" = "1f7109ae2efca9a97ea49ab5c29b8f095657489c"
           test "$(git hash-object src/twelve_six/data/current_reserved_decontamination_v1.py)" = "e5c555e3cd27844e98d4ae91af0b746e427f36c9"
+          test "$(git hash-object src/twelve_six/data/_data232_decontamination_matching.py)" = "afa70511f82dc81d9c9f85e3d0b67eba343004f9"
+          test "$(git hash-object src/twelve_six/data/decontamination_authority_v2.py)" = "3ca8f21945c02f692c130a015e036673fa24e7af"
+          test "$(git hash-object tests/test_data232_bounded_memory_execution.py)" = "6948548d9c7d71c126b18568262b72b6c238f5e5"
           test "$(git hash-object src/twelve_six/data/eval303_selection_payload_resolver_v1.py)" = "659cb17fdba903d9c50c1dfc5becf046f523e5ee"
           test "$(git hash-object src/twelve_six/data/eval233_final_test_resolver_v1.py)" = "71dd98204c588bd0bb67b7a7b3ddc5ae8aa87c00"
           test "$(git hash-object src/twelve_six/data/eval647_future_training_exclusion_v1.py)" = "5516577a0720150a7ec12c1bf8898972968e6970"
@@ -90,6 +96,7 @@ jobs:
           test "$(git hash-object evidence/eval647/code_selection_source_materialization_v1.json)" = "efa5b77275919fa9417e35efb30c8c9a527bd960"
           test "$(git hash-object tools/materialize_eval_code_reserve_v1.py)" = "13000d9b911bf0e0c7567613e68f2b9b113bd955"
           python -m py_compile tools/run_d03_rada_current_data232_handoff_v1.py
+          python -m pytest -q tests/test_data232_bounded_memory_execution.py
           PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<'PY'
           import sys
           import run_d03_rada_current_data232_handoff_v1  # noqa: F401
