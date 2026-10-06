@@ -2037,7 +2037,7 @@ class Trainer:
             digest.update(b"none\0")
         else:
             try:
-                scaler_attrs = self._canonical_scaler_storage()
+                scaler_attrs = Trainer._canonical_scaler_storage(self)
             except TrainingStateInvalidError as exc:
                 raise TrainingStateInvalidError(
                     "checkpoint scaler storage is unavailable"
@@ -2760,21 +2760,137 @@ class Trainer:
         scheduler_state = copy.deepcopy(state.scheduler)
         scaler_state = copy.deepcopy(state.scaler)
 
+        # Bind every effectful component interface before the first live restore
+        # mutation. A stateful descriptor/proxy must not get a second lookup
+        # opportunity after checkpoint preflight or silently redirect/mutate the
+        # target while its loader is being resolved.
+        restore_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+        expected_model = restore_attrs.get("model")
+        expected_optimizer = restore_attrs.get("optimizer")
+        expected_scheduler = restore_attrs.get("scheduler")
+        expected_scaler = restore_attrs.get("scaler")
+        expected_config = restore_attrs.get("config")
+        expected_preapply_state = {
+            name: copy.deepcopy(restore_attrs.get(name))
+            for name in (
+                "_failure_reason",
+                "_update_incomplete",
+                "micro_step",
+                "optimizer_step",
+                "tokens_seen",
+                "_pending_tokens",
+                "_pending_loss_sum",
+            )
+        }
+        expected_config_state = asdict(expected_config)
+        expected_model_fingerprint = Trainer._model_export_fingerprint(self)
+        expected_auxiliary_fingerprint = Trainer._checkpoint_auxiliary_fingerprint(self)
+
+        def _restore_component_bindings_changed() -> bool:
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            return any(
+                current.get(name) is not expected
+                for name, expected in (
+                    ("model", expected_model),
+                    ("optimizer", expected_optimizer),
+                    ("scheduler", expected_scheduler),
+                    ("scaler", expected_scaler),
+                    ("config", expected_config),
+                )
+            )
+
+        def _restore_preapply_drift_reason() -> str | None:
+            current = Trainer._raw_instance_dict(self, Trainer, label="trainer")
+            if _restore_component_bindings_changed():
+                return "trainer restore component binding changed during loader lookup"
+            if any(
+                not _typed_state_equal(current.get(name), expected)
+                for name, expected in expected_preapply_state.items()
+            ):
+                return "trainer restore state changed during loader lookup"
+            try:
+                if not _typed_state_equal(asdict(expected_config), expected_config_state):
+                    return "trainer restore config changed during loader lookup"
+                Trainer._require_no_residual_model_gradients(self)
+                if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
+                    return "trainer model changed during loader lookup"
+                if (
+                    Trainer._checkpoint_auxiliary_fingerprint(self)
+                    != expected_auxiliary_fingerprint
+                ):
+                    return "trainer auxiliary state changed during loader lookup"
+            except BaseException:
+                return "trainer restore state became unobservable during loader lookup"
+            return None
+
+        def _require_restore_component_bindings() -> None:
+            if _restore_component_bindings_changed():
+                raise TrainingStateInvalidError(
+                    "trainer restore component binding changed during load"
+                )
+
+        try:
+            optimizer_loader = getattr(expected_optimizer, "load_state_dict", None)
+            optimizer_zero_grad = getattr(expected_optimizer, "zero_grad", None)
+            scheduler_loader = (
+                None
+                if expected_scheduler is None
+                else getattr(expected_scheduler, "load_state_dict", None)
+            )
+            scaler_loader = (
+                None
+                if expected_scaler is None
+                else getattr(expected_scaler, "load_state_dict", None)
+            )
+        except BaseException:
+            drift_reason = _restore_preapply_drift_reason()
+            if drift_reason is not None:
+                Trainer._mark_failed(self, drift_reason)
+            raise
+
+        if not callable(optimizer_loader):
+            raise TrainingStateInvalidError(
+                "trainer optimizer must provide load_state_dict()"
+            )
+        if not callable(optimizer_zero_grad):
+            raise TrainingStateInvalidError(
+                "trainer optimizer must provide zero_grad()"
+            )
+        if expected_scheduler is not None and not callable(scheduler_loader):
+            raise TrainingStateInvalidError(
+                "trainer scheduler must provide load_state_dict()"
+            )
+        if expected_scaler is not None and not callable(scaler_loader):
+            raise TrainingStateInvalidError(
+                "trainer gradient scaler must provide load_state_dict()"
+            )
+        drift_reason = _restore_preapply_drift_reason()
+        if drift_reason is not None:
+            Trainer._mark_failed(self, drift_reason)
+            raise TrainingStateInvalidError(drift_reason)
+
         self._update_incomplete = True
         try:
-            self.optimizer.load_state_dict(optimizer_state)
+            optimizer_loader(optimizer_state)
+            _require_restore_component_bindings()
             self._require_optimizer_parameter_coverage()
-            if self.scheduler is not None and scheduler_state is not None:
-                self.scheduler.load_state_dict(scheduler_state)
+            if expected_scheduler is not None and scheduler_state is not None:
+                assert scheduler_loader is not None
+                scheduler_loader(scheduler_state)
+                _require_restore_component_bindings()
             if scaler_state is not None:
-                self.scaler.load_state_dict(scaler_state)
+                assert scaler_loader is not None
+                scaler_loader(scaler_state)
+                _require_restore_component_bindings()
 
             self.micro_step = state.micro_step
             self.optimizer_step = state.optimizer_step
             self.tokens_seen = state.tokens_seen
             self._pending_tokens = 0
             self._pending_loss_sum = 0.0
-            self.optimizer.zero_grad(set_to_none=True)
+            _require_restore_component_bindings()
+            optimizer_zero_grad(set_to_none=True)
+            _require_restore_component_bindings()
             # PyTorch's load_state_dict accepts NaN optimizer moments and
             # malformed-but-type-compatible group rates. A restore must not
             # return a supposedly checkpoint-safe trainer with those values.
@@ -2782,6 +2898,7 @@ class Trainer:
             self._require_finite_committed_update()
             self._require_no_residual_model_gradients()
             self._require_deterministic_policy()
+            _require_restore_component_bindings()
         except BaseException:
             self._mark_failed("trainer state restore failed after possible partial apply")
             raise
