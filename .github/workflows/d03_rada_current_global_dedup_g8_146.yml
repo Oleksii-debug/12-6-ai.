@@ -104,13 +104,13 @@ jobs:
           test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_runtime_closure.py")" = "$PRODUCT_RUNTIME_CLOSURE_TEST_BLOB"
           test "$(git rev-parse "$PRODUCT_HEAD:src/twelve_six/data/incumbent_dedup_indexed_execution.py")" = "$PRODUCT_FACADE_BLOB"
           git show "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py"             > "$RUNNER_TEMP/product-indexed-core.py"
-          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_indexed_execution.py"             > "$RUNNER_TEMP/test_product_indexed_execution.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_indexed_execution.py"             > "$RUNNER_TEMP/test_incumbent_dedup_indexed_execution.py"
           git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_direct_import_behavior.py"             > "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py"
           git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_imported_member_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py"
           git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_json_re_transitive_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py"
           git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_runtime_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_runtime_closure.py"
           test "$(git hash-object "$RUNNER_TEMP/product-indexed-core.py")" = "$PRODUCT_CORE_BLOB"
-          test "$(git hash-object "$RUNNER_TEMP/test_product_indexed_execution.py")" = "$PRODUCT_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_indexed_execution.py")" = "$PRODUCT_TEST_BLOB"
           test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py")" = "$PRODUCT_DIRECT_IMPORT_TEST_BLOB"
           test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py")" = "$PRODUCT_IMPORTED_MEMBER_TEST_BLOB"
           test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py")" = "$PRODUCT_JSON_RE_TEST_BLOB"
@@ -118,7 +118,7 @@ jobs:
           cp "$RUNNER_TEMP/product-indexed-core.py"             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py
           test "$(git hash-object src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py)" = "$PRODUCT_CORE_BLOB"
           test "$(git hash-object src/twelve_six/data/incumbent_dedup_indexed_execution.py)" = "$PRODUCT_FACADE_BLOB"
-          python -m py_compile             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py             src/twelve_six/data/incumbent_dedup_indexed_execution.py             "$RUNNER_TEMP/test_product_indexed_execution.py" \
+          python -m py_compile             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py             src/twelve_six/data/incumbent_dedup_indexed_execution.py             "$RUNNER_TEMP/test_incumbent_dedup_indexed_execution.py" \
             "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py" \
             "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py" \
             "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py" \
@@ -191,7 +191,7 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check "pytest>=8" "ruff>=0.12"
           ruff check tools/run_d03_rada_current_global_dedup_v1.py
-          PYTHONPATH="$GITHUB_WORKSPACE/src" pytest -q "$RUNNER_TEMP/test_product_indexed_execution.py"
+          PYTHONPATH="$GITHUB_WORKSPACE/src" pytest -q "$RUNNER_TEMP/test_incumbent_dedup_indexed_execution.py"
           PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<'PY'
           from run_d03_rada_current_global_dedup_v1 import (
               CURRENT_REPLAY_EVIDENCE_STATUS,
