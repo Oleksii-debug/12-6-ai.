@@ -68,6 +68,18 @@ def test_aggregate_reason_sets_are_counts_not_exemplars() -> None:
     assert second_id not in durable
 
 
+def test_control_codepoint_census_is_text_free_and_excludes_allowed_controls() -> None:
+    result = diagnostic.aggregate_disallowed_control_codepoints(
+        ["alpha\x0cbeta\n\t", "gamma\x0bdelta\x0c"]
+    )
+    assert result == {"U+000B": 1, "U+000C": 2}
+    durable = json.dumps(result, sort_keys=True)
+    assert "alpha" not in durable
+    assert "beta" not in durable
+    assert "\\n" not in durable
+    assert "\\t" not in durable
+
+
 def test_authority_constants_are_fail_closed() -> None:
     assert diagnostic.OWNER_HEAD == "7cda697ac4fc8330754b28f0a02e119e395dbd25"
     assert diagnostic.EXPECTED_RECORDS == 256
