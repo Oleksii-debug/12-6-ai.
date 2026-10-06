@@ -9,6 +9,7 @@ import math
 import os
 import stat
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,24 @@ def _file_stamp(info: os.stat_result) -> tuple[int, int, int]:
     return (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
+def _path_key(path: Path, *, label: str) -> str:
+    try:
+        resolved = path.resolve(strict=False)
+    except (OSError, RuntimeError):
+        raise ValueError(f"{label}_path_unresolvable") from None
+    return os.path.normcase(str(resolved))
+
+
+def _require_distinct_paths(named_paths: list[tuple[str, Path]]) -> None:
+    seen: dict[str, str] = {}
+    for label, path in named_paths:
+        key = _path_key(path, label=label)
+        previous = seen.get(key)
+        if previous is not None:
+            raise ValueError(f"{label}_path_collides_with_{previous}")
+        seen[key] = label
+
+
 def _read_json(path: Path, *, label: str) -> Any:
     try:
         before = path.stat()
@@ -118,8 +137,7 @@ def _read_json(path: Path, *, label: str) -> Any:
         raise ValueError(f"{label}_json_too_deep") from None
 
 
-def _write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _render_json(value: Any) -> bytes:
     rendered = json.dumps(
         value,
         indent=2,
@@ -127,10 +145,60 @@ def _write_json(path: Path, value: Any) -> None:
         ensure_ascii=False,
         allow_nan=False,
     )
-    path.write_text(rendered + "\n", encoding="utf-8")
+    return (rendered + "\n").encode("utf-8")
+
+
+def _write_json(path: Path, value: Any, *, label: str) -> None:
+    payload = _render_json(value)
+    temporary: Path | None = None
+    descriptor = -1
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            existing = path.lstat()
+        except FileNotFoundError:
+            existing = None
+        if existing is not None and not stat.S_ISREG(existing.st_mode):
+            raise ValueError(f"{label}_destination_not_regular_file")
+
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        temporary = Path(temporary_name)
+        with os.fdopen(descriptor, "wb") as sink:
+            descriptor = -1
+            sink.write(payload)
+            sink.flush()
+            os.fsync(sink.fileno())
+        os.replace(temporary, path)
+        temporary = None
+    except OSError:
+        raise ValueError(f"{label}_write_failed") from None
+    finally:
+        if descriptor != -1:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
 
 
 def _build(args: argparse.Namespace) -> int:
+    named_paths = [
+        ("roadmap", args.roadmap),
+        ("build_input", args.input),
+        ("output", args.output),
+    ]
+    if args.external_identities is not None:
+        named_paths.append(("external_identities", args.external_identities))
+    _require_distinct_paths(named_paths)
+
     roadmap = _read_json(args.roadmap, label="roadmap")
     request = _read_json(args.input, label="build_input")
     if not isinstance(request, dict) or set(request) != _BUILD_FIELDS:
@@ -144,17 +212,25 @@ def _build(args: argparse.Namespace) -> int:
         requirement_evidence=request["requirement_evidence"],
         decision=request["decision"],
     )
-    _write_json(args.output, packet)
+    _write_json(args.output, packet, label="output")
     if args.external_identities is not None:
         _write_json(
             args.external_identities,
             expected_external_identities(packet),
+            label="external_identities",
         )
     print(packet["packet_sha256"])
     return 0
 
 
 def _verify(args: argparse.Namespace) -> int:
+    _require_distinct_paths(
+        [
+            ("roadmap", args.roadmap),
+            ("packet", args.packet),
+            ("expected_identities", args.expected_identities),
+        ]
+    )
     roadmap = _read_json(args.roadmap, label="roadmap")
     packet = _read_json(args.packet, label="packet")
     expected = _read_json(args.expected_identities, label="expected_identities")
