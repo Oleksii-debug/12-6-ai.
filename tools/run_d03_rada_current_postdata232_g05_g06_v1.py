@@ -153,17 +153,20 @@ def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
         temp.replace(path)
         return
 
+    created_temp = False
     try:
         with temp.open("xb") as handle:
+            created_temp = True
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         temp.replace(path)
     except OSError:
-        try:
-            temp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if created_temp:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise
 
 
@@ -179,6 +182,20 @@ def commit_durable_bundle(
     survivor_inventory_bytes: bytes,
 ) -> None:
     """Commit child artifacts first and the bound evidence receipt last."""
+    paths = (
+        evidence_path,
+        quality_path,
+        privacy_path,
+        survivor_inventory_path,
+    )
+    normalized_paths = {
+        os.path.normcase(str(path.resolve(strict=False)))
+        for path in paths
+    }
+    require(
+        len(normalized_paths) == len(paths),
+        "durable output paths must be pairwise distinct",
+    )
     write_immutable_bytes(
         quality_path,
         quality_bytes,
