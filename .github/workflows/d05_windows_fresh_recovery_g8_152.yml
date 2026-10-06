@@ -1,0 +1,106 @@
+name: D05 Windows fresh-process recovery qualification G8-152
+
+on:
+  pull_request:
+    branches:
+      - hardening/2773-config-binding-convergence-g8-132-20261005
+    paths:
+      - ".github/workflows/d05_windows_fresh_recovery_g8_152.yml"
+      - "tools/run_d05_windows_fresh_recovery_g8_152.py"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: d05-windows-fresh-recovery-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2778-windows-fresh-recovery-g8-152-20261006'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      D05_RUNTIME_SHA: "91d49bc26ffa67f5c35905fdd2ef8eb20a01f5fb"
+      EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+      PYTHONUTF8: "1"
+
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact Product parent and qualification closure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:EVENT_BASE_SHA -ne $env:D05_RUNTIME_SHA) {
+            throw "PR base SHA is not the exact D05 Product SHA"
+          }
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -ne $env:QUALIFICATION_CARRIER_SHA) {
+            throw "qualification checkout SHA drifted"
+          }
+          $mergeBase = (git merge-base $env:D05_RUNTIME_SHA HEAD).Trim()
+          if ($mergeBase -ne $env:D05_RUNTIME_SHA) {
+            throw "qualification carrier is not based on exact Product SHA"
+          }
+          $changed = @(
+            git diff --name-only "$env:D05_RUNTIME_SHA..HEAD" | Sort-Object
+          )
+          $expected = @(
+            ".github/workflows/d05_windows_fresh_recovery_g8_152.yml"
+            "tools/run_d05_windows_fresh_recovery_g8_152.py"
+          ) | Sort-Object
+          if (($changed -join "\n") -ne ($expected -join "\n")) {
+            throw "qualification diff closure drifted: $($changed -join ', ')"
+          }
+          $runnerBlob = (
+            git hash-object tools/run_d05_windows_fresh_recovery_g8_152.py
+          ).Trim()
+          Add-Content -Path $env:GITHUB_ENV -Value "QUALIFICATION_RUNNER_BLOB=$runnerBlob" -Encoding UTF8
+          python -m py_compile tools/run_d05_windows_fresh_recovery_g8_152.py
+          $dirty = git status --porcelain=v1 --untracked-files=all
+          if ($dirty) {
+            throw "qualification checkout is dirty: $dirty"
+          }
+
+      - name: Install Product runtime dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Execute Windows fresh-process recovery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python tools/run_d05_windows_fresh_recovery_g8_152.py --output d05-windows-fresh-recovery.json
+
+      - name: Enforce zero-credit result contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python tools/run_d05_windows_fresh_recovery_g8_152.py --validate-report d05-windows-fresh-recovery.json
+
+      - name: Upload Windows recovery evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d05-windows-fresh-recovery-${{ github.event.pull_request.head.sha }}
+          path: d05-windows-fresh-recovery.json
+          retention-days: 30
+          compression-level: 9
+          if-no-files-found: error
