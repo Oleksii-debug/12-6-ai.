@@ -45,6 +45,9 @@ jobs:
       PRODUCT_CORE_BLOB: "b7bb13c7a96f6c8e9a7f88d940aab0d0ed6a93e7"
       PRODUCT_TEST_BLOB: "6edf89014d9b059639067567ce6da57b50216b8d"
       PRODUCT_DIRECT_IMPORT_TEST_BLOB: "0b19707229b255f7d09c789bf2eb6cb43285abac"
+      PRODUCT_IMPORTED_MEMBER_TEST_BLOB: "2ce29919ec434993c129a81e2a6eff068e9993f8"
+      PRODUCT_JSON_RE_TEST_BLOB: "418d32db8830dd36edf9f76bf0842d85e520c436"
+      PRODUCT_RUNTIME_CLOSURE_TEST_BLOB: "f237101c898427937a17a84843affc58d098ae1d"
       PRODUCT_FACADE_BLOB: "f75336008839198b6d46bea4954f120e2d81613c"
 
     steps:
@@ -96,18 +99,30 @@ jobs:
           test "$(git rev-parse "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py")" = "$PRODUCT_CORE_BLOB"
           test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_indexed_execution.py")" = "$PRODUCT_TEST_BLOB"
           test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_direct_import_behavior.py")" = "$PRODUCT_DIRECT_IMPORT_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_imported_member_closure.py")" = "$PRODUCT_IMPORTED_MEMBER_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_json_re_transitive_closure.py")" = "$PRODUCT_JSON_RE_TEST_BLOB"
+          test "$(git rev-parse "$PRODUCT_HEAD:tests/test_incumbent_dedup_runtime_closure.py")" = "$PRODUCT_RUNTIME_CLOSURE_TEST_BLOB"
           test "$(git rev-parse "$PRODUCT_HEAD:src/twelve_six/data/incumbent_dedup_indexed_execution.py")" = "$PRODUCT_FACADE_BLOB"
           git show "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py"             > "$RUNNER_TEMP/product-indexed-core.py"
           git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_indexed_execution.py"             > "$RUNNER_TEMP/test_product_indexed_execution.py"
           git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_direct_import_behavior.py"             > "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_imported_member_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_json_re_transitive_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py"
+          git show "$PRODUCT_HEAD:tests/test_incumbent_dedup_runtime_closure.py"             > "$RUNNER_TEMP/test_incumbent_dedup_runtime_closure.py"
           test "$(git hash-object "$RUNNER_TEMP/product-indexed-core.py")" = "$PRODUCT_CORE_BLOB"
           test "$(git hash-object "$RUNNER_TEMP/test_product_indexed_execution.py")" = "$PRODUCT_TEST_BLOB"
           test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py")" = "$PRODUCT_DIRECT_IMPORT_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py")" = "$PRODUCT_IMPORTED_MEMBER_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py")" = "$PRODUCT_JSON_RE_TEST_BLOB"
+          test "$(git hash-object "$RUNNER_TEMP/test_incumbent_dedup_runtime_closure.py")" = "$PRODUCT_RUNTIME_CLOSURE_TEST_BLOB"
           cp "$RUNNER_TEMP/product-indexed-core.py"             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py
           test "$(git hash-object src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py)" = "$PRODUCT_CORE_BLOB"
           test "$(git hash-object src/twelve_six/data/incumbent_dedup_indexed_execution.py)" = "$PRODUCT_FACADE_BLOB"
           python -m py_compile             src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py             src/twelve_six/data/incumbent_dedup_indexed_execution.py             "$RUNNER_TEMP/test_product_indexed_execution.py" \
-            "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py"
+            "$RUNNER_TEMP/test_incumbent_dedup_direct_import_behavior.py" \
+            "$RUNNER_TEMP/test_incumbent_dedup_imported_member_closure.py" \
+            "$RUNNER_TEMP/test_incumbent_dedup_json_re_transitive_closure.py" \
+            "$RUNNER_TEMP/test_incumbent_dedup_runtime_closure.py"
 
       - name: Checkout frozen historical QP mechanics
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
