@@ -1310,6 +1310,31 @@ def test_direct_restore_poison_target_when_optimizer_preflight_mutates_then_rais
     assert not target.optimizer.state
 
 
+def test_checkpoint_rng_fingerprint_is_observer_only() -> None:
+    import random
+
+    import numpy as np
+
+    config = _config()
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    python_before = random.getstate()
+    numpy_before = np.random.get_state()
+    torch_before = torch.get_rng_state().clone()
+    cuda_was_initialized = torch.cuda.is_initialized()
+
+    first = target._checkpoint_rng_fingerprint()
+    second = target._checkpoint_rng_fingerprint()
+
+    assert first == second
+    assert random.getstate() == python_before
+    numpy_after = np.random.get_state()
+    assert numpy_after[0] == numpy_before[0]
+    assert np.array_equal(numpy_after[1], numpy_before[1])
+    assert numpy_after[2:] == numpy_before[2:]
+    assert torch.equal(torch.get_rng_state(), torch_before)
+    assert torch.cuda.is_initialized() is cuda_was_initialized
+
+
 def test_direct_restore_poison_target_when_checkpoint_preflight_consumes_rng() -> None:
     from dataclasses import replace
 
