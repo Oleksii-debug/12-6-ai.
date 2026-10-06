@@ -3165,6 +3165,9 @@ class Trainer:
                 raise TrainingStateInvalidError(
                     "trainer model changed during load"
                 )
+            postapply_auxiliary_fingerprint = (
+                Trainer._checkpoint_auxiliary_fingerprint(self)
+            )
 
             # PyTorch's load_state_dict accepts NaN optimizer moments and
             # malformed-but-type-compatible group rates. A restore must not
@@ -3183,6 +3186,21 @@ class Trainer:
                 Trainer._require_exported_scaler_matches_live(self, scaler_state)
             self._require_deterministic_policy()
             _require_restore_control_state(checkpoint_counters)
+
+            # The validation observers above can themselves be effectful for
+            # injected optimizer/scheduler implementations. Close the observer
+            # chain with descriptor-free fingerprints after the final control seal.
+            if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
+                raise TrainingStateInvalidError(
+                    "trainer model changed during final restore validation"
+                )
+            if (
+                Trainer._checkpoint_auxiliary_fingerprint(self)
+                != postapply_auxiliary_fingerprint
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer auxiliary state changed during final restore validation"
+                )
         except BaseException:
             Trainer._mark_failed(
                 self,

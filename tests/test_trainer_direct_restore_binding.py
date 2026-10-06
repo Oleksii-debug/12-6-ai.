@@ -4,6 +4,7 @@ import pytest
 import torch
 from torch import nn
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import LambdaLR
 
 from twelve_six.training import (
     Trainer,
@@ -545,6 +546,128 @@ def test_direct_restore_rejects_zero_grad_auxiliary_drift() -> None:
         match="optimizer export hyperparameters differ",
     ):
         trainer.load_state_dict(state)
+
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
+
+
+class FinalValidationAuxiliaryObserver:
+    owner: Trainer | None = None
+    armed = False
+
+    def __eq__(self, other: object) -> bool:
+        if type(self).armed:
+            type(self).armed = False
+            owner = type(self).owner
+            assert owner is not None
+            owner.optimizer.param_groups[0]["lr"] *= 0.5
+        return type(other) is type(self)
+
+
+class FinalValidationMutatingLambdaLR(LambdaLR):
+    owner: Trainer | None = None
+    armed = False
+
+    def __init__(self, optimizer: AdamW) -> None:
+        super().__init__(optimizer, lr_lambda=lambda _step: 1.0)
+        self.observer = FinalValidationAuxiliaryObserver()
+
+    def state_dict(self):
+        result = super().state_dict()
+        if type(self).armed:
+            type(self).armed = False
+            owner = type(self).owner
+            assert owner is not None
+            with torch.no_grad():
+                owner.model.weight.add_(1.0)
+        return result
+
+
+def _target_with_final_validation_scheduler(
+    config: TrainerConfig,
+) -> tuple[Trainer, FinalValidationMutatingLambdaLR]:
+    model = nn.Linear(3, 2)
+    optimizer = build_optimizer(model, config)
+    scheduler = FinalValidationMutatingLambdaLR(optimizer)
+    trainer = Trainer(
+        model,
+        config,
+        optimizer=optimizer,
+        scheduler=scheduler,
+    )
+    return trainer, scheduler
+
+
+def _state_with_final_validation_scheduler(config: TrainerConfig):
+    trainer, _ = _target_with_final_validation_scheduler(config)
+    return trainer.state_dict()
+
+
+def test_direct_restore_final_observer_cannot_mutate_model() -> None:
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    FinalValidationMutatingLambdaLR.owner = None
+    FinalValidationMutatingLambdaLR.armed = False
+    FinalValidationAuxiliaryObserver.owner = None
+    FinalValidationAuxiliaryObserver.armed = False
+    state = _state_with_final_validation_scheduler(config)
+    trainer, _ = _target_with_final_validation_scheduler(config)
+    before = trainer.model.weight.detach().clone()
+
+    FinalValidationMutatingLambdaLR.owner = trainer
+    FinalValidationMutatingLambdaLR.armed = True
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer model changed during final restore validation",
+        ):
+            trainer.load_state_dict(state)
+    finally:
+        FinalValidationMutatingLambdaLR.owner = None
+        FinalValidationMutatingLambdaLR.armed = False
+
+    assert not torch.equal(trainer.model.weight.detach(), before)
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
+
+
+def test_direct_restore_final_observer_cannot_mutate_auxiliary_state() -> None:
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=17,
+    )
+    FinalValidationMutatingLambdaLR.owner = None
+    FinalValidationMutatingLambdaLR.armed = False
+    FinalValidationAuxiliaryObserver.owner = None
+    FinalValidationAuxiliaryObserver.armed = False
+    state = _state_with_final_validation_scheduler(config)
+    trainer, _ = _target_with_final_validation_scheduler(config)
+
+    FinalValidationAuxiliaryObserver.owner = trainer
+    FinalValidationAuxiliaryObserver.armed = True
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer auxiliary state changed during final restore validation",
+        ):
+            trainer.load_state_dict(state)
+    finally:
+        FinalValidationAuxiliaryObserver.owner = None
+        FinalValidationAuxiliaryObserver.armed = False
 
     assert trainer._failure_reason == (
         "trainer state restore failed after possible partial apply"
