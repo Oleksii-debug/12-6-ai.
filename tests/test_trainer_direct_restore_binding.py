@@ -586,6 +586,10 @@ def test_d05_uses_trainer_checkpoint_safety_authority_source() -> None:
         trainer_adapter._NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES
         is Trainer._CHECKPOINT_SAFETY_AUTHORITIES
     )
+    assert (
+        trainer_adapter._NATIVE_D02_CHECKPOINT_STORAGE_FIELDS
+        is Trainer._CHECKPOINT_STORAGE_FIELDS
+    )
 
 
 def test_direct_restore_rejects_dict_descriptor_without_dispatch() -> None:
@@ -942,3 +946,46 @@ def test_direct_restore_poison_target_when_payload_drifts_deterministic_policy()
     )
     assert target._update_incomplete is False
     assert not target.optimizer.state
+
+
+def test_direct_restore_rejects_late_marker_storage_descriptor_before_mutation() -> None:
+    from twelve_six.checkpoint import trainer_adapter
+
+    class LateMarkerDescriptor:
+        def __get__(self, instance, owner=None):
+            if instance is None:
+                return self
+            return vars(instance).get("_update_incomplete", False)
+
+        def __set__(self, instance, value):
+            attrs = vars(instance)
+            if attrs.get("_descriptor_armed", False) and value is False:
+                with torch.no_grad():
+                    instance.model.weight.add_(1.0)
+            attrs["_update_incomplete"] = value
+
+    class DescriptorTrainer(Trainer):
+        _update_incomplete = LateMarkerDescriptor()
+
+    config = _config()
+    state = _clean_state(config)
+    target = DescriptorTrainer(nn.Linear(3, 2), config, scheduler=None)
+    target._descriptor_armed = True
+    before = target.model.weight.detach().clone()
+    message = (
+        "native D02 restore storage descriptor must remain canonical: "
+        "_update_incomplete"
+    )
+
+    with pytest.raises(TrainingStateInvalidError, match=message):
+        Trainer.load_state_dict(target, state)
+
+    assert torch.equal(target.model.weight.detach(), before)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+    with pytest.raises(trainer_adapter.CheckpointCompatibilityError, match=message):
+        trainer_adapter._assert_native_d02_checkpoint_safety_lineage(target)
+
+    assert torch.equal(target.model.weight.detach(), before)
