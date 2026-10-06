@@ -1695,6 +1695,7 @@ def _preflight_trainer_state(
     restore_bindings = _snapshot_trainer_restore_bindings(trainer)
     expected_canonical = restore_bindings[0]
     ambient = capture_rng_state()
+    execution_mode = _snapshot_torch_execution_mode()
     torch_state = ambient.get("torch")
     warn_only = None
     if torch_state is not None:
@@ -1754,6 +1755,10 @@ def _preflight_trainer_state(
                         raise
                 _assert_ambient_process_state_stable(
                     ambient,
+                    expected_canonical=expected_canonical,
+                )
+                _assert_torch_execution_mode_stable(
+                    execution_mode,
                     expected_canonical=expected_canonical,
                 )
         except BaseException as exc:
@@ -1982,6 +1987,32 @@ def _assert_ambient_process_state_stable(
         ) from exc
 
 
+def _snapshot_torch_execution_mode() -> tuple[bool, bool]:
+    """Snapshot caller-owned thread-local autograd/inference mode."""
+
+    torch = importlib.import_module("torch")
+    return (
+        bool(torch.is_grad_enabled()),
+        bool(torch.is_inference_mode_enabled()),
+    )
+
+
+def _assert_torch_execution_mode_stable(
+    expected: tuple[bool, bool],
+    *,
+    expected_canonical: bool,
+) -> None:
+    """Reject restore callbacks that leak caller-owned torch execution mode."""
+
+    if not expected_canonical:
+        return
+    live = _snapshot_torch_execution_mode()
+    if live != expected:
+        raise CheckpointCompatibilityError(
+            "live torch autograd/inference mode changed during checkpoint restore"
+        )
+
+
 def _snapshot_torch_policy(state: Mapping[str, Any]) -> tuple[bool, bool] | None:
     """Pin the live policy before any model or trainer loader can mutate it."""
 
@@ -2113,6 +2144,7 @@ def _restore_preapply_process_state(
     policy: tuple[bool, bool] | None,
     trainer: Any,
     *,
+    execution_mode: tuple[bool, bool] | None = None,
     expected_canonical: bool | None = None,
 ) -> None:
     """Make effectful pre-application inspection observationally RNG-neutral."""
@@ -2131,6 +2163,11 @@ def _restore_preapply_process_state(
             ambient,
             expected_canonical=expected_canonical,
         )
+        if execution_mode is not None:
+            _assert_torch_execution_mode_stable(
+                execution_mode,
+                expected_canonical=expected_canonical,
+            )
     except BaseException as exc:
         _restore_ambient_rng_after_failed_apply(ambient, exc)
         _restore_initial_torch_policy(policy, exc)
@@ -2509,6 +2546,7 @@ def load_trainer_checkpoint(
     restore_bindings = _snapshot_trainer_restore_bindings(trainer)
     prebind_ambient = capture_rng_state()
     prebind_policy = _snapshot_torch_policy(prebind_ambient)
+    prebind_execution_mode = _snapshot_torch_execution_mode()
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
         model_apply_authority = _bind_native_model_export_validator(trainer)
@@ -2523,6 +2561,7 @@ def load_trainer_checkpoint(
             prebind_ambient,
             prebind_policy,
             trainer,
+            execution_mode=prebind_execution_mode,
             expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
@@ -2546,6 +2585,7 @@ def load_trainer_checkpoint(
     )
     preio_ambient = capture_rng_state()
     preio_policy = _snapshot_torch_policy(preio_ambient)
+    preio_execution_mode = _snapshot_torch_execution_mode()
     try:
         _assert_trainer_model_binding(model, trainer)
         _preflight_trainer_target(trainer)
@@ -2557,6 +2597,7 @@ def load_trainer_checkpoint(
             preio_ambient,
             preio_policy,
             trainer,
+            execution_mode=preio_execution_mode,
             expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
@@ -2600,6 +2641,7 @@ def load_trainer_checkpoint(
     strict_model = _effective_strict_model(trainer, strict_model)
     preapply_ambient = capture_rng_state()
     preapply_policy = _snapshot_torch_policy(preapply_ambient)
+    preapply_execution_mode = _snapshot_torch_execution_mode()
     try:
         # Loader lookup/signature inspection can execute descriptors or proxies.
         # Bind both effectful restore interfaces before model materialization, then
@@ -2640,6 +2682,7 @@ def load_trainer_checkpoint(
             preapply_ambient,
             preapply_policy,
             trainer,
+            execution_mode=preapply_execution_mode,
             expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
@@ -2660,6 +2703,7 @@ def load_trainer_checkpoint(
 
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = capture_rng_state()
+    execution_mode_before_apply = _snapshot_torch_execution_mode()
     # An integrity-valid opt-out snapshot may omit torch; failure rollback
     # must still recover the live process-global deterministic/warn-only mode.
     rollback_policy = (
@@ -2699,6 +2743,10 @@ def load_trainer_checkpoint(
                 ambient_before_apply,
                 expected_canonical=restore_bindings[0],
             )
+        _assert_torch_execution_mode_stable(
+            execution_mode_before_apply,
+            expected_canonical=restore_bindings[0],
+        )
         if model_apply_authority is not None:
             try:
                 model_apply_authority(materialized)
@@ -2732,6 +2780,10 @@ def load_trainer_checkpoint(
                 ambient_before_apply,
                 expected_canonical=restore_bindings[0],
             )
+        _assert_torch_execution_mode_stable(
+            execution_mode_before_apply,
+            expected_canonical=restore_bindings[0],
+        )
         sealed_auxiliary_fingerprint = (
             auxiliary_fingerprint()
             if auxiliary_fingerprint is not None
@@ -2790,6 +2842,10 @@ def load_trainer_checkpoint(
                 ambient_before_apply,
                 expected_canonical=restore_bindings[0],
             )
+        _assert_torch_execution_mode_stable(
+            execution_mode_before_apply,
+            expected_canonical=restore_bindings[0],
+        )
     except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
