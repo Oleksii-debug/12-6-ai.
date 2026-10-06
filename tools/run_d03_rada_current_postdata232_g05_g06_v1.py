@@ -99,6 +99,53 @@ def sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def verify_post_g06_exact_payload_uniqueness(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Fail closed if G06 transformations collapse distinct records to one payload."""
+
+    require(bool(records), "post-G06 survivor set is empty")
+    seen_payloads: dict[str, str] = {}
+    projection: list[dict[str, Any]] = []
+    for index, record in enumerate(records):
+        require(
+            isinstance(record, Mapping),
+            f"post-G06 survivor[{index}] must be an object",
+        )
+        record_id = record.get("record_id")
+        payload = record.get("normalized_payload")
+        require(
+            isinstance(record_id, str) and bool(record_id),
+            f"post-G06 survivor[{index}] record_id missing",
+        )
+        require(
+            isinstance(payload, str) and bool(payload),
+            f"post-G06 survivor[{index}] normalized payload missing",
+        )
+        payload_raw = payload.encode("utf-8")
+        payload_sha = sha256(payload_raw)
+        prior = seen_payloads.get(payload_sha)
+        require(
+            prior is None,
+            "post-G06 exact payload collision after transformation: "
+            f"{prior} vs {record_id}",
+        )
+        seen_payloads[payload_sha] = record_id
+        projection.append(
+            {
+                "payload_sha256": payload_sha,
+                "payload_bytes": len(payload_raw),
+            }
+        )
+    projection.sort(
+        key=lambda row: (row["payload_sha256"], row["payload_bytes"])
+    )
+    return {
+        "unique_payload_count": len(projection),
+        "payload_set_identity_sha256": sha256(canonical(projection)),
+    }
+
+
 _DURABLE_FORBIDDEN_TEXT_KEYS = frozenset(
     {
         "text",
@@ -1110,6 +1157,9 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         quality_survivors,
         privacy,
     )
+    post_g06_uniqueness = verify_post_g06_exact_payload_uniqueness(
+        final_survivors
+    )
     survivor_inventory = clean.materialize_record_inventory(final_survivors)
     survivor_record_payload_jsonl_sha256 = sha256(
         clean.canonical_record_bytes(final_survivors)
@@ -1185,6 +1235,13 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "detector_counts": dict(sorted(normalized_detectors.items())),
             "materialization": privacy_stats,
             "payload_delta_from_g05_retained_bytes": g06_payload_delta_bytes,
+            "exact_payload_collision_free": True,
+            "unique_payload_count": post_g06_uniqueness[
+                "unique_payload_count"
+            ],
+            "payload_set_identity_sha256": post_g06_uniqueness[
+                "payload_set_identity_sha256"
+            ],
         },
         "durable_artifacts": {
             "g05_authority_file_sha256": sha256(quality_bytes),
