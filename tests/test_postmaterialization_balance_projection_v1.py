@@ -9,7 +9,9 @@ import pytest
 import tools.next100_106_balance_gate as next100_gate
 from twelve_six.data.current_clean_balanced_selection_v1 import (
     SELECTION_REALIZATION_POLICY,
+    _bounded_exact_record_subset,
     _exact_record_subset,
+    _select_stratum_records,
     build_current_clean_balanced_selection,
     project_selected_current_clean_raw_records,
 )
@@ -1783,8 +1785,117 @@ def test_exact_record_realization_rejects_unrepresentable_allocation() -> None:
     with pytest.raises(ProjectionError, match="no exact whole-record realization"):
         _exact_record_subset(rows, target_bytes=3, family="family")
     assert SELECTION_REALIZATION_POLICY == (
-        "record-id-ascending-exact-family-byte-subset-v1"
+        "record-id-ascending-policy-cap-aware-whole-record-subset-v2"
     )
+
+
+def test_bounded_exact_record_subset_uses_small_exact_complement() -> None:
+    rows = [
+        {"record_id": "a", "payload_bytes": 8},
+        {"record_id": "b", "payload_bytes": 6},
+        {"record_id": "c", "payload_bytes": 4},
+        {"record_id": "d", "payload_bytes": 2},
+    ]
+    selected = _bounded_exact_record_subset(
+        rows,
+        target_bytes=18,
+        label="fixture",
+        max_target_bytes=2,
+    )
+    assert [row["record_id"] for row in selected] == ["a", "b", "c"]
+    assert sum(row["payload_bytes"] for row in selected) == 18
+
+
+def test_stratum_realization_decouples_impossible_fractional_family_witness() -> None:
+    rows = [
+        {"record_id": "a-1", "family": "family-a", "stratum": "code", "payload_bytes": 4},
+        {"record_id": "a-2", "family": "family-a", "stratum": "code", "payload_bytes": 2},
+        {"record_id": "b-1", "family": "family-b", "stratum": "code", "payload_bytes": 3},
+        {"record_id": "b-2", "family": "family-b", "stratum": "code", "payload_bytes": 3},
+        {"record_id": "c-1", "family": "family-c", "stratum": "code", "payload_bytes": 1},
+        {"record_id": "c-2", "family": "family-c", "stratum": "code", "payload_bytes": 1},
+    ]
+    allocations = {
+        "family-a": {
+            "family_id": "family-a",
+            "stratum": "code",
+            "allocated_bytes": 5,
+            "available_unique_bytes": 6,
+            "effective_family_cap_bytes": 6,
+        },
+        "family-b": {
+            "family_id": "family-b",
+            "stratum": "code",
+            "allocated_bytes": 3,
+            "available_unique_bytes": 6,
+            "effective_family_cap_bytes": 6,
+        },
+        "family-c": {
+            "family_id": "family-c",
+            "stratum": "code",
+            "allocated_bytes": 2,
+            "available_unique_bytes": 2,
+            "effective_family_cap_bytes": 6,
+        },
+    }
+
+    selected = _select_stratum_records(
+        rows,
+        stratum="code",
+        allocations=allocations,
+        target_bytes=10,
+        family_cap_bytes=6,
+    )
+
+    assert sum(row["payload_bytes"] for row in selected) == 10
+    by_family: dict[str, int] = {}
+    for row in selected:
+        by_family[row["family"]] = by_family.get(row["family"], 0) + row["payload_bytes"]
+    assert all(total <= 6 for total in by_family.values())
+    assert by_family != {"family-a": 5, "family-b": 3, "family-c": 2}
+
+
+def test_stratum_realization_refuses_decoupling_when_full_family_exceeds_cap() -> None:
+    rows = [
+        {"record_id": "a-1", "family": "family-a", "stratum": "code", "payload_bytes": 4},
+        {"record_id": "a-2", "family": "family-a", "stratum": "code", "payload_bytes": 4},
+        {"record_id": "b-1", "family": "family-b", "stratum": "code", "payload_bytes": 3},
+        {"record_id": "b-2", "family": "family-b", "stratum": "code", "payload_bytes": 3},
+        {"record_id": "c-1", "family": "family-c", "stratum": "code", "payload_bytes": 1},
+        {"record_id": "c-2", "family": "family-c", "stratum": "code", "payload_bytes": 1},
+    ]
+    allocations = {
+        "family-a": {
+            "family_id": "family-a",
+            "stratum": "code",
+            "allocated_bytes": 5,
+            "available_unique_bytes": 8,
+            "effective_family_cap_bytes": 6,
+        },
+        "family-b": {
+            "family_id": "family-b",
+            "stratum": "code",
+            "allocated_bytes": 3,
+            "available_unique_bytes": 6,
+            "effective_family_cap_bytes": 6,
+        },
+        "family-c": {
+            "family_id": "family-c",
+            "stratum": "code",
+            "allocated_bytes": 2,
+            "available_unique_bytes": 2,
+            "effective_family_cap_bytes": 6,
+        },
+    }
+
+    with pytest.raises(ProjectionError, match="full family exceeds cap"):
+        _select_stratum_records(
+            rows,
+            stratum="code",
+            allocations=allocations,
+            target_bytes=10,
+            family_cap_bytes=6,
+        )
 
 
 def test_exact_record_realization_fails_closed_on_state_budget() -> None:
