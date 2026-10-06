@@ -382,6 +382,55 @@ def test_mid_accumulation_state_dict_rejects_before_fingerprint_traversal(
     assert trainer._failure_reason is None
 
 
+def test_committed_boundary_rejects_instance_safety_shadow_before_export(
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+    trainer = Trainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+
+    trainer._model_export_fingerprint = lambda: "forged"
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="native D02 safety authority must remain canonical",
+    ):
+        trainer.state_dict()
+
+    assert trainer._failure_reason is None
+    del vars(trainer)["_model_export_fingerprint"]
+    clean = trainer.state_dict()
+    assert (clean.micro_step, clean.optimizer_step, clean.tokens_seen) == (0, 0, 0)
+
+
+def test_committed_boundary_rejects_subclass_safety_override_before_export(
+    preserve_process_state: Any,
+) -> None:
+    del preserve_process_state
+
+    class UnsafeExportTrainer(Trainer):
+        def _model_export_fingerprint(self) -> str:
+            return "forged"
+
+    trainer = UnsafeExportTrainer(
+        _Logits(),
+        TrainerConfig(seed=703, max_steps=2),
+        device="cpu",
+    )
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match=(
+            "native D02 safety authority must remain canonical: "
+            "_model_export_fingerprint"
+        ),
+    ):
+        Trainer.state_dict(trainer)
+
+    assert trainer._failure_reason is None
+
+
 def test_committed_boundary_fingerprint_failure_poisons_trainer(
     monkeypatch: pytest.MonkeyPatch,
     preserve_process_state: Any,
@@ -393,10 +442,11 @@ def test_committed_boundary_fingerprint_failure_poisons_trainer(
     )
     assert trainer.train_microbatch(_BATCH).optimizer_stepped
 
-    def fail_fingerprint() -> str:
+    def fail_fingerprint(self: Trainer) -> str:
+        assert self is trainer
         raise ValueError("injected canonical fingerprint failure")
 
-    monkeypatch.setattr(trainer, "_model_export_fingerprint", fail_fingerprint)
+    monkeypatch.setattr(Trainer, "_model_export_fingerprint", fail_fingerprint)
     with pytest.raises(ValueError, match="canonical fingerprint failure"):
         trainer.state_dict()
     assert trainer._failure_reason is not None
@@ -451,17 +501,18 @@ def test_committed_boundary_recheck_failure_poisons_trainer(
     )
     assert trainer.train_microbatch(_BATCH).optimizer_stepped
 
-    original = getattr(trainer, attribute)
+    original = getattr(Trainer, attribute)
     calls = 0
 
-    def fail_on_second_observation() -> Any:
+    def fail_on_second_observation(self: Trainer) -> Any:
         nonlocal calls
+        assert self is trainer
         calls += 1
         if calls == 2:
             raise ValueError(f"injected {observer} recheck failure")
-        return original()
+        return original(self)
 
-    monkeypatch.setattr(trainer, attribute, fail_on_second_observation)
+    monkeypatch.setattr(Trainer, attribute, fail_on_second_observation)
     with pytest.raises(ValueError, match=f"injected {observer} recheck failure"):
         trainer.state_dict()
 

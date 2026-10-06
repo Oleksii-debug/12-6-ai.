@@ -2650,6 +2650,10 @@ class Trainer:
         # A normal incomplete accumulation is retryable. Reject it before
         # fingerprinting legitimate pending gradients or other transient state.
         Trainer.assert_accumulation_boundary(self)
+        # Once a committed boundary is eligible for export, every reachable
+        # checkpoint safety helper must remain first-party. Subclass/instance
+        # shadows could otherwise forge the observer chain used below.
+        Trainer._require_canonical_checkpoint_authorities(self)
         export_attrs = Trainer._raw_instance_dict(self, Trainer, label="trainer")
         export_binding_fields = (
             "model",
