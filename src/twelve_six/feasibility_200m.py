@@ -110,15 +110,24 @@ def _canonical_json_bytes(value: Any) -> bytes:
             ensure_ascii=False,
             allow_nan=False,
         )
-    except (RecursionError, TypeError, ValueError) as exc:
+        return rendered.encode("utf-8")
+    except (RecursionError, TypeError, UnicodeError, ValueError) as exc:
         raise FeasibilityPacketError("value_not_canonical_json") from exc
-    return rendered.encode("utf-8")
 
 
 def canonical_sha256(value: Any) -> str:
     """Return the SHA-256 of canonical UTF-8 JSON with NaN/Inf forbidden."""
 
     return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _detached_json_value(value: Any, *, field: str) -> Any:
+    """Materialize one plain JSON snapshot of a caller-owned value."""
+
+    try:
+        return json.loads(_canonical_json_bytes(value))
+    except (FeasibilityPacketError, ValueError) as exc:
+        raise FeasibilityPacketError(f"{field}_not_canonical_json") from exc
 
 
 def compute_packet_sha256(packet: Mapping[str, Any]) -> str:
@@ -298,7 +307,7 @@ def _validate_learned_20m_binding(value: Any) -> list[str]:
     return []
 
 
-def build_200m_feasibility_packet(
+def _build_200m_feasibility_packet_once(
     *,
     roadmap_snapshot: dict[str, Any],
     source_git_sha: str,
@@ -308,7 +317,7 @@ def build_200m_feasibility_packet(
     requirement_evidence: dict[str, dict[str, Any]],
     decision: str,
 ) -> dict[str, Any]:
-    """Build a deterministic non-authorizing ~200M feasibility packet."""
+    """Build once against the exact values currently exposed by the caller."""
 
     _require_buildable_roadmap(roadmap_snapshot)
     if not _is_git_sha(source_git_sha):
@@ -371,6 +380,55 @@ def build_200m_feasibility_packet(
     }
     packet["packet_sha256"] = compute_packet_sha256(packet)
     return packet
+
+
+def build_200m_feasibility_packet(
+    *,
+    roadmap_snapshot: dict[str, Any],
+    source_git_sha: str,
+    candidate: dict[str, Any],
+    measurements_20m: dict[str, Any],
+    measurement_authority: dict[str, Any],
+    requirement_evidence: dict[str, dict[str, Any]],
+    decision: str,
+) -> dict[str, Any]:
+    """Build from one detached snapshot after a mutation-detecting dry pass."""
+
+    _build_200m_feasibility_packet_once(
+        roadmap_snapshot=roadmap_snapshot,
+        source_git_sha=source_git_sha,
+        candidate=candidate,
+        measurements_20m=measurements_20m,
+        measurement_authority=measurement_authority,
+        requirement_evidence=requirement_evidence,
+        decision=decision,
+    )
+    detached_roadmap = _detached_json_value(
+        roadmap_snapshot,
+        field="roadmap_snapshot",
+    )
+    detached_candidate = _detached_json_value(candidate, field="candidate")
+    detached_measurements = _detached_json_value(
+        measurements_20m,
+        field="measurements_20m",
+    )
+    detached_measurement_authority = _detached_json_value(
+        measurement_authority,
+        field="measurement_authority",
+    )
+    detached_requirement_evidence = _detached_json_value(
+        requirement_evidence,
+        field="requirement_evidence",
+    )
+    return _build_200m_feasibility_packet_once(
+        roadmap_snapshot=detached_roadmap,
+        source_git_sha=source_git_sha,
+        candidate=detached_candidate,
+        measurements_20m=detached_measurements,
+        measurement_authority=detached_measurement_authority,
+        requirement_evidence=detached_requirement_evidence,
+        decision=decision,
+    )
 
 
 def _trusted_build_retention_errors(packet: Any) -> list[str]:
@@ -460,6 +518,12 @@ def retained_identities_for_built_packet(packet: Mapping[str, Any]) -> dict[str,
         raise FeasibilityPacketError(
             "trusted_build_packet_invalid:" + ",".join(errors)
         )
+    packet = _detached_json_value(packet, field="packet")
+    errors = _trusted_build_retention_errors(packet)
+    if errors:
+        raise FeasibilityPacketError(
+            "trusted_build_packet_invalid:" + ",".join(errors)
+        )
     requirement_evidence = packet["requirement_evidence"]
     return {
         "packet_sha256": packet.get("packet_sha256"),
@@ -473,7 +537,7 @@ def retained_identities_for_built_packet(packet: Mapping[str, Any]) -> dict[str,
     }
 
 
-def validate_200m_feasibility_packet(
+def _validate_200m_feasibility_packet_once(
     packet: Any,
     *,
     roadmap_snapshot: Any,
@@ -637,4 +701,55 @@ def validate_200m_feasibility_packet(
         errors.append("expected_packet_sha256_invalid")
     if packet_sha != expected_packet_sha256:
         errors.append("packet_sha256_external_mismatch")
+    return sorted(set(errors))
+
+
+def validate_200m_feasibility_packet(
+    packet: Any,
+    *,
+    roadmap_snapshot: Any,
+    expected_packet_sha256: str,
+    expected_roadmap_snapshot_sha256: str,
+    expected_source_git_sha: str,
+    expected_measurements_20m_sha256: str,
+    expected_requirement_evidence_sha256: Mapping[str, str],
+) -> list[str]:
+    """Validate both caller state and one detached, immutable JSON snapshot."""
+
+    errors = _validate_200m_feasibility_packet_once(
+        packet,
+        roadmap_snapshot=roadmap_snapshot,
+        expected_packet_sha256=expected_packet_sha256,
+        expected_roadmap_snapshot_sha256=expected_roadmap_snapshot_sha256,
+        expected_source_git_sha=expected_source_git_sha,
+        expected_measurements_20m_sha256=expected_measurements_20m_sha256,
+        expected_requirement_evidence_sha256=expected_requirement_evidence_sha256,
+    )
+    try:
+        detached_packet = _detached_json_value(packet, field="packet")
+        detached_roadmap = _detached_json_value(
+            roadmap_snapshot,
+            field="roadmap_snapshot",
+        )
+        detached_expected_requirements = expected_requirement_evidence_sha256
+        if isinstance(expected_requirement_evidence_sha256, Mapping):
+            detached_expected_requirements = _detached_json_value(
+                dict(expected_requirement_evidence_sha256),
+                field="expected_requirement_evidence_sha256",
+            )
+    except FeasibilityPacketError:
+        errors.append("programmatic_input_not_canonical_json")
+        return sorted(set(errors))
+
+    errors.extend(
+        _validate_200m_feasibility_packet_once(
+            detached_packet,
+            roadmap_snapshot=detached_roadmap,
+            expected_packet_sha256=expected_packet_sha256,
+            expected_roadmap_snapshot_sha256=expected_roadmap_snapshot_sha256,
+            expected_source_git_sha=expected_source_git_sha,
+            expected_measurements_20m_sha256=expected_measurements_20m_sha256,
+            expected_requirement_evidence_sha256=detached_expected_requirements,
+        )
+    )
     return sorted(set(errors))
