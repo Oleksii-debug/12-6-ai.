@@ -209,7 +209,6 @@ def test_strict_authority_loader_redacts_duplicate_secret_key(
     assert secret not in str(caught.value)
 
 
-@pytest.mark.parametrize("negative", [False, True])
 def test_strict_authority_loader_redacts_secret_path_and_nested_key_on_unicode(
     tmp_path: Path,
 ) -> None:
@@ -228,6 +227,7 @@ def test_strict_authority_loader_redacts_secret_path_and_nested_key_on_unicode(
     assert secret_key not in diagnostic
 
 
+@pytest.mark.parametrize("negative", [False, True])
 def test_strict_authority_loader_bounds_integer_before_conversion(
     tmp_path: Path,
     negative: bool,
