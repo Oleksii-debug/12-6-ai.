@@ -154,6 +154,35 @@ def _git(*args: str) -> str:
     return proc.stdout.strip()
 
 
+def _git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    proc = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return proc.returncode == 0
+
+
+def verify_parent_execution_ancestry(expected_parent_head: str) -> str:
+    expected = require_git_sha(
+        expected_parent_head,
+        "expected parent G05/G06 execution head",
+    )
+    current = require_git_sha(_git("rev-parse", "HEAD"), "adapter checkout head")
+    require(
+        _git_is_ancestor(STACK_BASE_HEAD, expected),
+        "terminal parent head is outside the stacked #2861 lineage",
+    )
+    require(
+        _git_is_ancestor(expected, current),
+        "adapter checkout does not contain terminal parent head",
+    )
+    return expected
+
+
 def verify_canonical_dependency_blobs() -> dict[str, str]:
     observed: dict[str, str] = {}
     for relative, expected in EXPECTED_CANONICAL_BLOBS.items():
@@ -753,9 +782,8 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         "expected source object count",
     )
 
-    expected_parent_execution_head = require_git_sha(
-        args.expected_parent_execution_head,
-        "expected parent G05/G06 execution head",
+    expected_parent_execution_head = verify_parent_execution_ancestry(
+        args.expected_parent_execution_head
     )
     verify_parent_receipt(
         evidence,
