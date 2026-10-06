@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -200,19 +201,113 @@ def verify_canonical_dependency_blobs() -> dict[str, str]:
     return dict(sorted(observed.items()))
 
 
-def load_canonical_bridge() -> tuple[Any, Any, Any]:
-    from twelve_six.data.postmaterialization_balance_projection_v1 import (
-        verify_postmaterialization_family_vector,
+_CANONICAL_MODULE_FILES = {
+    "twelve_six.data.trusted_family_authority_v1":
+        "src/twelve_six/data/trusted_family_authority_v1.py",
+    "twelve_six.data.postdecontam_balance_projection_v1":
+        "src/twelve_six/data/postdecontam_balance_projection_v1.py",
+    "twelve_six.data.postmaterialization_balance_projection_v1":
+        "src/twelve_six/data/postmaterialization_balance_projection_v1.py",
+}
+
+
+def _clear_canonical_module_cache() -> None:
+    """Force canonical bridge code to be re-imported from the pinned worktree."""
+
+    for module_name in reversed(tuple(_CANONICAL_MODULE_FILES)):
+        cached = sys.modules.pop(module_name, None)
+        parent_name, attribute = module_name.rsplit(".", 1)
+        parent = sys.modules.get(parent_name)
+        if (
+            cached is not None
+            and parent is not None
+            and getattr(parent, attribute, None) is cached
+        ):
+            delattr(parent, attribute)
+    importlib.invalidate_caches()
+
+
+def _verify_loaded_module(module_name: str, module: Any) -> None:
+    relative = _CANONICAL_MODULE_FILES[module_name]
+    expected_blob = EXPECTED_CANONICAL_BLOBS[relative]
+    raw_path = getattr(module, "__file__", None)
+    require(
+        isinstance(raw_path, str) and bool(raw_path),
+        f"canonical module path missing: {module_name}",
     )
-    from twelve_six.data.trusted_family_authority_v1 import (
-        TRUSTED_FAMILY_SEMANTICS,
-        trusted_family_authority_root_sha256,
+    observed = Path(raw_path).resolve(strict=True)
+    expected = (ROOT / relative).resolve(strict=True)
+    require(
+        observed == expected,
+        f"canonical module provenance drift: {module_name}",
+    )
+    require(
+        _git("hash-object", str(expected)) == expected_blob,
+        f"canonical loaded-module blob drift: {module_name}",
     )
 
+
+def load_canonical_bridge() -> tuple[Any, Any, Any]:
+    import twelve_six
+
+    package_file = getattr(twelve_six, "__file__", None)
+    require(
+        isinstance(package_file, str) and bool(package_file),
+        "canonical twelve_six package path missing",
+    )
+    expected_package = (ROOT / "src/twelve_six/__init__.py").resolve(strict=True)
+    require(
+        Path(package_file).resolve(strict=True) == expected_package,
+        "canonical twelve_six package provenance drift",
+    )
+    package_paths = [
+        Path(value).resolve(strict=True)
+        for value in getattr(twelve_six, "__path__", ())
+    ]
+    require(
+        package_paths == [expected_package.parent],
+        "canonical twelve_six package search path drift",
+    )
+    require(
+        _git("hash-object", str(expected_package))
+        == EXPECTED_CANONICAL_BLOBS["src/twelve_six/__init__.py"],
+        "canonical twelve_six package blob drift",
+    )
+
+    _clear_canonical_module_cache()
+    trusted_module = importlib.import_module(
+        "twelve_six.data.trusted_family_authority_v1"
+    )
+    projection_module = importlib.import_module(
+        "twelve_six.data.postdecontam_balance_projection_v1"
+    )
+    bridge_module = importlib.import_module(
+        "twelve_six.data.postmaterialization_balance_projection_v1"
+    )
+    for module_name, module in (
+        ("twelve_six.data.trusted_family_authority_v1", trusted_module),
+        ("twelve_six.data.postdecontam_balance_projection_v1", projection_module),
+        (
+            "twelve_six.data.postmaterialization_balance_projection_v1",
+            bridge_module,
+        ),
+    ):
+        _verify_loaded_module(module_name, module)
+
+    trusted = trusted_module.TRUSTED_FAMILY_SEMANTICS
+    require(
+        projection_module.TRUSTED_FAMILY_SEMANTICS is trusted
+        and bridge_module.TRUSTED_FAMILY_SEMANTICS is trusted,
+        "canonical trusted-family object split across bridge modules",
+    )
+    require(
+        bridge_module.ProjectionError is projection_module.ProjectionError,
+        "canonical projection exception identity drift",
+    )
     return (
-        verify_postmaterialization_family_vector,
-        TRUSTED_FAMILY_SEMANTICS,
-        trusted_family_authority_root_sha256,
+        bridge_module.verify_postmaterialization_family_vector,
+        trusted,
+        trusted_module.trusted_family_authority_root_sha256,
     )
 
 
