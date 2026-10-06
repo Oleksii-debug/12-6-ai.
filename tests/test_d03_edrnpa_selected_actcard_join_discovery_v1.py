@@ -251,3 +251,28 @@ def test_control_character_in_join_value_fails_closed() -> None:
             )
     finally:
         archive.close()
+
+
+def test_selected_payload_identity_matches_historical_row_hash_contract() -> None:
+    rows = [
+        {
+            "record_id": "edrnpa:a",
+            "text": "перший",
+            "training_eligible": False,
+        },
+        {
+            "record_id": "edrnpa:b",
+            "text": "другий",
+            "training_eligible": False,
+        },
+    ]
+    manual = __import__("hashlib").sha256()
+    for row in rows:
+        manual.update(mod.probe.cjson(row))
+
+    observed = mod._selected_payload_identity(rows)
+
+    assert observed == manual.hexdigest()
+    tampered = [dict(row) for row in rows]
+    tampered[1]["text"] = "інший"
+    assert mod._selected_payload_identity(tampered) != observed
