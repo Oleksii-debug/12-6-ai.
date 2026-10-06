@@ -816,3 +816,54 @@ def test_retained_identity_helper_rejects_unknown_fields() -> None:
         match="packet_fields_mismatch",
     ):
         retained_identities_for_built_packet(packet)
+
+
+
+@pytest.mark.parametrize("bad_decision", [[], {}, ["GO"]])
+def test_builder_unhashable_decision_fails_closed(bad_decision: object) -> None:
+    with pytest.raises(FeasibilityPacketError, match="decision_invalid"):
+        build_200m_feasibility_packet(
+            roadmap_snapshot=roadmap(),
+            source_git_sha=GIT_A,
+            candidate=candidate(),
+            measurements_20m=measurements(),
+            measurement_authority=measurement_authority(),
+            requirement_evidence=evidence(),
+            decision=bad_decision,
+        )
+
+
+@pytest.mark.parametrize("bad_decision", [[], {}, ["GO"]])
+def test_validator_unhashable_decision_returns_error(bad_decision: object) -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    packet["decision"] = bad_decision
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+    assert "decision_invalid" in validate(packet, expected=expected)
+
+
+@pytest.mark.parametrize(
+    "bad_roadmap",
+    [
+        {"status": []},
+        {"schema_version": {}},
+        {"evidence_state": {"learned_20m": {"status": []}}},
+    ],
+)
+def test_validator_canonical_roadmap_type_errors_are_bounded(
+    bad_roadmap: object,
+) -> None:
+    packet = build()
+    expected = retained_identities_for_built_packet(packet)
+    errors = validate_200m_feasibility_packet(
+        packet,
+        roadmap_snapshot=bad_roadmap,
+        expected_packet_sha256=expected["packet_sha256"],
+        expected_roadmap_snapshot_sha256=expected["roadmap_snapshot_sha256"],
+        expected_source_git_sha=expected["source_git_sha"],
+        expected_measurements_20m_sha256=expected["measurements_20m_sha256"],
+        expected_requirement_evidence_sha256=expected[
+            "requirement_evidence_sha256"
+        ],
+    )
+    assert "roadmap_not_at_200m_feasibility_boundary" in errors
