@@ -50,6 +50,50 @@ class SystemPlane(str, Enum):
 
 
 _REQUIRED_PLANES = tuple(SystemPlane)
+_REQUIRED_BOUNDARY_SPECS = {
+    "base_to_gateway": (
+        SystemPlane.BASE_MODEL,
+        SystemPlane.MODEL_GATEWAY,
+        "twelve_six.model_gateway",
+        1,
+    ),
+    "post_base_to_base": (
+        SystemPlane.POST_BASE_LEARNING,
+        SystemPlane.BASE_MODEL,
+        "twelve_six.descendant_model",
+        1,
+    ),
+    "gateway_to_cognition": (
+        SystemPlane.MODEL_GATEWAY,
+        SystemPlane.PERSISTENT_COGNITION,
+        "twelve_six.inference_exchange",
+        1,
+    ),
+    "cognition_to_tools": (
+        SystemPlane.PERSISTENT_COGNITION,
+        SystemPlane.TOOLS,
+        "twelve_six.tool_invocation",
+        1,
+    ),
+    "cognition_to_live_agent": (
+        SystemPlane.PERSISTENT_COGNITION,
+        SystemPlane.LIVE_AGENT_PLANE,
+        "twelve_six.cognition_state",
+        1,
+    ),
+    "evolution_to_post_base": (
+        SystemPlane.EVOLUTION_PLANE,
+        SystemPlane.POST_BASE_LEARNING,
+        "twelve_six.training_candidate",
+        1,
+    ),
+    "evolution_to_gateway": (
+        SystemPlane.EVOLUTION_PLANE,
+        SystemPlane.MODEL_GATEWAY,
+        "twelve_six.model_promotion",
+        1,
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,17 +177,20 @@ class SystemArchitectureManifest:
             if boundary.producer not in plane_set or boundary.consumer not in plane_set:
                 raise ValueError("typed boundary refers to a plane outside the manifest")
 
-        required_boundary_names = {
-            "base_to_gateway",
-            "post_base_to_base",
-            "gateway_to_cognition",
-            "cognition_to_tools",
-            "cognition_to_live_agent",
-            "evolution_to_post_base",
-            "evolution_to_gateway",
-        }
-        if set(names) != required_boundary_names:
+        if set(names) != set(_REQUIRED_BOUNDARY_SPECS):
             raise ValueError("system architecture typed-boundary set is incomplete or non-canonical")
+
+        observed_specs = {
+            boundary.name: (
+                boundary.producer,
+                boundary.consumer,
+                boundary.interface.name,
+                boundary.interface.schema_version,
+            )
+            for boundary in self.boundaries
+        }
+        if observed_specs != _REQUIRED_BOUNDARY_SPECS:
+            raise ValueError("system architecture typed-boundary semantics are non-canonical")
 
     def to_dict(self) -> dict[str, Any]:
         return {
