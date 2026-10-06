@@ -804,3 +804,36 @@ def test_compare_outputs_accepts_bound_checkout_provenance(
     assert proof_path.exists()
     assert proof["execution_head_sha"] == "c" * 40
 
+def test_write_output_dir_rejects_unbound_stale_file(tmp_path: Path) -> None:
+    output = tmp_path / "stale-output"
+    output.mkdir()
+    (output / "stale.json").write_text("{}\n", encoding="utf-8")
+    values = {
+        "composition-dedup-proof": {"value": 1},
+        "next100-input": {"value": 2},
+        "balance-result": {"value": 3},
+        "balance-binding": {"value": 4},
+        "execution-receipt": {"value": 5},
+    }
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="output directory contains unexpected entries",
+    ):
+        target.write_output_dir(output, values)
+
+
+def test_compare_outputs_rejects_unbound_extra_files(tmp_path: Path) -> None:
+    a = tmp_path / "a-extra"
+    b = tmp_path / "b-extra"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    (a / "unbound.json").write_text("{}\n", encoding="utf-8")
+    (b / "unbound.json").write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="output directory contains unexpected entries",
+    ):
+        target.compare_outputs(a, b, tmp_path / "proof-extra.json")
+
