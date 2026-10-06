@@ -89,14 +89,13 @@ attacker-controlled roadmap identifiers.
 
 The retained-identity helper validates the trusted built packet before deriving
 the identity map, rejects scalar type aliases in authority fields, and is not a
-verification primitive. Programmatic build/verify paths first exercise the
-caller-owned state, then materialize plain JSON snapshots and re-run the same
-contract. Source/decision scalars and independently retained scalar identities
-are canonicalized too, so string subclasses cannot override hash/equality
-semantics between validation passes. Stateful container subclasses therefore
-cannot change semantics between validation, hashing, and publication.
-Recursive/non-canonical programmatic inputs fail closed at the canonical-hash
-boundary.
+verification primitive. Programmatic build/verify paths accept only exact built-in
+JSON trees: plain dictionaries with plain string keys, plain lists, JSON scalar
+builtins, and null. Caller-defined container/scalar subclasses are rejected before
+semantic access, hashing, or defensive copying, so custom iteration/get/deepcopy
+callbacks cannot change authority state inside the trusted boundary. Cyclic,
+shared-container/aliased, and non-canonical programmatic inputs fail closed
+without becoming packet authority.
 
 Build and verify also reject canonical path collisions between their authority
 inputs and outputs. Authority inputs must name regular files directly: symbolic
