@@ -31,6 +31,8 @@ jobs:
       RUNNER_BLOB: "14e455cb5eb3b103bef669a8364429dd12018b33"
       SOURCE_RUNNER_BLOB: "c0527b5b9e51c84549eaf757e274a02c677ab5b2"
       V7_HEAD: "d3333ec1b4a508df232a5aefccd6686adda745fb"
+      POPPLER_VERSION: "25.06.0"
+      POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
       EVAL290_HEAD: "029514654829cebc149cff6fc1fea2a8ba4fa566"
       EVAL290_LOCK_BLOB: "6b9f6d3105333681f2db17e399805bac92ad2615"
       SOURCE_SHA256: "9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597"
@@ -94,6 +96,48 @@ jobs:
           cp "$src/requirements/locks/linux-x86_64/eval290-extra.lock.txt" "$lock"
           "$venv/bin/python" -m pip install             --disable-pip-version-check --require-hashes --no-deps -r "$lock"
           "$venv/bin/python" -c             'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+
+      - name: Build exact historical pdftotext dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            --no-install-recommends \
+            build-essential ca-certificates cmake curl libfontconfig1-dev \
+            libfreetype6-dev libharfbuzz-dev libjpeg-dev liblcms2-dev \
+            libopenjp2-7-dev libpng-dev libtiff-dev ninja-build pkg-config \
+            zlib1g-dev
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://poppler.freedesktop.org/poppler-${POPPLER_VERSION}.tar.xz" \
+            --output /tmp/poppler.tar.xz
+          echo "${POPPLER_TARBALL_SHA256}  /tmp/poppler.tar.xz" | \
+            sha256sum --check --strict
+          tar -C /tmp -xf /tmp/poppler.tar.xz
+          cmake -S "/tmp/poppler-${POPPLER_VERSION}" \
+            -B /tmp/poppler-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DENABLE_UTILS=ON \
+            -DENABLE_CPP=OFF \
+            -DENABLE_GLIB=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF \
+            -DENABLE_BOOST=OFF \
+            -DENABLE_LIBCURL=OFF \
+            -DENABLE_NSS3=OFF \
+            -DENABLE_GPGME=OFF \
+            -DBUILD_GTK_TESTS=OFF \
+            -DBUILD_QT5_TESTS=OFF \
+            -DBUILD_QT6_TESTS=OFF \
+            -DBUILD_CPP_TESTS=OFF \
+            -DBUILD_MANUAL_TESTS=OFF
+          cmake --build /tmp/poppler-build --parallel 2
+          sudo cmake --install /tmp/poppler-build
+          sudo ldconfig
+          pdftotext -v 2>&1 | tee "$RUNNER_TEMP/pdftotext-version.txt"
+          grep -F "pdftotext version ${POPPLER_VERSION}" \
+            "$RUNNER_TEMP/pdftotext-version.txt"
 
       - name: Download exact pinned source
         shell: bash
