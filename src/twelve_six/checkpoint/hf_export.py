@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import hashlib
 import json
 import math
 import os
@@ -51,6 +52,7 @@ _EXPORT_FILES = frozenset(
 )
 _MAX_EXPORT_METADATA_BYTES = 8 * 1024 * 1024
 _MAX_EXPORT_CHECKSUM_BYTES = 256
+_STREAM_HASH_CHUNK_BYTES = 1024 * 1024
 _REQUIRED_PARITY_CHECKS = [
     "prompt_token_identity",
     "next_token_logit_parity",
@@ -211,6 +213,81 @@ def _read_regular_bytes(
                 ) from close_exc
 
 
+def _stream_regular_sha256(
+    root: Path,
+    name: str,
+) -> tuple[str, int]:
+    """Hash one regular artifact through a bounded-memory held descriptor."""
+
+    path = root / name
+    try:
+        before = path.lstat()
+    except FileNotFoundError as exc:
+        raise CheckpointIntegrityError(f"missing HF-style export artifact: {name}") from exc
+    except OSError as exc:
+        raise CheckpointIntegrityError(
+            f"cannot inspect HF-style export artifact: {name}"
+        ) from exc
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+        raise CheckpointIntegrityError(
+            f"HF-style export artifact must be a regular non-symlink file: {name}"
+        )
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise CheckpointIntegrityError(
+            f"cannot safely open HF-style export artifact: {name}"
+        ) from exc
+    primary_exc: BaseException | None = None
+    try:
+        try:
+            opened = os.fstat(fd)
+        except OSError as exc:
+            raise CheckpointIntegrityError(
+                f"cannot inspect HF-style export artifact: {name}"
+            ) from exc
+        if not stat.S_ISREG(opened.st_mode):
+            raise CheckpointIntegrityError(f"HF-style export artifact changed type: {name}")
+        if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+            raise CheckpointIntegrityError(
+                f"HF-style export artifact changed while opening: {name}"
+            )
+
+        digest = hashlib.sha256()
+        byte_count = 0
+        try:
+            with os.fdopen(fd, "rb", closefd=False) as handle:
+                while True:
+                    chunk = handle.read(_STREAM_HASH_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    byte_count += len(chunk)
+        except OSError as exc:
+            raise CheckpointIntegrityError(
+                f"cannot read HF-style export artifact: {name}"
+            ) from exc
+        return digest.hexdigest(), byte_count
+    except BaseException as exc:
+        primary_exc = exc
+        raise
+    finally:
+        try:
+            os.close(fd)
+        except OSError as close_exc:
+            if primary_exc is not None:
+                _add_failure_note_preserving_primary(
+                    primary_exc,
+                    f"HF-style export artifact close also failed: {close_exc!r}",
+                )
+            else:
+                raise CheckpointIntegrityError(
+                    f"cannot close HF-style export artifact: {name}"
+                ) from close_exc
+
+
 def _require_export_root_identity(
     root: Path,
     expected_identity: tuple[int, int],
@@ -235,7 +312,7 @@ def _require_export_root_identity(
         )
 
 
-def _read_export_snapshot(root: Path) -> dict[str, bytes]:
+def _read_export_snapshot(root: Path) -> tuple[dict[str, bytes], str, int]:
     try:
         root_stat = root.lstat()
     except FileNotFoundError as exc:
@@ -269,21 +346,27 @@ def _read_export_snapshot(root: Path) -> dict[str, bytes]:
             f"HF-style export inventory mismatch: missing={missing}, unexpected={unexpected}"
         )
     payloads: dict[str, bytes] = {}
+    weights_sha256: str | None = None
+    weights_bytes: int | None = None
     for name in sorted(_EXPORT_FILES):
         _require_export_root_identity(root, root_identity)
         if name == EXPORTED_WEIGHTS_NAME:
-            max_bytes = None
-        elif name == EXPORT_CHECKSUM_NAME:
-            max_bytes = _MAX_EXPORT_CHECKSUM_BYTES
+            weights_sha256, weights_bytes = _stream_regular_sha256(root, name)
         else:
-            max_bytes = _MAX_EXPORT_METADATA_BYTES
-        payloads[name] = _read_regular_bytes(
-            root,
-            name,
-            max_bytes=max_bytes,
-        )
+            max_bytes = (
+                _MAX_EXPORT_CHECKSUM_BYTES
+                if name == EXPORT_CHECKSUM_NAME
+                else _MAX_EXPORT_METADATA_BYTES
+            )
+            payloads[name] = _read_regular_bytes(
+                root,
+                name,
+                max_bytes=max_bytes,
+            )
         _require_export_root_identity(root, root_identity)
-    return payloads
+    if weights_sha256 is None or weights_bytes is None:
+        raise CheckpointIntegrityError("HF-style export weights were not observed")
+    return payloads, weights_sha256, weights_bytes
 
 
 def _strict_json_bytes(value: Any, *, artifact: str) -> bytes:
@@ -448,7 +531,7 @@ def _validate_source_manifest_identity(identity: dict[str, Any]) -> None:
 def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
     """Verify one exact HF-style export directory without trusting path metadata."""
 
-    payloads = _read_export_snapshot(Path(directory))
+    payloads, weights_sha, weights_bytes = _read_export_snapshot(Path(directory))
     try:
         checksum_text = payloads[EXPORT_CHECKSUM_NAME].decode("ascii")
     except UnicodeDecodeError as exc:
@@ -494,7 +577,6 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         raise CheckpointIntegrityError("source manifest is missing canonical weights record")
 
     _json_object(payloads[EXPORTED_CONFIG_NAME], artifact=EXPORTED_CONFIG_NAME)
-    weights_sha = sha256_bytes(payloads[EXPORTED_WEIGHTS_NAME])
     config_sha = sha256_bytes(payloads[EXPORTED_CONFIG_NAME])
     source_manifest_sha = sha256_bytes(payloads[EXPORTED_SOURCE_MANIFEST_NAME])
     parity_sha = sha256_bytes(payloads[PARITY_REQUEST_NAME])
@@ -502,7 +584,7 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         raise CheckpointIntegrityError(
             "exported model.safetensors differs from canonical weights hash"
         )
-    if weights_record.get("bytes") != len(payloads[EXPORTED_WEIGHTS_NAME]):
+    if weights_record.get("bytes") != weights_bytes:
         raise CheckpointIntegrityError(
             "exported model.safetensors differs from canonical byte length"
         )
