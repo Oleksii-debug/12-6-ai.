@@ -346,8 +346,8 @@ def build_200m_feasibility_packet(
     return packet
 
 
-def expected_external_identities(packet: Mapping[str, Any]) -> dict[str, Any]:
-    """Return identities that an external authority must retain for later verify."""
+def retained_identities_for_built_packet(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """Derive identities to retain separately immediately after a trusted build."""
 
     if not isinstance(packet, Mapping):
         raise FeasibilityPacketError("packet_not_mapping")
