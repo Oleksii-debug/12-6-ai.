@@ -845,3 +845,27 @@ def test_compare_outputs_rejects_unbound_extra_files(tmp_path: Path) -> None:
     ):
         target.compare_outputs(a, b, tmp_path / "proof-extra.json")
 
+def test_write_output_dir_rejects_receipt_before_children(tmp_path: Path) -> None:
+    output = tmp_path / "receipt-first"
+    output.mkdir()
+    (output / "execution-receipt.json").write_bytes(
+        target.canonical_line({"value": 5})
+    )
+    values = {
+        "composition-dedup-proof": {"value": 1},
+        "next100-input": {"value": 2},
+        "balance-result": {"value": 3},
+        "balance-binding": {"value": 4},
+        "execution-receipt": {"value": 5},
+    }
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="output directory bundle is incomplete",
+    ):
+        target.write_output_dir(output, values)
+
+    assert sorted(path.name for path in output.iterdir()) == [
+        "execution-receipt.json"
+    ]
+
