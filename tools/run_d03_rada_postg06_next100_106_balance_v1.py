@@ -1,0 +1,660 @@
+#!/usr/bin/env python3
+"""Bind post-G06 current-Rada physical capacity to canonical NEXT100-106 balance.
+
+Execution-only bridge. It authenticates the already-terminal current-Rada global
+dedup evidence, the post-G06 materialization receipt, and the family vector;
+creates a zero-credit global-unique composition proof; then delegates all
+balance mathematics and binding semantics to the merged canonical authorities.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib
+import json
+import os
+import re
+import subprocess
+import sys
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+POST_G06_SCHEMA = "12-6.d03-rada-current-postdata232-g05-g06-execution.v1"
+FAMILY_VECTOR_SCHEMA = "12-6.d03-postmaterialization-family-vector.v1"
+COMPOSITION_SCHEMA = "12-6.d03-rada-post-g06-global-unique-composition.v1"
+RECEIPT_SCHEMA = "12-6.d03-rada-postg06-next100-106-execution.v1"
+REPEAT_SCHEMA = "12-6.d03-rada-postg06-next100-106-two-clean.v1"
+DEDUP_WORKER_ID = "D03-RADA-POST-G06-GLOBAL-UNIQUE-COMPOSITION-V1"
+
+UPSTREAM_GLOBAL_DEDUP_WORKER_ID = "NEXT100-065F-CURRENT-MAIN-GLOBAL-DEDUP-V8"
+UPSTREAM_GLOBAL_DEDUP_HEAD = "a4663e87b010b190343caf1d42784f5dc7984601"
+UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID = (
+    "a3f7e396cb13a6b107aaa0eb330edcbdc61bead6fa12eb68542ff5c3a3ed9301"
+)
+UPSTREAM_GLOBAL_DEDUP_EVIDENCE_FILE_SHA256 = (
+    "43a9621ab11fd82232e8251ab26aae4126cf0b4854878af1e97184d587740caa"
+)
+UPSTREAM_SURVIVOR_AUTHORITY_ID = (
+    "f103a3f18216519bd9228e586bd673d49f73cace03b3b0278f2dd0a33383bffb"
+)
+UPSTREAM_TWO_CLEAN_ID = (
+    "f24f4b2d23bee6cb1273a4680297d942aa59030dab50d5c5de7a4d659ff99a5e"
+)
+UPSTREAM_TWO_CLEAN_FILE_SHA256 = (
+    "748adad71a730f7daf18fa52c9e78e3c249ae683e6f3d9cb865b1bbfc9365aa9"
+)
+UPSTREAM_ARTIFACT_ZIP_SHA256 = (
+    "63f9e1bf5713989a155429c8862196cacaff3207a7e0fe97586f7dd2c98881f9"
+)
+POLICY_IDENTITY_SHA256 = (
+    "9a9242f47981c25e754fc95e2650050da4e4195aa1ef3a78f2c293f9e25d7ff7"
+)
+
+PINNED_BLOBS = {
+    "tools/next100_106_balance_gate.py":
+        "ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5",
+    "configs/data/next100_106_balance_gate_policy_v1.json":
+        "b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f",
+    "src/twelve_six/data/postmaterialization_balance_projection_v1.py":
+        "62a6640ad5911e21f406ef12c1b0d7e5e5b1afef",
+}
+
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
+SHA64 = re.compile(r"^[0-9a-f]{64}$")
+
+ZERO_CREDIT = {
+    "canonical_capacity_credited": 0,
+    "training_authorized_bytes": 0,
+    "authorized_unique_loss_positions": 0,
+    "authorized_optimized_target_exposure": 0,
+    "tokenizer_fit_authorized": False,
+    "model_training_authorized": False,
+    "training_executed": False,
+    "learned_weights_created": False,
+    "final_test_outcomes_read": False,
+    "paid_compute_used": False,
+}
+
+
+class RadaPostG06BalanceError(RuntimeError):
+    """Raised when the physical-to-balance lineage cannot be proven."""
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise RadaPostG06BalanceError(message)
+
+
+def canonical(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def canonical_line(value: Any) -> bytes:
+    return canonical(value) + b"\n"
+
+
+def sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def self_hash(document: Mapping[str, Any], field: str) -> str:
+    core = dict(document)
+    core.pop(field, None)
+    return sha256(canonical(core))
+
+
+def require_sha256(value: Any, label: str) -> str:
+    require(
+        isinstance(value, str) and SHA64.fullmatch(value) is not None,
+        f"{label} must be 64 lowercase hex",
+    )
+    return value
+
+
+def require_git_sha(value: Any, label: str) -> str:
+    require(
+        isinstance(value, str) and SHA40.fullmatch(value) is not None,
+        f"{label} must be 40 lowercase hex",
+    )
+    return value
+
+
+def require_positive_int(value: Any, label: str) -> int:
+    require(type(value) is int and value > 0, f"{label} must be positive integer")
+    return value
+
+
+def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in result, f"duplicate JSON key rejected: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str) -> None:
+    raise RadaPostG06BalanceError(f"non-finite JSON constant rejected: {value}")
+
+
+def load_json_bytes(raw: bytes, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=_pairs,
+            parse_constant=_reject_constant,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RadaPostG06BalanceError(f"{label} strict JSON decode failed") from exc
+    require(isinstance(value, dict), f"{label} must be a JSON object")
+    return value
+
+
+def load_pinned_json(
+    path: Path,
+    *,
+    expected_file_sha256: str,
+    label: str,
+) -> dict[str, Any]:
+    require(path.is_file() and not path.is_symlink(), f"{label} file invalid")
+    raw = path.read_bytes()
+    require(
+        sha256(raw) == require_sha256(expected_file_sha256, f"{label} file SHA"),
+        f"{label} file SHA-256 drift",
+    )
+    return load_json_bytes(raw, label)
+
+
+def _git(*args: str) -> str:
+    return subprocess.check_output(
+        ["git", *args],
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+    ).strip()
+
+
+def verify_source_head(source_git_sha: str) -> str:
+    expected = require_git_sha(source_git_sha, "source_git_sha")
+    require(_git("rev-parse", "HEAD") == expected, "execution HEAD drift")
+    return expected
+
+
+def verify_dependency_blobs() -> None:
+    for relative, expected in PINNED_BLOBS.items():
+        observed = _git("hash-object", str(ROOT / relative))
+        require(observed == expected, f"canonical dependency blob drift: {relative}")
+
+
+def verify_module_provenance(module: Any, relative: str) -> None:
+    raw = getattr(module, "__file__", None)
+    require(isinstance(raw, str) and raw, f"module path missing: {relative}")
+    require(
+        Path(raw).resolve(strict=True) == (ROOT / relative).resolve(strict=True),
+        f"module provenance drift: {relative}",
+    )
+
+
+def load_canonical_authorities() -> tuple[Any, Any, dict[str, Any]]:
+    verify_dependency_blobs()
+    importlib.invalidate_caches()
+    gate = importlib.import_module("tools.next100_106_balance_gate")
+    bridge = importlib.import_module(
+        "twelve_six.data.postmaterialization_balance_projection_v1"
+    )
+    verify_module_provenance(gate, "tools/next100_106_balance_gate.py")
+    verify_module_provenance(
+        bridge,
+        "src/twelve_six/data/postmaterialization_balance_projection_v1.py",
+    )
+    policy_path = ROOT / "configs/data/next100_106_balance_gate_policy_v1.json"
+    policy = load_json_bytes(policy_path.read_bytes(), "NEXT100-106 policy")
+    gate.validate_policy(policy)
+    require(
+        policy.get("policy_identity_sha256") == POLICY_IDENTITY_SHA256,
+        "canonical balance policy identity drift",
+    )
+    return gate, bridge, policy
+
+
+def verify_global_dedup(
+    evidence: Mapping[str, Any],
+    two_clean: Mapping[str, Any],
+) -> None:
+    require(
+        evidence.get("schema_version")
+        == "12-6.d03-rada-current-global-dedup-execution.v1",
+        "upstream global-dedup evidence schema drift",
+    )
+    require(
+        evidence.get("execution_head_sha") == UPSTREAM_GLOBAL_DEDUP_HEAD,
+        "upstream global-dedup head drift",
+    )
+    claimed = require_sha256(
+        evidence.get("evidence_identity_sha256"),
+        "upstream global-dedup evidence identity",
+    )
+    require(claimed == self_hash(evidence, "evidence_identity_sha256"),
+            "upstream global-dedup evidence self-hash mismatch")
+    require(claimed == UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID,
+            "upstream global-dedup evidence identity drift")
+    require(
+        evidence.get("survivor_authority_sha256") == UPSTREAM_SURVIVOR_AUTHORITY_ID,
+        "upstream survivor authority drift",
+    )
+    require(evidence.get("raw_text_persisted") is False,
+            "upstream dedup persisted raw text")
+    require(evidence.get("canonical_capacity_credited") == 0,
+            "upstream dedup widened capacity")
+    require(evidence.get("training_authorized_bytes") == 0,
+            "upstream dedup widened training bytes")
+    require(evidence.get("tokenizer_fit_authorized") is False,
+            "upstream dedup widened tokenizer authority")
+    require(evidence.get("training_executed") is False,
+            "upstream dedup executed training")
+    require(evidence.get("final_test_outcomes_read") is False,
+            "upstream dedup read final-test outcomes")
+    require(evidence.get("paid_compute_used") is False,
+            "upstream dedup used paid compute")
+
+    require(
+        two_clean.get("schema_version")
+        == "12-6.d03-rada-current-global-dedup-two-clean.v1",
+        "upstream two-clean schema drift",
+    )
+    require(two_clean.get("execution_head_sha") == UPSTREAM_GLOBAL_DEDUP_HEAD,
+            "upstream two-clean head drift")
+    two_id = require_sha256(two_clean.get("two_clean_identity_sha256"),
+                            "upstream two-clean identity")
+    require(two_id == self_hash(two_clean, "two_clean_identity_sha256"),
+            "upstream two-clean self-hash mismatch")
+    require(two_id == UPSTREAM_TWO_CLEAN_ID, "upstream two-clean identity drift")
+    require(two_clean.get("fresh_process_count") == 2,
+            "upstream two-clean process count drift")
+    require(two_clean.get("byte_identical_outputs") is True,
+            "upstream two-clean outputs are not byte-identical")
+    require(
+        two_clean.get("survivor_authority_sha256")
+        == evidence.get("survivor_authority_sha256"),
+        "upstream two-clean survivor authority mismatch",
+    )
+    require(
+        two_clean.get("matcher_report_sha256") == evidence.get("matcher_report_sha256"),
+        "upstream two-clean matcher report mismatch",
+    )
+    require(two_clean.get("canonical_capacity_credited") == 0,
+            "upstream two-clean widened capacity")
+    require(two_clean.get("training_authorized_bytes") == 0,
+            "upstream two-clean widened training bytes")
+    require(two_clean.get("tokenizer_fit_authorized") is False,
+            "upstream two-clean widened tokenizer authority")
+
+
+def verify_post_g06_receipt(
+    evidence: Mapping[str, Any],
+    family_vector: Mapping[str, Any],
+    *,
+    expected_evidence_identity_sha256: str,
+) -> dict[str, Any]:
+    require(evidence.get("schema_version") == POST_G06_SCHEMA,
+            "post-G06 evidence schema drift")
+    claimed = require_sha256(
+        evidence.get("evidence_identity_sha256"),
+        "post-G06 evidence identity",
+    )
+    require(claimed == self_hash(evidence, "evidence_identity_sha256"),
+            "post-G06 evidence self-hash mismatch")
+    require(
+        claimed == require_sha256(
+            expected_evidence_identity_sha256,
+            "expected post-G06 evidence identity",
+        ),
+        "post-G06 evidence identity differs from external expectation",
+    )
+    require(
+        family_vector.get("materialization_identity_sha256") == claimed,
+        "family vector materialization identity differs from post-G06 receipt",
+    )
+    require(
+        family_vector.get("materialization_execution_head_sha")
+        == evidence.get("execution_head_sha"),
+        "family vector materialization head differs from post-G06 receipt",
+    )
+    g06 = evidence.get("g06")
+    require(isinstance(g06, Mapping), "post-G06 receipt lacks G06")
+    require(g06.get("exact_payload_collision_free") is True,
+            "post-G06 exact payload collision proof is not terminal")
+    unique_count = require_positive_int(
+        g06.get("unique_payload_count"), "post-G06 unique payload count"
+    )
+    payload_set_id = require_sha256(
+        g06.get("payload_set_identity_sha256"), "post-G06 payload-set identity"
+    )
+    survivor = evidence.get("survivor_inventory")
+    require(isinstance(survivor, Mapping), "post-G06 survivor receipt missing")
+    require(unique_count == family_vector.get("record_count"),
+            "post-G06 unique payload count differs from family vector")
+    for field in (
+        "record_count",
+        "total_payload_bytes",
+        "record_inventory_digest_sha256",
+        "payload_inventory_digest_sha256",
+        "record_payload_jsonl_sha256",
+    ):
+        require(
+            survivor.get(field) == family_vector.get(field),
+            f"post-G06/family-vector cross-bind drift: {field}",
+        )
+    require(evidence.get("content_boundary", {}).get("raw_survivor_text_persisted") is False,
+            "post-G06 receipt persisted raw survivor text")
+    truth = evidence.get("truth_boundary")
+    require(isinstance(truth, Mapping), "post-G06 truth boundary missing")
+    for field, expected in (
+        ("canonical_capacity_credited", 0),
+        ("training_authorized_bytes", 0),
+        ("authorized_optimized_target_exposure", 0),
+        ("tokenizer_fit_authorized", False),
+        ("training_executed", False),
+        ("final_test_outcomes_read", False),
+        ("paid_compute_used", False),
+    ):
+        require(truth.get(field) == expected, f"post-G06 truth widened: {field}")
+    require(
+        evidence.get("next_gate") == "CURRENT_RADA_BALANCE_DIVERSITY_FAMILY_CAP_RETEST",
+        "post-G06 next gate drift",
+    )
+    return {
+        "execution_head_sha": evidence["execution_head_sha"],
+        "evidence_identity_sha256": claimed,
+        "payload_set_identity_sha256": payload_set_id,
+        "unique_payload_count": unique_count,
+        "record_inventory_digest_sha256": survivor[
+            "record_inventory_digest_sha256"
+        ],
+        "payload_inventory_digest_sha256": survivor[
+            "payload_inventory_digest_sha256"
+        ],
+    }
+
+
+def build_composition_proof(
+    *,
+    source_git_sha: str,
+    family_vector: Mapping[str, Any],
+    post_g06: Mapping[str, Any],
+) -> dict[str, Any]:
+    core: dict[str, Any] = {
+        "schema": COMPOSITION_SCHEMA,
+        "execution_head_sha": source_git_sha,
+        "upstream_global_dedup": {
+            "worker_id": UPSTREAM_GLOBAL_DEDUP_WORKER_ID,
+            "head_sha": UPSTREAM_GLOBAL_DEDUP_HEAD,
+            "evidence_identity_sha256": UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID,
+            "survivor_authority_sha256": UPSTREAM_SURVIVOR_AUTHORITY_ID,
+            "two_clean_identity_sha256": UPSTREAM_TWO_CLEAN_ID,
+            "artifact_zip_sha256": UPSTREAM_ARTIFACT_ZIP_SHA256,
+            "terminal_verdict": "PASS",
+        },
+        "post_g06_physical_uniqueness": dict(post_g06),
+        "family_vector_identity_sha256": family_vector[
+            "family_vector_identity_sha256"
+        ],
+        "materialization_identity_sha256": family_vector[
+            "materialization_identity_sha256"
+        ],
+        "record_count": family_vector["record_count"],
+        "total_payload_bytes": family_vector["total_payload_bytes"],
+        "cross_transform_exact_payload_collision_free": True,
+        "semantics": (
+            "UPSTREAM_GLOBAL_DEDUP_PASS_PLUS_POST_G06_EXACT_PAYLOAD_"
+            "UNIQUENESS_PLUS_PHYSICAL_FAMILY_VECTOR_NO_REPLAY"
+        ),
+        "terminal_verdict": "PASS",
+        **ZERO_CREDIT,
+    }
+    return {
+        **core,
+        "evidence_identity_sha256": sha256(canonical(core)),
+    }
+
+
+def execute(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
+    source_git_sha = verify_source_head(args.source_git_sha)
+    gate, bridge, policy = load_canonical_authorities()
+
+    family_vector = load_pinned_json(
+        args.family_vector,
+        expected_file_sha256=args.expected_family_vector_file_sha256,
+        label="family vector",
+    )
+    family_identity = bridge.verify_postmaterialization_family_vector(
+        family_vector,
+        expected_identity_sha256=args.expected_family_vector_identity_sha256,
+    )
+    require(family_vector.get("schema") == FAMILY_VECTOR_SCHEMA,
+            "family vector schema drift")
+
+    post_g06_evidence = load_pinned_json(
+        args.post_g06_evidence,
+        expected_file_sha256=args.expected_post_g06_evidence_file_sha256,
+        label="post-G06 evidence",
+    )
+    post_g06 = verify_post_g06_receipt(
+        post_g06_evidence,
+        family_vector,
+        expected_evidence_identity_sha256=args.expected_post_g06_evidence_identity_sha256,
+    )
+
+    upstream_evidence = load_pinned_json(
+        args.upstream_global_dedup_evidence,
+        expected_file_sha256=UPSTREAM_GLOBAL_DEDUP_EVIDENCE_FILE_SHA256,
+        label="upstream global-dedup evidence",
+    )
+    upstream_two_clean = load_pinned_json(
+        args.upstream_global_dedup_two_clean,
+        expected_file_sha256=UPSTREAM_TWO_CLEAN_FILE_SHA256,
+        label="upstream global-dedup two-clean",
+    )
+    verify_global_dedup(upstream_evidence, upstream_two_clean)
+
+    composition = build_composition_proof(
+        source_git_sha=source_git_sha,
+        family_vector=family_vector,
+        post_g06=post_g06,
+    )
+    dedup_authority = {
+        "worker_id": DEDUP_WORKER_ID,
+        "head_sha": source_git_sha,
+        "evidence_identity_sha256": composition["evidence_identity_sha256"],
+        "terminal_verdict": "PASS",
+    }
+    next100 = bridge.adapt_postmaterialization_family_vector_to_next100_106(
+        family_vector,
+        expected_family_vector_identity_sha256=family_identity,
+        dedup_authority=dedup_authority,
+        expected_dedup_worker_id=DEDUP_WORKER_ID,
+        expected_dedup_head_sha=source_git_sha,
+        expected_dedup_evidence_identity_sha256=composition[
+            "evidence_identity_sha256"
+        ],
+    )
+    gate.validate_vector(next100)
+    balance = gate.evaluate(policy, next100)
+    result_identity = bridge.verify_balance_result(
+        balance,
+        expected_result_identity_sha256=balance["result_identity_sha256"],
+    )
+    binding = bridge.build_balance_result_binding(
+        family_vector=family_vector,
+        expected_family_vector_identity_sha256=family_identity,
+        next100_input=next100,
+        balance_result=balance,
+        expected_policy_identity_sha256=POLICY_IDENTITY_SHA256,
+        expected_result_identity_sha256=result_identity,
+    )
+    status = balance["status"]
+    next_gate = (
+        "CLUSTER_SAFE_SPLIT_AND_DETERMINISTIC_PACK"
+        if status == "TARGET_20M_SOURCE_MIX_FEASIBLE"
+        else "ACQUIRE_MORE_DIVERSE_LAWFUL_SOURCE_CAPACITY"
+    )
+    receipt_core: dict[str, Any] = {
+        "schema": RECEIPT_SCHEMA,
+        "execution_profile": "LOCAL_FREE",
+        "execution_head_sha": source_git_sha,
+        "upstream_global_dedup_evidence_identity_sha256":
+            UPSTREAM_GLOBAL_DEDUP_EVIDENCE_ID,
+        "upstream_global_dedup_two_clean_identity_sha256": UPSTREAM_TWO_CLEAN_ID,
+        "post_g06_evidence_identity_sha256": post_g06[
+            "evidence_identity_sha256"
+        ],
+        "family_vector_identity_sha256": family_identity,
+        "composition_dedup_identity_sha256": composition[
+            "evidence_identity_sha256"
+        ],
+        "balance_policy_identity_sha256": POLICY_IDENTITY_SHA256,
+        "balance_result_identity_sha256": result_identity,
+        "balance_binding_identity_sha256": binding["binding_identity_sha256"],
+        "balance_status": status,
+        "maximum_feasible_total_source_bytes": balance[
+            "maximum_feasible_total_source_bytes"
+        ],
+        "raw_capacity_by_stratum": balance["raw_capacity_by_stratum"],
+        "raw_gap_to_target_by_stratum": balance["raw_gap_to_target_by_stratum"],
+        "family_minimum": balance["family_minimum"],
+        "next_scientific_gate": next_gate,
+        **ZERO_CREDIT,
+    }
+    receipt = {
+        **receipt_core,
+        "receipt_identity_sha256": sha256(canonical(receipt_core)),
+    }
+    return {
+        "composition-dedup-proof": composition,
+        "next100-input": next100,
+        "balance-result": balance,
+        "balance-binding": binding,
+        "execution-receipt": receipt,
+    }
+
+
+def write_output_dir(path: Path, values: Mapping[str, Mapping[str, Any]]) -> None:
+    require(not path.exists() and not path.is_symlink(), "output directory already exists")
+    path.mkdir(parents=True)
+    for name, value in values.items():
+        target = path / f"{name}.json"
+        with target.open("xb") as handle:
+            payload = canonical_line(value)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+
+def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[str, Any]:
+    names = (
+        "composition-dedup-proof",
+        "next100-input",
+        "balance-result",
+        "balance-binding",
+        "execution-receipt",
+    )
+    hashes: dict[str, str] = {}
+    for name in names:
+        a = (output_a / f"{name}.json").read_bytes()
+        b = (output_b / f"{name}.json").read_bytes()
+        require(a == b, f"two-clean output differs: {name}")
+        hashes[f"{name}.json"] = sha256(a)
+    receipt = load_json_bytes(
+        (output_a / "execution-receipt.json").read_bytes(),
+        "execution receipt",
+    )
+    core: dict[str, Any] = {
+        "schema": REPEAT_SCHEMA,
+        "execution_head_sha": receipt["execution_head_sha"],
+        "fresh_process_count": 2,
+        "byte_identical_outputs": True,
+        "output_file_sha256": hashes,
+        "receipt_identity_sha256": receipt["receipt_identity_sha256"],
+        "balance_result_identity_sha256": receipt[
+            "balance_result_identity_sha256"
+        ],
+        "balance_binding_identity_sha256": receipt[
+            "balance_binding_identity_sha256"
+        ],
+        **ZERO_CREDIT,
+    }
+    proof = {**core, "proof_identity_sha256": sha256(canonical(core))}
+    require(not proof_path.exists() and not proof_path.is_symlink(),
+            "repeat proof already exists")
+    proof_path.write_bytes(canonical_line(proof))
+    return proof
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    sub = result.add_subparsers(dest="command", required=True)
+
+    run = sub.add_parser("run", allow_abbrev=False)
+    run.add_argument("--source-git-sha", required=True)
+    run.add_argument("--family-vector", type=Path, required=True)
+    run.add_argument("--expected-family-vector-file-sha256", required=True)
+    run.add_argument("--expected-family-vector-identity-sha256", required=True)
+    run.add_argument("--post-g06-evidence", type=Path, required=True)
+    run.add_argument("--expected-post-g06-evidence-file-sha256", required=True)
+    run.add_argument("--expected-post-g06-evidence-identity-sha256", required=True)
+    run.add_argument("--upstream-global-dedup-evidence", type=Path, required=True)
+    run.add_argument("--upstream-global-dedup-two-clean", type=Path, required=True)
+    run.add_argument("--output-dir", type=Path, required=True)
+
+    compare = sub.add_parser("compare", allow_abbrev=False)
+    compare.add_argument("--output-a", type=Path, required=True)
+    compare.add_argument("--output-b", type=Path, required=True)
+    compare.add_argument("--proof", type=Path, required=True)
+    return result
+
+
+def main() -> int:
+    args = parser().parse_args()
+    try:
+        if args.command == "run":
+            values = execute(args)
+            write_output_dir(args.output_dir, values)
+            print(
+                "D03_RADA_POSTG06_NEXT100_BALANCE=PASS_ZERO_CREDIT "
+                + values["execution-receipt"]["balance_status"]
+            )
+        else:
+            proof = compare_outputs(args.output_a, args.output_b, args.proof)
+            print(
+                "D03_RADA_POSTG06_NEXT100_TWO_CLEAN=PASS "
+                + proof["proof_identity_sha256"]
+            )
+    except (
+        ImportError,
+        OSError,
+        RuntimeError,
+        UnicodeError,
+        ValueError,
+    ) as exc:
+        detail = " ".join(str(exc).split())[:500]
+        print(f"D03_RADA_POSTG06_NEXT100_BALANCE=BLOCKED: {detail}")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
