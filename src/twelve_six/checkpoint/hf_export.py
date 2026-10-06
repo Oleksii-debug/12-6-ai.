@@ -82,6 +82,25 @@ _ATTESTATION_FIELDS = frozenset(
         "compatibility",
     }
 )
+_SOURCE_MANIFEST_FIELDS = frozenset(
+    {
+        "format",
+        "format_version",
+        "created_at_utc",
+        "checkpoint_id",
+        "identity",
+        "files",
+        "serialization",
+    }
+)
+_SOURCE_FILE_NAMES = frozenset({WEIGHTS_NAME, STATE_TENSORS_NAME, STATE_TREE_NAME})
+_SOURCE_FILE_RECORD_FIELDS = frozenset({"sha256", "bytes"})
+_SOURCE_SERIALIZATION = {
+    "weights": "safetensors",
+    "state_tensors": "safetensors",
+    "state_tree": "canonical-json",
+    "pickle": False,
+}
 ParityHook = Callable[[Path, Path], Mapping[str, Any]]
 
 
@@ -272,6 +291,66 @@ def _require_exact_fields(
         )
 
 
+def _validate_source_manifest_structure(
+    source_manifest: dict[str, Any],
+) -> dict[str, Any]:
+    _require_exact_fields(
+        source_manifest,
+        _SOURCE_MANIFEST_FIELDS,
+        artifact=EXPORTED_SOURCE_MANIFEST_NAME,
+    )
+    files = source_manifest.get("files")
+    if not isinstance(files, dict):
+        raise CheckpointIntegrityError(
+            "exported source manifest files must be a mapping"
+        )
+    actual_files = set(files)
+    if actual_files != _SOURCE_FILE_NAMES:
+        missing = sorted(_SOURCE_FILE_NAMES - actual_files)
+        unexpected = sorted(actual_files - _SOURCE_FILE_NAMES)
+        raise CheckpointIntegrityError(
+            "exported source manifest file inventory mismatch: "
+            f"missing={missing}, unexpected={unexpected}"
+        )
+    for name in sorted(_SOURCE_FILE_NAMES):
+        record = files.get(name)
+        if not isinstance(record, dict):
+            raise CheckpointIntegrityError(
+                f"exported source manifest file record is invalid: {name}"
+            )
+        _require_exact_fields(
+            record,
+            _SOURCE_FILE_RECORD_FIELDS,
+            artifact=f"{EXPORTED_SOURCE_MANIFEST_NAME}:{name}",
+        )
+        digest = record.get("sha256")
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or digest != digest.lower()
+            or any(char not in "0123456789abcdef" for char in digest)
+        ):
+            raise CheckpointIntegrityError(
+                f"exported source manifest file hash is invalid: {name}"
+            )
+        byte_count = record.get("bytes")
+        if (
+            not isinstance(byte_count, int)
+            or isinstance(byte_count, bool)
+            or byte_count < 0
+        ):
+            raise CheckpointIntegrityError(
+                f"exported source manifest file byte length is invalid: {name}"
+            )
+
+    serialization = source_manifest.get("serialization")
+    if serialization != _SOURCE_SERIALIZATION:
+        raise CheckpointIntegrityError(
+            "exported source manifest serialization declaration is noncanonical"
+        )
+    return files
+
+
 def _validate_source_manifest_identity(identity: dict[str, Any]) -> None:
     hash_pairs = (
         ("model_spec", "model_spec_hash"),
@@ -314,11 +393,11 @@ def verify_hf_directory(directory: str | Path) -> dict[str, Any]:
         raise CheckpointCompatibilityError(
             "exported source manifest has unsupported checkpoint format"
         )
+    files = _validate_source_manifest_structure(source_manifest)
     identity = source_manifest.get("identity")
-    files = source_manifest.get("files")
-    if not isinstance(identity, dict) or not isinstance(files, dict):
+    if not isinstance(identity, dict):
         raise CheckpointIntegrityError(
-            "exported source manifest is missing identity/files mappings"
+            "exported source manifest is missing identity mapping"
         )
     _validate_source_manifest_identity(identity)
     checkpoint_id = hash_json({"identity": identity, "files": files})

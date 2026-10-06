@@ -1805,3 +1805,123 @@ def test_hf_snapshot_recheck_interrupt_retains_exact_identity(
         hf_export._read_export_snapshot(root)
 
     assert caught.value is primary
+
+
+def _reseal_hf_after_source_manifest_mutation(
+    output: Path,
+    source_manifest: dict,
+) -> None:
+    source_manifest["checkpoint_id"] = hf_export.hash_json(
+        {
+            "identity": source_manifest["identity"],
+            "files": source_manifest["files"],
+        }
+    )
+    source_bytes = hf_export._strict_json_bytes(
+        source_manifest,
+        artifact=hf_export.EXPORTED_SOURCE_MANIFEST_NAME,
+    ) + b"\n"
+    (output / hf_export.EXPORTED_SOURCE_MANIFEST_NAME).write_bytes(source_bytes)
+
+    parity_path = output / hf_export.PARITY_REQUEST_NAME
+    parity = json.loads(parity_path.read_text(encoding="utf-8"))
+    parity["checkpoint_id"] = source_manifest["checkpoint_id"]
+    parity_bytes = hf_export._strict_json_bytes(
+        parity,
+        artifact=hf_export.PARITY_REQUEST_NAME,
+    ) + b"\n"
+    parity_path.write_bytes(parity_bytes)
+
+    attestation_path = output / hf_export.EXPORT_ATTESTATION_NAME
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    attestation["checkpoint_id"] = source_manifest["checkpoint_id"]
+    attestation["source_manifest_sha256"] = hf_export.sha256_bytes(source_bytes)
+    attestation["parity_request_sha256"] = hf_export.sha256_bytes(parity_bytes)
+    attestation_bytes = hf_export._strict_json_bytes(
+        attestation,
+        artifact=hf_export.EXPORT_ATTESTATION_NAME,
+    ) + b"\n"
+    attestation_path.write_bytes(attestation_bytes)
+    (output / hf_export.EXPORT_CHECKSUM_NAME).write_text(
+        (
+            f"{hf_export.sha256_bytes(attestation_bytes)}  "
+            f"{hf_export.EXPORT_ATTESTATION_NAME}\n"
+        ),
+        encoding="ascii",
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    (
+        ("unknown_top_level", "fields mismatch"),
+        ("missing_file", "file inventory mismatch"),
+        ("extra_file", "file inventory mismatch"),
+        ("record_extra_field", "fields mismatch"),
+        ("serialization_drift", "serialization declaration is noncanonical"),
+    ),
+)
+def test_hf_verifier_rejects_resealed_noncanonical_source_manifest(
+    tmp_path: Path,
+    case: str,
+    expected: str,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(25.0), identity=identity("k"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    source_path = output / hf_export.EXPORTED_SOURCE_MANIFEST_NAME
+    source_manifest = json.loads(source_path.read_text(encoding="utf-8"))
+
+    if case == "unknown_top_level":
+        source_manifest["unexpected_authority"] = True
+    elif case == "missing_file":
+        source_manifest["files"].pop(hf_export.STATE_TREE_NAME)
+    elif case == "extra_file":
+        source_manifest["files"]["unexpected.bin"] = {
+            "sha256": "0" * 64,
+            "bytes": 0,
+        }
+    elif case == "record_extra_field":
+        source_manifest["files"][hf_export.WEIGHTS_NAME]["unexpected"] = False
+    elif case == "serialization_drift":
+        source_manifest["serialization"]["pickle"] = True
+    else:
+        raise AssertionError(f"unhandled mutation case: {case}")
+
+    _reseal_hf_after_source_manifest_mutation(output, source_manifest)
+
+    with pytest.raises(CheckpointIntegrityError, match=expected):
+        verify_hf_directory(output)
+
+
+def test_hf_verifier_rejects_nonmapping_source_files_as_typed_integrity(
+    tmp_path: Path,
+):
+    checkpoint = tmp_path / "checkpoint"
+    output = tmp_path / "hf"
+    save_checkpoint(checkpoint, model=Model(26.0), identity=identity("l"))
+    export_hf_directory(
+        checkpoint,
+        output,
+        hf_config={"model_type": "twelve_six_export_transactional"},
+    )
+    source_path = output / hf_export.EXPORTED_SOURCE_MANIFEST_NAME
+    source_manifest = json.loads(source_path.read_text(encoding="utf-8"))
+    source_manifest["files"] = ["not", "a", "mapping"]
+
+    source_bytes = hf_export._strict_json_bytes(
+        source_manifest,
+        artifact=hf_export.EXPORTED_SOURCE_MANIFEST_NAME,
+    ) + b"\n"
+    source_path.write_bytes(source_bytes)
+
+    with pytest.raises(
+        CheckpointIntegrityError,
+        match="exported source manifest files must be a mapping",
+    ):
+        verify_hf_directory(output)
