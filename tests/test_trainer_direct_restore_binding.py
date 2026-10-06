@@ -216,6 +216,10 @@ class LookupDriftAdamW(AdamW):
                     )
                 elif mutation == "auxiliary":
                     owner.optimizer.param_groups[0]["lr"] *= 0.5
+                elif mutation == "policy":
+                    owner._canonical_unscheduled_default_optimizer = True
+                elif mutation == "device":
+                    owner.device = torch.device("meta")
                 else:
                     raise AssertionError(f"unknown lookup mutation: {mutation}")
         return super().__getattribute__(name)
@@ -313,6 +317,8 @@ def test_direct_restore_missing_interface_is_preapply_and_retryable(
         ("counter", "restore state changed during loader lookup"),
         ("config", "restore config changed during loader lookup"),
         ("auxiliary", "trainer auxiliary state changed during loader lookup"),
+        ("policy", "restore policy changed during loader lookup"),
+        ("device", "component binding changed during loader lookup"),
     ],
 )
 def test_direct_restore_rejects_stable_binding_lookup_drift(
@@ -393,6 +399,10 @@ class ApplyStateDriftAdamW(AdamW):
                     self.owner.model.weight.add_(1.0)
             elif self.mutation == "auxiliary":
                 self.param_groups[0]["lr"] *= 0.5
+            elif self.mutation == "policy":
+                self.owner._canonical_unscheduled_default_optimizer = True
+            elif self.mutation == "device":
+                self.owner.device = torch.device("meta")
             elif self.mutation == "gradient":
                 self.owner.model.weight.grad = torch.ones_like(self.owner.model.weight)
             else:
@@ -422,6 +432,8 @@ class ZeroGradAuxiliaryDriftAdamW(AdamW):
         ("config", "trainer restore config changed during load"),
         ("model", "trainer model changed during load"),
         ("auxiliary", "optimizer export hyperparameters differ"),
+        ("policy", "trainer restore policy changed during load"),
+        ("device", "trainer restore component binding changed during load"),
         ("gradient", "completed optimizer step left residual model gradients"),
     ],
 )
@@ -706,3 +718,36 @@ def test_direct_restore_partial_apply_cannot_shadow_poison_authority() -> None:
         "trainer state restore failed after possible partial apply"
     )
     assert trainer._update_incomplete is True
+
+
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ("device", "trainer restore binding fields are unavailable"),
+        (
+            "_canonical_default_optimizer_options",
+            "trainer restore policy fields are unavailable",
+        ),
+    ],
+)
+def test_direct_restore_rejects_missing_native_restore_contract_field(
+    field: str,
+    message: str,
+) -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    attrs = vars(target)
+    saved = attrs.pop(field)
+
+    with pytest.raises(TrainingStateInvalidError, match=message):
+        target.load_state_dict(state)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+    assert not target.optimizer.state
+
+    attrs[field] = saved
+    target.load_state_dict(state)
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
