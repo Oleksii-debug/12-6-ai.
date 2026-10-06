@@ -13,6 +13,18 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 
+def _add_failure_note_preserving_primary(
+    exc: BaseException,
+    note: str,
+) -> None:
+    """Attach rollback diagnostics without replacing the primary failure."""
+
+    try:
+        BaseException.add_note(exc, note)
+    except BaseException:  # noqa: BLE001 - diagnostics must never mask failure
+        return
+
+
 def _snapshot_torch_policy() -> tuple[bool, bool] | None:
     """Capture process-global Torch deterministic policy outside RNG payload v1."""
 
@@ -52,9 +64,10 @@ def _transactional_restore(
             _restore_torch_policy(before_policy)
         except BaseException as rollback_exc:
             if not isinstance(exc, Exception):
-                exc.add_note(
+                _add_failure_note_preserving_primary(
+                    exc,
                     "RNG rollback of the prior process state also failed: "
-                    f"{rollback_exc!r}"
+                    f"{rollback_exc!r}",
                 )
                 raise exc from rollback_exc
             raise core.CheckpointError(
