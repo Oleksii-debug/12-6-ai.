@@ -123,9 +123,9 @@ def _target_with_optimizer(
 def test_direct_restore_requires_training_mode_and_allows_retry() -> None:
     config = _config()
     state = _clean_state(config)
-    model = nn.Sequential(nn.Linear(3, 3), nn.Dropout(p=0.1))
+    model = nn.Linear(3, 2)
     target = Trainer(model, config, scheduler=None)
-    model[1].eval()
+    model.eval()
 
     with pytest.raises(
         TrainingStateInvalidError,
