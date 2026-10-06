@@ -619,3 +619,75 @@ def test_direct_restore_uses_real_mro_for_safety_lineage() -> None:
 
     assert target._failure_reason is None
     assert target._update_incomplete is False
+
+
+class LookupAuthorityMutatingAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.armed = False
+
+    def __getattribute__(self, name: str):
+        if name == "load_state_dict":
+            armed = object.__getattribute__(self, "armed")
+            if armed:
+                object.__setattr__(self, "armed", False)
+                owner = object.__getattribute__(self, "owner")
+                assert owner is not None
+                vars(owner)["_require_finite_committed_update"] = lambda: None
+        return super().__getattribute__(name)
+
+
+class ApplyAuthorityMutatingAdamW(AdamW):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.owner: Trainer | None = None
+        self.replacement: AdamW | None = None
+        self.armed = False
+
+    def load_state_dict(self, state_dict):
+        result = super().load_state_dict(state_dict)
+        if self.armed:
+            self.armed = False
+            assert self.owner is not None
+            vars(self.owner)["_mark_failed"] = lambda *args, **kwargs: None
+        return result
+
+
+def test_direct_restore_rejects_lookup_time_safety_shadow() -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(LookupAuthorityMutatingAdamW, config)
+    assert isinstance(optimizer, LookupAuthorityMutatingAdamW)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="restore safety authority changed during loader lookup",
+    ):
+        trainer.load_state_dict(state)
+
+    assert "_require_finite_committed_update" in vars(trainer)
+    assert trainer._failure_reason == (
+        "trainer restore safety authority changed during loader lookup"
+    )
+    assert trainer._update_incomplete is False
+
+
+def test_direct_restore_partial_apply_cannot_shadow_poison_authority() -> None:
+    config = _config()
+    state = _clean_state(config)
+    trainer, optimizer = _target_with_optimizer(ApplyAuthorityMutatingAdamW, config)
+    assert isinstance(optimizer, ApplyAuthorityMutatingAdamW)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="native D02 safety authority must remain canonical: _mark_failed",
+    ):
+        trainer.load_state_dict(state)
+
+    assert "_mark_failed" in vars(trainer)
+    assert trainer._failure_reason == (
+        "trainer state restore failed after possible partial apply"
+    )
+    assert trainer._update_incomplete is True
