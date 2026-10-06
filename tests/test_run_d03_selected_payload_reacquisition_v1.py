@@ -232,6 +232,136 @@ def test_reproduce_post_qp_payloads_returns_transformed_survivor_bytes() -> None
     assert result == {"record-a": b"redacted"}
 
 
+def test_reproduce_post_qp_payloads_uses_lane_partial_materializer() -> None:
+    calls = {"partial": 0}
+
+    class CleanStub:
+        @staticmethod
+        def _post_decontamination_records(records, report):
+            record = records[0]
+            return (
+                [{"id": record["record_id"], "text": record["text"], "mode": "prose"}],
+                {
+                    record["record_id"]: {
+                        "source_id": record["source_id"],
+                        "family": record["source_family"],
+                        "mode": "prose",
+                    }
+                },
+                0,
+            )
+
+        @staticmethod
+        def _input_projection(records):
+            return list(records)
+
+        @staticmethod
+        def _cjson(value):
+            return canonical(value)
+
+        @staticmethod
+        def _sha256(raw):
+            return hashlib.sha256(raw).hexdigest()
+
+        @staticmethod
+        def build_quality_execution_authority(
+            records,
+            *,
+            input_manifest_sha256,
+            expected_input_rows_sha256,
+        ):
+            assert records and input_manifest_sha256 and expected_input_rows_sha256
+            return {"execution_identity_sha256": "a" * 64}
+
+        @staticmethod
+        def verify_quality_execution_authority(*args, **kwargs):
+            assert args and kwargs
+
+        @staticmethod
+        def _materialize_quality_survivors(*args, **kwargs):
+            raise AssertionError("generic materializer must not run")
+
+        @staticmethod
+        def _quality_records_for_privacy(records):
+            return [
+                {
+                    "id": row["record_id"],
+                    "text": row["normalized_payload"],
+                    "mode": row["modality"],
+                }
+                for row in records
+            ]
+
+        @staticmethod
+        def build_privacy_execution_authority(
+            records,
+            *,
+            expected_input_rows_sha256,
+        ):
+            assert records and expected_input_rows_sha256
+            return {"execution_identity_sha256": "b" * 64}
+
+        @staticmethod
+        def verify_privacy_execution_authority(*args, **kwargs):
+            assert args and kwargs
+
+        @staticmethod
+        def _materialize_privacy_survivors(records, privacy):
+            assert privacy["execution_identity_sha256"] == "b" * 64
+            return list(records), {}
+
+    def build_training_authorities(rows, payloads):
+        assert rows and payloads
+        return (
+            [
+                {
+                    "record_id": "document-a",
+                    "source_id": "source-a",
+                    "source_family": "family-a",
+                    "modality": "en",
+                    "text": "alpha bravo",
+                }
+            ],
+            {},
+            {},
+            {},
+            "x",
+            "y",
+        )
+
+    def partial_materializer(inputs, metadata, quality):
+        assert quality["execution_identity_sha256"] == "a" * 64
+        calls["partial"] += 1
+        return (
+            [
+                {
+                    "record_id": "document-a#quality-window-0000:deadbeef",
+                    "source_id": metadata["document-a"]["source_id"],
+                    "family": metadata["document-a"]["family"],
+                    "modality": "prose",
+                    "normalized_payload": "alpha",
+                }
+            ],
+            {},
+            {},
+        )
+
+    module = SimpleNamespace(
+        build_training_authorities=build_training_authorities,
+        clean=CleanStub,
+        _materialize_quality_survivors_with_partial=partial_materializer,
+    )
+    result = reacquire.reproduce_post_qp_payloads(
+        module,
+        [{"source_id": "source-a"}],
+        {"source-a": b"alpha bravo"},
+    )
+    assert calls == {"partial": 1}
+    assert result == {
+        "document-a#quality-window-0000:deadbeef": b"alpha"
+    }
+
+
 def test_selected_context_binds_family_projection_and_materializer_head(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
