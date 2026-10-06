@@ -335,9 +335,9 @@ def test_backend_training_compute_or_stage_self_promotion_is_rejected() -> None:
         ("optimizer_updates_executed_by_packet", 1),
     ):
         packet = build()
+        expected = retained_identities_for_built_packet(packet)
         packet["authority_boundaries"][field] = bad
         packet["packet_sha256"] = compute_packet_sha256(packet)
-        expected = retained_identities_for_built_packet(packet)
         assert "authority_boundaries_must_be_non_authorizing" in validate(
             packet, expected=expected
         )
@@ -355,9 +355,9 @@ def test_roadmap_snapshot_drift_fails_even_when_packet_is_unchanged() -> None:
 
 def test_unknown_fields_and_bool_candidate_counts_fail_closed() -> None:
     packet = build()
+    expected = retained_identities_for_built_packet(packet)
     packet["surprise"] = "not allowed"
     packet["packet_sha256"] = compute_packet_sha256(packet)
-    expected = retained_identities_for_built_packet(packet)
     assert "packet_fields_mismatch" in validate(packet, expected=expected)
 
     bad_candidate = candidate()
@@ -782,3 +782,37 @@ def test_cli_verify_malformed_roadmap_reports_invalid_not_crash(
     report = json.loads(capsys.readouterr().out)
     assert report["valid"] is False
     assert "roadmap_not_at_200m_feasibility_boundary" in report["errors"]
+
+
+
+def test_retained_identity_helper_rejects_resealed_non_authorizing_drift() -> None:
+    packet = build()
+    packet["authority_boundaries"]["training_executed_by_packet"] = True
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="authority_boundaries_must_be_non_authorizing",
+    ):
+        retained_identities_for_built_packet(packet)
+
+
+def test_retained_identity_helper_rejects_resealed_candidate_drift() -> None:
+    packet = build()
+    packet["candidate"]["parameter_count"] += 1
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="candidate_architecture_evidence_payload_mismatch",
+    ):
+        retained_identities_for_built_packet(packet)
+
+
+def test_retained_identity_helper_rejects_unknown_fields() -> None:
+    packet = build()
+    packet["unexpected"] = True
+    packet["packet_sha256"] = compute_packet_sha256(packet)
+    with pytest.raises(
+        FeasibilityPacketError,
+        match="packet_fields_mismatch",
+    ):
+        retained_identities_for_built_packet(packet)
