@@ -1,0 +1,316 @@
+name: D03 Rada post-G06 NEXT100 physical G6 152
+
+on:
+  pull_request:
+    branches:
+      - execution/rada-postg06-next100-2920-g6-152-20261006
+    paths:
+      - ".github/workflows/d03_rada_postg06_next100_physical_g6_152.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-rada-postg06-next100-physical-g6-152-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/rada-postg06-next100-physical-g6-152-20261006'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        pass: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "7c62a37ffa8b3c505a6988174b833e44f41fef39"
+      ADAPTER_BLOB: "b0d098ce283dc7194f81a6b5cda5cd11a7b14773"
+      ADAPTER_TEST_BLOB: "afaf854140df4cc4ef4a6f68093ad9f16d072522"
+      RUNNER_BLOB: "30a7e00705f270964515d67da5606e81d37d1e7d"
+      TEST_BLOB: "9b23aef7a7fc97cd48a23c4ed9867e6d430a109a"
+      POST_G06_ARTIFACT_ID: "11419746210"
+      POST_G06_ARTIFACT_ZIP_SHA256: "b314d4e8359a146c8979282945f81bc7fdbe8f55c4eba36beaa7c6f4dada065a"
+      POST_G06_EVIDENCE_FILE_SHA256: "3a3ef8cd501fe30d5d0f0fa311c9483826646b4158fc77fabd55d9a08f263cbd"
+      POST_G06_EVIDENCE_ID: "8bf576920ade8ca864bc3a00a41888f05c1e16a191a5dd8aec3b95ce903a4163"
+      POST_G06_INVENTORY_FILE_SHA256: "b67e361f0029ae68d695374dacdb1773e64447c04b443759528e398020554fb5"
+      POST_G06_PROOF_FILE_SHA256: "a6b150acc8063a6e5a1ddd00378952bbaf3b08621a1febd939d81fd177f68247"
+      POST_G06_PROOF_ID: "d716a9650ebfce142737188ec447834357e3881227fec43fcc38304964bac635"
+      POST_G06_PARENT_HEAD: "a63d7c88ccb5fa380b7af4b44bde32433cf35877"
+      RECORD_PAYLOAD_JSONL_SHA256: "ae560b39dceae1948a522d5ab4e4bf8da054b44def56d109f025626ec91880a4"
+      RECORD_INVENTORY_DIGEST_SHA256: "3bd6dfd145c25d39b35d1413c7377e001e443967d1741c8b9fca4d99f980b03e"
+      PAYLOAD_INVENTORY_DIGEST_SHA256: "e9ae5e9ab45ebc51f6b9d433be1dfddb4cd2fc54f285f4f2ad47717728f0ffaa"
+      RECORD_COUNT: "97737"
+      TOTAL_PAYLOAD_BYTES: "190586561"
+      SOURCE_OBJECT_COUNT: "97737"
+      UPSTREAM_ARTIFACT_ID: "11389910019"
+      UPSTREAM_ARTIFACT_ZIP_SHA256: "63f9e1bf5713989a155429c8862196cacaff3207a7e0fe97586f7dd2c98881f9"
+      UPSTREAM_EVIDENCE_FILE_SHA256: "43a9621ab11fd82232e8251ab26aae4126cf0b4854878af1e97184d587740caa"
+      UPSTREAM_TWO_CLEAN_FILE_SHA256: "748adad71a730f7daf18fa52c9e78e3c249ae683e6f3d9cb865b1bbfc9365aa9"
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Bind exact execution closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          git diff --name-only "$PARENT_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' '.github/workflows/d03_rada_postg06_next100_physical_g6_152.yml' | sort > "$RUNNER_TEMP/expected.txt"
+          cmp "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+          test "$(git hash-object tools/adapt_d03_rada_current_postdata232_to_balance_v1.py)" = "$ADAPTER_BLOB"
+          test "$(git hash-object tests/test_rada_current_postdata232_balance_adapter_v1.py)" = "$ADAPTER_TEST_BLOB"
+          test "$(git hash-object tools/run_d03_rada_postg06_next100_106_balance_v2.py)" = "$RUNNER_BLOB"
+          test "$(git hash-object tests/test_rada_postg06_next100_106_balance_v2.py)" = "$TEST_BLOB"
+          python -m py_compile \
+            tools/adapt_d03_rada_current_postdata232_to_balance_v1.py \
+            tools/run_d03_rada_postg06_next100_106_balance_v2.py
+      - name: Download exact terminal post-G06 evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/post-g06"
+          mkdir -p "$root"
+          curl --fail --location --retry 5 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$POST_G06_ARTIFACT_ID/zip" \
+            -o "$root/artifact.zip"
+          test "$(sha256sum "$root/artifact.zip" | cut -d" " -f1)" = "$POST_G06_ARTIFACT_ZIP_SHA256"
+          zipinfo -1 "$root/artifact.zip" | sort > "$root/members.txt"
+          cat > "$root/expected-members.txt" <<'EOF'
+          pass-a/g05-authority.json
+          pass-a/g06-authority.json
+          pass-a/post-g05-g06-evidence.json
+          pass-a/survivor-inventory.json
+          two-clean-proof.json
+          EOF
+          sort -o "$root/expected-members.txt" "$root/expected-members.txt"
+          cmp "$root/expected-members.txt" "$root/members.txt"
+          unzip -p "$root/artifact.zip" pass-a/post-g05-g06-evidence.json > "$root/evidence.json"
+          unzip -p "$root/artifact.zip" pass-a/survivor-inventory.json > "$root/inventory.json"
+          unzip -p "$root/artifact.zip" two-clean-proof.json > "$root/two-clean.json"
+          test "$(sha256sum "$root/evidence.json" | cut -d" " -f1)" = "$POST_G06_EVIDENCE_FILE_SHA256"
+          test "$(sha256sum "$root/inventory.json" | cut -d" " -f1)" = "$POST_G06_INVENTORY_FILE_SHA256"
+          test "$(sha256sum "$root/two-clean.json" | cut -d" " -f1)" = "$POST_G06_PROOF_FILE_SHA256"
+      - name: Download exact upstream global-dedup proof
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/upstream"
+          mkdir -p "$root"
+          curl --fail --location --retry 5 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$UPSTREAM_ARTIFACT_ID/zip" \
+            -o "$root/artifact.zip"
+          test "$(sha256sum "$root/artifact.zip" | cut -d" " -f1)" = "$UPSTREAM_ARTIFACT_ZIP_SHA256"
+          unzip -t "$root/artifact.zip" >/dev/null
+          unzip -p "$root/artifact.zip" "home/runner/work/_temp/rada-dedup-a/execution-evidence.json" > "$root/execution-evidence.json"
+          unzip -p "$root/artifact.zip" "home/runner/work/_temp/rada-two-clean.json" > "$root/two-clean.json"
+          test "$(sha256sum "$root/execution-evidence.json" | cut -d" " -f1)" = "$UPSTREAM_EVIDENCE_FILE_SHA256"
+          test "$(sha256sum "$root/two-clean.json" | cut -d" " -f1)" = "$UPSTREAM_TWO_CLEAN_FILE_SHA256"
+      - name: Materialize authenticated family vector
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/adapt_d03_rada_current_postdata232_to_balance_v1.py \
+            --evidence "$RUNNER_TEMP/post-g06/evidence.json" \
+            --expected-parent-execution-head "$POST_G06_PARENT_HEAD" \
+            --inventory "$RUNNER_TEMP/post-g06/inventory.json" \
+            --g05-g06-two-clean-proof "$RUNNER_TEMP/post-g06/two-clean.json" \
+            --expected-g05-g06-two-clean-proof-file-sha256 "$POST_G06_PROOF_FILE_SHA256" \
+            --expected-g05-g06-two-clean-proof-identity-sha256 "$POST_G06_PROOF_ID" \
+            --expected-evidence-file-sha256 "$POST_G06_EVIDENCE_FILE_SHA256" \
+            --expected-evidence-identity-sha256 "$POST_G06_EVIDENCE_ID" \
+            --expected-inventory-file-sha256 "$POST_G06_INVENTORY_FILE_SHA256" \
+            --expected-record-payload-jsonl-sha256 "$RECORD_PAYLOAD_JSONL_SHA256" \
+            --expected-record-inventory-digest-sha256 "$RECORD_INVENTORY_DIGEST_SHA256" \
+            --expected-payload-inventory-digest-sha256 "$PAYLOAD_INVENTORY_DIGEST_SHA256" \
+            --expected-record-count "$RECORD_COUNT" \
+            --expected-total-payload-bytes "$TOTAL_PAYLOAD_BYTES" \
+            --expected-source-object-count "$SOURCE_OBJECT_COUNT" \
+            --output "$RUNNER_TEMP/family-vector.json"
+          python - <<'PY' >> "$GITHUB_ENV"
+          import hashlib, json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "family-vector.json"
+          raw = p.read_bytes()
+          doc = json.loads(raw.decode('utf-8'))
+          assert doc["status"] == "PASS"
+          assert doc["materialization_execution_head_sha"] == os.environ["POST_G06_PARENT_HEAD"]
+          assert doc["record_count"] == int(os.environ["RECORD_COUNT"])
+          assert doc["total_payload_bytes"] == int(os.environ["TOTAL_PAYLOAD_BYTES"])
+          assert doc["source_object_count"] == int(os.environ["SOURCE_OBJECT_COUNT"])
+          assert doc["tokenizer_fit_authorized"] is False
+          assert doc["model_training_authorized"] is False
+          assert doc["authorized_optimized_target_exposure"] == 0
+          print("FAMILY_VECTOR_FILE_SHA256=" + hashlib.sha256(raw).hexdigest())
+          print("FAMILY_VECTOR_ID=" + doc["family_vector_identity_sha256"])
+          PY
+      - name: Execute canonical NEXT100 balance once
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BALANCE_FRESH_PASS_START=${{ matrix.pass }}"
+          python tools/run_d03_rada_postg06_next100_106_balance_v2.py run \
+            --source-git-sha "$EXECUTION_HEAD" \
+            --family-vector "$RUNNER_TEMP/family-vector.json" \
+            --expected-family-vector-file-sha256 "$FAMILY_VECTOR_FILE_SHA256" \
+            --expected-family-vector-identity-sha256 "$FAMILY_VECTOR_ID" \
+            --post-g06-evidence "$RUNNER_TEMP/post-g06/evidence.json" \
+            --expected-post-g06-evidence-file-sha256 "$POST_G06_EVIDENCE_FILE_SHA256" \
+            --expected-post-g06-evidence-identity-sha256 "$POST_G06_EVIDENCE_ID" \
+            --post-g06-two-clean-proof "$RUNNER_TEMP/post-g06/two-clean.json" \
+            --expected-post-g06-two-clean-proof-file-sha256 "$POST_G06_PROOF_FILE_SHA256" \
+            --expected-post-g06-two-clean-proof-identity-sha256 "$POST_G06_PROOF_ID" \
+            --upstream-global-dedup-evidence "$RUNNER_TEMP/upstream/execution-evidence.json" \
+            --upstream-global-dedup-two-clean "$RUNNER_TEMP/upstream/two-clean.json" \
+            --output-dir "$RUNNER_TEMP/balance-out"
+          echo "BALANCE_FRESH_PASS_DONE=${{ matrix.pass }}"
+      - name: Validate zero-credit output bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "balance-out"
+          expected = {
+              "composition-dedup-proof.json", "next100-input.json",
+              "balance-result.json", "balance-binding.json", "execution-receipt.json",
+          }
+          assert {p.name for p in root.iterdir()} == expected
+          receipt = json.loads((root / "execution-receipt.json").read_text(encoding="utf-8"))
+          assert receipt["execution_head_sha"] == os.environ["EXECUTION_HEAD"]
+          assert receipt["post_g06_evidence_identity_sha256"] == os.environ["POST_G06_EVIDENCE_ID"]
+          assert receipt["post_g06_two_clean_proof_identity_sha256"] == os.environ["POST_G06_PROOF_ID"]
+          assert receipt["canonical_capacity_credited"] == 0
+          assert receipt["training_authorized_bytes"] == 0
+          assert receipt["authorized_optimized_target_exposure"] == 0
+          assert receipt["tokenizer_fit_authorized"] is False
+          assert receipt["model_training_authorized"] is False
+          assert receipt["training_executed"] is False
+          assert receipt["learned_weights_created"] is False
+          assert receipt["final_test_outcomes_read"] is False
+          assert receipt["paid_compute_used"] is False
+          assert receipt["scale_promotion_authorized"] is False
+          PY
+      - name: Upload fresh balance pass
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-postg06-next100-pass-${{ matrix.pass }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/family-vector.json
+            ${{ runner.temp }}/balance-out/
+          if-no-files-found: error
+          retention-days: 7
+
+  qualify-two-clean:
+    needs: execute-two-clean
+    if: ${{ needs.execute-two-clean.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+      - name: Download pass A
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: d03-rada-postg06-next100-pass-a-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/pass-a
+      - name: Download pass B
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: d03-rada-postg06-next100-pass-b-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/pass-b
+      - name: Compare vectors and seal terminal proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp "$RUNNER_TEMP/pass-a/family-vector.json" "$RUNNER_TEMP/pass-b/family-vector.json"
+          mkdir -p "$RUNNER_TEMP/terminal"
+          python tools/run_d03_rada_postg06_next100_106_balance_v2.py compare \
+            --output-a "$RUNNER_TEMP/pass-a/balance-out" \
+            --output-b "$RUNNER_TEMP/pass-b/balance-out" \
+            --proof "$RUNNER_TEMP/terminal/two-clean-proof.json" \
+            --runner-a-identity "github-run:${{ github.run_id }}/pass-a" \
+            --runner-b-identity "github-run:${{ github.run_id }}/pass-b" \
+            --independent-runner-jobs-attested
+      - name: Validate and stage terminal evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, shutil
+          from pathlib import Path
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          proof_path = tmp / "terminal" / "two-clean-proof.json"
+          proof = json.loads(proof_path.read_text(encoding='utf-8'))
+          core = dict(proof); claimed = core.pop("proof_identity_sha256")
+          raw = json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
+          assert hashlib.sha256(raw).hexdigest() == claimed
+          assert proof["terminal_verdict"] == "PASS"
+          assert proof["fresh_process_count"] == 2
+          assert proof["independent_runner_jobs"] is True
+          assert proof["byte_identical_outputs"] is True
+          assert proof["canonical_capacity_credited"] == 0
+          assert proof["training_authorized_bytes"] == 0
+          assert proof["authorized_optimized_target_exposure"] == 0
+          assert proof["tokenizer_fit_authorized"] is False
+          assert proof["model_training_authorized"] is False
+          assert proof["training_executed"] is False
+          assert proof["learned_weights_created"] is False
+          assert proof["final_test_outcomes_read"] is False
+          assert proof["paid_compute_used"] is False
+          assert proof["scale_promotion_authorized"] is False
+          receipt = json.loads((tmp / "pass-a" / "balance-out" / "execution-receipt.json").read_text(encoding="utf-8"))
+          final = tmp / "final"; (final / "balance-out").mkdir(parents=True)
+          shutil.copy2(tmp / "pass-a" / "family-vector.json", final / "family-vector.json")
+          for p in (tmp / "pass-a" / "balance-out").iterdir(): shutil.copy2(p, final / "balance-out" / p.name)
+          shutil.copy2(proof_path, final / "two-clean-proof.json")
+          print("TERMINAL_PROOF_ID=" + claimed)
+          print("BALANCE_STATUS=" + receipt["balance_status"])
+          print("NEXT_SCIENTIFIC_GATE=" + receipt["next_scientific_gate"])
+          PY
+      - name: Upload terminal text-free balance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-rada-postg06-next100-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/final/
+          if-no-files-found: error
+          retention-days: 90
