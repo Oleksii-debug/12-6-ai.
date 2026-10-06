@@ -1640,3 +1640,91 @@ def test_bind_rejects_source_reader_replacement(
         match="runtime dependency drift: source reader",
     ):
         authority.bind_byte_baseline_decision(_selection(), {}, **SHA)
+
+
+def test_split_application_snapshots_top_level_mapping_before_verification() -> None:
+    selection = _selection()
+    application, totals = _application(selection)
+    application["selected_source_bytes"] = totals["source_bytes"] + 1
+    application.pop("application_identity_sha256")
+    application["application_identity_sha256"] = authority.authority_sha256(application)
+    expected_application = application["application_identity_sha256"]
+
+    class MutatingApplication(dict):
+        def get(self, key, default=None):
+            if key == "balanced_selection_identity_sha256":
+                self["selected_source_bytes"] = totals["source_bytes"]
+            return super().get(key, default)
+
+    staged = MutatingApplication(application)
+    kwargs = {
+        **SHA,
+        "expected_application_identity_sha256": expected_application,
+    }
+    with pytest.raises(
+        authority.TokenizerDecisionError,
+        match="selected_source_bytes drift",
+    ):
+        authority._verify_split_application(staged, selection, totals, **kwargs)
+    assert staged["selected_source_bytes"] == totals["source_bytes"] + 1
+
+
+def test_bind_does_not_reread_upstreams_after_successful_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+
+    def bind_then_mutate(*_args, **_kwargs):
+        for field in authority._UPSTREAM_IDENTITY_FIELDS:
+            selection[field] = "f" * 64
+        application["split_spec_identity_sha256"] = "e" * 64
+        return (
+            SHA["expected_selection_identity_sha256"],
+            SHA["expected_application_identity_sha256"],
+        )
+
+    monkeypatch.setattr(authority, "_bind_upstreams", bind_then_mutate)
+    report = authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+    for field in authority._UPSTREAM_IDENTITY_FIELDS:
+        assert report[field] == SHA[f"expected_{field}"]
+    assert (
+        report["split_spec_identity_sha256"]
+        == authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    )
+
+
+def test_verify_does_not_reread_upstreams_after_successful_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = _selection()
+    application = {
+        "split_spec_identity_sha256": authority.CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+    }
+    canonical_result = (
+        SHA["expected_selection_identity_sha256"],
+        SHA["expected_application_identity_sha256"],
+    )
+    monkeypatch.setattr(
+        authority,
+        "_bind_upstreams",
+        lambda *_args, **_kwargs: canonical_result,
+    )
+    report = authority.bind_byte_baseline_decision(selection, application, **SHA)
+
+    def bind_then_mutate(*_args, **_kwargs):
+        for field in authority._UPSTREAM_IDENTITY_FIELDS:
+            selection[field] = "f" * 64
+        application["split_spec_identity_sha256"] = "e" * 64
+        return canonical_result
+
+    monkeypatch.setattr(authority, "_bind_upstreams", bind_then_mutate)
+    authority.verify_byte_baseline_decision(
+        report,
+        selection,
+        application,
+        **SHA,
+    )
