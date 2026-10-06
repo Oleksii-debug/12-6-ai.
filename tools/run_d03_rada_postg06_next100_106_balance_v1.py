@@ -775,6 +775,36 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
         parsed[name] = value
         hashes[f"{name}.json"] = sha256(a)
 
+    composition = parsed["composition-dedup-proof"]
+    composition_identity = require_sha256(
+        composition.get("evidence_identity_sha256"),
+        "composition dedup identity",
+    )
+    require(
+        composition_identity == self_hash(composition, "evidence_identity_sha256"),
+        "composition dedup self-hash mismatch",
+    )
+
+    balance_result = parsed["balance-result"]
+    result_identity = require_sha256(
+        balance_result.get("result_identity_sha256"),
+        "balance result identity",
+    )
+    require(
+        result_identity == self_hash(balance_result, "result_identity_sha256"),
+        "balance result self-hash mismatch",
+    )
+
+    balance_binding = parsed["balance-binding"]
+    binding_identity = require_sha256(
+        balance_binding.get("binding_identity_sha256"),
+        "balance binding identity",
+    )
+    require(
+        binding_identity == self_hash(balance_binding, "binding_identity_sha256"),
+        "balance binding self-hash mismatch",
+    )
+
     receipt = parsed["execution-receipt"]
     require(receipt.get("schema") == RECEIPT_SCHEMA, "execution receipt schema mismatch")
     receipt_identity = require_sha256(
@@ -786,13 +816,17 @@ def compare_outputs(output_a: Path, output_b: Path, proof_path: Path) -> dict[st
         "execution receipt self-hash mismatch",
     )
     require_git_sha(receipt.get("execution_head_sha"), "execution receipt head")
-    require_sha256(
-        receipt.get("balance_result_identity_sha256"),
-        "balance result identity",
+    require(
+        receipt.get("composition_dedup_identity_sha256") == composition_identity,
+        "execution receipt composition identity mismatch",
     )
-    require_sha256(
-        receipt.get("balance_binding_identity_sha256"),
-        "balance binding identity",
+    require(
+        receipt.get("balance_result_identity_sha256") == result_identity,
+        "execution receipt balance-result identity mismatch",
+    )
+    require(
+        receipt.get("balance_binding_identity_sha256") == binding_identity,
+        "execution receipt balance-binding identity mismatch",
     )
     for field, expected in ZERO_CREDIT.items():
         require(
