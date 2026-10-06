@@ -243,9 +243,7 @@ def test_control_character_in_join_value_fails_closed() -> None:
     xml = _xml(_document(_text_item("reestr_kod", "A&#1;001")))
     archive, info = _nested(xml)
     try:
-        with pytest.raises(
-            (mod.JoinDiscoveryError, Exception),
-        ):
+        with pytest.raises(mod.JoinDiscoveryError):
             mod._discover_card_join(
                 nested=archive,
                 info=info,
