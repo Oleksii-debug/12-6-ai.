@@ -128,6 +128,7 @@ jobs:
               assert item["same_optimizer_moments"] is True
               assert item["same_next_update"] is True
               assert item["reversed_order_failed_closed"] is True
+              assert item["reversed_rng_unchanged"] is True
               assert item["reversed_target_unchanged"] is True
           print("LINUX_NAMED_ORDER_FRESH_PROCESS=PASS_ZERO_CREDIT")
           PY
@@ -203,7 +204,32 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           python tools/run_d05_optimizer_named_order_fresh_process_g8_169.py --output d05-optimizer-named-order-windows.json
-          python -c "import json; from pathlib import Path; r=json.loads(Path('d05-optimizer-named-order-windows.json').read_text(encoding='utf-8')); assert r['verdict']=='PASS_D05_OPTIMIZER_NAMED_ORDER_FRESH_PROCESS_ZERO_CREDIT'; assert r['scientific_credit']['optimized_target_exposure']==0; print('WINDOWS_NAMED_ORDER_FRESH_PROCESS=PASS_ZERO_CREDIT')"
+          @'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path("d05-optimizer-named-order-windows.json").read_text(encoding="utf-8")
+          )
+          assert report["verdict"] == (
+              "PASS_D05_OPTIMIZER_NAMED_ORDER_FRESH_PROCESS_ZERO_CREDIT"
+          )
+          assert report["source_sha"] == "1927c304e14bc09e3cb18f10c2c338c5c18b0ee9"
+          assert report["qualification_carrier_sha"] == os.environ[
+              "QUALIFICATION_CARRIER_SHA"
+          ]
+          assert report["scientific_credit"]["optimized_target_exposure"] == 0
+          assert report["scientific_credit"]["real_target_optimizer_updates"] == 0
+          for mode in ("one-group", "two-groups"):
+              item = report["modes"][mode]
+              assert item["same_optimizer_moments"] is True
+              assert item["same_next_update"] is True
+              assert item["reversed_order_failed_closed"] is True
+              assert item["reversed_rng_unchanged"] is True
+              assert item["reversed_target_unchanged"] is True
+          print("WINDOWS_NAMED_ORDER_FRESH_PROCESS=PASS_ZERO_CREDIT")
+          '@ | python -
 
       - name: Prove Windows carrier remains clean
         shell: pwsh
