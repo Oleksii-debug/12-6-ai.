@@ -3,7 +3,7 @@ name: D03 current Rada replacement global dedup two-clean
 on:
   pull_request:
     branches:
-      - d03/rada-current-snapshot-replay-authority-g8-143-20261005
+      - execution/2808-rada-current-global-dedup-g8-146-20261006
     paths:
       - ".github/workflows/d03_rada_current_global_dedup_g8_146.yml"
       - "tools/run_d03_rada_current_global_dedup_v1.py"
@@ -20,7 +20,7 @@ jobs:
   global-dedup:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.head_ref == 'execution/2808-rada-current-global-dedup-g8-146-20261006'
+      github.head_ref == 'compat/2828-rada-2827-indexed-prefix-g8-153'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
@@ -40,6 +40,9 @@ jobs:
       ACCEPTED_JSONL_BYTES: "224897989"
       POPPLER_VERSION: "25.06.0"
       POPPLER_TARBALL_SHA256: "8199532d38984fab46dbd0020ec9c40f20e928e33e9b4cc6043572603a821d83"
+      PRODUCT_BRANCH: "swarm/2825-incumbent-dedup-threshold-prefix-v2"
+      PRODUCT_HEAD: "3b7fe1f5fc6c0b94f806fc86ccd45da160fb1071"
+      PRODUCT_CORE_BLOB: "7662ff62c5ce30891582352d868d1b3157b3dbd2"
 
     steps:
       - name: Checkout exact execution head
@@ -80,6 +83,26 @@ jobs:
             "$RADA_RUNNER_BLOB"
           python -m py_compile tools/run_d03_rada_current_global_dedup_v1.py
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Materialize exact qualified-candidate Product indexed core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$PRODUCT_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$PRODUCT_HEAD"
+          test "$(git rev-parse "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py")" = "$PRODUCT_CORE_BLOB"
+          git show "$PRODUCT_HEAD:src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py" \
+            > /tmp/product-indexed-core.py
+          test "$(git hash-object /tmp/product-indexed-core.py)" = "$PRODUCT_CORE_BLOB"
+          cp /tmp/product-indexed-core.py \
+            src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py
+          test "$(git hash-object src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py)" = \
+            "$PRODUCT_CORE_BLOB"
+          test "$(git hash-object src/twelve_six/data/incumbent_dedup_indexed_execution.py)" = \
+            "f75336008839198b6d46bea4954f120e2d81613c"
+          python -m py_compile \
+            src/twelve_six/data/_incumbent_dedup_indexed_execution_core.py \
+            src/twelve_six/data/incumbent_dedup_indexed_execution.py
 
       - name: Checkout frozen historical QP mechanics
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
