@@ -1206,6 +1206,10 @@ def compare_outputs(
         "execution receipt fields drift",
     )
     require(receipt.get("schema") == RECEIPT_SCHEMA, "execution receipt schema mismatch")
+    require(
+        receipt.get("execution_profile") == "LOCAL_FREE",
+        "execution receipt profile drift",
+    )
     receipt_identity = require_sha256(
         receipt.get("receipt_identity_sha256"),
         "execution receipt identity",
@@ -1309,6 +1313,25 @@ def compare_outputs(
         == balance_binding.get("balance_status")
         == balance_result.get("status"),
         "execution receipt balance status mismatch",
+    )
+    for field in (
+        "maximum_feasible_total_source_bytes",
+        "raw_capacity_by_stratum",
+        "raw_gap_to_target_by_stratum",
+        "family_minimum",
+    ):
+        require(
+            receipt.get(field) == balance_result.get(field),
+            f"execution receipt balance summary mismatch: {field}",
+        )
+    expected_next_gate = (
+        "CLUSTER_SAFE_SPLIT_AND_DETERMINISTIC_PACK"
+        if balance_result.get("status") == "TARGET_20M_SOURCE_MIX_FEASIBLE"
+        else "ACQUIRE_MORE_DIVERSE_LAWFUL_SOURCE_CAPACITY"
+    )
+    require(
+        receipt.get("next_scientific_gate") == expected_next_gate,
+        "execution receipt next scientific gate drift",
     )
     require(
         receipt.get("balance_result_identity_sha256") == result_identity,
