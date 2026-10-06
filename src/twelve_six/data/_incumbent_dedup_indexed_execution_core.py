@@ -43,6 +43,16 @@ EXPECTED_THRESHOLDS = {
 DEFAULT_MAX_INDEX_POSTINGS = 100_000_000
 DEFAULT_MAX_PAIR_EXPANSIONS = 100_000_000
 
+# Execution-only necessary-condition floors. These are not duplicate-match
+# thresholds: the contract below proves each floor is no stronger than every
+# incumbent-positive predicate that it blocks for.
+PREFIX_NATURAL_OVERLAP_NUMERATOR = 88
+PREFIX_NATURAL_OVERLAP_DENOMINATOR = 100
+PREFIX_CODE_OVERLAP_NUMERATOR = 90
+PREFIX_CODE_OVERLAP_DENOMINATOR = 100
+PREFIX_CODE_SKELETON_OVERLAP_NUMERATOR = 90
+PREFIX_CODE_SKELETON_OVERLAP_DENOMINATOR = 100
+
 _FROZEN_AST_PARSE = ast.parse
 _FROZEN_COLLECTIONS_COUNT_ELEMENTS = getattr(collections, "_count_elements", None)
 _FROZEN_HASHLIB_SHA1 = hashlib.sha1
@@ -724,6 +734,38 @@ def _add_bucket_pairs(
                 )
 
 
+def _prefix_overlap_thresholds() -> tuple[float, float, float]:
+    """Return conservative containment floors implied by pinned incumbent predicates."""
+    natural_near = float(EXPECTED_THRESHOLDS["natural_near_jaccard"])
+    natural_fragment = float(EXPECTED_THRESHOLDS["natural_fragment_containment"])
+    code_near = float(EXPECTED_THRESHOLDS["code_near_jaccard"])
+    code_fragment = float(EXPECTED_THRESHOLDS["code_fragment_containment"])
+    code_copy = float(EXPECTED_THRESHOLDS["code_copy_jaccard"])
+
+    natural = PREFIX_NATURAL_OVERLAP_NUMERATOR / PREFIX_NATURAL_OVERLAP_DENOMINATOR
+    code = PREFIX_CODE_OVERLAP_NUMERATOR / PREFIX_CODE_OVERLAP_DENOMINATOR
+    skeleton = (
+        PREFIX_CODE_SKELETON_OVERLAP_NUMERATOR
+        / PREFIX_CODE_SKELETON_OVERLAP_DENOMINATOR
+    )
+
+    # Jaccard J implies intersection/min(|A|, |B|) >= 2J/(1+J).
+    # Fragment predicates already lower-bound containment directly.
+    if not (
+        natural <= natural_fragment
+        and natural <= (2.0 * natural_near) / (1.0 + natural_near)
+    ):
+        raise IndexedExecutionError("natural prefix floor is not conservative")
+    if not (
+        code <= code_fragment
+        and code <= (2.0 * code_near) / (1.0 + code_near)
+    ):
+        raise IndexedExecutionError("code prefix floor is not conservative")
+    if skeleton > (2.0 * code_copy) / (1.0 + code_copy):
+        raise IndexedExecutionError("code-skeleton prefix floor is not conservative")
+    return natural, code, skeleton
+
+
 def _minimum_overlap_prefix(
     values: Sequence[str],
     threshold: float,
@@ -876,12 +918,13 @@ def candidate_pair_indices_with_stats(
     code_frequencies = frequencies("code:content")
     skeleton_frequencies = frequencies("code:skeleton")
     edge_frequencies = frequencies("edge")
+    natural_threshold, code_threshold, skeleton_threshold = _prefix_overlap_thresholds()
 
     for index, item in enumerate(fingerprints):
         row = item["row"]
         kind = "code" if row["modality"] == "code" else "natural"
         family = f"{kind}:content"
-        threshold = float(EXPECTED_THRESHOLDS[f"{kind}_near_jaccard"])
+        threshold = code_threshold if kind == "code" else natural_threshold
         content_frequencies = code_frequencies if kind == "code" else natural_frequencies
         for shingle in _minimum_overlap_prefix(
             tuple(str(value) for value in item["shingles"]),
@@ -893,7 +936,7 @@ def candidate_pair_indices_with_stats(
         if kind == "code":
             for shingle in _minimum_overlap_prefix(
                 tuple(str(value) for value in item["skeleton_shingles"]),
-                float(EXPECTED_THRESHOLDS["code_copy_jaccard"]),
+                skeleton_threshold,
                 skeleton_frequencies,
             ):
                 post(prefix_indexes, ("code:skeleton", shingle), index)

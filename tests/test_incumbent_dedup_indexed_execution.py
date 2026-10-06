@@ -211,6 +211,11 @@ def test_repeated_key_amplification_collapses_identical_bucket_signature():
 
 
 @_isolated_indexed_test
+def test_prefix_overlap_floors_are_conservative_against_pinned_predicates():
+    assert indexed._prefix_overlap_thresholds() == (0.88, 0.90, 0.90)
+
+
+@_isolated_indexed_test
 def test_high_frequency_single_shingle_noise_is_pruned_before_quadratic_pairs():
     rows = []
     for index in range(100):
@@ -256,7 +261,7 @@ def test_fragment_containment_candidate_survives_low_jaccard():
 
 
 @_isolated_indexed_test
-def test_small_set_exhaustion_retains_every_natural_containment_candidate():
+def test_small_set_exhaustion_retains_every_natural_incumbent_overlap_candidate():
     universe = tuple(f"token-{index}" for index in range(5))
     subsets = [
         frozenset(
@@ -272,8 +277,15 @@ def test_small_set_exhaustion_retains_every_natural_containment_candidate():
     for left_index, left in enumerate(subsets):
         for right_index in range(left_index + 1, len(subsets)):
             right = subsets[right_index]
-            containment = len(left & right) / min(len(left), len(right))
-            if containment >= indexed.EXPECTED_THRESHOLDS["natural_near_jaccard"]:
+            intersection = len(left & right)
+            containment = intersection / min(len(left), len(right))
+            jaccard = intersection / len(left | right)
+            near = jaccard >= indexed.EXPECTED_THRESHOLDS["natural_near_jaccard"]
+            fragment = (
+                containment
+                >= indexed.EXPECTED_THRESHOLDS["natural_fragment_containment"]
+            )
+            if near or fragment:
                 assert (left_index, right_index) in candidates
 
 

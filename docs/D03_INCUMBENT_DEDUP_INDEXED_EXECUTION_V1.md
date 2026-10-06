@@ -14,9 +14,11 @@ This package changes **execution mechanics only**. It does not define a new dupl
 - equal raw SHA-256;
 - equal normalized SHA-256;
 - threshold-aware symmetric content-shingle prefixes within the natural/code modality
-  class; the prefix is large enough that every pair reaching the incumbent near-match
-  threshold, and therefore every stricter fragment-containment pair, must intersect it;
-- threshold-aware symmetric code-skeleton prefixes for code-copy candidates;
+  class. The execution floors are 0.88 natural and 0.90 code: each is runtime-checked
+  to be no stronger than both the incumbent fragment-containment predicate and the
+  containment lower bound implied by the incumbent near-match Jaccard predicate;
+- a 0.90 code-skeleton containment floor, runtime-checked below the containment lower
+  bound implied by the incumbent code-copy Jaccard predicate;
 - a weighted normalized-edge prefix whose omitted complement has fewer than 80
   characters, so every publisher-boilerplate pair must intersect the retained prefix.
 
