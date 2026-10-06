@@ -25,7 +25,11 @@ from .core import (
 )
 from .d04_resume_binding import assert_d04_resume_binding
 from .progress_binding import _assert_progress
-from .trainer_adapter import _assert_bound_metadata, _preflight_trainer_state
+from .trainer_adapter import (
+    _assert_bound_metadata,
+    _preflight_trainer_state,
+    _preflight_trainer_target,
+)
 
 _HEX = frozenset("0123456789abcdef")
 
@@ -146,6 +150,23 @@ def load_trainer_checkpoint(
         expected_seed=expected_seed,
     )
 
+    # A canonical trainer's optimizer belongs to trainer.model. Do not mix its
+    # state with a separately supplied model, even if weight shapes match.
+    # Parent-adapter companion #2626 centralizes this once both children land.
+    if (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+        and hasattr(trainer, "model")
+        and trainer.model is not model
+    ):
+        raise _core.CheckpointCompatibilityError(
+            "canonical trainer owns a different model than the checkpoint target"
+        )
+
+    # Refuse a previously poisoned instance before opening or decoding a
+    # potentially model-scale checkpoint; post-decode preflight repeats this
+    # guard before mutation in case the target state changed meanwhile.
+    _preflight_trainer_target(trainer)
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
     if (
@@ -221,10 +242,26 @@ def load_trainer_checkpoint(
         _preflight_rng_state(combined_state["rng"])
     del arrays
 
-    _apply_model_weights(model, materialized, strict_model)
-    if restore_rng:
-        restore_rng_state(combined_state["rng"])
-    trainer.load_state_dict(trainer_state)
+    # Preflight prevents known incompatibilities, but an application-time
+    # model/RNG/optimizer failure can leave a mixed, non-replayable state.
+    # Canonical D02 trainers must then refuse any further optimizer step or
+    # in-place retry; avoid copying model-scale weights to attempt rollback.
+    try:
+        _apply_model_weights(model, materialized, strict_model)
+        trainer.load_state_dict(trainer_state)
+        # Trainer/optimizer/scheduler loaders may consume Python, NumPy or
+        # torch RNG even on success. Restore the checkpoint streams last so
+        # the first resumed batch sees the exact captured next draws.
+        if restore_rng:
+            restore_rng_state(combined_state["rng"])
+    except BaseException:
+        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+            # D02 may already have recorded a more specific partial-load error
+            # (including a second gradient-cleanup failure). Preserve it.
+            if trainer._failure_reason is None:
+                trainer._failure_reason = "checkpoint_restore_apply_failed"
+            trainer._update_incomplete = True
+        raise
     return LoadResult(
         manifest=copy.deepcopy(manifest),
         trainer_state=trainer_state,
