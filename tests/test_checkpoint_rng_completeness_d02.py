@@ -283,13 +283,15 @@ def test_invalid_numeric_policy_rejected_before_torch_rng_mutation(
     dtype_before = torch.get_default_dtype()
     precision_before = torch.get_float32_matmul_precision()
 
-    with pytest.raises(CheckpointCompatibilityError, match=message):
-        core.restore_rng_state(state)
+    try:
+        with pytest.raises(CheckpointCompatibilityError, match=message):
+            core.restore_rng_state(state)
 
-    torch.testing.assert_close(torch.get_rng_state(), cpu_before, rtol=0, atol=0)
-    assert torch.get_default_dtype() is dtype_before
-    assert torch.get_float32_matmul_precision() == precision_before
-    core.restore_rng_state(ambient)
+        torch.testing.assert_close(torch.get_rng_state(), cpu_before, rtol=0, atol=0)
+        assert torch.get_default_dtype() is dtype_before
+        assert torch.get_float32_matmul_precision() == precision_before
+    finally:
+        core.restore_rng_state(ambient)
 
 
 def _seal_warn_only_mismatch(
