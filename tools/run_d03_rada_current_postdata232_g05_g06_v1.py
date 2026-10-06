@@ -28,10 +28,6 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from twelve_six.data import current_clean_execution_v1 as clean
-from twelve_six.data import current_reserved_decontamination_v1 as reserved
-from twelve_six.data.decontamination_authority_v2 import verify_report
-
 SCHEMA = "12-6.d03-rada-current-postdata232-g05-g06-execution.v1"
 PARENT_EXECUTION_HEAD = "b66ac95e68f83641ff8134baabd55a29fd62b99f"
 PRODUCT_DATA232_HEAD = "3bd56b62b318e1ecf5b1b5f16298a85350d31efb"
@@ -42,6 +38,20 @@ EXPECTED_RADA_SLICE_SHA256 = (
     "f103a3f18216519bd9228e586bd673d49f73cace03b3b0278f2dd0a33383bffb"
 )
 EXPECTED_DEPENDENCY_BLOBS = {
+    "src/twelve_six/__init__.py":
+        "5433166c507bc845bd12d8d5c4145f1fbedda204",
+    "src/twelve_six/data/_data232_decontamination_matching.py":
+        "afa70511f82dc81d9c9f85e3d0b67eba343004f9",
+    "src/twelve_six/data/decontamination_authority_v2.py":
+        "3ca8f21945c02f692c130a015e036673fa24e7af",
+    "src/twelve_six/data/document_quality.py":
+        "b1461263034b4fb9510479b20c9697e22faa5f97",
+    "src/twelve_six/data/quality_granularity.py":
+        "513523b86824c423cad97352b3abb3d1241531b9",
+    "src/twelve_six/data/eval647_future_training_exclusion_v1.py":
+        "5516577a0720150a7ec12c1bf8898972968e6970",
+    "src/twelve_six/data/eval647_reserved_decontamination_v1.py":
+        "ce33771c9fb4a6cc421e2f8e1f6f232c119bec71",
     "src/twelve_six/data/current_clean_execution_v1.py":
         "b82ed11626a267dfffa16acd79e45c0cf3e6750b",
     "src/twelve_six/data/current_reserved_decontamination_v1.py":
@@ -231,8 +241,19 @@ def verify_local_authority(expected_execution_head: str) -> dict[str, str]:
     return dict(sorted(observed.items()))
 
 
+def load_bound_runtime() -> tuple[Any, Any, Any]:
+    """Import behavior modules only after the exact worktree closure is pinned."""
+    from twelve_six.data import current_clean_execution_v1 as clean
+    from twelve_six.data import current_reserved_decontamination_v1 as reserved
+    from twelve_six.data.decontamination_authority_v2 import verify_report
+
+    return clean, reserved, verify_report
+
+
 def verify_parent(
     *,
+    reserved_module: Any,
+    verify_report_fn: Any,
     training_records: Sequence[Mapping[str, Any]],
     inventory: Mapping[str, Any],
     handoff: Mapping[str, Any],
@@ -280,7 +301,7 @@ def verify_parent(
         label="parent handoff",
         expected=expected_handoff_identity_sha256,
     )
-    reserved._verify_training_handoff(
+    reserved_module._verify_training_handoff(
         training_records,
         handoff,
         expected_inventory_identity_sha256=inventory_id,
@@ -288,8 +309,8 @@ def verify_parent(
         expected_handoff_identity_sha256=handoff_id,
     )
 
-    verify_report(report)
-    reserved.verify_execution_evidence(evidence, report)
+    verify_report_fn(report)
+    reserved_module.verify_execution_evidence(evidence, report)
     report_id = report.get("report_sha256")
     evidence_id = evidence.get("execution_identity_sha256")
     require(
@@ -694,6 +715,7 @@ def _materialize_quality_survivors_with_partial(
 
 def execute(args: argparse.Namespace) -> dict[str, Any]:
     authority_blobs = verify_local_authority(args.expected_execution_head)
+    clean, reserved, verify_report = load_bound_runtime()
     require(
         type(args.parent_artifact_id) is int and args.parent_artifact_id > 0,
         "parent artifact ID must be a positive exact integer",
@@ -738,6 +760,8 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     report_id, data232_execution_id, proof_id = verify_parent(
+        reserved_module=reserved,
+        verify_report_fn=verify_report,
         training_records=training,
         inventory=inventory,
         handoff=handoff,
@@ -986,10 +1010,9 @@ def main() -> int:
     try:
         output = execute(args)
     except (
-        RadaPostData232Error,
-        reserved.CurrentDecontaminationExecutionError,
-        clean.CurrentCleanExecutionError,
+        ImportError,
         OSError,
+        RuntimeError,
         UnicodeError,
         ValueError,
     ) as exc:
