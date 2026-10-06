@@ -195,6 +195,24 @@ class Trainer:
         "_optimizer_parameter_name_groups",
         "_mark_failed",
     )
+    _CHECKPOINT_STORAGE_FIELDS = (
+        "model",
+        "optimizer",
+        "scheduler",
+        "scaler",
+        "config",
+        "device",
+        "micro_step",
+        "optimizer_step",
+        "tokens_seen",
+        "_pending_tokens",
+        "_pending_loss_sum",
+        "_update_incomplete",
+        "_failure_reason",
+        "_canonical_default_schedule",
+        "_canonical_unscheduled_default_optimizer",
+        "_canonical_default_optimizer_options",
+    )
 
     def __init__(
         self,
@@ -342,6 +360,15 @@ class Trainer:
             ):
                 raise TrainingStateInvalidError(
                     f"native D02 safety authority must remain canonical: {name}"
+                )
+        for name in Trainer._CHECKPOINT_STORAGE_FIELDS:
+            if (
+                resolve_static(trainer_mro, name)
+                is not resolve_static(canonical_mro, name)
+            ):
+                raise TrainingStateInvalidError(
+                    "native D02 restore storage descriptor must remain canonical: "
+                    f"{name}"
                 )
 
     def _canonical_model_members(
