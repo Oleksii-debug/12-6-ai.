@@ -51,6 +51,7 @@ from .trainer_adapter import (
     _bind_trainer_state_loader,
     _effective_strict_model,
     _note_restore_binding_drift,
+    _note_torch_execution_mode_drift,
     _poison_canonical_restore_failure,
     _postflight_trainer_state,
     _preflight_trainer_state,
@@ -476,6 +477,11 @@ def load_trainer_checkpoint(
             expected_canonical=restore_bindings[0],
         )
     except BaseException as exc:
+        _note_torch_execution_mode_drift(
+            execution_mode_before_apply,
+            exc,
+            operation="checkpoint restore apply",
+        )
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
