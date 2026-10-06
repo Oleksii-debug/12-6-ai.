@@ -16,6 +16,7 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -94,6 +95,43 @@ def canonical_line(value: Any) -> bytes:
 
 def sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
+    """Atomically create deterministic evidence or resume an identical write."""
+    require(not path.is_symlink(), f"{label}: output path must not be a symlink")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        require(path.is_file(), f"{label}: output path is not a regular file")
+        require(
+            path.read_bytes() == payload,
+            f"{label}: refusing to overwrite divergent durable evidence",
+        )
+        return
+
+    temp = path.with_name(path.name + ".tmp")
+    require(not temp.is_symlink(), f"{label}: temp path must not be a symlink")
+    if temp.exists():
+        require(temp.is_file(), f"{label}: temp path is not a regular file")
+        require(
+            temp.read_bytes() == payload,
+            f"{label}: divergent interrupted temp evidence",
+        )
+        temp.replace(path)
+        return
+
+    try:
+        with temp.open("xb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temp.replace(path)
+    except OSError:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -962,14 +1000,26 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         **evidence_core,
         "evidence_identity_sha256": sha256(canonical(evidence_core)),
     }
-    args.output_evidence.parent.mkdir(parents=True, exist_ok=True)
-    args.output_quality.parent.mkdir(parents=True, exist_ok=True)
-    args.output_privacy.parent.mkdir(parents=True, exist_ok=True)
-    args.output_survivor_inventory.parent.mkdir(parents=True, exist_ok=True)
-    args.output_evidence.write_bytes(canonical_line(output))
-    args.output_quality.write_bytes(canonical_line(quality))
-    args.output_privacy.write_bytes(canonical_line(privacy))
-    args.output_survivor_inventory.write_bytes(canonical_line(survivor_inventory))
+    write_immutable_bytes(
+        args.output_evidence,
+        canonical_line(output),
+        label="post-G05/G06 evidence",
+    )
+    write_immutable_bytes(
+        args.output_quality,
+        canonical_line(quality),
+        label="G05 authority",
+    )
+    write_immutable_bytes(
+        args.output_privacy,
+        canonical_line(privacy),
+        label="G06 authority",
+    )
+    write_immutable_bytes(
+        args.output_survivor_inventory,
+        canonical_line(survivor_inventory),
+        label="survivor inventory",
+    )
     return output
 
 
