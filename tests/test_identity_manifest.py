@@ -113,17 +113,17 @@ def test_manifest_rejects_missing_required_upstream_kind() -> None:
         IdentityManifest(schema_version=1, artifacts=(model, init, run))
 
 
-def test_release_cannot_skip_checkpoint_evaluation_or_export_authority() -> None:
-    checkpoint = ArtifactIdentity(
-        artifact_id="checkpoint-v1",
-        kind=ArtifactKind.CHECKPOINT,
-        schema_version=1,
-        artifact_sha256=_sha(1),
-    )
-    release = _node("release-v1", ArtifactKind.RELEASE, 2, checkpoint)
+def test_release_cannot_skip_evaluation_or_export_authority() -> None:
+    chain = _complete_release_chain()
+    through_checkpoint = chain[:9]
+    checkpoint = through_checkpoint[-1]
+    release = _node("release-v1", ArtifactKind.RELEASE, 99, checkpoint)
 
     with pytest.raises(ValueError, match="evaluation"):
-        IdentityManifest(schema_version=1, artifacts=(checkpoint, release))
+        IdentityManifest(
+            schema_version=1,
+            artifacts=(*through_checkpoint, release),
+        )
 
 
 def test_manifest_identity_is_order_independent() -> None:
