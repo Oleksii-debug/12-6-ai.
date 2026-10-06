@@ -1,0 +1,206 @@
+name: D03 lane selected survivor capture G6 161
+
+on:
+  pull_request:
+    branches:
+      - execution/3068-selected-raw-rematerialization-g6-161-20261006
+    paths:
+      - ".github/workflows/d03_lane_selected_survivor_capture_g6_161.yml"
+      - "tools/run_d03_lane_selected_survivor_capture_v1.py"
+      - "tests/test_run_d03_lane_selected_survivor_capture_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-lane-selected-capture-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-capture-helper:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/3069-code-selected-rematerialization-g6-161-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      PARENT_HEAD: "cb119fec17184432b11fe0a0372b74022fbc996d"
+      CAPTURE_BLOB: "4c81b78f759518c0dc647d20adfbe530b1748140"
+      TEST_BLOB: "6e584be993739eb1047f4279eb4219dc207c14fd"
+      ASSEMBLER_BLOB: "e1e428a6d26c96f52cf900018d4e3da3cd21963f"
+      PLAN_RUNNER_BLOB: "5a24c137d6368538f170cdd6c8fdf8709a43f7c0"
+      PLAN_ARTIFACT_ID: "11443423543"
+      PLAN_ZIP_SHA256: "9717f36a4956aba5432f111a0bf58f6aa70dc752bcd28676203da825124eec01"
+      BALANCE_ARTIFACT_ID: "11441000276"
+      BALANCE_ZIP_SHA256: "85ae6ace4914cd8fae86cef71b8ac63cf73c97b1386ff7e01a716692ddce6c10"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact child scope and run focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$PARENT_HEAD" HEAD)" = "$PARENT_HEAD"
+          mapfile -t changed < <(git diff --name-only "$PARENT_HEAD"..HEAD | sort)
+          test "${#changed[@]}" -eq 3
+          test "${changed[0]}" = ".github/workflows/d03_lane_selected_survivor_capture_g6_161.yml"
+          test "${changed[1]}" = "tests/test_run_d03_lane_selected_survivor_capture_v1.py"
+          test "${changed[2]}" = "tools/run_d03_lane_selected_survivor_capture_v1.py"
+          test "$(git hash-object tools/run_d03_lane_selected_survivor_capture_v1.py)" = "$CAPTURE_BLOB"
+          test "$(git hash-object tests/test_run_d03_lane_selected_survivor_capture_v1.py)" = "$TEST_BLOB"
+          test "$(git hash-object tools/run_d03_selected_raw_assembly_v1.py)" = "$ASSEMBLER_BLOB"
+          test "$(git hash-object tools/run_d03_selected_raw_materialization_plan_v1.py)" = "$PLAN_RUNNER_BLOB"
+          python -m py_compile             tools/run_d03_lane_selected_survivor_capture_v1.py             tests/test_run_d03_lane_selected_survivor_capture_v1.py
+          python -m pip install --disable-pip-version-check "ruff>=0.12" pytest
+          ruff check             tools/run_d03_lane_selected_survivor_capture_v1.py             tests/test_run_d03_lane_selected_survivor_capture_v1.py
+          PYTHONPATH="$GITHUB_WORKSPACE/src"             pytest -q tests/test_run_d03_lane_selected_survivor_capture_v1.py
+
+      - name: Fetch exact passed plan and balance authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/plan" "$RUNNER_TEMP/balance"
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$RUNNER_TEMP/plan/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PLAN_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$RUNNER_TEMP/plan/artifact.zip" | cut -d' ' -f1)" = "$PLAN_ZIP_SHA256"
+          unzip -p "$RUNNER_TEMP/plan/artifact.zip" plan-1.json > "$RUNNER_TEMP/plan/plan.json"
+
+          curl --fail --location --retry 5 --retry-all-errors             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             -o "$RUNNER_TEMP/balance/artifact.zip"             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/artifacts/${BALANCE_ARTIFACT_ID}/zip"
+          test "$(sha256sum "$RUNNER_TEMP/balance/artifact.zip" | cut -d' ' -f1)" = "$BALANCE_ZIP_SHA256"
+          unzip -p "$RUNNER_TEMP/balance/artifact.zip" composition.json > "$RUNNER_TEMP/balance/composition.json"
+
+      - name: Require actual-authority payload tamper rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/src" python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path(os.environ["GITHUB_WORKSPACE"]) / "tools"))
+          import run_d03_lane_selected_survivor_capture_v1 as capture
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          plan = capture.load_json(
+              tmp / "plan/plan.json",
+              max_bytes=capture.MAX_PLAN_BYTES,
+          )
+          composition = capture.load_json(
+              tmp / "balance/composition.json",
+              max_bytes=capture.MAX_COMPOSITION_BYTES,
+          )
+          family = "code.scipy.project"
+          target_ids, _ = capture._plan_target(plan, frozenset({family}))
+          authority = {
+              row["record_id"]: row
+              for row in composition["combined_inventory"]["records"]
+              if row["record_id"] in target_ids
+          }
+          rows = []
+          for record_id in sorted(target_ids):
+              expected = authority[record_id]
+              rows.append(
+                  {
+                      "record_id": record_id,
+                      "source_id": expected["source_id"],
+                      "family": expected["family"],
+                      "modality": expected["modality"],
+                      "normalized_payload": "x" * expected["payload_bytes"],
+                  }
+              )
+          try:
+              capture.authenticate_capture(
+                  captured_rows=rows,
+                  plan=plan,
+                  composition=composition,
+                  families=frozenset({family}),
+                  lane_head="a" * 40,
+                  runner_blob="b" * 40,
+                  hook_path="clean.execute_current_clean_composition",
+              )
+          except capture.CaptureError as exc:
+              if "payload SHA drift" not in str(exc):
+                  raise
+          else:
+              raise RuntimeError("same-byte-length payload tamper was accepted")
+          print("ACTUAL_AUTHORITY_TAMPER_REJECTED")
+          PY
+
+      - name: Publish text-free helper qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/qualification.json" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          core = {
+              "schema_version": "12-6.d03-lane-selected-survivor-capture-qualification.v1",
+              "status": "PASS_CAPTURE_HELPER",
+              "execution_head_sha": os.environ["EXECUTION_HEAD"],
+              "parent_head_sha": os.environ["PARENT_HEAD"],
+              "capture_git_blob_sha1": os.environ["CAPTURE_BLOB"],
+              "test_git_blob_sha1": os.environ["TEST_BLOB"],
+              "exact_passed_plan_bound": True,
+              "exact_balance_authority_bound": True,
+              "same_byte_length_payload_tamper_rejected": True,
+              "raw_payload_published": False,
+              "canonical_capacity_credited": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "scale_promotion_authorized": False,
+          }
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          value = {
+              **core,
+              "qualification_identity_sha256": hashlib.sha256(raw).hexdigest(),
+          }
+          Path(sys.argv[1]).write_text(
+              json.dumps(
+                  value,
+                  ensure_ascii=False,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+          rm -rf "$RUNNER_TEMP/plan" "$RUNNER_TEMP/balance"
+
+      - name: Upload text-free helper qualification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-lane-selected-capture-qualification-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/qualification.json
+          if-no-files-found: error
+          retention-days: 90
