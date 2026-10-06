@@ -217,11 +217,23 @@ def verify_dependency_blobs() -> None:
         require(observed == expected, f"canonical dependency blob drift: {relative}")
 
 
+def _resolve_existing_path(raw_path: str, error: str) -> Path:
+    try:
+        return Path(raw_path).resolve(strict=True)
+    except OSError as exc:
+        raise RadaPostG06BalanceError(error) from exc
+
+
 def verify_module_provenance(module: Any, relative: str) -> None:
     raw = getattr(module, "__file__", None)
     require(isinstance(raw, str) and raw, f"module path missing: {relative}")
+    observed = _resolve_existing_path(
+        raw,
+        f"module provenance drift: {relative}",
+    )
+    expected = (ROOT / relative).resolve(strict=True)
     require(
-        Path(raw).resolve(strict=True) == (ROOT / relative).resolve(strict=True),
+        observed == expected,
         f"module provenance drift: {relative}",
     )
 
@@ -249,16 +261,28 @@ def load_canonical_authorities() -> tuple[Any, Any, dict[str, Any]]:
 
     verify_module_provenance(twelve_six, "src/twelve_six/__init__.py")
     expected_package = (ROOT / "src/twelve_six").resolve(strict=True)
+    package_paths = [
+        _resolve_existing_path(
+            value,
+            "canonical twelve_six package search path drift",
+        )
+        for value in twelve_six.__path__
+    ]
     require(
-        [Path(value).resolve(strict=True) for value in twelve_six.__path__]
-        == [expected_package],
+        package_paths == [expected_package],
         "canonical twelve_six package search path drift",
     )
     data_package = importlib.import_module("twelve_six.data")
     expected_data = (ROOT / "src/twelve_six/data").resolve(strict=True)
+    data_paths = [
+        _resolve_existing_path(
+            value,
+            "canonical twelve_six.data package search path drift",
+        )
+        for value in data_package.__path__
+    ]
     require(
-        [Path(value).resolve(strict=True) for value in data_package.__path__]
-        == [expected_data],
+        data_paths == [expected_data],
         "canonical twelve_six.data package search path drift",
     )
 
