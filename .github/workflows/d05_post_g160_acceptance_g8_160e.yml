@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: d05-post-g160-acceptance-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   D05_RUNTIME_SHA: "ea200b7d956442231b952e5aaa443e639c12b647"
