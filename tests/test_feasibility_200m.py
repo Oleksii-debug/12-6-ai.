@@ -13,7 +13,7 @@ from twelve_six.feasibility_200m import (
     build_200m_feasibility_packet,
     canonical_sha256,
     compute_packet_sha256,
-    expected_external_identities,
+    retained_identities_for_built_packet,
     validate_200m_feasibility_packet,
 )
 
@@ -156,7 +156,7 @@ def validate(
     if roadmap_snapshot is None:
         roadmap_snapshot = roadmap()
     if expected is None:
-        expected = expected_external_identities(packet)
+        expected = retained_identities_for_built_packet(packet)
     return validate_200m_feasibility_packet(
         packet,
         roadmap_snapshot=roadmap_snapshot,
@@ -195,7 +195,7 @@ def test_learned_binding_consumes_canonical_crossbound_authorities() -> None:
 
 def test_tampered_learned_crossbinding_fails_against_roadmap_snapshot() -> None:
     packet = build()
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     packet["learned_20m_binding"]["independent_audit_authority"][
         "audited_producer_authority_sha256"
     ] = "0" * 64
@@ -306,7 +306,7 @@ def test_candidate_and_measurement_authorities_bind_exact_payloads() -> None:
 
 def test_coherent_reseal_still_fails_stale_external_packet_identity() -> None:
     packet = build()
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     packet["candidate"]["parameter_count"] += 1
     packet["packet_sha256"] = compute_packet_sha256(packet)
     errors = validate(packet, expected=expected)
@@ -316,7 +316,7 @@ def test_coherent_reseal_still_fails_stale_external_packet_identity() -> None:
 
 def test_resealed_requirement_evidence_fails_external_identity_map() -> None:
     packet = build()
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     name = "evaluation_capacity"
     packet["requirement_evidence"][name]["evidence_sha256"] = "f" * 64
     packet["packet_sha256"] = compute_packet_sha256(packet)
@@ -337,7 +337,7 @@ def test_backend_training_compute_or_stage_self_promotion_is_rejected() -> None:
         packet = build()
         packet["authority_boundaries"][field] = bad
         packet["packet_sha256"] = compute_packet_sha256(packet)
-        expected = expected_external_identities(packet)
+        expected = retained_identities_for_built_packet(packet)
         assert "authority_boundaries_must_be_non_authorizing" in validate(
             packet, expected=expected
         )
@@ -345,7 +345,7 @@ def test_backend_training_compute_or_stage_self_promotion_is_rejected() -> None:
 
 def test_roadmap_snapshot_drift_fails_even_when_packet_is_unchanged() -> None:
     packet = build()
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     drifted = roadmap()
     drifted["scale_route"][3]["approximate_target_parameters"] = 210_000_000
     errors = validate(packet, roadmap_snapshot=drifted, expected=expected)
@@ -357,7 +357,7 @@ def test_unknown_fields_and_bool_candidate_counts_fail_closed() -> None:
     packet = build()
     packet["surprise"] = "not allowed"
     packet["packet_sha256"] = compute_packet_sha256(packet)
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     assert "packet_fields_mismatch" in validate(packet, expected=expected)
 
     bad_candidate = candidate()
@@ -389,14 +389,14 @@ def test_invalid_decision_and_stale_source_git_identity_fail_closed() -> None:
         )
 
     packet = build()
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     expected["source_git_sha"] = GIT_B
     assert "source_git_sha_external_mismatch" in validate(packet, expected=expected)
 
 
 def test_expected_identity_map_must_cover_every_requirement() -> None:
     packet = build()
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     expected["requirement_evidence_sha256"] = deepcopy(
         expected["requirement_evidence_sha256"]
     )
@@ -571,7 +571,7 @@ def test_builder_huge_numeric_measurement_fails_without_overflow() -> None:
 )
 def test_validator_malformed_roadmap_shapes_fail_closed(bad_roadmap: object) -> None:
     packet = build()
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     errors = validate_200m_feasibility_packet(
         packet,
         roadmap_snapshot=bad_roadmap,
@@ -588,7 +588,7 @@ def test_validator_malformed_roadmap_shapes_fail_closed(bad_roadmap: object) -> 
 
 def test_validator_rejects_malformed_external_scalar_identities() -> None:
     packet = build()
-    expected = expected_external_identities(packet)
+    expected = retained_identities_for_built_packet(packet)
     errors = validate_200m_feasibility_packet(
         packet,
         roadmap_snapshot=roadmap(),
