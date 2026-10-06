@@ -5,8 +5,7 @@ import hashlib
 import json
 import re
 import unicodedata
-from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 
 SCHEMA = "12-6.data232-decontamination-report.v2"
@@ -115,15 +114,19 @@ def _fingerprint(value: Mapping[str, Any], thresholds: Mapping[str, Any]) -> dic
     tokens = tuple(TOKEN_RE.findall(normalized))
     code = record["modality"] == "code"
     width = int(thresholds["code_shingle_tokens"] if code else thresholds["natural_shingle_tokens"])
+    shingles = _shingles(tokens, width)
+    token_count = len(tokens)
     skeleton = code_skeleton_tokens(record["text"]) if code else ()
+    skeleton_shingles = _shingles(skeleton, int(thresholds["code_shingle_tokens"]))
+    skeleton_token_count = len(skeleton)
     return {
         "record": record,
         "raw": sha256_bytes(record["text"].encode()),
         "normalized": sha256_bytes(normalized.encode()),
-        "tokens": tokens,
-        "shingles": _shingles(tokens, width),
-        "skeleton": skeleton,
-        "skeleton_shingles": _shingles(skeleton, int(thresholds["code_shingle_tokens"])),
+        "token_count": token_count,
+        "shingles": shingles,
+        "skeleton_token_count": skeleton_token_count,
+        "skeleton_shingles": skeleton_shingles,
     }
 
 
@@ -150,7 +153,7 @@ def _pair(train: dict[str, Any], other: dict[str, Any], other_kind: str, t: Mapp
     frag_limit = float(t["code_fragment_containment"] if same_code else t["natural_fragment_containment"])
     frag = _containment(train["shingles"], other["shingles"])
     if (
-        min(len(train["tokens"]), len(other["tokens"])) >= min_tokens
+        min(train["token_count"], other["token_count"]) >= min_tokens
         and frag >= frag_limit
         and not any(kind in {"raw_exact", "normalized_exact"} for kind, _ in matches)
     ):
@@ -158,7 +161,7 @@ def _pair(train: dict[str, Any], other: dict[str, Any], other_kind: str, t: Mapp
     if same_code:
         copy = _jaccard(train["skeleton_shingles"], other["skeleton_shingles"])
         if (
-            min(len(train["skeleton"]), len(other["skeleton"])) >= int(t["code_copy_min_tokens"])
+            min(train["skeleton_token_count"], other["skeleton_token_count"]) >= int(t["code_copy_min_tokens"])
             and copy >= float(t["code_copy_jaccard"])
         ):
             matches.append(("code_fork_copy", copy))
@@ -181,33 +184,86 @@ def _pair(train: dict[str, Any], other: dict[str, Any], other_kind: str, t: Mapp
     return result
 
 
-def _blocked_pairs(left: Sequence[dict[str, Any]], right: Sequence[dict[str, Any]]) -> set[tuple[int, int]]:
-    index: dict[str, set[int]] = defaultdict(set)
+_Posting = int | list[int]
+_CandidateKey = tuple[str, str]
+
+
+def _candidate_keys(fp: Mapping[str, Any]) -> Iterator[_CandidateKey]:
+    """Yield the incumbent blocking keys without copying shingle text."""
+    yield ("r", str(fp["raw"]))
+    yield ("n", str(fp["normalized"]))
+    for value in fp["shingles"]:
+        yield ("s", value)
+    for value in fp["skeleton_shingles"]:
+        yield ("c", value)
+
+
+def _append_posting(
+    index: dict[_CandidateKey, _Posting],
+    key: _CandidateKey,
+    record_index: int,
+) -> None:
+    """Store singleton postings without allocating a set per unique shingle."""
+    existing = index.get(key)
+    if existing is None:
+        index[key] = record_index
+    elif isinstance(existing, int):
+        index[key] = [existing, record_index]
+    else:
+        existing.append(record_index)
+
+
+def _add_posting_candidates(candidates: set[int], posting: _Posting | None) -> None:
+    if posting is None:
+        return
+    if isinstance(posting, int):
+        candidates.add(posting)
+    else:
+        candidates.update(posting)
+
+
+def _iter_blocked_pairs(
+    left: Sequence[dict[str, Any]],
+    right: Sequence[dict[str, Any]],
+) -> Iterator[tuple[int, int]]:
+    """Stream the exact incumbent train/evaluation candidate relation."""
+    index: dict[_CandidateKey, _Posting] = {}
     for j, fp in enumerate(right):
-        keys = {"r:" + fp["raw"], "n:" + fp["normalized"]}
-        keys |= {"s:" + x for x in fp["shingles"]} | {"c:" + x for x in fp["skeleton_shingles"]}
-        for key in keys:
-            index[key].add(j)
-    pairs = set()
+        for key in _candidate_keys(fp):
+            _append_posting(index, key, j)
+
     for i, fp in enumerate(left):
-        keys = {"r:" + fp["raw"], "n:" + fp["normalized"]}
-        keys |= {"s:" + x for x in fp["shingles"]} | {"c:" + x for x in fp["skeleton_shingles"]}
-        for key in keys:
-            pairs |= {(i, j) for j in index.get(key, ())}
-    return pairs
+        candidates: set[int] = set()
+        for key in _candidate_keys(fp):
+            _add_posting_candidates(candidates, index.get(key))
+        for j in sorted(candidates):
+            yield i, j
+
+
+def _blocked_pairs(
+    left: Sequence[dict[str, Any]],
+    right: Sequence[dict[str, Any]],
+) -> set[tuple[int, int]]:
+    """Compatibility wrapper retaining the historical private helper contract."""
+    return set(_iter_blocked_pairs(left, right))
+
+
+def _iter_train_pairs(train: Sequence[dict[str, Any]]) -> Iterator[tuple[int, int]]:
+    """Stream exact incumbent peer candidates instead of retaining a global pair set."""
+    index: dict[_CandidateKey, _Posting] = {}
+    for i, fp in enumerate(train):
+        candidates: set[int] = set()
+        for key in _candidate_keys(fp):
+            _add_posting_candidates(candidates, index.get(key))
+        for j in sorted(candidates):
+            yield j, i
+        for key in _candidate_keys(fp):
+            _append_posting(index, key, i)
 
 
 def _train_pairs(train: Sequence[dict[str, Any]]) -> set[tuple[int, int]]:
-    index: dict[str, set[int]] = defaultdict(set)
-    pairs = set()
-    for i, fp in enumerate(train):
-        keys = {"r:" + fp["raw"], "n:" + fp["normalized"]}
-        keys |= {"s:" + x for x in fp["shingles"]} | {"c:" + x for x in fp["skeleton_shingles"]}
-        candidates = set().union(*(index.get(key, set()) for key in keys)) if keys else set()
-        pairs |= {(j, i) for j in candidates}
-        for key in keys:
-            index[key].add(i)
-    return pairs
+    """Compatibility wrapper retaining the historical private helper contract."""
+    return set(_iter_train_pairs(train))
 
 
 def _forbidden_key(value: Any, path: str = "$") -> str | None:
