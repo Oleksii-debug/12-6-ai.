@@ -157,8 +157,8 @@ def verify_inputs(
     require(len(rows) == EXPECTED_RECORDS, "combined record count drift")
     require(inventory.get("record_count") == EXPECTED_RECORDS, "declared record count drift")
     require(
-        inventory.get("source_object_count") == EXPECTED_SOURCE_OBJECTS,
-        "declared source count drift",
+        len({row["source_id"] for row in rows}) == EXPECTED_SOURCE_OBJECTS,
+        "physical source count drift",
     )
     require(
         inventory.get("total_payload_bytes") == EXPECTED_INPUT_BYTES,
