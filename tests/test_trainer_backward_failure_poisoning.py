@@ -681,8 +681,6 @@ def test_finite_gradients_with_overflowed_aggregate_norm_never_update_model():
 
 @pytest.mark.parametrize("unsafe_rate", [float("nan"), float("inf"), float("-inf"), -0.01])
 def test_runtime_unsafe_learning_rate_cannot_commit_optimizer_step(unsafe_rate):
-    from twelve_six.training import NonFiniteTrainingError
-
     model = _TinyLogitModel()
     trainer = Trainer(model, TrainerConfig(max_steps=1, seed=17))
     before_weights = model.weight.detach().clone()
@@ -1723,8 +1721,6 @@ def test_checkpoint_export_rejects_nonfinite_group_weight_decay():
 def test_restore_rejects_nonfinite_scheduler_base_lr():
     from copy import deepcopy
     from dataclasses import replace
-
-    from twelve_six.training import NonFiniteTrainingError
 
     config = TrainerConfig(max_steps=2, scheduler="cosine", warmup_steps=1, seed=17)
     original = Trainer(_TinyLogitModel(), config)
