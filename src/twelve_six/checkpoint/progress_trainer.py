@@ -33,6 +33,7 @@ from .expected_binding import (
 from .progress_binding import _assert_progress, _validate_expected_counter
 from .trainer_adapter import (
     _assert_ambient_process_state_stable,
+    _assert_torch_execution_mode_stable,
     _assert_bound_metadata,
     _assert_checkpoint_numeric_policy_stable,
     _assert_checkpoint_process_environment_stable,
@@ -59,6 +60,7 @@ from .trainer_adapter import (
     _restore_checkpoint_rng_preserving_warn_only,
     _restore_initial_torch_policy,
     _restore_preapply_process_state,
+    _snapshot_torch_execution_mode,
     _snapshot_torch_policy,
     _snapshot_trainer_restore_bindings,
 )
@@ -100,6 +102,7 @@ def load_trainer_checkpoint(
     restore_bindings = _snapshot_trainer_restore_bindings(trainer)
     prebind_ambient = _core.capture_rng_state()
     prebind_policy = _snapshot_torch_policy(prebind_ambient)
+    prebind_execution_mode = _snapshot_torch_execution_mode()
     try:
         load_trainer_state = _bind_trainer_state_loader(trainer)
         model_apply_authority = _bind_native_model_export_validator(trainer)
@@ -114,6 +117,7 @@ def load_trainer_checkpoint(
             prebind_ambient,
             prebind_policy,
             trainer,
+            execution_mode=prebind_execution_mode,
             expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
@@ -167,6 +171,7 @@ def load_trainer_checkpoint(
     # Reuse the adapter's early model-ownership boundary in both restore paths.
     preio_ambient = _core.capture_rng_state()
     preio_policy = _snapshot_torch_policy(preio_ambient)
+    preio_execution_mode = _snapshot_torch_execution_mode()
     try:
         _assert_trainer_model_binding(model, trainer)
 
@@ -182,6 +187,7 @@ def load_trainer_checkpoint(
             preio_ambient,
             preio_policy,
             trainer,
+            execution_mode=preio_execution_mode,
             expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
@@ -264,6 +270,7 @@ def load_trainer_checkpoint(
     strict_model = _effective_strict_model(trainer, strict_model)
     preapply_ambient = _core.capture_rng_state()
     preapply_policy = _snapshot_torch_policy(preapply_ambient)
+    preapply_execution_mode = _snapshot_torch_execution_mode()
     try:
         # Loader lookup/signature inspection can execute descriptors or proxies.
         # Bind both effectful restore interfaces before model materialization, then
@@ -300,6 +307,7 @@ def load_trainer_checkpoint(
             preapply_ambient,
             preapply_policy,
             trainer,
+            execution_mode=preapply_execution_mode,
             expected_canonical=restore_bindings[0],
         )
     _assert_trainer_restore_bindings(trainer, restore_bindings)
@@ -320,6 +328,7 @@ def load_trainer_checkpoint(
 
     policy_before_apply = _snapshot_torch_policy(combined_state["rng"])
     ambient_before_apply = _core.capture_rng_state()
+    execution_mode_before_apply = _snapshot_torch_execution_mode()
     # An integrity-valid opt-out snapshot may omit torch; failure rollback
     # must still recover the live process-global deterministic/warn-only mode.
     rollback_policy = (
@@ -360,6 +369,10 @@ def load_trainer_checkpoint(
                 ambient_before_apply,
                 expected_canonical=restore_bindings[0],
             )
+        _assert_torch_execution_mode_stable(
+            execution_mode_before_apply,
+            expected_canonical=restore_bindings[0],
+        )
         if model_apply_authority is not None:
             try:
                 model_apply_authority(materialized)
@@ -393,6 +406,10 @@ def load_trainer_checkpoint(
                 ambient_before_apply,
                 expected_canonical=restore_bindings[0],
             )
+        _assert_torch_execution_mode_stable(
+            execution_mode_before_apply,
+            expected_canonical=restore_bindings[0],
+        )
         sealed_auxiliary_fingerprint = (
             auxiliary_fingerprint()
             if auxiliary_fingerprint is not None
@@ -454,6 +471,10 @@ def load_trainer_checkpoint(
                 ambient_before_apply,
                 expected_canonical=restore_bindings[0],
             )
+        _assert_torch_execution_mode_stable(
+            execution_mode_before_apply,
+            expected_canonical=restore_bindings[0],
+        )
     except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
