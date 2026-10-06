@@ -674,3 +674,33 @@ def test_text_free_durable_guard_rejects_nested_payload_text(
             {"outer": [{"safe": {forbidden_key: "secret"}}]},
             label="synthetic",
         )
+
+
+
+def test_durable_bundle_commits_receipt_last(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture(path: Path, payload: bytes, *, label: str) -> None:
+        labels.append(label)
+
+    monkeypatch.setattr(target, "write_immutable_bytes", capture)
+    target.commit_durable_bundle(
+        evidence_path=tmp_path / "evidence.json",
+        evidence_bytes=b"e",
+        quality_path=tmp_path / "quality.json",
+        quality_bytes=b"q",
+        privacy_path=tmp_path / "privacy.json",
+        privacy_bytes=b"p",
+        survivor_inventory_path=tmp_path / "inventory.json",
+        survivor_inventory_bytes=b"i",
+    )
+
+    assert labels == [
+        "G05 authority",
+        "G06 authority",
+        "survivor inventory",
+        "post-G05/G06 evidence",
+    ]
