@@ -1829,6 +1829,31 @@ def _assert_d02_checkpoint_rng_policy(
             "canonical trainer configuration"
         )
 
+    missing_numeric_policy = sorted(
+        {
+            "default_dtype",
+            "float32_matmul_precision",
+            "cudnn_allow_tf32",
+            "cudnn_enabled",
+            "cudnn_deterministic",
+            "cudnn_benchmark",
+        }
+        - torch_state.keys()
+    )
+    if missing_numeric_policy:
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint is missing torch numeric RNG policy "
+            f"fields: {missing_numeric_policy}; load with restore_rng=False to "
+            "opt out of exact replay"
+        )
+    cuda_environment = torch_state.get("cuda_environment")
+    if not isinstance(cuda_environment, Mapping):
+        raise CheckpointCompatibilityError(
+            "canonical trainer checkpoint is missing CUDA process environment; "
+            "load with restore_rng=False to opt out of exact replay"
+        )
+    _core._assert_torch_process_environment_matches(cuda_environment)
+
     # A sealed V1 artifact can be valid while omitting one or more streams.
     # Replaying only the available streams silently changes the next batch.
     missing = sorted({"python", "numpy"} - rng_state.keys())
@@ -1936,6 +1961,56 @@ def _restore_ambient_rng_after_failed_apply(
                 f"PyTorch CUDA RNG rollback on device {index} also failed: "
                 f"{rollback_exc!r}"
             )
+    if "default_dtype" in torch_state:
+        try:
+            _core._restore_torch_default_dtype(
+                torch,
+                torch_state["default_dtype"],
+            )
+        except BaseException as rollback_exc:  # noqa: BLE001
+            exc.add_note(
+                f"PyTorch default-dtype rollback also failed: {rollback_exc!r}"
+            )
+    if "float32_matmul_precision" in torch_state:
+        try:
+            _core._restore_torch_matmul_precision(
+                torch,
+                torch_state["float32_matmul_precision"],
+            )
+        except BaseException as rollback_exc:  # noqa: BLE001
+            exc.add_note(
+                "PyTorch float32-matmul-precision rollback also failed: "
+                f"{rollback_exc!r}"
+            )
+    if "cudnn_allow_tf32" in torch_state:
+        try:
+            _core._restore_torch_cudnn_allow_tf32(
+                torch,
+                torch_state["cudnn_allow_tf32"],
+            )
+        except BaseException as rollback_exc:  # noqa: BLE001
+            exc.add_note(
+                "PyTorch cuDNN TF32 rollback also failed: "
+                f"{rollback_exc!r}"
+            )
+    cudnn_rollbacks = (
+        ("cudnn_enabled", _core._restore_torch_cudnn_enabled, "enabled"),
+        (
+            "cudnn_deterministic",
+            _core._restore_torch_cudnn_deterministic,
+            "deterministic",
+        ),
+        ("cudnn_benchmark", _core._restore_torch_cudnn_benchmark, "benchmark"),
+    )
+    for field, restore, label in cudnn_rollbacks:
+        if field not in torch_state:
+            continue
+        try:
+            restore(torch, torch_state[field])
+        except BaseException as rollback_exc:  # noqa: BLE001
+            exc.add_note(
+                f"PyTorch cuDNN {label} rollback also failed: {rollback_exc!r}"
+            )
 
 
 def _restore_preapply_process_state(
@@ -1967,6 +2042,47 @@ def _restore_preapply_process_state(
             exc=exc,
         )
         raise
+
+
+def _restore_checkpoint_numeric_policy_for_apply(
+    state: Mapping[str, Any],
+) -> None:
+    """Apply saved floating-point process policy before effectful loaders."""
+
+    torch_state = state.get("torch")
+    if not isinstance(torch_state, Mapping):
+        return
+    torch = importlib.import_module("torch")
+    if "default_dtype" in torch_state:
+        _core._restore_torch_default_dtype(
+            torch,
+            torch_state["default_dtype"],
+        )
+    if "float32_matmul_precision" in torch_state:
+        _core._restore_torch_matmul_precision(
+            torch,
+            torch_state["float32_matmul_precision"],
+        )
+    if "cudnn_allow_tf32" in torch_state:
+        _core._restore_torch_cudnn_allow_tf32(
+            torch,
+            torch_state["cudnn_allow_tf32"],
+        )
+    if "cudnn_enabled" in torch_state:
+        _core._restore_torch_cudnn_enabled(
+            torch,
+            torch_state["cudnn_enabled"],
+        )
+    if "cudnn_deterministic" in torch_state:
+        _core._restore_torch_cudnn_deterministic(
+            torch,
+            torch_state["cudnn_deterministic"],
+        )
+    if "cudnn_benchmark" in torch_state:
+        _core._restore_torch_cudnn_benchmark(
+            torch,
+            torch_state["cudnn_benchmark"],
+        )
 
 
 def _restore_checkpoint_rng_preserving_warn_only(
@@ -2443,6 +2559,10 @@ def load_trainer_checkpoint(
     # Failed application may leave a mixed model/optimizer state, so canonical
     # D02 targets must require a fresh instance and verified checkpoint.
     try:
+        if restore_rng:
+            _restore_checkpoint_numeric_policy_for_apply(
+                combined_state["rng"],
+            )
         model_apply(materialized)
         if model_apply_authority is not None:
             try:
