@@ -771,7 +771,7 @@ def _restore_checkpoint_rng_preserving_warn_only(
                 torch.are_deterministic_algorithms_enabled(),
                 warn_only=policy[1],
             )
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         # Model/trainer loaders may already have changed process-global mode.
         # Roll back to the pre-application policy, not to that later value.
         _restore_initial_torch_policy(policy, exc)
@@ -921,7 +921,7 @@ def load_trainer_checkpoint(
             )
         else:
             _assert_live_d02_determinism(trainer)
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
