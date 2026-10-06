@@ -167,6 +167,40 @@ def write_immutable_bytes(path: Path, payload: bytes, *, label: str) -> None:
         raise
 
 
+def commit_durable_bundle(
+    *,
+    evidence_path: Path,
+    evidence_bytes: bytes,
+    quality_path: Path,
+    quality_bytes: bytes,
+    privacy_path: Path,
+    privacy_bytes: bytes,
+    survivor_inventory_path: Path,
+    survivor_inventory_bytes: bytes,
+) -> None:
+    """Commit child artifacts first and the bound evidence receipt last."""
+    write_immutable_bytes(
+        quality_path,
+        quality_bytes,
+        label="G05 authority",
+    )
+    write_immutable_bytes(
+        privacy_path,
+        privacy_bytes,
+        label="G06 authority",
+    )
+    write_immutable_bytes(
+        survivor_inventory_path,
+        survivor_inventory_bytes,
+        label="survivor inventory",
+    )
+    write_immutable_bytes(
+        evidence_path,
+        evidence_bytes,
+        label="post-G05/G06 evidence",
+    )
+
+
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         ["git", *args],
@@ -1149,25 +1183,15 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
     )
     # Child artifacts are committed first; the evidence receipt is the final
     # completion marker and binds their exact canonical file bytes.
-    write_immutable_bytes(
-        args.output_quality,
-        quality_bytes,
-        label="G05 authority",
-    )
-    write_immutable_bytes(
-        args.output_privacy,
-        privacy_bytes,
-        label="G06 authority",
-    )
-    write_immutable_bytes(
-        args.output_survivor_inventory,
-        survivor_inventory_bytes,
-        label="survivor inventory",
-    )
-    write_immutable_bytes(
-        args.output_evidence,
-        canonical_line(output),
-        label="post-G05/G06 evidence",
+    commit_durable_bundle(
+        evidence_path=args.output_evidence,
+        evidence_bytes=canonical_line(output),
+        quality_path=args.output_quality,
+        quality_bytes=quality_bytes,
+        privacy_path=args.output_privacy,
+        privacy_bytes=privacy_bytes,
+        survivor_inventory_path=args.output_survivor_inventory,
+        survivor_inventory_bytes=survivor_inventory_bytes,
     )
     return output
 
