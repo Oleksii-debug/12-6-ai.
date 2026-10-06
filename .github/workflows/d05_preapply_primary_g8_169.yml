@@ -1,0 +1,94 @@
+name: D05 preapply primary preservation G8-169
+
+on:
+  pull_request:
+    branches:
+      - repair/2945-preapply-primary-preservation-g8-169-20261006
+    paths:
+      - ".github/workflows/d05_preapply_primary_g8_169.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d05-preapply-primary-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: "a63e4ab77542394e6b79359d545397d2615510d1"
+  EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  QUALIFICATION_CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+  PYTHONUTF8: "1"
+
+jobs:
+  focused-linux:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'qualification/2946-preapply-primary-g8-169-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact qualification carrier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.QUALIFICATION_CARRIER_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython 3.11.16
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact source and qualification closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EVENT_BASE_SHA" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test "$(git merge-base "$SOURCE_SHA" HEAD)" = "$SOURCE_SHA"
+          changed="$(git diff --name-only "$SOURCE_SHA"..HEAD)"
+          test "$changed" = ".github/workflows/d05_preapply_primary_g8_169.yml"
+          test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/trainer_adapter.py")" = "0bb33d13add14442eb14c139e5c715fd481eeb02"
+          test "$(git rev-parse "$SOURCE_SHA:src/twelve_six/checkpoint/progress_trainer.py")" = "2e058e1810c1ebd37ba6fcab5d297443d479fc30"
+          test "$(git rev-parse "$SOURCE_SHA:tests/test_checkpoint_preapply_primary_failure.py")" = "35eb20f538fd1c298b77eb1328c8bc904df1db0a"
+          python -m py_compile \
+            src/twelve_six/checkpoint/trainer_adapter.py \
+            src/twelve_six/checkpoint/progress_trainer.py \
+            tests/test_checkpoint_preapply_primary_failure.py
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install focused test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Lint exact source closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check \
+            src/twelve_six/checkpoint/trainer_adapter.py \
+            src/twelve_six/checkpoint/progress_trainer.py \
+            tests/test_checkpoint_preapply_primary_failure.py
+
+      - name: Execute preapply rollback regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_checkpoint_preapply_primary_failure.py \
+            tests/test_checkpoint_failure_note_preservation.py \
+            tests/test_checkpoint_ambient_rng_rollback_isolation.py \
+            tests/test_checkpoint_cuda_rollback_fault_isolation.py \
+            tests/test_checkpoint_rng_completeness_d02.py \
+            tests/test_checkpoint_restore_binding_config_drift.py
+
+      - name: Prove carrier remains clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFICATION_CARRIER_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
