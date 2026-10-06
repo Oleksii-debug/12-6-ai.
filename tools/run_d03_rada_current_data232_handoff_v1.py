@@ -386,7 +386,7 @@ def verify_parent_files(args: argparse.Namespace) -> tuple[dict[str, Any], dict[
         "parent evidence cross-binding drift",
     )
     require(
-        two_clean.get("report_sha256") == EXPECTED_REPORT_SHA256
+        two_clean.get("matcher_report_sha256") == EXPECTED_REPORT_SHA256
         and two_clean.get("survivor_authority_sha256") == EXPECTED_RADA_SLICE_SHA256,
         "parent two-clean cross-binding drift",
     )
