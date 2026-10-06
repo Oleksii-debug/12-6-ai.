@@ -122,6 +122,51 @@ def _target_with_optimizer(
     return trainer, optimizer
 
 
+class _PayloadOwnershipSafetyShadow:
+    deepcopy_calls = 0
+
+    def __init__(self, owner: Trainer) -> None:
+        self.owner = owner
+
+    def __deepcopy__(self, memo: dict[int, object]) -> int:
+        del memo
+        type(self).deepcopy_calls += 1
+
+        def forged_storage():
+            del vars(self.owner)["_canonical_optimizer_storage"]
+            return {}, []
+
+        self.owner._canonical_optimizer_storage = forged_storage
+        return 0
+
+
+def test_direct_restore_seals_each_payload_ownership_phase() -> None:
+    config = _config()
+    state = _clean_state(config)
+    target = Trainer(nn.Linear(3, 2), config, scheduler=None)
+    shadow = _PayloadOwnershipSafetyShadow(target)
+    _PayloadOwnershipSafetyShadow.deepcopy_calls = 0
+    state.optimizer["payload_shadow"] = shadow
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match=(
+            "trainer restore safety authority changed during "
+            "optimizer payload ownership"
+        ),
+    ):
+        target.load_state_dict(state)
+
+    assert _PayloadOwnershipSafetyShadow.deepcopy_calls == 1
+    assert "_canonical_optimizer_storage" in vars(target)
+    assert target._failure_reason == (
+        "trainer restore safety authority changed during "
+        "optimizer payload ownership"
+    )
+    assert target._update_incomplete is True
+    assert not target.optimizer.state
+
+
 class _RestoreConfigDriftMapping(Mapping[str, object]):
     def __init__(
         self,
