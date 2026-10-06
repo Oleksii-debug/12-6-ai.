@@ -1354,6 +1354,60 @@ def test_direct_restore_poison_target_when_checkpoint_preflight_consumes_rng() -
         torch.set_rng_state(rng_before)
 
 
+def test_direct_restore_preflight_seals_python_and_numpy_rng() -> None:
+    import random
+
+    import numpy as np
+    from dataclasses import replace
+
+    config = TrainerConfig(
+        learning_rate=1e-3,
+        max_steps=4,
+        scheduler="cosine",
+        warmup_steps=1,
+        gradient_accumulation_steps=1,
+        seed=23,
+    )
+    state = _clean_state(config)
+    assert state.scheduler is not None
+    target = Trainer(nn.Linear(3, 2), config)
+    python_before = random.getstate()
+    numpy_before = np.random.get_state()
+
+    class PythonNumpyRngMutatingSchedulerState(dict):
+        def __deepcopy__(self, memo):
+            del memo
+            random.random()
+            np.random.random()
+            return dict(self)
+
+    hostile = replace(
+        state,
+        scheduler=PythonNumpyRngMutatingSchedulerState(state.scheduler),
+    )
+
+    try:
+        with pytest.raises(
+            TrainingStateInvalidError,
+            match="trainer RNG state changed during scheduler payload ownership",
+        ):
+            target.load_state_dict(hostile)
+
+        assert random.getstate() != python_before
+        numpy_after = np.random.get_state()
+        assert (
+            numpy_after[2] != numpy_before[2]
+            or not np.array_equal(numpy_after[1], numpy_before[1])
+        )
+        assert target._failure_reason == (
+            "trainer RNG state changed during scheduler payload ownership"
+        )
+        assert target._update_incomplete is False
+    finally:
+        random.setstate(python_before)
+        np.random.set_state(numpy_before)
+
+
 def test_direct_restore_poison_target_when_component_load_consumes_rng() -> None:
     config = _config()
     state = _clean_state(config)
