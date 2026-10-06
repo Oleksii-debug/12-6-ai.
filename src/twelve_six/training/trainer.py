@@ -2841,6 +2841,23 @@ class Trainer:
         expected_scheduler = restore_attrs.get("scheduler")
         expected_scaler = restore_attrs.get("scaler")
         expected_config = restore_attrs.get("config")
+        expected_device = restore_attrs.get("device")
+        policy_fields = (
+            "_canonical_default_schedule",
+            "_canonical_unscheduled_default_optimizer",
+            "_canonical_default_optimizer_options",
+        )
+        missing_policies = [
+            name for name in policy_fields if name not in restore_attrs
+        ]
+        if missing_policies:
+            raise TrainingStateInvalidError(
+                f"trainer restore policy fields are unavailable: {missing_policies}"
+            )
+        expected_policy_state = {
+            name: copy.deepcopy(restore_attrs[name])
+            for name in policy_fields
+        }
         expected_preapply_state = {
             name: copy.deepcopy(restore_attrs.get(name))
             for name in (
@@ -2867,6 +2884,7 @@ class Trainer:
                     ("scheduler", expected_scheduler),
                     ("scaler", expected_scaler),
                     ("config", expected_config),
+                    ("device", expected_device),
                 )
             )
 
@@ -2886,6 +2904,12 @@ class Trainer:
             try:
                 if not _typed_state_equal(asdict(expected_config), expected_config_state):
                     return "trainer restore config changed during loader lookup"
+                if any(
+                    name not in current
+                    or not _typed_state_equal(current[name], expected)
+                    for name, expected in expected_policy_state.items()
+                ):
+                    return "trainer restore policy changed during loader lookup"
                 Trainer._require_no_residual_model_gradients(self)
                 if Trainer._model_export_fingerprint(self) != expected_model_fingerprint:
                     return "trainer model changed during loader lookup"
@@ -2955,6 +2979,14 @@ class Trainer:
             if not _typed_state_equal(asdict(expected_config), expected_config_state):
                 raise TrainingStateInvalidError(
                     "trainer restore config changed during load"
+                )
+            if any(
+                name not in current
+                or not _typed_state_equal(current[name], expected)
+                for name, expected in expected_policy_state.items()
+            ):
+                raise TrainingStateInvalidError(
+                    "trainer restore policy changed during load"
                 )
             Trainer._require_no_residual_model_gradients(self)
 
