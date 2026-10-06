@@ -995,8 +995,30 @@ def compare_outputs(
     output_b: Path,
     proof_path: Path,
     *,
+    runner_a_identity: str | None = None,
+    runner_b_identity: str | None = None,
+    independent_runner_jobs: bool = False,
     enforce_checkout_provenance: bool = False,
 ) -> dict[str, Any]:
+    runner_pattern = re.compile(r"^[A-Za-z0-9._:/-]{1,200}$")
+    require(
+        isinstance(runner_a_identity, str)
+        and runner_pattern.fullmatch(runner_a_identity) is not None,
+        "two-clean runner A identity missing or invalid",
+    )
+    require(
+        isinstance(runner_b_identity, str)
+        and runner_pattern.fullmatch(runner_b_identity) is not None,
+        "two-clean runner B identity missing or invalid",
+    )
+    require(
+        runner_a_identity != runner_b_identity,
+        "two-clean runner identities must be distinct",
+    )
+    require(
+        independent_runner_jobs is True,
+        "two-clean independent runner jobs are not attested",
+    )
     for path, label in (
         (output_a, "two-clean output A"),
         (output_b, "two-clean output B"),
@@ -1246,6 +1268,11 @@ def compare_outputs(
         "schema": REPEAT_SCHEMA,
         "execution_head_sha": receipt["execution_head_sha"],
         "fresh_process_count": 2,
+        "independent_runner_jobs": True,
+        "runner_instance_identities": {
+            "a": runner_a_identity,
+            "b": runner_b_identity,
+        },
         "byte_identical_outputs": True,
         "output_file_sha256": hashes,
         "receipt_identity_sha256": receipt_identity,
@@ -1297,6 +1324,12 @@ def parser() -> argparse.ArgumentParser:
     compare.add_argument("--output-a", type=Path, required=True)
     compare.add_argument("--output-b", type=Path, required=True)
     compare.add_argument("--proof", type=Path, required=True)
+    compare.add_argument("--runner-a-identity", required=True)
+    compare.add_argument("--runner-b-identity", required=True)
+    compare.add_argument(
+        "--independent-runner-jobs-attested",
+        action="store_true",
+    )
     return result
 
 
@@ -1315,6 +1348,9 @@ def main() -> int:
                 args.output_a,
                 args.output_b,
                 args.proof,
+                runner_a_identity=args.runner_a_identity,
+                runner_b_identity=args.runner_b_identity,
+                independent_runner_jobs=args.independent_runner_jobs_attested,
                 enforce_checkout_provenance=True,
             )
             print(
