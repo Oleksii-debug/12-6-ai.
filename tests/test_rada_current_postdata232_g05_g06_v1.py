@@ -417,3 +417,226 @@ def test_zero_credit_truth_rejects_boolean_zero_impostor() -> None:
             label="synthetic",
             require_model_selection_false=True,
         )
+
+
+
+class _ReservedStub:
+    @staticmethod
+    def _verify_training_handoff(*args: object, **kwargs: object) -> None:
+        return None
+
+    @staticmethod
+    def verify_execution_evidence(*args: object, **kwargs: object) -> None:
+        return None
+
+
+def _self_hashed(
+    core: dict[str, object],
+    field: str,
+) -> dict[str, object]:
+    return {**core, field: _sha(target.canonical(core))}
+
+
+def _parent_fixture() -> dict[str, object]:
+    counts = {
+        "training_records": 3,
+        "evaluation_records": 2,
+        "excluded_training_records": 1,
+        "quarantined_source_families": 0,
+        "match_evidence_records": 1,
+    }
+    selection = _decision("selection")
+    final_test = _decision("final-test")
+    report_id = _decision("report")
+    evidence_id = _decision("execution")
+
+    inventory = _self_hashed(
+        {
+            "schema_version": "12-6.d03-rada-current-postdedup-inventory.v1",
+            "full_selection_projection_sha256":
+                target.EXPECTED_FULL_SELECTION_SHA256,
+            "current_rada_slice_authority_sha256":
+                target.EXPECTED_RADA_SLICE_SHA256,
+            "raw_text_persisted": False,
+        },
+        "inventory_identity_sha256",
+    )
+    handoff = _self_hashed(
+        {"schema_version": "synthetic-handoff.v1"},
+        "handoff_identity_sha256",
+    )
+    report = {
+        "report_sha256": report_id,
+        "status": "PASS_WITH_EXCLUSIONS",
+        "selection_validation_identity": selection,
+        "final_test_identity": final_test,
+        "counts": counts,
+    }
+    evidence = {
+        "execution_identity_sha256": evidence_id,
+        "status": "PASS_WITH_EXCLUSIONS",
+        "counts": counts,
+    }
+    result_core = {
+        "schema_version":
+            "12-6.d03-rada-current-data232-execution-result.v1",
+        "execution_head_sha": target.PARENT_EXECUTION_HEAD,
+        "parent_execution_head_sha": target.UPSTREAM_GLOBAL_DEDUP_HEAD,
+        "postdedup_inventory_identity_sha256":
+            inventory["inventory_identity_sha256"],
+        "full_selection_projection_sha256":
+            target.EXPECTED_FULL_SELECTION_SHA256,
+        "current_rada_slice_authority_sha256":
+            target.EXPECTED_RADA_SLICE_SHA256,
+        "training_handoff_identity_sha256":
+            handoff["handoff_identity_sha256"],
+        "reserved_payload_binding_identity_sha256":
+            _decision("reserved-binding"),
+        "selection_validation_identity_sha256": selection,
+        "final_test_identity_sha256": final_test,
+        "data232_report_sha256": report_id,
+        "data232_execution_identity_sha256": evidence_id,
+        "status": "PASS_WITH_EXCLUSIONS",
+        "counts": counts,
+        "final_test_payload_accessed_for_decontamination": True,
+        "durable_evidence_hash_only": True,
+        "next_gate": "CURRENT_RADA_POST_DATA232_QUALITY_PRIVACY",
+        **_zero_credit_truth(),
+    }
+    result = _self_hashed(result_core, "result_identity_sha256")
+    report_file = _decision("report-file")
+    evidence_file = _decision("evidence-file")
+    result_file = _decision("result-file")
+    proof_core = {
+        "schema_version": "12-6.d03-rada-current-data232-two-clean.v1",
+        "execution_head_sha": target.PARENT_EXECUTION_HEAD,
+        "parent_execution_head_sha": target.UPSTREAM_GLOBAL_DEDUP_HEAD,
+        "full_selection_projection_sha256":
+            target.EXPECTED_FULL_SELECTION_SHA256,
+        "current_rada_slice_authority_sha256":
+            target.EXPECTED_RADA_SLICE_SHA256,
+        "postdedup_inventory_identity_sha256":
+            inventory["inventory_identity_sha256"],
+        "training_handoff_identity_sha256":
+            handoff["handoff_identity_sha256"],
+        "reserved_payload_binding_identity_sha256":
+            result["reserved_payload_binding_identity_sha256"],
+        "data232_report_sha256": report_id,
+        "data232_execution_identity_sha256": evidence_id,
+        "result_identity_sha256": result["result_identity_sha256"],
+        "data232_report_file_sha256": report_file,
+        "data232_execution_evidence_file_sha256": evidence_file,
+        "result_file_sha256": result_file,
+        "two_fresh_processes_byte_identical": True,
+        **counts,
+        **{
+            key: value
+            for key, value in _zero_credit_truth().items()
+            if key != "model_architecture_or_hyperparameters_selected"
+        },
+    }
+    proof = _self_hashed(proof_core, "proof_identity_sha256")
+    return {
+        "inventory": inventory,
+        "handoff": handoff,
+        "report": report,
+        "evidence": evidence,
+        "result": result,
+        "proof": proof,
+        "report_file": report_file,
+        "evidence_file": evidence_file,
+        "result_file": result_file,
+    }
+
+
+def _verify_parent_fixture(fixture: dict[str, object]) -> None:
+    target.verify_parent(
+        reserved_module=_ReservedStub,
+        verify_report_fn=lambda report: None,
+        training_records=[],
+        inventory=fixture["inventory"],
+        handoff=fixture["handoff"],
+        report=fixture["report"],
+        evidence=fixture["evidence"],
+        result=fixture["result"],
+        proof=fixture["proof"],
+        expected_inventory_identity_sha256=fixture["inventory"][
+            "inventory_identity_sha256"
+        ],
+        expected_handoff_identity_sha256=fixture["handoff"][
+            "handoff_identity_sha256"
+        ],
+        expected_result_identity_sha256=fixture["result"][
+            "result_identity_sha256"
+        ],
+        expected_proof_identity_sha256=fixture["proof"][
+            "proof_identity_sha256"
+        ],
+        report_file_sha256=fixture["report_file"],
+        evidence_file_sha256=fixture["evidence_file"],
+        result_file_sha256=fixture["result_file"],
+    )
+
+
+def test_parent_cross_binding_accepts_consistent_exact_lineage() -> None:
+    _verify_parent_fixture(_parent_fixture())
+
+
+@pytest.mark.parametrize(
+    ("document", "field", "value", "message"),
+    [
+        (
+            "result",
+            "parent_execution_head_sha",
+            "0" * 40,
+            "upstream global-dedup HEAD drift",
+        ),
+        (
+            "result",
+            "selection_validation_identity_sha256",
+            "0" * 64,
+            "reserved-evaluation identity drift",
+        ),
+        (
+            "proof",
+            "reserved_payload_binding_identity_sha256",
+            "0" * 64,
+            "corpus-lineage drift",
+        ),
+        (
+            "proof",
+            "training_records",
+            4,
+            "count projection drift",
+        ),
+    ],
+)
+def test_parent_cross_binding_rejects_resealed_lineage_drift(
+    document: str,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    fixture = _parent_fixture()
+    mutated = dict(fixture[document])
+    identity_field = (
+        "result_identity_sha256"
+        if document == "result"
+        else "proof_identity_sha256"
+    )
+    mutated.pop(identity_field)
+    mutated[field] = value
+    fixture[document] = _self_hashed(mutated, identity_field)
+
+    if document == "result":
+        proof = dict(fixture["proof"])
+        proof.pop("proof_identity_sha256")
+        proof["result_identity_sha256"] = fixture["result"][
+            "result_identity_sha256"
+        ]
+        if field == "reserved_payload_binding_identity_sha256":
+            proof["reserved_payload_binding_identity_sha256"] = value
+        fixture["proof"] = _self_hashed(proof, "proof_identity_sha256")
+
+    with pytest.raises(target.RadaPostData232Error, match=message):
+        _verify_parent_fixture(fixture)
