@@ -2013,6 +2013,29 @@ def _assert_torch_execution_mode_stable(
         )
 
 
+def _note_torch_execution_mode_drift(
+    expected: tuple[bool, bool],
+    exc: BaseException,
+    *,
+    operation: str,
+) -> None:
+    """Attach execution-mode drift evidence without masking a primary failure."""
+
+    try:
+        live = _snapshot_torch_execution_mode()
+    except BaseException as mode_exc:  # noqa: BLE001 - preserve primary failure
+        exc.add_note(
+            f"{operation} execution-mode drift check also failed: {mode_exc!r}"
+        )
+        return
+    if live != expected:
+        exc.add_note(
+            f"{operation} also leaked caller-owned torch execution mode: "
+            f"expected grad_enabled={expected[0]}, inference_mode={expected[1]}; "
+            f"observed grad_enabled={live[0]}, inference_mode={live[1]}"
+        )
+
+
 def _snapshot_torch_policy(state: Mapping[str, Any]) -> tuple[bool, bool] | None:
     """Pin the live policy before any model or trainer loader can mutate it."""
 
@@ -2880,6 +2903,11 @@ def load_trainer_checkpoint(
             expected_canonical=restore_bindings[0],
         )
     except BaseException as exc:
+        _note_torch_execution_mode_drift(
+            execution_mode_before_apply,
+            exc,
+            operation="checkpoint restore apply",
+        )
         try:
             _restore_ambient_rng_after_failed_apply(ambient_before_apply, exc)
         finally:
