@@ -130,6 +130,19 @@ _EXPECTED_BYTE_MODULE_CONFIG = MappingProxyType({
     "byte_values": 256,
     "vocab_size": 256,
 })
+_EXPECTED_DECISION_SCHEMA = SCHEMA
+_EXPECTED_DECISION = DECISION
+_EXPECTED_STATUS = STATUS
+_EXPECTED_SELECTION_SCHEMA = SELECTION_SCHEMA
+_EXPECTED_APPLICATION_SCHEMA = APPLICATION_SCHEMA
+_EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1 = CANONICAL_SPLIT_GIT_BLOB_SHA1
+_EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256 = CANONICAL_SPLIT_SPEC_IDENTITY_SHA256
+_EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1 = (
+    CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1
+)
+_EXPECTED_VERIFY_BALANCED_SELECTION = verify_balanced_selection
+_EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR = BalancedSplitApplicationError
+_EXPECTED_BYTE_TOKENIZER_CLASS = ByteTokenizer
 
 # Freeze ambient call targets used by source-pinned byte.py and by this verifier.
 # Function.__builtins__ identity alone is insufficient because the shared builtins
@@ -153,8 +166,10 @@ _EXPECTED_BYTE_RUNTIME_BUILTINS = MappingProxyType({
     "list": builtins.list,
     "object": builtins.object,
     "open": builtins.open,
+    "property": builtins.property,
     "range": builtins.range,
     "set": builtins.set,
+    "staticmethod": builtins.staticmethod,
     "str": builtins.str,
     "type": builtins.type,
     "vars": builtins.vars,
@@ -206,6 +221,18 @@ def _verify_expected_root_integrity(
     _code_type=CodeType,
     _function_type=FunctionType,
     _mapping_proxy_type=MappingProxyType,
+    _decision_schema=_EXPECTED_DECISION_SCHEMA,
+    _decision=_EXPECTED_DECISION,
+    _status=_EXPECTED_STATUS,
+    _selection_schema=_EXPECTED_SELECTION_SCHEMA,
+    _application_schema=_EXPECTED_APPLICATION_SCHEMA,
+    _split_blob=_EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1,
+    _split_spec=_EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
+    _byte_blob=_EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1,
+    _verify_selection_call=_EXPECTED_VERIFY_BALANCED_SELECTION,
+    _split_error=_EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR,
+    _byte_tokenizer_class=_EXPECTED_BYTE_TOKENIZER_CLASS,
+    _source_path_text=_EXPECTED_BYTE_SOURCE_PATH_TEXT,
 ) -> None:
     """Reject rebinding of immutable verifier roots before they can be trusted."""
 
@@ -264,6 +291,73 @@ def _verify_expected_root_integrity(
         ("CodeType", CodeType, _code_type),
         ("FunctionType", FunctionType, _function_type),
         ("MappingProxyType", MappingProxyType, _mapping_proxy_type),
+        ("SCHEMA", SCHEMA, _decision_schema),
+        ("_EXPECTED_DECISION_SCHEMA", _EXPECTED_DECISION_SCHEMA, _decision_schema),
+        ("DECISION", DECISION, _decision),
+        ("_EXPECTED_DECISION", _EXPECTED_DECISION, _decision),
+        ("STATUS", STATUS, _status),
+        ("_EXPECTED_STATUS", _EXPECTED_STATUS, _status),
+        ("SELECTION_SCHEMA", SELECTION_SCHEMA, _selection_schema),
+        ("_EXPECTED_SELECTION_SCHEMA", _EXPECTED_SELECTION_SCHEMA, _selection_schema),
+        ("APPLICATION_SCHEMA", APPLICATION_SCHEMA, _application_schema),
+        ("_EXPECTED_APPLICATION_SCHEMA", _EXPECTED_APPLICATION_SCHEMA, _application_schema),
+        ("CANONICAL_SPLIT_GIT_BLOB_SHA1", CANONICAL_SPLIT_GIT_BLOB_SHA1, _split_blob),
+        (
+            "_EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1",
+            _EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1,
+            _split_blob,
+        ),
+        (
+            "CANONICAL_SPLIT_SPEC_IDENTITY_SHA256",
+            CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
+            _split_spec,
+        ),
+        (
+            "_EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256",
+            _EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
+            _split_spec,
+        ),
+        (
+            "CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1",
+            CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1,
+            _byte_blob,
+        ),
+        (
+            "_EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1",
+            _EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1,
+            _byte_blob,
+        ),
+        (
+            "verify_balanced_selection",
+            verify_balanced_selection,
+            _verify_selection_call,
+        ),
+        (
+            "_EXPECTED_VERIFY_BALANCED_SELECTION",
+            _EXPECTED_VERIFY_BALANCED_SELECTION,
+            _verify_selection_call,
+        ),
+        (
+            "BalancedSplitApplicationError",
+            BalancedSplitApplicationError,
+            _split_error,
+        ),
+        (
+            "_EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR",
+            _EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR,
+            _split_error,
+        ),
+        ("ByteTokenizer", ByteTokenizer, _byte_tokenizer_class),
+        (
+            "_EXPECTED_BYTE_TOKENIZER_CLASS",
+            _EXPECTED_BYTE_TOKENIZER_CLASS,
+            _byte_tokenizer_class,
+        ),
+        (
+            "_EXPECTED_BYTE_SOURCE_PATH_TEXT",
+            _EXPECTED_BYTE_SOURCE_PATH_TEXT,
+            _source_path_text,
+        ),
     )
     for name, observed, expected in identity_roots:
         if observed is not expected:
@@ -370,7 +464,7 @@ def _canonical_byte_tokenizer_git_blob_sha1() -> str:
 
 def _verify_canonical_byte_tokenizer_implementation() -> str:
     observed = _canonical_byte_tokenizer_git_blob_sha1()
-    if observed != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
+    if observed != _EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
         raise TokenizerDecisionError("canonical byte tokenizer implementation identity drift")
     return observed
 
@@ -379,7 +473,7 @@ def _verified_canonical_byte_tokenizer_method_codes() -> dict[str, CodeType]:
     """Compile the pinned source without executing it and bind live method code."""
 
     payload = _read_canonical_byte_tokenizer_source()
-    if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
+    if _git_blob_sha1(payload) != _EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
         raise TokenizerDecisionError(
             "canonical byte tokenizer implementation identity drift"
         )
@@ -427,7 +521,7 @@ def _verified_canonical_byte_tokenizer_helper_codes() -> dict[str, CodeType]:
     """Compile the pinned source and return behavior-bearing module helper code."""
 
     payload = _read_canonical_byte_tokenizer_source()
-    if _git_blob_sha1(payload) != CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
+    if _git_blob_sha1(payload) != _EXPECTED_CANONICAL_BYTE_TOKENIZER_GIT_BLOB_SHA1:
         raise TokenizerDecisionError(
             "canonical byte tokenizer implementation identity drift"
         )
@@ -524,7 +618,7 @@ def _verify_runtime_byte_tokenizer_module_state() -> None:
     """Bind mutable module state used by the source-pinned tokenizer runtime."""
 
     module_state = _EXPECTED_BYTE_RUNTIME_BUILTINS["vars"](byte_module)
-    if module_state.get("ByteTokenizer") is not ByteTokenizer:
+    if module_state.get("ByteTokenizer") is not _EXPECTED_BYTE_TOKENIZER_CLASS:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime module drift: ByteTokenizer"
         )
@@ -598,13 +692,16 @@ def _runtime_byte_tokenizer_method(
 
     raw = class_state.get(name)
     if name == "identity":
-        if type(raw) is not property or raw.fget is None:
+        if (
+            type(raw) is not _EXPECTED_BYTE_RUNTIME_BUILTINS["property"]
+            or raw.fget is None
+        ):
             raise TokenizerDecisionError(
                 "canonical byte tokenizer runtime implementation drift: identity"
             )
         function = raw.fget
     elif name == "oov_count":
-        if type(raw) is not staticmethod:
+        if type(raw) is not _EXPECTED_BYTE_RUNTIME_BUILTINS["staticmethod"]:
             raise TokenizerDecisionError(
                 "canonical byte tokenizer runtime implementation drift: oov_count"
             )
@@ -661,18 +758,20 @@ def _verify_runtime_byte_tokenizer_class() -> None:
     # a replacement class could preserve every checked method object while a
     # custom metaclass, local __new__, or inherited constructor returns a forged
     # instance. Pin the canonical construction path before any instantiation.
-    if type(ByteTokenizer) is not type:
+    tokenizer_class = _EXPECTED_BYTE_TOKENIZER_CLASS
+    if type(tokenizer_class) is not type:
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime implementation drift: metaclass"
         )
     if (
-        type.__getattribute__(ByteTokenizer, "__bases__") != (object,)
-        or type.__getattribute__(ByteTokenizer, "__mro__") != (ByteTokenizer, object)
+        type.__getattribute__(tokenizer_class, "__bases__") != (object,)
+        or type.__getattribute__(tokenizer_class, "__mro__")
+        != (tokenizer_class, object)
     ):
         raise TokenizerDecisionError(
             "canonical byte tokenizer runtime implementation drift: bases"
         )
-    class_state = type.__getattribute__(ByteTokenizer, "__dict__")
+    class_state = type.__getattribute__(tokenizer_class, "__dict__")
     for hook in (
         "__new__",
         "__getattribute__",
@@ -764,7 +863,7 @@ def _verified_canonical_byte_tokenizer_identity() -> tuple[str, dict[str, object
     _verify_runtime_byte_tokenizer_module_state()
     _verify_runtime_byte_tokenizer_class()
 
-    tokenizer = ByteTokenizer().identity
+    tokenizer = _EXPECTED_BYTE_TOKENIZER_CLASS().identity
     first_snapshot = _snapshot_verified_tokenizer_identity(tokenizer)
 
     # Identity construction/observation is effectful Python code. Re-seal after
@@ -799,10 +898,10 @@ def _verify_selection(
     if not isinstance(selection, Mapping):
         raise TokenizerDecisionError("unsupported balanced-selection authority")
     selection = _detached_json_mapping(selection, field="balanced selection")
-    if selection.get("schema") != SELECTION_SCHEMA:
+    if selection.get("schema") != _EXPECTED_SELECTION_SCHEMA:
         raise TokenizerDecisionError("unsupported balanced-selection authority")
     try:
-        _, totals = verify_balanced_selection(
+        _, totals = _EXPECTED_VERIFY_BALANCED_SELECTION(
             selection,
             expected_selection_identity_sha256=expected_selection_identity_sha256,
             expected_retained_inventory_identity_sha256=(
@@ -815,7 +914,7 @@ def _verify_selection(
             expected_balance_policy_identity_sha256=expected_balance_policy_identity_sha256,
             expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
         )
-    except BalancedSplitApplicationError as exc:
+    except _EXPECTED_BALANCED_SPLIT_APPLICATION_ERROR as exc:
         raise TokenizerDecisionError(str(exc)) from exc
     identity = _require_sha256(
         expected_selection_identity_sha256,
@@ -842,7 +941,7 @@ def _verify_split_application(
     application = _detached_json_mapping(application, field="split application")
     if set(application) != _APPLICATION_KEYS:
         raise TokenizerDecisionError("split application fields are not closed-world")
-    if application.get("schema") != APPLICATION_SCHEMA:
+    if application.get("schema") != _EXPECTED_APPLICATION_SCHEMA:
         raise TokenizerDecisionError("unsupported split-application authority")
     if application.get("status") != "PASS_ZERO_CREDIT":
         raise TokenizerDecisionError("split application is not canonical PASS_ZERO_CREDIT")
@@ -881,13 +980,16 @@ def _verify_split_application(
         if selection.get(field) != expected_sha or application.get(field) != expected_sha:
             raise TokenizerDecisionError(f"{field} lineage mismatch")
 
-    if application.get("canonical_split_git_blob_sha1") != CANONICAL_SPLIT_GIT_BLOB_SHA1:
+    if (
+        application.get("canonical_split_git_blob_sha1")
+        != _EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1
+    ):
         raise TokenizerDecisionError("split mechanics identity drift")
     split_spec_identity = _require_sha256(
         application.get("split_spec_identity_sha256"),
         field="split_spec_identity_sha256",
     )
-    if split_spec_identity != CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
+    if split_spec_identity != _EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
         raise TokenizerDecisionError(
             "split application does not bind canonical split spec authority"
         )
@@ -965,6 +1067,7 @@ def _bind_upstreams(
         expected_balance_policy_identity_sha256=expected_balance_policy_identity_sha256,
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
+    _verify_byte_tokenizer_runtime_dependencies()
     application_identity = _verify_split_application(
         application_snapshot,
         selection_snapshot,
@@ -977,6 +1080,7 @@ def _bind_upstreams(
         expected_balance_policy_identity_sha256=expected_balance_policy_identity_sha256,
         expected_balance_result_identity_sha256=expected_balance_result_identity_sha256,
     )
+    _verify_byte_tokenizer_runtime_dependencies()
     return selection_identity, application_identity
 
 
@@ -1036,14 +1140,14 @@ def bind_byte_baseline_decision(
     ) = _verified_canonical_byte_tokenizer_identity()
 
     core: dict[str, Any] = {
-        "schema": SCHEMA,
-        "status": STATUS,
-        "decision": DECISION,
+        "schema": _EXPECTED_DECISION_SCHEMA,
+        "status": _EXPECTED_STATUS,
+        "decision": _EXPECTED_DECISION,
         "balanced_selection_identity_sha256": selection_identity,
         "split_application_identity_sha256": application_identity,
         **validated_upstreams,
-        "canonical_split_git_blob_sha1": CANONICAL_SPLIT_GIT_BLOB_SHA1,
-        "split_spec_identity_sha256": CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
+        "canonical_split_git_blob_sha1": _EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1,
+        "split_spec_identity_sha256": _EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256,
         "canonical_byte_tokenizer_git_blob_sha1": tokenizer_implementation_git_blob_sha1,
         "tokenizer_version": tokenizer_identity["version"],
         "tokenizer_config_sha256": tokenizer_identity["config_sha256"],
@@ -1082,9 +1186,12 @@ def verify_byte_baseline_decision(
     report = _detached_json_mapping(report, field="decision report")
     if set(report) != _REPORT_KEYS:
         raise TokenizerDecisionError("report fields are not closed-world")
-    if report.get("schema") != SCHEMA or report.get("status") != STATUS:
+    if (
+        report.get("schema") != _EXPECTED_DECISION_SCHEMA
+        or report.get("status") != _EXPECTED_STATUS
+    ):
         raise TokenizerDecisionError("report schema/status mismatch")
-    if report.get("decision") != DECISION:
+    if report.get("decision") != _EXPECTED_DECISION:
         raise TokenizerDecisionError("unexpected tokenizer decision")
 
     selection_identity, application_identity = _bind_upstreams(
@@ -1129,12 +1236,15 @@ def verify_byte_baseline_decision(
         report.get("split_spec_identity_sha256"),
         field="split_spec_identity_sha256",
     )
-    if report_split_spec_identity != CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
+    if report_split_spec_identity != _EXPECTED_CANONICAL_SPLIT_SPEC_IDENTITY_SHA256:
         raise TokenizerDecisionError("report split-spec authority identity drift")
     for field, expected in validated_upstreams.items():
         if report.get(field) != expected:
             raise TokenizerDecisionError(f"report {field} drift")
-    if report.get("canonical_split_git_blob_sha1") != CANONICAL_SPLIT_GIT_BLOB_SHA1:
+    if (
+        report.get("canonical_split_git_blob_sha1")
+        != _EXPECTED_CANONICAL_SPLIT_GIT_BLOB_SHA1
+    ):
         raise TokenizerDecisionError("report split mechanics identity drift")
 
     (
