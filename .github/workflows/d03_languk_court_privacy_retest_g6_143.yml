@@ -1,0 +1,245 @@
+name: D03 Lang-UK court privacy retest G6 143
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/d03_languk_court_privacy_retest_g6_143.yml"
+      - "tools/run_d03_languk_court_privacy_retest_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-languk-court-privacy-retest-g6-143-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-two-clean:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/languk-court-privacy-retest-g6-143-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      BASE_HEAD: "019944d5fe12334791f05f1232d13de4a12e37d3"
+      SCRIPT_BLOB: "27989b90f3a6e6dcccad8066a195be7330800cf4"
+      PARENT_AUDIT_HEAD: "0e682d8a63719063b7661600bf46e775b58ce823"
+      PARENT_AUDIT_BLOB: "c88a2884f77f2c9747b56d7f08edfdf7b6478af2"
+      EVAL290_HEAD: "029514654829cebc149cff6fc1fea2a8ba4fa566"
+      EVAL290_LOCK_BLOB: "6b9f6d3105333681f2db17e399805bac92ad2615"
+      SOURCE_SHA256: "9b8870d10695715e4a0540c6f8fdca381599c0e6cdbaf3ecdf3c0782207b6597"
+      SOURCE_BYTES: "20220778"
+      SOURCE_URL: "https://huggingface.co/datasets/lang-uk/court-decisions-uk/resolve/289c0316fc076db3e1607db6776a29df42f4ffc5/2024-5K-supreme-court-decisions-deduplicated.parquet?download=true"
+      PYTHONPATH: src
+      TWELVE_SIX_EXECUTION_PROFILE: LOCAL_FREE
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact execution closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$BASE_HEAD" HEAD)" = "$BASE_HEAD"
+          git diff --quiet HEAD --
+          git diff --cached --quiet HEAD --
+          git diff --name-only "$BASE_HEAD"..HEAD | sort > "$RUNNER_TEMP/changed.txt"
+          cat >"$RUNNER_TEMP/expected.txt" <<'EOF'
+          .github/workflows/d03_languk_court_privacy_retest_g6_143.yml
+          tools/run_d03_languk_court_privacy_retest_v1.py
+          EOF
+          sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
+          cmp "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+          test "$(git hash-object tools/run_d03_languk_court_privacy_retest_v1.py)" = "$SCRIPT_BLOB"
+          test "$(git hash-object src/twelve_six/data/document_quality.py)" = "b1461263034b4fb9510479b20c9697e22faa5f97"
+          test "$(git hash-object src/twelve_six/data/quality_granularity.py)" = "513523b86824c423cad97352b3abb3d1241531b9"
+          test "$(git hash-object src/twelve_six/data/quality_execution_authority.py)" = "4659a9d4aba49908f372250904a54361c8d8cf46"
+          test "$(git hash-object src/twelve_six/data/privacy_execution_authority.py)" = "9215287e81c0a82f05ec8405dc4f34c60313c193"
+          test "$(git hash-object src/twelve_six/data/privacy_filter_v3.py)" = "bcc5938395724f6728ab212f98b39f2334b0f37d"
+          python -m py_compile tools/run_d03_languk_court_privacy_retest_v1.py
+          python -m pip install --disable-pip-version-check "ruff>=0.12"
+          ruff check tools/run_d03_languk_court_privacy_retest_v1.py
+
+      - name: Checkout exact parent rights audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit="$RUNNER_TEMP/audit447"
+          git fetch --no-tags origin refs/pull/447/head
+          test "$(git rev-parse FETCH_HEAD)" = "$PARENT_AUDIT_HEAD"
+          git worktree add --detach "$audit" "$PARENT_AUDIT_HEAD"
+          test "$(git -C "$audit" rev-parse HEAD)" = "$PARENT_AUDIT_HEAD"
+          test "$(git -C "$audit" hash-object configs/data/next100_029_languk_rights_audit_v1.json)" = "$PARENT_AUDIT_BLOB"
+
+      - name: Prepare exact EVAL-290 PyArrow runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/eval290-src"
+          venv="$RUNNER_TEMP/eval290-venv"
+          manifest="$RUNNER_TEMP/eval290-environment.json"
+          lock="$RUNNER_TEMP/eval290-extra.lock.txt"
+          git fetch --no-tags origin refs/pull/402/head
+          test "$(git rev-parse FETCH_HEAD)" = "$EVAL290_HEAD"
+          git worktree add --detach "$src" "$EVAL290_HEAD"
+          test "$(git -C "$src" rev-parse HEAD)" = "$EVAL290_HEAD"
+          test "$(git -C "$src" hash-object requirements/locks/linux-x86_64/eval290-extra.lock.txt)" = "$EVAL290_LOCK_BLOB"
+          python "$src/tools/execution_bootstrap.py" bootstrap \
+            --repo-root "$src" \
+            --capabilities "runtime,tests" \
+            --venv "$venv" \
+            --manifest "$manifest" \
+            --command "python -m pytest -q tests/test_eval290_ua_selection.py"
+          cp "$src/requirements/locks/linux-x86_64/eval290-extra.lock.txt" "$lock"
+          "$venv/bin/python" -m pip install \
+            --disable-pip-version-check --require-hashes --no-deps -r "$lock"
+          "$venv/bin/python" -c 'import numpy, pyarrow; assert numpy.__version__ == "2.4.6"; assert pyarrow.__version__ == "25.0.1"'
+
+      - name: Download exact pinned source twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suffix in a b; do
+            target="$RUNNER_TEMP/court-$suffix.parquet"
+            curl --fail --location --retry 5 --retry-all-errors \
+              --connect-timeout 30 --max-time 600 \
+              "$SOURCE_URL" -o "$target"
+            test "$(stat -c %s "$target")" = "$SOURCE_BYTES"
+            test "$(sha256sum "$target" | cut -d' ' -f1)" = "$SOURCE_SHA256"
+          done
+          cmp "$RUNNER_TEMP/court-a.parquet" "$RUNNER_TEMP/court-b.parquet"
+
+      - name: Execute bounded privacy and quality retest twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="$RUNNER_TEMP/eval290-venv"
+          for suffix in a b; do
+            PYTHONPATH="$GITHUB_WORKSPACE/src" "$venv/bin/python" \
+              tools/run_d03_languk_court_privacy_retest_v1.py run \
+              --expected-execution-head "$EXECUTION_HEAD" \
+              --parent-audit "$RUNNER_TEMP/audit447/configs/data/next100_029_languk_rights_audit_v1.json" \
+              --source-parquet "$RUNNER_TEMP/court-$suffix.parquet" \
+              --output-dir "$RUNNER_TEMP/output-$suffix"
+          done
+          diff -ru "$RUNNER_TEMP/output-a" "$RUNNER_TEMP/output-b"
+
+      - name: Qualify hash-only zero-credit evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/eval290-venv/bin/python" - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "output-a"
+          report_path = root / "report.json"
+          privacy_path = root / "privacy-authority.json"
+          quality_path = root / "quality-authority.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+
+          claimed = report["report_identity_sha256"]
+          core = dict(report)
+          del core["report_identity_sha256"]
+          raw = json.dumps(
+              core,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          assert hashlib.sha256(raw).hexdigest() == claimed
+          assert report["schema_version"] == "12-6.d03-languk-court-privacy-retest.v1"
+          assert report["execution_head_sha"] == os.environ["EXECUTION_HEAD"]
+          assert report["source"]["sha256"] == os.environ["SOURCE_SHA256"]
+          assert report["source"]["bytes"] == int(os.environ["SOURCE_BYTES"])
+          assert report["parent_rights_audit"]["head_sha"] == os.environ["PARENT_AUDIT_HEAD"]
+          assert report["parent_rights_audit"]["evidence_identity_sha256"] == "96e1c85bdeaad908689b47252832ab9674897d3a3dff3e73804ca80b492ad9be"
+          material = report["materialization"]
+          assert 0 <= material["selected_records"] <= 256
+          assert material["selected_records"] <= material["allow_records_available"]
+          family = report["family"]
+          assert family["proposed_family_id"] == "ua.languk.supreme-court-decisions"
+          assert family["family_admitted"] is False
+          assert family["cross_family_global_dedup_required"] is True
+          truth = report["truth_boundary"]
+          for key in (
+              "canonical_capacity_credited",
+              "training_authorized_bytes",
+              "authorized_unique_loss_positions",
+              "authorized_optimized_target_exposure",
+              "optimizer_updates_executed",
+          ):
+              assert truth[key] == 0
+          for key in (
+              "tokenizer_fit_authorized",
+              "training_executed",
+              "learned_weights_created",
+              "final_test_outcomes_read",
+              "paid_compute_used",
+              "scale_promotion_authorized",
+              "registry_change_authorized",
+              "source_family_admitted",
+          ):
+              assert truth[key] is False
+          assert report["durable_evidence_hash_only"] is True
+          assert privacy_path.is_file()
+          if material["selected_records"]:
+              assert quality_path.is_file()
+
+          forbidden = {"text", "raw_text", "normalized_text", "normalized_payload", "content", "payload"}
+          def walk(value):
+              if isinstance(value, dict):
+                  overlap = forbidden.intersection(str(k).casefold() for k in value)
+                  assert not overlap, f"durable payload key leaked: {sorted(overlap)}"
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          for path in root.glob("*.json"):
+              walk(json.loads(path.read_text(encoding="utf-8")))
+
+          print(json.dumps({
+              "status": "PASS_ZERO_CREDIT_RETEST",
+              "selected_records": material["selected_records"],
+              "privacy_actions": material["privacy_action_counts"],
+              "report_identity_sha256": claimed,
+              "training_authorized_bytes": 0,
+          }, sort_keys=True))
+          PY
+
+      - name: Remove all source payloads
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/court-a.parquet" "$RUNNER_TEMP/court-b.parquet"
+
+      - name: Upload text-free retest evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-languk-court-privacy-retest-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/output-a/report.json
+            ${{ runner.temp }}/output-a/privacy-authority.json
+            ${{ runner.temp }}/output-a/quality-authority.json
+          if-no-files-found: error
+          retention-days: 90
