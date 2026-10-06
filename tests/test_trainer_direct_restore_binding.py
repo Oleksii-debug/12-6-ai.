@@ -567,3 +567,55 @@ def test_d05_uses_trainer_checkpoint_safety_authority_source() -> None:
         trainer_adapter._NATIVE_D02_CHECKPOINT_SAFETY_AUTHORITIES
         is Trainer._CHECKPOINT_SAFETY_AUTHORITIES
     )
+
+
+def test_direct_restore_rejects_dict_descriptor_without_dispatch() -> None:
+    observed: list[str] = []
+
+    class DictSpoofTrainer(Trainer):
+        @property
+        def __dict__(self):
+            observed.append("__dict__")
+            return {}
+
+    config = _config()
+    state = _clean_state(config)
+    target = DictSpoofTrainer(nn.Linear(3, 2), config, scheduler=None)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match="native D02 safety authority must remain canonical: __dict__",
+    ):
+        Trainer.load_state_dict(target, state)
+
+    assert observed == []
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
+
+
+def test_direct_restore_uses_real_mro_for_safety_lineage() -> None:
+    class LyingMroMeta(type):
+        def __getattribute__(cls, name):
+            if name == "__mro__":
+                return (Trainer, object)
+            return type.__getattribute__(cls, name)
+
+    class LyingTrainer(Trainer, metaclass=LyingMroMeta):
+        def _require_finite_committed_update(self):
+            return None
+
+    config = _config()
+    state = _clean_state(config)
+    target = LyingTrainer(nn.Linear(3, 2), config, scheduler=None)
+
+    with pytest.raises(
+        TrainingStateInvalidError,
+        match=(
+            "native D02 safety authority must remain canonical: "
+            "_require_finite_committed_update"
+        ),
+    ):
+        Trainer.load_state_dict(target, state)
+
+    assert target._failure_reason is None
+    assert target._update_incomplete is False
