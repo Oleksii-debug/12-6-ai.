@@ -96,6 +96,7 @@ jobs:
           test "$(git hash-object evidence/eval647/code_selection_source_materialization_v1.json)" = "efa5b77275919fa9417e35efb30c8c9a527bd960"
           test "$(git hash-object tools/materialize_eval_code_reserve_v1.py)" = "13000d9b911bf0e0c7567613e68f2b9b113bd955"
           python -m py_compile tools/run_d03_rada_current_data232_handoff_v1.py
+          python -m pip install --disable-pip-version-check "pytest>=8,<9" "ruff>=0.12"
           python -m pytest -q tests/test_data232_bounded_memory_execution.py
           PYTHONPATH="$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE/tools" python - <<'PY'
           import sys
@@ -103,7 +104,6 @@ jobs:
 
           assert "twelve_six.data._data232_decontamination_matching" not in sys.modules
           PY
-          python -m pip install --disable-pip-version-check "ruff>=0.12"
           ruff check tools/run_d03_rada_current_data232_handoff_v1.py
 
       - name: Checkout exact historical Rada QP mechanics
