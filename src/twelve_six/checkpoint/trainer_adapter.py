@@ -9,15 +9,18 @@ ownership inside the checkpoint API.
 from __future__ import annotations
 
 import copy
+import importlib
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
+from . import core as _core
 from .core import (
     CheckpointCompatibilityError,
     CheckpointIdentity,
     LoadResult,
+    capture_rng_state,
     _apply_model_weights,
     _decode_verified_state,
     _preflight_optimizer_state,
@@ -233,6 +236,20 @@ def _preflight_stateful_component(component: Any | None, state: Any, *, label: s
     _semantic_stateful_probe(component, state, label=label)
 
 
+def _assert_trainer_model_binding(model: Any, trainer: Any) -> None:
+    """Refuse mismatched D02 model/optimizer owners before saving or restoring."""
+
+    if (
+        hasattr(trainer, "_failure_reason")
+        and hasattr(trainer, "_update_incomplete")
+        and hasattr(trainer, "model")
+        and trainer.model is not model
+    ):
+        raise CheckpointCompatibilityError(
+            "canonical trainer owns a different model than the checkpoint target"
+        )
+
+
 def _preflight_trainer_target(trainer: Any) -> None:
     """Reject a D02 trainer target that its own loader would refuse after mutation."""
 
@@ -249,9 +266,33 @@ def _preflight_trainer_target(trainer: Any) -> None:
         raise CheckpointCompatibilityError(
             "checkpoint restore requires a fresh trainer; target trainer has an incomplete update"
         )
+    # D02 refuses restoration to a trainer which has already consumed data,
+    # has pending accumulation, or retains gradients. Check the same live
+    # conditions before opening a checkpoint or changing model weights.
+    if any(
+        getattr(trainer, field, 0) != 0
+        for field in (
+            "micro_step",
+            "optimizer_step",
+            "tokens_seen",
+            "_pending_tokens",
+            "_pending_loss_sum",
+        )
+    ):
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer with no consumed exposure"
+        )
+    model = getattr(trainer, "model", None)
+    parameters = getattr(model, "parameters", None)
+    if callable(parameters) and any(
+        getattr(parameter, "grad", None) is not None for parameter in parameters()
+    ):
+        raise CheckpointCompatibilityError(
+            "checkpoint restore requires a fresh trainer with no pending gradients"
+        )
 
 
-def _preflight_trainer_state(
+def _preflight_trainer_state_without_rng_guard(
     trainer: Any,
     state: Any,
     *,
@@ -367,6 +408,78 @@ def _preflight_trainer_state(
     )
 
 
+
+def _preflight_trainer_state(
+    trainer: Any,
+    state: Any,
+    *,
+    manifest: Mapping[str, Any] | None = None,
+) -> None:
+    """Keep detached loader probes from advancing live process RNG streams.
+
+    A deep-copied trainer, optimizer, scheduler or scaler can still call the
+    module-global Python, NumPy or torch generators. Whether semantic probing
+    succeeds or rejects a checkpoint, it must not silently alter future draws.
+    The actual loader runs later in the guarded model -> trainer -> RNG region.
+    """
+
+    ambient = capture_rng_state()
+    torch_state = ambient.get("torch")
+    warn_only = None
+    if torch_state is not None:
+        torch = importlib.import_module("torch")
+        warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    try:
+        _preflight_trainer_state_without_rng_guard(
+            trainer, state, manifest=manifest,
+        )
+    finally:
+        # Ambient probe rollback is not the application-stage RNG restore.
+        # If it fails, the live RNG is ambiguous even though the model has not
+        # been loaded. Refuse future work on a canonical D02 trainer.
+        try:
+            try:
+                _core.restore_rng_state(ambient)
+            finally:
+                # Attempt to restore warn-only even if RNG rollback itself
+                # raises: global PyTorch execution mode is shared by trainers.
+                if warn_only is not None:
+                    torch.use_deterministic_algorithms(
+                        bool(torch_state["deterministic_algorithms"]),
+                        warn_only=warn_only,
+                    )
+        except BaseException:
+            if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+                if trainer._failure_reason is None:
+                    trainer._failure_reason = "checkpoint_preflight_rng_rollback_failed"
+                trainer._update_incomplete = True
+            raise
+
+
+def _restore_checkpoint_rng_preserving_warn_only(
+    state: Mapping[str, Any],
+    *,
+    restore: Any,
+) -> None:
+    """Do not erase the live PyTorch warn-only policy on checkpoint RNG replay.
+
+    The V1 RNG snapshot records deterministic enablement, but not warn_only.
+    A canonical D02 Trainer has already configured its validated policy; the
+    core RNG restore defaults warn_only to False even when it was True.
+    """
+
+    torch_state = state.get("torch")
+    warn_only = None
+    if torch_state:
+        torch = importlib.import_module("torch")
+        warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    restore(state)
+    if warn_only is not None:
+        torch.use_deterministic_algorithms(
+            torch.are_deterministic_algorithms_enabled(), warn_only=warn_only,
+        )
+
+
 def save_trainer_checkpoint(
     directory: str | Path,
     *,
@@ -379,6 +492,7 @@ def save_trainer_checkpoint(
 
     if not hasattr(trainer, "state_dict"):
         raise TypeError("trainer must provide state_dict()")
+    _assert_trainer_model_binding(model, trainer)
     state = _trainer_state_as_mapping(trainer.state_dict())
     return save_checkpoint(
         directory,
@@ -420,6 +534,8 @@ def load_trainer_checkpoint(
     if not hasattr(trainer, "load_state_dict"):
         raise TypeError("trainer must provide load_state_dict()")
 
+    _assert_trainer_model_binding(model, trainer)
+    _preflight_trainer_target(trainer)
     verified = prepare_checkpoint_load(directory)
     manifest = verified.manifest
     _assert_bound_metadata(
@@ -460,10 +576,22 @@ def load_trainer_checkpoint(
     # the same checkpoint path scales from 20M toward 100M and 1B parameters.
     del arrays
 
-    _apply_model_weights(model, materialized, strict_model)
-    if restore_rng:
-        restore_rng_state(combined_state["rng"])
-    trainer.load_state_dict(trainer_state)
+    # State loaders may draw from process RNG even when they succeed.
+    # Failed application may leave a mixed model/optimizer state, so canonical
+    # D02 targets must require a fresh instance and verified checkpoint.
+    try:
+        _apply_model_weights(model, materialized, strict_model)
+        trainer.load_state_dict(trainer_state)
+        if restore_rng:
+            _restore_checkpoint_rng_preserving_warn_only(
+                combined_state["rng"], restore=restore_rng_state,
+            )
+    except BaseException:
+        if hasattr(trainer, "_failure_reason") and hasattr(trainer, "_update_incomplete"):
+            if trainer._failure_reason is None:
+                trainer._failure_reason = "checkpoint_restore_apply_failed"
+            trainer._update_incomplete = True
+        raise
     return LoadResult(
         manifest=copy.deepcopy(manifest),
         trainer_state=trainer_state,
