@@ -130,6 +130,18 @@ jobs:
             -o "$root/artifact.zip"
           test "$(sha256sum "$root/artifact.zip" | cut -d" " -f1)" = "$UPSTREAM_ARTIFACT_ZIP_SHA256"
           unzip -t "$root/artifact.zip" >/dev/null
+          zipinfo -1 "$root/artifact.zip" | sort > "$root/members.txt"
+          cat > "$root/expected-members.txt" <<'EOF'
+          home/runner/work/_temp/rada-dedup-a/dedup-report.json
+          home/runner/work/_temp/rada-dedup-a/execution-evidence.json
+          home/runner/work/_temp/rada-dedup-a/rada-survivor-authority.json
+          home/runner/work/_temp/rada-two-clean.json
+          tmp/github-replay-summary.json
+          tmp/replay-a.json
+          tmp/replay-b.json
+          EOF
+          sort -o "$root/expected-members.txt" "$root/expected-members.txt"
+          cmp "$root/expected-members.txt" "$root/members.txt"
           unzip -p "$root/artifact.zip" "home/runner/work/_temp/rada-dedup-a/execution-evidence.json" > "$root/execution-evidence.json"
           unzip -p "$root/artifact.zip" "home/runner/work/_temp/rada-two-clean.json" > "$root/two-clean.json"
           test "$(sha256sum "$root/execution-evidence.json" | cut -d" " -f1)" = "$UPSTREAM_EVIDENCE_FILE_SHA256"
