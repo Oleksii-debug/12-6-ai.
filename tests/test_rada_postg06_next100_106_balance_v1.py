@@ -72,14 +72,24 @@ def _post_g06(vector: dict[str, object]) -> dict[str, object]:
         "schema_version": target.POST_G06_SCHEMA,
         "execution_profile": "LOCAL_FREE",
         "execution_head_sha": vector["materialization_execution_head_sha"],
-        "parent": {},
-        "g05": {},
+        "parent": {
+            "artifact_id": 123,
+            "artifact_zip_sha256": "8" * 64,
+        },
+        "g05": {
+            "execution_identity_sha256": "9" * 64,
+        },
         "g06": {
+            "execution_identity_sha256": "a" * 64,
             "exact_payload_collision_free": True,
             "unique_payload_count": vector["record_count"],
             "payload_set_identity_sha256": "7" * 64,
         },
-        "durable_artifacts": {},
+        "durable_artifacts": {
+            "g05_authority_file_sha256": "b" * 64,
+            "g06_authority_file_sha256": "c" * 64,
+            "survivor_inventory_file_sha256": "d" * 64,
+        },
         "survivor_inventory": {
             "record_payload_jsonl_sha256": vector[
                 "record_payload_jsonl_sha256"
@@ -126,6 +136,71 @@ def _post_g06(vector: dict[str, object]) -> dict[str, object]:
         target.canonical(vector_core)
     )
     return evidence
+
+
+def _post_g06_two_clean(
+    vector: dict[str, object],
+    evidence: dict[str, object],
+    *,
+    evidence_file_sha256: str,
+) -> dict[str, object]:
+    parent = evidence["parent"]
+    g05 = evidence["g05"]
+    g06 = evidence["g06"]
+    survivor = evidence["survivor_inventory"]
+    artifacts = evidence["durable_artifacts"]
+    core: dict[str, object] = {
+        "schema_version": target.G05_G06_TWO_CLEAN_SCHEMA,
+        "execution_head_sha": evidence["execution_head_sha"],
+        "parent_execution_head_sha": target.PARENT_DATA232_HEAD,
+        "parent_artifact_id": parent["artifact_id"],
+        "parent_artifact_zip_sha256": parent["artifact_zip_sha256"],
+        "fresh_execution_count": 2,
+        "independent_runner_jobs": True,
+        "byte_identical_outputs": True,
+        "output_file_sha256": {
+            target.G05_G06_BUNDLE_FILES["evidence"]: evidence_file_sha256,
+            target.G05_G06_BUNDLE_FILES["quality"]: artifacts[
+                "g05_authority_file_sha256"
+            ],
+            target.G05_G06_BUNDLE_FILES["privacy"]: artifacts[
+                "g06_authority_file_sha256"
+            ],
+            target.G05_G06_BUNDLE_FILES["survivor_inventory"]: artifacts[
+                "survivor_inventory_file_sha256"
+            ],
+        },
+        "evidence_identity_sha256": evidence["evidence_identity_sha256"],
+        "g05_execution_identity_sha256": g05["execution_identity_sha256"],
+        "g06_execution_identity_sha256": g06["execution_identity_sha256"],
+        "record_payload_jsonl_sha256": survivor[
+            "record_payload_jsonl_sha256"
+        ],
+        "record_inventory_digest_sha256": survivor[
+            "record_inventory_digest_sha256"
+        ],
+        "payload_inventory_digest_sha256": survivor[
+            "payload_inventory_digest_sha256"
+        ],
+        "payload_set_identity_sha256": g06["payload_set_identity_sha256"],
+        "record_count": vector["record_count"],
+        "total_payload_bytes": vector["total_payload_bytes"],
+        "canonical_capacity_credited": 0,
+        "training_authorized_bytes": 0,
+        "authorized_unique_loss_positions": 0,
+        "authorized_optimized_target_exposure": 0,
+        "tokenizer_fit_authorized": False,
+        "training_executed": False,
+        "learned_weights_created": False,
+        "final_test_outcomes_read": False,
+        "paid_compute_used": False,
+        "scale_promotion_authorized": False,
+        "next_gate": target.G05_G06_NEXT_GATE,
+    }
+    return {
+        **core,
+        "proof_identity_sha256": target.sha256(target.canonical(core)),
+    }
 
 
 def test_known_global_dedup_terminal_artifact_is_accepted() -> None:
@@ -387,6 +462,16 @@ def test_execute_delegates_policy_without_widening_science(
     two_path = tmp_path / "two.json"
     vector_sha = _write_json(vector_path, vector)
     evidence_sha = _write_json(evidence_path, evidence)
+    post_g06_two_clean = _post_g06_two_clean(
+        vector,
+        evidence,
+        evidence_file_sha256=evidence_sha,
+    )
+    post_g06_two_clean_path = tmp_path / "post-g06-two-clean.json"
+    post_g06_two_clean_sha = _write_json(
+        post_g06_two_clean_path,
+        post_g06_two_clean,
+    )
     upstream_path.write_bytes(UPSTREAM_EVIDENCE_RAW)
     two_path.write_bytes(UPSTREAM_TWO_CLEAN_RAW)
 
@@ -414,6 +499,11 @@ def test_execute_delegates_policy_without_widening_science(
         expected_post_g06_evidence_identity_sha256=evidence[
             "evidence_identity_sha256"
         ],
+        post_g06_two_clean_proof=post_g06_two_clean_path,
+        expected_post_g06_two_clean_proof_file_sha256=post_g06_two_clean_sha,
+        expected_post_g06_two_clean_proof_identity_sha256=post_g06_two_clean[
+            "proof_identity_sha256"
+        ],
         upstream_global_dedup_evidence=upstream_path,
         upstream_global_dedup_two_clean=two_path,
     )
@@ -429,6 +519,14 @@ def test_execute_delegates_policy_without_widening_science(
         "ACQUIRE_MORE_DIVERSE_LAWFUL_SOURCE_CAPACITY"
     )
     assert values["composition-dedup-proof"]["terminal_verdict"] == "PASS"
+    assert receipt["post_g06_two_clean_proof_identity_sha256"] == (
+        post_g06_two_clean["proof_identity_sha256"]
+    )
+    assert values["composition-dedup-proof"][
+        "post_g06_physical_uniqueness"
+    ]["two_clean_proof_identity_sha256"] == (
+        post_g06_two_clean["proof_identity_sha256"]
+    )
     for field, expected in target.ZERO_CREDIT.items():
         assert receipt[field] == expected
 
@@ -532,6 +630,7 @@ def _write_two_clean_fixture(
     execution_head = "c" * 40
     family_identity = "8" * 64
     post_g06_identity = "6" * 64
+    post_g06_two_clean_identity = "5" * 64
     composition_core = {
         "schema": "synthetic-composition",
         "execution_head_sha": execution_head,
@@ -541,6 +640,7 @@ def _write_two_clean_fixture(
         },
         "post_g06_physical_uniqueness": {
             "evidence_identity_sha256": post_g06_identity,
+            "two_clean_proof_identity_sha256": post_g06_two_clean_identity,
         },
         "family_vector_identity_sha256": family_identity,
         "x": 1,
@@ -606,6 +706,7 @@ def _write_two_clean_fixture(
             target.UPSTREAM_TWO_CLEAN_ID
         ),
         "post_g06_evidence_identity_sha256": post_g06_identity,
+        "post_g06_two_clean_proof_identity_sha256": post_g06_two_clean_identity,
         "composition_dedup_identity_sha256": composition[
             "evidence_identity_sha256"
         ],
@@ -1070,3 +1171,91 @@ def test_compare_outputs_rejects_nonreproducible_canonical_replay(
 
 def test_matrix_adapter_stack_root_is_pinned() -> None:
     assert target.STACK_BASE_HEAD == "039ae67cfd0a1393936c49a7bf463f5f68927a03"
+
+
+def test_post_g06_two_clean_proof_rejects_nonindependent_reseal() -> None:
+    vector = _family_vector()
+    evidence = _post_g06(vector)
+    evidence_raw = target.canonical_line(evidence)
+    proof = _post_g06_two_clean(
+        vector,
+        evidence,
+        evidence_file_sha256=target.sha256(evidence_raw),
+    )
+    proof["independent_runner_jobs"] = False
+    proof["proof_identity_sha256"] = target.self_hash(
+        proof,
+        "proof_identity_sha256",
+    )
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="independent-runner proof missing",
+    ):
+        target.verify_post_g06_two_clean_proof(
+            proof,
+            evidence,
+            vector,
+            expected_proof_identity_sha256=proof[
+                "proof_identity_sha256"
+            ],
+            expected_evidence_file_sha256=target.sha256(evidence_raw),
+        )
+
+
+def test_post_g06_two_clean_proof_rejects_output_root_reseal() -> None:
+    vector = _family_vector()
+    evidence = _post_g06(vector)
+    evidence_raw = target.canonical_line(evidence)
+    proof = _post_g06_two_clean(
+        vector,
+        evidence,
+        evidence_file_sha256=target.sha256(evidence_raw),
+    )
+    proof["output_file_sha256"][
+        target.G05_G06_BUNDLE_FILES["evidence"]
+    ] = "0" * 64
+    proof["proof_identity_sha256"] = target.self_hash(
+        proof,
+        "proof_identity_sha256",
+    )
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="output-file roots drift",
+    ):
+        target.verify_post_g06_two_clean_proof(
+            proof,
+            evidence,
+            vector,
+            expected_proof_identity_sha256=proof[
+                "proof_identity_sha256"
+            ],
+            expected_evidence_file_sha256=target.sha256(evidence_raw),
+        )
+
+
+def test_compare_outputs_rejects_post_g06_two_clean_chain_drift(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a-two-clean-chain"
+    b = tmp_path / "b-two-clean-chain"
+    _write_two_clean_fixture(a)
+    _write_two_clean_fixture(b)
+    for output in (a, b):
+        path = output / "execution-receipt.json"
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt["post_g06_two_clean_proof_identity_sha256"] = "7" * 64
+        receipt["receipt_identity_sha256"] = target.self_hash(
+            receipt,
+            "receipt_identity_sha256",
+        )
+        path.write_bytes(target.canonical_line(receipt))
+
+    with pytest.raises(
+        target.RadaPostG06BalanceError,
+        match="post-G06 two-clean identity differs across evidence chain",
+    ):
+        target.compare_outputs(
+            a,
+            b,
+            tmp_path / "proof-two-clean-chain.json",
+        )
