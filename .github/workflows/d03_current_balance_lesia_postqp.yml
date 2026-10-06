@@ -1,0 +1,381 @@
+name: D03 current balance plus post-QP Lesia canonical balance
+
+on:
+  pull_request:
+    branches:
+      - execution/2792-nbu-current40-balance-g8-146-20261006
+    paths:
+      - ".github/workflows/d03_current_balance_lesia_postqp.yml"
+      - "tools/run_d03_current_balance_lesia_postqp_v1.py"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: d03-current-balance-lesia-postqp-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  execute-canonical-balance:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'execution/2816-lesia-postqp-balance-g8-162-20261006'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXECUTION_HEAD: ${{ github.event.pull_request.head.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+
+      BASE_HEAD: 64a9cb6b8decca7b045d2cc6cad07e80b0655cec
+      BASE_ARTIFACT_ID: "11382470878"
+      BASE_ARTIFACT_NAME: d03-current-balance-nbu-postqp-64a9cb6b8decca7b045d2cc6cad07e80b0655cec
+      BASE_ARTIFACT_SHA256: 49c03a5c8db8ee35d7c7d443d01791e8fc6564ae626fcd3f1ce30f95998c5b78
+      BASE_COMPOSITION_FILE_SHA256: 556a4f3153f9b251e8605bbb21e70826867b6353291e3a5a0f7920dccb5c66d7
+      BASE_NEXT100_FILE_SHA256: 774604a43ae4910bd7c3e220860303dabaa9aee81b6a21dd60125866645a1ea9
+      BASE_RECEIPT_FILE_SHA256: 424ed2ad4af86f34065391bef229107179ca5985ca01b53a56bb0c3b5f786a8d
+
+      LESIA_HEAD: 1d594e048365fd2121433210b83c0dc9069c50bf
+      LESIA_ARTIFACT_ID: "11379024717"
+      LESIA_ARTIFACT_NAME: d03-lesia-wikisource-decontam-qp-1d594e048365fd2121433210b83c0dc9069c50bf
+      LESIA_ARTIFACT_SHA256: b8cd45c3df217010156a24e5a921724273a255f5d81da3bfe83fcbc23b568f07
+      LESIA_EVIDENCE_FILE_SHA256: 619ec89833c95746ef86f25185e76004a7d6dc34d0f70918f816a4f9ac1d617b
+      LESIA_PROOF_FILE_SHA256: 312f5c2299880b29b6d60d3792a5e1497227faed483032d886f5521a76d372a2
+      LESIA_EVIDENCE_ID: dddddf9b99e4050d6b8483a8b18822a1453be5511772668315c800b947c17b8d
+      LESIA_PROOF_ID: 44524fb24b4b04d33c601e321e077c5c956abbf69f715fe11034204ecf2c9bb1
+
+      RUNNER_BLOB: 37bc658af4a11fac478fc535a4bcf1c40eef20f6
+      GATE_BLOB: ae4f9ccdc3cfe3e053dd57d46f80aebe121268c5
+      POLICY_BLOB: b5a2577aeb1a2e56ebff1a4b46ac325d99dd8f8f
+
+    steps:
+      - name: Checkout exact execution head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXECUTION_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set exact CPython
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.16"
+
+      - name: Bind exact parent-relative execution closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXECUTION_HEAD"
+          test "$(git merge-base "$BASE_HEAD" HEAD)" = "$BASE_HEAD"
+          mapfile -t changed < <(git diff --name-only "$BASE_HEAD"..HEAD | sort)
+          expected=(
+            ".github/workflows/d03_current_balance_lesia_postqp.yml"
+            "tools/run_d03_current_balance_lesia_postqp_v1.py"
+          )
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          test "${#changed[@]}" -eq "${#wanted[@]}"
+          for i in "${!wanted[@]}"; do
+            test "${changed[$i]}" = "${wanted[$i]}"
+          done
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          python -m py_compile \
+            tools/run_d03_current_balance_lesia_postqp_v1.py \
+            tools/run_d03_current_balance_nbu_postqp_v1.py \
+            tools/next100_106_balance_gate.py
+          test "$(git hash-object tools/run_d03_current_balance_lesia_postqp_v1.py)" = "$RUNNER_BLOB"
+          test "$(git hash-object tools/next100_106_balance_gate.py)" = "$GATE_BLOB"
+          test "$(git hash-object configs/data/next100_106_balance_gate_policy_v1.json)" = "$POLICY_BLOB"
+          PYTHONPATH=. python tools/next100_106_balance_gate.py validate-policy
+
+      - name: Fetch exact qualified artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          fetch_artifact() {
+            kind="$1"
+            artifact_id="$2"
+            expected_name="$3"
+            expected_digest="$4"
+            expected_head="$5"
+
+            curl --fail --silent --show-error --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}" \
+              -o "$RUNNER_TEMP/${kind}-metadata.json"
+
+            KIND="$kind" EXPECTED_NAME="$expected_name" EXPECTED_DIGEST="$expected_digest" \
+              EXPECTED_HEAD="$expected_head" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          kind = os.environ["KIND"]
+          meta = json.loads((Path(os.environ["RUNNER_TEMP"]) / f"{kind}-metadata.json").read_text(encoding="utf-8"))
+          if meta.get("name") != os.environ["EXPECTED_NAME"]:
+              raise SystemExit(f"{kind}: artifact name drift")
+          if meta.get("expired") is not False:
+              raise SystemExit(f"{kind}: artifact expired")
+          if meta.get("digest") != "sha256:" + os.environ["EXPECTED_DIGEST"]:
+              raise SystemExit(f"{kind}: artifact digest drift")
+          workflow = meta.get("workflow_run")
+          if not isinstance(workflow, dict) or workflow.get("head_sha") != os.environ["EXPECTED_HEAD"]:
+              raise SystemExit(f"{kind}: workflow head drift")
+          PY
+
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" \
+              -o "$RUNNER_TEMP/${kind}.zip"
+            test "$(sha256sum "$RUNNER_TEMP/${kind}.zip" | cut -d' ' -f1)" = "$expected_digest"
+          }
+
+          fetch_artifact base "$BASE_ARTIFACT_ID" "$BASE_ARTIFACT_NAME" "$BASE_ARTIFACT_SHA256" "$BASE_HEAD"
+          fetch_artifact lesia "$LESIA_ARTIFACT_ID" "$LESIA_ARTIFACT_NAME" "$LESIA_ARTIFACT_SHA256" "$LESIA_HEAD"
+
+      - name: Extract allowlisted text-free authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/inputs"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import stat
+          import zipfile
+          from pathlib import Path
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          out = tmp / "inputs"
+          specs = {
+              "base": {
+                  "expected": {
+                      "combined-dedup-proof.json",
+                      "composition.json",
+                      "nbu-family-authority.json",
+                      "next100-input.json",
+                      "balance-result.json",
+                      "execution-receipt.json",
+                  },
+                  "wanted": {
+                      "composition.json": ("base-composition.json", os.environ["BASE_COMPOSITION_FILE_SHA256"]),
+                      "next100-input.json": ("base-next100.json", os.environ["BASE_NEXT100_FILE_SHA256"]),
+                      "execution-receipt.json": ("base-receipt.json", os.environ["BASE_RECEIPT_FILE_SHA256"]),
+                  },
+              },
+              "lesia": {
+                  "expected": {
+                      "output-a/evidence.json",
+                      "lesia-wikisource-post-qp-two-clean-proof.json",
+                  },
+                  "wanted": {
+                      "output-a/evidence.json": ("lesia-evidence.json", os.environ["LESIA_EVIDENCE_FILE_SHA256"]),
+                      "lesia-wikisource-post-qp-two-clean-proof.json": ("lesia-proof.json", os.environ["LESIA_PROOF_FILE_SHA256"]),
+                  },
+              },
+          }
+          for kind, spec in specs.items():
+              with zipfile.ZipFile(tmp / f"{kind}.zip") as bundle:
+                  infos = bundle.infolist()
+                  names = [info.filename for info in infos]
+                  if len(names) != len(set(names)) or set(names) != spec["expected"]:
+                      raise SystemExit(f"{kind}: artifact member allowlist drift")
+                  by_name = {}
+                  for info in infos:
+                      path = Path(info.filename)
+                      mode = (info.external_attr >> 16) & 0o170000
+                      if info.is_dir() or "\\" in info.filename or info.filename.startswith("/") or ".." in path.parts or mode == stat.S_IFLNK:
+                          raise SystemExit(f"{kind}: unsafe artifact member")
+                      by_name[info.filename] = info
+                  for source, (dest, digest) in spec["wanted"].items():
+                      raw = bundle.read(by_name[source])
+                      if hashlib.sha256(raw).hexdigest() != digest:
+                          raise SystemExit(f"{kind}: member digest drift")
+                      (out / dest).write_bytes(raw)
+
+          proof_path = out / "lesia-proof.json"
+          proof = json.loads(proof_path.read_text(encoding="utf-8"))
+          claimed = proof.get("proof_identity_sha256")
+          core = dict(proof)
+          core.pop("proof_identity_sha256", None)
+          canonical = json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+          if claimed != os.environ["LESIA_PROOF_ID"] or hashlib.sha256(canonical).hexdigest() != claimed:
+              raise SystemExit("Lesia proof identity drift")
+          if proof.get("execution_head_sha") != os.environ["LESIA_HEAD"]:
+              raise SystemExit("Lesia proof head drift")
+          if proof.get("evidence_file_sha256") != os.environ["LESIA_EVIDENCE_FILE_SHA256"]:
+              raise SystemExit("Lesia proof evidence-file binding drift")
+          if proof.get("evidence_identity_sha256") != os.environ["LESIA_EVIDENCE_ID"]:
+              raise SystemExit("Lesia proof evidence identity drift")
+          if proof.get("two_fresh_processes_byte_identical") is not True:
+              raise SystemExit("Lesia proof is not two-clean")
+          if proof.get("cross_lineage_rededup_required") is not True:
+              raise SystemExit("Lesia proof unexpectedly bypasses cross-lineage re-dedup")
+          PY
+
+      - name: Reject coherently resealed Lesia authority mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$RUNNER_TEMP/inputs/lesia-evidence.json" "$RUNNER_TEMP/mutated-lesia.json"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "mutated-lesia.json"
+          value = json.loads(path.read_text(encoding="utf-8"))
+          value["truth_boundary"]["training_executed"] = True
+          core = dict(value)
+          core.pop("evidence_identity_sha256", None)
+          canonical = json.dumps(core, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+          value["evidence_identity_sha256"] = hashlib.sha256(canonical).hexdigest()
+          path.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n", encoding="utf-8")
+          PY
+
+          if PYTHONPATH=. python tools/run_d03_current_balance_lesia_postqp_v1.py \
+            --base-composition-json "$RUNNER_TEMP/inputs/base-composition.json" \
+            --base-next100-json "$RUNNER_TEMP/inputs/base-next100.json" \
+            --base-receipt-json "$RUNNER_TEMP/inputs/base-receipt.json" \
+            --lesia-evidence-json "$RUNNER_TEMP/mutated-lesia.json" \
+            --execution-head "$EXECUTION_HEAD" \
+            --output-dir "$RUNNER_TEMP/mutated-output"; then
+            echo "coherently resealed Lesia mutation was accepted" >&2
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/mutated-output"
+
+      - name: Execute exact union and canonical balance twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suffix in a b; do
+            out="$RUNNER_TEMP/output-${suffix}"
+            rm -rf "$out"
+            PYTHONPATH=. python tools/run_d03_current_balance_lesia_postqp_v1.py \
+              --base-composition-json "$RUNNER_TEMP/inputs/base-composition.json" \
+              --base-next100-json "$RUNNER_TEMP/inputs/base-next100.json" \
+              --base-receipt-json "$RUNNER_TEMP/inputs/base-receipt.json" \
+              --lesia-evidence-json "$RUNNER_TEMP/inputs/lesia-evidence.json" \
+              --execution-head "$EXECUTION_HEAD" \
+              --output-dir "$out"
+          done
+
+          for name in combined-dedup-proof composition next100-input balance-result execution-receipt; do
+            cmp "$RUNNER_TEMP/output-a/${name}.json" "$RUNNER_TEMP/output-b/${name}.json"
+          done
+
+      - name: Qualify exact result and zero-credit boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "output-a"
+          names = {"combined-dedup-proof", "composition", "next100-input", "balance-result", "execution-receipt"}
+          docs = {name: json.loads((root / f"{name}.json").read_text(encoding="utf-8")) for name in names}
+          receipt = docs["execution-receipt"]
+          proof = docs["combined-dedup-proof"]
+          vector = docs["next100-input"]
+          balance = docs["balance-result"]
+
+          expected = {
+              "execution_head_sha": os.environ["EXECUTION_HEAD"],
+              "discounted_exact_replay_records": 0,
+              "discounted_exact_replay_payload_bytes": 0,
+              "novel_lesia_records": 105,
+              "novel_lesia_source_objects": 105,
+              "novel_lesia_payload_bytes": 159722,
+              "combined_record_count": 2856,
+              "combined_source_object_count": 2775,
+              "combined_total_payload_bytes": 20820954,
+              "raw_capacity_by_stratum": {"ua": 1256359, "en": 15481867, "code": 4082728},
+              "maximum_feasible_total_source_bytes": 1825100,
+              "maximum_feasible_stratum_bytes": {"ua": 821295, "en": 638785, "code": 365020},
+              "raw_gap_to_target_by_stratum": {"ua": 7743641, "en": 0, "code": 0},
+              "balance_status": "PARTIAL_MIX_FEASIBLE_ACQUIRE_MORE_DATA",
+              "next_scientific_gate": "ACQUIRE_MORE_DIVERSE_LAWFUL_UA_SOURCE_CAPACITY",
+              "canonical_capacity_credited": 0,
+              "training_authorized_bytes": 0,
+              "authorized_unique_loss_positions": 0,
+              "authorized_optimized_target_exposure": 0,
+              "tokenizer_fit_authorized": False,
+              "model_training_authorized": False,
+              "optimizer_updates_executed_on_real_targets": 0,
+              "training_executed": False,
+              "learned_weights_created": False,
+              "final_test_outcomes_read": False,
+              "paid_compute_used": False,
+              "scale_promotion_authorized": False,
+          }
+          for field, wanted in expected.items():
+              observed = receipt.get(field)
+              if type(observed) is not type(wanted) or observed != wanted:
+                  raise SystemExit(f"receipt drift: {field}")
+
+          if proof.get("terminal_verdict") != "PASS":
+              raise SystemExit("combined dedup proof is not PASS")
+          for field in ("cross_inventory_record_id_collision_free", "cross_inventory_source_id_collision_free", "cross_inventory_exact_payload_collision_free"):
+              if proof.get(field) is not True:
+                  raise SystemExit(f"collision proof drift: {field}")
+
+          family = [row for row in vector["families"] if row["family_id"] == "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv"]
+          if family != [{"family_id": "ua.literature.lesia-ukrainka.na-krylah-pisen.1892-lviv", "stratum": "ua", "unique_bytes": 161201}]:
+              raise SystemExit("Lesia family capacity drift")
+          if vector["totals"]["family_count"] != {"ua": 4, "en": 7, "code": 18}:
+              raise SystemExit("Lesia was incorrectly counted as a new family")
+          if balance.get("maximum_feasible_total_source_bytes") != 1825100:
+              raise SystemExit("balance maximum drift")
+
+          canonical = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+          self_hashes = {
+              "combined-dedup-proof": "evidence_identity_sha256",
+              "composition": "composition_identity_sha256",
+              "balance-result": "result_identity_sha256",
+              "execution-receipt": "receipt_identity_sha256",
+          }
+          for name, identity_field in self_hashes.items():
+              value = dict(docs[name])
+              claimed = value.pop(identity_field)
+              if hashlib.sha256(canonical(value)).hexdigest() != claimed:
+                  raise SystemExit(f"{name}: self-hash mismatch")
+
+          forbidden = {"text", "raw_text", "content", "payload", "training_text", "evaluation_payload"}
+          def walk(value):
+              if isinstance(value, dict):
+                  overlap = forbidden & set(value)
+                  if overlap:
+                      raise SystemExit("raw-content key persisted: " + ",".join(sorted(overlap)))
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          for value in docs.values():
+              walk(value)
+
+          print("D03_LESIA_CURRENT_BALANCE_QUALIFIED")
+          print(json.dumps(receipt, sort_keys=True))
+          PY
+
+      - name: Upload text-free Lesia-composed balance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: d03-current-balance-lesia-postqp-${{ env.EXECUTION_HEAD }}
+          path: |
+            ${{ runner.temp }}/output-a/combined-dedup-proof.json
+            ${{ runner.temp }}/output-a/composition.json
+            ${{ runner.temp }}/output-a/next100-input.json
+            ${{ runner.temp }}/output-a/balance-result.json
+            ${{ runner.temp }}/output-a/execution-receipt.json
+          if-no-files-found: error
+          retention-days: 90
